@@ -1,10 +1,10 @@
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
-const b=await pw.chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
+import pw from 'playwright';
+const b=await pw.chromium.launch();
 import fs from 'fs';
 const hooked=fs.readFileSync('_hooks.html','utf8');
 fs.writeFileSync('_pm.html','<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}</style></head><body>'+hooked+'</body></html>');
 const pg=await (await b.newContext({viewport:{width:360,height:780}})).newPage();
-await pg.goto('file://'+process.cwd()+'/_pm.html'); await pg.waitForTimeout(400);
+await pg.goto(new URL('_pm.html', import.meta.url).href); await pg.waitForTimeout(400);
 const offices=await pg.evaluate(()=>window.__ROLE_KEYS);
 const small={},tiny={}; let ov=0,n=0;
 for(const [role,srole] of [['student',null],['applicant',null],...offices.map(o=>['staff',o])]){

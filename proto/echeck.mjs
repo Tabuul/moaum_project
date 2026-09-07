@@ -1,11 +1,11 @@
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
+import pw from 'playwright';
 import fs from 'fs';
 const { chromium } = pw;
 const body=fs.readFileSync('moaum-portal-prototype.html','utf8');
 fs.writeFileSync('_ec.html','<!doctype html><html><head><meta charset="utf-8">'
  +'<meta name="viewport" content="width=device-width,initial-scale=1">'
  +'<style>*{box-sizing:border-box}body{margin:0}</style></head><body>'+body+'</body></html>');
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
+const b=await chromium.launch();
 let fails=0;
 async function go(pg, rt){
   return pg.evaluate(r=>{const b=document.createElement('button');b.setAttribute('data-go',r);
@@ -23,7 +23,7 @@ for (const [w,h,label] of [[1440,900,'desktop'],[390,844,'mobile']]) {
   const c=await b.newContext({viewport:{width:w,height:h}});
   const pg=await c.newPage();
   const errs=[]; pg.on('pageerror',e=>errs.push(String(e)));
-  await pg.goto('file://'+process.cwd()+'/_ec.html'); await pg.waitForTimeout(400);
+  await pg.goto(new URL('_ec.html', import.meta.url).href); await pg.waitForTimeout(400);
 
   for (const [role,srole,routes] of [
     ['staff','lecturer',['t/sheet','r/classlist','t/eligibility','t/scores']],

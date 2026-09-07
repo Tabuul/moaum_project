@@ -1,12 +1,12 @@
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
+import pw from 'playwright';
 const { chromium } = pw;
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
+const b=await chromium.launch();
 import fs from 'fs';
 const hooked=fs.readFileSync('_hooks.html','utf8');
 fs.writeFileSync('_cc.html','<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}</style></head><body>'+hooked+'</body></html>');
 const c=await b.newContext({viewport:{width:1440,height:900}});
 const p=await c.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
-await p.goto('file://'+process.cwd()+'/_cc.html'); await p.waitForTimeout(400);
+await p.goto(new globalThis.URL('_cc.html', import.meta.url).href); await p.waitForTimeout(400);
 const URL='https://claude.ai/code/artifact/5e0d3dc3-386f-4666-99d9-c08929569431';
 let fails=0;
 for (const office of ['academic','records','registrar','super']) {

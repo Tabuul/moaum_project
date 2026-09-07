@@ -713,7 +713,7 @@ BEGIN
             date '2026-10-02', gen_random_uuid(), 'academic');
     INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw,
         surname, other_names, jamb_code, entry_mode)
-    VALUES (gen_random_uuid(), b, '2026/2027', '202660307120BGU', '{}'::jsonb,
+    VALUES (gen_random_uuid(), b, '2026/2027', '202699307120BGU', '{}'::jsonb,
             'ABAH', 'Cecilia Ehi', 'C99256', 'DIRECT_ENTRY');
 
     SELECT x.n INTO v_n FROM admissions.reconcile('2026/2027') x
@@ -748,7 +748,7 @@ END $$;
 
 -- ══ V007 · what arrives ATTACHED to a candidate ═════════════════════════
 -- The two ways a match silently fails: a key wrapped in something else
--- (202660168863AH_Face.jpg) and a key that is not quite itself
+-- (202699168863AH_Face.jpg) and a key that is not quite itself
 -- ('202440000065EA '). Both would report "0 matched", which reads as a
 -- broken import rather than as one stray character.
 
@@ -756,13 +756,13 @@ END $$;
 DO $$
 DECLARE v text;
 BEGIN
-    v := admissions.reg_no_in('202660168863AH_Face.jpg');
+    v := admissions.reg_no_in('202699168863AH_Face.jpg');
     PERFORM pg_temp.assert('JAMB''s real filename yields the registration number',
-        v = '202660168863AH', '202660168863AH_Face.jpg -> ' || coalesce(v, 'NULL'));
+        v = '202699168863AH', '202699168863AH_Face.jpg -> ' || coalesce(v, 'NULL'));
 
-    v := admissions.reg_no_in('C:\JAMB\2026\Copy of 202660307120BGU_face (1).JPG');
+    v := admissions.reg_no_in('C:\JAMB\2026\Copy of 202699307120BGU_face (1).JPG');
     PERFORM pg_temp.assert('A path, a copy, a lower-case suffix and a 15-character number',
-        v = '202660307120BGU', coalesce(v, 'NULL') ||
+        v = '202699307120BGU', coalesce(v, 'NULL') ||
         ' — 12 digits then TWO OR THREE letters: DE numbers are longer');
 
     v := admissions.reg_no_in('IMG-20260904-WA0031.jpg');
@@ -770,8 +770,8 @@ BEGIN
         v IS NULL, 'not guessed at, not matched on a name, not discarded');
 
     PERFORM pg_temp.assert('Stripping only the extension would have matched nobody',
-        upper(regexp_replace('202660168863AH_Face.jpg', '\.[^.]+$', ''))
-            <> admissions.reg_no_in('202660168863AH_Face.jpg'),
+        upper(regexp_replace('202699168863AH_Face.jpg', '\.[^.]+$', ''))
+            <> admissions.reg_no_in('202699168863AH_Face.jpg'),
         'the bug this exists to make impossible: every photograph an orphan');
 END $$;
 
@@ -799,7 +799,7 @@ END $$;
 
 -- ── 47-50. held, not discarded ───────────────────────────────────────────
 DO $$
-DECLARE c_id uuid := gen_random_uuid(); c_key text := '202660176777GF';
+DECLARE c_id uuid := gen_random_uuid(); c_key text := '202699176777GF';
         v_n bigint; unread bigint; pending bigint;
 BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
@@ -809,7 +809,7 @@ BEGIN
     -- use short invented ones, and the whole point here is the real shape
     INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname,
         other_names, programme, entry_mode, entry_level, offer_state)
-    VALUES (c_id, '2026/2027', c_key, 'TERFA', 'Sedoo-Aondoshima Precious',
+    VALUES (c_id, '2026/2027', c_key, 'IORFA', 'Msendoo Blessing',
             'B.Sc. Computer Science', 'UTME', 100, 'PROPOSED');
 
     -- three arrivals: one whose name IS the number, one wrapped in _Face,
@@ -820,8 +820,8 @@ BEGIN
     VALUES
       (gen_random_uuid(), '2026/2027', 'PASSPORT', c_key || '.jpg',
        admissions.reg_no_in(c_key || '.jpg'), 'EXACT', 3775, 132, 151),
-      (gen_random_uuid(), '2026/2027', 'PASSPORT', '202660168863AH_Face.jpg',
-       admissions.reg_no_in('202660168863AH_Face.jpg'), 'EMBEDDED', 3775, 132, 151),
+      (gen_random_uuid(), '2026/2027', 'PASSPORT', '202699168863AH_Face.jpg',
+       admissions.reg_no_in('202699168863AH_Face.jpg'), 'EMBEDDED', 3775, 132, 151),
       (gen_random_uuid(), '2026/2027', 'PASSPORT', 'IMG-20260904-WA0031.jpg',
        admissions.reg_no_in('IMG-20260904-WA0031.jpg'), 'UNREADABLE', 3885, 132, 151);
 
@@ -832,7 +832,7 @@ BEGIN
     SELECT count(*) INTO pending FROM admissions.attachment
      WHERE candidate_id IS NULL AND jamb_key IS NOT NULL;
     PERFORM pg_temp.assert('A photograph for nobody yet is HELD, not discarded',
-        pending = 1, '202660168863AH arrives before its tranche of the list does');
+        pending = 1, '202699168863AH arrives before its tranche of the list does');
 
     SELECT s.n INTO unread FROM admissions.attachment_state('2026/2027') s
      WHERE s.finding = 'Files with no readable registration number';

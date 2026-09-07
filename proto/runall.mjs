@@ -18,16 +18,23 @@
 import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const HARNESSES = ["acheck", "ccheck", "echeck", "wcheck", "vcheck", "pmob",
                    "capsfile", "cdcheck", "regcheck", "admcheck", "sq"];
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 process.chdir(HERE);
 
 /* ── 1 · the build is reproducible ──────────────────────────────────── */
 console.log("── rebuilding from the parts ──────────────────────────────────");
-execSync("python3 build.py", { stdio: "inherit" });
+/* python3 on Linux and macOS; on Windows the interpreter is usually just python */
+const PY = ["python3", "python"].find(function (p) {
+  try { return /Python 3/.test(execFileSync(p, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })); }
+  catch (e) { return false; }
+});
+if (!PY) { console.error("!! no Python 3 interpreter found (tried python3, python)"); process.exit(2); }
+execSync(PY + " build.py", { stdio: "inherit" });
 
 const built = "moaum-portal-prototype.html";
 const committed = path.join(HERE, "..", "public", "index.html");

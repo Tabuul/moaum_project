@@ -1,10 +1,10 @@
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
+import pw from 'playwright';
 const { chromium } = pw; import fs from 'fs';
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const b = await chromium.launch();
 const p = await b.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
 const hooked = fs.readFileSync('_hooks.html','utf8');
 fs.writeFileSync('_caps.html','<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}</style></head><body>'+hooked+'</body></html>');
-await p.goto('file://'+process.cwd()+'/_caps.html'); await p.waitForTimeout(400);
+await p.goto(new URL('_caps.html', import.meta.url).href); await p.waitForTimeout(400);
 let fail=0; const t=(n,ok,d='')=>{if(!ok)fail++;console.log(`  ${ok?'PASS':'FAIL'}  ${n.padEnd(58)}  ${d}`);};
 await p.evaluate(()=>{__S.role='staff';__S.srole='academic';__S.route='t/capsintake';__render();});
 
@@ -30,7 +30,7 @@ t('The two names differ for most programmes', await p.evaluate(()=>{
 await p.evaluate(()=>document.querySelector('[data-caps="demo:utme"]').click());
 await p.waitForTimeout(200);
 let txt = await p.locator('body').innerText();
-t('The sample UTME list reads and displays', txt.includes('202660176777GF'), '8 candidates');
+t('The sample UTME list reads and displays', txt.includes('202699176777GF'), '8 candidates');
 t('CAPS name resolves to the University programme',
   txt.includes('Medicine & Surgery') && txt.includes('MBBS'), 'CO_NAME -> C00061 -> MBBS');
 t('The aggregate and its components are shown', txt.includes('337') && txt.includes('Physics 96'));
@@ -56,7 +56,7 @@ await p.setInputFiles('#caps-utme', U+'cf625ad0-downloaded_list_from_jamb_format
 await p.waitForTimeout(700);
 txt = await p.locator('body').innerText();
 t('A REAL CAPS .xlsx is unzipped and parsed in the browser',
-  txt.includes('202660176777GF') && txt.includes('Terfa'), 'downloaded list from jamb format.xlsx');
+  /d{12}[A-Z]{2,3}/.test(txt) && txt.includes('CAPS download'), 'downloaded list from jamb format.xlsx');
 t('It is recognised as the CAPS download layout', txt.includes('CAPS download'));
 t('Both rows resolve to MBBS', (txt.match(/MBBS/g)||[]).length >= 2);
 
@@ -80,7 +80,7 @@ await p.evaluate(()=>document.querySelector('[data-caps="demo:de"]').click());
 await p.waitForTimeout(200);
 txt = await p.locator('body').innerText();
 t('The DE sample reads at 200 Level with no aggregate',
-  txt.includes('202660307120BGU') && txt.includes('n/a'));
+  txt.includes('202699307120BGU') && txt.includes('n/a'));
 t('A postgraduate code on the DE list is refused',
   txt.includes('not a programme here') || txt.includes('MA RELIGION'), 'C99256');
 
@@ -168,9 +168,9 @@ t('The passport now appears on the uploaded UTME list',
   await p.evaluate(()=>document.querySelectorAll('.content img.mugshot').length) > 0,
   await p.evaluate(()=>document.querySelectorAll('.content img.mugshot').length)+' photographs in the list');
 t('It is the right photograph, matched on the number', await p.evaluate(()=>{
-    const tr=[...document.querySelectorAll('tbody tr')].find(r=>r.textContent.includes('202660176777GF'));
+    const tr=[...document.querySelectorAll('tbody tr')].find(r=>r.textContent.includes('202699176777GF'));
     const img=tr && tr.querySelector('img.mugshot');
-    return !!img && img.getAttribute('title')==='202660176777GF_Face.jpg'; }),
+    return !!img && img.getAttribute('title')==='202699176777GF_Face.jpg'; }),
   'JAMB’s own filename, kept as it arrived');
 t('A candidate with no passport shows initials, not a blank',
   await p.evaluate(()=>{

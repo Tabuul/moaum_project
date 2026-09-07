@@ -1,0 +1,6 @@
+# Line endings are normalised so the build is byte-identical on every OS.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary

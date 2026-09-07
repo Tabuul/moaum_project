@@ -1,14 +1,14 @@
 /* Admission settings — the Central Admissions Committee's guidelines,
    made into settings the portal applies, and refusing to open a session
    until they are complete. */
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
+import pw from 'playwright';
 const { chromium } = pw; import fs from 'fs';
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
+const b=await chromium.launch();
 const ctx=await b.newContext({viewport:{width:1400,height:1000}});
 const p=await ctx.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
 const hooked=fs.readFileSync('_hooks.html','utf8');
 fs.writeFileSync('_adm.html','<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}</style></head><body>'+hooked+'</body></html>');
-await p.goto('file://'+process.cwd()+'/_adm.html'); await p.waitForTimeout(400);
+await p.goto(new URL('_adm.html', import.meta.url).href); await p.waitForTimeout(400);
 let fail=0; const t=(n,ok,d='')=>{if(!ok)fail++;console.log(`  ${ok?'PASS':'FAIL'}  ${n.padEnd(62)}  ${d}`);};
 const txt=()=>p.locator('body').innerText();
 const tab=async k=>{await p.evaluate(x=>document.querySelector('[data-as="tab:'+x+'"]').click(),k);

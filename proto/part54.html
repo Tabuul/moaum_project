@@ -59,9 +59,9 @@
   /* ── the number inside a filename ─────────────────────────────────
      JAMB names a passport after the candidate and then adds to it:
 
-         202660168863AH_Face.jpg
+         202699168863AH_Face.jpg
 
-     Stripping the extension leaves "202660168863AH_FACE", which matches
+     Stripping the extension leaves "202699168863AH_FACE", which matches
      no candidate at all — so every photograph would have arrived as an
      orphan and the screen would have said so about all of them. The
      same class of thing as the trailing space in the date-of-birth
@@ -71,7 +71,7 @@
      JAMB made and can change. What is done instead is to FIND the
      registration number in the filename: twelve digits followed by two
      or three letters, which is the shape of every number in every file
-     they send — 202660176777GF is fourteen characters, 202660307120BGU
+     they send — 202699176777GF is fourteen characters, 202699307120BGU
      is fifteen. That survives "_Face", "_face", " (1)", "Copy of", a
      folder path, and whatever JAMB appends next year.
 
@@ -340,7 +340,7 @@
         ico('box', 30, 'var(--chrome)', 1.6) +
         '<div class="drop__t">Choose the whole folder of photographs</div>' +
         '<div class="drop__s">JAMB names each file after the candidate and then adds to it — ' +
-        '<span class="tnum">202660168863AH_Face.jpg</span>. The registration number is read out of ' +
+        '<span class="tnum">202699168863AH_Face.jpg</span>. The registration number is read out of ' +
         'the name, whatever is wrapped around it, and that is what it is matched on. ' +
         'Select them all at once.</div>' +
         '<input type="file" id="cd-pas" accept="image/*" multiple hidden data-cdfile="pas">' +
@@ -358,9 +358,9 @@
         (derived.length
           ? note('info', 'The registration number was read out of ' + derived.length +
               ' filename' + (derived.length === 1 ? '' : 's'),
-              'JAMB does not send <span class="tnum">202660168863AH.jpg</span>. It sends ' +
-              '<span class="tnum">202660168863AH_Face.jpg</span>, and stripping only the extension ' +
-              'leaves <span class="tnum">202660168863AH_FACE</span>, which matches no candidate — so ' +
+              'JAMB does not send <span class="tnum">202699168863AH.jpg</span>. It sends ' +
+              '<span class="tnum">202699168863AH_Face.jpg</span>, and stripping only the extension ' +
+              'leaves <span class="tnum">202699168863AH_FACE</span>, which matches no candidate — so ' +
               '<b>every photograph would have arrived as an orphan</b> and the screen would have said ' +
               'so about all of them. The same class of thing as the trailing space in the ' +
               'date-of-birth file, and just as quiet. The suffix is <b>not</b> stripped by name, ' +
@@ -560,17 +560,17 @@
      trailing space the real file has; two candidates are deliberately
      absent and one row belongs to nobody on either list. */
   var DOB_DEMO = [["Reg. Number","Surname","FirstName","MiddleName","DateofBirth","RegType"],
-    ["202660176777GF ","Terfa","Sedoo-Aondoshima","Precious","31-08-2005","UTME"],
-    ["202660224740IB ","Ejeh","Mathias","Akpo","23-05-2006","UTME"],
-    ["202660711714BJ ","Agber","Perpetua","Doofan","05-07-2002","UTME"],
-    ["202660085041AI ","Aba","Doose","Faith","17-02-2006","UTME"],
-    ["202660168863AH ","Kwaor","Seember","Angel","14-11-2005","UTME"],
+    ["202699176777GF ","Iorfa","Msendoo","Blessing","31-08-2005","UTME"],
+    ["202699224740IB ","Ochefu","Daniel","Ejembi","24-06-2006","UTME"],
+    ["202699711714BJ ","Kwaghgba","Hembadoon","Ruth","05-07-2002","UTME"],
+    ["202699085041AI ","Igbudu","Ene","Comfort","16-03-2006","UTME"],
+    ["202699168863AH ","Aondona","Kumaters","Joy","15-10-2005","UTME"],
     ["202660550118DM ","Terkula","Yina","Godwin","02-09-2004","UTME"],
     ["202660881440FP ","Shaahu","Terwase","John","09-03-2005","UTME"],
     ["202660993117KQ ","Iorpuu","Mimi","Doose","28-06-2005","UTME"],
-    ["202660307120BGU ","Abah","Cecilia","Ehi","11-12-2001","DE"],
-    ["202660155146GAU ","Abu","Abigail","Aladi","07-04-2002","DE"],
-    ["202660332729GBU ","Agbaden","Wueseter","Mary","19-10-2001","DE"],
+    ["202699307120BGU ","Odeh","Ojima","Patience","10-11-2001","DE"],
+    ["202699155146GAU ","Ikwue","Amuche","Rita","08-03-2002","DE"],
+    ["202699332729GBU ","Ugba","Nguveren","Esther","20-09-2001","DE"],
     ["202660419983BEU ","Tsavnande","Doosuur","Patience","25-01-2003","DE"],
     ["202660201774AF ","Iorpuu","Terwase","David","03-08-2000","DE"],
     ["202660663318EB ","Anyebe","Ruth","Onyilo","30-11-2002","DE"],
@@ -587,17 +587,17 @@
         return [num, s[0], s[1], "School Exam", yr, "WAEC Only", ex, "2026-01-26 11:48:43", "MOAUM"]; });
     };
     return h
-      .concat(mk("202660176777GF","2025","4081331069", [["English Lang.", "C6"], ["Mathematics", "B3"], ["Physics", "A1"], ["Chemistry", "B3"], ["Biology", "A1"], ["Civic Education", "C6"], ["Economics", "B2"]]))
-      .concat(mk("202660224740IB","2024","4081447702", [["English Lang.", "C6"], ["Mathematics", "B3"], ["Physics", "A1"], ["Chemistry", "B3"], ["Biology", "A1"], ["Civic Education", "C6"], ["Economics", "B2"]]))
-      .concat(mk("202660711714BJ","2023","4092117744", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
-      .concat(mk("202660085041AI","2024","4092330156", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
-      .concat(mk("202660168863AH","2025","4081552290", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
+      .concat(mk("202699176777GF","2025","4081331069", [["English Lang.", "C6"], ["Mathematics", "B3"], ["Physics", "A1"], ["Chemistry", "B3"], ["Biology", "A1"], ["Civic Education", "C6"], ["Economics", "B2"]]))
+      .concat(mk("202699224740IB","2024","4081447702", [["English Lang.", "C6"], ["Mathematics", "B3"], ["Physics", "A1"], ["Chemistry", "B3"], ["Biology", "A1"], ["Civic Education", "C6"], ["Economics", "B2"]]))
+      .concat(mk("202699711714BJ","2023","4092117744", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202699085041AI","2024","4092330156", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202699168863AH","2025","4081552290", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
       .concat(mk("202660550118DM","2024","4093118820", [["English Lang.", "C4"], ["Mathematics", "C6"], ["Government", "B3"], ["Bible Knowled/Crk", "B2"], ["Lit. English", "C5"], ["Civic Education", "B3"]]))
       .concat(mk("202660881440FP","2024","4110229931", [["English Lang.", "D7"], ["Mathematics", "C6"], ["Government", "C4"], ["Bible Knowled/Crk", "B3"], ["Lit. English", "C5"], ["Civic Education", "C6"]]))
       .concat(mk("202660993117KQ","2025","4081990043", [["English Lang.", "C6"], ["Mathematics", "C5"], ["Biology", "C6"], ["Chemistry", "D7"]]))
-      .concat(mk("202660307120BGU","2021","4070118834", [["English Lang.", "C4"], ["Mathematics", "C6"], ["Government", "B3"], ["Bible Knowled/Crk", "B2"], ["Lit. English", "C5"], ["Civic Education", "B3"]]))
-      .concat(mk("202660155146GAU","2020","4061229007", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
-      .concat(mk("202660332729GBU","2021","4070553318", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202699307120BGU","2021","4070118834", [["English Lang.", "C4"], ["Mathematics", "C6"], ["Government", "B3"], ["Bible Knowled/Crk", "B2"], ["Lit. English", "C5"], ["Civic Education", "B3"]]))
+      .concat(mk("202699155146GAU","2020","4061229007", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202699332729GBU","2021","4070553318", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
       .concat(mk("202660419983BEU","2020","4061887720", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
       .concat(mk("202660201774AF","2019","4051002284", [["English Lang.", "C4"], ["Mathematics", "C6"], ["Government", "B3"], ["Bible Knowled/Crk", "B2"], ["Lit. English", "C5"], ["Civic Education", "B3"]]))
       .concat(mk("202660663318EB","2021","4070441192", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
@@ -608,7 +608,7 @@
   }());
 
   /* Passports for the sample applicants, under the filenames JAMB really
-     uses — "202660168863AH_Face.jpg". Only two real photographs were
+     uses — "202699168863AH_Face.jpg". Only two real photographs were
      supplied, so the sample alternates them across the candidates: what
      is being shown is the MATCHING, not the faces. Four candidates have
      none, one file belongs to nobody on either list, and one is named
@@ -621,15 +621,15 @@
      around it. */
   var PAS_DEMO = (function () {
     return [
-      ["202660176777GF_Face.jpg",  3775, PAS_IMG_A],
-      ["202660224740IB_Face.jpg",  3885, PAS_IMG_B],
-      ["202660711714BJ_Face.jpg",  3775, PAS_IMG_A],
-      ["202660085041AI_Face.jpg",  3885, PAS_IMG_B],
-      ["202660168863AH_Face.jpg",  3775, PAS_IMG_A],
+      ["202699176777GF_Face.jpg",  3775, PAS_IMG_A],
+      ["202699224740IB_Face.jpg",  3885, PAS_IMG_B],
+      ["202699711714BJ_Face.jpg",  3775, PAS_IMG_A],
+      ["202699085041AI_Face.jpg",  3885, PAS_IMG_B],
+      ["202699168863AH_Face.jpg",  3775, PAS_IMG_A],
       ["202660550118DM_Face.jpg",  3885, PAS_IMG_B],
-      ["202660307120BGU_Face.jpg", 3775, PAS_IMG_A],
-      ["202660155146GAU_Face.jpg", 3885, PAS_IMG_B],
-      ["202660332729GBU_Face.jpg", 3775, PAS_IMG_A],
+      ["202699307120BGU_Face.jpg", 3775, PAS_IMG_A],
+      ["202699155146GAU_Face.jpg", 3885, PAS_IMG_B],
+      ["202699332729GBU_Face.jpg", 3775, PAS_IMG_A],
       ["202660419983BEU_Face.jpg", 3885, PAS_IMG_B],
       ["202660201774AF_Face.jpg",  3775, PAS_IMG_A],
       ["202660663318EB_Face.jpg",  3885, PAS_IMG_B],

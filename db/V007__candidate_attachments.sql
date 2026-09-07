@@ -17,11 +17,11 @@
 --     import rather than one stray character.
 --
 --  2. THE KEY IS WRAPPED IN SOMETHING ELSE.
---     JAMB does not send 202660168863AH.jpg. It sends
+--     JAMB does not send 202699168863AH.jpg. It sends
 --
---         202660168863AH_Face.jpg
+--         202699168863AH_Face.jpg
 --
---     Strip only the extension and the key is '202660168863AH_FACE',
+--     Strip only the extension and the key is '202699168863AH_FACE',
 --     which matches nobody -- so EVERY photograph arrives as an orphan.
 --
 --  Both are the same failure: a key that has been handled by another
@@ -37,7 +37,7 @@
 --    · a filename is not trusted to BE the number. The number is FOUND
 --      inside it, by shape: twelve digits then two or three letters,
 --      which is every registration number JAMB has ever sent
---      (202660176777GF is 14 characters, 202660307120BGU is 15). That
+--      (202699176777GF is 14 characters, 202699307120BGU is 15). That
 --      survives _Face, _face, ' (1)', 'Copy of ', a folder path, and
 --      whatever JAMB appends next year. The suffix is deliberately NOT
 --      stripped by name: '_Face' is JAMB's decision and JAMB can change

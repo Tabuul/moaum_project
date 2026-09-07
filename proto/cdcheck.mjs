@@ -1,11 +1,12 @@
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
+import pw from 'playwright';
+import { fileURLToPath } from 'node:url';
 const { chromium } = pw; import fs from 'fs';
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
+const b=await chromium.launch();
 const ctx=await b.newContext({viewport:{width:1280,height:900}});
 const p=await ctx.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
 const hooked=fs.readFileSync('_hooks.html','utf8');
 fs.writeFileSync('_cd.html','<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}</style></head><body>'+hooked+'</body></html>');
-await p.goto('file://'+process.cwd()+'/_cd.html'); await p.waitForTimeout(400);
+await p.goto(new URL('_cd.html', import.meta.url).href); await p.waitForTimeout(400);
 let fail=0; const t=(n,ok,d='')=>{if(!ok)fail++;console.log(`  ${ok?'PASS':'FAIL'}  ${n.padEnd(58)}  ${d}`);};
 const go=async r=>{await p.evaluate(rt=>{__S.role='staff';__S.srole='academic';__S.route=rt;__render();},r);await p.waitForTimeout(250);};
 
@@ -27,9 +28,9 @@ await p.evaluate(()=>document.querySelector('[data-caps="demopas"], [data-cd="de
 await p.waitForTimeout(300);
 txt=await p.locator('body').innerText();
 t('Passports match on the JAMB number in the filename',
-  txt.includes('202660176777GF') && txt.includes('132×151'));
+  txt.includes('202699176777GF') && txt.includes('132×151'));
 t('The number is read out of JAMB’s real "_Face.jpg" name',
-  /read out of \d+ filenames/.test(txt) && txt.includes('202660168863AH_Face.jpg'),
+  /read out of \d+ filenames/.test(txt) && txt.includes('202699168863AH_Face.jpg'),
   'not stripped by name — found by shape');
 t('A file with no number in its name is named, not held as an orphan',
   txt.includes('no registration number in the name') &&
@@ -44,10 +45,10 @@ t('An image actually renders', await p.evaluate(()=>{
   return !!i && i.naturalWidth===132; }), '132px wide, as JAMB sends it');
 
 // ── the REAL filenames, through the real upload path ─────────────────────
-const P='/home/claude/moaum-design/proto/_pas/';
+const P=fileURLToPath(new URL('_pas/', import.meta.url));
 await p.evaluate(()=>{__S.pas=null; __render();}); await p.waitForTimeout(150);
-await p.setInputFiles('#cd-pas', [P+'202660168863AH_Face.jpg', P+'202660176777GF_Face.jpg',
-                                  P+'Copy of 202660711714BJ_Face (1).jpg',
+await p.setInputFiles('#cd-pas', [P+'202699168863AH_Face.jpg', P+'202699176777GF_Face.jpg',
+                                  P+'Copy of 202699711714BJ_Face (1).jpg',
                                   P+'IMG-20260904-WA0031.jpg']);
 await p.waitForTimeout(800);
 txt=await p.locator('body').innerText();
@@ -55,9 +56,9 @@ const matchedTile = async () => p.evaluate(()=>{
   const t=[...document.querySelectorAll('.tile')].map(x=>x.innerText.toUpperCase());
   const r=t.find(x=>x.indexOf('MATCHED TO A CANDIDATE')===0);
   return r?parseInt(r.split('\n')[1],10):-1;});
-t('REAL files named 202660168863AH_Face.jpg match three candidates',
+t('REAL files named 202699168863AH_Face.jpg match three candidates',
   await matchedTile()===3, 'the fourth has no number in its name');
-t('“Copy of … (1)” survives too', txt.includes('202660711714BJ'),
+t('“Copy of … (1)” survives too', txt.includes('202699711714BJ'),
   'the number is found, not the wrapper stripped');
 t('And the nameless one is listed by its filename',
   txt.includes('IMG-20260904-WA0031.jpg') && txt.includes('no registration number in the name'));
@@ -102,7 +103,7 @@ t('The REAL O’Level file reads and collapses per candidate',
 await p.evaluate(()=>document.querySelector('[data-cd="demool"]').click()); await p.waitForTimeout(250);
 txt=await p.locator('body').innerText();
 t('Credits, English and Mathematics are computed', await p.evaluate(()=>{
-    const tr=[...document.querySelectorAll('tbody tr')].find(r=>r.textContent.includes('202660711714BJ'));
+    const tr=[...document.querySelectorAll('tbody tr')].find(r=>r.textContent.includes('202699711714BJ'));
     if (!tr) return false;
     const cells=[...tr.cells].map(td=>td.getAttribute('data-l')+'='+td.textContent.trim());
     return cells.some(x=>/^Credits=7$/.test(x)) && cells.some(x=>/^English=B3$/.test(x))

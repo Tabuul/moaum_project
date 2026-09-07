@@ -1,4 +1,4 @@
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
+import pw from 'playwright';
 import fs from 'fs';
 const { chromium } = pw;
 /* The hooked build, not the clean one: this harness has to enumerate routes
@@ -7,12 +7,12 @@ const body=fs.readFileSync('_hooks.html','utf8');
 fs.writeFileSync('_vc.html','<!doctype html><html><head><meta charset="utf-8">'
  +'<meta name="viewport" content="width=device-width,initial-scale=1">'
  +'<style>*{box-sizing:border-box}body{margin:0}</style></head><body>'+body+'</body></html>');
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
+const b=await chromium.launch();
 
 const ctx=await b.newContext({viewport:{width:1440,height:900}});
 const p=await ctx.newPage();
 const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
-await p.goto('file://'+process.cwd()+'/_vc.html');
+await p.goto(new URL('_vc.html', import.meta.url).href);
 await p.waitForTimeout(500);
 
 // the sign-in screen offers a role picker; find the office keys it exposes
@@ -36,7 +36,7 @@ for (const [w,h,label] of [[1440,900,'desktop'],[390,844,'mobile']]) {
   const c2=await b.newContext({viewport:{width:w,height:h}});
   const pg=await c2.newPage();
   const e2=[]; pg.on('pageerror',e=>e2.push(String(e)));
-  await pg.goto('file://'+process.cwd()+'/_vc.html');
+  await pg.goto(new URL('_vc.html', import.meta.url).href);
   await pg.waitForTimeout(400);
 
   // "staff" then picks one of the nineteen offices

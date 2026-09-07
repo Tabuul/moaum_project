@@ -1,16 +1,16 @@
-import pw from '/opt/node-tools/node_modules/playwright/index.js';
+import pw from 'playwright';
 import fs from 'fs';
 const { chromium } = pw;
 const body=fs.readFileSync('moaum-portal-prototype.html','utf8');
 fs.writeFileSync('_wc.html','<!doctype html><html><head><meta charset="utf-8">'
  +'<meta name="viewport" content="width=device-width,initial-scale=1">'
  +'<style>*{box-sizing:border-box}body{margin:0}</style></head><body>'+body+'</body></html>');
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
+const b=await chromium.launch();
 let fails=0;
 for (const [w,h,label] of [[1440,900,'desktop'],[390,844,'mobile']]) {
   const c=await b.newContext({viewport:{width:w,height:h}});
   const p=await c.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
-  await p.goto('file://'+process.cwd()+'/_wc.html'); await p.waitForTimeout(400);
+  await p.goto(new URL('_wc.html', import.meta.url).href); await p.waitForTimeout(400);
 
   // student wallet
   await p.evaluate(()=>{document.querySelector('[data-role="student"]').click();

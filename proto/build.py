@@ -25,8 +25,10 @@ unused = [f for f in have if f not in order]
 if unused:
     sys.exit("part files not in the build order: " + ", ".join(unused))
 
-raw = "".join(open(f).read() for f in order)
-open("_raw.html", "w").write(raw)
+# newline="" keeps whatever the checkout has; CRLF is then folded to LF so a
+# Windows checkout builds the same bytes as Linux and CI.
+raw = "".join(open(f, encoding="utf-8", newline="").read() for f in order).replace("\r\n", "\n")
+open("_raw.html", "w", encoding="utf-8", newline="").write(raw)
 
 # duplicate top-level declaration scan — two definitions of one name is
 # the failure this build has hit most often
@@ -40,7 +42,7 @@ html = raw.replace("__CREST__", "data:image/png;base64," + crest)
 
 assert html.count("\n  render();\n}());") == 1, "boot call not found exactly once"
 
-open("moaum-portal-prototype.html", "w").write(html)
+open("moaum-portal-prototype.html", "w", encoding="utf-8", newline="").write(html)
 
 # Written to _hooks.html, NOT _pv.html: every harness builds its own _pv.html
 # from the clean prototype and would clobber this one. Two files under one
@@ -52,7 +54,7 @@ HOOK = ("  window.__S = S; window.__render = render; window.__SCREENS = SCREENS;
         "  window.__ADM_SRC = ADM_SRC;\n"
         "  window.__PROG_RULE_COUNT = function () {\n"
         "    return Object.keys(PROGT).filter(function (c) { return ADM_SRC.rules[c]; }).length; };\n\n  render();")
-open("_hooks.html", "w").write(html.replace("\n  render();\n}());",
+open("_hooks.html", "w", encoding="utf-8", newline="").write(html.replace("\n  render();\n}());",
                                          "\n" + HOOK + "\n}());"))
 
 print("moaum-portal-prototype.html  %d lines, %.1f KB"
