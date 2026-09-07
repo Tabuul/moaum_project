@@ -138,12 +138,81 @@ jobs:
       - name: The read-only deployment verification
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f db/verify.sql
 
+  # ── the API: compiles, module boundaries hold, request path proven ────
+  api:
+    name: "API — compiles, module boundaries hold, integration tests green"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: moaumpp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://postgres:ci@localhost:5432/moaumpp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: api/pom.xml
+
+      - name: Install the postgresql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      # The API never migrates. The same runner Railway uses does, first.
+      - name: Apply the migrations
+        run: bash db/migrate.sh
+
+      # Unit tests, the Modulith boundary check, and the *IT classes against
+      # the real schema: an unattributed write refused, an attributed one
+      # recorded, a list-kind contradiction refused whole with a remedy.
+      - name: Build and test
+        working-directory: api
+        run: ./mvnw -B -ntp verify
+
+  # ── the frontend: type-checks and builds ──────────────────────────────
+  frontend:
+    name: "Frontend — lints, type-checks, builds"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      - name: Lint and build
+        working-directory: frontend
+        env:
+          PORTAL_API_URL: http://localhost:8081
+        run: |
+          npm run lint
+          npm run build
+
   # ── the image Railway will actually build ─────────────────────────────
   image:
     name: "Container — builds, migrates, serves, answers readyz"
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    needs: [web, db]
+    needs: [web, db, api]
 
     services:
       postgres:

@@ -12,7 +12,9 @@ Directorate of ICT
 | `proto/` | The working prototype: 56 parts, concatenated by `build.py` into one self-contained HTML file. `part6.html` is **always last** — it closes the IIFE and calls `render()`. |
 | `public/index.html` | That file, built and committed. It is what gets served. |
 | `db/` | Ten migrations, a read-only deployment verification, and `check.sql` — 63 properties the schema asserts about itself. |
-| `web/server.js` | The service. No dependencies, deliberately. |
+| `web/server.js` | The prototype's server. No dependencies, deliberately. |
+| `api/` | **The Spring Boot service** — Java 21, Spring Boot 4.1, Spring Modulith, plain JDBC. The request path (correlation id → token → acting office → the audit context on every transaction → problem responses), then `iam` and `admissions` begun. See `api/README.md`. |
+| `frontend/` | **The Next.js frontend** — App Router, server-rendered, Tailwind; talks to the API only from the server (a BFF), with the prototype's palette and typeface, self-hosted. |
 | `Dockerfile` | node:22-slim plus the postgresql client, because the migrations are psql scripts. |
 | `railway.json` | Build, start, pre-deploy and health check. |
 | `.github/workflows/ci.yml` | The three gates below. |
@@ -32,17 +34,31 @@ npm run check:db              # the 63 properties — WRITES, use a throwaway da
 
 # the browser harnesses (needs playwright + chromium)
 node proto/runall.mjs
+
+# the Spring Boot service (needs Java 21; Maven comes with the wrapper)
+export MOAUM_AUTH_HMAC_SECRET='change-me-to-at-least-thirty-two-bytes-long'
+(cd api && ./mvnw spring-boot:run)          # :8081 — see api/README.md for tokens and tests
+
+# the Next.js frontend (needs Node 22)
+(cd frontend && cp .env.example .env.local && npm ci && npm run dev)   # :3000
 ```
+
+On Windows, `python` rather than `python3` is found automatically, and the
+build folds CRLF to LF so the page it produces is byte-identical to CI's.
 
 ## What CI enforces
 
-Railway is set to deploy only what has passed. Three gates:
+Railway is set to deploy only what has passed. Five gates:
 
 **1 · The build is reproducible.** `public/index.html` is rebuilt from the parts and compared byte for byte. Without this, somebody edits the built file, the harnesses pass against the parts, and the thing deployed is a file nobody tested.
 
 **2 · Eleven browser harnesses.** 600+ screen loads, every office, every route, five viewport widths, and every control checked for being bound to something. They have caught, among other things: a route enumeration that missed collapsed navigation groups; a table that stacked at the wrong width; and a refusal that was rendered nowhere at all.
 
 **3 · The database properties.** A real Postgres 17, the migrations applied by the same runner Railway uses, then `check.sql`. It reports **how many checks RAN** as well as how many failed — because a `DO` block that errors never reaches its assertion and would otherwise be counted as a pass. CI additionally proves that a second migration run is a no-op, and that a migration edited after it was applied **stops the deployment**.
+
+**4 · The API.** Compiles; the Spring Modulith boundary test holds; and against the same Postgres 17 with the migrations applied, `AuditSpineIT` proves an unattributed write is refused and an attributed one recorded, and `ApiIT` drives the request path end to end — a token refused, an office the token does not carry refused, a CAPS list loaded whole and a list-kind contradiction refused whole with the database's own remedy.
+
+**5 · The frontend.** Lints, type-checks and builds.
 
 Seven checks are **skipped** unless `MOAUM_FIXTURES` points at the real JAMB sample files. Those files carry real candidates' names, registration numbers, scores and local governments, and are not in this repository and never will be. The skip is printed and counted; a check that quietly does not run is worse than one that fails.
 
@@ -113,8 +129,18 @@ Then, so that only green commits deploy: **Settings → Deploy → wait for CI t
 
 **The sample photographs are generated, not real.** Two real JAMB passports were embedded while the passport-matching screen was being built. They are photographs of two identifiable nineteen-year-olds, and this file is served from a public URL, so they are gone — replaced by drawn images at exactly the size JAMB sends (132 × 151 px, about 4 KB), because the *size* was the point and the faces never were. Everything else in the samples is invented for the same reason: no real name, registration number or result appears anywhere in this repository.
 
-**The typeface comes from Google Fonts.** The content security policy allows `fonts.googleapis.com` and `fonts.gstatic.com` and nothing else. It means the portal calls a third party on every page load, and that the page falls back to system fonts whenever that third party is unreachable from Makurdi. The fallback is real and the page is perfectly legible in it — but before production, serve the two font files from here instead.
+**The typeface comes from Google Fonts.** The content security policy allows `fonts.googleapis.com` and `fonts.gstatic.com` and nothing else. It means the portal calls a third party on every page load, and that the page falls back to system fonts whenever that third party is unreachable from Makurdi. The fallback is real and the page is perfectly legible in it — but before production, serve the two font files from here instead. The Next.js frontend already does: `next/font` downloads IBM Plex at build time and serves it from the portal's own origin.
 
 ## What this is not, yet
 
-The Spring Boot application. It is not in this repository because it has not been built: Maven Central was unreachable from the environment this was developed in. The deployment shape here — a service that migrates before it serves, behind a gate that will not let an untested build through — is the shape it will slot into.
+The Spring Boot application is **begun**, not finished: the request path is
+built and proven, and two of the twenty-seven modules — `iam` and `admissions`
+intake — have their first endpoints. Keycloak is configurable but not deployed;
+development uses a shared secret and `api/scripts/dev-token.mjs`. Scope checking
+against `iam.office_assignment`, the transactional outbox, and every other
+module are still to come, each as its own package with the same shape. The
+frontend renders the service's status and the admission-list screen from the
+API; the rest of the prototype's screens are still the prototype's.
+
+The deployment shape here — a service that migrates before it serves, behind a
+gate that will not let an untested build through — is the shape both slot into.
