@@ -101,18 +101,45 @@ nothing but GitHub's generated files. After that it would discard somebody's wor
 
 ## Deploying on Railway
 
-Two services in one project.
+One project, four services. Each service has its own config file and is built
+from the repository root, so that an image can carry `db/` as well as its own
+code. Railway reads the config file named in the service's settings.
 
-**1 · Postgres.** Add it from Railway's catalogue. Nothing else to configure.
+| service | config | image | what it is |
+|---|---|---|---|
+| `Postgres` | — | Railway's | the one database, many schemas |
+| `moaum-api` | `api/railway.json` | `api/Dockerfile` | the Spring Boot service. **Owns the schema: its pre-deploy command runs `bash db/migrate.sh`.** |
+| `moaum-portal` | `frontend/railway.json` | `frontend/Dockerfile` | the Next.js frontend. This is what gets the public domain. |
+| `moaum-prototype` | `railway.json` | `Dockerfile` | the HTML prototype, until the frontend covers its screens |
 
-**2 · The portal.** Deploy from this repository.
+**Creating a service from this repository.** Create → GitHub Repo → this
+repository; then in the service's Settings: rename it; under *Config-as-code*
+set the config file path (e.g. `api/railway.json`); leave *Root Directory*
+empty; under *Build* set watch paths so only its own changes rebuild it
+(`api/**` and `db/**` for the API, `frontend/**` for the portal,
+`proto/**`, `public/**`, `web/**` for the prototype); under *Deploy* turn
+on **Wait for CI** so only green commits deploy.
 
-- Railway reads `railway.json`: Dockerfile build, `bash db/migrate.sh` as the **pre-deploy command**, `node web/server.js` to start, `/healthz` as the health check.
-- The migrations run as a pre-deploy command rather than at container start, so a crash-looping container cannot run them over and over.
-- **Variables → add a reference to the Postgres service's `DATABASE_URL`.** Without it the service still serves the page and `/healthz` says the database is not attached; `/readyz` returns 503.
-- Generate a domain under Settings → Networking.
+**Variables, by reference wherever possible.**
 
-Then, so that only green commits deploy: **Settings → Deploy → wait for CI to pass** (Railway calls it *Check Suites* / *Wait for CI*). Point it at the `CI` workflow. Without that setting Railway deploys every push to `main` regardless of the gates above.
+| service | variable | value |
+|---|---|---|
+| moaum-api | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+| moaum-api | `PORT` | `8081` — fixed, so the frontend can find it on the private network |
+| moaum-api | `MOAUM_AUTH_HMAC_SECRET` | a random string of at least 32 bytes, sealed — until Keycloak, when `MOAUM_AUTH_ISSUER_URI` replaces it |
+| moaum-portal | `PORTAL_API_URL` | `http://moaum-api.railway.internal:8081` — private networking; API traffic never leaves Railway |
+| moaum-portal | `PORTAL_API_TOKEN` | a token minted with the API's secret: `node api/scripts/dev-token.mjs --secret … --offices academic,registrar --ttl 7776000` |
+| moaum-portal | `PORTAL_ACTIVE_OFFICE` | `academic` |
+| moaum-prototype | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (for `/healthz` only; it no longer migrates) |
+
+A reference points at a service by id, not by name: if a service is ever
+deleted and recreated, re-add the references that pointed at it.
+
+**Exactly one service migrates.** The API's pre-deploy runs
+`bash db/migrate.sh`; the prototype's must be empty. A deployment that
+fails leaves the previous one serving, so a service that looks unchanged
+from outside may have a failed deployment behind it — the Deployments tab
+is where the truth is.
 
 ### Health
 

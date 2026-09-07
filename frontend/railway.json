@@ -2,12 +2,11 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile"
+    "dockerfilePath": "frontend/Dockerfile"
   },
   "deploy": {
-    "startCommand": "node web/server.js",
-    "healthcheckPath": "/healthz",
-    "healthcheckTimeout": 60,
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5,
     "numReplicas": 1

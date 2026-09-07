@@ -1,0 +1,13 @@
+# Every image is built from the repository root; none of this belongs in a build context.
+.git
+.github
+node_modules
+**/node_modules
+api/target
+frontend/.next
+frontend/node_modules
+proto/_*.html
+proto/moaum-portal-prototype.html
+*.log
+.env
+.env.*
