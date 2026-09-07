@@ -1,7 +1,8 @@
 # ══════════════════════════════════════════════════════════════════════
 #  moaum-api — the Spring Boot service.
 #
-#  Built from the REPOSITORY ROOT (docker build -f api/Dockerfile .), so
+#  Built from the REPOSITORY ROOT (docker build -f api/Dockerfile .; on
+#  Railway, RAILWAY_DOCKERFILE_PATH=api/Dockerfile with no root directory), so
 #  that the runtime image can carry db/ as well: this service owns the
 #  schema, and Railway runs `bash db/migrate.sh` from inside this image as
 #  the pre-deploy command before a new version is allowed to serve.

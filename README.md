@@ -103,14 +103,19 @@ nothing but GitHub's generated files. After that it would discard somebody's wor
 
 One project, four services. Each service has its own config file and is built
 from the repository root, so that an image can carry `db/` as well as its own
-code. Railway reads the config file named in the service's settings.
+code. Railway reads the config file named in the service's settings. There is
+deliberately no `railway.json` at the repository root: Railway would apply it
+to every service that has not named its own, and every one of them would
+build the prototype. Where the config-file setting does not take, the
+service variable `RAILWAY_DOCKERFILE_PATH` (e.g. `frontend/Dockerfile`)
+chooses the image, and the deploy settings are typed into the UI.
 
 | service | config | image | what it is |
 |---|---|---|---|
 | `Postgres` | — | Railway's | the one database, many schemas |
 | `moaum-api` | `api/railway.json` | `api/Dockerfile` | the Spring Boot service. **Owns the schema: its pre-deploy command runs `bash db/migrate.sh`.** |
 | `moaum-portal` | `frontend/railway.json` | `frontend/Dockerfile` | the Next.js frontend. This is what gets the public domain. |
-| `moaum-prototype` | `railway.json` | `Dockerfile` | the HTML prototype, until the frontend covers its screens |
+| `moaum-prototype` | `web/railway.json` | `Dockerfile` | the HTML prototype, until the frontend covers its screens |
 
 **Creating a service from this repository.** Create → GitHub Repo → this
 repository; then in the service's Settings: rename it; under *Config-as-code*

@@ -1,7 +1,8 @@
 # ══════════════════════════════════════════════════════════════════════
 #  moaum-portal — the Next.js frontend.
 #
-#  Built from the REPOSITORY ROOT (docker build -f frontend/Dockerfile .)
+#  Built from the REPOSITORY ROOT (docker build -f frontend/Dockerfile .;
+#  on Railway, RAILWAY_DOCKERFILE_PATH=frontend/Dockerfile, no root directory)
 #  so that every service in this repository is built the same way.
 #  Next's standalone output is a self-contained server: node, the
 #  compiled pages, and only the modules they import. No devDependencies,
