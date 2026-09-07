@@ -1,0 +1,1040 @@
+
+  /* ── router ──────────────────────────────────────────────────────── */
+  var SCREENS = {
+    "s/dashboard": studentDashboard, "s/register": studentRegister, "s/results": sResults, "s/query": sQuery, "s/carryover": sCarryover,
+    "s/slip": studentSlip, "s/form": studentForm, "s/fees": studentFees, "s/wallet": studentWallet, "s/pay": studentPay,
+    "s/transcript": studentTranscript, "s/receipt": studentReceipt, "s/profile": studentProfile,
+    "s/courses": sCourses, "s/timetable": sTimetable, "s/attendance": sAttendance, "s/exams": sExams,
+    "s/hostel": sHostel, "s/library": sLibrary, "s/idcard": sIdCard,
+    "t/idcards": tIdCards, "t/idverify": tIdVerify, "t/idlost": tIdLost, "s/health": sHealth, "s/support": sSupport,
+    "s/notifications": sNotifications, "s/cbt": studentCbt,
+    "s/biodata": studentBiodata, "t/biochange": tBioChanges,
+
+    "t/dashboard": staffDashboard, "t/lms": tLms, "t/scores": staffScores, "t/sheet": scoreEntry, "t/bulk": tBulkUpload,
+    "t/hrm": tHrm, "t/movement": tHrMovement, "t/housing": tHousing, "t/hostel": tHostel,
+    "t/pipeline": tPipeline, "t/resultdesk": tResultDesk, "t/review": resultReview, "t/broadsheet": tBroadsheet,
+    "t/senate": tSenate, "t/publish": tPublish, "t/examsession": tExamSession,
+    "t/examsrec": tExamsRec, "t/mgmt": tManagement, "t/setup": tSetup,
+    "t/cbtbank": tCbtBank, "t/exams": tExams, "t/approvals": staffApprovals, "t/chain": staffChain, "t/exception": staffException,
+    "t/students": staffStudents, "t/student": staffStudent360, "t/admissions": rAdmissions,
+    "t/transcripts": staffTranscripts, "t/certificates": rCertificates, "t/graduation": rGraduation,
+    "t/feesched": bFees, "t/nelfund": tNelfund, "t/nelmatch": tNelMatch,
+    "t/pv": tPaymentVoucher, "t/hanging": tHanging, "t/cashdesk": tCashDesk,
+    "t/nelstatus": tNelStatus, "t/feesetup": tFeeSetup,
+    "t/acts": tActs,
+    "t/reconcile": staffReconcile, "t/refunds": bRefunds,
+    "t/payroll": bPayroll, "t/budget": bBudget,
+    "t/staff": hStaff, "t/recruit": hRecruitment, "t/leave": hLeave, "t/appraisal": hAppraisal,
+    "t/requisitions": pRequisitions, "t/tenders": pTenders, "t/stores": pStores,
+    "t/circulation": lCirculation, "t/clinic": mClinic,
+    "t/projects": xProjects, "t/ethics": xEthics, "t/alumni": zAlumni,
+    "t/users": iUsers, "t/audit": iAudit, "t/governance": iGovernance, "t/platform": iPlatform,
+    "t/overview": instOverview, "t/channels": tChannels, "t/migration": tMigration,
+    "t/session": tSession, "t/deptcourses": tDeptCourses, "t/reports": gReports,
+    "r/lecturer": rLecturer, "r/classlist": rClasslist, "r/upload": rUpload,
+    "t/eligibility": tEligibility, "t/matriculation": tMatriculation, "t/matlist": tMatList,
+    "t/admissionsetup": tAdmissionSetup,
+    "t/capsintake": tCapsIntake, "t/candidatedata": tCandidateData,
+    "t/college": tCollege,
+    "t/prepayment": tPrePayment, "t/auditrevenue": tAuditRevenue,
+    "t/auditpayroll": tAuditPayroll, "t/auditstaff": tAuditStaff, "t/auditassets": tAuditAssets,
+    "t/search": tSearch, "t/records": tRecords, "t/gateways": tGateways, "t/ledger": tLedger, "t/clearance": tClearance, "r/admin": uniAdmin,
+    "r/hod": rHod, "r/allocate": rAllocate, "r/dean": rDean, "r/exams": rExams,
+    "r/academic": rAcademic, "r/bursar": rBursar, "r/registrar": rRegistrar, "r/self": rSelf,
+    "t/notify": pNotify, "t/api": pApi, "t/dr": pDr,
+    "t/security": pSecurity, "t/release": pRelease, "t/cloud": pCloud,
+
+    "a/dashboard": applicantDash, "a/apply": applicantApply, "a/fee": applicantFee,
+    "a/screening": applicantScreening, "a/score": applicantScore, "a/status": applicantStatus,
+    "a/accept": applicantAccept, "a/clearance": applicantClearance, "a/matric": applicantMatric
+  };
+  // screens reached from within a section, which highlight their parent menu item
+  var PARENT = { "s/slip": "s/results", "s/form": "s/register", "s/pay": "s/fees",
+                 "s/wallet": "s/fees", "t/nelmatch": "t/nelfund",
+                 "t/review": "t/resultdesk",
+                 "a/accept": "a/status",
+                 "s/receipt": "s/fees", "t/sheet": "t/scores", "t/bulk": "t/sheet", "t/movement": "t/hrm", "t/student": "t/students",
+                 "t/eligibility": "r/classlist" };
+  var HOME = { student: "s/dashboard", staff: "t/dashboard", applicant: "a/dashboard" };
+
+  function navItems() {
+    if (S.role === "staff") { return ROLES[S.srole].groups; }
+    return MENUS[S.role].groups;
+  }
+  function whoami() {
+    if (S.role === "staff") {
+      var r = ROLES[S.srole];
+      return { who: r.who, sub: r.sub, initials: r.initials, label: r.label };
+    }
+    return MENUS[S.role];
+  }
+
+  /* A group stands open if the person opened it, or if the screen they
+     are on lives inside it. Everything else is folded away. */
+  function navKey(g) { return (S.role === "staff" ? S.srole : S.role) + "|" + g.name; }
+
+  function navIsOpen(g, current) {
+    var k = navKey(g);
+    if (Object.prototype.hasOwnProperty.call(S.navg, k)) { return !!S.navg[k]; }
+    for (var i = 0; i < g.items.length; i++) { if (g.items[i].id === current) { return true; } }
+    return false;
+  }
+
+  /* what a folded group is still holding, so nothing goes quiet */
+  function navWaiting(g) {
+    var n = 0;
+    for (var i = 0; i < g.items.length; i++) {
+      var b = g.items[i].badge;
+      if (!b) { continue; }
+      n += /^\d+$/.test(b) ? parseInt(b, 10) : 1;
+    }
+    return n;
+  }
+
+  function navHTML() {
+    var m = whoami(), current = PARENT[S.route] || S.route;
+    return '<nav class="nav" aria-label="Main">' +
+      '<div class="nav__brand">' +
+        '<img src="' + CREST + '" alt="" style="width:34px;height:35px;object-fit:contain;flex-shrink:0">' +
+        '<div><span class="t">MOAUM Portal</span><span class="s">' + m.label + '</span></div>' +
+      '</div>' +
+
+      (S.role === "staff"
+        ? '<div class="ws"><label for="office">Signed in as</label>' +
+          '<select id="office" class="ws__select">' +
+          ROLE_KEYS.map(function (k) {
+            return '<option value="' + k + '"' + (S.srole === k ? ' selected' : '') + '>' + ROLES[k].label + '</option>';
+          }).join('') + '</select></div>'
+        : '') +
+
+      '<div style="overflow-y:auto;flex-grow:1;padding-bottom:8px">' +
+      navItems().map(function (g) {
+        var key = navKey(g), open = navIsOpen(g, current), waiting = navWaiting(g);
+        return '<button class="nav__gh" data-navg="' + key + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+            '<span class="gname">' + g.name + '</span>' +
+            (!open && waiting ? '<span class="gcount">' + waiting + '</span>' : '') +
+            '<svg class="gchev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></svg>' +
+          '</button>' +
+          (open
+            ? '<div class="nav__list">' + g.items.map(function (it) {
+                return '<button class="nav__item" data-go="' + it.id + '"' +
+                  (current === it.id ? ' aria-current="page"' : '') + '>' +
+                  ico(it.icon, 17, 'currentColor', 1.9) + '<span>' + it.label + '</span>' +
+                  (it.badge ? '<span class="nav__badge">' + it.badge + '</span>' : '') + '</button>';
+              }).join('') + '</div>'
+            : '');
+      }).join('') +
+      '</div>' +
+
+      '<div style="padding:6px 10px 0">' +
+        '<button class="nav__slim" data-go="slimnav" ' +
+          'aria-label="' + (S.navSlim ? 'Expand the menu' : 'Collapse the menu') + '" ' +
+          'title="' + (S.navSlim ? 'Expand the menu' : 'Collapse the menu') + '">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M15 6l-6 6 6 6"/></svg></button>' +
+      '</div>' +
+      '<div style="padding:6px 10px 0">' +
+        '<button class="nav__slim" data-go="slimnav" ' +
+          'aria-label="' + (S.navSlim ? 'Expand the menu' : 'Collapse the menu') + '" ' +
+          'title="' + (S.navSlim ? 'Expand the menu' : 'Collapse the menu') + '">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M15 6l-6 6 6 6"/></svg></button>' +
+      '</div>' +
+      '<div class="nav__foot">' +
+        '<div class="avatar">' + m.initials + '</div>' +
+        '<div style="min-width:0;flex-grow:1"><div class="nav__who">' + m.who + '</div>' +
+        '<div class="nav__sub">' + m.sub + '</div></div>' +
+        '<button data-go="logout" title="Sign out" aria-label="Sign out" style="color:var(--chrome-ink);padding:6px">' +
+        '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9"/></svg></button>' +
+      '</div>' +
+    '</nav>';
+  }
+
+  /* routes every office may reach, whatever it holds */
+  var OPEN_TO_ALL = { "t/acts": 1 };
+
+  function render() {
+    var app = $("#app");
+    var phone = !!TABS[S.role] && S.route !== "s/cbt" && S.route !== "login" && S.route !== "verify" && S.route !== "a/register";
+    document.body.classList.toggle("has-tabs", phone);
+    document.body.classList.toggle("has-cta", phone && !!ctaHTML());
+    if (S.doc) {
+      app.innerHTML = renderBase() + docOverlay();
+      enhanceTables();
+      actBind();
+      return;
+    }
+    app.innerHTML = renderBase() + actToastHtml();
+    enhanceTables();                       /* labels, pages and the export footer */
+    fitTables();                           /* and stack the ones that do not fit */
+    /* bind the acts last, so a control the screen wired itself keeps its
+       own handler and only what is left over is bound from the registry */
+    actBind();
+    if (S.ex) { app.insertAdjacentHTML("beforeend", exOverlay()); return; }
+    if (S.mdl && S.mdl.kind) { app.insertAdjacentHTML("beforeend", mdlOverlay()); return; }
+    startCbtClock();
+  }
+
+  function renderBase() {
+    if (S.route === "login")      { document.body.classList.remove("nav-open"); return viewLogin(); }
+    if (S.route === "verify")     { document.body.classList.remove("nav-open"); return publicVerify(); }
+    if (S.route === "a/register") { document.body.classList.remove("nav-open"); return applicantRegister(); }
+    if (S.route === "s/cbt")      { document.body.classList.remove("nav-open"); return studentCbt(); }
+
+    var t = (TITLES[S.route] || ["", ""]).slice();
+    if (S.route === "s/transcript") {
+      t[1] = { "new": "Request an official copy", "pay": "Pay the fee",
+               "production": "Request TRN-2026-00418 \u00b7 " + (S.feesPaid ? "in production" : "held at clearance"),
+               "verified": "Request TRN-2026-00418 \u00b7 awaiting the Registrar",
+               "issued": "Request TRN-2026-00418 \u00b7 released" }[S.tr.stage] || t[1];
+    }
+    if (S.route === "s/receipt") { t[1] = (RECEIPTS[currentReceipt] || {}).no || ""; }
+
+    /* the sheet and the upload name the course they are actually showing */
+    if (S.route === "t/sheet" || S.route === "t/bulk") {
+      var shn = sheetNow(), shr = courseRoll(shn.code);
+      if (S.route === "t/sheet") {
+        t[0] = shn.code + " &mdash; " + shn.title;
+        t[1] = shn.units + " credit units &middot; " + shr.length +
+               " registered candidates, all programmes";
+      } else {
+        t[1] = shn.code + " &middot; download the template, fill it, upload it &mdash; " +
+               "checked before anything is written";
+      }
+    }
+    if (S.route === "t/review") {
+      var rset = setByCode(S.rp.open || "CSC 311");
+      if (rset) {
+        var rmk = markStats(courseMarks(rset.code));
+        t[0] = rset.code + " &mdash; " + rset.title;
+        t[1] = rset.dept + " &middot; " + (rmk.n + rmk.abs) + " candidates &middot; entered by " + rset.who;
+      }
+    }
+    /* a drill-in screen is reached through its parent, so it is open to
+       whoever the parent is open to */
+    var reach = PARENT[S.route] || S.route;
+    /* A person's own record of what they did is not somebody else's
+       screen. It is open to every office, because refusing a reader
+       sight of their own acts is the opposite of what it is for. */
+    var body = (S.role === "staff" && S.route.charAt(0) !== "s" &&
+                !OPEN_TO_ALL[reach] && !ROLE_CAN[S.srole][reach])
+      ? rDenied()
+      : ((SCREENS[S.route] || studentDashboard)() + flowPanel(S.route));
+    return (S.navOpen ? '<div class="scrim" data-go="closenav"></div>' : '') +
+      '<div class="shell">' + navHTML() +
+        '<div class="main">' +
+          '<header class="topbar">' +
+            '<button class="menu-btn" data-go="opennav" aria-label="Open menu">' +
+            '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>' +
+            '<div style="flex-grow:1;min-width:0"><h1>' + t[0] + '</h1><div class="sub">' + t[1] + '</div></div>' +
+            (S.acts.length
+              ? '<button class="toprec" data-go="t/acts" aria-label="Session record">' +
+                ico('doc', 15, 'currentColor', 1.9) +
+                '<span class="n tnum">' + S.acts.length + '</span></button>'
+              : '') +
+            (S.role === "staff"
+              ? '<button class="topsrch" data-go="t/search" aria-label="Search">' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
+                '<span>Search records</span><kbd>/</kbd></button>'
+              : '') +
+          '</header>' +
+          netbarHTML() +
+          '<div class="content' + (S.route === "s/transcript" ? " content--narrow" : "") + '">' + body + '</div>' +
+        '</div>' +
+      '</div>' + ctaHTML() + tabbarHTML();
+  }
+
+  /* ── events ──────────────────────────────────────────────────────── */
+  document.addEventListener("change", function (ev) {
+    var t = ev.target || {};
+    if (t.id === "sc-fac")     { S.sc.fac = t.value; S.sc.dept = ""; S.sc.prog = ""; S.sc.course = ""; render(); return; }
+    if (t.id === "sc-dept")    { S.sc.dept = t.value; S.sc.prog = ""; S.sc.course = ""; render(); return; }
+    if (t.id === "sc-prog")    { S.sc.prog = t.value; S.sc.course = ""; render(); return; }
+    if (t.id === "sc-level")   { S.sc.level = t.value; render(); return; }
+    if (t.id === "sc-course")  { S.sc.course = t.value; render(); return; }
+    if (t.id === "sc-sem")     { S.sc.sem = t.value; S.sc.course = ""; render(); return; }
+    if (t.id === "sc-session") { S.sc.session = t.value; render(); return; }
+
+    var cdf = t.getAttribute && t.getAttribute("data-cdfile");
+    if (cdf) {
+      if (cdf === "pas") { if (t.files && t.files.length) { passRead(t.files); } }
+      else if (t.files && t.files[0]) { cdReadSheet(t.files[0], cdf); }
+      t.value = "";
+      return;
+    }
+
+    var cf = t.getAttribute && t.getAttribute("data-capsfile");
+    if (cf) {
+      var cfile = t.files && t.files[0];
+      if (cfile) { capsRead(cfile, cf); }
+      t.value = "";                 /* so choosing the same file again re-reads it */
+      return;
+    }
+
+    if (t.id === "bk-file") {
+      var f = t.files && t.files[0];
+      if (f) { bulkRead(f); }
+      return;
+    }
+
+    if (t.getAttribute && t.getAttribute("data-sk") === "only") {
+      S.sheetOnly = !!t.checked; render(); return;
+    }
+
+    if (ev.target && ev.target.id === "office") {
+      S.srole = ev.target.value;
+      if (S.role === "staff") { S.route = ROLES[S.srole].home; window.scrollTo(0, 0); }
+      render();
+    }
+  });
+
+  document.addEventListener("click", function (ev) {
+    /* ── manual score entry ────────────────────────────────────────
+       Absent is a toggle on the row and repaints only that row, so a
+       lecturer part-way down a sheet does not lose her place.       */
+    var ab = ev.target.closest("[data-abs]");
+    if (ab) {
+      var am = ab.getAttribute("data-abs"), av = skGet(am);
+      av.abs = !av.abs;
+      if (av.abs) { av.ca = ""; av.ex = ""; }
+      render(); return;
+    }
+    /* ── bulk upload ─────────────────────────────────────────── */
+    var bk = ev.target.closest("[data-bk]");
+    if (bk) {
+      var ba = bk.getAttribute("data-bk");
+      if (ba.indexOf("to:") === 0) {
+        S.bulk.step = Number(ba.slice(3)); S.bulk.err = "";
+        window.scrollTo(0, 0); render(); return;
+      }
+      if (ba === "demo") {
+        S.bulk.file = "CSC311-completed-example.csv";
+        S.bulk.report = bulkCheck(bulkDemoRows());
+        S.bulk.cols = { n: 7, used: 3, names: ["Matriculation number", "CA (max 30)", "Exam (max 70)"] };
+        S.bulk.err = ""; S.bulk.step = 3; window.scrollTo(0, 0); render(); return;
+      }
+      if (ba === "commit") { bulkCommit(); window.scrollTo(0, 0); render(); return; }
+      if (ba === "again")  {
+        S.bulk = { step: 1, report: null, file: "", err: "" };
+        window.scrollTo(0, 0); render(); return;
+      }
+      return;
+    }
+
+    /* ── human resource management ────────────────────────────── */
+    var hr = ev.target.closest("[data-hr]");
+    if (hr) {
+      var ha = hr.getAttribute("data-hr").split(":");
+      if (ha[0] === "open")   { S.hr.open = ha[1]; S.route = "t/movement"; window.scrollTo(0,0); render(); return; }
+      if (ha[0] === "issue")  {
+        /* the reference the office assignment will cite */
+        S.hr.issued[ha[1]] = "CNL/2026/" + (100 + (ha[1].charCodeAt(ha[1].length - 1) % 90));
+        render(); return;
+      }
+      if (ha[0] === "return") { S.hr.open = ha[1]; S.route = "t/hrm"; render(); return; }
+      return;
+    }
+
+    /* ── module processes ─────────────────────────────────────── */
+    var flw = ev.target.closest("[data-flw]");
+    if (flw) {
+      var fa = flw.getAttribute("data-flw");
+      if (fa === "fwd")   { flowMove(S.route, 1); return; }
+      if (fa === "back")  { flowMove(S.route, -1); return; }
+      if (fa === "reset") { flowReset(S.route); return; }
+      return;
+    }
+
+    /* ── acts ─────────────────────────────────────────────────────
+       The general handler: any control the registry knows runs here
+       rather than needing a handler of its own. It sits after the
+       specific ones so a screen that wants its own behaviour keeps it. */
+    var act = ev.target.closest("[data-act]");
+    if (act) { actRun(act.getAttribute("data-act")); return; }
+
+    /* ── the payment voucher certificate ──────────────────────── */
+    var pv = ev.target.closest("[data-pv]");
+    if (pv) {
+      if (pv.getAttribute("data-pv") === "certify") { S.pv.certified = true; render(); }
+      return;
+    }
+
+    /* ── hostel and accommodation ─────────────────────────────── */
+    var hs = ev.target.closest("[data-hs]");
+    if (hs) {
+      var hsa = hs.getAttribute("data-hs");
+      /* re-running the draw increments the counter and nothing else, which
+         is the point: the order is a function of the seed, not of the run */
+      if (hsa === "draw")  { S.hs.drawn = true; S.hs.runs = S.hs.runs + 1; render(); return; }
+      if (hsa === "seed")  { S.hs.alt = !S.hs.alt; S.hs.runs = S.hs.drawn ? 1 : 0; render(); return; }
+      if (hsa === "tick")  { S.hs.hours = S.hs.hours + 24; render(); return; }
+      if (hsa === "reset") { S.hs.hours = 0; render(); return; }
+      return;
+    }
+
+    var sk = ev.target.closest("[data-sk]");
+    if (sk) {
+      var a = sk.getAttribute("data-sk");
+      if (a === "submit") {
+        var st = skTotals();
+        if (st.ready) { S.sheetDone = true; S.route = "t/scores"; window.scrollTo(0, 0); render(); }
+        return;
+      }
+      if (a === "first")   { skFirst(); return; }
+      if (a === "onlybtn") { S.sheetOnly = true; render(); return; }
+      return;
+    }
+
+    /* the export sheet holds the screen while it is open */
+    var ex = ev.target.closest("[data-ex]");
+    if (ex) {
+      var e = ex.getAttribute("data-ex"), ep = e.split(":");
+      if (ep[0] === "open") { S.ex = { id: ep[1], fmt: "pdf" }; S.exMsg = ""; window.scrollTo(0, 0); render(); return; }
+      if (ep[0] === "fmt")  { S.ex.fmt = ep[1]; S.exMsg = ""; render(); return; }
+      if (e === "print")    { try { window.print(); } catch (er) { /* the viewer may block printing */ } return; }
+      if (e === "close") {
+        if (ex.classList.contains("doc-scrim") && ev.target.closest("[data-stop]")) { return; }
+        S.ex = null; S.exMsg = ""; render(); return;
+      }
+      var xt = TBL[S.ex.id];
+      if (e === "copy" && xt) {
+        S.exMsg = exCopy(exBuild(xt, S.ex.fmt))
+          ? "Copied to the clipboard — " + xt.rows.length + " rows."
+          : "This browser did not allow the copy. Select the text below instead.";
+        render(); return;
+      }
+      if (e === "save" && xt) { exSaveNow(); return; }
+      return;
+    }
+    if (S.ex) { return; }
+
+    var md = ev.target.closest("[data-mdl]");
+    if (md) {
+      var mv = md.getAttribute("data-mdl"), mp = mv.split(":");
+      if (mp[0] === "open") { S.mdl = { kind: mp[1], step: 0, of: "" }; }
+      if (mp[0] === "ver")  { S.mdl = { kind: "feever", step: 0, of: mp[1] }; }
+      if (mp[0] === "rec")  { recOpen(mp[1], mp[2] || ""); }
+      if (mv === "save")    { recSaveNow(); }
+      if (mv === "end")     { S.mdl.prevmode = S.mdl.mode; S.mdl.mode = "ending"; }
+      if (mv === "unend")   { S.mdl.mode = S.mdl.prevmode || "edit"; }
+      if (mv === "endnow")  { recEndNow(); }
+      if (mv === "next")    { S.mdl.step = Math.min(FEE_STEPS.length - 1, (S.mdl.step || 0) + 1); }
+      if (mv === "prev")    { S.mdl.step = Math.max(0, (S.mdl.step || 0) - 1); }
+      if (mv === "submit")  { S.mdl = { kind: "done", step: 0, of: "" }; }
+      if (mv === "close") {
+        if (md.classList.contains("mdl") && ev.target.closest("[data-stop]")) { return; }
+        S.mdl = { kind: null, step: 0, of: "" };
+      }
+      render(); return;
+    }
+    if (S.mdl && S.mdl.kind) { return; }
+
+    var chb = ev.target.closest("[data-ch]");
+    if (chb) { S.ch = chb.getAttribute("data-ch"); render(); return; }
+
+    var tpl = ev.target.closest("[data-tpl]");
+    if (tpl) { tplOpen(tpl.getAttribute("data-tpl")); window.scrollTo(0, 0); render(); return; }
+
+    var rpb = ev.target.closest("[data-rp]");
+    if (rpb) {
+      var rv = rpb.getAttribute("data-rp"), rq = rv.split(":");
+      if (rq[0] === "at")       { S.rp.at = Number(rq[1]); }
+      if (rv === "fwd")         { S.rp.at = Math.min(RP_STAGES.length - 1, S.rp.at + 1); }
+      if (rv === "back")        { S.rp.at = Math.max(0, S.rp.at - 1); }
+      if (rv === "senate")      { S.rp.senate = true; }
+      if (rv === "unsenate")    { S.rp.senate = false; }
+      if (rv === "absent")      { S.absentSet = true; }
+      if (rq[0] === "open") {
+        S.rp.open = rq[1]; S.rp.msg = ""; S.rp.route0 = S.route; S.route = "t/review";
+      }
+      if (rq[0] === "approve" || rq[0] === "return") {
+        var rcode = rq[1], rd = deskOf(), rme = chainIdx(rd.key);
+        var rt = document.getElementById("rr-reason");
+        var reason = rt ? rt.value.trim() : "";
+        if (rq[0] === "return" && !reason) {
+          S.rp.needReason = true;              /* rendered on the screen, never as a dialogue */
+        } else {
+          S.rp.needReason = false;
+          S.rp.acted[rcode + "|" + rd.key] = rq[0] === "approve" ? "approved" : "returned";
+          if (!S.rp.pos) { S.rp.pos = {}; }
+          if (!S.rp.by)  { S.rp.by = {}; }
+          S.rp.pos[rcode] = rq[0] === "approve" ? rme + 1 : rd.backTo;
+          S.rp.by[rcode] = { who: ROLES[S.srole].who, desk: ROLES[S.srole].label };
+          S.rp.reason = reason;
+          S.rp.msg = (rq[0] === "approve" ? "Approved " : "Returned ") + rcode +
+            (rq[0] === "approve" ? " to " + rd.next : " to " + rd.back);
+          S.rp.msg2 = rq[0] === "approve"
+            ? "Recorded against " + ROLES[S.srole].who + ", " + ROLES[S.srole].label +
+              ", just now. The set has left this desk and appears under \u201cSent on\u201d."
+            : "The reason you gave travels with it: \u201c" + reason + "\u201d";
+          if (S.rp.open === rcode && S.route !== "t/review") { S.route = "t/review"; }
+        }
+      }
+      if (rq[0] === "undo") {
+        var ud = deskOf();
+        delete S.rp.acted[rq[1] + "|" + ud.key];
+        if (S.rp.pos) { delete S.rp.pos[rq[1]]; }
+        if (S.rp.by)  { delete S.rp.by[rq[1]]; }
+        S.rp.msg = ""; S.rp.msg2 = "";
+      }
+      if (rv === "forward") { S.rp.msg = "Forwarded the approved sets"; S.rp.msg2 = "What is not approved stays on this desk."; }
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var cfg = ev.target.closest("[data-cfg]");
+    if (cfg) {
+      var cv = cfg.getAttribute("data-cfg"), cq = cv.split(":");
+      if (cq[0] === "go") { S.cfg.section = cq[1]; }
+      if (cv === "next" || cv === "prev") {
+        var ci = 0;
+        for (var cn = 0; cn < CFG_SECTIONS.length; cn++) { if (CFG_SECTIONS[cn][0] === S.cfg.section) { ci = cn; } }
+        ci = cv === "next" ? Math.min(CFG_SECTIONS.length - 1, ci + 1) : Math.max(0, ci - 1);
+        S.cfg.section = CFG_SECTIONS[ci][0];
+      }
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var idc = ev.target.closest("[data-idc]");
+    if (idc) {
+      var iv = idc.getAttribute("data-idc"), ip = iv.split(":");
+      if (ip[0] === "scan")     { S.idc.scan = ip[1]; }
+      if (ip[0] === "clear")    { S.idc.scan = ""; }
+      if (ip[0] === "advance")  { S.idc.moved = true; }
+      if (ip[0] === "handover") { S.idc.given = true; }
+      render(); return;
+    }
+
+    var ng = ev.target.closest("[data-navg]");
+    if (ng) {
+      var nk = ng.getAttribute("data-navg");
+      S.navg[nk] = !(ng.getAttribute("aria-expanded") === "true");
+      render(); return;
+    }
+
+    var tqb = ev.target.closest("[data-tq]");
+    if (tqb && tqb.tagName === "BUTTON") {
+      var tqi = tqb.getAttribute("data-tq").split(":")[0];
+      S.tq[tqi] = ""; S.pg[pgKey(tqi)] = 0; render(); return;
+    }
+
+    var pgb = ev.target.closest("[data-pg]");
+    if (pgb) {
+      var pv = pgb.getAttribute("data-pg"), ci = pv.lastIndexOf(":");
+      var pkey = pv.slice(0, ci);
+      S.pg[pkey] = parseInt(pv.slice(ci + 1), 10) || 0;
+      /* page within a search without rebuilding the box */
+      var pid = pkey.split("|").pop();
+      if (TBLDOM && TBLDOM[pid]) { tblApply(pid); return; }
+      render(); return;
+    }
+
+    var dc = ev.target.closest("[data-doc]");
+    if (dc) {
+      var d = dc.getAttribute("data-doc");
+      if (d === "print") {
+        try { window.print(); } catch (e) { /* the viewer may block printing */ }
+        return;
+      }
+      if (d === "close") {
+        if (ev.target.closest("[data-stop]") && d !== "close") { return; }
+        if (dc.classList.contains("doc-scrim") && ev.target !== dc) { return; }
+        S.doc = null; render(); return;
+      }
+      S.doc = d;
+      S.docFile = dc.getAttribute("data-file") || "";
+      window.scrollTo(0, 0);
+      render(); return;
+    }
+    if (S.doc) { return; }
+
+    var roleBtn = ev.target.closest("[data-role]");
+    if (roleBtn) { loginRole = roleBtn.getAttribute("data-role"); render(); return; }
+
+    var elect = ev.target.closest("[data-elect]");
+    if (elect) {
+      var code = elect.getAttribute("data-elect"), i = S.electives.indexOf(code);
+      if (i > -1) { S.electives.splice(i, 1); } else { S.electives.push(code); }
+      render(); return;
+    }
+
+    /* the admission settings */
+    var asb = ev.target.closest("[data-as]");
+    if (asb && asb.tagName === "BUTTON") {
+      var av = asb.getAttribute("data-as"), ap2 = av.split(":");
+      if (ap2[0] === "tab") { S.adm.tab = ap2[1]; window.scrollTo(0, 0); render(); return; }
+      if (av === "force") {
+        S.adm.tried = true;
+        if (S.adm.instrument && S.adm.instrument.trim() && !admFindings().length) {
+          S.adm.inForce = true;
+        }
+        window.scrollTo(0, 0); render(); return;
+      }
+    }
+
+    var rgb = ev.target.closest("[data-reg]");
+    if (rgb && rgb.tagName === "BUTTON") {
+      var rv = rgb.getAttribute("data-reg");
+      if (rv === "loadlist") {
+        /* what the Academic Office does on its own screen; done from here
+           so the dependency is visible rather than described */
+        capsDemo("utme"); capsDemo("de");
+        S.route = "a/register"; regCheck();
+        window.scrollTo(0, 0); render(); return;
+      }
+      if (rv === "show") {
+        S.reg.show = !S.reg.show; render();
+        refocus(S.reg.show ? "rw" : "rw"); return;
+      }
+      if (rv === "create") {
+        if (!regJudge()) {
+          render();
+          /* land on the first field that is wrong, rather than leaving her
+             to hunt for the red */
+          var first = S.reg.err.email ? "re" : S.reg.err.phone ? "rp"
+                    : S.reg.err.pw ? "rw" : "rw2";
+          refocus(first);
+          var fe = document.getElementById(first);
+          if (fe && fe.scrollIntoView) { fe.scrollIntoView({ block: "center" }); }
+          return;
+        }
+        /* the phone number is stored in the one form it is dialled in */
+        S.reg.phone = regPhoneRead(S.reg.phone).digits;
+        S.role = "applicant"; S.ap.stage = 0; S.route = "a/dashboard";
+        window.scrollTo(0, 0); render(); return;
+      }
+    }
+
+    var ap = ev.target.closest("[data-ap]");
+    if (ap) {
+      var a = ap.getAttribute("data-ap");
+      if (a === "fwd")     { S.ap.stage = Math.min(9, S.ap.stage + 1); }
+      if (a === "back")    { S.ap.stage = Math.max(0, S.ap.stage - 1); }
+      if (a === "reset")   { S.ap.stage = 0; }
+      if (a === "create")  { S.role = "applicant"; S.ap.stage = 0; S.route = "a/dashboard"; }
+      if (a === "student") { S.role = "student"; S.route = "s/dashboard"; }
+      window.scrollTo(0, 0);
+      render(); return;
+    }
+
+    var bb = ev.target.closest("[data-bio]");
+    if (bb) {
+      var bv = bb.getAttribute("data-bio"), bp = bv.split(":");
+      if (bp[0] === "go")      { S.bio.section = bp[1]; S.bio.saved = false; window.scrollTo(0, 0); }
+      if (bp[0] === "next" || bp[0] === "prev") {
+        var bi = 0;
+        for (var bn = 0; bn < BIO_SECTIONS.length; bn++) {
+          if (BIO_SECTIONS[bn][0] === S.bio.section) { bi = bn; }
+        }
+        bi = bp[0] === "next" ? Math.min(BIO_SECTIONS.length - 1, bi + 1) : Math.max(0, bi - 1);
+        S.bio.section = BIO_SECTIONS[bi][0];
+        S.bio.saved = bp[0] === "next";
+        window.scrollTo(0, 0);
+      }
+      if (bp[0] === "finish")  { S.bio.saved = false; S.route = "s/dashboard"; window.scrollTo(0, 0); }
+      if (bp[0] === "ask")     { S.bio.asked = true; window.scrollTo(0, 0); }
+      if (bp[0] === "dismiss") { S.bio.asked = false; }
+      render(); return;
+    }
+
+    var qb = ev.target.closest("[data-q]");
+    if (qb) {
+      var qv = qb.getAttribute("data-q"), qp = qv.split(":");
+      if (qp[0] === "clear") { S.q = ""; }
+      if (qp[0] === "kind")  { S.qkind = qp[1]; }
+      if (qp[0] === "set")   { S.q = qv.slice(4); S.route = "t/search"; }
+      render();
+      var qf = document.getElementById("srch-q"); if (qf) { qf.focus(); }
+      return;
+    }
+
+    /* Applying the wallet settles the invoice and clears the student in
+       the same act — there is no bank transfer to wait for, because the
+       money is already with the University. That is the whole point of
+       holding it as a wallet rather than as a note on a spreadsheet. */
+    /* the JAMB intake. Working a finding resolves it; committing is refused
+       while any finding for that list is open, and the refusal names why. */
+    var cdb = ev.target.closest("[data-cd]");
+    if (cdb) {
+      var dv = cdb.getAttribute("data-cd"), dp = dv.split(":");
+      if (dp[0] === "tab")  { S.cdTab = dp[1]; }
+      if (dv === "demopas") { passTake(PAS_DEMO.slice()); return; }
+      if (dv === "demodob") { cdTakeSheet(dobParse(DOB_DEMO), "dob"); return; }
+      if (dv === "demool")  { cdTakeSheet(olParse(OL_DEMO), "ol"); return; }
+      render(); return;
+    }
+
+    var cps = ev.target.closest("[data-caps]");
+    if (cps) {
+      var cv = cps.getAttribute("data-caps"), cp = cv.split(":");
+      if (cp[0] === "list")   { S.capsList = cp[1]; }
+      /* pressing a list's own button is what fixes the kind: it is never
+         sniffed from the file, because the two lists are the same shape */
+      if (cp[0] === "demo")   { capsDemo(cp[1]); return; }
+      if (cp[0] === "editprog") { S.capsEdit = { kind: "prog", key: cp[1] }; S.capsRefused = ""; S.capsDraft = null; }
+      if (cp[0] === "editrow")  { S.capsEdit = { kind: "row",  key: cv.slice(8) }; S.capsRefused = ""; S.capsDraft = null; }
+      if (cv === "editcancel")  { S.capsEdit = null; S.capsRefused = ""; S.capsDraft = null; }
+      if (cv === "progsave") {
+        var nm = document.getElementById("ce-name"), dp = document.getElementById("ce-dept"),
+            fc = document.getElementById("ce-fac"), ins = document.getElementById("ce-instr");
+        /* A refusal that throws away what was typed is a refusal people learn
+           to avoid the control rather than answer. What was entered is kept
+           and rendered back. */
+        S.capsDraft = { name: nm ? nm.value : "", dept: dp ? dp.value : "",
+                        fac: fc ? fc.value : "", instr: ins ? ins.value : "" };
+        /* a programme name decides what a certificate says, so the change
+           carries the approval it rests on or it does not happen */
+        if (!ins || !ins.value.trim() || !nm || !nm.value.trim()) {
+          S.capsRefused = "A programme change cites the instrument it rests on, and the name cannot be empty. A programme name decides what a certificate says, so it is not amended on somebody\u2019s say-so.";
+        } else {
+          S.capsProgEdit[S.capsEdit.key] = { name: nm.value.trim(), dept: dp.value.trim(),
+                                             fac: fc.value, instr: ins.value.trim() };
+          S.capsEdit = null; S.capsRefused = ""; S.capsDraft = null;
+        }
+      }
+      if (cv === "rowsave") {
+        var cd = document.getElementById("cr-code"), wy = document.getElementById("cr-why");
+        S.capsDraft = { code: cd ? cd.value : "", why: wy ? wy.value : "" };
+        /* a correction that does not say why is an overwrite with extra steps */
+        if (!cd || !cd.value || !wy || !wy.value.trim()) {
+          S.capsRefused = "A correction names both the programme and the reason for it. A correction with no reason is an overwrite with extra steps, and nobody can answer afterwards why this candidate\u2019s programme differs from the CAPS list.";
+        } else {
+          S.capsRowFix[S.capsEdit.key] = { code: cd.value, why: wy.value.trim() };
+          S.capsEdit = null; S.capsRefused = ""; S.capsDraft = null;
+        }
+      }
+      if (cv === "commit")    { S.capsCommitted[S.capsList] = true; }
+      if (cv === "reset")     {
+        S.capsFile = { utme: null, de: null }; S.capsData = { utme: null, de: null };
+        S.capsCommitted = { utme: false, de: false };
+        S.capsProgEdit = {}; S.capsRowFix = {}; S.capsEdit = null;
+      }
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var mt = ev.target.closest("[data-mat]");
+    if (mt) {
+      var mv = mt.getAttribute("data-mat");
+      if (mv === "run")       { S.matRun = true; }
+      if (mv === "undo")      { S.matRun = false; }
+      if (mv === "confirm")   { S.matList = true; }
+      if (mv === "unconfirm") { S.matList = false; }
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var nlf = ev.target.closest("[data-nlf]");
+    if (nlf) {
+      if (nlf.getAttribute("data-nlf") === "apply") {
+        S.feesPaid = true;
+        S.route = "s/wallet";
+        window.scrollTo(0, 0);
+      }
+      render(); return;
+    }
+
+    var scb = ev.target.closest("[data-sc]");
+    if (scb) {
+      var sv = scb.getAttribute("data-sc"), sp = sv.split(":");
+      if (sp[0] === "clear") { S.sc.fac = ""; S.sc.dept = ""; S.sc.prog = ""; S.sc.level = ""; S.sc.course = ""; S.sc.sem = ""; }
+      if (sp[0] === "view")  { S.sc.view = sp[1]; }
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var cb = ev.target.closest("[data-cbt]");
+    if (cb) {
+      var v = cb.getAttribute("data-cbt"), p = v.split(":"), k = p[0], n = Number(p[1]);
+      if (k === "start")  { S.cbt.phase = "sitting"; }
+      if (k === "go")     { S.cbt.q = n; S.cbt.seen = Math.max(S.cbt.seen, n); S.cbt.phase = "sitting"; }
+      if (k === "next")   { S.cbt.q = Math.min(59, S.cbt.q + 1); S.cbt.seen = Math.max(S.cbt.seen, S.cbt.q); }
+      if (k === "prev")   { S.cbt.q = Math.max(0, S.cbt.q - 1); }
+      if (k === "ans")    { S.cbt.answers[S.cbt.q] = n; }
+      if (k === "clear")  { delete S.cbt.answers[S.cbt.q]; }
+      if (k === "flag")   {
+        var fi = S.cbt.flagged.indexOf(S.cbt.q);
+        if (fi > -1) { S.cbt.flagged.splice(fi, 1); } else { S.cbt.flagged.push(S.cbt.q); }
+      }
+      if (k === "review") { S.cbt.phase = "review"; window.scrollTo(0, 0); }
+      if (k === "back")   { S.cbt.phase = "sitting"; }
+      if (k === "submit") { S.cbt.phase = "done"; window.scrollTo(0, 0); }
+      if (k === "fill")   { for (var i = 0; i < 44; i++) { S.cbt.answers[i] = i % 4; } S.cbt.seen = 47; }
+      if (k === "rush")   { S.cbt.left = 120; }
+      if (k === "firstblank") {
+        for (var j = 0; j < 60; j++) { if (!S.cbt.answers.hasOwnProperty(j)) { S.cbt.q = j; break; } }
+        S.cbt.phase = "sitting";
+      }
+      if (k === "reset")  {
+        S.cbt = { phase: "brief", q: 0, seen: 0, left: 3600, answers: {}, flagged: [], practice: S.cbt.practice };
+      }
+      render(); return;
+    }
+
+    var nb = ev.target.closest("[data-net]");
+    if (nb) { S.net = nb.getAttribute("data-net"); render(); return; }
+
+    var gwb = ev.target.closest("[data-gw]");
+    if (gwb) { S.gw = gwb.getAttribute("data-gw"); window.scrollTo(0, 0); render(); return; }
+
+    var scb = ev.target.closest("[data-scope]");
+    if (scb) { S.scope = scb.getAttribute("data-scope"); render(); return; }
+
+    var sr = ev.target.closest("[data-srole]");
+    if (sr) {
+      S.srole = sr.getAttribute("data-srole");
+      S.route = ROLES[S.srole].home;
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var rs = ev.target.closest("[data-rs]");
+    if (rs) {
+      var v = rs.getAttribute("data-rs");
+      if (v.indexOf("who:") === 0) { S.rs.actor = v.slice(4); }
+      else if (v === "fwd")   { S.rs.stage = Math.min(5, S.rs.stage + 1); }
+      else if (v === "back")  { S.rs.stage = Math.max(0, S.rs.stage - 1); }
+      else if (v === "ret")   { S.rs.returned = true; S.rs.stage = 1; S.rs.actor = "lect"; }
+      else if (v === "reset") { S.rs.stage = 0; S.rs.returned = false; S.rs.actor = "lect"; }
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var px = ev.target.closest("[data-px]");
+    if (px) {
+      var w = px.getAttribute("data-px");
+      if (w === "fwd")   { S.px.step = Math.min(4, S.px.step + 1); }
+      if (w === "back")  { S.px.step = Math.max(0, S.px.step - 1); }
+      if (w === "reset") { S.px.step = 0; }
+      window.scrollTo(0, 0); render(); return;
+    }
+
+    var tr = ev.target.closest("[data-tr]");
+    if (tr) {
+      var a = tr.getAttribute("data-tr").split(":"), k = a[0], v = a[1];
+      if (k === "dest")     { S.tr.dest = v; }
+      if (k === "hardcopy") { S.tr.hardcopy = v === "1"; }
+      if (k === "express")  { S.tr.express = v === "1"; S.tr.day = v === "1" ? 1 : 2; }
+      if (k === "copies")   { S.tr.copies = Math.min(5, Math.max(1, S.tr.copies + Number(v))); }
+      if (k === "submit")   { S.tr.stage = "pay"; }
+      if (k === "back")     { S.tr.stage = "new"; }
+      if (k === "paid")     { S.tr.stage = "production"; }
+      if (k === "produce")  { S.tr.stage = "verified"; }
+      if (k === "release")  { S.tr.stage = "issued"; }
+      if (k === "reset")    { S.tr.stage = "new"; S.tr.copies = 1; S.tr.express = false; S.tr.hardcopy = false; }
+      window.scrollTo(0, 0);
+      render(); return;
+    }
+
+    var go = ev.target.closest("[data-go]");
+    if (!go) { return; }
+    var to = go.getAttribute("data-go");
+
+    /* A control that opens a score sheet or an upload says which course
+       it means. Without this the dashboard's "Enter CSC 341 marks" opened
+       a CSC 311 sheet, and the roll disagreed with the row above it. */
+    var forCourse = go.getAttribute("data-course");
+    if (forCourse && CRS_ELIG[forCourse]) { S.course = forCourse; }
+
+    if (to === "signin")   { S.role = loginRole; S.route = loginRole === "staff" ? ROLES[S.srole].home : HOME[loginRole]; render(); return; }
+    if (to === "dismiss")  { S.toast = null; render(); return; }
+    if (to === "logout")   { S.role = null; S.route = "login"; S.navOpen = false; render(); return; }
+    if (to === "slimnav")  {
+      S.navSlim = !S.navSlim;
+      document.body.classList.toggle("nav-slim", S.navSlim);
+      render(); return;
+    }
+    if (to === "opennav")  { S.navOpen = true; document.body.classList.add("nav-open"); render(); return; }
+    if (to === "closenav") { S.navOpen = false; document.body.classList.remove("nav-open"); render(); return; }
+    if (to === "paid")     { S.feesPaid = true; S.route = "s/pay"; render(); return; }
+    if (to === "absent")   { S.absentSet = true; render(); return; }
+    if (to === "verify")   { S.route = "verify"; window.scrollTo(0, 0); render(); return; }
+    if (to === "login")    { S.route = "login"; render(); return; }
+    if (to === "a/register") { S.route = "a/register"; window.scrollTo(0, 0); render(); return; }
+
+    if (to === "s/cbt") {
+      S.cbt = { phase: "brief", q: 0, seen: 0, left: 3600, answers: {}, flagged: [],
+                practice: go.getAttribute("data-practice") === "1" };
+      S.route = "s/cbt"; window.scrollTo(0, 0); render(); return;
+    }
+    if (SCREENS[to]) {
+      if (to === "s/receipt") { currentReceipt = go.getAttribute("data-rcpt") || currentReceipt; }
+      S.route = to;
+      S.navOpen = false;
+      document.body.classList.remove("nav-open");
+      window.scrollTo(0, 0);
+      render();
+    }
+  });
+
+  /* dropping a file on the target is the same act as choosing one */
+  ["dragenter", "dragover"].forEach(function (e) {
+    document.addEventListener(e, function (ev) {
+      var d = ev.target.closest && ev.target.closest(".drop");
+      if (d) { ev.preventDefault(); d.classList.add("is-over"); }
+    });
+  });
+  document.addEventListener("dragleave", function (ev) {
+    var d = ev.target.closest && ev.target.closest(".drop");
+    if (d) { d.classList.remove("is-over"); }
+  });
+  document.addEventListener("drop", function (ev) {
+    var d = ev.target.closest && ev.target.closest(".drop");
+    if (!d) { return; }
+    ev.preventDefault(); d.classList.remove("is-over");
+    var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (f) { bulkRead(f); }
+  });
+
+  /* read the chosen file, check it whole, and show the report */
+  function bulkRead(file) {
+    S.bulk.file = file.name;
+    var rd = new FileReader();
+    rd.onload = function () {
+      var p = bulkParse(String(rd.result || ""));
+      if (p.err) { S.bulk.err = p.err; S.bulk.report = null; S.bulk.cols = null; S.bulk.step = 2; }
+      else { S.bulk.err = ""; S.bulk.cols = p.cols; S.bulk.report = bulkCheck(p.rows); S.bulk.step = 3; }
+      window.scrollTo(0, 0); render();
+    };
+    rd.onerror = function () {
+      S.bulk.err = "The browser could not read that file."; S.bulk.step = 2; render();
+    };
+    rd.readAsText(file);
+  }
+
+  /* Re-rendering replaces the box that is being typed in. Put the caret
+     back where it was, or the next keystroke lands at the front. */
+  function refocus(id) {
+    var el = id && document.getElementById(id);
+    if (!el) { return; }
+    var v = el.value.length;
+    el.focus();
+    try { el.setSelectionRange(v, v); } catch (e) {}
+  }
+
+  document.addEventListener("input", function (ev) {
+    /* Filter in place. A re-render would rebuild the box and take the caret
+       away in the middle of a word, which is the same defect the score sheet
+       had to solve, so nothing here re-renders. */
+    var tq = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-tq");
+    if (tq) {
+      S.tq[tq] = ev.target.value;
+      S.pg[pgKey(tq)] = 0;              /* a new search starts at its first page */
+      tblApply(tq);
+      return;
+    }
+
+    /* Post-UTME registration. The number is checked as it is typed, but
+       only once it is the full shape: refusing a number half-entered
+       teaches the candidate that the portal is broken. Nothing re-renders
+       while the state is unchanged, so the caret stays where it is. */
+    var rg = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-reg");
+    if (rg === "num") {
+      var was = S.reg.state, whose = S.reg.cand;
+      S.reg.num = ev.target.value.toUpperCase();
+      if (ev.target.value !== S.reg.num) { ev.target.value = S.reg.num; }
+      regCheck();
+      if (S.reg.state !== was || S.reg.cand !== whose) {
+        var caret = ev.target.selectionStart;
+        render();
+        var again = document.getElementById("rj");
+        if (again) {
+          again.focus();
+          try { again.setSelectionRange(caret, caret); } catch (e) {}
+        }
+      }
+      return;
+    }
+    if (rg === "pw" || rg === "pw2") {
+      S.reg[rg] = ev.target.value;
+      /* an error clears the moment the person starts fixing it, so the red
+         is about what is there now and not about what was there */
+      if (S.reg.err[rg]) { S.reg.err[rg] = ""; render(); refocus(ev.target.id); }
+      return;                       /* judged when Continue is pressed, not per keystroke */
+    }
+    if (rg === "email" || rg === "phone") {
+      if (rg === "phone") {
+        /* digits, spaces, brackets and a leading + are all a phone number
+           is made of; anything else is a slip of the thumb, and is simply
+           not accepted rather than answered with a message */
+        var pv = ev.target.value.replace(/[^0-9+\s()-]/g, "");
+        if (pv !== ev.target.value) { ev.target.value = pv; }
+        S.reg.phone = pv;
+      } else {
+        S.reg.email = ev.target.value;
+      }
+      S.reg.err[rg] = "";
+      /* Both fields say something about themselves as they are typed — the
+         running digit count, the address the typo probably meant — so both
+         repaint on every keystroke and the caret is put back where it was. */
+      var car = ev.target.selectionStart, fid = ev.target.id;
+      render();
+      var fe2 = document.getElementById(fid);
+      if (fe2) { fe2.focus(); try { fe2.setSelectionRange(car, car); } catch (e) {} }
+      return;
+    }
+
+    /* the admission settings. Numbers only; the totals below them move as
+       they are typed, which is the whole point of showing a total. */
+    var asv = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-as");
+    if (asv) {
+      var ak = asv.split(":"), raw = ev.target.value.replace(/[^0-9]/g, "");
+      if (ak[0] === "instr") {
+        S.adm.instrument = ev.target.value; return;
+      }
+      if (raw !== ev.target.value && ak[0] !== "pq") { ev.target.value = raw; }
+      if (ak[0] === "w") { S.adm[ak[1] === "utme" ? "wUtme" : "wPutme"] = Number(raw) || 0; }
+      if (ak[0] === "c") { S.adm.crit[ak[1]] = Number(raw) || 0; }
+      if (ak[0] === "q") { S.adm.fq[ak[1]].quota = raw === "" ? null : Number(raw); }
+      if (ak[0] === "k") { S.adm.fq[ak[1]].cutoff = raw === "" ? null : Number(raw); }
+      var acar = ev.target.selectionStart, aid = ev.target.getAttribute("data-as");
+      render();
+      var ael = document.querySelector('[data-as="' + aid + '"]');
+      if (ael) { ael.focus(); try { ael.setSelectionRange(acar, acar); } catch (e) {} }
+      return;
+    }
+
+    var mk = ev.target && ev.target.getAttribute && ev.target.getAttribute("data-mk");
+    if (mk) {
+      var p = mk.split(":");
+      /* accept digits only, and never more than three of them */
+      var v = ev.target.value.replace(/[^0-9]/g, "").slice(0, 3);
+      if (v !== ev.target.value) { ev.target.value = v; }
+      skGet(p[0])[p[1]] = v;
+      skPatch(p[0]);
+      return;
+    }
+    if (ev.target && ev.target.id === "srch-q") {
+      S.q = ev.target.value;
+      var pos = ev.target.selectionStart;
+      render();
+      var f2 = document.getElementById("srch-q");
+      if (f2) { f2.focus(); try { f2.setSelectionRange(pos, pos); } catch (e) {} }
+    }
+  });
+
+  document.addEventListener("keydown", function (ev) {
+    if (ev.target && ev.target.getAttribute && ev.target.getAttribute("data-mk")) {
+      if (ev.key === "Enter" || ev.key === "ArrowDown") { ev.preventDefault(); skStep(ev.target, 1); return; }
+      if (ev.key === "ArrowUp") { ev.preventDefault(); skStep(ev.target, -1); return; }
+      return;                              /* "/" is a slash in a number box, not a shortcut */
+    }
+    if (ev.key === "/" && S.role === "staff" && !S.doc &&
+        ["INPUT", "TEXTAREA", "SELECT"].indexOf((ev.target.tagName || "")) === -1) {
+      ev.preventDefault(); S.route = "t/search"; render();
+      var f3 = document.getElementById("srch-q"); if (f3) { f3.focus(); }
+      return;
+    }
+    if (ev.key === "Escape" && S.mdl && S.mdl.kind) { S.mdl = { kind: null, step: 0, of: "" }; render(); return; }
+    if (ev.key === "Escape" && S.ex)  { S.ex = null; S.exMsg = ""; render(); return; }
+    if (ev.key === "Escape" && S.doc) { S.doc = null; render(); return; }
+    if (ev.key === "Escape" && S.navOpen) {
+      S.navOpen = false; document.body.classList.remove("nav-open"); render();
+    }
+  });
+
+  /* Declared here rather than on the <html> tag, because this prototype is
+     served as a fragment inside a host page whose <html> we do not write.
+     Without it a screen reader picks its own pronunciation rules. */
+  try { document.documentElement.lang = "en-NG"; } catch (e) {}
+
+  render();
+}());
+</script>

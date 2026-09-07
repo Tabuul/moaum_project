@@ -1,0 +1,273 @@
+
+  /* The University's 92 undergraduate programmes: code -> [name, dept, faculty].
+     Real, from the University's own programme table. */
+  var PROGT = {"C00001":["B.A. (ED) ENGLISH","ASS","ED"],"C00002":["B.A. ENGLISH","ENG","AR"],"C00003":["B.A. FRENCH","LAN","AR"],"C00004":["B.Sc. (ED) HUMAN KINETICS","HKH","ED"],"C00005":["B.A. LINGUISTICS","LAN","AR"],"C00008":["B.ED HISTORY","ASS","ED"],"C00009":["B.ED INTEGRATED SCIENCE","SME","ED"],"C00010":["B.ED PHYSICAL AND HEALTH EDUCATION","HKH","ED"],"C00012":["B.Sc. (ED) BIOLOGY","SME","ED"],"C00014":["B.Sc. (ED) CHEMISTRY","SME","ED"],"C00015":["B.Sc. (ED) ECONOMICS","ASS","ED"],"C00016":["B.Sc. (ED) MATHEMATICS","SME","ED"],"C00017":["B.Sc. (ED) PHYSICS","SME","ED"],"C00019":["B.Sc. ACCOUNTING","ACC","MS"],"C00021":["B.Sc. BUSINESS MANAGEMENT","BSM","MS"],"C00022":["B.Sc. CHEMISTRY","CHM","SC"],"C00023":["B.Sc. COMPUTER SCIENCE","MTC","SC"],"C00024":["B.Sc. ECONOMICS","ECO","SS"],"C00025":["B.Sc. GEOGRAPHY","GEO","ES"],"C00028":["B.Sc. MATHEMATICS","MTC","SC"],"C00029":["B.Sc. PHYSICS","PHY","SC"],"C00030":["B.Sc. POLITICAL SCIENCE","POL","SS"],"C00031":["B.Sc. PSYCHOLOGY","PSY","SS"],"C00032":["B.Sc. SOCIOLOGY","SOC","SS"],"C00033":["LL.B (LAW)","LAW","LW"],"C00060":["B.Sc. BIOLOGY","BIO","SC"],"C00061":["MBBS","MED","BAMS"],"C00062":["B.A. RELIGIOUS STUDIES","RAC","AR"],"C00063":["B.Sc. LIBRARY AND INFORMATION SCIENCE","LIS","SS"],"C00064":["B.Sc. MASS COMMUNICATION","MCM","CM"],"C00065":["B.ED PRE-PRIMARY AND PRIMARY EDUCATION","EDF","ED"],"C00066":["B.A.THEATRE ARTS","THE","AR"],"C00067":["B.A. HISTORY","HST","AR"],"C00090":["B.ED PRE-PRIMARY AND PRIMARY EDUCATION - SOCIAL STUDIES","EDF","ED"],"C00091":["B.ED PRE-PRIMARY AND PRIMARY EDUCATION - ENGLISH","EDF","ED"],"C00092":["B.ED PRE-PRIMARY AND PRIMARY EDUCATION - MATHMATICS","EDF","ED"],"C00093":["B.ED PRE-PRIMARY AND PRIMARY EDUCATION - SCIENCE","EDF","ED"],"C00094":["B.A. PHILOSOPHY","PHL","AR"],"C00095":["B.A. RELIGION AND PHILOSOPHY","RAP","AR"],"C00096":["B.Sc. (ED) TECHNOLOGY","IND","TI"],"C00202":["B.A. (ED) FRENCH","ASS","ED"],"C00219":["B.ED EDUCATIONAL MANAGEMENT","EDF","ED"],"C00220":["B.ED GUIDANCE AND COUNSELLING","EDF","ED"],"C13707":["B.Sc. ADVERTISING","ADV","CM"],"C18115":["B.Sc. HUMAN PHYSIOLOGY","PGY","BAMS"],"C18753":["B.Sc. (ED) TECHNOLOGY EDUCATION (WOOD WORK)","IND","TI"],"C22229":["B.Sc INDUSTRIAL CHEMISTRY","CHM","SC"],"C22887":["B.Sc. (ED) TECHNOLOGY EDUCATION (MECH)","IND","TI"],"C24302":["B.Sc. (ED) BUSINESS EDUCATION (ACCOUNTING)","BTE","TI"],"C26841":["B.ED GUIDANCE AND COUNSELLING-MATHEMATICS","EDF","ED"],"C27835":["B. TECHNOLOGY EDUCATION","IND","TI"],"C29132":["B.Sc. HUMAN ANATOMY","ANT","BAMS"],"C30468":["B.URBAN AND REGIONAL PLANNING","URP","ES"],"C34921":["B.A. (ED) RELIGIOUS STUDIES","ASS","ED"],"C35147":["BACHELOR OF NURSING SCIENCES","NUR","BAMS"],"C40831":["B. Sc. INTERIOR DESIGN","ARC","AC"],"C43990":["B.Sc. (ED) TECHNOLOGY EDUCATION (AUTOMOBILE)","IND","TI"],"C44826":["B.Sc. (ED) INTEGRATED SCIENCE","SME","ED"],"C44827":["B.Sc. FINANCE","ACC","MS"],"C44828":["B.Sc. MARKETING","BSM","MS"],"C44829":["B.Sc. TAXATION","ACC","MS"],"C47096":["B.ED GUIDANCE AND COUNSELLING-SOCIAL STUDIES","EDF","ED"],"C48372":["B.Sc. PUBLIC RELATIONS","PUR","CM"],"C48455":["B.Sc. (ED) BUSINESS EDUCATION (SECRETARIAL ST","BTE","TI"],"C49411":["B.Sc. RADIOGRAPHY AND RADIATION SCIENCE","RAD","BAMS"],"C49412":["BACHELOR OF MEDICAL LABORATORY SCIENCE (BMLS)","MLS","BAMS"],"C49638":["B.Sc. ZOOLOGY","BIO","SC"],"C51691":["B.Sc. PUBLIC ADMINISTRATION","PUB","MS"],"C51900":["B. Sc. ARCHITECTURE","ARC","AC"],"C52295":["B.Sc. MICROBIOLOGY","BIO","SC"],"C52395":["B.Sc. ENVIRONMENTAL MANAGEMENT AND TOXICOLOGY","CHM","SC"],"C54323":["B.Sc. (ED) TECHNOLOGY EDUCATION (BUILDING)","IND","TI"],"C54804":["B.ED GUIDANCE AND COUNSELLING-SCIENCE","EDF","ED"],"C55538":["B.Sc. (ED) TECHNOLOGY EDUCATION (ELECT/ELECTR","IND","TI"],"C56345":["B.Sc. STATISTICS","MTC","SC"],"C60514":["B.Sc. BROADCASTING","BRC","CM"],"C62073":["B.Sc. DEVELOPMENT COMMUNICATION STUDIES","DCM","CM"],"C62664":["B.A. (ED) SOCIAL STUDIES","ASS","ED"],"C64548":["B.Sc. BIOCHEMISTRY","BCH","BAMS"],"C67773":["B.Sc. (ED) BUSINESS EDUCATION","BTE","TI"],"C67895":["B.Sc. (ED) COMPUTER SCIENCE","SME","ED"],"C69405":["B.A. ENGLISH STUDIES","ENG","AR"],"C69819":["B.Sc. (ED) BUSINESS EDUCATION (MARKETING)","BTE","TI"],"C72222":["B. Sc. LANDSCAPE ARCHITECTURE","ARC","AC"],"C73770":["DOCTOR OF PHARMACY","PHM","PS"],"C78456":["B.ED GUIDANCE AND COUNSELLING-ENGLISH","EDF","ED"],"C78876":["B.Sc. (ED) HOME ECONOMICS","ATC","TI"],"C82347":["B.Sc. PLANT SCIENCE AND BIOTECHNOLOGY","BIO","SC"],"C89230":["B.Sc. (ED) TECHNOLOGY EDUCATION (REFRIG/AC)","IND","TI"],"C94958":["B.Sc. JOURNALISM AND MEDIA STUDIES","JMS","CM"],"C95933":["B.A ENGLISH LITERATURE","ENG","AR"],"C98602":["B.Sc. STRATEGIC COMMUNICATIONS","SCM","CM"]};
+
+  /* What JAMB calls each code, and the same names normalised for matching,
+     because the CAPS download names the course and gives no code. */
+  var JNAME = {"C00001":"Education &amp; English Language","C00002":"English Language","C00003":"French","C00004":"B.Sc. (ED) HUMAN KINETICS","C00005":"Linguistics","C00008":"B.ED HISTORY","C00009":"B.ED INTEGRATED SCIENCE","C00010":"Physical &amp; Health Education","C00012":"Education &amp; Biology","C00014":"Education &amp; Chemistry","C00015":"B.Sc. (ED) ECONOMICS","C00016":"Education &amp; Mathematics","C00017":"Education &amp; Physics","C00019":"Accounting","C00021":"Business Management","C00022":"B.Sc. CHEMISTRY","C00023":"Computer Science","C00024":"Economics","C00025":"Geography","C00028":"B.Sc. MATHEMATICS","C00029":"Physics","C00030":"Political Science","C00031":"Psychology","C00032":"Sociology","C00033":"Law","C00060":"B.Sc. BIOLOGY","C00061":"Medicine &amp; Surgery","C00062":"Religion &amp; Cultural Studies","C00063":"Library &amp; Information Science","C00064":"Mass Communication","C00065":"Pre-Primary &amp; Primary Education","C00066":"Theatre Arts","C00067":"History","C00090":"B.ED PRE-PRIMARY AND PRIMARY EDUCATION - SOCIAL STUDIES","C00091":"B.ED PRE-PRIMARY AND PRIMARY EDUCATION - ENGLISH","C00092":"B.ED PRE-PRIMARY AND PRIMARY EDUCATION - MATHMATICS","C00093":"B.ED PRE-PRIMARY AND PRIMARY EDUCATION - SCIENCE","C00094":"Philosophy","C00095":"B.A. RELIGION AND PHILOSOPHY","C00096":"Educational Technology","C00202":"B.A. (ED) FRENCH","C00219":"Educational Management","C00220":"Guidance &amp; Counselling","C13707":"Advertising","C18115":"Human Physiology","C18753":"B.Sc. (ED) TECHNOLOGY EDUCATION (WOOD WORK)","C22229":"Industrial Chemistry","C22887":"B.Sc. (ED) TECHNOLOGY EDUCATION (MECH)","C24302":"B.Sc. (ED) BUSINESS EDUCATION (ACCOUNTING)","C26841":"B.ED GUIDANCE AND COUNSELLING-MATHEMATICS","C27835":"B. TECHNOLOGY EDUCATION","C29132":"Anatomy","C30468":"Urban &amp; Regional Planning","C34921":"Education &amp; Religious Studies","C35147":"Nursing Science","C40831":"B. Sc. INTERIOR DESIGN","C43990":"B.Sc. (ED) TECHNOLOGY EDUCATION (AUTOMOBILE)","C44826":"Education &amp; Integrated Science","C44827":"B.Sc. FINANCE","C44828":"Marketing","C44829":"Taxation","C47096":"B.ED GUIDANCE AND COUNSELLING-SOCIAL STUDIES","C48372":"Public Relations","C48455":"B.Sc. (ED) BUSINESS EDUCATION (SECRETARIAL ST","C49411":"Radiography &amp; Radiation Science","C49412":"Medical Laboratory Science","C49638":"Zoology","C51691":"Public Administration","C51900":"Architecture","C52295":"Microbiology","C52395":"Environmental Management &amp; Toxicology","C54323":"B.Sc. (ED) TECHNOLOGY EDUCATION (BUILDING)","C54804":"B.ED GUIDANCE AND COUNSELLING-SCIENCE","C55538":"B.Sc. (ED) TECHNOLOGY EDUCATION (ELECT/ELECTR","C56345":"Statistics","C60514":"B.Sc. BROADCASTING","C62073":"B.Sc. DEVELOPMENT COMMUNICATION STUDIES","C62664":"Social Studies","C64548":"Biochemistry","C67773":"Business Education","C67895":"Education &amp; Computer Science","C69405":"B.A. ENGLISH STUDIES","C69819":"B.Sc. (ED) BUSINESS EDUCATION (MARKETING)","C72222":"B. Sc. LANDSCAPE ARCHITECTURE","C73770":"DOCTOR OF PHARMACY","C78456":"B.ED GUIDANCE AND COUNSELLING-ENGLISH","C78876":"Home Economics &amp; Education","C82347":"Plant Science &amp; Biotechnology","C89230":"B.Sc. (ED) TECHNOLOGY EDUCATION (REFRIG/AC)","C94958":"Journalism &amp; Media Studies","C95933":"B.A ENGLISH LITERATURE","C98602":"B.Sc. STRATEGIC COMMUNICATIONS","C99256":"MA RELIGION AND PEACE STUDIES"};
+  var JBYNAME = {"educationenglishlanguage":"C00001","englishlanguage":"C00002","french":"C00003","bscedhumankinetics":"C00004","linguistics":"C00005","bedhistory":"C00008","bedintegratedscience":"C00009","physicalhealtheducation":"C00010","educationbiology":"C00012","educationchemistry":"C00014","bscedeconomics":"C00015","educationmathematics":"C00016","educationphysics":"C00017","accounting":"C00019","businessmanagement":"C00021","bscchemistry":"C00022","computerscience":"C00023","economics":"C00024","geography":"C00025","bscmathematics":"C00028","physics":"C00029","politicalscience":"C00030","psychology":"C00031","sociology":"C00032","law":"C00033","bscbiology":"C00060","medicinesurgery":"C00061","religionculturalstudies":"C00062","libraryinformationscience":"C00063","masscommunication":"C00064","preprimaryprimaryeducation":"C00065","theatrearts":"C00066","history":"C00067","bedpreprimaryandprimaryeducationsocialstudies":"C00090","bedpreprimaryandprimaryeducationenglish":"C00091","bedpreprimaryandprimaryeducationmathmatics":"C00092","bedpreprimaryandprimaryeducationscience":"C00093","philosophy":"C00094","bareligionandphilosophy":"C00095","educationaltechnology":"C00096","baedfrench":"C00202","educationalmanagement":"C00219","guidancecounselling":"C00220","advertising":"C13707","humanphysiology":"C18115","bscedtechnologyeducationwoodwork":"C18753","industrialchemistry":"C22229","bscedtechnologyeducationmech":"C22887","bscedbusinesseducationaccounting":"C24302","bedguidanceandcounsellingmathematics":"C26841","btechnologyeducation":"C27835","anatomy":"C29132","urbanregionalplanning":"C30468","educationreligiousstudies":"C34921","nursingscience":"C35147","bscinteriordesign":"C40831","bscedtechnologyeducationautomobile":"C43990","educationintegratedscience":"C44826","bscfinance":"C44827","marketing":"C44828","taxation":"C44829","bedguidanceandcounsellingsocialstudies":"C47096","publicrelations":"C48372","bscedbusinesseducationsecretarialst":"C48455","radiographyradiationscience":"C49411","medicallaboratoryscience":"C49412","zoology":"C49638","publicadministration":"C51691","architecture":"C51900","microbiology":"C52295","environmentalmanagementtoxicology":"C52395","bscedtechnologyeducationbuilding":"C54323","bedguidanceandcounsellingscience":"C54804","bscedtechnologyeducationelectelectr":"C55538","statistics":"C56345","bscbroadcasting":"C60514","bscdevelopmentcommunicationstudies":"C62073","socialstudies":"C62664","biochemistry":"C64548","businesseducation":"C67773","educationcomputerscience":"C67895","baenglishstudies":"C69405","bscedbusinesseducationmarketing":"C69819","bsclandscapearchitecture":"C72222","doctorofpharmacy":"C73770","bedguidanceandcounsellingenglish":"C78456","homeeconomicseducation":"C78876","plantsciencebiotechnology":"C82347","bscedtechnologyeducationrefrigac":"C89230","journalismmediastudies":"C94958","baenglishliterature":"C95933","bscstrategiccommunications":"C98602","mareligionandpeacestudies":"C99256"};
+
+
+  /* ══ READING A REAL .XLSX IN THE BROWSER ════════════════════════════
+     The upload button opens a file chooser and this reads what comes
+     back. No library: an .xlsx is a ZIP of XML, the browser can inflate
+     a raw deflate stream natively, and it can parse XML natively. So
+     the prototype reads a real CAPS download with nothing loaded from
+     anywhere — which is the same property the rest of this file has and
+     worth keeping for one screen.
+
+     What it handles and what it does not: stored and deflated entries,
+     shared strings, inline strings, and numbers. Not ZIP64, which an
+     admission list will never reach, and not dates, which these files
+     do not carry. A file it cannot read says so rather than producing
+     an empty list, because an empty list looks like a successful import
+     of nothing.                                                       */
+
+  function zipEntries(buf) {
+    var dv = new DataView(buf), i, n, off, out = {};
+    for (i = buf.byteLength - 22; i >= 0; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { break; }
+    }
+    if (i < 0) { throw new Error("not a .xlsx file — no ZIP directory in it"); }
+    n = dv.getUint16(i + 10, true);
+    off = dv.getUint32(i + 16, true);
+    while (n--) {
+      if (dv.getUint32(off, true) !== 0x02014b50) { break; }
+      var method  = dv.getUint16(off + 10, true),
+          csize   = dv.getUint32(off + 20, true),
+          nameLen = dv.getUint16(off + 28, true),
+          extraLen= dv.getUint16(off + 30, true),
+          cmtLen  = dv.getUint16(off + 32, true),
+          lho     = dv.getUint32(off + 42, true),
+          name    = new TextDecoder().decode(new Uint8Array(buf, off + 46, nameLen)),
+          lnLen   = dv.getUint16(lho + 26, true),
+          leLen   = dv.getUint16(lho + 28, true);
+      out[name] = { method: method,
+                    bytes: new Uint8Array(buf, lho + 30 + lnLen + leLen, csize) };
+      off += 46 + nameLen + extraLen + cmtLen;
+    }
+    return out;
+  }
+
+  function inflate(e) {
+    if (e.method === 0) { return Promise.resolve(new TextDecoder().decode(e.bytes)); }
+    var s = new Blob([e.bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Response(s).text();
+  }
+
+  function colOf(ref) {                       /* "AB12" -> 27 */
+    var c = 0, i = 0;
+    while (i < ref.length && ref[i] >= "A" && ref[i] <= "Z") {
+      c = c * 26 + (ref.charCodeAt(i) - 64); i++;
+    }
+    return c - 1;
+  }
+
+  /* the first worksheet, as an array of arrays */
+  function xlsxRows(buf) {
+    var z = zipEntries(buf);
+    var sheet = Object.keys(z).filter(function (k) {
+      return /^xl\/worksheets\/sheet\d+\.xml$/.test(k);
+    }).sort()[0];
+    if (!sheet) { throw new Error("the workbook has no worksheet in it"); }
+
+    return Promise.all([
+      inflate(z[sheet]),
+      z["xl/sharedStrings.xml"] ? inflate(z["xl/sharedStrings.xml"]) : Promise.resolve("")
+    ]).then(function (xs) {
+      var p = new DOMParser();
+      var shared = [];
+      if (xs[1]) {
+        var sd = p.parseFromString(xs[1], "application/xml");
+        [].forEach.call(sd.getElementsByTagName("si"), function (si) {
+          var t = "";
+          [].forEach.call(si.getElementsByTagName("t"), function (x) { t += x.textContent; });
+          shared.push(t);
+        });
+      }
+      var doc = p.parseFromString(xs[0], "application/xml");
+      if (doc.getElementsByTagName("parsererror").length) {
+        throw new Error("the worksheet inside the file is not readable XML");
+      }
+      var rows = [];
+      [].forEach.call(doc.getElementsByTagName("row"), function (r) {
+        var row = [];
+        [].forEach.call(r.getElementsByTagName("c"), function (c) {
+          var i = colOf(c.getAttribute("r") || "A1"), t = c.getAttribute("t"), v;
+          if (t === "s") {
+            var vn = c.getElementsByTagName("v")[0];
+            v = vn ? shared[Number(vn.textContent)] : "";
+          } else if (t === "inlineStr") {
+            var isn = c.getElementsByTagName("t")[0];
+            v = isn ? isn.textContent : "";
+          } else {
+            var vv = c.getElementsByTagName("v")[0];
+            v = vv ? vv.textContent : "";
+          }
+          row[i] = (v === undefined || v === null) ? "" : String(v).trim();
+        });
+        rows.push(row);
+      });
+      return rows;
+    });
+  }
+
+  /* ── the two layouts ──────────────────────────────────────────────
+     The raw CAPS download and the file the office builds from it share
+     NOT ONE COLUMN NAME. Headers are matched on a normalised form —
+     `agregate` is spelled that way in the office file and four of its
+     headers carry a leading space. */
+  var CAPS_COLS = {
+    /* raw CAPS download */
+    rgnum: "regno", rgcandname: "name", rgsex: "sex", statename: "state",
+    rgaggregate: "agg", coname: "coursename", lganame: "lga",
+    subject1: "s1", rgsub1score: "s1s", subject2: "s2", rgsub2score: "s2s",
+    subject3: "s3", rgsub3score: "s3s", engscore: "eng",
+    /* the office's derivative */
+    regno: "regno", name: "name", sex: "sex", state: "state",
+    agregate: "agg", aggregate: "agg", programme: "coursecode", lga: "lga",
+    sub1: "s1", sub1score: "s1s", sub2: "s2", sub2score: "s2s",
+    sub3: "s3", sub3score: "s3s", sub4score: "eng", session: "session"
+  };
+
+  function capsNorm(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+
+  /* Read the rows, resolve every course, and report. The list KIND is
+     passed in — it comes from the button that was pressed and nothing in
+     the file may change it. */
+  function capsParse(rows, kind) {
+    if (!rows.length) { return { err: "The file has no rows in it." }; }
+    var head = rows[0], ix = {}, i;
+    for (i = 0; i < head.length; i++) {
+      var f = CAPS_COLS[capsNorm(head[i])];
+      if (f && ix[f] === undefined) { ix[f] = i; }
+    }
+    if (ix.regno === undefined) {
+      return { err: "The first row of this file names no registration-number column. " +
+        "The importer reads headings rather than positions, and looks for " +
+        "<b>RG_NUM</b> (the CAPS download) or <b>regno</b> (the file this office builds). " +
+        "The row it read was: <i>" + esc(head.slice(0, 8).join(", ")) + "</i>" };
+    }
+    if (ix.coursename === undefined && ix.coursecode === undefined) {
+      return { err: "This file names neither a course (<b>CO_NAME</b>) nor a course code " +
+        "(<b>programme</b>), so there is no way to tell what anybody was admitted to." };
+    }
+
+    var layout = ix.coursename !== undefined ? "CAPS download" : "built by this office";
+    var out = [], findings = [], seen = {};
+
+    for (i = 1; i < rows.length; i++) {
+      var r = rows[i], g = function (f) { return ix[f] === undefined ? "" : (r[ix[f]] || ""); };
+      if (!g("regno")) { continue; }
+      var num = function (f) { var v = g(f); return /^-?\d+$/.test(v) ? Number(v) : null; };
+
+      var code = null, jname = null;
+      if (ix.coursename !== undefined) {
+        jname = g("coursename");
+        code = JBYNAME[capsNorm(jname)] || null;
+        if (!code) {
+          findings.push([i + 1, g("regno"),
+            "JAMB course &ldquo;" + esc(jname) + "&rdquo; is not on the University’s alias list"]);
+        }
+      } else {
+        code = g("coursecode").toUpperCase();
+        jname = JNAME[code] || null;
+      }
+      var p = code ? PROGT[code] : null;
+      if (code && !p) {
+        findings.push([i + 1, g("regno"),
+          "code " + esc(code) + " is not one of the University’s 92 undergraduate programmes"]);
+      }
+
+      var agg = num("agg"), parts = [num("s1s"), num("s2s"), num("s3s"), num("eng")];
+      if (kind === "utme") {
+        if (!agg) {
+          findings.push([i + 1, g("regno"), "a UTME row with no aggregate — is this the Direct Entry list?"]);
+        } else if (parts.indexOf(null) < 0 && agg !== parts[0] + parts[1] + parts[2] + parts[3]) {
+          findings.push([i + 1, g("regno"), "the aggregate " + agg + " is not the sum of the four scores (" +
+            (parts[0] + parts[1] + parts[2] + parts[3]) + ")"]);
+        }
+      } else if (agg) {
+        findings.push([i + 1, g("regno"),
+          "a Direct Entry row carrying an aggregate of " + agg + " — the two lists have been mixed"]);
+      }
+
+      if (seen[g("regno")]) {
+        findings.push([i + 1, g("regno"), "the same candidate appears twice in this file"]);
+      }
+      seen[g("regno")] = 1;
+
+      out.push({
+        regno: g("regno"), name: g("name"),
+        sex: ({ F: "F", M: "M", FEMALE: "F", MALE: "M" })[g("sex").toUpperCase()] || g("sex"),
+        state: g("state"), lga: g("lga"),
+        agg: kind === "utme" ? agg : null,        /* 0 is not a score */
+        subjects: [[g("s1"), num("s1s")], [g("s2"), num("s2s")], [g("s3"), num("s3s")]],
+        eng: num("eng"),
+        code: code, jname: jname,
+        prog: p ? p[0] : null, dept: p ? p[1] : null, fac: p ? p[2] : null
+      });
+    }
+    if (!out.length) { return { err: "The file has a heading row and no rows under it." }; }
+    return { rows: out, findings: findings, layout: layout,
+             cols: head.filter(function (h) { return h; }).length };
+  }
+
+  /* ── the demonstration files ──────────────────────────────────────
+     Built here rather than shipped, so the screen can be walked with no
+     file to hand. Real column names, real course names and codes,
+     invented people. */
+  var CAPS_DEMO = {
+    utme: [["RG_NUM","RG_CANDNAME","RG_SEX","STATE_NAME","RG_AGGREGATE","CO_NAME","LGA_NAME",
+            "Subject1","RG_Sub1Score","Subject2","RG_Sub2Score","Subject3","RG_Sub3Score","EngScore"],
+      ["202660176777GF","Terfa Sedoo-Aondoshima Precious","F","Benue","337","Medicine & Surgery","Guma","Physics","96","Biology","85","Chemistry","93","63"],
+      ["202660224740IB","Ejeh Mathias Akpo","M","Benue","317","Medicine & Surgery","Obi","Physics","81","Biology","74","Chemistry","93","69"],
+      ["202660711714BJ","Agber Perpetua Doofan","F","Benue","271","Accounting","Vandeikya","Economics","63","Mathematics","64","Commerce","77","67"],
+      ["202660085041AI","Aba Doose Faith","F","Benue","263","Accounting","Vandeikya","Economics","85","Mathematics","48","Princ. of Account","64","66"],
+      ["202660168863AH","Kwaor Seember Angel","F","Benue","281","Computer Science","Gwer-East","Physics","70","Mathematics","78","Chemistry","69","64"],
+      ["202660550118DM","Terkula Yina Godwin","M","Benue","259","Law","Buruku","Literature","61","Government","68","CRS","65","65"],
+      ["202660881440FP","Shaahu Terwase John","M","Benue","234","Journalism & Media Studies","Katsina-Ala","Literature","55","Government","60","CRS","58","61"],
+      ["202660993117KQ","Iorpuu Mimi Doose","F","Benue","288","Zoology","Ushongo","Biology","74","Chemistry","72","Physics","76","66"],
+      /* the applicant persona the rest of the prototype follows, so the
+         Post-UTME registration screen can find somebody real */
+      ["202661018342CJ","Ochanya Faith Aondoaseer","F","Benue","247","Computer Science","Makurdi","Physics","62","Mathematics","71","Chemistry","58","56"]],
+    de: [["RG_NUM","RG_CANDNAME","RG_SEX","STATE_NAME","RG_AGGREGATE","CO_NAME","LGA_NAME",
+          "Subject1","RG_Sub1Score","Subject2","RG_Sub2Score","Subject3","RG_Sub3Score","EngScore"],
+      ["202660307120BGU","Abah Cecilia Ehi","F","Benue","0","Journalism & Media Studies","Okpokwu","","0","","0","","0","0"],
+      ["202660155146GAU","Abu Abigail Aladi","F","Benue","0","Economics","Otukpo","","0","","0","","0","0"],
+      ["202660332729GBU","Agbaden Wueseter Mary","F","Benue","0","Economics","Gwer-East","","0","","0","","0","0"],
+      ["202660419983BEU","Tsavnande Doosuur Patience","F","Benue","0","Medical Laboratory Science","Gboko","","0","","0","","0","0"],
+      ["202660201774AF","Iorpuu Terwase David","M","Benue","0","Public Administration","Ushongo","","0","","0","","0","0"],
+      ["202660663318EB","Anyebe Ruth Onyilo","F","Kogi","0","Architecture","Ankpa","","0","","0","","0","0"],
+      ["202660990025HEU","Gbaka Sesugh Terkimbi","M","Benue","0","DOCTOR OF PHARMACY","Konshisha","","0","","0","","0","0"],
+      ["202660774411JCU","Ashaver Doofan Grace","F","Benue","0","MA RELIGION AND PEACE STUDIES","Gboko","","0","","0","","0","0"]]
+  };
+
+  /* read a chosen file, or the demonstration one */
+  function capsRead(file, kind) {
+    S.capsBusy = kind; render();
+    file.arrayBuffer().then(function (buf) { return xlsxRows(buf); })
+      .then(function (rows) { capsTake(capsParse(rows, kind), kind, file.name, file.size); })
+      .catch(function (e) {
+        capsTake({ err: "That file could not be read. " + esc(e.message || String(e)) +
+                        " An .xlsx saved by Excel or by CAPS is expected; a .csv or an older " +
+                        ".xls will not open here." }, kind, file.name, file.size);
+      });
+  }
+
+  function capsDemo(kind) {
+    capsTake(capsParse(CAPS_DEMO[kind], kind), kind,
+             kind === "utme" ? "CAPS-UTME-sample.xlsx" : "CAPS-DE-sample.xlsx", 10240);
+  }
+
+  function capsTake(res, kind, filename, size) {
+    S.capsBusy = null;
+    S.capsList = kind;
+    S.capsFile[kind] = { name: filename, size: size, err: res.err || "",
+                         layout: res.layout || "", cols: res.cols || 0 };
+    S.capsData[kind] = res.err ? null : res;
+    S.capsCommitted[kind] = false;
+    window.scrollTo(0, 0);
+    render();
+  }

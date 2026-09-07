@@ -1,0 +1,280 @@
+  /* ══════════════════════════════════════════════════════════════════
+     THE STUDENT'S OWN RESULT — stage nine
+
+     Everything the chain does exists to produce this screen. So it is
+     built from the chain rather than from a table somebody keys: a
+     course shows a grade when its set has passed Senate, and until then
+     it shows where the set actually is and which office is holding it.
+
+     "Where is my result" is the commonest question at any Nigerian
+     registry counter. A portal that cannot answer it has not replaced
+     the counter, it has added a screen in front of it.
+     ═════════════════════════════════════════════════════════════════ */
+
+  var ME = "MOAUM/CSC/23/1487";          /* ADAMU, Grace Mwuese */
+
+  /* has this course's set been approved by Senate and released? */
+  function released(code) {
+    var d = setByCode(code);
+    return !!(S.rp.senate && d && d.at >= 7);
+  }
+
+  /* my mark in a course, from the same sheet the lecturer attested */
+  function myMark(code) {
+    var rows = courseMarks(code);
+    for (var i = 0; i < rows.length; i++) { if (rows[i].m === ME) { return rows[i]; } }
+    return null;
+  }
+
+  /* this semester, course by course, with the stage each one is at */
+  function mySemester() {
+    return BS_COURSES.map(function (c) {
+      var set = setByCode(c[0]) || { at: 3, title: c[0], who: "&mdash;" };
+      var mk = myMark(c[0]);
+      var out = { code: c[0], units: c[1], title: set.title, at: set.at, who: set.who,
+                  released: released(c[0]), abs: mk ? mk.abs : false };
+      if (mk && !mk.abs) { out.total = mk.ca + mk.ex; out.grade = gradeOf(out.total); }
+      return out;
+    });
+  }
+
+  function myGpa(list) {
+    var pts = 0, units = 0;
+    list.forEach(function (c) {
+      if (!c.released || c.abs || !c.grade) { return; }
+      pts += c.grade[3] * c.units; units += c.units;
+    });
+    return { pts: pts, units: units, gpa: units ? pts / units : 0, counted: units };
+  }
+
+  var MY_HISTORY = [
+    ["2025/2026", "Second", 3.67, 3.42, 18, "SEN/2026/041"],
+    ["2025/2026", "First",  3.28, 3.30, 17, "SEN/2025/188"],
+    ["2024/2025", "Second", 3.11, 3.31, 18, "SEN/2025/052"],
+    ["2024/2025", "First",  3.44, 3.40, 16, "SEN/2024/174"],
+    ["2023/2024", "Second", 3.36, 3.36, 17, "SEN/2024/039"]
+  ];
+
+  function sResults() {
+    var sem = mySemester(), out = myGpa(sem);
+    var live = sem.filter(function (c) { return c.released; });
+    var waiting = sem.filter(function (c) { return !c.released; });
+    var cgpa = 3.42;
+
+    return (live.length === 0
+      ? note('info', 'Your first-semester results are not published yet',
+          'Nothing here is missing or lost. Each course below shows the desk it is on and the office holding it, ' +
+          'and a grade appears the moment Senate approves that set &mdash; not before, because a result without a Senate minute is not a result. ' +
+          'You do not need to come to the Registry to be told this.')
+      : waiting.length
+      ? note('info', live.length + ' of your ' + sem.length + ' courses are published',
+          'The rest are still in the approval chain. Each one below says where it is and who is holding it. ' +
+          'Your GPA is calculated on the ' + out.counted + ' units released so far and will change as the others arrive.')
+      : note('ok', 'All six courses are published under minute SEN/2026/114',
+          'Released on 12 September 2026. Your statement of results is available below, and the result query window is open for five working days.')) +
+
+    tiles([
+      ["This semester", live.length ? out.gpa.toFixed(2) : "&mdash;",
+        live.length ? "var(--green-ink)" : "var(--faint)",
+        live.length ? "GPA on " + out.counted + " units released" : "No course released yet"],
+      ["Cumulative", cgpa.toFixed(2), null, "To the end of 2025/2026"],
+      ["Standing", classOf(cgpa), null, "On the CGPA so far"],
+      ["Units this semester", String(sem.reduce(function (a, c) { return a + c.units; }, 0)), null, "Registered and approved"]
+    ]) +
+
+    panel('2026/2027 &middot; First semester', live.length ? 'Published under SEN/2026/114' : 'In the approval chain',
+      dtable(["Course", "Units|mid", "Score|mid", "Grade|mid", "Points|mid", "Where it is", "Held by"],
+        sem.map(function (c) {
+          if (!c.released) {
+            return [two('<span class="tnum">' + c.code + '</span>', c.title),
+              '<span class="tnum">' + c.units + '</span>',
+              '<span class="sub2">&mdash;</span>', '<span class="sub2">&mdash;</span>', '<span class="sub2">&mdash;</span>',
+              rpPill(c.at),
+              '<span class="sub2">' + (RP_STAGES[c.at] ? RP_STAGES[c.at][2] : "&mdash;") + '</span>'];
+          }
+          if (c.abs) {
+            return [two('<span class="tnum">' + c.code + '</span>', c.title),
+              '<span class="tnum">' + c.units + '</span>',
+              pil('bad', 'Absent'), '<span class="sub2">&mdash;</span>', '<span class="sub2">&mdash;</span>',
+              pil('ok', 'Published'), '<span class="sub2">Not counted in the GPA</span>'];
+          }
+          return [two('<span class="tnum">' + c.code + '</span>', c.title),
+            '<span class="tnum">' + c.units + '</span>',
+            '<b class="tnum">' + c.total + '</b>',
+            '<b style="color:' + c.grade[4] + '">' + c.grade[0] + '</b>',
+            '<span class="tnum">' + c.grade[3] + '</span>',
+            pil('ok', 'Published'),
+            '<span class="sub2">SEN/2026/114</span>'];
+        })) +
+
+    (live.length
+      ? '<div style="padding:0 16px 16px;display:flex;gap:9px;flex-wrap:wrap">' +
+          btn('primary', 'Statement of results', ' data-doc="slip"') +
+          btn('ghost', 'Query a mark', ' data-go="s/query"') +
+          btn('ghost', 'Official transcript', ' data-go="s/transcript"') +
+        '</div>'
+      : '<div style="padding:0 16px 16px">' +
+          note('info', 'Why a grade is not shown before Senate',
+            'A set that has passed the department and the faculty can still be returned. Publishing it early would mean showing you a grade that may change, ' +
+            'and a grade that changes after you have seen it is worse than one that arrives a week later. The embargo is in the data: until the minute exists there is nothing to show.') +
+        '</div>')) +
+
+    (waiting.length
+      ? panel('What is holding each one', 'The office, not a department name',
+          dtable(["Course", "On the desk of", "Since|mid", "What that desk does"],
+            waiting.map(function (c) {
+              return ['<b class="tnum">' + c.code + '</b>',
+                '<span class="sub2">' + (RP_STAGES[c.at] ? RP_STAGES[c.at][2] : "&mdash;") + '</span>',
+                '<span class="tnum sub2">' + seedNum(c.code + "d", 2, 14) + ' days</span>',
+                '<span class="sub2">' + (RP_STAGES[c.at] ? RP_STAGES[c.at][3] : "") + '</span>'];
+            })))
+      : '') +
+
+    panel('Published semesters', 'Senate-approved results only',
+      dtable(["Session|mid", "Semester", "GPA|mid", "CGPA|mid", "Units|mid", "Senate minute", "Action|num"],
+        MY_HISTORY.map(function (h, i) {
+          return ['<span class="tnum">' + h[0] + '</span>', h[1],
+            '<b class="tnum">' + h[2].toFixed(2) + '</b>', '<span class="tnum">' + h[3].toFixed(2) + '</span>',
+            '<span class="tnum">' + h[4] + '</span>',
+            '<span class="sub2 tnum">' + h[5] + '</span>',
+            btn('ghost', 'Open', i === 0 ? ' data-go="s/slip"' : '')];
+        })));
+  }
+
+  /* ── the result query window ─────────────────────────────────── */
+
+  var QUERIES = [
+    ["QRY-2026-00418", "MTH 212", "Linear Algebra II", "The examination mark is lower than the script I collected",
+      "Mathematics", "Answered", "The script was re-totalled in the presence of the Head of Department. The mark stands; the arithmetic on the script was correct and the entry matched it.", "ok"],
+    ["QRY-2026-00402", "CSC 321", "Database Systems", "My continuous assessment does not include the second test",
+      "Computer Science", "Answered", "The second test was recorded against a duplicate registration created in error. The CA has been corrected from 18 to 24 and the set returned to the department for re-approval.", "bad"]
+  ];
+
+  function sQuery() {
+    var open = S.rp.senate;
+    return (open
+      ? note('info', 'The query window is open until 19 September',
+          'Five working days from release. A query is against <b>one mark in one course</b>, is routed automatically to the department that owns that course, and is answered on the record &mdash; you will see the answer here, not be told to come back next week.')
+      : note('bad', 'The query window is not open',
+          'It opens when results are released and runs for five working days. There is nothing to query yet, because nothing has been published.')) +
+
+    tiles([
+      ["Window", open ? "Open" : "Closed", open ? "var(--green-ink)" : "var(--red-ink)", open ? "Until 19 September" : "Opens on release"],
+      ["Your queries", "2", null, "This session"],
+      ["Answered", "2", "var(--green-ink)", "Both within 4 days"],
+      ["Marks changed", "1", "var(--chrome)", "One upheld, one corrected"]
+    ]) +
+
+    (open
+      ? panel('Raise a query', 'One mark, one course', pbody(
+          '<div class="grid grid--2">' +
+            '<div class="field"><label for="q-course">Course</label><select id="q-course" class="ctl">' +
+              BS_COURSES.map(function (c) { return '<option>' + c[0] + '</option>'; }).join('') + '</select></div>' +
+            '<div class="field"><label for="q-part">Which mark</label><select id="q-part" class="ctl">' +
+              '<option>The examination mark</option><option>The continuous assessment mark</option>' +
+              '<option>I was recorded absent and I sat the paper</option></select></div>' +
+          '</div>' +
+          '<div class="field"><label for="q-say">What you say is wrong</label>' +
+            '<textarea id="q-say" class="ctl" rows="2" placeholder="Say what you expected and why. If you collected your script, say so."></textarea></div>' +
+          note('bad', 'A query is not an appeal against a grade',
+            'It is a statement that a specific mark was recorded wrongly &mdash; a test that is missing from the CA, a total that does not add up, an absence recorded for a paper you sat. ' +
+            '"I expected a better grade" is not a query, and the department will close it as one.') +
+          '<div><button class="btn btn--primary btn--sm">Submit the query</button></div>'))
+      : '') +
+
+    panel('Your queries', 'With the answer each one got',
+      dtable(["Reference", "Course", "What you said", "Routed to", "State|mid", "Answer"],
+        QUERIES.map(function (q) {
+          return ['<span class="tnum sub2">' + q[0] + '</span>',
+            two('<span class="tnum">' + q[1] + '</span>', q[2]),
+            '<span class="sub2">' + q[3] + '</span>',
+            '<span class="sub2">' + q[4] + '</span>',
+            pil(q[7] === "ok" ? 'ok' : 'info', q[7] === "ok" ? 'Upheld' : 'Corrected'),
+            '<span class="sub2">' + q[6] + '</span>'];
+        }))) +
+
+    note('info', 'A corrected mark does not quietly change your result',
+      'CSC 321 was corrected from 18 to 24, and that sent the whole set back to the department to be approved again, then to the faculty, then to Senate for an amendment minute. ' +
+      'Your published result changes when that finishes and not before. The old figure is not deleted &mdash; the transcript will show one grade, and the record behind it will show both versions and why it changed.');
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     CARRYOVER
+
+     An F is not a mark, it is an obligation. This screen is the list of
+     obligations: what must be repeated, when it is next offered, what
+     it costs in units against the level's maximum, and what happens to
+     the CGPA when it is passed — which is the one part the University
+     has not yet decided (D-Q2).
+     ═════════════════════════════════════════════════════════════════ */
+
+  var CARRYOVER = [
+    ["MTH 212", "Linear Algebra II", 3, "2025/2026", "Second", 38, "F", 1, "Second", "Offered every second semester"],
+    ["CSC 232", "Systems Programming", 3, "2024/2025", "Second", 39, "F", 2, "Second", "Offered every second semester"],
+    ["GST 111", "Use of English", 2, "2023/2024", "First", 34, "F", 2, "First", "Compulsory; no graduation without it"]
+  ];
+
+  function sCarryover() {
+    var sem = mySemester();
+    var fresh = sem.filter(function (c) { return c.released && c.grade && c.grade[0] === "F"; });
+    var units = CARRYOVER.reduce(function (a, c) { return a + c[2]; }, 0);
+    var attempts = CARRYOVER.reduce(function (a, c) { return a + c[7]; }, 0);
+
+    return note('bad', 'You are carrying ' + CARRYOVER.length + ' courses, ' + units + ' units',
+      'A failed course does not go away and it is not replaced by a later course. It is repeated, in a semester where it is offered, ' +
+      'and it counts against the maximum units you may register in that semester &mdash; which is why carryovers must be planned into a registration rather than discovered during one.') +
+
+    tiles([
+      ["Courses carried", String(CARRYOVER.length), "var(--red-ink)", units + " units"],
+      ["Attempts so far", String(attempts), null, "Across the three courses"],
+      ["Units free next semester", String(24 - units), "var(--chrome)", "Of a 24-unit maximum"],
+      ["Blocking graduation", "1", "var(--red-ink)", "GST 111 is compulsory"]
+    ]) +
+
+    panel('What you are carrying', 'Each with the semester it is next offered in',
+      dtable(["Course", "Units|mid", "Failed in", "Score|mid", "Attempts|mid", "Next offered", "Note"],
+        CARRYOVER.map(function (c) {
+          return [two('<span class="tnum">' + c[0] + '</span>', c[1]),
+            '<span class="tnum">' + c[2] + '</span>',
+            '<span class="sub2 tnum">' + c[3] + ' &middot; ' + c[4] + '</span>',
+            '<b class="tnum" style="color:var(--red-ink)">' + c[5] + '</b>',
+            '<span class="tnum">' + c[7] + '</span>',
+            '<span class="sub2">' + c[8] + ' semester</span>',
+            '<span class="sub2">' + c[9] + '</span>'];
+        }))) +
+
+    (fresh.length
+      ? note('bad', fresh.length + ' more from this semester, once the results are final',
+          fresh.map(function (c) { return c.code; }).join(" and ") +
+          '. These are not yet on the register above because the query window is still open &mdash; a mark can still be corrected, ' +
+          'and a course should not appear as a carryover until the result that produced it is settled.')
+      : '') +
+
+    panel('How a repeat is scored', 'The rule, and the part still to be decided', pbody(
+      '<div class="grid grid--2">' +
+        kvGrid([
+          ["The attempt is recorded", "Every attempt appears on the transcript, including the failure"],
+          ["The pass mark", "40, the same as any other attempt"],
+          ["Units", "Counted once toward the degree, however many attempts"],
+          ["Registration", "A carryover is registered before a new course, not after"]
+        ], 'grid--2') +
+        note('bad', 'D-Q2 is open: does the repeat replace the failure in the CGPA?',
+          'Two defensible answers. <b>Replace</b> &mdash; the CGPA reflects what the student can now do, and a first attempt four years ago says little. ' +
+          '<b>Both count</b> &mdash; the CGPA reflects the whole record, and replacing rewards failing first. ' +
+          'The prototype counts both, because that is the more common Nigerian practice, but this is a Senate decision and it changes every CGPA in the University. ' +
+          'Whichever is chosen, the transcript shows every attempt either way.') +
+      '</div>')) +
+
+    panel('Register a carryover', 'Next available semester', pbody(
+      '<div class="grid grid--2">' +
+        '<div class="field"><label for="co-c">Course</label><select id="co-c" class="ctl">' +
+          CARRYOVER.map(function (c) { return '<option>' + c[0] + ' &mdash; ' + c[1] + '</option>'; }).join('') + '</select></div>' +
+        '<div class="field"><label for="co-s">Semester</label><select id="co-s" class="ctl"><option>2026/2027 Second</option></select></div>' +
+      '</div>' +
+      note('info', 'A carryover registration needs the same clearance as any other',
+        'BR-001 applies: no financial clearance, no registration, carryover or otherwise. And the units count &mdash; three carryover units mean three fewer units of new courses in that semester.') +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+        '<button class="btn btn--primary btn--sm">Add to next registration</button>' +
+        btn('ghost', 'Open course registration', ' data-go="s/register"') +
+      '</div>'));
+  }

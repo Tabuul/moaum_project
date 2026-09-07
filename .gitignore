@@ -1,0 +1,13 @@
+node_modules/
+proto/_*.html
+proto/moaum-portal-prototype.html
+proto/_hooks.html
+*.log
+.env
+.DS_Store
+
+# The real JAMB files are never committed: they carry real candidates'
+# names, registration numbers, scores and local governments. Point
+# MOAUM_FIXTURES at them locally instead.
+fixtures/
+*.xlsx

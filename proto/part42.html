@@ -1,0 +1,337 @@
+
+  /* ══ MANUAL SCORE ENTRY ═════════════════════════════════════════════
+     A lecturer with a paper mark sheet in front of her should be able to
+     sit down and type. That is the whole brief for this screen, and it
+     decides everything below.
+
+     · The roll is generated, never uploaded. Every candidate whose
+       registration was approved is already on it, in matriculation
+       order, including the ones from other programmes (I-RES-15). She
+       never has to work out who is in her class.
+     · Two boxes per candidate. CA out of 30, examination out of 70. The
+       total, the grade and the point appear the instant both are typed,
+       and none of the three can be typed (I-RES-14) — a computed value
+       accepted as input is a value that can disagree with itself.
+     · The keyboard walks the column. Enter or ↓ moves to the next
+       candidate in the same column, ↑ moves back, so a whole sheet is
+       entered without touching the mouse. That is how a person actually
+       copies from paper: down one column, then down the next.
+     · ABS is a button, not a zero. A blank is refused as well, because
+       a blank row is an unanswered question about a named candidate.
+     · Nothing is lost and nothing is a surprise. The draft saves on
+       every keystroke, and the sheet says in words why it cannot be
+       submitted rather than only greying the button.
+
+     The spreadsheet path stays exactly as it was. This is for the
+     lecturer who does not keep marks in Excel, and neither route is
+     second class.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* The sheet follows the course the lecturer clicked. It used to be one
+     hard-coded course, which made the dashboard lie: the red button said
+     "Enter CSC 341 marks" and opened CSC 311. */
+  var CA_MAX = 30, EX_MAX = 70;
+
+  function sheetNow() {
+    var code = S.course || "CSC 311";
+    var c = CRS_ELIG[code] || CRS_ELIG["CSC 311"];
+    return { code: code, title: c.title, units: c.units, caMax: CA_MAX, exMax: EX_MAX };
+  }
+
+  /* The screen opens part-filled, the way a real sheet is found: most of
+     the roll entered on an earlier sitting, a handful still to do. Rows
+     4, 19 and 31 are left blank so the outstanding state is reachable
+     without emptying forty-four boxes by hand. */
+  /* Marks are held per course. A lecturer part-way through one sheet who
+     opens another must find the first one exactly as she left it. */
+  function skBook() {
+    var code = sheetNow().code;
+    if (!S.marks[code]) { S.marks[code] = {}; }
+    return S.marks[code];
+  }
+
+  /* Two of the four courses open with no marks at all, because the
+     dashboard says they are the ones outstanding and the screen has to
+     agree with it. */
+  var SHEET_SEEDED = { "CSC 341": false, "GST 301": false };
+
+  /* Seeding takes the course as an argument rather than reading the
+     active one, because the dashboard has to know how far every sheet has
+     got before any of them is opened — and a lazily-seeded sheet would
+     have reported nought against courses that are in fact finished. */
+  function skSeedCourse(code) {
+    if (S.marksSeeded[code]) { return; }
+    S.marksSeeded[code] = true;
+    if (!S.marks[code]) { S.marks[code] = {}; }
+    if (SHEET_SEEDED[code] === false) { return; }   /* deliberately empty */
+    var book = S.marks[code];
+    courseRoll(code).forEach(function (st, i) {
+      var blank = (i === 3 || i === 18 || i === 30);
+      book[st.m] = blank
+        ? { ca: "", ex: "", abs: false }
+        : { ca: String(seedNum(st.m + code + "ca", 8, CA_MAX)),
+            ex: String(seedNum(st.m + code + "ex", 12, EX_MAX)), abs: false };
+    });
+  }
+
+  function skSeed() { skSeedCourse(sheetNow().code); }
+
+  function skGet(m) {
+    var book = skBook();
+    if (!book[m]) { book[m] = { ca: "", ex: "", abs: false }; }
+    return book[m];
+  }
+
+  /* the one place a pair of marks becomes a total, a grade and a point */
+  function skCalc(v) {
+    var SHEET = sheetNow();
+    if (v.abs) {
+      return { done: true, abs: true, total: "ABS", grade: "ABS", gp: "0",
+               col: "var(--red-ink)", err: "" };
+    }
+    var ca = v.ca === "" ? null : Number(v.ca);
+    var ex = v.ex === "" ? null : Number(v.ex);
+    if (ca !== null && (isNaN(ca) || ca > SHEET.caMax)) {
+      return { done: false, err: "ca", msg: "Continuous assessment is out of " + SHEET.caMax };
+    }
+    if (ex !== null && (isNaN(ex) || ex > SHEET.exMax)) {
+      return { done: false, err: "ex", msg: "The examination is out of " + SHEET.exMax };
+    }
+    if (ca === null || ex === null) { return { done: false, err: "" }; }
+    var t = ca + ex, g = gradeOf(t);
+    return { done: true, total: String(t), grade: g[0], gp: String(g[3]), col: g[4], err: "" };
+  }
+
+  function skTotals() {
+    skSeed();
+    var SHEET = sheetNow();
+    var roll = courseRoll(SHEET.code), done = 0, bad = 0, abs = 0;
+    roll.forEach(function (r) {
+      var c = skCalc(skGet(r.m));
+      if (c.err) { bad++; } else if (c.done) { done++; if (c.abs) { abs++; } }
+    });
+    return { n: roll.length, done: done, bad: bad, abs: abs,
+             left: roll.length - done - bad, ready: (done === roll.length && bad === 0) };
+  }
+
+  /* an id safe for getElementById, from a matriculation number */
+  function skId(m) { return m.replace(/[^A-Za-z0-9]/g, "_"); }
+
+  /* ── the editable sheet ──────────────────────────────────────── */
+  function skTable() {
+    skSeed();
+    var SHEET = sheetNow();
+    var roll = courseRoll(SHEET.code), t = skTotals();
+    var shown = S.sheetOnly ? roll.filter(function (r) {
+      var c = skCalc(skGet(r.m)); return !c.done || c.err;
+    }) : roll;
+    var pct = t.n ? Math.round(t.done / t.n * 100) : 0;
+
+    return '<div class="card">' +
+      '<div class="card__head"><span class="card__title">' + SHEET.code +
+        ' &mdash; enter the marks</span>' +
+        '<span class="sub2" style="margin-left:auto">Total, grade and point are computed &mdash; they cannot be typed</span></div>' +
+
+      /* progress: the number she actually wants to see */
+      '<div class="card__body sk__prog">' +
+        '<div class="sk__progtop">' +
+          '<div><span class="sk__big tnum" id="sk-done">' + t.done + '</span>' +
+            '<span class="sk__of tnum"> of ' + t.n + '</span>' +
+            '<span class="sk__lab">candidates entered</span></div>' +
+          '<div class="sk__chips" id="sk-chips">' + skChips(t) + '</div>' +
+        '</div>' +
+        '<div class="meter__bar"><div class="meter__fill" id="sk-fill" style="width:' + pct +
+          '%;background:' + (t.ready ? 'var(--green)' : 'var(--chrome)') + '"></div></div>' +
+        '<div class="sk__hint">' +
+          '<span>Continuous assessment out of <b>' + SHEET.caMax +
+          '</b> &middot; examination out of <b>' + SHEET.exMax +
+          '</b> &middot; whole numbers only</span>' +
+          '<label class="sk__only"><input type="checkbox" data-sk="only"' +
+            (S.sheetOnly ? ' checked' : '') + '>' +
+            '<span>Show only those still outstanding</span></label>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="tablewrap"><table class="tbl--data tbl--sk" style="min-width:900px"><thead><tr>' +
+        '<th class="mid" style="width:40px">#</th>' +
+        '<th style="min-width:148px">Matriculation number</th>' +
+        '<th>Name</th>' +
+        '<th style="width:120px">Programme</th>' +
+        '<th class="mid" style="width:84px">CA &mdash; ' + SHEET.caMax + '</th>' +
+        '<th class="mid" style="width:84px">Exam &mdash; ' + SHEET.exMax + '</th>' +
+        '<th class="mid" style="width:64px">Total</th>' +
+        '<th class="mid" style="width:60px">Grade</th>' +
+        '<th class="mid" style="width:58px">Point</th>' +
+        '<th class="mid" style="width:76px">Absent</th>' +
+      '</tr></thead><tbody>' +
+      (shown.length ? shown.map(skRow).join('')
+        : '<tr><td colspan="10" style="padding:28px;text-align:center" class="sub2">' +
+          'Nothing outstanding &mdash; every candidate on this roll has a mark or an ABS.</td></tr>') +
+      '</tbody></table></div>' +
+
+      '<div class="tfoot">' +
+        '<span class="tfoot__n" id="sk-foot">' + skFootText(shown.length, t) + '</span>' +
+        '<span class="tfoot__x sub2">Enter or &darr; moves down the column &middot; &uarr; moves back</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function skChips(t) {
+    return (t.left ? '<span class="pill pill--bad tnum">' + t.left + ' outstanding</span>' : '') +
+      (t.bad ? '<span class="pill pill--bad tnum">' + t.bad + ' out of range</span>' : '') +
+      (t.abs ? '<span class="pill" style="background:var(--bg);border:1px solid var(--line);color:var(--muted)">' +
+               t.abs + ' absent</span>' : '') +
+      (t.ready ? '<span class="pill pill--ok">Every candidate accounted for</span>' : '');
+  }
+
+  function skFootText(showing, t) {
+    return 'Showing <b class="tnum">' + showing + '</b> of ' + t.n +
+      ' &middot; entered <b class="tnum">' + t.done + '</b>' +
+      ' &middot; outstanding <b class="tnum">' + (t.left + t.bad) + '</b>';
+  }
+
+  /* ── one candidate ───────────────────────────────────────────── */
+  function skRow(r, i) {
+    var SHEET = sheetNow();
+    var v = skGet(r.m), c = skCalc(v), id = skId(r.m);
+    return '<tr id="sk-r-' + id + '"' +
+        (c.err ? ' style="background:var(--red-wash)"' : (v.abs ? ' style="background:var(--bg)"' : '')) + '>' +
+      '<td class="mid sub2 tnum" data-l="#">' + r.n + '</td>' +
+      '<td class="tnum" data-l="Matriculation number">' + r.m + '</td>' +
+      '<td data-l="Name"><strong>' + r.name + '</strong>' +
+        (c.err ? '<div class="sub2" style="color:var(--red-ink)">' + c.msg + '</div>' : '') + '</td>' +
+      '<td data-l="Programme">' + progTag(r) + '</td>' +
+      '<td class="mid" data-l="CA &mdash; ' + SHEET.caMax + '">' + skBox(r.m, 'ca', v, c) + '</td>' +
+      '<td class="mid" data-l="Exam &mdash; ' + SHEET.exMax + '">' + skBox(r.m, 'ex', v, c) + '</td>' +
+      '<td class="mid tnum sk__tot" data-l="Total" id="sk-t-' + id + '">' + skCell(c, 'total') + '</td>' +
+      '<td class="mid sk__gr" data-l="Grade" id="sk-g-' + id + '"' +
+        (c.done ? ' style="color:' + c.col + '"' : '') + '>' + skCell(c, 'grade') + '</td>' +
+      '<td class="mid tnum sub2" data-l="Point" id="sk-p-' + id + '">' + skCell(c, 'gp') + '</td>' +
+      '<td class="mid" data-l="Absent">' +
+        '<button class="sk__abs' + (v.abs ? ' is-on' : '') + '" data-abs="' + r.m + '" ' +
+          'aria-pressed="' + (v.abs ? 'true' : 'false') + '" ' +
+          'title="' + (v.abs ? 'Recorded absent — click to undo' : 'Record ' + r.name + ' as absent') + '">' +
+          (v.abs ? 'ABS' : 'Mark') + '</button></td>' +
+    '</tr>';
+  }
+
+  function skCell(c, key) {
+    return c.done ? c[key] : '<span style="color:var(--faint)">&mdash;</span>';
+  }
+
+  function skBox(m, which, v, c) {
+    var SHEET = sheetNow();
+    if (v.abs) { return '<span class="sk__na">&mdash;</span>'; }
+    var max = which === 'ca' ? SHEET.caMax : SHEET.exMax;
+    return '<input class="sk__in' + (c.err === which ? ' is-bad' : '') + '" ' +
+      'inputmode="numeric" autocomplete="off" spellcheck="false" ' +
+      'data-mk="' + m + ':' + which + '" value="' + (v[which] || "") + '" ' +
+      'aria-label="' + (which === 'ca' ? 'Continuous assessment' : 'Examination score') +
+      ' for ' + m + ', out of ' + max + '" placeholder="0–' + max + '">';
+  }
+
+  /* ── live update, without re-rendering the table ──────────────
+     A re-render on every keystroke would take the caret away from the
+     lecturer in the middle of a number, so the row and the counters are
+     patched in place. The sheet is only re-rendered when its shape
+     changes — an ABS toggled, or the filter switched. */
+  function skPatch(m) {
+    var v = skGet(m), c = skCalc(v), id = skId(m);
+    var tot = document.getElementById("sk-t-" + id);
+    var gr  = document.getElementById("sk-g-" + id);
+    var pt  = document.getElementById("sk-p-" + id);
+    if (tot) { tot.innerHTML = skCell(c, 'total'); }
+    if (pt)  { pt.innerHTML = skCell(c, 'gp'); }
+    if (gr)  { gr.innerHTML = skCell(c, 'grade'); gr.style.color = c.done ? c.col : ""; }
+
+    var row = document.getElementById("sk-r-" + id);
+    if (row) { row.style.background = c.err ? "var(--red-wash)" : (v.abs ? "var(--bg)" : ""); }
+
+    /* the reason, under the name, appears and disappears with the fault */
+    var nm = row && row.children[2];
+    if (nm) {
+      var msg = nm.querySelector(".sk__msg");
+      if (c.err && !msg) {
+        nm.insertAdjacentHTML("beforeend",
+          '<div class="sub2 sk__msg" style="color:var(--red-ink)">' + c.msg + '</div>');
+      } else if (c.err && msg) { msg.innerHTML = c.msg; }
+      else if (!c.err && msg) { msg.parentNode.removeChild(msg); }
+    }
+
+    ["ca", "ex"].forEach(function (w) {
+      var el = document.querySelector('[data-mk="' + m + ':' + w + '"]');
+      if (el) { el.classList.toggle("is-bad", c.err === w); }
+    });
+    skPatchFoot();
+  }
+
+  function skPatchFoot() {
+    var t = skTotals();
+    var f = document.getElementById("sk-fill");
+    if (f) {
+      f.style.width = (t.n ? Math.round(t.done / t.n * 100) : 0) + "%";
+      f.style.background = t.ready ? "var(--green)" : "var(--chrome)";
+    }
+    var dn = document.getElementById("sk-done");
+    if (dn) { dn.textContent = String(t.done); }
+    var ch = document.getElementById("sk-chips");
+    if (ch) { ch.innerHTML = skChips(t); }
+    var ft = document.getElementById("sk-foot");
+    if (ft) { ft.innerHTML = skFootText(document.querySelectorAll("[data-abs]").length, t); }
+
+    /* the submit control and its explanation change with the state */
+    var sb = document.querySelectorAll('[data-sk="submit"]');
+    for (var i = 0; i < sb.length; i++) {
+      sb[i].disabled = !t.ready;
+      sb[i].classList.toggle("btn--go", t.ready);
+    }
+    var gate = document.getElementById("sk-gate");
+    if (gate) { gate.innerHTML = skGateHtml(t); }
+  }
+
+  /* ── why the sheet cannot be submitted, said in words ─────────── */
+  function skGate() { return '<div id="sk-gate">' + skGateHtml(skTotals()) + '</div>'; }
+
+  function skGateHtml(t) {
+    if (t.ready) {
+      return note('ok', 'Every candidate has a mark or an ABS &mdash; you may attest',
+        'Attesting is a signature. It says these are the marks you awarded, and it starts the chain that ends at Senate. ' +
+        'The sheet locks on attestation: a correction afterwards is a new version carrying a reason, never an overwrite, ' +
+        'so nothing you enter here can quietly change later.',
+        btn('go', 'Submit and attest', ' data-sk="submit"'));
+    }
+    return note('bad',
+      (t.left ? t.left + ' candidate' + (t.left === 1 ? '' : 's') + ' still without a mark' : '') +
+      (t.left && t.bad ? ', and ' : '') +
+      (t.bad ? t.bad + ' entr' + (t.bad === 1 ? 'y' : 'ies') + ' out of range' : ''),
+      (t.bad ? 'An entry outside its range is shown in red with the maximum named. ' : '') +
+      (t.left ? 'A blank row is not a nil return &mdash; it is an unanswered question about a named candidate, ' +
+                'and the sheet cannot say whether she sat and scored nothing or did not sit at all. ' +
+                'Enter the score, or mark her <b>absent</b>: an absence is not a zero, and the two produce ' +
+                'different grades, different carryover eligibility and a different conversation at the Board.' : ''),
+      btn('urgent', 'Go to the first one', ' data-sk="first"') + ' ' +
+      btn('ghost', 'Show only those outstanding', ' data-sk="onlybtn"'));
+  }
+
+  /* ── the keyboard: down a column, not across a row ───────────── */
+  function skStep(el, dir) {
+    var which = el.getAttribute("data-mk").split(":")[1];
+    var col = [].slice.call(document.querySelectorAll('[data-mk]')).filter(function (x) {
+      return x.getAttribute("data-mk").split(":")[1] === which;
+    });
+    var next = col[col.indexOf(el) + dir];
+    if (next) { next.focus(); next.select(); next.scrollIntoView({ block: "nearest" }); }
+  }
+
+  /* ── jump to the first candidate still needing an entry ───────── */
+  function skFirst() {
+    var roll = courseRoll(sheetNow().code);
+    for (var i = 0; i < roll.length; i++) {
+      var c = skCalc(skGet(roll[i].m));
+      if (!c.done || c.err) {
+        var el = document.querySelector('[data-mk="' + roll[i].m + ':' +
+          (c.err === "ex" ? "ex" : "ca") + '"]');
+        if (el) { el.scrollIntoView({ block: "center" }); el.focus(); el.select(); return; }
+      }
+    }
+  }

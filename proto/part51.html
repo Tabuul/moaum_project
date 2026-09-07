@@ -1,0 +1,442 @@
+
+  /* ══ PROCESSES ══════════════════════════════════════════════════════
+     Eleven of the twenty-nine modules let a reader carry a case from
+     start to finish. Five have no process to carry — a gateway posture,
+     a retention schedule, a delivery pipeline — and inventing one for
+     them would be dishonest. Twelve had a real University process and
+     showed only its current state.
+
+     A screen that shows a queue teaches what the office is looking at.
+     A screen you can advance teaches what the office DOES, and — far
+     more usefully — what it cannot do and why. Every process below
+     carries at least one gate that refuses, because the refusals are
+     the design.
+
+     One state machine, configured twelve times, for the same reason
+     there is one act dispatcher: twelve bespoke ones drift apart, and
+     the thirteenth is written differently again by whoever comes next.
+
+     A stage carries four things and no more:
+
+       who    the office that acts. Never "the system"
+       what   what happens when it does
+       gate   what must be true first, and what to say if it is not
+       ref    the invariant or rule the gate rests on
+
+     Advancing writes to the same session record as every other act, so
+     a reader who walks three processes can see all three in one list
+     with their own name against them.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var FLOWS = {
+
+    /* ── IAM ─────────────────────────────────────────────────────── */
+    "t/users": {
+      code: "IAM", title: "Putting a person into an office",
+      why: "An office is <b>added</b> to a person and never substituted for one, so this process ends with a " +
+           "menu that has grown rather than changed. It cannot start from this screen: an office rests on an " +
+           "instrument, and the instrument is issued by Human Resource Management.",
+      stages: [
+        ["Movement approved", "Council, on the Vice-Chancellor's minute",
+         "Dr. I. O. Ogwuche is appointed Head of Department with effect from 1 October."],
+        ["Instrument issued", "Director of Human Resource Management",
+         "The letter is written and its reference recorded. <b>Approved is not implemented</b> until this happens.",
+         "There is no letter yet, so there is no office",
+         "The portal refuses an office assignment citing no instrument. It is not a screen restriction &mdash; " +
+         "<code>office_assignment.instrument</code> is NOT NULL and the database refuses the row. Issue the letter " +
+         "on the staff movement screen and this releases.", "I-IAM-9"],
+        ["Grant created", "Registrar",
+         "A row with a start date, an end date if it is acting, the instrument, and who granted it."],
+        ["The person's menu grows", "Automatically, on the next sign-in",
+         "She keeps her course allocations, her score sheets and her teaching timetable, and gains a departmental " +
+         "menu on top. Nothing is taken away."],
+        ["Segregation still holds", "The database, on every act",
+         "She may now approve results as Head of Department &mdash; except on a set she entered herself. BR-006 is " +
+         "keyed on the person, so the second office does not release it."]
+      ]
+    },
+
+    /* ── PAY ─────────────────────────────────────────────────────── */
+    "t/payroll": {
+      code: "PAY", title: "Committing a payroll run",
+      why: "A payroll run is committed once and paid once. Every check below happens <b>before</b> commitment, " +
+           "because a wrong payment is recovered from a person's salary and that is a conversation nobody wins.",
+      stages: [
+        ["Run prepared", "Payroll desk, Bursary",
+         "2,714 staff, &#8358;418m gross. Drawn from the establishment rather than from last month's file."],
+        ["Establishment reconciled", "The portal, against HR",
+         "2,714 on the payroll match 2,714 active appointments. A payroll larger than the establishment is the " +
+         "oldest fraud there is."],
+        ["Anomalies cleared", "Payroll desk, then the Bursar",
+         "Three outstanding: two staff sharing a bank account, one separated member of staff still on the register.",
+         "The run cannot be committed with three anomalies open",
+         "Each must be cleared or explained by name. A duplicate account is either an error or a fraud and the " +
+         "run does not proceed until somebody has said which &mdash; that is what a pre-commitment check is for.",
+         "FR-PAY-004"],
+        ["Maker&ndash;checker sign-off", "The Bursar, who did not prepare it",
+         "The person who prepared a run may not commit it. The same constraint as on a mark and on a voucher, " +
+         "keyed on the person."],
+        ["Committed", "Bursary, once",
+         "Bank schedule and statutory remittance schedule generated together. The run is closed and a correction " +
+         "is a supplementary run with its own record, never an edit."]
+      ]
+    },
+
+    /* ── PRC ─────────────────────────────────────────────────────── */
+    "t/tenders": {
+      code: "PRC", title: "From requisition to goods received",
+      why: "The Public Procurement Act sets the thresholds and this follows them. What the portal adds is " +
+           "<b>commitment accounting</b>: the budget is reduced when the order is placed, not when it is paid.",
+      stages: [
+        ["Requisition raised", "The requesting unit",
+         "Laboratory equipment, &#8358;96m. The budget line is reduced at commitment, so the next requisition sees " +
+         "the money already spoken for."],
+        ["Threshold determined", "Procurement",
+         "&#8358;96m is above the Vice-Chancellor's approval limit and goes to Council. The threshold is data, not a " +
+         "convention, so it cannot be misremembered."],
+        ["Advertised and bids received", "Procurement",
+         "Three bids. Bids are sealed until the opening date and the opening is minuted."],
+        ["Evaluated", "The Tenders Board",
+         "Against criteria fixed when the tender was advertised.",
+         "The evaluation criteria cannot be changed now",
+         "They were published with the advertisement. A criterion added after bids are opened is a criterion " +
+         "chosen to fit a bidder, and the portal holds the published version to compare against.", "FR-PRC-005"],
+        ["Awarded and ordered", "Council resolution, then Procurement",
+         "The purchase order cites the resolution. A payment voucher later cites the order."],
+        ["Goods received", "Stores, against the order",
+         "A goods received note signed by somebody who is not the person who ordered. It is the sixth of the nine " +
+         "checks on the voucher that pays for this."]
+      ]
+    },
+
+    /* ── LIB ─────────────────────────────────────────────────────── */
+    "t/circulation": {
+      code: "LIB", title: "A loan, from issue to clearance",
+      why: "The Library's clearance item is the one that most often blocks a transcript, so the loan and the " +
+           "clearance are one process rather than two systems that have to be reconciled.",
+      stages: [
+        ["Issued", "Circulation desk, on the card",
+         "The borrower number is on the card and belongs to the person, so a replacement card does not break " +
+         "the loan history."],
+        ["Due", "Automatically, at the loan period",
+         "A reminder three days before, once. Students are not reminded daily; a daily reminder is filtered."],
+        ["Overdue", "Automatically",
+         "A fine accrues per day to a ceiling. The ceiling matters: an unbounded fine is one nobody ever pays, " +
+         "so the book never comes back."],
+        ["Clearance item raised", "Automatically, at 30 days",
+         "It appears against the student in every office that asks the clearance service.",
+         "The transcript cannot be released while this stands",
+         "Clearance is answered live by the module that owns the item, never cached. Two books outstanding is " +
+         "two books outstanding until the Library records the return, and no other office can clear it.", "BR-001"],
+        ["Returned and cleared", "Circulation desk",
+         "The fine is invoiced through Finance rather than taken at the desk, so the money is on the ledger. " +
+         "The clearance releases at once and the transcript unblocks with no second request."]
+      ]
+    },
+
+    /* ── LMS ─────────────────────────────────────────────────────── */
+    "t/lms": {
+      code: "LMS", title: "An assignment, from set to score sheet",
+      why: "Continuous assessment enters the score sheet as a <b>total</b> rather than as individual assignments, " +
+           "because the score sheet is the record of account and the Board approves totals.",
+      stages: [
+        ["Set", "The lecturer",
+         "Visible to the roll &mdash; which includes the eighteen borrowed candidates and excludes anyone who dropped."],
+        ["Submitted", "Students, until the deadline",
+         "41 of 44. The three outstanding are named rather than reported as a percentage."],
+        ["Deadline passed", "Automatically",
+         "A late submission is accepted as a late submission with its own record. The deadline is not quietly " +
+         "extended, because an extension nobody announced is an extension only some students knew about."],
+        ["Marked", "The lecturer",
+         "Marks here are the CA component and are not the sheet."],
+        ["Promoted to the sheet", "The lecturer, deliberately",
+         "44 totals written to the score sheet.",
+         "It cannot be promoted while three are unmarked",
+         "A CA total computed over 41 of 44 gives three students a total that is not theirs. Mark them or record " +
+         "them absent &mdash; and ABS is not zero.", "I-RES-14"]
+      ]
+    },
+
+    /* ── MED ─────────────────────────────────────────────────────── */
+    "t/clinic": {
+      code: "MED", title: "A clinic visit, and what leaves the clinic",
+      why: "Almost nothing leaves. The value of this process is what it <b>refuses</b> to send: the University " +
+           "learns that a student attended and, with consent, that they are fit. Never why.",
+      stages: [
+        ["Presentation", "Front desk",
+         "Identified by the identity card. The card reader does not open the clinical record."],
+        ["Triage", "Nurse",
+         "Priority, not diagnosis. Triage is what decides the order of the queue and is visible to the desk."],
+        ["Seen", "Clinician",
+         "The clinical record is written and is visible to the clinician and to nobody else &mdash; not to the " +
+         "Registry, not to the Dean, not to the Directorate of ICT."],
+        ["Outcome recorded", "Clinician",
+         "Attendance leaves the module. A diagnosis does not.",
+         "A fitness statement needs the student's consent",
+         "A statement that a student is fit to sit an examination is health information about a named person " +
+         "leaving a clinical record. The Nigeria Data Protection Act 2023 requires a lawful basis, and here that " +
+         "basis is the student's consent, recorded with the statement.", "NFR-CMP-001"],
+        ["Released, with consent", "The student decides",
+         "The Examinations Officer receives &ldquo;fit to sit&rdquo; and a date. Nothing else."]
+      ]
+    },
+
+    /* ── RSH ─────────────────────────────────────────────────────── */
+    "t/ethics": {
+      code: "RSH", title: "From proposal to open deposit",
+      why: "The deposit at the end is half of the University's Webometrics position. A project that ends at " +
+           "publication and not at deposit has produced a citation somebody else's repository collects.",
+      stages: [
+        ["Proposal registered", "Principal investigator",
+         "With the funder, the budget and whether human or animal subjects are involved."],
+        ["Ethics review", "The Ethics Committee",
+         "Sitting monthly. A project involving human subjects does not start before it.",
+         "Fieldwork cannot begin without the approval reference",
+         "Data collected before approval cannot be used and cannot be made lawful afterwards. The approval " +
+         "reference is required on every subsequent step, which is what stops it being obtained retrospectively.",
+         "FR-RSH-003"],
+        ["Approved", "The Ethics Committee, with a reference",
+         "Valid for the stated period and for the stated protocol. A change of protocol is a fresh review."],
+        ["Grant account opened", "Bursary, against the reference",
+         "Expenditure is on the project's own line and reports to the funder from the ledger rather than from a " +
+         "spreadsheet kept beside it."],
+        ["Deposited", "The repository, on publication",
+         "Full text under an open licence, with the Google Scholar citation tags, harvestable by OAI-PMH. This " +
+         "is the step that turns research into visibility."]
+      ]
+    },
+
+    /* ── ALM ─────────────────────────────────────────────────────── */
+    "t/alumni": {
+      code: "ALM", title: "An employer verifying a degree",
+      why: "The whole point is that the Registry does not answer it. A verification that consumes an officer's " +
+           "morning is a verification the University does fewer of, and a degree nobody can check is worth less " +
+           "than one anybody can.",
+      stages: [
+        ["Employer enters the code", "Anybody, at moaum.edu.ng/verify",
+         "The code is on the face of the document. No account, no email, no fee."],
+        ["The document is resolved", "The portal",
+         "Certificate number, name, award, class and year, from the record rather than from a copy of it."],
+        ["Both names shown", "The portal",
+         "A degree awarded in 2011 says Benue State University. The verification shows both names and the date " +
+         "of the renaming, because an employer told only the new name concludes the certificate is forged.",
+         "A revoked award will not verify",
+         "Revocation is rare and is a Senate decision. When it happens the code resolves to <b>revoked</b> with " +
+         "the date &mdash; it does not simply fail, because a failure looks like a system fault and invites a " +
+         "phone call to the Registry.", "BR-013"],
+        ["Answered", "Immediately",
+         "The employer has an answer in seconds and the Registry has done nothing."],
+        ["Recorded", "The portal",
+         "That a verification happened, and for which document. Not who asked &mdash; the University has no " +
+         "business building a list of where its alumni apply for work."]
+      ]
+    },
+
+    /* ── NTF ─────────────────────────────────────────────────────── */
+    "t/notify": {
+      code: "NTF", title: "One message, from queue to delivery",
+      why: "1,022 SMS failures last week are 1,022 students who were not told something the University believes " +
+           "it told them. That is the whole reason this module reports failure as loudly as it reports success.",
+      stages: [
+        ["Raised", "Any module, through the outbox",
+         "Written in the same transaction as the thing it announces, so a result is never released without its " +
+         "notification and a notification never announces a result that was rolled back."],
+        ["Queued", "Notification service",
+         "Batched by channel. A student who did six things gets one digest tonight, not six messages now."],
+        ["Sent", "To the gateway",
+         "What is recorded is what the gateway acknowledged and when, never what we hoped."],
+        ["Delivered or failed", "The gateway reports back",
+         "A failure carries a reason: number unreachable, number invalid, rejected by the carrier."],
+        ["Requeued, or referred", "Notification service, then a person",
+         "Unreachable is requeued. Invalid is not.",
+         "An invalid number cannot be requeued",
+         "A number that is not a number will fail again, and again, for as long as it is retried. It is a " +
+         "<b>Registry</b> problem &mdash; the student's record is wrong &mdash; and it is referred there rather than " +
+         "retried here. Separating the two is what stops a requeue running forever.", "FR-NTF-007"]
+      ]
+    },
+
+    /* ── SEC ─────────────────────────────────────────────────────── */
+    "t/security": {
+      code: "SEC", title: "An incident, from detection to closure",
+      why: "A finding owned by &ldquo;ICT&rdquo; is a finding nobody closes. Every stage below has a named person " +
+           "and a date, and the closure records what was actually done rather than that it was handled.",
+      stages: [
+        ["Detected", "Monitoring, or a person",
+         "SEC-2026-041. Detection time is recorded separately from report time, because the gap between them is " +
+         "the number worth reducing."],
+        ["Triaged", "Chief Security Officer, within one hour",
+         "Severity, systems affected, and whether personal data is involved. The third question decides " +
+         "everything that follows."],
+        ["Contained", "Named engineer",
+         "The bridge is disabled. Containment is recorded with who did it, because reversing it later must be a " +
+         "second decision rather than an undo."],
+        ["Assessed for notification", "CSO with the Data Protection Officer",
+         "If personal data was involved, the NDPC must be told within 72 hours.",
+         "The 72-hour clock has started and cannot be paused",
+         "It runs from becoming aware, not from finishing the investigation. Section 40 of the Nigeria Data " +
+         "Protection Act 2023 requires notification within 72 hours; an investigation that is still open is " +
+         "notified as still open.", "NFR-CMP-001"],
+        ["Closed", "CSO, with a finding",
+         "What happened, what was done, what changes so it cannot happen the same way. A closure without the " +
+         "third is an incident waiting to recur."]
+      ]
+    },
+
+    /* ── RBI ─────────────────────────────────────────────────────── */
+    "t/reports": {
+      code: "RBI", title: "A report, from definition to delivery",
+      why: "Reports are the commonest way a system is made slow for everyone. This one runs against a replica " +
+           "and is defined once rather than rebuilt in a spreadsheet each time it is wanted.",
+      stages: [
+        ["Defined", "The office that needs it",
+         "Scope, columns and the period. Defined once and re-run, so two people asking the same question get the " +
+         "same answer."],
+        ["Scope checked", "The portal",
+         "A Dean's report covers a Dean's faculty. The scope ceiling is applied to the definition, not to the " +
+         "output &mdash; filtering after the fact means the rows existed."],
+        ["Queued", "Reporting service",
+         "Against the read replica.",
+         "A heavy report does not run on the primary during registration",
+         "Registration and result release are declared critical windows at 99.9% availability. A report that " +
+         "locks a table for ninety seconds during one of them has taken the portal down for eight thousand " +
+         "students to answer one question that could wait an hour.", "NFR-AVA-001"],
+        ["Run", "Reporting service",
+         "With the scope stamped into the output, so a spreadsheet that reaches somebody else says what it is a " +
+         "list of."],
+        ["Delivered", "To the person who asked",
+         "Notified when ready rather than made to wait on a spinner. Held for seven days and then deleted, " +
+         "because a report of student data left on a server is student data left on a server."]
+      ]
+    },
+
+    /* ── ACR ─────────────────────────────────────────────────────── */
+    "s/carryover": {
+      code: "ACR", title: "A carryover, and what it does to the record",
+      why: "A failed course is not a footnote. It changes what may be registered next session, what the CGPA " +
+           "is, and eventually whether the student continues &mdash; and every one of those is computed rather " +
+           "than decided in an office.",
+      stages: [
+        ["Failed", "Senate approves the result",
+         "GST 301, F. The attempt is on the record permanently; a transcript that shows only passes is not a " +
+         "transcript."],
+        ["Carried", "Automatically, to the next session",
+         "It counts inside the credit maximum rather than beside it, so it reduces what may be added."],
+        ["Re-registered", "The student, with priority",
+         "Carryovers take priority when credits are constrained. A student who cannot fit a carryover in is a " +
+         "student who will not graduate on time.",
+         "It cannot be dropped to make room for a new course",
+         "The whole point of the priority is that it is not the student's choice. Dropping a carryover to fit an " +
+         "elective is how a fourth year discovers a second-year course outstanding.", "I-REG-4"],
+        ["Repeated and passed", "The new result, through the chain",
+         "The new grade replaces the original in the CGPA; both attempts stay visible on the transcript with the " +
+         "superseded one marked."],
+        ["CGPA recomputed", "Automatically",
+         "And with it the classification and whether a probation notice is issued. The system issues the notice; " +
+         "Senate makes the decision."]
+      ]
+    }
+  };
+
+  /* ── the machine ─────────────────────────────────────────────────── */
+
+  function flowAt(route) {
+    if (S.flow[route] === undefined) { S.flow[route] = 0; }
+    return S.flow[route];
+  }
+
+  function flowStage(f, i) {
+    var s = f.stages[i];
+    return { label: s[0], who: s[1], what: s[2], gateTitle: s[3], gateText: s[4], ref: s[5] };
+  }
+
+  function flowMove(route, dir) {
+    var f = FLOWS[route];
+    if (!f) { return; }
+    var at = flowAt(route);
+    if (dir < 0) {
+      if (at === 0) { return; }
+      S.flow[route] = at - 1;
+      actRecord("done", "Stepped back: " + flowStage(f, at - 1).label, route);
+      actSay("ok", "Back to &ldquo;" + flowStage(f, at - 1).label + "&rdquo;",
+        "A process can be walked backwards here because it is a demonstration. In the running system a stage is " +
+        "left by an act, and going back is a different act with its own record &mdash; never an undo.");
+      render();
+      return;
+    }
+    var cur = flowStage(f, at);
+    /* the gate belongs to the stage being left, and it is checked once */
+    if (cur.gateTitle && !S.flowPast[route + ":" + at]) {
+      S.flowPast[route + ":" + at] = true;
+      actRecord("refused", cur.gateTitle, route);
+      actSay("bad", cur.gateTitle, cur.gateText +
+        (cur.ref ? ' <span class="tst__ref">' + cur.ref + '</span>' : ""));
+      render();
+      return;
+    }
+    if (at >= f.stages.length - 1) {
+      /* The last stage has to be completable rather than merely reached,
+         or a gate placed on it can never fire — which is exactly what
+         happened to LMS and NTF, whose gates are on their final stage.
+         Reaching a stage and finishing it are two different things. */
+      S.flowDone[route] = true;
+      actRecord("done", f.title + " &mdash; complete", route);
+      actSay("ok", "The process is complete",
+        "Every stage carried its own actor and its own record. Press <b>Start again</b> to walk it from the " +
+        "beginning, including the refusal.");
+      render();
+      return;
+    }
+    S.flow[route] = at + 1;
+    var nx = flowStage(f, at + 1);
+    actRecord("done", "Advanced to: " + nx.label, route);
+    actSay("ok", nx.label, "<b>" + nx.who + "</b> &mdash; " + nx.what);
+    render();
+  }
+
+  function flowReset(route) {
+    var f = FLOWS[route], i;
+    S.flow[route] = 0;
+    S.flowDone[route] = false;
+    for (i = 0; i < f.stages.length; i++) { S.flowPast[route + ":" + i] = false; }
+    actRecord("done", f.title + " &mdash; started again", route);
+    actSay("ok", "Back to the first stage", "Including the gate, so the refusal can be seen again.");
+    render();
+  }
+
+  /* ── the panel ───────────────────────────────────────────────────── */
+
+  function flowPanel(route) {
+    var f = FLOWS[route];
+    if (!f) { return ""; }
+    var at = flowAt(route), cur = flowStage(f, at);
+    var last = at === f.stages.length - 1 && S.flowDone[route];
+
+    return panel('The process, end to end',
+      '<span class="sub2"><code>' + f.code + '</code> &middot; stage ' + (at + 1) + ' of ' + f.stages.length + '</span>',
+      pbody(
+        '<div class="sub2" style="padding-bottom:11px;max-width:80ch">' + f.why + '</div>' +
+
+        '<ol class="flw">' + f.stages.map(function (s, i) {
+          var st = i < at ? "done" : i === at ? "now" : "todo";
+          var g = s[3];
+          return '<li class="flw__s is-' + st + '">' +
+            '<span class="flw__n">' + (i < at ? tick(13, "#fff") : (i + 1)) + '</span>' +
+            '<span class="flw__t"><b>' + s[0] + '</b>' +
+              '<span class="flw__w">' + s[1] + '</span>' +
+              (i === at ? '<span class="flw__x">' + s[2] + '</span>' : "") +
+              (g ? '<span class="flw__g">' + ico('alert', 13, 'var(--red-ink)', 2) +
+                   ' Gate: ' + g + (s[5] ? ' &middot; <b>' + s[5] + '</b>' : "") + '</span>' : "") +
+            '</span></li>';
+        }).join("") + '</ol>' +
+
+        '<div class="flw__acts">' +
+          (last
+            ? btn('ghost', 'Start again', ' data-flw="reset"')
+            : btn('primary', at === f.stages.length - 1
+                ? 'Complete &mdash; ' + cur.label
+                : 'Advance &mdash; ' + flowStage(f, at + 1).label, ' data-flw="fwd"')) +
+          (at ? btn('ghost', 'Step back', ' data-flw="back"') : "") +
+          '<span class="sub2">Every advance is written to the session record with your name and office.</span>' +
+        '</div>'));
+  }

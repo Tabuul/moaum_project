@@ -1,0 +1,404 @@
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var CREST = "__CREST__";
+
+  // Demo state. Paying the outstanding balance unblocks registration, so the
+  // BR-001 clearance gate can be walked end to end.
+  var S = {
+    role: null,            // 'student' | 'staff' | 'applicant'
+    ws: "teaching",        // staff workspace
+    route: "login",
+    feesPaid: false,
+    electives: ["CSC 341", "CSC 355"],
+    absentSet: false,
+    course: "CSC 311",      /* the course whose sheet is open */
+    marks: {},              /* course code -> matric -> { ca, ex, abs } */
+    sheetOnly: false,       /* show only the students still outstanding */
+    sheetDone: false,       /* the sheet has been submitted and attested */
+    marksSeeded: {},        /* course code -> the roll has been seeded once */
+    bulk: { step: 1, report: null, cols: null, file: "", err: "" },   /* the bulk upload flow */
+    hr: { open: "", issued: {} },      /* Human Resource Management */
+    hs: { drawn: false, runs: 0, alt: false, hours: 0 },  /* Hostel and accommodation */
+    pv: { certified: false },          /* the payment voucher on the desk */
+    acts: [], toast: null,             /* the session record, and the last outcome */
+    flow: {}, flowPast: {}, flowDone: {},   /* where each module process has been walked to */
+    navOpen: false,
+    ap: { stage: 5 },
+    matRun: false, matList: false,
+    /* the JAMB intake: which list is in hand, what has been worked, what
+       has been committed. Two lists, tracked separately, because they
+       arrive weeks apart and one may be the record while the other is not. */
+    capsList: "utme", capsBusy: null,
+    capsEdit: null, capsRefused: "", capsDraft: null,
+    /* the three other JAMB downloads, each matched on the registration number */
+    cdTab: "pas", pas: null, pasBusy: false,
+    dob: null, dobErr: "", ol: null, olErr: "",
+    tq: {},                               /* the search on each table, by id */
+    navSlim: false,                       /* the sidebar, collapsed to a rail */
+    /* Post-UTME registration. state: idle | nolist | none | found —
+       the form is the number alone until it is 'found'. */
+    adm: null,                            /* the session's admission settings */
+    reg: { num: "", state: "idle", cand: null,
+           email: "", phone: "", pw: "", pw2: "", show: false,
+           /* one error per field, shown under that field */
+           err: { email: "", phone: "", pw: "", pw2: "" } },                       /* {kind:'prog'|'row', key} while editing */
+    capsProgEdit: {},                     /* code -> the University's amended record */
+    capsRowFix: {},                       /* regno -> a correction, never an overwrite */
+    capsFile: { utme: null, de: null },   /* what was chosen, and whether it read */
+    capsData: { utme: null, de: null },   /* the rows, once it did */
+    capsWorked: {}, capsCommitted: { utme: false, de: false },
+    rs: { stage: 3, actor: "dean", returned: false },
+    px: { step: 0 },
+    doc: null, docFile: "", srole: "lecturer", gw: "paystack", scope: "institution", net: "on",
+    q: "", qkind: "all",
+    pg: {},                 /* table key -> page index */
+    navg: {},               /* nav group -> open, once the user has said so */
+    ex: null, exMsg: "",    /* the export sheet */
+    idc: { scan: "" },     /* the card reader at the gate */
+    ch: "sms",             /* the notification channel being configured */
+    mdl: { kind: null, step: 0, of: "" },   /* the modal on top, if any */
+    rp: { at: 3, senate: false, open: "", pos: {}, by: {}, acted: {}, msg: "", msg2: "" },
+    cfg: { section: "structure" },  /* the Super Administrator console */
+    bio: { section: "identity", asked: false, saved: false },
+    sc: { fac: "", dept: "", prog: "", level: "", course: "", sem: "", session: "2026/2027", view: "students" },
+    cbt: { phase: "brief", q: 0, seen: 0, left: 3600, answers: {}, flagged: [], practice: false },
+    tr: {                    // transcript request
+      stage: "new",          // new | pay | production | verified | issued
+      dest: "institution",
+      hardcopy: false,
+      express: false,
+      copies: 1,
+      raisedOn: "5 September 2026",
+      day: 2
+    }
+  };
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  /* esc() is declared once, in the export module (part24), and escapes
+     quotes as well as angle brackets — it is the stronger of the two
+     that used to exist here. */
+
+  /* ── icons ───────────────────────────────────────────────────────── */
+  var I = {
+    home:  '<path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-8.5Z"/>',
+    book:  '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h4"/>',
+    card:  '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',
+    cap:   '<path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.5"/>',
+    doc:   '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/>',
+    user:  '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/>',
+    check: '<path d="M4 12.5 9.5 18 20 6.5"/>',
+    swap:  '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+    chart: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
+    alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5.5l3.5 2"/>',
+    print: '<path d="M7 9V4h10v5M7 18H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 15h10v6H7z"/>',
+    cal:   '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    bell:  '<path d="M18 15V10a6 6 0 1 0-12 0v5l-2 3h16l-2-3Z"/><path d="M10 21h4"/>',
+    bed:   '<path d="M3 19v-9h13a4 4 0 0 1 4 4v5M3 14h17M3 10V7"/>',
+    heart: '<path d="M12 20s-7-4.6-7-9.5A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.5C19 15.4 12 20 12 20Z"/>',
+    life:  '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.6"/><path d="m5.6 5.6 3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/>',
+    box:   '<path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5v-7Z"/><path d="m3 8.5 9 4.5 9-4.5M12 13v7"/>',
+    flask: '<path d="M9 3h6M10.5 3v6L5 19a1.6 1.6 0 0 0 1.4 2.4h11.2A1.6 1.6 0 0 0 19 19l-5.5-10V3"/>',
+    shield:'<path d="M12 3 4 6v6c0 5 3.4 8.3 8 9.3 4.6-1 8-4.3 8-9.3V6l-8-3Z"/>',
+    server:'<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
+    scale: '<path d="M12 4v16M7 20h10M6 8h12M6 8l-3 6h6l-3-6Zm12 0-3 6h6l-3-6Z"/>'
+  };
+  function ico(name, size, stroke, w) {
+    return '<svg width="' + (size || 17) + '" height="' + (size || 17) + '" viewBox="0 0 24 24" fill="none" stroke="' +
+      (stroke || "currentColor") + '" stroke-width="' + (w || 1.9) + '" stroke-linecap="round" stroke-linejoin="round">' + (I[name] || I.doc) + "</svg>";
+  }
+  function tick(size, colour) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="' + colour +
+      '" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>';
+  }
+  function warnIcon(size) {
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="var(--red-ink)" stroke-width="2.2">' +
+      '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5" stroke-linecap="round"/><circle cx="12" cy="16.2" r=".8" fill="var(--red-ink)"/></svg>';
+  }
+
+  /* ── student and applicant menus ─────────────────────────────────── */
+  var MENUS = {
+    student: {
+      label: "Student", who: "ADAMU, Grace Mwuese", sub: "MOAUM/CSC/23/1487", initials: "GA",
+      groups: [
+        { name: "Academic", items: [
+          { id: "s/dashboard", icon: "home", label: "Dashboard" },
+          { id: "s/register", icon: "book", label: "Course registration" },
+          { id: "s/results", icon: "cap", label: "Results" },
+          { id: "s/query", icon: "alert", label: "Result query" },
+          { id: "s/carryover", icon: "swap", label: "Carryover", badge: "3" },
+          { id: "s/transcript", icon: "doc", label: "Transcript" }
+        ]},
+        { name: "Learning", items: [
+          { id: "s/courses", icon: "book", label: "My courses" },
+          { id: "s/timetable", icon: "cal", label: "Timetable" },
+          { id: "s/attendance", icon: "check", label: "Attendance", badge: "!" },
+          { id: "s/exams", icon: "cap", label: "Examinations" }
+        ]},
+        { name: "Services", items: [
+          { id: "s/fees", icon: "card", label: "Fees & payments" },
+          { id: "s/wallet", icon: "swap", label: "NELFUND wallet" },
+          { id: "s/hostel", icon: "bed", label: "Hostel" },
+          { id: "s/library", icon: "book", label: "Library", badge: "1" },
+          { id: "s/idcard", icon: "user", label: "Identity card" },
+          { id: "s/health", icon: "heart", label: "Health" },
+          { id: "s/support", icon: "life", label: "Help & requests" }
+        ]},
+        { name: "Account", items: [
+          { id: "s/profile", icon: "user", label: "Profile" },
+          { id: "s/biodata", icon: "doc", label: "Biodata", badge: "!" },
+          { id: "s/notifications", icon: "bell", label: "Notifications", badge: "5" }
+        ]}
+      ]
+    },
+    applicant: {
+      label: "Applicant", who: "OCHANYA, Faith A.", sub: "APP/2026/018342", initials: "FO",
+      groups: [
+        { name: "My application", items: [
+          { id: "a/dashboard", icon: "home", label: "Overview" },
+          { id: "a/apply", icon: "doc", label: "Application form" },
+          { id: "a/fee", icon: "card", label: "Application fee" }
+        ]},
+        { name: "Screening", items: [
+          { id: "a/screening", icon: "print", label: "Screening slip" },
+          { id: "a/score", icon: "chart", label: "Screening result" }
+        ]},
+        { name: "Admission", items: [
+          { id: "a/status", icon: "cap", label: "Admission status" },
+          { id: "a/accept", icon: "check", label: "Accept your offer" },
+          { id: "a/clearance", icon: "shield", label: "Document clearance" },
+          { id: "a/matric", icon: "user", label: "Matriculation" }
+        ]}
+      ]
+    }
+  };
+
+  /* ── staff workspaces — one per functional area ──────────────────── */
+  var WS = {
+    teaching:   { label: "Teaching", unit: "Computer Science", items: [
+      { id: "t/dashboard", icon: "home", label: "Dashboard" },
+      { id: "t/lms", icon: "book", label: "Course spaces" },
+      { id: "t/scores", icon: "doc", label: "Score sheets", badge: "1" },
+      { id: "t/cbtbank", icon: "flask", label: "Question bank" },
+      { id: "t/exams", icon: "cap", label: "Examinations", badge: "!" }
+    ]},
+    approvals:  { label: "Approvals", unit: "Faculty Board", items: [
+      { id: "t/approvals", icon: "check", label: "Result approvals", badge: "7" },
+      { id: "t/chain", icon: "doc", label: "Approval chain" }
+    ]},
+    registry:   { label: "Registry", unit: "Student records", items: [
+      { id: "t/students", icon: "user", label: "Students" },
+      { id: "t/admissions", icon: "cap", label: "Admissions" },
+      { id: "t/transcripts", icon: "doc", label: "Transcripts", badge: "9" },
+      { id: "t/certificates", icon: "doc", label: "Certificates" },
+      { id: "t/graduation", icon: "cap", label: "Graduation", badge: "38" }
+    ]},
+    bursary:    { label: "Bursary", unit: "Finance", items: [
+      { id: "t/feesched", icon: "card", label: "Fee schedules" },
+      { id: "t/reconcile", icon: "swap", label: "Reconciliation", badge: "12" },
+      { id: "t/exception", icon: "alert", label: "Payment investigation", badge: "!" },
+      { id: "t/refunds", icon: "swap", label: "Refunds & credits" },
+      { id: "t/payroll", icon: "card", label: "Payroll", badge: "3" },
+      { id: "t/budget", icon: "chart", label: "Budget" }
+    ]},
+    hr:         { label: "Human Resources", unit: "Establishment", items: [
+      { id: "t/staff", icon: "user", label: "Staff records" },
+      { id: "t/recruit", icon: "doc", label: "Recruitment" },
+      { id: "t/leave", icon: "cal", label: "Leave", badge: "6" },
+      { id: "t/appraisal", icon: "check", label: "Appraisal & promotion" }
+    ]},
+    procurement:{ label: "Procurement", unit: "Stores & assets", items: [
+      { id: "t/requisitions", icon: "doc", label: "Requisitions", badge: "1" },
+      { id: "t/tenders", icon: "scale", label: "Tenders" },
+      { id: "t/stores", icon: "box", label: "Stores & assets", badge: "37" }
+    ]},
+    library:    { label: "Library", unit: "Circulation", items: [
+      { id: "t/circulation", icon: "book", label: "Circulation & clearance" }
+    ]},
+    health:     { label: "Health Services", unit: "University clinic", items: [
+      { id: "t/clinic", icon: "heart", label: "Clinic", badge: "11" }
+    ]},
+    research:   { label: "Research", unit: "Grants & ethics", items: [
+      { id: "t/projects", icon: "flask", label: "Projects & grants", badge: "7" },
+      { id: "t/ethics", icon: "shield", label: "Ethics & repository" }
+    ]},
+    alumni:     { label: "Alumni Relations", unit: "Engagement", items: [
+      { id: "t/alumni", icon: "cap", label: "Alumni register" }
+    ]},
+    ict:        { label: "ICT — Service & Governance", unit: "Directorate of ICT", items: [
+      { id: "t/users", icon: "user", label: "Users & roles", badge: "1" },
+      { id: "t/audit", icon: "shield", label: "Audit trail" },
+      { id: "t/security", icon: "shield", label: "Security posture", badge: "!" },
+      { id: "t/notify", icon: "bell", label: "Notifications", badge: "!" },
+      { id: "t/governance", icon: "scale", label: "Data governance", badge: "2" }
+    ]},
+    platform:   { label: "Platform Engineering", unit: "Directorate of ICT", items: [
+      { id: "t/platform", icon: "server", label: "Platform & integrations", badge: "!" },
+      { id: "t/api", icon: "swap", label: "API management", badge: "2" },
+      { id: "t/release", icon: "box", label: "Release pipeline" },
+      { id: "t/dr", icon: "life", label: "Disaster recovery" },
+      { id: "t/cloud", icon: "chart", label: "Cloud readiness" }
+    ]},
+    management: { label: "Management", unit: "Vice-Chancellor", items: [
+      { id: "t/overview", icon: "home", label: "Institutional overview" },
+      { id: "t/reports", icon: "chart", label: "Reports & returns" }
+    ]}
+  };
+
+  // which workspace a staff route belongs to
+  var ROUTE_WS = {};
+  Object.keys(WS).forEach(function (k) {
+    WS[k].items.forEach(function (it) { ROUTE_WS[it.id] = k; });
+  });
+
+  var TITLES = {
+    "s/dashboard":    ["Dashboard", "2026/2027 session · First semester"],
+    "s/register":     ["Course registration", "300 Level · First semester"],
+    "s/results":      ["Results", "Published semesters"],
+    "s/slip":         ["Semester result", "2025/2026 · Second semester"],
+    "s/form":         ["Course form", "Approved 15 September 2026"],
+    "s/fees":         ["Fees &amp; payments", "2026/2027 session"],
+    "s/wallet":       ["NELFUND wallet", "Money the Fund has paid on your behalf"],
+    "s/pay":          ["Payment", "Instalment 2 · school fees"],
+    "s/receipt":      ["Payment receipt", ""],
+    "s/transcript":   ["Transcript", "Request an official copy"],
+    "s/profile":      ["Profile", "Your record with the University"],
+    "s/courses":      ["My courses", "2026/2027 · First semester"],
+    "s/timetable":    ["Timetable", "Week 3 of 15"],
+    "s/attendance":   ["Attendance", "Recorded at each lecture"],
+    "s/exams":        ["Examinations", "December 2026 · computer-based"],
+    "s/hostel":       ["Hostel", "Akpehe Hall · 2026/2027"],
+    "t/hostel":       ["Hostel and accommodation", "Priority by rule, the rest by a ballot anyone can re-run"],
+    "t/pv":          ["Payment voucher", "PV/2026/1892 &middot; Expenditure and Control"],
+    "t/hanging":     ["Hanging payments", "Successful at the gateway, pending here"],
+    "t/cashdesk":    ["Cash office and final account", "Revenue received, and the assets extracted from it"],
+    "t/nelstatus":   ["NELFUND applicants", "Approved, not approved, and still with the Fund"],
+    "t/feesetup":    ["Fee setup", "Seven dimensions, and two payments it refuses"],
+    "t/acts":        ["Session record", "What you have done, and what was refused"],
+    "s/library":      ["Library", "Loans, fines and the catalogue"],
+    "s/idcard":       ["Identity card", "Issued 18 September 2026 &middot; valid to 31 October 2027"],
+    "s/query":        ["Result query", "One mark, one course, answered on the record"],
+    "s/carryover":    ["Carryover", "What must be repeated, and when it is next offered"],
+    "t/idcards":      ["Identity cards", "Printed by the Library, handed over by Security"],
+    "t/idverify":     ["Verify a card", "One scan, one answer"],
+    "t/idlost":       ["Lost &amp; replacement", "A reported card stops at every reader"],
+    "t/pipeline":     ["Result pipeline", "Student to transcript, in ten stages"],
+    "t/resultdesk":   ["Result desk", "The stage this office holds"],
+    "t/review":       ["Result set", "Read it, then decide"],
+    "t/broadsheet":   ["Broadsheet", "Computed from approved sets, never typed"],
+    "t/senate":       ["Senate", "Nothing is published without a minute"],
+    "t/publish":      ["Publication", "The embargo lives in the data"],
+    "t/examsession":  ["Examination sessions", "The container everything hangs in"],
+    "t/examsrec":     ["Exams &amp; Records", "Where a mark becomes a credential"],
+    "t/mgmt":         ["Management dashboard", "Read everything, approve what this seat holds"],
+    "t/setup":        ["Setup console", "The University as data"],
+    "t/overview":     ["Institutional overview", "The session so far, in charts"],
+    "t/channels":     ["Notification channels", "SMS, e-mail, WhatsApp and push"],
+    "t/migration":    ["Data migration", "From the old portal into this one"],
+    "t/session":      ["Session &amp; semester setup", "The calendar everything else hangs on"],
+    "t/deptcourses":  ["Department courses", "The department owns them, and creates them"],
+    "s/health":       ["Health", "University Health Services"],
+    "s/support":      ["Help &amp; requests", "Ask an office for help"],
+    "t/search":       ["Search", "Find one record"],
+    "t/records":      ["Records &amp; queries", "One scope across every list"],
+    "s/biodata":      ["Biodata", "Your record, in full"],
+    "t/biochange":    ["Biodata changes", "Requests that need evidence"],
+    "s/cbt":          ["Examination", "CSC 311 · Algorithms &amp; Complexity"],
+    "s/notifications":["Notifications", "Messages from the University"],
+
+    "t/dashboard":    ["Dashboard", "Faculty of Science · First semester"],
+    "t/lms":          ["Course spaces", "Materials, assignments and engagement"],
+    "t/scores":       ["Score sheets", "Courses assigned to you"],
+    "t/sheet":        ["CSC 311 — Algorithms &amp; Complexity", "3 credit units · every registered candidate, all programmes"],
+    "t/bulk":         ["Upload results in bulk", "Download the template, fill it, upload it — checked before anything is written"],
+    "t/hrm":          ["Staff movements", "Seventeen processes, one workflow &mdash; and the instrument every office cites"],
+    "t/movement":     ["Movement", "Approved is not implemented until the letter exists"],
+    "t/housing":      ["Housing, welfare and passages", "Entitlement is verified before the committee sits"],
+    "t/eligibility":  ["Who may register CSC 311", "The eligible set, assigned when the course was created"],
+    "t/matriculation": ["Matriculation", "2026/2027 · numbers issued over the confirmed register"],
+    "t/matlist":      ["Students registered in this faculty", "The list the Academic Office matriculates from"],
+    "t/college":      ["College of Health Sciences", "A separate system, and the seam between the two"],
+    "t/prepayment":   ["Payment vouchers", "Pre-payment audit · Bursary raises, Audit clears, Bursary pays"],
+    "t/auditrevenue": ["Revenue and student income", "Academic Office, portal and Bursary in one answer"],
+    "t/auditpayroll": ["Payroll variance", "October against September, explained by staff movements"],
+    "t/auditstaff":   ["Staff movements", "Seventeen HR processes, and what each does to the payroll"],
+    "t/auditassets":  ["Assets register", "With the date each was last physically verified"],
+    "t/cbtbank":      ["Question bank", "CSC 311 · authoring and blueprints"],
+    "t/exams":        ["Examinations", "Live sessions and invigilation"],
+    "t/gateways":     ["Payment gateways", "Providers, keys, routing and webhooks"],
+    "t/ledger":       ["Transactions &amp; accounts", "Payment history and the ledger"],
+    "t/clearance":    ["Clearance", "Graduation and registration sign-off"],
+    "r/admin":        ["Administrator", "The whole institution, at one desk"],
+
+    /* The dashboards had no entry here, so eleven screens rendered with an
+       empty heading: nothing named the screen you were on, in the topbar,
+       in the browser's reading order, or to a screen reader. */
+    "r/lecturer":     ["Lecturer dashboard", "Dr. T. Iorpuu &middot; Computer Science &middot; four courses this semester"],
+    "r/hod":          ["Head of Department", "Mathematics &amp; Computer Science &middot; the departmental desk"],
+    "r/dean":         ["Dean", "Faculty of Science &middot; five departments"],
+    "r/exams":        ["Examinations Officer", "B.Sc. Computer Science &middot; verification and the CBT hall"],
+    "r/academic":     ["Academic Affairs", "Registration, credentials and Senate business"],
+    "r/bursar":       ["Bursary", "Collection, payroll and the returns"],
+    "r/registrar":    ["Registry", "Admissions, Council, Senate and data governance"],
+    "r/classlist":    ["Registered students", "Generated now, from approved registrations &mdash; all of them"],
+    "r/allocate":     ["Teaching allocation", "Assigning a lecturer sets the second examiner at the same time"],
+    "r/upload":       ["Upload course material", "CSC 311 &mdash; Algorithms &amp; Complexity"],
+    "r/self":         ["Leave &amp; payslip", "You as an employee of the University"],
+    "t/chain":        ["Approval chain", "CSC 311 · Algorithms &amp; Complexity"],
+    "t/exception":    ["Payment investigation", "Unmatched settlement · teller slip BR/44821"],
+    "t/approvals":    ["Result approvals", "Awaiting Faculty Board"],
+    "t/students":     ["Students", "Registry search"],
+    "t/student":      ["ADAMU, Grace Mwuese", "MOAUM/CSC/23/1487 · 300 Level"],
+    "t/admissions":   ["Admissions", "2026 UTME cycle"],
+    "t/admissionsetup":["Admission settings", "The Central Admissions Committee\u2019s guidelines, made into settings the portal applies"],
+    "t/capsintake":   ["JAMB admission lists", "UTME and Direct Entry \u00b7 downloaded from CAPS, reconciled both ways"],
+    "t/candidatedata":["Passports, dates of birth and O\u2019Level", "The three other JAMB downloads \u00b7 matched on the registration number"],
+    "t/transcripts":  ["Transcript requests", "Exams &amp; Records · production queue"],
+    "t/certificates": ["Certificates", "Convocation 2026"],
+    "t/graduation":   ["Graduation", "Degree audit and Senate list"],
+    "t/feesched":     ["Fee schedules", "Versioned and effective-dated"],
+    "t/nelfund":      ["NELFUND", "Remittances, allocation and suspense"],
+    "t/nelmatch":     ["Unmatched remittances", "Money received that is not yet on a wallet"],
+    "t/reconcile":    ["Settlement reconciliation", "Remita · 4 September 2026"],
+    "t/refunds":      ["Refunds &amp; credits", "Maker–checker controlled"],
+    "t/payroll":      ["Payroll", "September 2026 run"],
+    "t/budget":       ["Budget", "Financial year 2026"],
+    "t/staff":        ["Staff records", "Establishment and appointments"],
+    "t/recruit":      ["Recruitment", "2026 cycle"],
+    "t/leave":        ["Leave", "Requests and balances"],
+    "t/appraisal":    ["Appraisal &amp; promotion", "2026 exercise"],
+    "t/requisitions": ["Requisitions", "Procurement pipeline"],
+    "t/tenders":      ["Tenders", "Evaluation and award"],
+    "t/stores":       ["Stores &amp; assets", "Inventory and fixed assets"],
+    "t/circulation":  ["Circulation &amp; clearance", "University Library"],
+    "t/clinic":       ["Clinic", "University Health Services"],
+    "t/projects":     ["Projects &amp; grants", "Research administration"],
+    "t/ethics":       ["Ethics &amp; repository", "Review and open access"],
+    "t/alumni":       ["Alumni register", "104,882 on record"],
+    "t/users":        ["Users &amp; roles", "Identity and access management"],
+    "t/audit":        ["Audit trail", "Tamper-evident record of every consequential act"],
+    "t/governance":   ["Data governance", "Nigeria Data Protection Act 2023"],
+    "t/platform":     ["Platform &amp; integrations", "Availability, backups, external services"],
+    "t/security":     ["Security posture", "Findings, privileged access, sign-in defence"],
+    "t/notify":       ["Notifications", "Templates, delivery and channel health"],
+    "t/api":          ["API management", "Consumers, keys, endpoints, versioning"],
+    "t/release":      ["Release pipeline", "Build, test, approve, deploy, roll back"],
+    "t/dr":           ["Disaster recovery", "Objectives, drills, runbook, dependencies"],
+    "t/cloud":        ["Cloud readiness", "Portability under NDPA data residency"],
+    "t/overview":     ["Institutional overview", "Data as at 5 September 2026, 06:00"],
+    "t/reports":      ["Reports &amp; returns", "Regulatory and management reporting"],
+
+    "a/dashboard":    ["My application", "UTME 2026/2027 · APP/2026/018342"],
+    "a/apply":        ["Application form", "Biodata, O\u2019Level results and documents"],
+    "a/fee":          ["Application fee", "Post-UTME screening · 2026/2027"],
+    "a/screening":    ["Screening slip", "Post-UTME · batch C · CBT Hall B"],
+    "a/score":        ["Screening result", "Post-UTME 2026/2027"],
+    "a/status":       ["Admission status", "UTME 2026/2027"],
+    "a/accept":       ["Accept your offer", "B.Sc. Computer Science · 100 Level"],
+    "a/clearance":    ["Document clearance", "Registry · Administration Block"],
+    "a/matric":       ["Matriculation", "2026/2027 session"]
+  };

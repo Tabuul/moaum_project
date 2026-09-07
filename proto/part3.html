@@ -1,0 +1,287 @@
+
+  /* ── login ───────────────────────────────────────────────────────── */
+  var loginRole = "student";
+  var ROLE_LABEL = { student: "Student", staff: "Staff", applicant: "Applicant" };
+  var LOGIN_ID = {
+    student:   ["Matriculation number", "MOAUM/CSC/23/1487"],
+    staff:     ["Staff number", "MOAUM/STF/1142"],
+    applicant: ["Application number", "APP/2026/018342"]
+  };
+
+  function viewLogin() {
+    var f = loginRole === "staff" ? ROLES[S.srole].id : LOGIN_ID[loginRole];
+    return '' +
+    '<div class="login-wrap">' +
+      '<div class="login-brand">' +
+        '<div>' +
+          '<div class="login-brand__top">' +
+            '<img src="' + CREST + '" alt="University crest" style="width:56px;height:58px;object-fit:contain">' +
+            '<div><span style="font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--chrome-dim)">Unified University Portal</span></div>' +
+          '</div>' +
+          '<div style="height:26px"></div>' +
+          '<h1>Rev. Fr. Moses Orshio Adasu University, Makurdi</h1>' +
+          '<p>One place for admission, registration, results, fees and records. Sign in with the number the University issued you.</p>' +
+        '</div>' +
+        '<div class="login-stats">' +
+          '<div class="login-stat"><span class="n tnum">32,450</span><span class="l">students</span></div>' +
+          '<div class="login-stat"><span class="n tnum">8</span><span class="l">faculties &amp; colleges</span></div>' +
+          '<div class="login-stat"><span class="n tnum">1992</span><span class="l">established</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="login-panel"><div class="login-card">' +
+        '<div><div style="font-size:22px;font-weight:700;letter-spacing:-.4px">Sign in</div>' +
+        '<div class="hint" style="margin-top:4px">Prototype — any password works.</div></div>' +
+        '<div class="role-tabs" role="tablist">' +
+          ['student', 'staff', 'applicant'].map(function (r) {
+            return '<button role="tab" aria-selected="' + (loginRole === r ? 'true' : 'false') +
+              '" data-role="' + r + '">' + ROLE_LABEL[r] + '</button>';
+          }).join('') +
+        '</div>' +
+        (loginRole === "staff"
+          ? '<div class="field"><label for="office">Your office</label>' +
+            '<select id="office" class="ws__select" style="width:100%">' +
+            ROLE_KEYS.map(function (k) {
+              return '<option value="' + k + '"' + (S.srole === k ? ' selected' : '') + '>' +
+                ROLES[k].label + ' \u2014 ' + ROLES[k].who + '</option>';
+            }).join('') + '</select>' +
+            '<div class="hint">Twenty offices sign in here. Each sees only its own work.</div></div>'
+          : '') +
+        '<div class="field"><label for="uid">' + f[0] + '</label>' +
+          '<input id="uid" value="' + f[1] + '" autocomplete="off"></div>' +
+        '<div class="field"><label for="pw">Password</label>' +
+          '<input id="pw" type="password" value="••••••••••"></div>' +
+        '<button class="btn btn--primary" data-go="signin">Sign in</button>' +
+        '<div class="login-help">' +
+          '<a href="#">Forgot your password?</a><a href="#">Need help?</a></div>' +
+        (loginRole === 'applicant'
+          ? '<div style="border-top:1px solid var(--line);padding-top:14px">' +
+            '<button class="btn btn--ghost btn--sm" data-go="a/register" style="width:100%">Post UTME Registration</button>' +
+            '<div class="hint" style="margin-top:6px;text-align:center">New candidates \u2014 admissions are open for 2026/2027</div></div>'
+          : '') +
+        '<div style="border-top:1px solid var(--line);padding-top:14px">' +
+          '<button class="btn btn--ghost btn--sm" data-go="verify" style="width:100%">Verify a certificate or transcript</button>' +
+          '<div class="hint" style="margin-top:6px;text-align:center">Employers and institutions — no account needed</div></div>' +
+
+        /* The College runs its own academic system. Saying so at the door is
+           cheaper than a student entering a mark in the wrong one.          */
+        '<div style="border-top:1px solid var(--line);padding-top:14px">' +
+          '<a class="btn btn--ghost btn--sm" href="' + CHS_URL + '" target="_blank" rel="noopener" ' +
+            'style="width:100%;text-decoration:none">College of Health Sciences &rarr; CHS-AMS</a>' +
+          '<div class="hint" style="margin-top:6px;text-align:center">MBBS, BDS, Nursing and Medical Laboratory Science &mdash; ' +
+          'College academic business runs in a separate system. Sign in <b>here</b> for fees, records and the transcript.</div></div>' +
+        '<div class="notice notice--info" style="margin-top:6px">' + ico('alert', 17, 'var(--chrome)', 2) +
+          '<p>Staff and privileged accounts also complete a second step (authenticator app or SMS code). Not shown in this prototype.</p></div>' +
+      '</div></div>' +
+    '</div>';
+  }
+
+  /* ── student screens ─────────────────────────────────────────────── */
+  function studentDashboard() {
+    var blocked = !S.feesPaid;
+    return (blocked
+      ? '<div class="notice notice--bad">' + warnIcon(19) +
+        '<div><div class="notice__t" style="color:var(--red-deep)">Action required</div>' +
+        '<p style="color:var(--red-deep)">Your second instalment of <strong class="tnum">₦45,000</strong> is outstanding. ' +
+        'Course registration closes <strong>Friday 18 September</strong>.</p>' +
+        '<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">' +
+        '<button class="btn btn--urgent btn--sm" data-go="s/pay">Pay now</button>' +
+        '<button class="btn btn--ghost btn--sm" data-go="s/fees">See breakdown</button></div></div></div>'
+      : '<div class="notice notice--ok">' + tick(19, 'var(--green-ink)') +
+        '<div><div class="notice__t" style="color:var(--green-ink)">You are cleared to register</div>' +
+        '<p style="color:var(--green-ink)">School fees settled in full for 2026/2027. Registration closes Friday 18 September.</p>' +
+        '<div style="margin-top:11px"><button class="btn btn--go btn--sm" data-go="s/register">Register courses</button></div></div></div>') +
+
+    '<div class="grid grid--2">' +
+      '<div class="card"><div class="card__body">' +
+        '<div style="display:flex;gap:13px;align-items:flex-start">' +
+          passport(52, 64, 6) +
+          '<div><div style="font-size:16px;font-weight:600">ADAMU, Grace Mwuese</div>' +
+          '<div class="sub2 tnum">MOAUM/CSC/23/1487</div>' +
+          '<div class="sub2">B.Sc. Computer Science · 300 Level</div></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<span class="pill pill--ok"><span class="dot" style="background:var(--green)"></span>Active</span>' +
+          '<span class="pill" style="background:var(--bg);border:1px solid var(--line);color:var(--muted)">CGPA 3.42</span>' +
+          '<span class="pill" style="background:var(--bg);border:1px solid var(--line);color:var(--muted)">Curriculum v2023.1</span>' +
+        '</div>' +
+      '</div></div>' +
+
+      '<div class="card"><div class="card__head"><span class="card__title">This session</span></div>' +
+      '<div class="card__body"><div class="steps">' +
+        step('done', 'Session enrolment', 'Enrolled 22 August') +
+        step(blocked ? 'now' : 'done', 'Course registration', blocked ? 'Blocked — fees outstanding' : 'Ready to register') +
+        step('todo', 'Examination docket', 'Available after HOD approval') +
+      '</div></div></div>' +
+    '</div>' +
+
+    '<div class="grid grid--4">' +
+      quick('cap', 'My results', '5 semesters published', 's/results') +
+      quick('card', 'Fees &amp; payments', blocked ? '₦45,000 outstanding' : 'Fully paid', 's/fees') +
+      quick('doc', 'Transcript', 'Request a copy', 's/transcript') +
+      quick('book', 'Course form', blocked ? 'Not yet available' : 'Ready to print', blocked ? null : 's/form') +
+    '</div>' + phonePanel();
+  }
+
+  function step(state, title, sub) {
+    var mark = state === 'done'
+      ? '<div class="step__mark step__mark--done">' + tick(12, '#fff') + '</div>'
+      : state === 'now'
+        ? '<div class="step__mark step__mark--now"><div style="width:7px;height:7px;border-radius:4px;background:var(--red)"></div></div>'
+        : '<div class="step__mark step__mark--todo"></div>';
+    return '<div class="step">' + mark +
+      '<div><div style="font-size:13.5px;font-weight:' + (state === 'now' ? '700' : '500') + '">' + title + '</div>' +
+      '<div class="sub2">' + sub + '</div></div></div>';
+  }
+
+  function quick(icon, title, sub, go) {
+    return '<button class="tile" style="text-align:left;align-items:flex-start"' +
+      (go ? ' data-go="' + go + '"' : ' disabled') + '>' +
+      ico(icon, 20, go ? 'var(--chrome)' : 'var(--faint)', 1.7) +
+      '<div style="font-size:13.5px;font-weight:600;margin-top:4px">' + title + '</div>' +
+      '<div class="c">' + sub + '</div></button>';
+  }
+
+  /* registration ---------------------------------------------------- */
+  var CARRY = [
+    { c: "MTH 212", t: "Linear Algebra II", u: 3, n: "Failed 2024/2025 — must be repeated" },
+    { c: "CSC 221", t: "Digital Logic Design", u: 3, n: "Failed 2024/2025 — must be repeated" }
+  ];
+  var CORE = [
+    { c: "CSC 311", t: "Algorithms & Complexity", u: 3, n: "Prerequisite CSC 211 — passed" },
+    { c: "CSC 321", t: "Database Systems", u: 3, n: "Prerequisite CSC 221 — carryover, allowed" },
+    { c: "CSC 331", t: "Operating Systems", u: 3, n: "Prerequisite CSC 231 — passed" },
+    { c: "GST 301", t: "Entrepreneurship Studies", u: 2, n: "University requirement" }
+  ];
+  /* Two of these are not this department's courses. They are on this
+     form because B.Sc. Computer Science at 300 level is on their
+     eligible set — assigned when the course was created, by the
+     department that owns it. Nothing was requested, granted or
+     approved for this particular student; if the pair is on the set,
+     the course is on the form, and if it is not, the course is not
+     shown at all. That is also why she will appear on their score
+     sheets, marked by lecturers in other departments. */
+  var ELEC = [
+    { c: "CSC 341", t: "Computer Networks", u: 3, n: "Prerequisite CSC 241 — passed" },
+    { c: "CSC 355", t: "Human–Computer Interaction", u: 2, n: "No prerequisite" },
+    { c: "CSC 363", t: "Machine Learning I", u: 3, n: "Blocked — prerequisite MTH 212 not passed", blocked: true },
+    { c: "STA 311", t: "Statistical Inference", u: 2, n: "Owned by Mathematics & Computer Science — open to this programme at 300 level", out: "Statistics" },
+    { c: "PHY 305", t: "Computational Physics", u: 2, n: "Owned by Physics — open to this programme at 300 level", out: "Physics" }
+  ];
+
+  function totalUnits() {
+    var t = 0, i;
+    for (i = 0; i < CARRY.length; i++) { t += CARRY[i].u; }
+    for (i = 0; i < CORE.length; i++) { t += CORE[i].u; }
+    for (i = 0; i < ELEC.length; i++) { if (S.electives.indexOf(ELEC[i].c) > -1) { t += ELEC[i].u; } }
+    return t;
+  }
+
+  function studentRegister() {
+    if (!S.feesPaid) { return registrationBlocked(); }
+    var total = totalUnits(), m;
+    if (total < 18) {
+      m = { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Below minimum",
+            hint: "You need at least 18 credit units. Add " + (18 - total) + " more." };
+    } else if (total > 24) {
+      m = { col: "var(--red)", bg: "var(--red-bg)", fg: "var(--red-ink)", lab: "Over limit",
+            hint: "Maximum is 24 units. Remove " + (total - 24) + ", or request an overload from your HOD." };
+    } else {
+      m = { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: "Valid",
+            hint: "Within the permitted range for 300 Level." };
+    }
+    var ok = total >= 18 && total <= 24;
+
+    return '<div class="card"><div class="card__body">' +
+      '<div class="meter">' +
+        '<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">' +
+          '<span class="tnum" style="font-size:27px;font-weight:700;letter-spacing:-.6px;color:' + m.col + '">' + total + '</span>' +
+          '<span style="color:var(--muted)">of 18–24 credit units</span>' +
+          '<span style="flex-grow:1"></span>' +
+          '<span class="pill" style="background:' + m.bg + ';color:' + m.fg + '">' + m.lab + '</span>' +
+        '</div>' +
+        '<div class="meter__bar"><div class="meter__fill" style="width:' + Math.min(100, Math.round(total / 24 * 100)) + '%;background:' + m.col + '"></div></div>' +
+        '<div class="sub2">' + m.hint + '</div>' +
+      '</div>' +
+    '</div></div>' +
+
+    '<div class="card"><div class="card__head"><span class="card__title" style="color:var(--red-ink)">Outstanding carryovers</span>' +
+      '<span class="sub2">added automatically, cannot be removed</span></div>' +
+      '<div class="card__body">' + CARRY.map(function (x) {
+        return '<div class="pick" data-on="1" style="border-color:var(--red-line);background:var(--red-bg)">' +
+          '<div class="pick__box" style="background:var(--red);border-color:var(--red)">' + tick(12, '#fff') + '</div>' +
+          '<div style="flex-grow:1"><div class="pick__t tnum">' + x.c + ' — ' + esc(x.t) + '</div>' +
+          '<div class="pick__s" style="color:var(--red-deep)">' + x.n + '</div></div>' +
+          '<div style="font-weight:700;color:var(--red-ink)" class="tnum">' + x.u + '</div></div>';
+      }).join('') + '</div></div>' +
+
+    '<div class="card"><div class="card__head"><span class="card__title">300 Level compulsory</span></div>' +
+      '<div class="card__body">' + CORE.map(function (x) {
+        return '<div class="pick" data-on="1">' +
+          '<div class="pick__box" style="background:var(--chrome);border-color:var(--chrome)">' + tick(12, '#fff') + '</div>' +
+          '<div style="flex-grow:1"><div class="pick__t tnum">' + x.c + ' — ' + esc(x.t) + '</div>' +
+          '<div class="pick__s">' + x.n + '</div></div>' +
+          '<div style="font-weight:700;color:var(--chrome)" class="tnum">' + x.u + '</div></div>';
+      }).join('') + '</div></div>' +
+
+    '<div class="card"><div class="card__head"><span class="card__title">Electives</span>' +
+      '<span class="sub2">choose to reach 18–24 units</span></div>' +
+      '<div class="card__body">' + ELEC.map(function (x) {
+        var on = S.electives.indexOf(x.c) > -1;
+        return '<button class="pick" data-on="' + (on ? 1 : 0) + '"' + (x.blocked ? ' disabled' : ' data-elect="' + x.c + '"') + '>' +
+          '<div class="pick__box">' + (on ? tick(12, '#fff') : '') + '</div>' +
+          '<div style="flex-grow:1"><div class="pick__t tnum">' + x.c + ' — ' + esc(x.t) + '</div>' +
+          '<div class="pick__s"' + (x.blocked ? ' style="color:var(--red-ink)"' : '') + '>' + x.n + '</div></div>' +
+          (x.out ? '<span class="pill pill--info">' + x.out + '</span>' : '') +
+          '<div style="font-weight:700;color:var(--muted)" class="tnum">' + x.u + '</div></button>';
+      }).join('') +
+      '<p class="sub2" style="margin:2px 0 0">Two of these courses are not owned by your department. They are on your form because your programme and level were made eligible for them when they were created &mdash; you do not request them and nobody grants them to you. Register one and you appear on that lecturer&rsquo;s score sheet like any other candidate.</p>' +
+      '</div></div>' +
+
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<button class="btn btn--primary" ' + (ok ? 'data-go="s/form"' : 'disabled') + '>Submit for approval</button>' +
+      '<span class="sub2">Goes to your Level Adviser, then your HOD</span>' +
+    '</div>';
+  }
+
+  function registrationBlocked() {
+    return '<div class="notice notice--bad">' + warnIcon(19) +
+      '<div><div class="notice__t" style="color:var(--red-deep)">You cannot register yet</div>' +
+      '<p style="color:var(--red-deep)">One of four requirements is outstanding. Clear it below and registration opens immediately.</p></div></div>' +
+
+      '<div class="card"><div class="card__body" style="gap:0;padding:0">' +
+        gate('done', 'Student status', 'Active · 300 Level', '') +
+        gate('done', 'Session enrolment', 'Enrolled 2026/2027 on 22 August', '') +
+        '<div style="padding:16px;border-bottom:1px solid var(--line-2);background:var(--red-wash);display:flex;gap:12px">' +
+          '<div class="step__mark" style="background:var(--red)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></div>' +
+          '<div style="flex-grow:1;display:flex;flex-direction:column;gap:11px">' +
+            '<div><div style="font-weight:600;color:var(--red-ink)">Financial clearance</div>' +
+            '<div style="font-size:13px;margin-top:3px">Second instalment of <strong class="tnum">₦45,000</strong> outstanding on invoice <span class="tnum">INV-2026-04412</span>.</div></div>' +
+            '<div style="background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:7px">' +
+              row('School fees, 2026/2027', '₦135,000') +
+              row('Paid 14 Aug (instalment 1)', '− ₦90,000', 'var(--green-ink)') +
+              '<div style="height:1px;background:var(--line-2)"></div>' +
+              '<div style="display:flex;justify-content:space-between"><strong>Outstanding</strong>' +
+              '<strong class="tnum" style="font-size:15px;color:var(--red-ink)">₦45,000</strong></div>' +
+            '</div>' +
+            '<div><button class="btn btn--urgent" data-go="s/pay">Pay ₦45,000 now</button></div>' +
+            '<div class="sub2">Responsible office: <strong style="color:var(--ink)">Bursary Department</strong>, Room 14, Admin Block. Open 8am–4pm.</div>' +
+          '</div>' +
+        '</div>' +
+        gate('todo', 'Registration window', 'Open until <strong>Fri 18 Sept, 11:59pm</strong> · 6 days left', 'last') +
+      '</div></div>' +
+      '<div class="sub2">Payments are confirmed with the bank, not by this page. If you have already paid, your status updates automatically within 10 minutes — you do not need to visit the Bursary.</div>';
+  }
+
+  function gate(state, title, sub, last) {
+    var mark = state === 'done'
+      ? '<div class="step__mark step__mark--done">' + tick(12, '#fff') + '</div>'
+      : '<div class="step__mark step__mark--todo"></div>';
+    return '<div style="padding:14px 16px;display:flex;gap:12px;' + (last === 'last' ? '' : 'border-bottom:1px solid var(--line-2)') + '">' +
+      mark + '<div><div style="font-weight:600' + (state === 'todo' ? ';color:var(--faint)' : '') + '">' + title + '</div>' +
+      '<div class="sub2">' + sub + '</div></div></div>';
+  }
+
+  function row(k, v, colour) {
+    return '<div style="display:flex;justify-content:space-between"><span class="sub2">' + k + '</span>' +
+      '<span class="tnum" style="font-weight:600;font-size:12.5px' + (colour ? ';color:' + colour : '') + '">' + v + '</span></div>';
+  }

@@ -1,0 +1,955 @@
+  /* ══════════════════════════════════════════════════════════════════
+     THE RECORD REGISTRY
+
+     One entry per kind of record any setup or settings screen holds.
+     Each says what its fields are, where the record comes from when it
+     is being amended, what happens when it is saved, and the one rule
+     the database would refuse it on — stated on the form, so nobody
+     meets it as an error.
+     ═════════════════════════════════════════════════════════════════ */
+
+  var SESSION_OPTS = ["2027/2028", "2026/2027", "2028/2029", "2029/2030"];
+  var SEM_OPTS = ["First", "Second"];
+  var UNIT_OPTS = ["1", "2", "3", "4", "6"];
+  var LEVEL_OPTS = ["100", "200", "300", "400", "500"];
+  var STATUS_OPTS = ["Compulsory", "Required", "Elective"];
+  var YESNO = ["Yes", "No"];
+
+  function facOpts() { return FACS.map(function (f) { return f.n; }); }
+  function deptOpts() {
+    var o = [];
+    FACS.forEach(function (f) { f.depts.forEach(function (d) { o.push(d.n); }); });
+    return o;
+  }
+  function progOpts() {
+    var o = [];
+    FACS.forEach(function (f) { f.depts.forEach(function (d) { d.progs.forEach(function (p) { o.push(p.n); }); }); });
+    return o;
+  }
+  function deptLookup(id) {
+    for (var i = 0; i < FACS.length; i++) {
+      for (var j = 0; j < FACS[i].depts.length; j++) {
+        if (FACS[i].depts[j].id === id) { return { f: FACS[i], d: FACS[i].depts[j] }; }
+      }
+    }
+    return null;
+  }
+  function progLookup(id) {
+    for (var i = 0; i < FACS.length; i++) {
+      for (var j = 0; j < FACS[i].depts.length; j++) {
+        var ps = FACS[i].depts[j].progs;
+        for (var k = 0; k < ps.length; k++) {
+          if (ps[k].id === id) { return { f: FACS[i], d: FACS[i].depts[j], p: ps[k] }; }
+        }
+      }
+    }
+    return null;
+  }
+  /* rows held as arrays are addressed by their index */
+  function rowAt(arr, id) { var i = Number(id); return (i >= 0 && i < arr.length) ? arr[i] : null; }
+
+  /* the catalogue, flattened the same way the screen renders it */
+  function catalogueRows() {
+    var rows = [];
+    Object.keys(COURSES_BY_PROG).forEach(function (p) {
+      COURSES_BY_PROG[p].forEach(function (c) {
+        rows.push([c[0], c[1], c[2], c[3],
+          p === "chm" ? "Chemistry" : "Mathematics &amp; Computer Science"]);
+      });
+    });
+    return rows;
+  }
+
+  var REC = {
+
+    /* ── academic structure ────────────────────────────────────── */
+
+    faculty: {
+      one: "faculty", cols: 2,
+      name: function (v) { return v ? v.n : "faculty"; },
+      sub: function (v) { return v ? (v.depts + " departments &middot; in force since " + v.from) : ""; },
+      get: function (id) {
+        var f = facById(id); if (!f) { return null; }
+        return { n: f.n, code: f.id.toUpperCase(), dean: f.id === "sci" ? "Prof. B. O. Atu" : "Assigned in Users",
+          depts: f.depts.length, from: "2005/2006", state: "In force" };
+      },
+      fields: [
+        { k: "n", l: "Faculty name, as it prints on a transcript", t: "text", full: true, d: "Faculty of " },
+        { k: "code", l: "Code", t: "num", d: "", hint: "Three letters. Once used it is never reused." },
+        { k: "dean", l: "Dean", t: "text", hint: "The office is granted in Users; this names who holds it." },
+        { k: "from", l: "In force from", t: "sel", o: SESSION_OPTS },
+        { k: "state", l: "State", t: "sel", o: ["In force", "Ended &mdash; retained for old transcripts"] }
+      ],
+      lead: ["info", "A faculty is effective-dated, because a degree is dated",
+        "A faculty created in 2027 did not exist in 2023, and a transcript printed today for a 2023 graduate must still name the faculty that awarded the degree then."],
+      rule: ["bad", "Renaming a faculty does not rename it on documents already issued",
+        "The University was renamed in December 2024 and both names still resolve in verification &mdash; BR-013. The same holds one level down: a faculty carries every name it has held, with the dates, and a certificate keeps the name that was on it."],
+      apply: function (id, v, mode) {
+        if (mode === "edit") { var f = facById(id); if (f) { f.n = v.n; } return v.n + " amended"; }
+        FACS.push({ id: (v.code || "new").toLowerCase(), n: v.n, depts: [] });
+        return v.n + " created, in force from " + v.from;
+      },
+      end: function (id) { return (facById(id) ? facById(id).n : "The faculty") + " ended"; }
+    },
+
+    dept: {
+      one: "department", cols: 2,
+      name: function (v) { return v ? v.n : "department"; },
+      sub: function (v) { return v ? (v.fac + " &middot; " + v.progs + " programmes") : ""; },
+      get: function (id) {
+        var x = deptLookup(id); if (!x) { return null; }
+        return { fac: x.f.n, n: x.d.n, code: x.d.id.toUpperCase(), progs: x.d.progs.length,
+          hod: x.d.id === "mcs" ? "Dr. I. O. Ogwuche" : "Assigned in Users", from: "2005/2006" };
+      },
+      fields: [
+        { k: "fac", l: "Faculty it belongs to", t: "sel", o: [] },
+        { k: "n", l: "Department name", t: "text" },
+        { k: "code", l: "Code", t: "num" },
+        { k: "hod", l: "Head of Department", t: "text" },
+        { k: "from", l: "In force from", t: "sel", o: SESSION_OPTS },
+        { k: "exof", l: "Examinations Officers", t: "ro", d: "One per programme &mdash; set on the programme" }
+      ],
+      lead: ["info", "A department belongs to exactly one faculty, and owns its courses",
+        "It is the unit that teaches a course, opens its score sheet, holds its departmental board and answers a query about a mark in it. A course with no owning department has no score sheet and no board."],
+      rule: ["bad", "A department with more than one programme has more than one Examinations Officer",
+        "Mathematics &amp; Computer Science runs three programmes and has three Examinations Officers &mdash; one each for Computer Science, Mathematics and Statistics. Each is bounded to their own programme, not to the department, so appointing them is done on the programme."],
+      apply: function (id, v, mode) {
+        if (mode === "edit") { var x = deptLookup(id); if (x) { x.d.n = v.n; } return v.n + " amended"; }
+        var f = null;
+        FACS.forEach(function (ff) { if (ff.n === v.fac) { f = ff; } });
+        if (f) { f.depts.push({ id: (v.code || "new").toLowerCase(), n: v.n, progs: [] }); }
+        return v.n + " created under " + v.fac;
+      },
+      end: function (id) { var x = deptLookup(id); return (x ? x.d.n : "The department") + " ended"; }
+    },
+
+    prog: {
+      one: "programme", cols: 3,
+      name: function (v) { return v ? v.n : "programme"; },
+      sub: function (v) { return v ? (v.dept + " &middot; " + v.fac) : ""; },
+      get: function (id) {
+        var x = progLookup(id); if (!x) { return null; }
+        return { fac: x.f.n, dept: x.d.n, n: x.p.n, award: x.p.n.split(" ")[0] + " (Hons)",
+          years: "4 years", from: "2005/2006", exof: "Set in the Examinations Officers list" };
+      },
+      fields: [
+        { k: "fac", l: "Faculty", t: "sel", o: [] },
+        { k: "dept", l: "Department", t: "sel", o: [] },
+        { k: "n", l: "Programme title, as it prints on a certificate", t: "text", full: true, d: "B.Sc. Data Science" },
+        { k: "award", l: "Award", t: "text", d: "B.Sc. (Hons)" },
+        { k: "years", l: "Duration", t: "sel", o: ["4 years", "5 years", "6 years", "3 years"] },
+        { k: "from", l: "In force from", t: "sel", o: SESSION_OPTS },
+        { k: "exof", l: "Examinations Officer", t: "text", full: true, d: "Vacant &mdash; appoint before the first result set",
+          hint: "One officer per programme. A vacant programme has nobody verifying its results." }
+      ],
+      rule: ["bad", "A programme cannot start in a session that has already begun",
+        "Students are admitted into a programme, and an admission list is generated from what existed on the day. Back-dating a programme creates candidates admitted into something that did not exist &mdash; the kind of error that surfaces four years later at graduation."],
+      apply: function (id, v, mode) {
+        if (mode === "edit") { var x = progLookup(id); if (x) { x.p.n = v.n; } return v.n + " amended"; }
+        FACS.forEach(function (f) {
+          f.depts.forEach(function (d) {
+            if (d.n === v.dept) { d.progs.push({ id: "p" + Date.now(), n: v.n }); }
+          });
+        });
+        return v.n + " created under " + v.dept + ", in force from " + v.from;
+      },
+      end: function (id) { var x = progLookup(id); return (x ? x.p.n : "The programme") + " ended &mdash; no further admissions"; }
+    },
+
+    exof: {
+      one: "appointment", editVerb: "Amend the appointment of", cols: 2,
+      name: function (v) { return v ? (v.who || "a vacant programme") : "appointment"; },
+      sub: function (v) { return v ? v.prog : ""; },
+      get: function (id) {
+        var r = rowAt(EXAMS_OFFICERS, id); if (!r) { return null; }
+        return { dept: r[0], prog: r[1], who: r[2], basis: r[3] === "acting" ? "Acting" : r[3] === "vacant" ? "Vacant" : "Substantive",
+          from: r[4], to: r[5], bound: "This programme only" };
+      },
+      fields: [
+        { k: "dept", l: "Department", t: "sel", o: [] },
+        { k: "prog", l: "Programme", t: "sel", o: [] },
+        { k: "who", l: "Officer", t: "text" },
+        { k: "basis", l: "Basis of appointment", t: "sel", o: ["Substantive", "Acting", "Vacant"] },
+        { k: "from", l: "Appointed from", t: "text", d: "1 October 2026" },
+        { k: "to", l: "Until", t: "text", d: "&mdash;", hint: "An acting appointment must carry an end date." },
+        { k: "bound", l: "Bounded to", t: "ro", d: "This programme only", full: true,
+          hint: "The scope bar locks to the programme wherever this officer arrives on a screen &mdash; not to the department." }
+      ],
+      lead: ["info", "One Examinations Officer per programme, not one per department",
+        "They see the candidates, the score sheets and the examination roll of their own programme and no other."],
+      rule: ["bad", "An acting appointment with no end date is a power nobody remembers granting",
+        "Acting appointments are the normal case in a Nigerian university. The portal holds one only with a date it lapses on, and the grant expires by itself &mdash; it is not left to be remembered."],
+      apply: function (id, v, mode) {
+        var row = [v.dept, v.prog, v.who, v.basis.toLowerCase(), v.from, v.to];
+        if (mode === "edit") { var i = Number(id); if (EXAMS_OFFICERS[i]) { EXAMS_OFFICERS[i] = row; } return v.who + " amended"; }
+        EXAMS_OFFICERS.push(row);
+        return v.who + " appointed to " + v.prog;
+      }
+    },
+
+    /* ── calendar ──────────────────────────────────────────────── */
+
+    session: {
+      one: "session", cols: 3,
+      name: function (v) { return v ? v.n : "session"; },
+      sub: function (v) { return v ? (v.state + " &middot; " + v.minute) : ""; },
+      get: function (id) {
+        var r = rowAt(SESSIONS, id); if (!r) { return null; }
+        return { n: r[0], opens: r[1], closes: r[2], sems: "2",
+          scheme: "v3 &mdash; in force from 2024/2025", minute: r[4] || "",
+          state: r[3] === "current" ? "Current" : r[3] === "planned" ? "Planned" : "Closed" };
+      },
+      fields: [
+        { k: "n", l: "Session", t: "num", d: "2027/2028" },
+        { k: "opens", l: "Opens", t: "text", d: "6 September 2027" },
+        { k: "closes", l: "Closes", t: "text", d: "28 July 2028" },
+        { k: "sems", l: "Semesters", t: "sel", o: ["2", "3 (with a long vacation semester)"] },
+        { k: "scheme", l: "Grading scheme", t: "sel", o: ["v3 &mdash; in force from 2024/2025", "v4 &mdash; draft"] },
+        { k: "minute", l: "Senate minute", t: "num", ph: "SEN/2027/…" },
+        { k: "state", l: "State", t: "sel", o: ["Planned", "Current", "Closed"], full: true,
+          hint: "A session stays Planned until its Senate minute is recorded against it." }
+      ],
+      lead: ["info", "The session is the spine everything else hangs on",
+        "Registration windows, fee schedules, grading schemes, examination sessions, result sets and the publication embargo are all bounded by a session and a semester."],
+      rule: ["bad", "A session cannot open without its Senate minute, and two may never overlap",
+        "The academic calendar is approved by Senate. Opening one early would let students register into a session the University has not resolved to run. The no-overlap rule is an exclusion constraint in the database, not a check on this form &mdash; a script cannot get around it either."],
+      apply: function (id, v, mode) {
+        var st = v.state.toLowerCase();
+        if (mode === "edit") {
+          var r = rowAt(SESSIONS, id);
+          if (r) { r[0] = v.n; r[1] = v.opens; r[2] = v.closes; r[3] = st; r[4] = v.minute; }
+          return v.n + " amended";
+        }
+        SESSIONS.unshift([v.n, v.opens, v.closes, v.minute ? st : "planned", v.minute, 0]);
+        return v.n + " created as " + (v.minute ? st : "planned");
+      },
+      end: function (id) { var r = rowAt(SESSIONS, id); if (r) { r[3] = "closed"; } return (r ? r[0] : "The session") + " closed"; }
+    },
+
+    semester: {
+      one: "semester", editVerb: "Windows for the", cols: 2,
+      name: function (v) { return v ? (v.n + " semester") : "semester"; },
+      sub: function () { return "2026/2027 &middot; every date here changes what a student can do today"; },
+      get: function (id) {
+        var r = rowAt(SEM_WINDOWS, id); if (!r) { return null; }
+        return { n: r[0], lect: r[1], ropen: r[0] === "First" ? "8 September 2026" : "19 January 2027",
+          rclose: r[2], late: r[0] === "First" ? "8 October 2026 (with a penalty)" : "20 February 2027 (with a penalty)",
+          exams: r[3], due: r[4], query: "5 working days from release",
+          state: r[5] === "open" ? "Open" : "Not yet open" };
+      },
+      fields: [
+        { k: "n", l: "Semester", t: "sel", o: SEM_OPTS },
+        { k: "state", l: "State", t: "sel", o: ["Open", "Not yet open", "Closed"] },
+        { k: "lect", l: "Lectures", t: "text" },
+        { k: "ropen", l: "Registration opens", t: "text", hint: "Makes the course form writable for cleared students." },
+        { k: "rclose", l: "Registration closes", t: "text", hint: "Freezes the register &mdash; and the register is what every score sheet is generated over." },
+        { k: "late", l: "Late registration closes", t: "text" },
+        { k: "exams", l: "Examinations", t: "text", hint: "Locks the examination roll." },
+        { k: "due", l: "Score sheets due", t: "text", hint: "What the escalation clock counts from." },
+        { k: "query", l: "Result query window", t: "text", full: true }
+      ],
+      rule: ["bad", "Moving a closing date backwards after it has passed does not un-register anybody",
+        "It cannot: registrations are records, and records are not deleted. Bringing a date forward removes the ability to register from that moment on, and nothing else. To remove a registration already made, the department drops it, on the record, with a reason."],
+      apply: function (id, v, mode) {
+        var row = [v.n, v.lect, v.rclose, v.exams, v.due, v.state === "Open" ? "open" : "closed"];
+        if (mode === "edit") { var i = Number(id); if (SEM_WINDOWS[i]) { SEM_WINDOWS[i] = row; } return v.n + " semester windows amended"; }
+        SEM_WINDOWS.push(row);
+        return v.n + " semester created";
+      }
+    },
+
+    level: {
+      one: "level", cols: 2,
+      name: function (v) { return v ? ("level " + v.n) : "level"; },
+      get: function (id) {
+        var r = rowAt(LEVEL_ROWS, id); if (!r) { return null; }
+        return { n: String(r[0]), who: r[1], min: String(r[2]), max: String(r[3]), carry: r[4] };
+      },
+      fields: [
+        { k: "n", l: "Level", t: "sel", o: LEVEL_OPTS },
+        { k: "who", l: "Applies to", t: "sel", o: ["All programmes", "MBBS, LL.B and other five-year programmes", "One programme"] },
+        { k: "min", l: "Minimum units per semester", t: "num" },
+        { k: "max", l: "Maximum units per semester", t: "num" },
+        { k: "carry", l: "Carryover counts toward the maximum", t: "sel", o: YESNO, full: true,
+          hint: "It does, and it has to: a student repeating three courses has three courses' worth of examinations to sit." }
+      ],
+      rule: ["bad", "The unit ceiling is what stops a student registering a timetable they cannot sit",
+        "Carryovers are added to the form automatically and cannot be removed, so a student with several of them reaches the ceiling before choosing anything new. That is the rule working, not the form failing."],
+      apply: function (id, v, mode) {
+        var row = [Number(v.n), v.who, Number(v.min), Number(v.max), v.carry];
+        if (mode === "edit") { var i = Number(id); if (LEVEL_ROWS[i]) { LEVEL_ROWS[i] = row; } return "Level " + v.n + " amended"; }
+        LEVEL_ROWS.push(row);
+        return "Level " + v.n + " added";
+      }
+    },
+
+    /* ── courses ───────────────────────────────────────────────── */
+
+    deptcourse: {
+      one: "course", cols: 3,
+      name: function (v) { return v ? v.code : "course"; },
+      sub: function (v) { return v ? v.title : ""; },
+      get: function (id) {
+        var r = rowAt(DEPT_COURSES, id); if (!r) { return null; }
+        return { code: r[0], title: r[1], units: String(r[2]), sem: r[3] === 1 ? "First" : "Second",
+          level: String(r[4]), status: r[5], lect: r[6] === "&mdash;" ? "" : r[6],
+          progs: "B.Sc. Computer Science", pre: "", from: "2026/2027", desc: "",
+          elig: "Mathematics and Computer Science", eliglv: String(r[4]) };
+      },
+      fields: [
+        { k: "code", l: "Code", t: "num", d: "CSC 391" },
+        { k: "title", l: "Title", t: "text", d: "Information Security" },
+        { k: "units", l: "Units", t: "sel", o: UNIT_OPTS, d: "3" },
+        { k: "level", l: "Level", t: "sel", o: LEVEL_OPTS, d: "300" },
+        { k: "sem", l: "Semester", t: "sel", o: SEM_OPTS },
+        { k: "status", l: "Status", t: "sel", o: STATUS_OPTS },
+        { k: "progs", l: "Programmes that carry it", t: "sel",
+          o: ["B.Sc. Computer Science", "B.Sc. Computer Science and B.Sc. Statistics", "All programmes in the department"] },
+        { k: "pre", l: "Prerequisite", t: "num", ph: "CSC 321" },
+        { k: "from", l: "In force from", t: "sel", o: SESSION_OPTS },
+        { k: "eliglv", l: "Levels that may register it", t: "set", o: LEVEL_OPTS, full: true, d: "300",
+          hint: "Tick 400 as well as 300 if the course is carried over &mdash; that is what puts a repeating candidate on the same sheet as the regular class." },
+        { k: "elig", l: "Departments that may register it", t: "set", o: [], full: true,
+          d: "Mathematics and Computer Science",
+          hint: "Your own department is ticked and shown in green. Tick another and this course appears on that department&rsquo;s registration forms at the levels above &mdash; and its students appear on your score sheet." },
+        { k: "lect", l: "Lecturer", t: "text", ph: "Allocated by the Head of Department",
+          hint: "Allocation opens the score sheet in that lecturer's name and sets the second examiner." },
+        { k: "desc", l: "Description, as it will read in the handbook", t: "area", full: true, rows: 3,
+          ph: "The Faculty Board is asked for this, so a course cannot go forward without it.",
+          d: "Threat models, cryptographic primitives in practice, authentication and authorisation, secure software development, and the Nigeria Data Protection Act 2023 as it applies to a system holding student records." }
+      ],
+      lead: ["info", "The department owns the course, and the department creates it &mdash; but cannot make it live",
+        "A new course is a curriculum change. The Faculty Board sees it and Senate approves it, because the NUC accredits a programme on the courses it says it teaches."],
+      rule: ["bad", "A code, once used, is never reused",
+        "CSC 299 ended in 2019 and its code is retired for good. Somebody holds a transcript that says CSC 299 and means the old course; a new course wearing that code would silently rewrite their record. The portal refuses the code, and it will keep refusing it."],
+      newSave: "Submit to the Faculty Board",
+      apply: function (id, v, mode) {
+        var row = [v.code, v.title, Number(v.units), v.sem === "First" ? 1 : 2, Number(v.level),
+          v.status, v.lect || "&mdash;", mode === "edit" ? (rowAt(DEPT_COURSES, id) || [])[7] || "live" : "board"];
+        if (mode === "edit") { var i = Number(id); if (DEPT_COURSES[i]) { DEPT_COURSES[i] = row; } return v.code + " amended"; }
+        DEPT_COURSES.push(row);
+        return v.code + " proposed &mdash; now at the Faculty Board";
+      },
+      end: function (id) {
+        var r = rowAt(DEPT_COURSES, id); if (r) { r[7] = "ended"; }
+        return (r ? r[0] : "The course") + " ended &mdash; it stays on every transcript that carries it";
+      },
+      endWhy: "A course that is no longer taught is ended with a date. It disappears from next session's registration and stays on every transcript that carries it, because a degree earned in 2019 was earned on the courses that existed in 2019."
+    },
+
+    course: {
+      one: "catalogue course", cols: 3,
+      name: function (v) { return v ? v.code : "course"; },
+      get: function (id) {
+        var rows = catalogueRows(), r = rowAt(rows, id);
+        if (!r) { return null; }
+        return { code: r[0], title: r[1], units: String(r[2]), dept: r[4],
+          sem: r[3] === 1 ? "First" : "Second", status: "Compulsory",
+          level: r[0].replace(/\D/g, "").charAt(0) + "00", service: "No", from: "2026/2027",
+          elig: r[4], eliglv: r[0].replace(/\D/g, "").charAt(0) + "00" };
+      },
+      fields: [
+        { k: "code", l: "Code", t: "num", d: "CSC 371" },
+        { k: "title", l: "Title", t: "text", d: "Machine Learning" },
+        { k: "units", l: "Units", t: "sel", o: UNIT_OPTS, d: "3" },
+        { k: "dept", l: "Owning department", t: "sel", o: [], d: "Mathematics and Computer Science" },
+        { k: "sem", l: "Semester", t: "sel", o: SEM_OPTS },
+        { k: "status", l: "Status", t: "sel", o: STATUS_OPTS },
+        { k: "level", l: "Level it sits at", t: "sel", o: LEVEL_OPTS, d: "300" },
+        { k: "service", l: "Service course", t: "sel", o: YESNO,
+          hint: "A service course is taught across faculties &mdash; GST 301 reaches eighteen hundred students." },
+        { k: "from", l: "In force from", t: "sel", o: SESSION_OPTS },
+        { k: "eliglv", l: "Levels that may register it", t: "set", o: LEVEL_OPTS, full: true,
+          d: "300",
+          hint: "Include 400 if the course is carried over. A level that is not ticked cannot register the course, and no exception exists at the counter." },
+        { k: "elig", l: "Departments that may register it", t: "set", o: [], full: true,
+          d: "Mathematics and Computer Science",
+          hint: "The owning department is ticked by default and shown in green. Tick every other department whose students may offer this course &mdash; this is what puts the course on their students&rsquo; registration forms and what puts their students on your score sheet." }
+      ],
+      lead: ["info", "Who may offer a course is decided here, when the course is created",
+        "A course is owned by one department and offered to a set of departments and levels. That set is part of the course: it goes to the Faculty Board with it, Senate approves it, and it is the only thing that decides whose registration form the course appears on. There is no separate permission and no exception granted later to a named student."],
+      rule: ["bad", "A course that belongs to nobody is a result that goes missing",
+        "The owning department is what opens the score sheet, names the lecturer and holds the departmental board. Three courses are live this session with no lecturer allocated; no score sheet can open for any of them."],
+      apply: function (id, v, mode) {
+        var d = (v.elig || "").split(/\s*,\s*/).filter(Boolean).length;
+        var l = (v.eliglv || "").split(/\s*,\s*/).filter(Boolean).length;
+        return v.code + (mode === "edit" ? " amended" : " added to the catalogue") +
+          " &mdash; offered to " + d + " department" + (d === 1 ? "" : "s") +
+          " at " + l + " level" + (l === 1 ? "" : "s");
+      }
+    },
+
+    /* ── people and offices ────────────────────────────────────── */
+
+    grant: {
+      one: "office grant", editVerb: "Amend the grant to", cols: 3,
+      name: function (v) { return v ? v.who : "grant"; },
+      sub: function (v) { return v ? v.office : ""; },
+      get: function (id) {
+        var r = rowAt(GRANTS, id); if (!r) { return null; }
+        return { who: r[0], staff: r[1], office: r[2], bound: r[3], by: r[4], from: r[5], to: r[6] };
+      },
+      fields: [
+        { k: "who", l: "Person", t: "text", d: "Dr. P. Tsavnande" },
+        { k: "staff", l: "Staff number", t: "num", d: "MOAUM/STF/" },
+        { k: "office", l: "Office", t: "sel", o: [] },
+        { k: "bound", l: "Bounded to", t: "sel",
+          o: ["The University", "Faculty of Science", "Mathematics &amp; Computer Science", "B.Sc. Computer Science", "Own courses", "The platform"] },
+        { k: "from", l: "From", t: "text", d: "1 October 2026" },
+        { k: "to", l: "To", t: "text", d: "30 September 2027", hint: "An acting grant must carry one." },
+        { k: "by", l: "Authority for the grant", t: "text", full: true, d: "Registrar, memo REG/2026/318",
+          hint: "The Directorate of ICT operates this console; it does not decide who holds an office." }
+      ],
+      lead: ["bad", "A role is granted by the Registrar, recorded here, and reviewed",
+        "Every grant carries the authority that made it, a start date and an end date, because acting appointments are the normal case and an acting appointment that never ends is how a person keeps a power they no longer hold."],
+      rule: ["bad", "Two offices in one approval chain is allowed; approving twice in it is not",
+        "A Dean who taught the course may hold both offices. BR-006 blocks the second approval by the same person, at the database, with a unique constraint on the approval act &mdash; so the chain waits for somebody else. Sixty-three people hold two offices today; that is normal and it is safe."],
+      newSave: "Submit for countersignature",
+      apply: function (id, v, mode) {
+        var row = [v.who, v.staff, v.office, v.bound, v.by.split(",")[0], v.from, v.to];
+        if (mode === "edit") { var i = Number(id); if (GRANTS[i]) { GRANTS[i] = row; } return v.who + " &mdash; grant amended"; }
+        GRANTS.unshift(row);
+        return v.office + " granted to " + v.who + ", awaiting countersignature";
+      },
+      end: function (id) { var r = rowAt(GRANTS, id); return (r ? r[0] : "The grant") + " &mdash; office revoked with effect from the date given"; },
+      endWhy: "Revoking an office takes the permissions away from the date you give and leaves the grant on the record, with who made it and who ended it. Everything the holder approved while they held it stands, because it was validly approved at the time."
+    },
+
+    roleassign: {
+      one: "role assignment", cols: 3,
+      name: function (v) { return v ? v.who : "assignment"; },
+      get: function (id) {
+        var r = rowAt(ROLE_GRANTS, id); if (!r) { return null; }
+        return { who: r[0], staff: r[1], role: r[2], scope: r[3], until: r[4], by: r[5] };
+      },
+      fields: [
+        { k: "who", l: "Person", t: "text" },
+        { k: "staff", l: "Staff number or institution", t: "num" },
+        { k: "role", l: "Role", t: "sel",
+          o: ["Head of Department", "Acting HOD", "Registry officer", "External examiner", "Faculty Officer", "Exams Officer"] },
+        { k: "scope", l: "Scoped to", t: "sel",
+          o: ["Computer Science", "Computer Science &middot; 400 level", "University-wide", "Faculty of Science"] },
+        { k: "until", l: "Valid until", t: "text", hint: "Open-ended is allowed only for a substantive office." },
+        { k: "by", l: "Granted by", t: "sel", o: ["Registrar", "Vice-Chancellor", "Dean of Science", "Provost"] }
+      ],
+      lead: ["info", "Nobody is given &ldquo;admin&rdquo;",
+        "They are given a named permission &mdash; RES:SHEET_APPROVE, say &mdash; scoped to one unit and valid until a date, and it expires without anyone having to remember it."],
+      apply: function (id, v, mode) {
+        var row = [v.who, v.staff, v.role, v.scope, v.until, v.by];
+        if (mode === "edit") { var i = Number(id); if (ROLE_GRANTS[i]) { ROLE_GRANTS[i] = row; } return v.who + " amended"; }
+        ROLE_GRANTS.unshift(row);
+        return v.role + " assigned to " + v.who;
+      },
+      end: function (id) { var r = rowAt(ROLE_GRANTS, id); return (r ? r[0] : "The assignment") + " revoked"; }
+    },
+
+    office: {
+      one: "permission set", editVerb: "Permissions of the", cols: 2,
+      name: function (v) { return v ? v.office : "office"; },
+      get: function (id) {
+        var r = rowAt(OFFICE_REACH, id); if (!r) { return null; }
+        return { office: r[0], bound: r[1], approve: r[2], issue: r[3], reads: r[4] };
+      },
+      fields: [
+        { k: "office", l: "Office", t: "text" },
+        { k: "bound", l: "Bounded to", t: "sel", o: ["Own courses", "Department", "Faculty", "The University", "The platform"] },
+        { k: "approve", l: "May approve", t: "text", full: true },
+        { k: "issue", l: "May issue", t: "text", full: true },
+        { k: "reads", l: "Reads", t: "text", full: true }
+      ],
+      lead: ["info", "A permission set is a list of acts, each one bounded",
+        "A Head of Department approves results <b>within her department</b>, not results. The bound is half the permission, and the half that is usually left off."],
+      rule: ["bad", "Two rules override every permission set in the University",
+        "Nobody approves twice in one chain &mdash; BR-006, enforced by a unique constraint, not by a warning. And nobody deletes: no application role holds a DELETE grant on any table, the Super Administrator included."],
+      apply: function (id, v, mode) {
+        var row = [v.office, v.bound, v.approve, v.issue, v.reads];
+        if (mode === "edit") { var i = Number(id); if (OFFICE_REACH[i]) { OFFICE_REACH[i] = row; } return v.office + " amended"; }
+        OFFICE_REACH.push(row);
+        return v.office + " created";
+      }
+    },
+
+    sod: {
+      one: "segregation rule", cols: 2,
+      name: function (v) { return v ? v.a : "rule"; },
+      get: function (id) {
+        var r = rowAt(SOD_RULES, id); if (!r) { return null; }
+        return { a: r[0], b: r[1], why: r[2], act: r[3] };
+      },
+      fields: [
+        { k: "a", l: "Role A", t: "text" },
+        { k: "b", l: "Role B", t: "text" },
+        { k: "why", l: "Why they may not be held together", t: "text", full: true },
+        { k: "act", l: "What the system does", t: "sel", o: ["Refuse", "Refuse and alert the Registrar", "Warn and record"], full: true,
+          hint: "Warn-and-record is for a conflict the University has resolved to tolerate. It is not the default for a reason." }
+      ],
+      rule: ["bad", "The conflict is caught at assignment, not at the act",
+        "A rule that fires only when somebody tries to approve something has already let the wrong person hold the office. One conflict is live now: a Works officer who raises requisitions has been added to the Tenders Board, and it is waiting on the Registrar."],
+      apply: function (id, v, mode) {
+        var row = [v.a, v.b, v.why, v.act, 0];
+        if (mode === "edit") { var i = Number(id); if (SOD_RULES[i]) { row[4] = SOD_RULES[i][4]; SOD_RULES[i] = row; } return "Rule amended"; }
+        SOD_RULES.push(row);
+        return "Rule added &mdash; " + v.a + " against " + v.b;
+      }
+    },
+
+    /* ── grading ───────────────────────────────────────────────── */
+
+    band: {
+      one: "grade band", editVerb: "Band", cols: 3,
+      name: function (v) { return v ? v.g : "band"; },
+      sub: function (v) { return v ? ("Scheme v3 &middot; in force from 2024/2025") : ""; },
+      get: function (id) {
+        var r = rowAt(GRADES, id); if (!r) { return null; }
+        return { g: r[0], from: String(r[1]), to: String(r[2]), pts: String(r[3]),
+          out: r[3] > 0 ? "Passed &mdash; counts toward the CGPA" : "Failed &mdash; the course is carried over" };
+      },
+      fields: [
+        { k: "g", l: "Grade", t: "text" },
+        { k: "from", l: "From", t: "num" },
+        { k: "to", l: "To", t: "num" },
+        { k: "pts", l: "Grade point", t: "num" },
+        { k: "out", l: "Outcome", t: "sel", full: true,
+          o: ["Passed &mdash; counts toward the CGPA", "Failed &mdash; the course is carried over"] }
+      ],
+      lead: ["info", "Results are graded by the scheme in force when they were earned",
+        "A student who scored 48 in 2019 under a scheme where 45&ndash;49 was a D keeps that D on a transcript printed in 2041, whichever scheme the University uses by then."],
+      rule: ["bad", "Bands may not overlap, and the range must be continuous",
+        "The bands are stored as effective-dated data with an exclusion constraint, so a mark that falls in two bands cannot exist. Changing a boundary here does not regrade a result already earned: it creates a new scheme version that applies from the session you give it."],
+      apply: function (id, v, mode) {
+        var i = Number(id), old = rowAt(GRADES, id);
+        var row = [v.g, Number(v.from), Number(v.to), Number(v.pts), old ? old[4] : "var(--muted)"];
+        if (mode === "edit") { if (GRADES[i]) { GRADES[i] = row; } return v.g + " amended &mdash; as scheme v4, from the session you set"; }
+        GRADES.push(row);
+        return "Band " + v.g + " added";
+      }
+    },
+
+    klass: {
+      one: "classification", cols: 3,
+      name: function (v) { return v ? v.c : "class"; },
+      get: function (id) {
+        var r = rowAt(CLASSES, id); if (!r) { return null; }
+        return { c: r[0], from: r[1].toFixed(2), to: r[2].toFixed(2) };
+      },
+      fields: [
+        { k: "c", l: "Class of degree", t: "text", full: true },
+        { k: "from", l: "CGPA from", t: "num" },
+        { k: "to", l: "CGPA to", t: "num" }
+      ],
+      rule: ["bad", "Classification is applied at graduation, to the final CGPA",
+        "Moving a boundary changes what a degree is called, so it takes effect from a session and never reclassifies a degree already awarded. A certificate printed in 2024 keeps the class that was resolved by Senate in 2024."],
+      apply: function (id, v, mode) {
+        var row = [v.c, Number(v.from), Number(v.to)];
+        if (mode === "edit") { var i = Number(id); if (CLASSES[i]) { CLASSES[i] = row; } return v.c + " amended"; }
+        CLASSES.push(row);
+        return v.c + " added";
+      }
+    },
+
+    scheme: {
+      one: "grading scheme", cols: 2,
+      fields: [
+        { k: "n", l: "Name", t: "text", d: "v4" },
+        { k: "from", l: "In force from", t: "sel", o: SESSION_OPTS },
+        { k: "who", l: "Applies to", t: "sel", o: ["All programmes", "Selected programmes", "MBBS only", "LL.B only"] },
+        { k: "pass", l: "Pass mark", t: "num", d: "40" },
+        { k: "copy", l: "Start from", t: "sel", o: ["A copy of v3", "An empty scheme"], full: true,
+          hint: "Copying v3 brings its bands in as a starting point; nothing about v3 itself changes." }
+      ],
+      rule: ["bad", "D-Q5 is open: do Health Sciences and Law grade differently?",
+        "The MBBS and the LL.B commonly carry their own pass mark and their own classification. Until Senate answers it, the prototype grades every programme on v3 &mdash; and the answer changes what a Faculty of Health Sciences result set means."],
+      apply: function (id, v) { return "Scheme " + v.n + " created as a draft, effective from " + v.from; }
+    },
+
+    weight: {
+      one: "weighting", cols: 3,
+      name: function (v) { return v ? v.who : "weighting"; },
+      get: function (id) {
+        var r = rowAt(WEIGHTINGS, id); if (!r) { return null; }
+        return { who: r[0], ca: String(r[1]), ex: String(r[2]), pass: String(r[3]), from: r[4] };
+      },
+      fields: [
+        { k: "who", l: "Applies to", t: "text", full: true },
+        { k: "ca", l: "Continuous assessment", t: "num", hint: "CA and examination must total 100." },
+        { k: "ex", l: "Examination", t: "num" },
+        { k: "pass", l: "Pass mark", t: "num" },
+        { k: "from", l: "In force from", t: "sel", o: SESSION_OPTS, full: true }
+      ],
+      rule: ["bad", "A change to a weighting does not touch a result already approved",
+        "It applies from the session you set it for. Re-weighting a result that Senate has already resolved would change a mark after the fact, and there is no path in this system that does that &mdash; a correction goes back through the chain and carries a Senate amendment minute."],
+      apply: function (id, v, mode) {
+        var row = [v.who, Number(v.ca), Number(v.ex), Number(v.pass), v.from, "in force"];
+        if (mode === "edit") { var i = Number(id); if (WEIGHTINGS[i]) { WEIGHTINGS[i] = row; } return v.who + " amended"; }
+        WEIGHTINGS.push(row);
+        return v.who + " added, from " + v.from;
+      }
+    },
+
+    stage: {
+      one: "workflow stage", cols: 2,
+      name: function (v) { return v ? ("stage " + v.n) : "stage"; },
+      get: function (id) {
+        var r = rowAt(WORKFLOW, id); if (!r) { return null; }
+        return { n: String(r[0]), desk: r[1], skip: r[2], limit: r[3], expiry: r[4] };
+      },
+      fields: [
+        { k: "n", l: "Stage", t: "num" },
+        { k: "desk", l: "Desk", t: "text" },
+        { k: "skip", l: "May be skipped", t: "sel", o: ["No", "Yes, by the Registrar in writing"] },
+        { k: "limit", l: "Time limit", t: "text" },
+        { k: "expiry", l: "On expiry", t: "text", full: true }
+      ],
+      rule: ["bad", "A stage that may be skipped is a stage that will be",
+        "The chain is eight desks and the time limits are what move a set through it. Removing a stage removes a check somebody relies on; shortening a limit escalates faster and does not shorten the chain."],
+      apply: function (id, v, mode) {
+        var row = [Number(v.n), v.desk, v.skip, v.limit, v.expiry];
+        if (mode === "edit") { var i = Number(id); if (WORKFLOW[i]) { WORKFLOW[i] = row; } return "Stage " + v.n + " amended"; }
+        WORKFLOW.push(row);
+        return "Stage " + v.n + " added";
+      }
+    },
+
+    /* ── platform and integrations ─────────────────────────────── */
+
+    integration: {
+      one: "integration", cols: 2,
+      name: function (v) { return v ? v.n : "integration"; },
+      sub: function (v) { return v ? v.what : ""; },
+      get: function (id) {
+        var r = rowAt(INTEGRATIONS, id); if (!r) { return null; }
+        return { n: r[0], what: r[1], url: r[2],
+          state: r[3] === "connected" ? "Connected" : r[3] === "sandbox" ? "Sandbox" : "Manual",
+          sched: r[4], cred: "Held in the key store &mdash; write only" };
+      },
+      fields: [
+        { k: "n", l: "Service", t: "text" },
+        { k: "state", l: "State", t: "sel", o: ["Connected", "Sandbox", "Manual", "Suspended"] },
+        { k: "what", l: "What it does", t: "text", full: true },
+        { k: "url", l: "Base URL", t: "text", full: true },
+        { k: "cred", l: "Credential", t: "ro", full: true,
+          hint: "A key is written and never read back. Rotating it is a two-person change and it is countersigned." },
+        { k: "sched", l: "When it runs", t: "sel", o: ["Nightly, 06:00", "On demand", "Per request", "Continuous", "Annual"] },
+        { k: "retry", l: "On failure", t: "sel", full: true,
+          o: ["Retry 3 times, then raise an incident", "Retry once, then queue", "Fail and alert immediately"] }
+      ],
+      rule: ["bad", "Failure here is expected &mdash; the question is whether it is handled",
+        "The SMS gateway failed 47 times in the last 24 hours and failed over to the secondary, which is the integration working. An integration with no failure path is one that fails silently, and a student who was never told did not decline the offer."],
+      apply: function (id, v, mode) {
+        var row = [v.n, v.what, v.url, v.state.toLowerCase(), v.sched, "Just now"];
+        if (mode === "edit") { var i = Number(id); if (INTEGRATIONS[i]) { INTEGRATIONS[i] = row; } return v.n + " amended"; }
+        INTEGRATIONS.push(row);
+        return v.n + " added";
+      }
+    },
+
+    apiclient: {
+      one: "API client", cols: 2,
+      name: function (v) { return v ? v.n : "client"; },
+      get: function (id) {
+        var r = rowAt(API_CLIENTS, id); if (!r) { return null; }
+        return { n: r[0], scopes: r[1], quota: r[2],
+          state: r[3] === "active" ? "Active" : "Deprecated", expires: r[4] };
+      },
+      fields: [
+        { k: "n", l: "Client", t: "text", full: true },
+        { k: "scopes", l: "Scopes", t: "text", full: true,
+          hint: "Name the acts, not the screens. A client with student:* reads every student record there is." },
+        { k: "quota", l: "Quota", t: "sel", o: ["500/day", "2,000/day", "10,000/day", "100,000/day"] },
+        { k: "state", l: "State", t: "sel", o: ["Active", "Deprecated", "Suspended"] },
+        { k: "expires", l: "Credential expires", t: "text", d: "31 December 2027" },
+        { k: "ips", l: "Restricted to", t: "text", ph: "IP range, or blank for any" }
+      ],
+      rule: ["bad", "A client with no expiry is a key that leaks eventually",
+        "The legacy portal bridge retires on 31 December and its quota is already at zero. A credential with an end date stops working by itself; one without it stops working when somebody remembers."],
+      apply: function (id, v, mode) {
+        var row = [v.n, v.scopes, v.quota, 0, v.state.toLowerCase(), v.expires];
+        if (mode === "edit") { var i = Number(id); if (API_CLIENTS[i]) { row[3] = API_CLIENTS[i][3]; API_CLIENTS[i] = row; } return v.n + " amended"; }
+        API_CLIENTS.push(row);
+        return v.n + " registered";
+      },
+      end: function (id) { var r = rowAt(API_CLIENTS, id); if (r) { r[4] = "deprecated"; } return (r ? r[0] : "The client") + " deprecated"; }
+    },
+
+    channel: {
+      one: "channel", editVerb: "Configure", cols: 2,
+      name: function (v) { return v ? v.label : "channel"; },
+      sub: function (v) { return v ? v.why : ""; },
+      get: function (id) {
+        var c = CHANNELS[id]; if (!c) { return null; }
+        var val = { label: c.label, why: c.why, vendor: c.vendor,
+          state: c.state === "live" ? "Live" : c.state === "pilot" ? "Pilot &mdash; a named list only" : "Not configured" };
+        c.fields.forEach(function (f, i) { val["f" + i] = f[1]; });
+        return val;
+      },
+      form: function (val, id) {
+        var c = CHANNELS[id] || CHANNELS.sms;
+        return '<div class="grid grid--2 rfgrid">' +
+          recFieldHTML({ k: "vendor", l: "Provider", t: "sel", o: c.alts }, val) +
+          recFieldHTML({ k: "state", l: "State", t: "sel",
+            o: ["Live", "Pilot &mdash; a named list only", "Not configured"] }, val) +
+          c.fields.map(function (f, i) {
+            return recFieldHTML({ k: "f" + i, l: f[0] + (f[2] === "secret" ? ' <span class="bio__t bio__t--locked">write only</span>' : ''),
+              t: f[2] === "secret" ? "ro" : "text" }, val);
+          }).join('') +
+        '</div>' +
+        note('bad', c.note[0], c.note[1]) +
+        note('info', 'A key is written, never read back',
+          'Once saved, a credential is held in the key store and the console shows only its last four characters. Nobody &mdash; the Super Administrator included &mdash; can read it out of this screen, and a change is recorded in the audit log with the person who made it.');
+      },
+      apply: function (id, v) {
+        var c = CHANNELS[id];
+        if (c) {
+          c.vendor = v.vendor;
+          c.state = v.state.indexOf("Live") === 0 ? "live" : v.state.indexOf("Pilot") === 0 ? "pilot" : "off";
+          c.fields.forEach(function (f, i) { if (v["f" + i] != null && v["f" + i] !== "") { f[1] = v["f" + i]; } });
+        }
+        return (c ? c.label : "The channel") + " configured on " + v.vendor;
+      }
+    },
+
+    notify: {
+      one: "notification type", cols: 3,
+      name: function (v) { return v ? v.n : "notification"; },
+      get: function (id) {
+        var r = rowAt(NOTIFY_MATRIX, id); if (!r) { return null; }
+        return { n: r[0], sms: r[1] ? "Yes" : "No", email: r[2] ? "Yes" : "No",
+          wa: r[3] ? "Yes" : "No", push: r[4] ? "Yes" : "No", when: r[5] };
+      },
+      fields: [
+        { k: "n", l: "Notification", t: "text", full: true },
+        { k: "sms", l: "SMS", t: "sel", o: YESNO },
+        { k: "email", l: "E-mail", t: "sel", o: YESNO },
+        { k: "wa", l: "WhatsApp", t: "sel", o: YESNO },
+        { k: "push", l: "Push", t: "sel", o: YESNO },
+        { k: "when", l: "When it goes", t: "text", full: true }
+      ],
+      rule: ["bad", "Nothing may be push-only, and a security notice may not be turned off",
+        "A device can be off, reinstalled or out of storage, and the notification is silently dropped &mdash; so push is a convenience layer over SMS and e-mail, never a replacement. The portal refuses a type configured as push-only, and refuses to disable a password change or a new-device sign-in."],
+      apply: function (id, v, mode) {
+        function b(x) { return x === "Yes" ? 1 : 0; }
+        var row = [v.n, b(v.sms), b(v.email), b(v.wa), b(v.push), v.when];
+        if (mode === "edit") { var i = Number(id); if (NOTIFY_MATRIX[i]) { NOTIFY_MATRIX[i] = row; } return v.n + " amended"; }
+        NOTIFY_MATRIX.push(row);
+        return v.n + " added";
+      }
+    },
+
+    migfile: {
+      one: "migration file", editVerb: "Mapping for", cols: 2,
+      name: function (v) { return v ? v.what : "file"; },
+      sub: function (v) { return v ? v.file : ""; },
+      get: function (id) {
+        var r = rowAt(MIG_SETS, id); if (!r) { return null; }
+        return { what: r[0], file: r[1], src: "Old portal export (CSV)",
+          mode: r[5] === "queued" ? "Validate only &mdash; write nothing" : "Load into staging",
+          key: r[0] === "Students" ? "Matriculation number" : "Old primary key",
+          onbad: "Reject the row and report it", note: r[6] };
+      },
+      fields: [
+        { k: "what", l: "What this file is", t: "text", full: true },
+        { k: "file", l: "File", t: "text" },
+        { k: "src", l: "Source", t: "sel",
+          o: ["Old portal export (CSV)", "Direct database extract", "Spreadsheet from a department", "Zip of files"] },
+        { k: "mode", l: "Mode", t: "sel", full: true,
+          o: ["Validate only &mdash; write nothing", "Load into staging", "Load into production (cutover)"] },
+        { k: "key", l: "Matched on", t: "text", hint: "The column that identifies the row in the old portal." },
+        { k: "onbad", l: "On a row that fails", t: "sel",
+          o: ["Reject the row and report it", "Reject the whole file", "Load and flag for review"] },
+        { k: "note", l: "Note", t: "text", full: true }
+      ],
+      lead: ["info", "Validate first, and read the rejections before loading anything",
+        "A validate-only run writes nothing and produces the same rejection report a real load would. Every rejected row comes back as a file you can open, correct and re-offer."],
+      rule: ["bad", "Reject, never coerce",
+        "A malformed date is not guessed. A missing matriculation number is not generated. A course code that does not exist is not created to make the row fit. The 2,342 orphaned results are marks on somebody's degree, and they go back to the departments on paper &mdash; they are not loaded and they are not thrown away."],
+      newSave: "Queue the file",
+      apply: function (id, v, mode) {
+        if (mode === "edit") { var r = rowAt(MIG_SETS, id); if (r) { r[0] = v.what; r[1] = v.file; r[6] = v.note; } return v.what + " &mdash; mapping amended"; }
+        MIG_SETS.push([v.what, v.file, 0, 0, 0, "queued", v.note]);
+        return v.what + " queued for the next rehearsal";
+      }
+    },
+
+    consumer: {
+      one: "consumer", cols: 2,
+      name: function (v) { return v ? v.n : "consumer"; },
+      sub: function (v) { return v ? v.what : ""; },
+      get: function (id) {
+        var r = rowAt(API_CONSUMERS, id); if (!r) { return null; }
+        return { n: r[0], what: r[1], owner: r[2], scopes: r[3], quota: r[4],
+          state: r[7] === "active" ? "Active" : r[7] === "seasonal" ? "Seasonal" : "Deprecated" };
+      },
+      fields: [
+        { k: "n", l: "Client", t: "text" },
+        { k: "what", l: "What it is", t: "text" },
+        { k: "owner", l: "Owning office", t: "sel",
+          o: ["Directorate of ICT", "Registry", "Bursary", "Academic Planning", "Library"],
+          hint: "The office that answers for what this client reads &mdash; not the office that built it." },
+        { k: "state", l: "State", t: "sel", o: ["Active", "Seasonal", "Deprecated", "Suspended"] },
+        { k: "scopes", l: "Scopes", t: "text", full: true },
+        { k: "quota", l: "Quota", t: "sel", o: ["500/day", "2,000/day", "5,000/day", "10,000/day", "50,000/day", "100,000/day"] },
+        { k: "basis", l: "Lawful basis on the register", t: "sel",
+          o: ["Public task", "Legal obligation", "Explicit consent", "Legitimate interest"],
+          hint: "No endpoint returns personal data without both a scope and a lawful basis." }
+      ],
+      rule: ["bad", "The scope is the technical permission; the lawful basis is why this body may hold it at all",
+        "A consumer added with a scope but no entry on the record of processing activities is rejected at design review, not discovered at the audit. The public website reads this API rather than holding a second copy of the data, which is what stops the two drifting apart."],
+      apply: function (id, v, mode) {
+        var st = v.state.toLowerCase();
+        if (mode === "edit") {
+          var r = rowAt(API_CONSUMERS, id);
+          if (r) { r[0] = v.n; r[1] = v.what; r[2] = v.owner; r[3] = v.scopes; r[4] = v.quota; r[7] = st; }
+          return v.n + " amended";
+        }
+        API_CONSUMERS.push([v.n, v.what, v.owner, v.scopes, v.quota, 0, "&mdash;", st]);
+        return v.n + " registered";
+      },
+      end: function (id) { var r = rowAt(API_CONSUMERS, id); if (r) { r[7] = "deprecated"; } return (r ? r[0] : "The consumer") + " deprecated"; }
+    },
+
+    apikey: {
+      one: "key", editVerb: "Rotate the key for", cols: 2,
+      name: function (v) { return v ? v.n : "key"; },
+      get: function (id) {
+        var r = rowAt(API_KEYS, id); if (!r) { return null; }
+        return { n: r[0], key: r[1], issued: r[2], used: r[3], expires: r[4],
+          overlap: "7 days &mdash; both keys work", life: "12 months" };
+      },
+      fields: [
+        { k: "n", l: "Client", t: "ro", full: true },
+        { k: "key", l: "Current key", t: "ro" },
+        { k: "expires", l: "Expires", t: "text" },
+        { k: "life", l: "New key valid for", t: "sel", o: ["12 months", "6 months", "3 months"] },
+        { k: "overlap", l: "Overlap", t: "sel",
+          o: ["7 days &mdash; both keys work", "14 days &mdash; both keys work", "None &mdash; cut over immediately"] },
+        { k: "tell", l: "Tell the consumer", t: "sel", full: true,
+          o: ["By e-mail to the named contact, on issue", "By e-mail, and again three days before revocation", "Do not notify"] }
+      ],
+      lead: ["info", "Rotation is overlapping, not a cut-over",
+        "The new key is issued, both work for the overlap, the consumer confirms, then the old one is revoked. Started late, it becomes an outage on somebody else's system."],
+      rule: ["bad", "Two keys expire within a fortnight and both belong to external bodies",
+        "The Scholarship Board's key lapses on 13 September, in the middle of a disbursement window. A cut-over with no overlap moves the outage onto them, at the worst moment, and the University will hear about it from students."],
+      save: "Issue a new key",
+      apply: function (id, v) {
+        var r = rowAt(API_KEYS, id);
+        if (r) { r[2] = "Today"; r[5] = 0; }
+        return (r ? r[0] : "The key") + " rotated &mdash; the old key is revoked after the overlap";
+      }
+    },
+
+    gateway: {
+      one: "gateway", editVerb: "Configure", cols: 2,
+      name: function (v) { return v ? v.n : "gateway"; },
+      sub: function (v) { return v ? (v.mode + " mode &middot; " + v.merchant) : ""; },
+      get: function (id) {
+        var g = GATEWAYS[id]; if (!g) { return null; }
+        return { n: g.n, mode: g.mode, merchant: g.merchant, pk: g.pk, sk: g.sk,
+          hook: g.hook, applies: g.applies, settle: g.settle, note: g.note };
+      },
+      fields: [
+        { k: "mode", l: "Mode", t: "sel", o: ["Live", "Test", "Disabled"],
+          hint: "Switching to Live requires the Bursar and the Director of ICT to approve together." },
+        { k: "merchant", l: "Merchant or business identifier", t: "text" },
+        { k: "pk", l: "Public key", t: "text", full: true,
+          hint: "Safe to display. It identifies the University to the gateway and appears in the browser." },
+        { k: "sk", l: "Secret key", t: "ro", full: true,
+          hint: "Held in the platform vault. The portal can use it; no screen and no member of staff can display it again. A compromised key is replaced, not recovered." },
+        { k: "hook", l: "Webhook endpoint &mdash; give this to the gateway", t: "ro", full: true,
+          hint: "Every callback is signature-checked against the secret key before it is believed." },
+        { k: "applies", l: "What this gateway may collect", t: "text", full: true },
+        { k: "settle", l: "Settles", t: "sel", o: ["T+1", "T+2", "Same day"] }
+      ],
+      rule: ["bad", "Two officers, and neither of them alone",
+        "A change to a live gateway &mdash; its keys, its mode, or what it may collect &mdash; is proposed by one officer and approved by another, exactly as a payment posting is. The Director of ICT proposes; the Bursar approves. A single person who can point the University's money at a different merchant account is the whole risk in one place."],
+      save: "Propose the change",
+      apply: function (id, v) {
+        var g = GATEWAYS[id];
+        if (g) { g.mode = v.mode; g.merchant = v.merchant; g.pk = v.pk; g.applies = v.applies; g.settle = v.settle; g.on = v.mode !== "Disabled" ? 1 : 0; }
+        return (g ? g.n : "The gateway") + " &mdash; change proposed, awaiting the Bursar's approval";
+      }
+    },
+
+    /* ── the institution itself ────────────────────────────────── */
+
+    identity: {
+      one: "institutional identity", editVerb: "Amend the", cols: 2, wide: true,
+      get: function () {
+        return { now: "Rev. Fr. Moses Orshio Adasu University, Makurdi",
+          was: "Benue State University, Makurdi", when: "30 December 2024",
+          both: "Yes &mdash; BR-013, and it is not optional",
+          domain: "moaum.edu.ng", addr: "Km 1, Gboko Road, PMB 102119, Makurdi" };
+      },
+      fields: [
+        { k: "now", l: "Present name", t: "text", full: true },
+        { k: "was", l: "Former name", t: "text", full: true },
+        { k: "when", l: "Renamed", t: "text" },
+        { k: "both", l: "Both names resolve in verification", t: "sel",
+          o: ["Yes &mdash; BR-013, and it is not optional", "No"] },
+        { k: "domain", l: "Domain", t: "text" },
+        { k: "addr", l: "Address", t: "text", full: true }
+      ],
+      rule: ["bad", "BR-013: both names resolve, for ever",
+        "Thousands of certificates say Benue State University and they are the same University's degrees. Verification answers on either name, a transcript prints the name the University held when the award was made, and this setting cannot be turned off &mdash; it is what makes forty years of credentials checkable."],
+      apply: function (id, v) { return "Institutional identity amended &mdash; " + v.now; }
+    },
+
+    signin: {
+      one: "sign-in policy", editVerb: "Amend the", cols: 2,
+      get: function () {
+        return { student: "Matriculation number", staff: "Staff number",
+          mfa: "Required for every staff office", len: "8 hours, or until sign-out",
+          fails: "4, then a 15-minute lock", reset: "Self-service by e-mail and SMS" };
+      },
+      fields: [
+        { k: "student", l: "Student identifier", t: "sel", o: ["Matriculation number", "E-mail address", "Either"] },
+        { k: "staff", l: "Staff identifier", t: "sel", o: ["Staff number", "E-mail address", "Either"] },
+        { k: "mfa", l: "Second factor", t: "sel", full: true,
+          o: ["Required for every staff office", "Required for privileged offices only", "Optional"] },
+        { k: "len", l: "Session length", t: "sel", o: ["8 hours, or until sign-out", "4 hours", "24 hours"] },
+        { k: "fails", l: "Failed attempts", t: "sel", o: ["4, then a 15-minute lock", "6, then a 30-minute lock", "3, then a lock until reset"] },
+        { k: "reset", l: "Password reset", t: "sel", full: true,
+          o: ["Self-service by e-mail and SMS", "Self-service by e-mail only", "By the Registry, in person"] }
+      ],
+      rule: ["bad", "Making the second factor optional for staff is the change that undoes the rest",
+        "Every approval in the result chain is an act attributed to a person. If a staff account can be taken with a password alone, the attribution is worth what the password is worth, and the hash-chained approval log records the wrong name convincingly."],
+      apply: function (id, v) { return "Sign-in policy amended &mdash; second factor: " + v.mfa; }
+    },
+
+    retention: {
+      one: "retention and residency", editVerb: "Amend", cols: 2,
+      get: function () {
+        return { dpo: "Appointed &middot; named in the register", ret: "Filed by 31 March each year",
+          breach: "72 hours to the NDPC", res: "Primary and replica in Nigeria",
+          acad: "Permanent", audit: "7 years, then archived" };
+      },
+      fields: [
+        { k: "dpo", l: "Data Protection Officer", t: "text", full: true },
+        { k: "ret", l: "Compliance Audit Return", t: "ro" },
+        { k: "breach", l: "Breach notification", t: "ro" },
+        { k: "res", l: "Residency", t: "sel", o: ["Primary and replica in Nigeria", "Primary in Nigeria, replica abroad"] },
+        { k: "acad", l: "Retention &mdash; academic record", t: "sel", o: ["Permanent", "50 years", "25 years"] },
+        { k: "audit", l: "Retention &mdash; audit log", t: "sel", o: ["7 years, then archived", "10 years, then archived"] }
+      ],
+      lead: ["bad", "Two of these are obligations under the NDPA 2023, not preferences",
+        "The Compliance Audit Return is due by 31 March each year and the breach window is 72 hours. Neither is editable here, because neither is the University's to set."],
+      rule: ["bad", "An academic record is kept permanently, and that is not a storage decision",
+        "A graduate can be asked to prove a 1994 degree in 2041, and the University has to be able to answer. Shortening this is the one retention change that cannot be undone later."],
+      apply: function (id, v) { return "Retention and residency amended &mdash; residency: " + v.res; }
+    }
+  };
+
+  /* option lists that have to be built after FACS exists */
+  REC.dept.fields[0].o = facOpts();
+  REC.prog.fields[0].o = facOpts();
+  REC.prog.fields[1].o = deptOpts();
+  REC.exof.fields[0].o = deptOpts();
+  REC.exof.fields[1].o = progOpts();
+  REC.course.fields[3].o = deptOpts();
+  /* the eligible set is over the same department list the owner comes
+     from — one list, so a department cannot be eligible under a name
+     the register does not carry */
+  REC.course.fields[10].o = deptOpts();
+  REC.course.fields[10].own = "Mathematics and Computer Science";
+  REC.deptcourse.fields[10].o = deptOpts();
+  REC.deptcourse.fields[10].own = "Mathematics and Computer Science";
+  REC.grant.fields[2].o = ROLE_KEYS.map(function (k) { return ROLES[k].label; });

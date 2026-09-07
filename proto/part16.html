@@ -1,0 +1,603 @@
+
+  /* ══ PRINTABLE DOCUMENTS ═════════════════════════════════════════
+     Every download and print button opens the document it names,
+     typeset for paper. The toolbar prints it; the browser's print
+     dialogue is also how it is saved as a PDF.                    */
+
+  var DOC_ADDR = "Km 1, Gboko Road &middot; PMB 102119, Makurdi, Benue State, Nigeria &middot; moaum.edu.ng";
+
+  function docSheet(title, meta, body, verify, sig) {
+    return '<div class="docsheet">' +
+      '<div class="lh"><img src="' + CREST + '" alt="">' +
+        '<div><div class="n">Rev. Fr. Moses Orshio Adasu University</div>' +
+        '<div class="a">' + DOC_ADDR + '</div></div></div>' +
+      '<div class="rule"></div><div class="rule2"></div>' +
+      '<h4 class="dt">' + title + '</h4>' +
+      (meta ? '<div class="meta">' + meta.map(function (m) {
+        return '<span>' + m[0] + ' <b>' + m[1] + '</b></span>';
+      }).join('') + '</div>' : '') +
+      body +
+      (sig ? '<div class="sig">' + sig.map(function (s) {
+        return '<div>' + s[0] + '<br><span style="color:#6B7680">' + s[1] + '</span></div>';
+      }).join('') + '</div>' : '') +
+      (verify ? '<div class="vfy"><div class="q">' + qr() + '</div>' +
+        '<div>' + verify + '</div></div>' : '') +
+    '</div>';
+  }
+
+  function docKv(pairs) {
+    return '<div class="kvs">' + pairs.map(function (p) {
+      return '<div><span class="k">' + p[0] + '</span><span class="v">' + p[1] + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  function docTable(cols, rows) {
+    return '<table><thead><tr>' + cols.map(function (c) {
+      var p = c.split("|");
+      return '<th' + (p[1] ? ' style="text-align:' + (p[1] === "num" ? "right" : "center") + '"' : '') + '>' + p[0] + '</th>';
+    }).join('') + '</tr></thead><tbody>' + rows.map(function (r) {
+      return '<tr>' + r.map(function (cell, i) {
+        var a = cols[i].split("|")[1];
+        return '<td' + (a ? ' style="text-align:' + (a === "num" ? "right" : "center") + '"' : '') + '>' + cell + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody></table>';
+  }
+
+  var VFY = function (code, what) {
+    return 'Verification code <b style="font-family:var(--mono);letter-spacing:.06em">' + code + '</b><br>' +
+      'Scan the code or enter it at moaum.edu.ng/verify to confirm that this ' + what +
+      ' was issued by the University. Issued electronically; valid without a manuscript signature.';
+  };
+
+  var DOCS = {
+
+    /* ── applicant ─────────────────────────────────────────────── */
+    ack: { name: "Application acknowledgement slip", file: "MOAUM-APP-018342-acknowledgement.pdf", build: function () {
+      return docSheet("Application Acknowledgement Slip",
+        [["Application no.", AP.no], ["Session", AP.session], ["Submitted", "9 September 2026, 14:02"]],
+        docKv([["Candidate", AP.name], ["JAMB registration number", AP.jamb],
+               ["Programme applied for", AP.prog], ["Faculty", "Faculty of " + AP.fac],
+               ["UTME score", String(AP.utme)], ["Application fee", money(AP.feeApp + AP.feePortal) + " &mdash; paid"]]) +
+        docTable(["Section", "Status|mid"], [
+          ["Biodata, read from the JAMB record", "Complete"],
+          ["O&rsquo;Level results &mdash; WAEC May/June 2025, one sitting", "Complete"],
+          ["Supporting documents &mdash; five files", "Complete"],
+          ["Declaration", "Signed electronically"]
+        ]) +
+        '<p style="margin-top:14px"><b>This slip acknowledges receipt of an application. It is not an offer of admission and confers no right to a place.</b> Admission is offered only by the Admissions Board and published on the portal.</p>' +
+        '<p>Keep this slip. Quote the application number in all correspondence with the University.</p>',
+        VFY("MOAUM-ACK-018342-7741", "acknowledgement"),
+        [["B. T. Hemba", "Registrar"]]);
+    }},
+
+    screening: { name: "Post-UTME screening slip", file: "MOAUM-APP-018342-screening-slip.pdf", build: function () {
+      return docSheet("Post-UTME Screening Slip",
+        [["Application no.", AP.no], ["Batch", "C"], ["Seat", "B-114"]],
+        '<div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:16px">' +
+          passport(96, 118, 2) +
+          '<div style="flex-grow:1">' + docKv([["Candidate", AP.name], ["JAMB registration number", AP.jamb],
+            ["Programme", AP.prog], ["Faculty", "Faculty of " + AP.fac]]) + '</div>' +
+        '</div>' +
+        docTable(["Date", "Session", "Venue", "Duration|mid"], [
+          ["Tuesday 22 September 2026", "11:00 &ndash; 12:00", "CBT Hall B, ICT Directorate", "60 minutes"]
+        ]) +
+        '<p style="margin-top:14px"><b>Bring this slip and a valid photograph identification document.</b> You will not be admitted into the hall without both. Arrive thirty minutes before your session; the doors close when it begins.</p>' +
+        '<p>No phone, watch, electronic device, written material or bag may be brought into the hall, and there is no storage at the venue. The photograph above is checked at the door and again at your seat.</p>',
+        VFY("MOAUM-PUS-018342-C114", "slip"),
+        [["B. T. Hemba", "Registrar"], ["", "Invigilator&rsquo;s signature"]]);
+    }},
+
+    adm: { name: "Letter of provisional admission", file: "MOAUM-APP-018342-admission-letter.pdf", build: function () {
+      return docSheet("Letter of Provisional Admission",
+        [["Reference", "MOAUM/REG/ADM/2026/018342"], ["Date", "17 September 2026"]],
+        '<p style="font-family:var(--sans);font-size:12px;margin-bottom:16px">' + AP.name + '<br>' + AP.no + '</p>' +
+        '<p>Dear ' + AP.name.split(",")[1] + ',</p>' +
+        '<p style="font-weight:700">OFFER OF PROVISIONAL ADMISSION &mdash; ' + AP.session + ' ACADEMIC SESSION</p>' +
+        '<p>I am directed to inform you that, on the recommendation of the Admissions Board, you have been offered provisional admission into the <b>' + AP.prog + '</b> degree programme in the Faculty of ' + AP.fac + ' of this University, at 100 Level, for the ' + AP.session + ' academic session.</p>' +
+        docTable(["Component", "Score|num", "Weight|mid", "Contribution|num"], [
+          ["UTME", String(AP.utme) + " / 400", "50%", String(Math.round(AP.utmeScaled * 5) / 10)],
+          ["Post-UTME screening", String(AP.pu) + " / 100", "50%", String(Math.round(AP.pu * 5) / 10)],
+          ["<b>Aggregate</b>", "", "", "<b>" + AP.aggregate + "</b>"]
+        ]) +
+        '<p>This offer is <b>provisional</b>. It stands on the results you declared and is subject to verification of those results with the West African Examinations Council, the National Examinations Council and the Joint Admissions and Matriculation Board. An admission obtained on a result that does not verify is void at any point thereafter, including after the award of a degree.</p>' +
+        '<p>To take up the offer you must, <b>not later than Friday 25 September 2026</b>, accept it on the University portal and pay the acceptance fee of ' + money(AP.feeAccept) + '. An offer not accepted by that date lapses automatically and the place is released to the next candidate on the waiting list. A lapsed offer cannot be reinstated.</p>' +
+        '<p>You will thereafter present the originals of your credentials for clearance at the Registry from Monday 28 September 2026. No money is payable at clearance, to any person.</p>' +
+        '<p>I congratulate you, and welcome you to the University.</p>',
+        VFY("MOAUM-ADM-018342-9218", "letter"),
+        [["B. T. Hemba", "Registrar"]]);
+    }},
+
+    prov: { name: "Confirmation of admission for a sponsor", file: "MOAUM-APP-018342-sponsor-confirmation.pdf", build: function () {
+      return docSheet("Confirmation of Admission",
+        [["Reference", "MOAUM/REG/CONF/2026/018342"], ["Date", "17 September 2026"]],
+        '<p style="font-weight:700">TO WHOM IT MAY CONCERN</p>' +
+        '<p>This is to confirm that <b>' + AP.name + '</b>, application number ' + AP.no + ', has been offered provisional admission into the <b>' + AP.prog + '</b> degree programme of this University for the ' + AP.session + ' academic session, at 100 Level.</p>' +
+        docTable(["Charge", "Amount|num", "When payable"], [
+          ["Acceptance fee &mdash; non-refundable", money(AP.feeAccept), "By 25 September 2026"],
+          ["Tuition and user charges, first instalment", "&#8358;90,000", "Before course registration closes"],
+          ["Tuition and user charges, second instalment", "&#8358;45,000", "Before the second semester opens"],
+          ["Accommodation, if allocated", "&#8358;40,000", "On allocation"]
+        ]) +
+        '<p style="margin-top:12px">The programme is of four years&rsquo; duration. Charges are approved by the Governing Council for each session and may be revised for sessions after this one.</p>' +
+        '<p>This confirmation is issued at the request of the candidate for the information of a sponsor or a financial institution. It is not a demand for payment, and payment is made only through the University portal to a reference the portal generates.</p>',
+        VFY("MOAUM-CNF-018342-4410", "confirmation"),
+        [["B. T. Hemba", "Registrar"]]);
+    }},
+
+    /* ── receipts ──────────────────────────────────────────────── */
+    "rcpt-app": { name: "Receipt — application and screening fee", file: "MOAUM-RCT-APP-118342.pdf", build: function () {
+      return docReceipt({
+        no: "RCT-APP-2026-118342", date: "6 September 2026, 09:41",
+        who: AP.name, id: AP.no, prog: AP.prog,
+        purpose: "Post-UTME application and screening fee, " + AP.session,
+        inv: "APP-2026-018342", amount: AP.feeApp + AP.feePortal,
+        channel: "Card &mdash; Verve ending 4417", rrr: "MOAUM-APP-018342-7741",
+        code: "MOAUM-RCT-APP-7741", split: false
+      });
+    }},
+
+    "rcpt-acc": { name: "Receipt — acceptance fee", file: "MOAUM-RCT-ACC-118342.pdf", build: function () {
+      return docReceipt({
+        no: "RCT-ACC-2026-118342", date: "19 September 2026, 16:27",
+        who: AP.name, id: AP.no, prog: AP.prog,
+        purpose: "Acceptance fee, " + AP.session + " &mdash; non-refundable",
+        inv: "ACC-2026-018342", amount: AP.feeAccept,
+        channel: "Bank transfer &mdash; confirmed by the bank", rrr: "MOAUM-ACC-018342-9218",
+        code: "MOAUM-RCT-ACC-9218", split: false
+      });
+    }},
+
+    "rcpt-fee": { name: "Official payment receipt", file: "MOAUM-RCT.pdf", build: function () {
+      var r = RECEIPTS[currentReceipt] || RECEIPTS.r2;
+      return docReceipt({
+        no: r.no, date: r.date, who: "ADAMU, Grace Mwuese", id: "MOAUM/CSC/23/1487",
+        prog: "B.Sc. Computer Science &middot; 300 Level",
+        purpose: r.purpose, inv: r.inv, amount: r.amount,
+        channel: r.channel, rrr: r.rrr, code: r.code, split: r.split
+      });
+    }},
+
+    /* ── student records ───────────────────────────────────────── */
+    slip: { name: "Statement of results", file: "MOAUM-CSC-23-1487-result-slip.pdf", build: function () {
+      return docSheet("Statement of Semester Results",
+        [["Matriculation no.", "MOAUM/CSC/23/1487"], ["Session", "2025/2026"], ["Semester", "Second"]],
+        docKv([["Name", "ADAMU, Grace Mwuese"], ["Programme", "B.Sc. Computer Science"],
+               ["Faculty", "Faculty of Science"], ["Level", "200"]]) +
+        docTable(["Code", "Course title", "Unit|mid", "Score|mid", "Grade|mid", "Point|num"], [
+          ["CSC 211", "Computer Programming II", "3", "72", "A", "15.0"],
+          ["CSC 221", "Digital Logic Design", "3", "38", "F", "0.0"],
+          ["CSC 231", "Data Structures", "3", "64", "B", "12.0"],
+          ["MTH 212", "Linear Algebra II", "3", "41", "F", "0.0"],
+          ["STA 211", "Statistics for Physical Sciences", "2", "58", "C", "6.0"],
+          ["GST 211", "Entrepreneurship Studies", "2", "70", "A", "10.0"]
+        ]) +
+        docTable(["Units registered|mid", "Units passed|mid", "Grade points|mid", "GPA|mid", "CGPA|num"], [
+          ["16", "12", "43.0", "2.69", "3.12"]
+        ]) +
+        '<p style="margin-top:14px"><b>CSC 221 and MTH 212 are carried over</b> and are added automatically to the next registration. A carried course does not replace the failed attempt; both appear on the transcript.</p>' +
+        '<p style="font-family:var(--sans);font-size:10.5px;color:#5C6570">Grades computed by grading engine version 2.1 under the scheme approved by Senate for the 2025/2026 session. Published 12 August 2026 following Senate approval of 12 August 2026. This statement is not a transcript and is not valid for transfer or employment; apply to the Registry for an official transcript.</p>',
+        VFY("MOAUM-RS-4T8N-9CQL", "statement"),
+        [["Academic Office", "For the Registrar"]]);
+    }},
+
+    regform: { name: "Course registration form", file: "MOAUM-CSC-23-1487-registration.pdf", build: function () {
+      return docSheet("Course Registration Form",
+        [["Matriculation no.", "MOAUM/CSC/23/1487"], ["Session", "2026/2027"], ["Level", "300"]],
+        '<div style="display:flex;gap:18px;align-items:flex-start;margin-bottom:14px">' + passport(78, 96, 2) +
+        '<div style="flex-grow:1">' + docKv([["Name", "ADAMU, Grace Mwuese"], ["Programme", "B.Sc. Computer Science"],
+          ["Faculty", "Faculty of Science"], ["Department", "Mathematics &amp; Computer Science"]]) + '</div></div>' +
+        docTable(["Code", "Course title", "Unit|mid", "Type|num"], [
+          ["MTH 212", "Linear Algebra II", "3", "Carryover"],
+          ["CSC 221", "Digital Logic Design", "3", "Carryover"],
+          ["CSC 311", "Algorithms &amp; Complexity", "3", "Core"],
+          ["CSC 321", "Database Systems", "3", "Core"],
+          ["CSC 331", "Operating Systems", "3", "Core"],
+          ["GST 301", "Entrepreneurship", "2", "General"],
+          ["CSC 341", "Computer Networks", "3", "Elective"],
+          ["CSC 355", "Human&ndash;Computer Interaction", "2", "Elective"],
+          ["<b>Total credit units</b>", "", "<b>22</b>", ""]
+        ]) +
+        '<p style="margin-top:12px">Financial clearance confirmed on 15 September 2026. Approved by the Head of Department on 15 September 2026. The maximum load approved by Senate for this level is 24 units; the minimum is 15.</p>',
+        VFY("MOAUM-CRF-7K4P-2WQX", "registration"),
+        [["Student&rsquo;s signature", "ADAMU, Grace Mwuese"], ["I. O. Ogwuche", "Head of Department"]]);
+    }},
+
+    transcript: { name: "Official academic transcript", file: "MOAUM-CSC-23-1487-transcript.pdf", build: function () {
+      return docSheet("Official Academic Transcript",
+        [["Reference", "TRN-2026-00418"], ["Issued", "22 September 2026"], ["Page", "1 of 2"]],
+        docKv([["Name", "ADAMU, Grace Mwuese"], ["Matriculation number", "MOAUM/CSC/23/1487"],
+               ["Programme", "B.Sc. Computer Science"], ["Date of admission", "October 2023"],
+               ["Mode of study", "Full time"], ["Status", "In progress &mdash; 300 Level"]]) +
+        '<p style="font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin:16px 0 6px">100 Level &mdash; 2023/2024</p>' +
+        docTable(["Code", "Course title", "Unit|mid", "Grade|mid", "Point|num"], [
+          ["CSC 111", "Introduction to Computer Science I", "3", "A", "15.0"],
+          ["CSC 112", "Introduction to Problem Solving", "3", "B", "12.0"],
+          ["MTH 111", "Calculus", "3", "B", "12.0"],
+          ["PHY 111", "Elementary Mechanics", "3", "C", "9.0"],
+          ["GST 111", "Use of English", "2", "A", "10.0"]
+        ]) +
+        '<p style="font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin:16px 0 6px">200 Level &mdash; 2025/2026</p>' +
+        docTable(["Code", "Course title", "Unit|mid", "Grade|mid", "Point|num"], [
+          ["CSC 211", "Computer Programming II", "3", "A", "15.0"],
+          ["CSC 221", "Digital Logic Design", "3", "F", "0.0"],
+          ["CSC 231", "Data Structures", "3", "B", "12.0"],
+          ["MTH 212", "Linear Algebra II", "3", "F", "0.0"],
+          ["STA 211", "Statistics for Physical Sciences", "2", "C", "6.0"],
+          ["GST 211", "Entrepreneurship Studies", "2", "A", "10.0"]
+        ]) +
+        docTable(["Cumulative units|mid", "Cumulative points|mid", "CGPA|mid", "Classification to date|num"], [
+          ["30", "93.5", "3.12", "Second Class Lower"]
+        ]) +
+        '<p style="margin-top:14px;font-family:var(--sans);font-size:10.5px;color:#5C6570"><b>Grading scheme:</b> A 70&ndash;100 (5) &middot; B 60&ndash;69 (4) &middot; C 50&ndash;59 (3) &middot; D 45&ndash;49 (2) &middot; E 40&ndash;44 (1) &middot; F 0&ndash;39 (0). Classification: First Class 4.50&ndash;5.00 &middot; Second Class Upper 3.50&ndash;4.49 &middot; Second Class Lower 2.40&ndash;3.49 &middot; Third Class 1.50&ndash;2.39.</p>' +
+        '<p style="font-family:var(--sans);font-size:10.5px;color:#5C6570">This transcript covers all courses attempted, including failed attempts and the carried repeats of them. It is issued directly to the receiving institution named in the request and is not valid if it has passed through the hands of the candidate. Credentials issued before 30 December 2024 bear the University&rsquo;s former name, Benue State University, Makurdi; both names identify the same institution and both resolve in the verification service.</p>',
+        VFY("MOAUM-TRN-00418-6QW2", "transcript"),
+        [["B. T. Hemba", "Registrar"], ["", "University seal"]]);
+    }},
+
+    /* ── staff ─────────────────────────────────────────────────── */
+    scoresheet: { name: "Blank score sheet", file: "MOAUM-CSC311-score-sheet.pdf", build: function () {
+      var rows = docRoll("CSC 311"), sp = rollSplit("CSC 311");
+      return docSheet("Continuous Assessment and Examination Score Sheet",
+        [["Course", "CSC 311"], ["Session", "2026/2027"], ["Semester", "First"]],
+        docKv([["Course title", "Algorithms &amp; Complexity"], ["Credit units", "3"],
+               ["Lecturer", "Dr. T. Iorpuu"],
+               ["Candidates", sp.all + " (" + rows.length + " shown, all programmes)"]]) +
+        /* Two columns, not four. The lecturer records what they awarded —
+           the continuous assessment and the examination. The total, the
+           grade and the grade point are computed by the system from the
+           grading scheme in force for the session, and are deliberately
+           absent from this sheet: a total worked out by hand on paper is
+           an invitation to disagree with the record, and a grade written
+           here would be a grade nobody approved. */
+        docTable(["S/N|mid", "Matriculation number", "Name", "Programme", "Lv|mid", "CA / 30|mid", "Exam / 70|mid"],
+          rows.map(function (r, i) {
+            return [String(i + 1), r.m, r.name, progShort(r), String(r.lv), "&nbsp;", "&nbsp;"];
+          })) +
+        '<p style="margin-top:14px;font-family:var(--sans);font-size:10.5px;color:#5C6570"><b>Every registered candidate is on this sheet, whatever programme they came from.</b> CSC 311 is offered to ' + sp.from.join(", ") + ' as well as to Computer Science, because those programmes and levels were made eligible when the course was created. A candidate who sat the paper and is missing from a sheet has no mark, and the sheet still looks complete &mdash; so the sheet is generated from the register and is never typed out by hand.</p>' +
+        '<p style="margin-top:8px;font-family:var(--sans);font-size:10.5px;color:#5C6570"><b>Record the two marks only.</b> Do not total them and do not enter a grade. The total, the grade and the grade point are computed by the portal from the grading scheme in force for the session, so that every candidate in the University is graded by the same rule and any result can be recomputed years later to exactly what Senate approved.</p>' +
+        '<p style="margin-top:8px;font-family:var(--sans);font-size:10.5px;color:#5C6570">Enter whole marks only. A candidate who did not sit the paper is marked <b>ABS</b>, not zero &mdash; the two are treated differently by the grading engine and by the Board. This printed sheet is a working copy; the record of account is the sheet entered on the portal, which is what proceeds to verification, the Departmental Board, the Faculty Board and Senate.</p>',
+        "This blank sheet carries no verification code. A completed sheet is entered on the portal, where it acquires one.",
+        [["", "Lecturer&rsquo;s signature and date"], ["", "Examinations Officer"]]);
+    }},
+
+    classlist: { name: "Class list", file: "MOAUM-CSC311-class-list.pdf", build: function () {
+      var rows = docRoll("CSC 311"), sp = rollSplit("CSC 311");
+      return docSheet("Class List",
+        [["Course", "CSC 311"], ["Session", "2026/2027"], ["Generated", "8 September 2026, 11:52"]],
+        docKv([["Course title", "Algorithms &amp; Complexity"], ["Credit units", "3"],
+               ["Lecturer", "Dr. T. Iorpuu"],
+               ["Registered candidates", sp.all + " (" + rows.length + " shown)"]]) +
+        docTable(["S/N|mid", "Matriculation number", "Name", "Programme", "Level|mid", "Basis|num"],
+          rows.map(function (r, i) {
+            return [String(i + 1), r.m, r.name, progShort(r), String(r.lv), r.basis];
+          })) +
+        '<p style="margin-top:12px;font-family:var(--sans);font-size:10.5px;color:#5C6570">Generated from approved course registrations at the time shown, for every programme the course is offered to &mdash; ' + sp.borrowed + ' of the ' + sp.all + ' registered candidates read for a programme other than B.Sc. Computer Science. A candidate not on this list is not registered for the course and no mark may be recorded against them. Registrations added or withdrawn after this time will not appear; regenerate the list rather than annotating it.</p>',
+        VFY("MOAUM-CLS-CSC311-8842", "list"),
+        [["I. O. Ogwuche", "Head of Department"]]);
+    }},
+
+    attreg: { name: "Attendance register", file: "MOAUM-CSC311-attendance.pdf", build: function () {
+      var rows = docRoll("CSC 311"), sp = rollSplit("CSC 311");
+      return docSheet("Attendance Register",
+        [["Course", "CSC 311"], ["Session", "2026/2027"], ["Semester", "First"]],
+        docKv([["Course title", "Algorithms &amp; Complexity"], ["Lecturer", "Dr. T. Iorpuu"],
+               ["Venue", "LT2, Monday 09:00"],
+               ["Registered candidates", sp.all + " (" + rows.length + " shown)"]]) +
+        docTable(["Matriculation number", "Name", "Programme", "Wk 1|mid", "Wk 2|mid", "Wk 3|mid", "Wk 4|mid", "Wk 5|num"],
+          rows.map(function (r) {
+            return [r.m, r.name, progShort(r), "&nbsp;", "&nbsp;", "&nbsp;", "&nbsp;", "&nbsp;"];
+          })) +
+        '<p style="margin-top:12px;font-family:var(--sans);font-size:10.5px;color:#5C6570">Senate requires 75% attendance for a candidate to be eligible to sit the examination in a course. A signature is the candidate&rsquo;s own; signing for another candidate is an examination offence for both.</p>',
+        "This printed register is a working copy. Attendance of account is the record entered on the portal.",
+        [["", "Lecturer&rsquo;s signature and date"]]);
+    }},
+
+    examroll: { name: "Examination roll", file: "MOAUM-CSC311-exam-roll.pdf", build: function () {
+      var rows = docRoll("CSC 311"), sp = rollSplit("CSC 311");
+      return docSheet("Examination Roll",
+        [["Course", "CSC 311"], ["Hall", "CBT Hall A"], ["Date", "Tuesday 22 September 2026, 09:00"]],
+        docKv([["Course title", "Algorithms &amp; Complexity"],
+               ["Candidates on the roll", sp.all + " (" + rows.length + " shown)"],
+               ["Cleared to sit", String(sp.all - 1)], ["Not cleared", "1"]]) +
+        docTable(["Seat|mid", "Matriculation number", "Name", "Programme", "Clearance|mid", "Signature|num"],
+          rows.map(function (r, i) {
+            var ok = r.m !== "MOAUM/CSC/23/1502";
+            return ["A-0" + (42 + i), r.m, r.name, progShort(r),
+                    ok ? "Cleared" : "<b>NOT CLEARED</b>", "&nbsp;"];
+          })) +
+        '<p style="margin-top:12px;font-family:var(--sans);font-size:10.5px;color:#5C6570">A candidate marked NOT CLEARED is not admitted into the hall. The invigilator does not adjudicate clearance at the door; a candidate who disputes it is referred to the Bursary, and the paper is not delayed for it. Identity is checked against the photograph held on the candidate&rsquo;s record.</p>',
+        VFY("MOAUM-ROL-CSC311-A", "roll"),
+        [["", "Chief Invigilator"], ["M. Adikpe", "Examinations Officer"]]);
+    }},
+
+    payslip: { name: "Payslip", file: "MOAUM-payslip-august-2026.pdf", build: function () {
+      var r = ROLES[S.srole];
+      return docSheet("Payslip",
+        [["Month", "August 2026"], ["Staff number", r.id[1]], ["Paid", "28 August 2026"]],
+        docKv([["Name", r.who], ["Office", r.label], ["Unit", r.sub], ["Grade", "CONUASS 05, step 4"]]) +
+        docTable(["Earnings", "Amount|num"], [
+          ["Consolidated basic salary", money(392000)],
+          ["Academic allowance", money(84000)],
+          ["Responsibility allowance", money(46000)],
+          ["<b>Gross</b>", "<b>" + money(522000) + "</b>"]
+        ]) +
+        docTable(["Deductions", "Amount|num"], [
+          ["Pay-as-you-earn tax", money(58400)],
+          ["Pension contribution, 8%", money(31360)],
+          ["National Health Insurance", money(7820)],
+          ["Cooperative", money(6200)],
+          ["<b>Total deductions</b>", "<b>" + money(103780) + "</b>"]
+        ]) +
+        docTable(["Net pay|num"], [["<b style=\"font-size:14px\">" + money(418220) + "</b>"]]) +
+        '<p style="margin-top:12px;font-family:var(--sans);font-size:10.5px;color:#5C6570">Paid to the account held on your staff record. A query on this payslip is raised with the Bursary quoting the staff number and the month; the payroll of account is the one held in the portal, and this document is generated from it.</p>',
+        VFY("MOAUM-PAY-1142-0826", "payslip"),
+        [["Bursary", "For the Bursar"]]);
+    }},
+
+    scopeexport: { name: "Scoped record extract", file: "MOAUM-records-extract.pdf", build: function () {
+      var pop = scopePopulation(), s = scopeNow(), f = facById(s.fac), d = deptById(f, s.dept), p = progById(d, s.prog);
+      var v = (S.sc.view || "students");
+      return docSheet("Record Extract",
+        [["Extracted", "8 September 2026, 11:52"], ["By", S.role === "staff" ? ROLES[S.srole].who : "Portal user"],
+         ["Records", String(pop.n)]],
+        docKv([["View", v.charAt(0).toUpperCase() + v.slice(1)],
+               ["Faculty", f ? "Faculty of " + f.n : "All faculties"],
+               ["Department", d ? d.n : "All departments"],
+               ["Programme", p ? p.n : "All programmes"],
+               ["Level", s.level ? s.level + " Level" : "All levels"],
+               ["Semester", s.sem ? (Number(s.sem) === 1 ? "First semester" : "Second semester") : "Both semesters"],
+               ["Session", S.sc.session || "2026/2027"]]) +
+        docTable(["Matriculation number", "Name", "Level|mid"],
+          recRows().map(function (r) { return [r[0], r[1], String(r[2])]; })) +
+        '<p style="margin-top:12px;font-family:var(--sans);font-size:10.5px;color:#5C6570">This extract is a subset. It shows <b>' + pop.n +
+        '</b> records of the <b>32,450</b> on the register, selected by the scope stated above and as at the moment of extraction. ' +
+        'It is not the register, and a figure taken from it should be quoted with its scope or it will be read as an institutional total. ' +
+        'Records containing personal data are extracted under the University&rsquo;s record of processing activities; ' +
+        'the extractor is named above and the extraction is on the audit trail.</p>',
+        "This extract carries no verification code. It is a working document, not a credential.",
+        [[S.role === "staff" ? ROLES[S.srole].who : "Portal user", "Extracted by"]]);
+    }},
+
+    idcard: { name: "Student identity card", file: "MOAUM-CSC-23-1487-identity-card.pdf", build: function () {
+      return '<div class="docsheet">' +
+        '<div class="lh"><img src="' + CREST + '" alt="">' +
+          '<div><div class="n">Rev. Fr. Moses Orshio Adasu University</div>' +
+          '<div class="a">' + DOC_ADDR + '</div></div></div>' +
+        '<div class="rule"></div><div class="rule2"></div>' +
+        '<h4 class="dt">Identity Card &mdash; Personalisation Sheet</h4>' +
+        '<div class="meta">' +
+          '<span>Holder <b>' + CARD.name + '</b></span>' +
+          '<span>Matriculation number <b>' + CARD.matric + '</b></span>' +
+          '<span>Serial <b>' + CARD.serial + '</b></span>' +
+          '<span>Card <b>ID-1 &middot; 85.6 &times; 54 mm</b></span>' +
+        '</div>' +
+
+        '<p style="font-family:var(--sans);font-size:11px;color:#5C6570;margin-bottom:14px">' +
+        'Printed at 1:1 on 760 micron PVC. The crop marks are the card edge; the barcode is Code&nbsp;128B ' +
+        'and must be read by the desk scanner before the card leaves the Library.</p>' +
+
+        '<div class="idc__sheet">' +
+          '<div class="idc__crop">' + idCardFront(CARD, { state: "issued" }) + '</div>' +
+          '<div class="idc__crop">' + idCardBack(CARD, { state: "issued" }) + '</div>' +
+        '</div>' +
+
+        docKv([
+          ["Personalised by", "Mrs. R. T. Iorember, Librarian"],
+          ["Printed", "18 September 2026, 14:12"],
+          ["Handed over by", "Mr. J. A. Anhwange, Chief Security Officer"],
+          ["Collected", "18 September 2026, 16:40, by the holder in person"],
+          ["Programme", CARD.prog + " &middot; " + CARD.duration],
+          ["Admitted / expected to graduate", CARD.admitted + " &ndash; " + CARD.graduates],
+          ["Valid to", CARD.expires + " (renewed each session)"],
+          ["Barcode read at printing", CARD.barcode + " \u2014 verified"]
+        ]) +
+
+        '<div class="sig"><div>Librarian<br><span style="color:#6B7680">Personalisation and printing</span></div>' +
+        '<div>Chief Security Officer<br><span style="color:#6B7680">Issue and collection</span></div></div>' +
+
+        '<div class="vfy"><div class="q">' + qr() + '</div><div>' +
+        VFY(CARD.serial, "identity card") + '</div></div>' +
+      '</div>';
+    }},
+
+    biodata: { name: "Student record", file: "MOAUM-CSC-23-1487-biodata.pdf", build: function () {
+      return docSheet("Student Record",
+        [["Matriculation no.", "MOAUM/CSC/23/1487"], ["Session", "2026/2027"], ["Printed", "8 September 2026"]],
+        docKv([["Surname", "ADAMU"], ["Other names", "Grace Mwuese"],
+               ["Date of birth", "9 June 2005"], ["Sex", "Female"],
+               ["Programme", "B.Sc. Computer Science"], ["Level", "300"],
+               ["Faculty", "Science"], ["Department", "Mathematics &amp; Computer Science"],
+               ["Entry mode", "UTME, 2023/2024"], ["Status", "Active"]]) +
+        docTable(["Contact", "Detail"], [
+          ["Mobile", "0803 411 7725"],
+          ["Personal email", "grace.adamu@example.com"],
+          ["University email", "MOAUM-CSC-23-1487@moaum.edu.ng"],
+          ["Term-time address", "Room B14, Akpehe Hall, MOAUM campus"],
+          ["Permanent address", "12 Ikpayongo Street, Wurukum, Makurdi, Benue State"]
+        ]) +
+        docTable(["Origin", "Detail"], [
+          ["State of origin", "Benue"], ["Local government area", "Gwer West"],
+          ["Town", "Naka"], ["Nationality", "Nigerian"], ["Sponsorship", "Parent or guardian"]
+        ]) +
+        docTable(["Next of kin", "Detail"], [
+          ["Name", "ADAMU, Terhemba John"], ["Relationship", "Father"],
+          ["Mobile", "0806 552 1180"], ["Address", "12 Ikpayongo Street, Wurukum, Makurdi"]
+        ]) +
+        '<p style="margin-top:12px;font-family:var(--sans);font-size:10.5px;color:#5C6570">Health information held on this record is sensitive personal data under the Nigeria Data Protection Act 2023 and is <b>not printed here</b>. It is disclosed only to the University Health Services, and to the student on request. This extract is generated from the live record and is superseded by any change made after the time of printing.</p>',
+        VFY("MOAUM-BIO-1487-3308", "record"),
+        [["Academic Office", "For the Registrar"]]);
+    }},
+
+    /* ── stored files, as opposed to generated documents ───────── */
+    material: { kind: "file", name: "Course material", build: function () {
+      return '<div class="docsheet" style="font-family:var(--sans)">' +
+        '<div class="eyebrow" style="color:#7A858F">Stored file</div>' +
+        '<div style="font-family:var(--serif);font-size:19px;font-weight:700;margin:6px 0 4px">' + (S.docFile || "Course material") + '</div>' +
+        '<div style="font-size:12.5px;color:#5C6570">Uploaded by the course lecturer to the course space.</div>' +
+        '<div style="height:1px;background:#E2E7EC;margin:16px 0"></div>' +
+        '<p style="font-size:12.5px;color:#41505c">This is a file the University stores, not a document it generates, so there is nothing to typeset. In the live portal this button streams the file to your device and records the download against your enrolment, which is what feeds the engagement report your lecturer sees.</p>' +
+        '<p style="font-size:12.5px;color:#41505c;margin-bottom:0">Materials are available for the session in which you are registered for the course, and for one session afterwards.</p>' +
+        '</div>';
+    }},
+
+    /* ══ the four documents ROL-MOAUMPP-001 v0.2 names ═══════════════
+       Each exists because a real dispute needs a piece of paper that
+       states its own limits. */
+
+    /* Issued at acceptance, when the student has an admission number and
+       no matriculation number — and every receipt, letter and clearance
+       between now and matriculation refers to the number on this advice. */
+    admno: { name: "Admission number advice", file: "MOAUM-ADM-018342-number-advice.pdf", build: function () {
+      return docSheet("Advice of Admission Number",
+        [["Reference", "MOAUM/REG/ADN/2026/018342"], ["Date", "26 September 2026"]],
+        docKv([["Candidate", AP.name], ["Application number", AP.no],
+               ["Programme", AP.prog], ["Session of entry", AP.session],
+               ["<b>Admission number</b>", "<b class=\"tnum\">ADM/2026/018342</b>"],
+               ["Matriculation number", "<span style=\"color:#8E1015\">not yet issued</span>"]]) +
+        '<p style="margin-top:14px">Your offer has been accepted and the acceptance fee received. You are now a candidate for admission, and the number above is how the University refers to you until you are matriculated.</p>' +
+        '<p><b>This is not a matriculation number, and it is not a substitute for one.</b> A matriculation number is issued only after you have paid your fees, registered your courses, and appeared on the list of registered students your Faculty Officer confirms. It is permanent and never reused, which is why it is not issued to anybody who has not demonstrably arrived.</p>' +
+        '<p>Quote the admission number on every payment, every form and every enquiry until the matriculation number replaces it. A payment made without it takes longer to match, and an unmatched payment is a payment that has not cleared you for anything.</p>',
+        VFY("MOAUM-ADN-018342-4417", "advice"),
+        [["D. A. Ochoga", "Academic Office"]]);
+    }},
+
+    /* Issued FROM the run, not on request — which is the whole point of
+       the run: one transaction, one sequence, over a confirmed list. */
+    matcert: { name: "Matriculation certificate", file: "MOAUM-CSC-23-1487-matriculation.pdf", build: function () {
+      return docSheet("Certificate of Matriculation",
+        [["Session", "2026/2027"], ["Run", "MAT/2026/SCI/01"], ["Date", "12 October 2026"]],
+        '<div style="text-align:center;margin:6px 0 18px">' +
+          '<div style="font-family:var(--serif);font-size:15px">This is to certify that</div>' +
+          '<div style="font-family:var(--serif);font-size:23px;font-weight:700;margin:8px 0;letter-spacing:-.3px">ADAMU, Grace Mwuese</div>' +
+          '<div style="font-family:var(--serif);font-size:15px">having satisfied the requirements for enrolment, was matriculated as a student of this University on the twelfth day of October, two thousand and twenty-six.</div>' +
+        '</div>' +
+        docKv([["<b>Matriculation number</b>", "<b class=\"tnum\">MOAUM/CSC/23/1487</b>"],
+               ["Admission number it replaces", "<span class=\"tnum\">ADM/2023/004512</span>"],
+               ["Programme", "B.Sc. Computer Science"],
+               ["Faculty", "Faculty of Science"],
+               ["Level at matriculation", "100"],
+               ["Registration relied upon", "<span class=\"tnum\">REG/2026/1/004512</span>"]]) +
+        '<p style="margin-top:14px">This number is <b>permanent and is never reused</b>. It identifies the holder on every score sheet, every result, every transcript and every certificate this University will ever issue in her name, and it does so after the holder, the department and this Registrar have all gone.</p>' +
+        '<p style="font-family:var(--sans);font-size:10.5px;color:#5C6570">Issued in run MAT/2026/SCI/01 over the list of registered students confirmed by the Faculty Officer, Faculty of Science, on 10 October 2026. Numbers in a run are issued in one transaction over one sequence: the run either completes or issues nothing.</p>',
+        VFY("MOAUM-MAT-1487-8802", "certificate"),
+        [["D. A. Ochoga", "Academic Office"], ["B. T. Hemba", "Registrar"]]);
+    }},
+
+    /* The audit act is on the face of it, because the distinction between
+       what the system checked and what a person checked has to survive. */
+    voucher: { name: "Payment voucher", file: "MOAUM-PV-2026-01892.pdf", build: function () {
+      /* Rebuilt 6 September 2026 from a photograph of the University's own
+         PAYMENT VOUCHER, Office of the Bursar. Field for field, in the
+         order the form has them, because a form somebody has used for
+         twenty years carries decisions in its layout and a redesign that
+         reorders it silently discards them. Two things changed and both
+         are stated on the face: the amount in words is generated from the
+         figure, and the code is three segments rather than one string. */
+      return docSheet("Payment Voucher",
+        [["Financial year", "2026"], ["Voucher no.", "PV/2026/1892"], ["Date", "6 September 2026"]],
+        docKv([["Payee", "Ternav Furniture and Supplies Ltd"],
+               ["Bank", "Zenith Bank Plc"],
+               ["Cheque / mandate no.", "MDT/2026/0774"],
+               ["Invoice / bill number", "TFS/INV/2026/0774"],
+               ["Details", "Office furniture and stationery &mdash; Registry"],
+               ["Debit to", "949 &mdash; Capital, non-residential furniture and fittings"]]) +
+
+        docTable(["Unit|mid", "Head|mid", "Subhead|mid", "Details", "Naira|num", "Kobo|mid"], [
+          ["949", "21", "0101", "Office furniture &mdash; Registry, 12 chairs and 4 desks", "2,150,000", "00"],
+          ["949", "21", "0104", "Delivery and installation", "180,000", "00"],
+          ["949", "23", "0201", "Stationery &mdash; A4, 200 reams", "470,000", "00"],
+          ["<b>Total</b>", "", "", "", "<b>2,800,000</b>", "<b>00</b>"]
+        ]) +
+
+        '<p style="margin-top:12px;padding:10px 12px;border:1px solid #C9D2D8;border-left:3px solid #0E3F55">' +
+        '<span style="font-family:var(--sans);font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;color:#5C6570">' +
+        'Total amount in words</span><br><b style="font-size:14px">Two Million Eight Hundred Thousand Naira only</b><br>' +
+        '<span style="font-family:var(--sans);font-size:10px;color:#5C6570">Generated from the figure above rather than ' +
+        'written beside it. On the paper form this line is the only defence against an altered figure, and it works only if ' +
+        'the words were written after the alteration.</span></p>' +
+
+        '<p style="margin-top:12px"><b>I certify that the expenditure has been correctly classified and that funds are ' +
+        'available under the code(s) specified above.</b></p>' +
+        docTable(["What was certified", "How|mid", "Evidence|num"], [
+          ["Funds are available under 949/21", "Evidenced", "&#8358;42,000,000 approved, &#8358;31,480,000 committed, &#8358;10,520,000 available"],
+          ["The expenditure is correctly classified", "Attested", "E. A. Shwa, Expenditure Control Officer, in his own name"]
+        ]) +
+        '<p style="font-family:var(--sans);font-size:10.5px;color:#5C6570">One sentence on the form and two different ' +
+        'questions. Availability is arithmetic against a budget line and the portal evidences it outright; classification is ' +
+        'a judgement about the chart of accounts and the portal can only offer the codes and refuse one that is not open for ' +
+        'the year. They are certified separately here because they are answered by different things.</p>' +
+
+        '<p style="margin-top:12px"><b>For internal audit use only</b></p>' +
+        docTable(["Act", "Name", "Office|mid", "When|mid"], [
+          ["Prepared by", "E. A. Shwa", "Expenditure and Control", "6 Sep"],
+          ["Audited by", "P. T. Iorlaha", "Director of Internal Audit", "6 Sep"],
+          ["Approved by", "A. E. Otse", "Bursar", "6 Sep"]
+        ]) +
+        '<p style="font-family:var(--sans);font-size:10.5px;color:#5C6570">A signature identifies nobody a year later, so ' +
+        'every act carries a name, an office and a time. No payment instruction may be recorded against this voucher until ' +
+        'an audit pass stands on its chain, and no person may act twice in it however many offices they hold &mdash; the same ' +
+        'constraint as on a mark, keyed on the person rather than the office. Both are enforced by the database.</p>' +
+
+        '<p style="margin-top:12px"><b>Receipt</b> &mdash; received by ______________________ &middot; name ' +
+        '______________________ &middot; date ____________ &middot; stamp duty &#8358;0.50 applied on issue.</p>' +
+        '<p style="font-family:var(--sans);font-size:10.5px;color:#5C6570">The payee signs on the voucher itself rather ' +
+        'than on a separate acknowledgement that can be filed apart from it, which is why the authority to pay and the proof ' +
+        'of payment are one sheet.</p>',
+        VFY("MOAUM-PV-01892-2260", "voucher"),
+        [["E. A. Shwa", "Expenditure Control Officer"], ["P. T. Iorlaha", "Director of Internal Audit"], ["A. E. Otse", "Bursar"]]);
+    }},
+
+    /* The instrument every office assignment in the University cites. */
+    movement: { name: "Letter of staff movement", file: "MOAUM-MOV-2026-0413.pdf", build: function () {
+      return docSheet("Notification of Confirmation of Appointment",
+        [["Reference", "CNL/2026/104"], ["Movement", "MOV/2026/0413"], ["Date", "8 September 2026"]],
+        '<p style="font-family:var(--sans);font-size:12px;margin-bottom:16px">Miss Ochanya Faith Agbo<br>Administrative Officer II<br>Faculty of Science</p>' +
+        '<p>Dear Miss Agbo,</p>' +
+        '<p style="font-weight:700">CONFIRMATION OF APPOINTMENT</p>' +
+        '<p>I am directed to inform you that Council, at its meeting of 5 September 2026, approved the confirmation of your appointment as Administrative Officer II with effect from <b>1 September 2026</b>.</p>' +
+        docKv([["Movement type", "Confirmation"], ["Approving authority", "Council"],
+               ["Effective from", "1 September 2026"], ["Grade and step", "unchanged"],
+               ["Unit", "unchanged"], ["Instrument", "<b class=\"tnum\">CNL/2026/104</b>"]]) +
+        '<p style="margin-top:14px">Your probationary period is accordingly ended. All other terms and conditions of your appointment remain as stated in your letter of appointment.</p>' +
+        '<p style="font-family:var(--sans);font-size:10.5px;color:#5C6570">The reference above is the <b>instrument</b> this movement issues. Every office assignment, every payroll change and every entitlement that follows from this decision cites it, and the portal will not record an office that cites none &mdash; which is what prevents an appointment nobody authorised from being entered.</p>',
+        VFY("MOAUM-MOV-0413-6119", "letter"),
+        [["N. T. Ahemba", "Director of Human Resource Management"], ["B. T. Hemba", "Registrar"]]);
+    }}
+  };
+
+  function docReceipt(r) {
+    var uni = Math.round(r.amount * 0.95), state = r.amount - uni;
+    return docSheet("Official Payment Receipt",
+      [["Receipt no.", r.no], ["Date", r.date]],
+      docKv([["Received from", r.who], ["Identifier", r.id],
+             ["Programme", r.prog], ["Invoice", r.inv]]) +
+      docTable(["Description", "Amount|num"], [
+        [r.purpose, money(r.amount)],
+        ["<b>Total received</b>", "<b>" + money(r.amount) + "</b>"]
+      ]) +
+      docKv([["Payment channel", r.channel], ["Payment reference", '<span style="font-family:var(--mono);font-size:12px">' + r.rrr + '</span>']]) +
+      (r.split ? docTable(["Applied to", "Amount|num"], [
+        ["University account", money(uni)],
+        ["Benue State internally generated revenue", money(state)]
+      ]) : '') +
+      '<p style="margin-top:12px;font-family:var(--sans);font-size:10.5px;color:#5C6570">This receipt is issued on confirmation of the payment by the bank to the University, and not on the return of a browser from a payment page. It is valid without a manuscript signature. Any alteration voids it.</p>',
+      VFY(r.code, "receipt"),
+      [["Bursary", "For the Bursar"]]);
+  }
+
+  function docOverlay() {
+    var d = DOCS[S.doc];
+    if (!d) { return ''; }
+    return '<div class="doc-scrim" data-doc="close" role="dialog" aria-modal="true" aria-label="' + d.name + '">' +
+      '<div class="doc-wrap" data-stop="1">' +
+        '<div class="doc-bar">' +
+          '<span class="t">' + d.name + (d.file ? ' &middot; <span style="font-weight:400;opacity:.75">' + d.file + '</span>' : '') + '</span>' +
+          '<button class="btn btn--primary btn--sm" data-doc="print">' + ico('print', 15, 'currentColor', 1.8) + 'Print or save as PDF</button>' +
+          '<button class="btn btn--ghost btn--sm" data-doc="close" style="background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.34)">Close</button>' +
+        '</div>' +
+        d.build() +
+        '<div style="text-align:center;color:#B9CEDA;font-size:11.5px;margin-top:14px;font-family:var(--mono)">' +
+          'Choose &ldquo;Save as PDF&rdquo; in the print dialogue to keep a copy. Press Escape to close.' +
+        '</div>' +
+      '</div></div>';
+  }

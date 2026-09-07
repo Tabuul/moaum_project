@@ -1,0 +1,251 @@
+
+  /* ══ HANGING PAYMENTS ═══════════════════════════════════════════════
+     Requirement 2 of the students' accounts paper: a payment that
+     succeeds at the gateway but stays pending on the portal must be
+     identified and resolved WITHOUT HUMAN INTERVENTION, with an audit
+     trail of every resolution.
+
+     The rule underneath it is worth stating plainly, because it decides
+     the whole design:
+
+         A PAYMENT THAT SUCCEEDED AT THE GATEWAY HAS SUCCEEDED.
+
+     The portal's record is a copy. The gateway's is the fact. When the
+     two disagree the portal is wrong, and the student is not the party
+     who should have to prove anything — they have a debit alert on
+     their phone and a portal that says they owe.
+
+     So there is no "submit your proof of payment" form on this screen,
+     and that absence is the design. A queue that a student joins by
+     producing evidence is a queue that punishes the people with the
+     worst network. The sweep runs on a schedule whether or not anybody
+     is watching, and what a person does here is read what it did.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var HG_ROWS = [
+    ["MOAUM/CSC/23/1487", "ADAMU, Grace Mwuese", "Remita", "RRR 280194772211", 45000,
+      "Callback never arrived", "auto", "14:02", "Gateway confirms success at 13:58"],
+    ["MOAUM/ECO/24/0912", "TERKULA, Iveren Grace", "Paystack", "PSK-1188402", 90000,
+      "Callback arrived, signature mismatch", "auto", "14:02", "Re-verified against the gateway API"],
+    ["MOAUM/LAW/22/0331", "ODOH, Emmanuel Aondona", "Remita", "RRR 280194770044", 135000,
+      "Student closed the tab before the return", "auto", "09:31", "Gateway confirms success at 09:12"],
+    ["MOAUM/AGR/25/1108", "UGBEDE, Priscilla Ojoma", "Quickteller", "QT-77420188", 45000,
+      "Callback never arrived", "auto", "09:31", "Gateway confirms success at 09:06"],
+    ["MOAUM/BIO/26/0067", "SHAAHU, Msurshima John", "Remita", "RRR 280194778890", 45000,
+      "Two attempts, one succeeded", "auto", "09:31", "The failed attempt was not charged"],
+    ["MOAUM/MTH/25/0338", "IORTIM, Sesugh Daniel", "Paystack", "PSK-1188455", 90000,
+      "Gateway reports pending at the bank", "hold", "&mdash;", "Not resolvable &mdash; the bank has not settled it"],
+    ["MOAUM/POL/24/1067", "AKAAGERGER, Mimi", "Remita", "RRR 280194771903", 45000,
+      "Reference not found at the gateway", "person", "&mdash;", "For the desk officer &mdash; see below"]
+  ];
+
+  var HG_KIND = {
+    auto:   ["ok",   "Resolved automatically"],
+    hold:   ["info", "Waiting on the bank"],
+    person: ["bad",  "Needs a person"]
+  };
+
+  function hgCount(k) { return HG_ROWS.filter(function (r) { return r[6] === k; }).length; }
+  function hgValue(k) {
+    return HG_ROWS.filter(function (r) { return r[6] === k; })
+      .reduce(function (a, r) { return a + r[4]; }, 0);
+  }
+
+  function tHanging() {
+    var auto = hgCount("auto"), person = hgCount("person"), hold = hgCount("hold");
+
+    return note('info', 'A payment that succeeded at the gateway has succeeded',
+      'The portal&rsquo;s record is a copy; the gateway&rsquo;s is the fact. When the two disagree the portal is wrong, and the ' +
+      'student is not the party who should have to prove it &mdash; they are holding a debit alert and looking at a screen that ' +
+      'says they owe. <b>There is no upload-your-evidence form on this page, and that is the design.</b> A queue a student joins ' +
+      'by producing proof is a queue that punishes whoever has the worst network.') +
+
+    tiles([
+      ["Hanging now", String(HG_ROWS.length), null, "Successful at a gateway, pending here"],
+      ["Resolved without a person", String(auto), "var(--green-ink)", money(hgValue("auto")) + " credited"],
+      ["Waiting on a bank", String(hold), null, "Not the portal&rsquo;s to resolve"],
+      ["Needs a person", String(person), person ? "var(--red-ink)" : null, "One reference the gateway denies"]
+    ]) +
+
+    panel('The sweep', 'Every fifteen minutes, and on every student page load', pbody(
+      '<div class="hg__run">' +
+        '<div class="d"><b>Last run 14:02</b><span class="sub2">Next at 14:17. It runs whether or not this page is open, ' +
+        'because a student refreshing at midnight is exactly who it is for.</span></div>' +
+        pil('ok', auto + ' resolved') +
+      '</div>' +
+      dtable(['Matriculation number', 'Student', 'Gateway', 'Reference', 'Amount|num', 'Why it hung', 'Outcome|num'],
+        HG_ROWS.map(function (r) {
+          var k = HG_KIND[r[6]];
+          return ['<span class="tnum sub2">' + r[0] + '</span>',
+            r[1],
+            '<span class="sub2">' + r[2] + '</span>',
+            '<span class="tnum sub2">' + r[3] + '</span>',
+            '<b class="tnum">' + money(r[4]) + '</b>',
+            '<span class="sub2">' + r[5] + '</span>',
+            pil(k[0], k[1]) + '<div class="sub2">' + r[8] + (r[7] !== "&mdash;" ? " &middot; " + r[7] : "") + '</div>'];
+        }), 1180))) +
+
+    '<div class="grid grid--2">' +
+      panel('The one that needs a person', 'RRR 280194771903', pbody(
+        '<div class="sub2" style="padding-bottom:9px">The gateway has no record of this reference at all. That is not a ' +
+        'hanging payment; it is a reference that was generated here and never used, or used against a different institution. ' +
+        'The two have to be told apart, because they lead to opposite actions.</div>' +
+        dtable(['What it might be', 'What settles it|num'], [
+          ["The reference was generated and abandoned",
+            "The portal holds the generation time and the student's session. If nothing followed it, nothing was paid."],
+          ["Paid at a bank branch against a different institution's code",
+            "The gateway can be asked by RRR. If it resolves elsewhere, the student is told where their money went."],
+          ["Paid, and the gateway has lost it",
+            "Rare, and the only one of the three that becomes a claim against the gateway rather than a conversation with the student."]
+        ], 640) +
+        '<div class="sub2" style="padding-top:9px">The desk officer chooses; the portal does not guess. What it will not do ' +
+        'is leave the row in the same queue as the six it resolved, because a queue that mixes the automatic with the ' +
+        'unresolvable stops being read.</div>')) +
+
+      panel('What the sweep writes', 'Requirement 2: an audit trail of every resolution', pbody(
+        dtable(['Field', 'Value|num'], [
+          ["Acted by", '<span class="sub2">The reconciliation job, named as itself &mdash; not a person&rsquo;s account</span>'],
+          ["When", '<span class="tnum sub2">6 September 2026, 14:02:11 WAT</span>'],
+          ["Action", '<span class="sub2">PAYMENT_AUTO_RESOLVED</span>'],
+          ["Previous value", '<span class="sub2">state PENDING, balance ' + money(45000) + ' outstanding</span>'],
+          ["New value", '<span class="sub2">state CONFIRMED, balance ' + money(0) + ', receipt RCP/2026/118842</span>'],
+          ["Evidence", '<span class="sub2">Gateway verification response, stored whole</span>']
+        ], 640) +
+        '<div class="sub2" style="padding-top:9px">A job that changes a balance signs its own name. If an automatic ' +
+        'resolution were written as though a person had done it, then in six months nobody could tell which balances a ' +
+        'human being had touched &mdash; which is the only question an auditor asks about this table.</div>')) +
+    '</div>' +
+
+    note('ok', 'The student is told, not left to notice',
+      'Every automatic resolution sends the receipt by email and SMS on the spot. A student who has been refreshing a page ' +
+      'since Friday should hear from the University before they think to look again.');
+  }
+
+
+  /* ══ CASH OFFICE, REVENUE AND FINAL ACCOUNT ═════════════════════════
+     The other half of the Bursary paper, and the half that is easy to
+     leave out of a portal because it is where cash and paper still are.
+
+       · The Revenue Receiving Cashier takes cash BELOW ONE THOUSAND
+         NAIRA only. Anything larger comes as a bank draft in favour of
+         the University. Ledgers are balanced against the drafts at the
+         end of each day and sent to the Senior Cashier to reconcile
+         with the banks.
+       · The Cash Office keeps the record of applicants and payments as
+         expenses, and passes it to the Non-Personal Advances desk.
+       · The NPA desk at Final Account reads the vouchers and mandates
+         and extracts ONLY ASSETS, in credit/debit form, up through the
+         Head of Unit to the Director of Final Account.
+
+     The rule this screen carries is the ceiling. A cash limit is not a
+     policy about convenience; it is the control that makes the drafts
+     the record. Raise it and the daily balance stops meaning anything,
+     because the thing being balanced is no longer the thing that was
+     collected.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var CASH_LIMIT = 1000;
+
+  var CASH_TODAY = [
+    ["Transcript &mdash; ordinary", "draft",  6, 12000, "Zenith Bank draft 0084412"],
+    ["Certificate &mdash; replacement", "draft", 2, 30000, "UBA draft 118207"],
+    ["Contract registration", "draft", 3, 450000, "Access Bank draft 447120"],
+    ["Tender documents", "draft", 4, 200000, "Zenith Bank draft 0084418"],
+    ["Statement of result", "cash", 11, 5500, "Counter, all below the ceiling"],
+    ["Certified true copy", "cash", 7, 3500, "Counter, all below the ceiling"]
+  ];
+
+  var NPA_ROWS = [
+    ["PV/2026/1892", "949/21/0101", "Office furniture &mdash; Registry", 2150000, true,  "Furniture and fittings"],
+    ["PV/2026/1892", "949/21/0104", "Delivery and installation", 180000, true,  "Capitalised with the asset"],
+    ["PV/2026/1892", "949/23/0201", "Stationery &mdash; A4, 200 reams", 470000, false, "Consumable &mdash; not an asset"],
+    ["PV/2026/1877", "949/24/0310", "Laboratory microscopes &times; 6", 4820000, true,  "Scientific equipment"],
+    ["PV/2026/1880", "220/11/0402", "Fuel &mdash; generator, September", 1240000, false, "Recurrent &mdash; not an asset"],
+    ["PV/2026/1884", "949/22/0107", "Air conditioners &times; 9", 3105000, true,  "Fixtures"]
+  ];
+
+  function cashSum(kind) {
+    return CASH_TODAY.filter(function (r) { return r[1] === kind; })
+      .reduce(function (a, r) { return a + r[3]; }, 0);
+  }
+  function npaAssets() { return NPA_ROWS.filter(function (r) { return r[4]; }); }
+  function npaValue(assets) {
+    return NPA_ROWS.filter(function (r) { return r[4] === assets; })
+      .reduce(function (a, r) { return a + r[3]; }, 0);
+  }
+
+  function tCashDesk() {
+    var cash = cashSum("cash"), drafts = cashSum("draft");
+    var overCeiling = CASH_TODAY.filter(function (r) {
+      return r[1] === "cash" && (r[3] / r[2]) >= CASH_LIMIT;
+    });
+
+    return note('info', 'The cash ceiling is a control, not a convenience',
+      'This counter takes cash below <b>' + money(CASH_LIMIT) + '</b> and nothing above it. Everything larger arrives as a bank ' +
+      'draft drawn in favour of the University &mdash; certificates, transcripts, contract registration, tender documents. That ' +
+      'ceiling is what makes the drafts the record: the day&rsquo;s ledger is balanced against them and sent to the Senior Cashier ' +
+      'to reconcile with the banks. Raise the ceiling and the daily balance stops meaning anything, because what is being ' +
+      'balanced is no longer what was collected.') +
+
+    tiles([
+      ["Bank drafts today", money(drafts), null, CASH_TODAY.filter(function (r) { return r[1] === "draft"; }).length + " items"],
+      ["Cash at the counter", money(cash), null, "All below the " + money(CASH_LIMIT) + " ceiling"],
+      ["Above the ceiling", String(overCeiling.length), overCeiling.length ? "var(--red-ink)" : "var(--green-ink)",
+        overCeiling.length ? "Refused at the counter" : "None &mdash; the ceiling held"],
+      ["Ledger balanced", "17:00", null, "To the Senior Cashier for the banks"]
+    ]) +
+
+    panel('Today at the revenue counter', 'Internally generated revenue &middot; 6 September 2026', dtable(
+      ['Item', 'How it was received|mid', 'Count|mid', 'Value|num', 'Instrument'],
+      CASH_TODAY.map(function (r) {
+        var each = Math.round(r[3] / r[2]);
+        return ['<strong>' + r[0] + '</strong>',
+          r[1] === "draft" ? pil('ok', 'Bank draft') : pil('info', 'Cash'),
+          '<span class="tnum">' + r[2] + '</span>',
+          '<b class="tnum">' + money(r[3]) + '</b><div class="sub2 tnum">' + money(each) + ' each</div>',
+          '<span class="sub2">' + r[4] + '</span>'];
+      }), 940)) +
+
+    '<div class="grid grid--2">' +
+      panel('The daily balance', 'Why it is done at the close and not at the month end', pbody(idSteps([
+        ["done", "Every draft is entered against the item it paid for",
+          "A draft for " + money(450000) + " with no item against it is a draft nobody can account for, and the day it arrived is the only day anyone remembers."],
+        ["done", "Cash is counted against the counter register",
+          "Small sums, many of them. The register is the control precisely because no single entry is large enough to be noticed missing."],
+        ["now", "The ledger is balanced against the drafts collected",
+          "This is the step the paper describes and it happens at the end of each day. A discrepancy found today is a question; the same discrepancy found in November is an investigation."],
+        ["todo", "Sent to the Senior Cashier to reconcile with the banks",
+          "The counter says what it received; the bank says what it credited. Neither is the record on its own, and the reconciliation is what makes them one."]
+      ]))) +
+
+      panel('Non-Personal Advances &mdash; what the desk extracts',
+        '<span class="sub2">Assets only, in credit and debit</span>', pbody(
+        '<div class="sub2" style="padding-bottom:9px">The NPA desk reads the vouchers and mandates that came through the Cash ' +
+        'Office and takes out <b>only the assets</b>. That is a reading of the <b>subhead</b>, which is why the code on the ' +
+        'voucher is held as three segments rather than as a string: a code that is only printed cannot be read.</div>' +
+        dtable(['Voucher|mid', 'Code|mid', 'What it was', 'Value|num', 'Asset?|num'],
+          NPA_ROWS.map(function (r) {
+            return ['<span class="tnum sub2">' + r[0] + '</span>',
+              '<span class="tnum">' + r[1] + '</span>',
+              r[2] + '<div class="sub2">' + r[5] + '</div>',
+              '<span class="tnum">' + money(r[3]) + '</span>',
+              r[4] ? pil('ok', 'Asset') : '<span class="sub2">&mdash;</span>'];
+          }).concat([[
+            '<b>To the assets register</b>', '', '<span class="sub2">' + npaAssets().length + ' of ' + NPA_ROWS.length + ' lines</span>',
+            '<b class="tnum">' + money(npaValue(true)) + '</b>', ''
+          ]]), 760))) +
+    '</div>' +
+
+    panel('Up to the Director of Final Account', 'The route the paper describes, unchanged', pbody(
+      '<div class="tplcols">' +
+        [["Cash Office", "Keeps the record of applicants and payments as expenses, and passes it on."],
+         ["Non-Personal Advances", "Extracts the assets from the vouchers and mandates, in credit and debit form."],
+         ["Head of Unit", "Receives the extract and passes it up."],
+         ["Director, Final Account", "The financial statements are built on this, and on nothing that was retyped."]].map(function (c) {
+          return '<div class="tplcol"><b>' + c[0] + '</b><span>' + c[1] + '</span></div>';
+        }).join('') +
+      '</div>' +
+      '<div class="sub2">Every step of that route exists today and is done by hand from paper vouchers. What changes is not ' +
+      'the route but the retyping: the extract is a query over vouchers the system already holds, so the assets register and ' +
+      'the vouchers cannot drift apart. The desk officer still decides what is an asset &mdash; that judgement is the job.</div>'));
+  }

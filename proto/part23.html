@@ -1,0 +1,342 @@
+
+  /* ══ STUDENT BIODATA ══════════════════════════════════════════════
+     The whole person, in one record. The design decision that matters
+     is that not every field belongs to the student: some are read from
+     JAMB and are corrected there, some are the student's own and change
+     freely, and a few change only on evidence the Registry has seen.
+                                                                    */
+
+  var BIO_SECTIONS = [
+    ["identity", "Identity", "Read from JAMB"],
+    ["personal", "Personal details", "Yours to keep current"],
+    ["contact", "Contact", "How the University reaches you"],
+    ["origin", "Origin &amp; sponsorship", "State, local government, who pays"],
+    ["family", "Parents or guardian", "For the record and for emergencies"],
+    ["kin", "Next of kin &amp; guarantor", "Who is called, and who stands for you"],
+    ["health", "Health", "Sensitive &mdash; held under consent"],
+    ["bank", "Bank account", "For refunds only"],
+    ["docs", "Documents", "What the Registry holds"],
+    ["history", "Change history", "Every edit, with its author"]
+  ];
+
+  /* tier: open = edit freely · locked = not changed here · approval = evidence and a Registry decision */
+  function fld(label, value, tier, hint, wide) {
+    var badge = tier === "locked"
+      ? '<span class="bio__t bio__t--locked">' + ico('shield', 11, 'currentColor', 2.2) + 'From JAMB</span>'
+      : tier === "approval"
+        ? '<span class="bio__t bio__t--appr">' + ico('scale', 11, 'currentColor', 2.2) + 'Needs approval</span>'
+        : '';
+    var v = String(value).replace(/"/g, "&quot;");
+    var control;
+    if (tier === "locked") {
+      control = '<div class="ctl ctl--ro">' + value + ico('shield', 14, 'var(--faint)', 2) + '</div>';
+    } else if (wide) {
+      control = '<textarea class="ctl" rows="2"' + (tier === "approval" ? ' data-bio="ask"' : '') + '>' + value + '</textarea>';
+    } else {
+      control = '<input class="ctl" value="' + v + '"' +
+        (tier === "approval" ? ' data-bio="ask"' : '') + ' autocomplete="off">';
+    }
+    return '<div class="bio__f' + (wide ? ' bio__f--wide' : '') + (tier === "approval" ? ' is-appr' : '') +
+      (tier === "locked" ? ' is-locked' : '') + '">' +
+      '<label>' + label + badge + '</label>' + control +
+      (hint ? '<div class="hint">' + hint + '</div>' : '') +
+    '</div>';
+  }
+
+  function bioGrid(inner) { return '<div class="bio__grid">' + inner + '</div>'; }
+
+  function bioNav() {
+    return '<div class="bio__nav">' + BIO_SECTIONS.map(function (s) {
+      return '<button class="bio__s' + (S.bio.section === s[0] ? ' is-on' : '') + '" data-bio="go:' + s[0] + '">' +
+        '<span class="t">' + s[1] + '</span><span class="d">' + s[2] + '</span></button>';
+    }).join('') + '</div>';
+  }
+
+  /* ── the sections ──────────────────────────────────────────────── */
+
+  function bioIdentity() {
+    return note('info', 'These come from your JAMB record and are not changed here',
+      'Your surname, other names, date of birth and sex appear on your certificate exactly as JAMB holds them. If any of them is wrong, correct it with JAMB first; the University then updates its record from theirs, on evidence. Correcting it here would put one name on the portal and another on the degree.') +
+    panel('As JAMB holds you', 'Last read 14 October 2026', pbody(bioGrid(
+      fld("Surname", "ADAMU", "locked") +
+      fld("Other names", "Grace Mwuese", "locked") +
+      fld("Date of birth", "9 June 2005", "locked") +
+      fld("Sex", "Female", "locked") +
+      fld("JAMB registration number", "20241234567AB", "locked") +
+      fld("UTME score", "247", "locked")))) +
+    panel('As the University holds you', 'Issued by the institution', pbody(bioGrid(
+      fld("Matriculation number", "MOAUM/CSC/23/1487", "locked", "Never changes, for the rest of your life") +
+      fld("Programme", "B.Sc. Computer Science", "locked", "A change of programme is a Senate decision") +
+      fld("Faculty", "Science", "locked") +
+      fld("Department", "Mathematics &amp; Computer Science", "locked") +
+      fld("Level", "300", "locked") +
+      fld("Entry mode", "UTME", "locked") +
+      fld("Session of entry", "2023/2024", "locked") +
+      fld("Curriculum version", "CSC v2023.1", "locked", "Pinned at admission; you are examined under this one")))) +
+    note('bad', 'A name change is possible, but not from this page',
+      'Marriage, a deed poll or a correction of a spelling are all handled by the Registry on documentary evidence, and the change is recorded with the evidence attached. Your old name stays on the record, because credentials already issued carry it.',
+      btn('ghost', 'Apply for a change of name', ' data-bio="ask"'));
+  }
+
+  function bioPersonal() {
+    return panel('Personal details', 'Yours to keep current', pbody(bioGrid(
+      fld("Preferred name", "Grace", "open", "Used in the portal and in correspondence; not on credentials") +
+      fld("Marital status", "Single", "open") +
+      fld("Religion", "Christianity", "open", "Optional. Used only for chaplaincy and dietary arrangements") +
+      fld("Nationality", "Nigerian", "approval", "A change of nationality affects fee status") +
+      fld("Place of birth", "Makurdi, Benue State", "open") +
+      fld("Height", "1.63 m", "open", "Recorded for academic dress and sport") +
+      fld("Disability or access need", "None declared", "open", "Declaring one obtains support; it is never a bar to admission or examination", true) +
+      fld("Languages spoken", "English, Tiv, Hausa", "open", "", true))));
+  }
+
+  function bioContact() {
+    return note('info', 'This is where every notice with a consequence is sent',
+      'Results, fee deadlines, registration closing and disciplinary matters go to the phone number and email address below, and to the portal. Keep them current: a notice sent to a number you no longer use is a notice the University considers delivered.') +
+    panel('How we reach you', '', pbody(bioGrid(
+      fld("Mobile number", "0803 411 7725", "open", "Nigerian number. SMS notices go here") +
+      fld("Alternative number", "0806 552 1180", "open", "A number that reaches somebody if yours fails") +
+      fld("Personal email", "grace.adamu@example.com", "open", "Use one you will still have after you graduate") +
+      fld("University email", "MOAUM-CSC-23-1487@moaum.edu.ng", "locked", "Issued to you; used for official correspondence") +
+      fld("WhatsApp number", "0803 411 7725", "open", "Optional")))) +
+    panel('Where you live', '', pbody(bioGrid(
+      fld("Term-time address", "Room B14, Akpehe Hall, MOAUM campus", "open", "", true) +
+      fld("Permanent home address", "12 Ikpayongo Street, Wurukum, Makurdi, Benue State", "open", "", true) +
+      fld("City or town", "Makurdi", "open") +
+      fld("State of residence", "Benue", "open"))));
+  }
+
+  function bioOrigin() {
+    return panel('Origin', 'Determines quota, scholarship eligibility and some statutory returns', pbody(bioGrid(
+      fld("Country of origin", "Nigeria", "approval") +
+      fld("State of origin", "Benue", "approval", "Evidence: local government identification") +
+      fld("Local government area", "Gwer West", "approval", "Evidence: local government identification") +
+      fld("Town or village", "Naka", "open") +
+      fld("Senatorial district", "Benue North-West", "locked", "Derived from the local government area") +
+      fld("Ethnic group", "Tiv", "open", "Optional")))) +
+    panel('Who pays your fees', '', pbody(bioGrid(
+      fld("Sponsorship", "Parent or guardian", "open", "Self · parent or guardian · scholarship · employer") +
+      fld("Scholarship or bursary", "None", "open", "Name the board or fund if you hold one") +
+      fld("Scholarship reference", "&mdash;", "open") +
+      fld("Employer, if sponsored", "&mdash;", "open")))) +
+    note('info', 'A scholarship recorded here reaches the Bursary automatically',
+      'The Benue State Scholarship Board reads its beneficiaries from this field through the API, and the Bursary applies the award against your invoice. A scholarship not recorded here is a scholarship the invoice does not know about.');
+  }
+
+  function bioFamily() {
+    return panel('Father', '', pbody(bioGrid(
+      fld("Name", "ADAMU, Terhemba John", "open") +
+      fld("Status", "Living", "open", "Living · deceased") +
+      fld("Occupation", "Secondary school teacher", "open") +
+      fld("Mobile number", "0806 552 1180", "open") +
+      fld("Email", "&mdash;", "open") +
+      fld("Address", "12 Ikpayongo Street, Wurukum, Makurdi", "open", "", true)))) +
+    panel('Mother', '', pbody(bioGrid(
+      fld("Name", "ADAMU, Mngohol Rebecca", "open") +
+      fld("Status", "Living", "open") +
+      fld("Occupation", "Trader", "open") +
+      fld("Mobile number", "0813 220 4471", "open") +
+      fld("Email", "&mdash;", "open") +
+      fld("Address", "12 Ikpayongo Street, Wurukum, Makurdi", "open", "", true)))) +
+    panel('Guardian, if not a parent', 'Complete only if a person other than a parent is responsible for you', pbody(bioGrid(
+      fld("Name", "&mdash;", "open") +
+      fld("Relationship", "&mdash;", "open") +
+      fld("Mobile number", "&mdash;", "open") +
+      fld("Address", "&mdash;", "open", "", true))));
+  }
+
+  function bioKin() {
+    return note('bad', 'The next of kin is the person the University telephones in an emergency',
+      'It is not a formality. If you are taken to the teaching hospital at two in the morning, this is the number that is dialled, and a wrong one costs time that matters. Check it at the start of every session.') +
+    panel('Next of kin', '', pbody(bioGrid(
+      fld("Name", "ADAMU, Terhemba John", "open") +
+      fld("Relationship", "Father", "open") +
+      fld("Mobile number", "0806 552 1180", "open", "Verified by SMS when you save it") +
+      fld("Alternative number", "0813 220 4471", "open") +
+      fld("Email", "&mdash;", "open") +
+      fld("Address", "12 Ikpayongo Street, Wurukum, Makurdi", "open", "", true)))) +
+    panel('Guarantor', 'Stands for you on the University’s undertaking', pbody(bioGrid(
+      fld("Name", "ADAMU, Terhemba John", "open") +
+      fld("Relationship", "Father", "open") +
+      fld("Occupation", "Secondary school teacher", "open") +
+      fld("Employer", "Government Secondary School, Naka", "open") +
+      fld("Mobile number", "0806 552 1180", "open") +
+      fld("Address", "12 Ikpayongo Street, Wurukum, Makurdi", "open", "", true)))) +
+    note('info', 'The guarantor is also how an unidentified payment reaches you',
+      'When money arrives at a bank counter with no reference, the Bursary matches the name on the teller slip against guarantors of record. It is one of the three matching passes, and it is why this field is worth keeping accurate.');
+  }
+
+  function bioHealth() {
+    return note('bad', 'This section is sensitive personal data under the Nigeria Data Protection Act',
+      'It is held under your explicit consent, encrypted, and readable only by the University Health Services and by you. It is not visible to your department, your lecturers or the Bursary, and it is deleted seven years after your last contact with the clinic.',
+      btn('ghost', 'Withdraw my consent') + ' ' + btn('ghost', 'See who has read it')) +
+    panel('Health', 'Collected so that the clinic can treat you safely', pbody(bioGrid(
+      fld("Blood group", "O", "open") +
+      fld("Genotype", "AA", "open", "Recorded for emergency transfusion and for the sickle cell support programme") +
+      fld("Known allergies", "None declared", "open", "", true) +
+      fld("Chronic conditions", "None declared", "open", "Asthma, sickle cell disease, epilepsy, diabetes and others", true) +
+      fld("Regular medication", "None declared", "open", "", true) +
+      fld("Health insurance", "NHIS &mdash; student scheme", "open") +
+      fld("Insurance number", "NHIS/BN/2023/44182", "open")))) +
+    panel('Consent', 'What you have agreed to, and what you have not', pbody(
+      '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+        gate('done', 'Treatment at the University clinic', 'Given 14 October 2023. Withdrawing it does not stop emergency treatment.') +
+        gate('done', 'Referral to the Teaching Hospital', 'Given 14 October 2023.') +
+        gate('todo', 'Anonymised use in University health research', 'Not given. Nothing follows from refusing.') +
+        gate('todo', 'Sharing with the sickle cell support programme', 'Not given. Relevant only to AS, SS and SC genotypes.', 'last') +
+      '</div>'));
+  }
+
+  function bioBank() {
+    return note('info', 'The University pays money out to this account; it never takes money from it',
+      'The account is used for refunds &mdash; an overpayment, a duplicate payment, a withdrawal, a scholarship credit. No fee is ever collected by direct debit, and the portal does not hold a card. Fees are paid by you, on the payment page, each time.') +
+    panel('Refund account', '', pbody(bioGrid(
+      fld("Account name", "ADAMU GRACE MWUESE", "approval", "Must match your name on the register; a mismatch is why refunds fail") +
+      fld("Bank", "United Bank for Africa", "open") +
+      fld("Account number", "20••••••41", "approval", "Shown in part. Changing it requires the Bursary to verify the name") +
+      fld("Account type", "Savings", "open")))) +
+    note('bad', 'The University never asks for your BVN, your PIN or your card details',
+      'Not by email, not by SMS, not on the telephone, and not on this page. Anyone who does is not the University. Report it to the Bursary with the number that contacted you.');
+  }
+
+  function bioDocs() {
+    return panel('Documents the Registry holds', 'Uploaded at application and clearance', dtable(
+      ['Document', 'Source', 'Received|mid', 'Status|num'], [
+        [two('Passport photograph', 'Appears on the examination roll, your identity card and your certificate'),
+         '<span class="sub2">You, at application</span>', '<span class="sub2 tnum">6 Sep 2023</span>',
+         pil('ok', 'Accepted') + ' ' + btn('ghost', 'Replace', ' data-bio="ask"')],
+        [two('O&rsquo;Level certificate', 'WAEC May/June 2023'), '<span class="sub2">You, at clearance</span>',
+         '<span class="sub2 tnum">2 Nov 2023</span>', pil('ok', 'Verified with WAEC')],
+        [two('Birth certificate', 'National Population Commission'), '<span class="sub2">You, at clearance</span>',
+         '<span class="sub2 tnum">28 Sep 2023</span>', pil('ok', 'Accepted')],
+        [two('Local government identification', 'Gwer West'), '<span class="sub2">You, at clearance</span>',
+         '<span class="sub2 tnum">28 Sep 2023</span>', pil('ok', 'Accepted')],
+        [two('JAMB admission letter', 'Printed from the JAMB portal'), '<span class="sub2">You, at clearance</span>',
+         '<span class="sub2 tnum">28 Sep 2023</span>', pil('ok', 'Accepted')],
+        [two('Medical fitness certificate', 'University Health Services'), '<span class="sub2">The clinic</span>',
+         '<span class="sub2 tnum">30 Sep 2023</span>', pil('ok', 'Issued')],
+        [two('National Identification Number', 'NIMC'), '<span class="sub2">You</span>',
+         '<span class="sub2">&mdash;</span>', pil('bad', 'Not supplied') + ' ' + btn('primary', 'Add my NIN')]
+      ], 900)) +
+    note('bad', 'Your National Identification Number is outstanding',
+      'It is required for the National Youth Service Corps mobilisation at the end of your programme, and the Registry cannot mobilise a graduand without it. Supplying it now avoids a scramble in your final year.') +
+    panel('Photograph', 'The one that identifies you everywhere', pbody(
+      '<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">' + passport(104, 128) +
+        '<div style="flex-grow:1;min-width:220px">' +
+          '<div class="sub2" style="line-height:1.65">This photograph is checked at the door of every examination hall and again at your seat, it is printed on your identity card, and it is the image on your certificate. Replacing it is therefore a Registry decision, not a self-service change: you upload a replacement, and the Registry compares it with the record before it takes effect.</div>' +
+          '<div style="margin-top:12px">' + btn('primary', 'Upload a replacement', ' data-bio="ask"') + '</div>' +
+        '</div></div>'));
+  }
+
+  function bioHistory() {
+    return note('info', 'Every change to this record is kept, with who made it and when',
+      'You can see your own history here; the Registry sees the same entries. Nothing is overwritten silently, which is what lets a question about your record years from now be answered rather than argued.') +
+    panel('Change history', '12 entries &middot; 6 shown', dtable(
+      ['When|mid', 'Field', 'From', 'To', 'By', 'Basis|num'], [
+        ['<span class="sub2 tnum">2 Sep 2026</span>', 'Mobile number', '<span class="sub2">0803 411 7720</span>',
+         '<span class="sub2">0803 411 7725</span>', '<span class="sub2">You</span>', pil('ok', 'Self-service')],
+        ['<span class="sub2 tnum">28 Aug 2026</span>', 'Term-time address', '<span class="sub2">Off campus, Wurukum</span>',
+         '<span class="sub2">Room B14, Akpehe Hall</span>', '<span class="sub2">Hostel allocation</span>', pil('info', 'System')],
+        ['<span class="sub2 tnum">14 Aug 2026</span>', 'Next of kin number', '<span class="sub2">0806 552 1177</span>',
+         '<span class="sub2">0806 552 1180</span>', '<span class="sub2">You</span>', pil('ok', 'Self-service')],
+        ['<span class="sub2 tnum">11 Mar 2026</span>', 'Level', '<span class="sub2">200</span>',
+         '<span class="sub2">300</span>', '<span class="sub2">Senate</span>', pil('info', 'Progression')],
+        ['<span class="sub2 tnum">4 Nov 2025</span>', 'Surname', '<span class="sub2">ADAMU</span>',
+         '<span class="sub2">ADAMU</span>', '<span class="sub2">Registry</span>', pil('bad', 'Refused &mdash; JAMB record unchanged')],
+        ['<span class="sub2 tnum">2 Nov 2023</span>', 'O&rsquo;Level result', '<span class="sub2">Statement</span>',
+         '<span class="sub2">Certificate</span>', '<span class="sub2">Registry</span>', pil('ok', 'Evidence seen')]
+      ], 1000));
+  }
+
+  /* ── the screen ────────────────────────────────────────────────── */
+
+  var BIO_BODY = {
+    identity: bioIdentity, personal: bioPersonal, contact: bioContact, origin: bioOrigin,
+    family: bioFamily, kin: bioKin, health: bioHealth, bank: bioBank, docs: bioDocs, history: bioHistory
+  };
+
+  function studentBiodata() {
+    return (S.bio.asked
+      ? note('info', 'That change has been sent to the Registry',
+          'A field of this kind is not changed by the person it describes. The Registry will ask for the evidence, compare it with the record, and either make the change with the evidence attached or refuse it with a reason &mdash; both of which appear in your change history.',
+          btn('ghost', 'Dismiss', ' data-bio="dismiss"'))
+      : '') +
+
+    (S.bio.section === "identity"
+      ? note('info', 'Three kinds of field, and the difference matters',
+          'Most of this record is <b>yours</b> &mdash; contact details, next of kin, health, sponsorship &mdash; and you change it here whenever it changes. A few fields are <b>read from JAMB</b> and are corrected with JAMB, not here. A few more change only <b>on evidence the Registry has seen</b>, because they decide fee status, quota or who you are on a certificate.')
+      : '') +
+
+    '<div class="bio">' + bioNav() +
+      '<div class="bio__body">' + (BIO_BODY[S.bio.section] || bioIdentity)() +
+        bioSaveBar() +
+      '</div>' +
+    '</div>';
+  }
+
+  /* ── the Registry side ─────────────────────────────────────────── */
+
+  function tBioChanges() {
+    return note('bad', 'Four biodata changes are waiting on evidence',
+      'Each of these alters something the University asserts about a person &mdash; their name, their state of origin, their photograph or their refund account. None of them is a typing correction, and none can be approved without seeing the document behind it.') +
+
+    tiles([
+      ['Awaiting evidence', '4', 'var(--red-ink)', 'Oldest 6 days'],
+      ['Approved this session', '61', 'var(--green-ink)', ''],
+      ['Refused', '9', null, 'Reason recorded on each'],
+      ['Self-service changes', '2,884', null, 'No approval needed']
+    ]) +
+
+    panel('Change requests', 'Every one carries its evidence, or it waits', dtable(
+      ['Student', 'Field', 'From', 'To', 'Evidence', 'Action|num'], [
+        [two('ADAMU, Grace Mwuese', 'MOAUM/CSC/23/1487'), 'Photograph',
+         '<span class="sub2">On file since 2023</span>', '<span class="sub2">Uploaded 8 Sept</span>',
+         pil('ok', 'Image supplied'), btn('go', 'Compare and decide')],
+        [two('IORNONGU, Sewuese Mercy', 'MOAUM/CSC/22/1188'), 'Surname',
+         '<span class="sub2">IORNONGU</span>', '<span class="sub2">TERSOO</span>',
+         pil('ok', 'Marriage certificate'), btn('go', 'Approve with evidence')],
+        [two('UGBEM, Terhemba Paul', 'MOAUM/LAW/22/0918'), 'State of origin',
+         '<span class="sub2">Benue</span>', '<span class="sub2">Nasarawa</span>',
+         pil('bad', 'None attached'), btn('urgent', 'Ask for evidence')],
+        [two('ORKAA, Aondoaseer Joseph', 'MOAUM/CHM/22/0771'), 'Refund account',
+         '<span class="sub2">Zenith &middot; 10&bull;&bull;&bull;&bull;&bull;&bull;22</span>',
+         '<span class="sub2">UBA &middot; 20&bull;&bull;&bull;&bull;&bull;&bull;41</span>',
+         pil('bad', 'Name does not match'), btn('urgent', 'Refuse &mdash; name mismatch')]
+      ], 1080)) +
+
+    note('bad', 'A refund account whose name does not match the student is refused, every time',
+      'It is the single commonest route by which a refund reaches somebody other than the person owed it. The Bursary verifies the account name against the name on the register before any refund is released, and a mismatch is refused rather than queried &mdash; the student can supply an account in their own name.') +
+
+    note('info', 'A refusal is as much a decision as an approval',
+      'It is recorded with its reason, it appears in the student’s own change history, and the student is notified. A request that simply sits unanswered is the failure mode this queue exists to prevent, which is why the oldest item is shown at the top of the screen.');
+  }
+
+  /* ── the stepper at the foot of every section ──────────────────── */
+
+  function bioIndex() {
+    for (var i = 0; i < BIO_SECTIONS.length; i++) {
+      if (BIO_SECTIONS[i][0] === S.bio.section) { return i; }
+    }
+    return 0;
+  }
+
+  function bioSaveBar() {
+    var i = bioIndex(), last = i === BIO_SECTIONS.length - 1;
+    var nextName = last ? "" : BIO_SECTIONS[i + 1][1];
+    return '<div class="bio__save">' +
+      '<button class="btn btn--ghost" data-bio="prev"' + (i === 0 ? ' disabled' : '') + '>&larr; Back</button>' +
+      '<div class="bio__prog">' +
+        '<div class="bio__bar"><div class="bio__fill" style="width:' +
+          Math.round(((i + 1) / BIO_SECTIONS.length) * 100) + '%"></div></div>' +
+        '<span class="sub2">Section <b class="tnum">' + (i + 1) + '</b> of <span class="tnum">' +
+          BIO_SECTIONS.length + '</span>' +
+          (S.bio.saved ? ' &middot; <span style="color:var(--green-ink);font-weight:600">saved</span>' : '') +
+        '</span>' +
+      '</div>' +
+      btn('ghost', 'Download my record', ' data-doc="biodata"') +
+      (last
+        ? '<button class="btn btn--go" data-bio="finish">Finish</button>'
+        : '<button class="btn btn--primary" data-bio="next">Save and continue' +
+          '<span class="bio__nx">' + nextName + ' &rarr;</span></button>') +
+    '</div>';
+  }

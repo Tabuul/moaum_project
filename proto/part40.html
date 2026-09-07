@@ -1,0 +1,374 @@
+
+  /* ══ THE DIRECTORATE OF INTERNAL AUDIT ════════════════════════════
+     Added 6 September 2026 from the Directorate's own paper
+     (REC-MOAUMPP-001 F-3 and F-4).
+
+     Two things were missing from the design and both are here.
+
+     F-3 — THE PRE-PAYMENT GATE. Every payment this University makes
+     passes through Internal Audit before money moves. The prototype
+     modelled revenue in full and expenditure not at all, so a payment
+     voucher had nowhere to be. The chain is:
+
+       Bursary raises → Director of Internal Audit minutes it to a
+       division → Deputy Director assigns it → a Principal Internal
+       Auditor or Senior Executive Officer clears it or QUERIES it →
+       back to the Bursary → payment.
+
+     The audit query is a returned result set wearing different
+     clothes: it goes back with a reason, the reason travels with it,
+     and the voucher cannot move until it is answered. Building it
+     twice in two shapes would give the University two different
+     answers to "why is this late", so it is the same object.
+
+     F-4 — THE READ ACCESS. The Directorate's first ICT ask is not a
+     report. It is a standing view of live data, because it reconciles
+     three sources the portal already holds — what the Academic Office
+     admitted and matriculated, what the portal was paid, and what the
+     Bursary's ledgers say. Today that reconciliation is done by
+     carrying paper between three offices.
+
+     EVERY SCREEN HERE IS READ-ONLY EXCEPT RAISING AND ANSWERING A
+     QUERY. The office that checks the money cannot move it, and that
+     is a property of what exists rather than of a permission somebody
+     could grant later.                                              */
+
+  var PV_STAGES = [
+    ["raised",   "Raised at the Bursary",              "Bursary"],
+    ["director", "With the Director of Internal Audit","Director, Internal Audit"],
+    ["deputy",   "With the Deputy Director",           "DDA, Pre-Payments"],
+    ["auditor",  "With the assigned auditor",          "PIA / SEO-A"],
+    ["cleared",  "Cleared, back at the Bursary",       "Bursary"]
+  ];
+
+  var PVS = [
+    ["PV/2026/1188", "TetFund contract &mdash; Faculty of Science laboratory block", "CONTRACT", 48250000, "TETFUND", 3, "Adzenge Ventures Ltd", 0],
+    ["PV/2026/1190", "October payroll &mdash; academic staff",                        "PAYROLL",  214800000, "SUBVENTION", 3, "1,088 academic staff", 0],
+    ["PV/2026/1191", "Non-personal advance &mdash; NUC accreditation visit",          "ADVANCE",    1850000, "IGR", 2, "Dr. M. Adikpe", 0],
+    ["PV/2026/1193", "Pension payroll &mdash; October",                               "PENSION",   38400000, "SUBVENTION", 4, "212 pensioners", 0],
+    ["PV/2026/1195", "Contract &mdash; perimeter fencing, phase 2",                   "CONTRACT",  18600000, "IGR", 3, "Tyoapine Nigeria Ltd", 1],
+    ["PV/2026/1197", "Wages &mdash; daily-rated staff, October",                      "WAGES",      4220000, "IGR", 1, "88 staff", 0],
+    ["PV/2026/1199", "Visiting lecturers &mdash; first semester",                     "WAGES",      9750000, "IGR", 2, "24 lecturers", 1]
+  ];
+
+  var PV_QUERIES = [
+    ["AQ/2026/044", "PV/2026/1195", "Certificate of completion is dated before the last valuation",
+      "The certificate says 14 August and the interim valuation certifying 62% is dated 3 September. One of the two is wrong, and the amount due follows from whichever it is.", "Bursar", "OPEN"],
+    ["AQ/2026/045", "PV/2026/1199", "Three lecturers on the schedule have no appointment on record",
+      "Names appear on the visiting-lecturer schedule with no corresponding appointment from the Directorate of Human Resource Management. They may be recent; the appointment reference is what settles it.", "Bursar", "OPEN"],
+    ["AQ/2026/041", "PV/2026/1174", "Overtime claimed exceeds the approved overtime sheet",
+      "142 hours claimed against 96 approved for the Works Department in September.", "Bursar", "ANSWERED"]
+  ];
+
+  /* the nine checks a contract voucher carries, from the Directorate's paper */
+  var PV_CHECKS = [
+    ["Approved by the appropriate authority", "evidence", "Council resolution CN/2026/17 is on the voucher"],
+    ["The approved contract sum", "evidence", "&#8358;48,250,000, matching the award letter"],
+    ["Mathematical calculations and applicable taxes", "evidence", "VAT and WHT recomputed by the portal and agreed"],
+    ["Expenditure codes", "evidence", "TETFUND/CAP/2026/03 &mdash; a live code for the session"],
+    ["The appropriate payee", "evidence", "Payee matches the awarded contractor and the bank mandate"],
+    ["The attached contract agreement", "evidence", "Executed agreement attached, 14 pages"],
+    ["The certificate of completion", "evidence", "Attached and dated"],
+    ["Percentage of work completed and the amount due", "evidence", "62% certified; &#8358;29,915,000 due"],
+    ["Physical verification of work done or items supplied", "attest", "Site visited 9 October by PIA J. Anshi. Attested in his own name"]
+  ];
+
+  function pvAt(code) {
+    for (var i = 0; i < PVS.length; i++) { if (PVS[i][0] === code) { return PVS[i]; } }
+    return null;
+  }
+  function pvOpenQueries() {
+    return PV_QUERIES.filter(function (q) { return q[5] === "OPEN"; }).length;
+  }
+
+  /* ── 1. the pre-payment desk ──────────────────────────────────── */
+
+  function tPrePayment() {
+    var open = pvOpenQueries();
+    var total = PVS.reduce(function (a, p) { return a + p[3]; }, 0);
+    var blocked = PVS.filter(function (p) { return p[7]; });
+
+    return note(blocked.length ? 'bad' : 'info',
+      blocked.length ? blocked.length + ' vouchers cannot be paid while a query stands against them'
+                     : 'Every voucher on this desk is clear of queries',
+      blocked.length
+        ? 'A query is not a delay tactic and it is not a refusal. It is a question with a named finding, sent to a named office, and the voucher waits where it is until it is answered. Both of these are with the Bursar; the findings are below and they travel with the voucher wherever it goes next.'
+        : 'Vouchers advance one desk at a time and each act is recorded against the person who made it, in the office they made it in.') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+      btn('ghost', 'Open a payment voucher', ' data-doc="voucher"') +
+      '<span class="sub2">The nine contract checks on the face of it &mdash; eight evidenced by the portal, the ninth attested by the auditor.</span>' +
+    '</div>' +
+
+    tiles([
+      ["On this desk", String(PVS.length), null, "Awaiting an act from Internal Audit"],
+      ["Value", "&#8358;" + (total / 1000000).toFixed(1) + "m", null, "Across all sources"],
+      ["Open queries", String(open), open ? "var(--red-ink)" : "var(--green-ink)",
+        open ? "Payment blocked on " + blocked.length + " vouchers" : "Nothing outstanding"],
+      ["Cleared this month", "41", "var(--green-ink)", "&#8358;312.4m returned to the Bursary"]
+    ]) +
+
+    panel('Payment vouchers', 'Bursary raises &rarr; Director &rarr; Deputy Director &rarr; auditor &rarr; back to the Bursary',
+      dtable(["Voucher|mid", "What it is", "Kind|mid", "Source|mid", "Amount|num", "Stage|mid", "State|num"],
+        PVS.map(function (p) {
+          return ['<b class="tnum">' + p[0] + '</b>',
+            two(p[1], p[6]),
+            pil('info', p[2].charAt(0) + p[2].slice(1).toLowerCase()),
+            '<span class="sub2">' + p[4].charAt(0) + p[4].slice(1).toLowerCase() + '</span>',
+            '<b class="tnum">&#8358;' + p[3].toLocaleString() + '</b>',
+            '<span class="sub2">' + PV_STAGES[p[5]][1] + '</span>',
+            p[7] ? pil('bad', 'Query open') : pil('ok', 'Clear')];
+        }), 1180)) +
+
+    '<div class="grid grid--2">' +
+      panel('The nine checks on a contract voucher', 'PV/2026/1188 &mdash; TetFund laboratory block', pbody(
+        '<div class="rchecks">' + PV_CHECKS.map(function (c) {
+          return '<div class="rcheck">' + tick(17, c[1] === "attest" ? 'var(--chrome)' : 'var(--green-ink)') +
+            '<div><b>' + c[0] + (c[1] === "attest" ? ' &mdash; attested, not evidenced' : '') + '</b>' +
+            '<span>' + c[2] + '</span></div></div>';
+        }).join('') + '</div>' +
+        note('bad', 'The ninth check is a site visit, and the portal does not pretend otherwise',
+          'Eight of these the portal can evidence: it holds the resolution, the agreement, the codes, the mandate and the arithmetic. The ninth is a person standing on a site. A system that ticks &ldquo;physical verification&rdquo; because somebody clicked a box has converted a real control into a false one &mdash; and the false version is worse than none, because it produces a record saying the site was visited. The auditor attests in his own name, and the attestation is what the record carries.'))) +
+
+      panel('Open queries', 'Raised by the Director, answered by the office they were sent to', pbody(
+        PV_QUERIES.map(function (q) {
+          return '<div style="padding:12px 0;border-top:1px solid var(--line-2)">' +
+            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+              '<b class="tnum">' + q[0] + '</b>' +
+              '<span class="sub2 tnum">against ' + q[1] + '</span>' +
+              '<span style="flex-grow:1"></span>' +
+              (q[5] === "OPEN" ? pil('bad', 'Open') : pil('ok', 'Answered')) + '</div>' +
+            '<div style="font-weight:600;margin-top:5px">' + q[2] + '</div>' +
+            '<div class="sub2" style="margin-top:3px">' + q[3] + '</div>' +
+            '<div class="sub2" style="margin-top:4px">Sent to the ' + q[4] + '</div>' +
+          '</div>';
+        }).join('') +
+        note('info', 'A query is the same object as a returned result set',
+          'It carries a finding that cannot be empty, it names the office it went to, the finding travels with the voucher, and the voucher cannot move until it is answered. The result chain already works this way and there is no reason for money to work differently &mdash; two shapes would give the University two different answers to why something is late.'))) +
+    '</div>' +
+
+    note('bad', 'BR-006 applies to a voucher exactly as it applies to a mark',
+      'The officer who prepared or authorised a voucher may not audit it, and no person may act twice in its chain, however many offices they hold. It is the same constraint on the same act table, keyed on the person and not the office.');
+  }
+
+  /* ── 2. student revenue reconciliation ────────────────────────── */
+
+  function tAuditRevenue() {
+    var rows = [
+      ["Arts",                            412, 412, 401, 401, 11],
+      ["Education",                       688, 688, 671, 671, 17],
+      ["Science",                         704, 701, 698, 695,  6],
+      ["Social Sciences",                 596, 596, 588, 588,  8],
+      ["Law",                             288, 288, 288, 288,  0],
+      ["Management Sciences",             344, 344, 339, 339,  5],
+      ["Environmental Sciences",          196, 196, 191, 191,  5],
+      ["Communication and Media Studies", 421, 421, 412, 409, 12],
+      ["Technology and Industrial Studies", 152, 152, 150, 150, 2],
+      ["Architecture",                     88,  88,  88,  88,  0],
+      ["Pharmaceutical Sciences",         124, 124, 124, 124,  0],
+      ["Basic Medical Sciences",          266, 266, 259, 259,  7],
+      ["Basic Clinical Sciences",         198, 198, 194, 194,  4],
+      ["Clinical Sciences",               210,   0, 205, 205,  5]
+    ];
+    var t = rows.reduce(function (a, r) {
+      return [a[0] + r[1], a[1] + r[2], a[2] + r[3], a[3] + r[4], a[4] + r[5]];
+    }, [0, 0, 0, 0, 0]);
+    var drift = rows.filter(function (r) { return r[3] !== r[4]; });
+
+    return note('info', 'Three offices, three figures, one screen',
+      'The Directorate reconciles student revenue by obtaining the number admitted and matriculated from the Academic Office, comparing it with who has paid on the portal, and verifying both against the Bursary&rsquo;s student ledgers. Today that is done by carrying paper between three offices. The portal holds all three, so it can simply answer &mdash; and this screen is the answer, live, with no request to anybody.') +
+
+    tiles([
+      ["Registered", t[0].toLocaleString(), null, "Academic Office"],
+      ["Matriculated", t[1].toLocaleString(), null, "Academic Office"],
+      ["Paid on the portal", t[2].toLocaleString(), null, "ICT"],
+      ["On the Bursary ledger", t[3].toLocaleString(), t[2] !== t[3] ? "var(--red-ink)" : "var(--green-ink)",
+        t[2] !== t[3] ? (t[2] - t[3]) + " paid but not posted" : "Agrees with the portal"]
+    ]) +
+
+    (drift.length ? note('bad', drift.length + ' faculties where the portal and the ledger disagree',
+      'A payment confirmed by the gateway that has not posted to a student ledger is money the University has and a student it still shows as owing. That student is at a counter arguing, holding a receipt, and the counter is correct to say her ledger shows a balance. Six of these are in Communication and Media Studies and three in Science; every one is a named student and the reconciliation screen in the Bursary has them.') : '') +
+
+    panel('Student revenue, by faculty', '2026/2027 &middot; live, not a monthly return',
+      dtable(["Faculty", "Registered|mid", "Matriculated|mid", "Paid (portal)|mid", "On the ledger|mid", "Registered, not paid|num"],
+        rows.map(function (r) {
+          return ['<strong>' + r[0] + '</strong>',
+            '<span class="tnum">' + r[1] + '</span>',
+            '<span class="tnum"' + (r[2] === 0 ? ' style="color:var(--red-ink)"' : '') + '>' + (r[2] || '&mdash;') + '</span>',
+            '<span class="tnum">' + r[3] + '</span>',
+            '<span class="tnum"' + (r[3] !== r[4] ? ' style="color:var(--red-ink)"' : '') + '>' + r[4] + '</span>',
+            r[5] ? pil('bad', String(r[5])) : '<span class="sub2">&mdash;</span>'];
+        }), 1020)) +
+
+    '<div class="grid grid--2">' +
+      panel('Revenue by class', 'What the Directorate audits', pbody(
+        dtable(["Class", "This session|num", "Last session|num"], [
+          ['<strong>Government subvention</strong>', '<span class="tnum">&#8358;2.84bn</span>', '<span class="tnum">&#8358;2.61bn</span>'],
+          ['<strong>Interventions</strong><div class="sub2">TETFund and others</div>', '<span class="tnum">&#8358;918.4m</span>', '<span class="tnum">&#8358;744.0m</span>'],
+          ['<strong>Internally generated revenue</strong><div class="sub2">Student charges, services, rents</div>', '<span class="tnum">&#8358;1.42bn</span>', '<span class="tnum">&#8358;1.28bn</span>'],
+          ['<strong>Donations</strong>', '<span class="tnum">&#8358;64.2m</span>', '<span class="tnum">&#8358;31.8m</span>']
+        ], 520) +
+        note('info', 'Every figure here is read, and nothing on this screen can be changed',
+          'The Directorate of Internal Audit has University-wide read access and no write access at all, except to raise a query. The office that checks the money must not be able to move it, and that is a property of what exists in the portal rather than of a permission somebody could grant later.'))) +
+
+      panel('What the reconciliation catches', 'And why it is worth having', pbody(idSteps([
+        ["done", "A student who registered and has not paid",
+          "82 across the University. Registration should not have been approved; the clearance rule caught most, and these are the ones with an instalment plan whose second instalment lapsed."],
+        ["now", "A payment on the portal that never reached a ledger",
+          "9 students. The money is the University's and the student shows as owing. This is the queue at the Bursary in September, and it is visible here before anybody complains."],
+        ["todo", "A graduand who has not completed payment",
+          "The Directorate checks this before convocation. Under the old arrangement it was checked afterwards, which is a difficult letter to write."]
+      ]))) +
+    '</div>';
+  }
+
+  /* ── 3. payroll variance ──────────────────────────────────────── */
+
+  function tAuditPayroll() {
+    var rows = [
+      ["New appointment", 14, "Directorate of HR &mdash; A&amp;PC of 18 September", 1, "&#8358;4,182,000"],
+      ["Promotion &mdash; new grade", 31, "Directorate of HR &mdash; promotion letters issued 1 October", 1, "&#8358;2,914,500"],
+      ["Sabbatical &mdash; adjustment", 3, "Directorate of HR &mdash; sabbatical letters", 1, "&#8358;1,206,000"],
+      ["Retirement", 8, "Directorate of HR &mdash; pensions schedule", 1, "&#8358;3,880,400"],
+      ["Resignation", 4, "Directorate of HR &mdash; acceptance letters", 1, "&#8358;1,244,000"],
+      ["Death", 1, "Directorate of HR &mdash; benefits claim opened", 1, "&#8358;412,000"],
+      ["Grade change, no movement on record", 2, "&mdash;", 0, "&#8358;318,600"],
+      ["Name on this payroll and not the last", 1, "&mdash;", 0, "&#8358;196,000"],
+      ["Allowance above the approved amount", 3, "&mdash;", 0, "&#8358;144,200"]
+    ];
+    var unexplained = rows.filter(function (r) { return !r[3]; });
+    var un = unexplained.reduce(function (a, r) { return a + r[1]; }, 0);
+
+    return note(un ? 'bad' : 'ok',
+      un ? un + ' payroll changes have no staff movement to explain them'
+         : 'Every change on this payroll is explained by a recorded staff movement',
+      un ? 'This is the first of the Directorate&rsquo;s ten payroll checks and the one the portal changes most. Comparing October with September is arithmetic; finding the movement that explains each change is what used to take a week of correspondence with the Directorate of Human Resource Management. Every movement is now an event, so the explained changes match themselves and only the unexplained ones need a person. These six do.'
+         : 'Nothing to investigate this month.') +
+
+    tiles([
+      ["October payroll", "&#8358;427.7m", null, "2,714 staff, eight payrolls"],
+      ["Movement on September", "+&#8358;9.7m", "var(--chrome)", "67 individual changes"],
+      ["Explained by a movement", "61", "var(--green-ink)", "Matched automatically"],
+      ["Unexplained", String(un), "var(--red-ink)", "For the Deputy Director"]
+    ]) +
+
+    panel('October against September', 'Unexplained variances first &mdash; the rest are matched and need no reading',
+      dtable(["Change", "Staff|mid", "What explains it", "Value|num", "State|num"],
+        rows.slice().sort(function (a, b) { return a[3] - b[3]; }).map(function (r) {
+          return ['<strong>' + r[0] + '</strong>',
+            '<span class="tnum">' + r[1] + '</span>',
+            r[3] ? '<span class="sub2">' + r[2] + '</span>'
+                 : '<span style="color:var(--red-ink);font-weight:600">Nothing on record</span>',
+            '<span class="tnum">' + r[4] + '</span>',
+            r[3] ? pil('ok', 'Explained') : pil('bad', 'Investigate')];
+        }), 940)) +
+
+    note('info', 'The eight payrolls the Directorate audits separately',
+      'Academic staff &middot; senior non-teaching &middot; junior staff &middot; visiting staff &middot; daily-rated schedule &middot; NYSC &middot; technical staff &middot; pension. Each carries different approvals and different bases, and comparing them as one figure hides exactly the movement worth finding.') +
+
+    panel('The other nine payroll checks', 'From the Directorate&rsquo;s own list',
+      dtable(["Check", "What the portal can do|num"], [
+        ["Overtime allowances against approved overtime sheets", "Holds both; flags a claim above the sheet"],
+        ["Grade levels and promotion adjustments against promotion letters", "The letter is the instrument on the office assignment"],
+        ["Consolidated salaries against the approved salary structure", "Structure held as versioned data"],
+        ["Allowances against approved amounts", "Flags above-approved automatically"],
+        ["Deductions", "Recomputed and compared"],
+        ["Salaries against bank-authenticated schedules", "Compared on return from the bank"],
+        ["Tax deductions and remittances", "Computed; remittance evidenced"],
+        ["Pension deductions and remittances", "Computed; remittance evidenced"],
+        ["Monthly audit report for the Director", "Compiled from the above, not retyped"]
+      ].map(function (r) { return ['<strong>' + r[0] + '</strong>', '<span class="sub2">' + r[1] + '</span>']; }), 820));
+  }
+
+  /* ── 4. staff movements, as Audit reads them ──────────────────── */
+
+  function tAuditStaff() {
+    var rows = [
+      ["New appointment", 14, "A&amp;PC", "Capture on payroll", "ok"],
+      ["Assumption of duty", 12, "&mdash;", "Capture on payroll", "ok"],
+      ["Confirmation of appointment", 22, "&mdash;", "None", "ok"],
+      ["Promotion", 31, "A&amp;PC", "New grade", "ok"],
+      ["Upgrade", 6, "A&amp;PC", "New grade", "ok"],
+      ["Change of qualification", 9, "A&amp;PC", "New grade", "ok"],
+      ["Change of cadre / interdepartmental transfer", 4, "A&amp;PC", "Payroll change", "ok"],
+      ["Disposition / transfer", 3, "A&amp;PC", "None", "ok"],
+      ["Leave of absence", 5, "&mdash;", "Payroll adjustment", "ok"],
+      ["Sabbatical leave", 3, "&mdash;", "Payroll adjustment", "ok"],
+      ["Termination", 2, "Disciplinary Committee", "Remove from payroll", "bad"],
+      ["Resignation", 4, "&mdash;", "Remove from payroll", "bad"],
+      ["Retirement", 8, "&mdash;", "To pension payroll", "bad"],
+      ["Death", 1, "&mdash;", "Remove; benefits to next of kin", "bad"],
+      ["Positional appointment", 2, "Screening + A&amp;PC", "None", "ok"],
+      ["Change of name", 7, "&mdash;", "None", "ok"],
+      ["Change of next of kin", 11, "&mdash;", "None", "ok"],
+      ["Training bond", 3, "&mdash;", "Bursar informed", "ok"]
+    ];
+    var ending = rows.filter(function (r) { return r[4] === "bad"; })
+                     .reduce(function (a, r) { return a + r[1]; }, 0);
+
+    return note('info', 'Seventeen Human Resources processes, one shape',
+      'Staff applies &rarr; the Head of Department recommends &rarr; a committee considers, where one is required &rarr; the Registrar or Vice-Chancellor approves &rarr; the Directorate of Human Resource Management implements &rarr; a letter is issued &rarr; the Bursar is told what it does to the payroll. Every one of the seventeen fits it. That is worth noticing, because it is one workflow with seventeen configurations rather than seventeen workflows &mdash; and because every movement is what explains a payroll variance.') +
+
+    tiles([
+      ["Movements this month", "147", null, "Across all eighteen kinds"],
+      ["Awaiting the Registrar or VC", "23", "var(--chrome)", "Approved by nobody yet"],
+      ["Ending a person&rsquo;s service", String(ending), "var(--red-ink)", "Payroll, card and offices all end"],
+      ["Letters issued", "124", null, "Each is an instrument on an office"]
+    ]) +
+
+    note('bad', 'A movement that ends service must end everything at once',
+      'The Directorate of Human Resource Management&rsquo;s own paper says who is told on a termination or resignation: the Vice-Chancellor, the Head of Department, <b>the Chief Security Officer</b> and the Bursar. A member of staff who resigns on Friday should not open a door on Saturday. So it is one event with three subscribers &mdash; the payroll removes them, the identity card is blocked at every reader in the same moment, and every office they held ends. Not three tasks somebody remembers to do.') +
+
+    panel('Staff movements, October', 'What Internal Audit reads to explain the payroll',
+      dtable(["Movement", "Count|mid", "Committee", "Payroll effect", "Ends service|num"],
+        rows.map(function (r) {
+          return ['<strong>' + r[0] + '</strong>', '<span class="tnum">' + r[1] + '</span>',
+            '<span class="sub2">' + r[2] + '</span>',
+            r[3] === "None" ? '<span class="sub2">None</span>' : pil(r[4] === "bad" ? 'bad' : 'info', r[3]),
+            r[4] === "bad" ? pil('bad', 'Yes') : '<span class="sub2">&mdash;</span>'];
+        }), 940)) +
+
+    note('info', 'This is also where the office register gets its instruments',
+      'Every office in this portal is held by virtue of a letter or a minute, and the portal refuses an office assignment without one. These processes are where those letters come from &mdash; the appointment letter, the confirmation letter, the promotion letter, the transfer letter. The instrument is a by-product of work somebody was doing anyway rather than a field somebody has to remember to fill.');
+  }
+
+  /* ── 5. assets ────────────────────────────────────────────────── */
+
+  function tAuditAssets() {
+    var rows = [
+      ["Faculty of Science laboratory block", "Building", "2019", "&#8358;418.0m", "12 Jun 2026", "ok", "Sound"],
+      ["Library annexe", "Building", "2021", "&#8358;286.4m", "12 Jun 2026", "ok", "Sound"],
+      ["Toyota Hiace bus &mdash; BEN 442 XA", "Vehicle", "2022", "&#8358;28.6m", "3 Sep 2026", "ok", "Serviceable"],
+      ["Toyota Hilux &mdash; BEN 118 MK", "Vehicle", "2020", "&#8358;22.4m", "3 Sep 2026", "bad", "Not sighted"],
+      ["ICT server room equipment", "Equipment", "2024", "&#8358;96.2m", "28 Aug 2026", "ok", "Sound"],
+      ["Perimeter fencing, phase 1", "Infrastructure", "2025", "&#8358;41.8m", "&mdash;", "info", "Never verified"],
+      ["Clinic laboratory equipment", "Equipment", "2023", "&#8358;34.9m", "14 Apr 2026", "bad", "Two items unserviceable"],
+      ["Generating set, 500 KVA", "Equipment", "2018", "&#8358;62.0m", "&mdash;", "info", "Never verified"]
+    ];
+    var never = rows.filter(function (r) { return r[4] === "&mdash;"; }).length;
+    var bad = rows.filter(function (r) { return r[5] === "bad"; }).length;
+
+    return note(bad ? 'bad' : 'info',
+      bad + ' assets did not verify, and ' + never + ' have never been visited',
+      'The Assets Division physically visits assets inside and outside the University to confirm three things: that the asset exists, that it is on the register, and what state it is in. The portal cannot do any of the three &mdash; but it can hold the register, carry the date of the last visit, and make an asset that has never been visited impossible to overlook. A vehicle not sighted in September is a finding; a fence nobody has ever confirmed exists is a different and larger one.') +
+
+    tiles([
+      ["Assets on the register", "1,284", null, "Buildings, vehicles, equipment"],
+      ["Verified this year", "912", null, "71% of the register"],
+      ["Never verified", String(never) + " shown", "var(--red-ink)", "218 across the register"],
+      ["Did not verify", String(bad) + " shown", "var(--red-ink)", "Referred to the Director"]
+    ]) +
+
+    panel('Assets register', 'With the date each was last physically verified',
+      dtable(["Asset", "Class|mid", "Acquired|mid", "Value|num", "Last verified|mid", "Finding|num"],
+        rows.map(function (r) {
+          return ['<strong>' + r[0] + '</strong>', '<span class="sub2">' + r[1] + '</span>',
+            '<span class="tnum">' + r[2] + '</span>', '<span class="tnum">' + r[3] + '</span>',
+            r[4] === "&mdash;" ? '<span style="color:var(--red-ink);font-weight:600">Never</span>'
+                               : '<span class="tnum sub2">' + r[4] + '</span>',
+            r[5] === "ok" ? pil('ok', r[6]) : r[5] === "bad" ? pil('bad', r[6]) : pil('info', r[6])];
+        }), 980)) +
+
+    note('info', 'The portal holds the register; a person confirms the asset',
+      'Every verification here is attested by the officer who made the visit, in their own name and on a date. Nothing is marked verified because a record exists &mdash; the whole purpose of the exercise is to find the gap between the register and the world.');
+  }

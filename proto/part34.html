@@ -1,0 +1,340 @@
+  /* ══════════════════════════════════════════════════════════════════
+     FEE SCHEDULES — versioned, effective-dated, entered in a modal
+
+     A fee schedule is not a settings page. It is a priced instrument
+     approved by Council, applied to a defined population for a defined
+     period, and referenced by every invoice raised under it. So:
+
+       · nothing is edited — a change is a NEW VERSION
+       · every version carries the session it takes effect from
+       · two versions for the same population may never overlap in time
+       · an invoice records the version that priced it, for ever
+
+     The form is a modal because creating one is a task with a start
+     and an end, not a screen you browse: it opens over the list you
+     were reading, walks five steps, and returns you to that list.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* ── the modal ───────────────────────────────────────────────── */
+
+  function modal(title, sub, body, foot, wide) {
+    return '<div class="mdl" data-mdl="close" role="dialog" aria-modal="true" aria-label="' + title + '">' +
+      '<div class="mdl__box' + (wide ? ' is-wide' : '') + '" data-stop="1">' +
+        '<div class="mdl__head">' +
+          '<div style="min-width:0"><b>' + title + '</b>' +
+            (sub ? '<span class="mdl__sub">' + sub + '</span>' : '') + '</div>' +
+          '<button class="mdl__x" data-mdl="close" aria-label="Close">&times;</button>' +
+        '</div>' +
+        '<div class="mdl__body">' + body + '</div>' +
+        (foot ? '<div class="mdl__foot">' + foot + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  function mdlSteps(steps, at) {
+    return '<div class="mdl__steps">' + steps.map(function (s, i) {
+      return '<div class="mdl__st' + (i < at ? ' is-done' : i === at ? ' is-on' : '') + '">' +
+        '<span class="mdl__sn tnum">' + (i < at ? '&#10003;' : i + 1) + '</span>' + s + '</div>';
+    }).join('') + '</div>';
+  }
+
+  /* ── the schedules on file ───────────────────────────────────── */
+
+  var FEE_HEADS = [
+    ["Tuition", "4001", 78000, 1],
+    ["Registration and matriculation", "4012", 12000, 1],
+    ["Library and ICT", "4020", 18000, 1],
+    ["Examination", "4031", 15000, 1],
+    ["Medical (Health Services)", "4044", 8000, 1],
+    ["Sports and student union", "4051", 4000, 0]
+  ];
+
+  var FEE_SCHED = [
+    { v: "FS-2026.2", who: "Undergraduate &middot; returning &middot; indigene",
+      scope: "All faculties except Health Sciences and Law", total: 135000,
+      from: "2026/2027", to: "&mdash;", state: "force", sup: "FS-2025.2",
+      council: "CN/2026/018", invoices: 18204 },
+    { v: "FS-2026.3", who: "Undergraduate &middot; returning &middot; non-indigene",
+      scope: "All faculties except Health Sciences and Law", total: 185000,
+      from: "2026/2027", to: "&mdash;", state: "force", sup: "FS-2025.3",
+      council: "CN/2026/018", invoices: 4118 },
+    { v: "FS-2026.4", who: "Undergraduate &middot; fresh &middot; indigene",
+      scope: "All faculties except Health Sciences and Law", total: 168000,
+      from: "2026/2027", to: "&mdash;", state: "force", sup: "FS-2025.4",
+      council: "CN/2026/018", invoices: 6940 },
+    { v: "FS-2026.7", who: "MBBS &middot; clinical years", scope: "College of Health Sciences",
+      total: 410000, from: "2026/2027", to: "&mdash;", state: "force", sup: "FS-2025.7",
+      council: "CN/2026/018", invoices: 488 },
+    { v: "FS-2026.9", who: "LL.B &middot; all levels", scope: "Faculty of Law",
+      total: 210000, from: "2026/2027", to: "&mdash;", state: "force", sup: "FS-2025.9",
+      council: "CN/2026/018", invoices: 1720 },
+    { v: "FS-2025.2", who: "Undergraduate &middot; returning &middot; indigene",
+      scope: "All faculties except Health Sciences and Law", total: 125000,
+      from: "2025/2026", to: "2025/2026", state: "closed", sup: "FS-2024.2",
+      council: "CN/2025/021", invoices: 17880 },
+    { v: "FS-2027.1", who: "Undergraduate &middot; returning &middot; indigene",
+      scope: "Proposed 8% uplift", total: 146000, from: "2027/2028", to: "&mdash;",
+      state: "draft", sup: "FS-2026.2", council: "&mdash;", invoices: 0 }
+  ];
+
+  function feePill(s) {
+    return s === "force" ? pil('ok', 'In force')
+         : s === "draft" ? pil('info', 'Draft &mdash; awaiting Council')
+         : pil('bad', 'Closed');
+  }
+
+  function money(n) { return "&#8358;" + n.toLocaleString(); }
+
+  /* ── the wizard ──────────────────────────────────────────────── */
+
+  var FEE_STEPS = ["Who it applies to", "The charges", "Instalments", "Effective dates", "Review"];
+
+  function feeWizard() {
+    var at = S.mdl.step || 0;
+    var total = FEE_HEADS.reduce(function (a, h) { return a + h[2]; }, 0);
+    var uplift = Math.round(total * 1.08 / 1000) * 1000;
+    var body;
+
+    if (at === 0) {
+      body =
+        '<div class="grid grid--2">' +
+          '<div class="field"><label for="fw-s">Session it takes effect from</label>' +
+            '<select id="fw-s" class="ctl"><option>2027/2028</option><option>2028/2029</option></select></div>' +
+          '<div class="field"><label for="fw-m">Mode of study</label>' +
+            '<select id="fw-m" class="ctl"><option>Full time</option><option>Part time</option><option>Sandwich</option></select></div>' +
+          '<div class="field"><label for="fw-t">Student type</label>' +
+            '<select id="fw-t" class="ctl"><option>Returning</option><option>Fresh (first year)</option><option>Both</option></select></div>' +
+          '<div class="field"><label for="fw-r">Residency</label>' +
+            '<select id="fw-r" class="ctl"><option>Indigene of Benue State</option><option>Non-indigene</option><option>Both &mdash; one price</option></select></div>' +
+          '<div class="field"><label for="fw-sc">Applies to</label>' +
+            '<select id="fw-sc" class="ctl"><option>All faculties except Health Sciences and Law</option>' +
+            '<option>One faculty</option><option>One department</option><option>One programme</option>' +
+            '<option>The whole University</option></select></div>' +
+          '<div class="field"><label for="fw-l">Levels</label>' +
+            '<select id="fw-l" class="ctl"><option>All levels</option><option>100 only</option>' +
+            '<option>200 to 400</option><option>Clinical years only</option></select></div>' +
+        '</div>' +
+        note('bad', 'The population must be exact, because two schedules may not overlap',
+          'A schedule prices <b>one population for one period</b>. If this one would cover a student already priced by another schedule in the same session, the portal refuses it &mdash; ' +
+          'not with a warning on this form, but with an exclusion constraint in the database, so it cannot be got around by a script either. ' +
+          'A student with two prices is a student with no price.');
+
+    } else if (at === 1) {
+      body =
+        note('info', 'Each line posts to its own revenue head',
+          'The head is what the Bursary reports against and what the 95 / 5 split with the State is calculated on. A line with no head cannot be saved.') +
+        '<div class="feeitems">' +
+          '<div class="feeitem feeitem--h"><span>Item</span><span>Revenue head</span><span>Amount</span><span>Mandatory</span><span></span></div>' +
+          FEE_HEADS.map(function (h, i) {
+            return '<div class="feeitem">' +
+              '<input class="ctl" value="' + h[0] + '" aria-label="Item ' + (i + 1) + '">' +
+              '<input class="ctl tnum" value="' + h[1] + '" aria-label="Revenue head ' + (i + 1) + '">' +
+              '<input class="ctl tnum" value="' + Math.round(h[2] * 1.08 / 100) * 100 + '" aria-label="Amount ' + (i + 1) + '">' +
+              '<select class="ctl"><option' + (h[3] ? ' selected' : '') + '>Mandatory</option>' +
+                '<option' + (h[3] ? '' : ' selected') + '>Optional</option></select>' +
+              '<button class="feeitem__x" aria-label="Remove this line">&times;</button>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">' +
+          btn('ghost', '+ Add a line') +
+          '<span style="flex-grow:1"></span>' +
+          '<span class="sub2">Total</span><b class="tnum" style="font-size:19px">' + money(uplift) + '</b>' +
+        '</div>' +
+        note('bad', 'Hostel, transcripts and late registration are not on this schedule',
+          'They are charged when the service is taken, not when the session opens, so they live on their own schedules. ' +
+          'Putting an optional charge on the session schedule is how a student ends up invoiced for a hostel bed they never asked for.');
+
+    } else if (at === 2) {
+      body =
+        '<div class="grid grid--2">' +
+          '<div class="field"><label for="fw-i">Instalments</label>' +
+            '<select id="fw-i" class="ctl"><option>2</option><option>1 &mdash; full payment only</option><option>3</option></select></div>' +
+          '<div class="field"><label for="fw-sp">Split</label>' +
+            '<select id="fw-sp" class="ctl"><option>60 / 40</option><option>70 / 30</option><option>50 / 50</option></select></div>' +
+        '</div>' +
+        dtable(["Instalment|mid", "Share|mid", "Amount|num", "Due by", "What it unlocks"], [
+          ['<b class="tnum">1</b>', '<span class="tnum">60%</span>', '<b class="tnum">' + money(Math.round(uplift * 0.6)) + '</b>',
+            '<span class="tnum">24 September</span>',
+            'Course registration &middot; examination &middot; library &middot; identity card'],
+          ['<b class="tnum">2</b>', '<span class="tnum">40%</span>', '<b class="tnum">' + money(Math.round(uplift * 0.4)) + '</b>',
+            '<span class="tnum">6 February</span>',
+            'Second-semester registration &middot; results &middot; transcript &middot; clearance']
+        ]) +
+        note('bad', 'D-Q4 is open, and this table is where it bites',
+          'Which instalment unlocks which service is the clearance predicate &mdash; BR-001 &mdash; and it is the gate in front of course registration. ' +
+          'The split above is the prototype&rsquo;s assumption, not the University&rsquo;s decision. ' +
+          'Until Council and the Registry settle it, every clearance check in the system is running on a guess, and it is the single answer that most changes what students can do in September.');
+
+    } else if (at === 3) {
+      body =
+        '<div class="grid grid--3">' +
+          '<div class="field"><label for="fw-v">Version</label>' +
+            '<input id="fw-v" class="ctl tnum ctl--ro" value="FS-2027.1" readonly>' +
+            '<span class="hint">Allocated when you submit. It is never reused.</span></div>' +
+          '<div class="field"><label for="fw-f">In force from</label>' +
+            '<select id="fw-f" class="ctl"><option>2027/2028 session</option><option>2027/2028 second semester</option></select></div>' +
+          '<div class="field"><label for="fw-u">In force until</label>' +
+            '<select id="fw-u" class="ctl"><option>Until superseded</option><option>2027/2028 only</option></select></div>' +
+        '</div>' +
+        panel('Version lineage', 'This schedule&rsquo;s ancestry, and what it will supersede', pbody(
+          chainOf([
+            ["FS-2024.2", money(112000), "2024/2025"],
+            ["FS-2025.2", money(125000), "2025/2026"],
+            ["FS-2026.2", money(135000), "2026/2027 &middot; in force"],
+            ["FS-2027.1", money(uplift), "2027/2028 &middot; this one", "hot"]
+          ]))) +
+        note('ok', 'No overlap: the check passed',
+          'FS-2026.2 covers this population to the end of 2026/2027 and this schedule begins in 2027/2028. ' +
+          'The moment this one takes effect, FS-2026.2 is closed with that date &mdash; it is not deleted, because eighteen thousand invoices reference it and must remain explicable.') +
+        note('bad', 'What happens to the 18,204 invoices already raised under FS-2026.2',
+          'Nothing. An invoice records the version that priced it, and a new version never reprices an invoice that exists. ' +
+          'A student who paid ' + money(135000) + ' in 2026/2027 paid the right amount for ever, whatever the 2027/2028 schedule says.');
+
+    } else {
+      body =
+        '<div class="grid grid--2">' +
+          kvGrid([
+            ["Version", "FS-2027.1"],
+            ["Applies to", "Undergraduate &middot; returning &middot; indigene"],
+            ["Scope", "All faculties except Health Sciences and Law"],
+            ["Levels", "All levels"],
+            ["In force from", "2027/2028 session"],
+            ["Supersedes", "FS-2026.2, closed at that date"]
+          ], 'grid--1') +
+          kvGrid([
+            ["Line items", String(FEE_HEADS.length)],
+            ["Total", money(uplift)],
+            ["Change on FS-2026.2", "+" + money(uplift - 135000) + " (8.1%)"],
+            ["Instalments", "2, at 60 / 40"],
+            ["Students affected", "18,204"],
+            ["Additional revenue", money((uplift - 135000) * 18204)]
+          ], 'grid--1') +
+        '</div>' +
+        dtable(["Item", "Head|mid", "FS-2026.2|num", "This version|num", "Change|num"],
+          FEE_HEADS.map(function (h) {
+            var nw = Math.round(h[2] * 1.08 / 100) * 100;
+            return [h[0], '<span class="sub2 tnum">' + h[1] + '</span>',
+              '<span class="tnum">' + money(h[2]) + '</span>',
+              '<b class="tnum">' + money(nw) + '</b>',
+              '<span class="tnum" style="color:var(--red-ink)">+' + money(nw - h[2]) + '</span>'];
+          })) +
+        note('bad', 'Submitting does not put this in force',
+          'It creates the version as a <b>draft</b> and puts it before Council. Fees are approved by Council, not by the Bursary and not by this screen. ' +
+          'The version becomes effective on the date it names, once the Council minute is recorded against it &mdash; and not one day earlier.');
+    }
+
+    var foot =
+      '<button class="btn btn--ghost btn--sm" data-mdl="prev"' + (at === 0 ? ' disabled' : '') + '>&larr; Back</button>' +
+      '<span class="sub2" style="flex-grow:1">Step <b class="tnum">' + (at + 1) + '</b> of <span class="tnum">' + FEE_STEPS.length + '</span></span>' +
+      btn('ghost', 'Save as a draft', ' data-mdl="close"') +
+      (at === FEE_STEPS.length - 1
+        ? '<button class="btn btn--primary btn--sm" data-mdl="submit">Submit to Council</button>'
+        : '<button class="btn btn--primary btn--sm" data-mdl="next">Continue &rarr;</button>');
+
+    return modal("New fee schedule", "Version FS-2027.1 &middot; draft",
+      mdlSteps(FEE_STEPS, at) + body, foot, true);
+  }
+
+  /* the small modal for opening a new version of an existing schedule */
+  function feeVersionModal() {
+    var f = null, code = S.mdl.of;
+    for (var i = 0; i < FEE_SCHED.length; i++) { if (FEE_SCHED[i].v === code) { f = FEE_SCHED[i]; } }
+    if (!f) { return ''; }
+    return modal("New version of " + f.v, f.who,
+      note('info', 'A schedule is never edited &mdash; it is superseded',
+        '<b>' + f.v + '</b> has priced <b class="tnum">' + vzNum(f.invoices) + '</b> invoices. Those invoices reference this version and must keep resolving to these amounts for as long as the University holds records. ' +
+        'So a change opens a new version, copying these figures as a starting point, and closes ' + f.v + ' on the date the new one begins.') +
+      kvGrid([
+        ["Copying from", f.v],
+        ["Applies to", f.who],
+        ["Current total", money(f.total)],
+        ["Invoices already priced", vzNum(f.invoices)],
+        ["Council minute", f.council],
+        ["Will be closed at", "the date the new version begins"]
+      ], 'grid--2') +
+      '<div class="field" style="margin-top:12px"><label for="fv-s">The new version takes effect from</label>' +
+        '<select id="fv-s" class="ctl"><option>2027/2028 session</option><option>2027/2028 second semester</option></select></div>',
+      btn('ghost', 'Cancel', ' data-mdl="close"') +
+      '<span style="flex-grow:1"></span>' +
+      '<button class="btn btn--primary btn--sm" data-mdl="open:fee">Open the form</button>');
+  }
+
+  function mdlOverlay() {
+    if (!S.mdl || !S.mdl.kind) { return ''; }
+    if (S.mdl.kind === "rec") { return recModal(); }
+    if (S.mdl.kind === "recdone") { return recDoneModal(); }
+    if (S.mdl.kind === "fee") { return feeWizard(); }
+    if (S.mdl.kind === "feever") { return feeVersionModal(); }
+    if (S.mdl.kind === "done") {
+      return modal("FS-2027.1 created as a draft", "Submitted to Council",
+        note('ok', 'The version exists; it is not in force',
+          'It carries the date it will take effect from and the version it supersedes. Council sees it at the next sitting, and the minute number is recorded against it here. ' +
+          'Until then, every invoice is still priced by FS-2026.2, and the students affected see no change.') +
+        kvGrid([["Version", "FS-2027.1"], ["State", "Draft &mdash; awaiting Council"],
+                ["In force from", "2027/2028"], ["Supersedes", "FS-2026.2"],
+                ["Students affected", "18,204"], ["Notified", "Nobody, until Council resolves"]], 'grid--2'),
+        '<span style="flex-grow:1"></span>' + btn('primary', 'Back to the schedules', ' data-mdl="close"'));
+    }
+    return '';
+  }
+
+  /* ── the screen ──────────────────────────────────────────────── */
+
+  function bFees() {
+    var inForce = FEE_SCHED.filter(function (f) { return f.state === "force"; });
+    var priced = FEE_SCHED.reduce(function (a, f) { return a + f.invoices; }, 0);
+
+    return note('info', 'A fee schedule is versioned and effective-dated, and that is not bookkeeping',
+      'It is what makes a 2024 invoice explicable in 2030. Nothing here is edited: a change creates a <b>new version</b> with its own effective date, ' +
+      'the old version is closed on that date rather than removed, and every invoice ever raised records which version priced it.') +
+
+    scopeBar('fee records', {}) +
+
+    tiles([
+      ["Schedules in force", String(inForce.length), "var(--green-ink)", "2026/2027 session"],
+      ["Invoices priced", vzNum(priced), null, "Across every version on file"],
+      ["Awaiting Council", "1", "var(--chrome)", "FS-2027.1, an 8% uplift"],
+      ["Versions on record", String(FEE_SCHED.length), null, "Back to 2011; none deleted"]
+    ]) +
+
+    panel('Fee schedules', 'Every version, in force and closed',
+      dtable(["Version|mid", "Applies to", "Total|num", "In force from|mid", "Until|mid", "Supersedes|mid", "Council|mid", "Invoices|num", "State|mid", "Action|num"],
+        FEE_SCHED.map(function (f) {
+          return ['<b class="tnum">' + f.v + '</b>', two(f.who, f.scope),
+            '<b class="tnum">' + money(f.total) + '</b>',
+            '<span class="tnum">' + f.from + '</span>', '<span class="tnum sub2">' + f.to + '</span>',
+            '<span class="tnum sub2">' + f.sup + '</span>',
+            '<span class="tnum sub2">' + f.council + '</span>',
+            '<span class="tnum">' + vzNum(f.invoices) + '</span>',
+            feePill(f.state),
+            f.state === "closed" ? btn('ghost', 'View')
+              : btn('ghost', 'New version', ' data-mdl="ver:' + f.v + '"')];
+        })) +
+      '<div style="padding:0 16px 16px;display:flex;gap:9px;flex-wrap:wrap">' +
+        '<button class="btn btn--primary btn--sm" data-mdl="open:fee">+ New fee schedule</button>' +
+        btn('ghost', 'Print the schedule of fees', ' data-doc="scopeexport"') +
+      '</div>') +
+
+    panel('FS-2026.2 &mdash; line items', 'Each line posts to its own revenue head',
+      dtable(["Item", "Revenue head|mid", "Amount|num", "Mandatory|mid"],
+        FEE_HEADS.map(function (h) {
+          return [h[0], '<span class="tnum sub2">' + h[1] + '</span>',
+            '<b class="tnum">' + money(h[2]) + '</b>',
+            h[3] ? pil('ok', 'Yes') : '<span class="sub2">Optional</span>'];
+        }))) +
+
+    panel('Instalments under FS-2026.2', 'What each one unlocks &mdash; this is the BR-001 predicate',
+      dtable(["Instalment|mid", "Share|mid", "Amount|num", "Due by|mid", "What it unlocks", "Paid|num"], [
+        ['<b class="tnum">1</b>', '<span class="tnum">60%</span>', '<b class="tnum">' + money(81000) + '</b>',
+          '<span class="tnum">24 Sept</span>', 'Registration, examination, library, identity card',
+          '<span class="tnum">17,204</span>'],
+        ['<b class="tnum">2</b>', '<span class="tnum">40%</span>', '<b class="tnum">' + money(54000) + '</b>',
+          '<span class="tnum">6 Feb</span>', 'Second-semester registration, results, transcript, clearance',
+          '<span class="tnum">11,880</span>']
+      ])) +
+
+    note('bad', 'D-Q4: which instalment unlocks which service is still an assumption',
+      'The table above is what the prototype behaves as though the University decided. It is the predicate behind every clearance check in the system, ' +
+      'and it is what stands between a student and course registration in September. Until Council and the Registry settle it, BR-001 is enforcing a guess.');
+  }

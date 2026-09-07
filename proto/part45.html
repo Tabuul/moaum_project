@@ -1,0 +1,129 @@
+
+  /* ══ HOUSING, WELFARE AND PASSAGES ══════════════════════════════════
+     Paper P9. The Deputy Registrar (Housing, Welfare and Passages) does
+     three unrelated-looking things that share one shape:
+
+       · allocates University quarters to staff,
+       · convenes the Welfare Committee on a hardship claim,
+       · authorises a passage — the University's contribution to the cost
+         of a journey a member of staff is entitled to.
+
+     What they share is that each is a CLAIM OF ENTITLEMENT, verified
+     against a rule, put to a committee, and settled with money or with a
+     key. So the screen is one screen: verify, convene, decide, issue.
+
+     The rule this office exists to protect is that entitlement is
+     checked before the committee sits, not after it decides. A committee
+     that allocates a flat to someone not entitled to one has created a
+     problem the Registrar has to unwind in person.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var HW_STOCK = [
+    ["Senior Staff Quarters", "3-bedroom flat",  18, 17, "Prof. cadre and Directors"],
+    ["Senior Staff Quarters", "2-bedroom flat",  24, 22, "Senior Lecturer and above"],
+    ["Junior Staff Quarters", "2-bedroom flat",  30, 30, "Administrative, GL 07&ndash;12"],
+    ["Junior Staff Quarters", "1-bedroom flat",  22, 19, "Administrative, GL 04&ndash;06"],
+    ["Guest chalets",         "Serviced chalet",  6,  4, "Visiting examiners and guests"]
+  ];
+
+  var HW_CLAIMS = [
+    ["HW/2026/0231", "QUARTERS", "OGWUCHE, Innocent O.",   "Academic · Senior Lecturer",
+     "2-bedroom flat", "ELIGIBLE",   "On the list since Mar 2025 · position 3", "Housing Committee, 12 Sept"],
+    ["HW/2026/0232", "QUARTERS", "GBAKA, Sesugh Terkimbi", "Administrative · GL 09",
+     "2-bedroom flat", "NOT_ELIGIBLE", "Junior quarters, GL 07&ndash;12 &mdash; applied for senior stock", "Refer back"],
+    ["HW/2026/0233", "WELFARE",  "ANYEBE, Ruth Onyilo",    "Academic · Lecturer II",
+     "Bereavement grant", "ELIGIBLE", "Within the three-month window", "Welfare Committee, 12 Sept"],
+    ["HW/2026/0234", "WELFARE",  "&mdash; withheld &mdash;", "Administrative",
+     "Medical hardship", "ELIGIBLE", "Clinic referral attached", "Welfare Committee, 12 Sept"],
+    ["HW/2026/0235", "PASSAGE",  "ATU, Bernard Ortwer",    "Academic · Professor",
+     "Annual leave passage", "ELIGIBLE", "Last claimed Aug 2024 &mdash; entitled once in two years", "Authorise"],
+    ["HW/2026/0236", "PASSAGE",  "TSEMBE, Aondowase",      "Academic · Lecturer I",
+     "Study leave passage", "PENDING", "Awaiting the study leave instrument (MOV/2026/0416)", "Blocked upstream"]
+  ];
+
+  var HW_KIND = {
+    QUARTERS: ["Quarters", "bed"],
+    WELFARE:  ["Welfare",  "heart"],
+    PASSAGE:  ["Passage",  "swap"]
+  };
+  var HW_ELIG = {
+    ELIGIBLE:     ["ok",   "Entitled"],
+    NOT_ELIGIBLE: ["bad",  "Not entitled"],
+    PENDING:      ["info", "Cannot yet be checked"]
+  };
+
+  function hwCount(k) { return HW_CLAIMS.filter(function (r) { return r[1] === k; }).length; }
+
+  function tHousing() {
+    var blocked = HW_CLAIMS.filter(function (r) { return r[5] !== "ELIGIBLE"; });
+    var free = HW_STOCK.reduce(function (n, r) { return n + (r[2] - r[3]); }, 0);
+
+    return note('info', 'Entitlement is verified before the committee sits, never after it decides',
+      'All three of this office&rsquo;s duties &mdash; quarters, welfare and passages &mdash; are the same act: a claim of ' +
+      'entitlement, checked against a rule, put to a committee, and settled with money or with a key. Checking first is ' +
+      'what stops a committee allocating a flat to somebody not entitled to one, which is a decision the Registrar then ' +
+      'has to unwind in person.') +
+
+    tiles([
+      ["Claims open", String(HW_CLAIMS.length), null, "Quarters, welfare and passages"],
+      ["Not entitled, or not checkable", String(blocked.length),
+        blocked.length ? "var(--red-ink)" : null, "Refused before the committee"],
+      ["Units vacant", String(free), free ? "var(--chrome)" : "var(--red-ink)", "Across five stocks"],
+      ["Committees sitting", "2", null, "Housing and Welfare, 12 September"]
+    ]) +
+
+    panel('Claims before this office', '2026/2027 &middot; verified against the rule, then listed for a committee', dtable(
+      ['Reference|mid', 'Kind', 'Claimant', 'What is claimed', 'Entitlement', 'Next|num'],
+      HW_CLAIMS.map(function (r) {
+        var k = HW_KIND[r[1]] || ["", "doc"], e = HW_ELIG[r[5]] || ["info", r[5]];
+        return ['<span class="tnum sub2">' + r[0] + '</span>',
+          '<span style="display:inline-flex;align-items:center;gap:6px">' +
+            ico(k[1], 15, 'var(--chrome)', 1.9) + '<strong>' + k[0] + '</strong></span>',
+          r[2] + '<div class="sub2">' + r[3] + '</div>',
+          '<strong>' + r[4] + '</strong>',
+          pil(e[0], e[1]) + '<div class="sub2">' + r[6] + '</div>',
+          '<span class="sub2">' + r[7] + '</span>'];
+      }), 1160)) +
+
+    '<div class="grid grid--2">' +
+      panel('Quarters, and what is actually free', 'Stock is finite, and a waiting list that ignores it is a fiction', dtable(
+        ['Stock', 'Type', 'Units|mid', 'Occupied|mid', 'Vacant|mid'],
+        HW_STOCK.map(function (r) {
+          var v = r[2] - r[3];
+          return ['<strong>' + r[0] + '</strong><div class="sub2">' + r[4] + '</div>',
+            '<span class="sub2">' + r[1] + '</span>',
+            '<span class="tnum">' + r[2] + '</span>',
+            '<span class="tnum">' + r[3] + '</span>',
+            '<b class="tnum" style="color:' + (v ? 'var(--green-ink)' : 'var(--red-ink)') + '">' + v + '</b>'];
+        }), 640)) +
+
+      panel('The passage rule', 'Why one of the six is blocked', pbody(
+        '<div class="tplcols">' +
+          [["Annual leave passage", "Once in two years, on completion of the leave year."],
+           ["Study leave passage", "On the strength of the study leave instrument &mdash; and not before it exists."],
+           ["Appointment passage", "Once, on first assumption of duty."],
+           ["Terminal passage", "On retirement or on the end of a contract."]].map(function (c) {
+            return '<div class="tplcol"><b>' + c[0] + '</b><span>' + c[1] + '</span></div>';
+          }).join('') +
+        '</div>' +
+        '<div class="sub2">HW/2026/0236 is a study leave passage whose study leave has been requested but not yet ' +
+        'approved (MOV/2026/0416, with Human Resource Management). The claim is not refused &mdash; it is <b>not yet ' +
+        'checkable</b>, which is a different answer, and the claimant is told which office is holding it.</div>')) +
+    '</div>' +
+
+    note('bad', 'One claim is refused, and the refusal names the rule',
+      'HW/2026/0232 asks for senior staff stock on GL 09. The rule is that GL 07&ndash;12 is junior staff quarters, and the ' +
+      'claim is referred back with that sentence rather than with a status. A refusal that does not say which rule it rests ' +
+      'on produces a visit to this office, and then a visit to the Registrar.') +
+
+    panel('What the committee receives', 'Generated, not compiled by hand', pbody(idSteps([
+      ["done", "Every claim checked against its rule before the papers go out",
+        "So the committee spends its time on judgement rather than on eligibility arithmetic."],
+      ["done", "The refused and the not-yet-checkable are listed separately",
+        "A claim waiting on another office is not a refusal, and reporting it as one sends the claimant to the wrong desk."],
+      ["now", "The vacancy position is stated as at the day of the meeting",
+        "A waiting list that ignores what is actually vacant is a fiction, and allocating against it produces two people with one key."],
+      ["todo", "The decision issues an allocation letter or a payment authority",
+        "Both carry a reference. A passage authorisation becomes a payment voucher, and every University payment passes Internal Audit before money moves."]
+    ])));
+  }

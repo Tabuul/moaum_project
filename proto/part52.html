@@ -1,0 +1,419 @@
+
+  /* ══ THE JAMB ADMISSION LISTS ═══════════════════════════════════════
+     The Academic Office downloads the approved list from JAMB and
+     uploads it here. There are TWO lists — UTME and Direct Entry — and
+     they are downloaded separately, weeks apart, and uploaded with
+     their own button.
+
+     Rebuilt 7 September 2026 against two real 2026/2027 files. Almost
+     every rule below is here because one of those files did something.
+
+     ── What CAPS actually sends ──────────────────────────────────────
+     The raw download from CAPS does not carry a course code at all. It
+     carries the course NAME, in JAMB's words:
+
+         RG_NUM  RG_CANDNAME  RG_SEX  STATE_NAME  RG_AGGREGATE
+         CO_NAME = "Medicine & Surgery"
+         LGA_NAME  Subject1..3  RG_Sub1..3Score  EngScore
+
+     The University's programme table is keyed on the CODE — C00061 —
+     and calls that programme MBBS. So somebody has been translating
+     the name into the code BY HAND, in Excel, for every row of every
+     list, every week of the season. That hand step is what this screen
+     removes, and removing it removes two things at once: the
+     transcription risk, and the 16 MB of other candidates' records
+     that the officer's lookup workbook was silently carrying.
+
+     ── One code, two names ───────────────────────────────────────────
+
+     What differs is the NAME, for 56 of the 92 programmes:
+
+         C00061   JAMB: Medicine & Surgery        MOAUM: MBBS
+         C00033   JAMB: Law                       MOAUM: LL.B (LAW)
+         C00062   JAMB: Religion & Cultural…      MOAUM: B.A. RELIGIOUS STUDIES
+         C00019   JAMB: Accounting                MOAUM: B.Sc. ACCOUNTING
+
+     MBBS is the case that shows why this cannot be normalised away. It
+     is not a missing award prefix or a capitalisation difference — the
+     two institutions use different words for the same degree, and only
+     one of them belongs on a certificate. So the University's name is
+     the label and JAMB's is an ALIAS: kept, and searchable, because an
+     officer holding a CAPS printout that says "Medicine & Surgery" has
+     to be able to find the programme without already knowing it is
+     called MBBS here.
+
+     The 36 names that match today are not a rule. Either side can edit
+     a label, so the alias is stored per code rather than worked out by
+     comparing strings.
+
+     The code also resolves the DEPARTMENT and the FACULTY, which
+     matriculation and the Faculty Officer's list both need and neither
+     could get from a name.                                            */
+
+  /* The University's own programme table, and JAMB's name for the same code.
+     Real data, from the University's `undergraduate programmes` sheet and
+     from the JAMB course list in its own 2026 admissions workbook.
+
+     [ what JAMB calls it, what the University calls it, dept, faculty ] */
+  var FACULTY = {
+    AC: "Architecture", AR: "Arts", BAMS: "Basic and Applied Medical Sciences",
+    CM: "Communication and Media", ED: "Education", ES: "Environmental Sciences",
+    LW: "Law", MS: "Management Sciences", PS: "Pharmaceutical Sciences",
+    SC: "Science", SS: "Social Sciences", TI: "Technology and Industrial Studies"
+  };
+
+  var CAPS_LISTS = {
+    utme: { label: "UTME", full: "Unified Tertiary Matriculation Examination", level: 100,
+            note: "Admitted into 100 Level on the UTME aggregate, out of 400." },
+    de:   { label: "Direct Entry", full: "Direct Entry — admitted on a prior qualification", level: 200,
+            note: "Admitted into 200 Level on A-Level, ND, NCE or HND. No UTME aggregate exists — the file sends 0, which is not a score." }
+  };
+
+
+  /* ── editing ──────────────────────────────────────────────────────
+     Two things on this screen can be edited and they are not the same
+     kind of thing.
+
+     A PROGRAMME is the University's own record: its name, the
+     department that owns it, the faculty. Editing one changes what
+     every candidate on that code is admitted to, now and for every list
+     still to come, so it carries the instrument it rests on — a
+     mapping decides what degree somebody receives, and that is a Senate
+     matter rather than a lookup an officer retyped.
+
+     A CANDIDATE ROW is NOT ours to edit. It is what JAMB sent, and it
+     is the evidence of what was approved. So the left-hand side of the
+     editor is read-only and always will be: what can be recorded is a
+     CORRECTION against the row — which programme it resolves to, and
+     why — leaving the original where it is. That is the same rule the
+     score sheet already works by: a correction afterwards is a new
+     version carrying a reason, never an overwrite. */
+
+  function progOf(code) {
+    if (!code) { return null; }
+    var e = S.capsProgEdit[code];
+    if (e) { return [e.name, e.dept, e.fac]; }
+    return PROGT[code] || null;
+  }
+
+  /* The passport for a candidate, if the folder has been uploaded. It lives
+     on the other screen and arrives on its own schedule, so the column only
+     appears once there is something to put in it — sixteen empty cells teach
+     nothing except that the column exists. */
+  function capsPhoto(regno) {
+    if (!S.pas) { return null; }
+    var n = String(regno || "").trim().toUpperCase();
+    for (var i = 0; i < S.pas.length; i++) { if (S.pas[i].num === n) { return S.pas[i]; } }
+    return null;
+  }
+
+  function capsInitials(name) {
+    var p = String(name || "").replace(/,/g, " ").split(/\s+/).filter(Boolean);
+    return ((p[0] || "").charAt(0) + (p[1] || "").charAt(0)).toUpperCase();
+  }
+
+  function capsResolved(r) {
+    var code = S.capsRowFix[r.regno] ? S.capsRowFix[r.regno].code : r.code;
+    var p = progOf(code);
+    return { code: code, prog: p ? p[0] : null, dept: p ? p[1] : null, fac: p ? p[2] : null,
+             fixed: !!S.capsRowFix[r.regno] };
+  }
+
+  function capsProgOptions(sel) {
+    return Object.keys(PROGT).sort().map(function (c) {
+      var p = progOf(c);
+      return '<option value="' + c + '"' + (c === sel ? ' selected' : '') + '>' +
+             c + ' — ' + p[0] + '</option>';
+    }).join('');
+  }
+
+  function capsEditor() {
+    var e = S.capsEdit;
+    if (!e) { return ''; }
+    /* A refusal is an act and says which rule it rests on. Setting a message
+       nobody renders is the silent failure this whole design exists to
+       remove, and the first cut of this editor did exactly that. */
+    var refused = S.capsRefused
+      ? note('bad', 'Refused', S.capsRefused) : '';
+    var draft = S.capsDraft || {};
+
+    if (e.kind === 'prog') {
+      var p = progOf(e.key), j = JNAME[e.key] || '—';
+      return refused + panel('Edit programme ' + e.key, 'What the University admits to on this code',
+        pbody(
+          note('info', 'JAMB\u2019s name is not editable, and that is the point',
+            'The left column is what JAMB sends on the download and is the only thing a row can be matched ' +
+            'on. Changing it here would break the match for every list that arrives afterwards. What is ' +
+            'edited is the University\u2019s side: the name that reaches the registration form, the ' +
+            'matriculation list and the certificate.') +
+          '<div class="grid grid--2">' +
+            '<div class="bio__f"><label>JAMB calls it</label>' +
+              '<div class="bio__ro">' + j + '</div></div>' +
+            '<div class="bio__f"><label>Code</label>' +
+              '<div class="bio__ro tnum">' + e.key + '</div></div>' +
+            '<div class="bio__f bio__f--wide"><label>The University calls it</label>' +
+              '<input class="ctl" id="ce-name" value="' + esc(draft.name !== undefined ? draft.name : p[0]) + '"></div>' +
+            '<div class="bio__f"><label>Department</label>' +
+              '<input class="ctl" id="ce-dept" value="' + esc(draft.dept !== undefined ? draft.dept : (p[1] || '')) + '"></div>' +
+            '<div class="bio__f"><label>Faculty</label>' +
+              '<select class="ctl" id="ce-fac">' +
+                Object.keys(FACULTY).map(function (f) {
+                  var selF = draft.fac !== undefined ? draft.fac : p[2];
+                  return '<option value="' + f + '"' + (f === selF ? ' selected' : '') + '>' +
+                         FACULTY[f] + '</option>'; }).join('') +
+              '</select></div>' +
+            '<div class="bio__f bio__f--wide"><label>Instrument &mdash; the approval this rests on</label>' +
+              '<input class="ctl" id="ce-instr" value="' + esc(draft.instr || '') + '" placeholder="e.g. SEN/2026/41"></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+            btn('go', 'Save the programme', ' data-caps="progsave"') +
+            btn('ghost', 'Cancel', ' data-caps="editcancel"') +
+            '<span class="sub2">Without an instrument the change is refused: a programme name decides what ' +
+            'a certificate says.</span>' +
+          '</div>'));
+    }
+
+    /* a candidate row */
+    var d = S.capsData[S.capsList];
+    var row = d && d.rows.filter(function (x) { return x.regno === e.key; })[0];
+    if (!row) { return ''; }
+    var cur = capsResolved(row);
+    return refused + panel('Correct the course for ' + row.regno, esc(row.name),
+      pbody(
+        note('bad', 'The row is not edited. A correction is recorded against it',
+          'What JAMB sent is the evidence of what was approved and it stays exactly as it arrived. If the ' +
+          'course cannot be resolved, or resolves to the wrong programme, the correction is recorded ' +
+          'separately with a reason and both are kept &mdash; the same rule the score sheet works by, ' +
+          'because an overwrite leaves nobody able to say what the original said.') +
+        '<div class="grid grid--2">' +
+          '<div class="bio__f"><label>JAMB registration number</label>' +
+            '<div class="bio__ro tnum">' + esc(row.regno) + '</div></div>' +
+          '<div class="bio__f"><label>Candidate, as JAMB sent it</label>' +
+            '<div class="bio__ro">' + esc(row.name) + '</div></div>' +
+          '<div class="bio__f bio__f--wide"><label>Course, as JAMB sent it</label>' +
+            '<div class="bio__ro">' + esc(row.jname || '\u2014') +
+            (row.code ? ' &middot; <span class="tnum">' + row.code + '</span>' : '') + '</div></div>' +
+          '<div class="bio__f bio__f--wide"><label>Admit to which University programme</label>' +
+            '<select class="ctl" id="cr-code">' +
+              '<option value="">— choose —</option>' +
+              capsProgOptions(draft.code !== undefined ? draft.code : cur.code) +
+            '</select></div>' +
+          '<div class="bio__f bio__f--wide"><label>Reason for the correction</label>' +
+            '<input class="ctl" id="cr-why" value="' + esc(draft.why || '') + '" ' +
+              'placeholder="e.g. CAPS name not on the alias list; confirmed with the Academic Office">' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+          btn('go', 'Record the correction', ' data-caps="rowsave"') +
+          btn('ghost', 'Cancel', ' data-caps="editcancel"') +
+          '<span class="sub2">Recorded against you and the office you are in, like every other act.</span>' +
+        '</div>'));
+  }
+
+  /* ── the screen ───────────────────────────────────────────────── */
+  function tCapsIntake() {
+    var k = S.capsList, list = CAPS_LISTS[k];
+    if (S.capsEdit) { return capsEditor(); }
+    var f = S.capsFile[k], d = S.capsData[k];
+    var bad = d ? d.findings : [];
+    var unresolved = d ? d.rows.filter(function (r) { return !capsResolved(r).prog; }) : [];
+
+    return note('info', 'Two lists, uploaded separately, and never as one',
+      'JAMB approves the UTME and Direct Entry lists separately and the Academic Office downloads them as ' +
+      'separate files, weeks apart. <b>Each has its own button</b>, and the list kind is fixed by the button ' +
+      'you press rather than guessed from the file &mdash; a Direct Entry list loaded as UTME puts every one ' +
+      'of those candidates at 100 Level with a blank aggregate, repeating a year they were admitted past.') +
+
+    note('ok', 'Upload the CAPS download itself — the spreadsheet step is no longer needed',
+      'The file JAMB gives you names the course in <b>its own words</b> (<code>CO_NAME</code> = ' +
+      '&ldquo;Medicine &amp; Surgery&rdquo;) and carries no course code. The University&rsquo;s programme ' +
+      'table is keyed on the code, <b>C00061</b>, which this University calls <b>MBBS</b> &mdash; so until ' +
+      'now somebody has been translating name to code by hand in Excel, for every row of every list. ' +
+      '<b>The portal does it here, from all 92 programmes.</b> Both layouts are read: the raw download, and ' +
+      'the file the office builds from it today.') +
+
+    /* ── the two buttons ── */
+    '<div class="card"><div class="card__body">' +
+      '<div class="eyebrow">Upload the list downloaded from JAMB</div>' +
+      '<div class="grid grid--2" style="margin-top:8px">' +
+        Object.keys(CAPS_LISTS).map(function (kk) {
+          var c = CAPS_LISTS[kk], ff = S.capsFile[kk], dd = S.capsData[kk];
+          var busy = S.capsBusy === kk;
+          return '<div class="card" style="border-color:' +
+              (S.capsList === kk ? 'var(--chrome)' : 'var(--line)') + '"><div class="card__body">' +
+            '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+              '<b style="font-size:15px">' + c.label + '</b>' + pil('grey', c.level + ' Level') +
+              (busy ? pil('info', 'Reading…')
+                    : dd ? pil('ok', dd.rows.length + ' candidates read')
+                    : ff ? pil('bad', 'Could not be read') : pil('grey', 'Not uploaded')) +
+            '</div>' +
+            '<div class="sub2">' + c.note + '</div>' +
+            '<label class="btn ' + (dd ? 'btn--ghost' : 'btn--primary') + '" for="caps-' + kk + '" ' +
+              'style="cursor:pointer">' +
+              (dd ? 'Upload a different ' + c.label + ' file' : 'Choose the ' + c.label + ' file…') +
+              '<input type="file" id="caps-' + kk + '" accept=".xlsx" hidden data-capsfile="' + kk + '">' +
+            '</label>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+              btn('ghost', 'Use the sample instead', ' data-caps="demo:' + kk + '"') +
+              (dd ? btn('ghost', 'View', ' data-caps="list:' + kk + '"') : '') +
+            '</div>' +
+            (ff ? '<div class="sub2"><b>' + esc(ff.name) + '</b> &middot; ' +
+                  Math.max(1, Math.round(ff.size / 1024)) + ' KB' +
+                  (ff.layout ? ' &middot; ' + ff.layout + ' &middot; ' + ff.cols + ' columns' : '') +
+                  '</div>' : '') +
+          '</div></div>';
+        }).join('') +
+      '</div>' +
+      '<div class="sub2">Nothing leaves this browser: the workbook is unzipped and read here, ' +
+      'and the prototype holds no server to send it to.</div>' +
+    '</div></div>' +
+
+    (f && f.err
+      ? note('bad', 'That file could not be read', f.err)
+      : '') +
+
+    (!d
+      ? note('info', 'Nothing uploaded for ' + list.label + ' yet',
+          'Choose a file above, or press <b>Use the sample instead</b> to see the screen work. The file is ' +
+          'read whole and checked before a single row is written: one whose rows contradict the list you ' +
+          'chose is refused entirely rather than loaded and corrected afterwards, because a half-loaded ' +
+          'admission list looks complete at every desk it passes.')
+
+      : tiles([
+          [list.label + " candidates", String(d.rows.length), null, "Read from " + esc(f.name)],
+          ["Entry level", String(list.level), null,
+            k === "de" ? "On the prior qualification" : "On the UTME aggregate"],
+          ["Programmes", String(d.rows.reduce(function (a, r) {
+              return r.code && a.indexOf(r.code) < 0 ? a.concat([r.code]) : a; }, []).length),
+            null, "Distinct courses on this list"],
+          ["Findings", String(bad.length), bad.length ? "var(--red-ink)" : "var(--green-ink)",
+            bad.length ? "Named below" : "Nothing to answer"]
+        ]) +
+
+        (bad.length
+          ? note('bad', bad.length + ' row' + (bad.length === 1 ? '' : 's') + ' cannot be accepted, so none of the file is written',
+              'The file is accepted whole or not at all. Each row below names the line in your file and what ' +
+              'is wrong with it. Correct them and upload again &mdash; or, where the finding is a course the ' +
+              'University has not mapped, map it first.') +
+            panel('What the importer refuses', 'By line, as the file numbers them',
+              dtable(["Row|mid", "JAMB number|mid", "Why it is refused"],
+                bad.slice(0, 12).map(function (x) {
+                  return ['<span class="tnum">' + x[0] + '</span>',
+                          '<span class="tnum">' + esc(String(x[1])) + '</span>',
+                          '<span style="color:var(--red-ink)">' + x[2] + '</span>'];
+                }), 820))
+          : unresolved.length
+          ? note('bad', unresolved.length + ' candidate' + (unresolved.length === 1 ? '' : 's') +
+              ' on a course this University does not run',
+              'Press <b>Resolve</b> on the row. The candidate is admitted to a programme you choose, with a ' +
+              'reason recorded &mdash; the row itself is left exactly as JAMB sent it.')
+          : note('ok', 'Every row reads, and every course resolves to a University programme',
+              'The list may be committed to the register.',
+              S.capsCommitted[k] ? '' : btn('go', 'Commit the ' + list.label + ' list', ' data-caps="commit"'))) +
+
+        panel(list.label + ' — the list as uploaded',
+          esc(f.name) + ' · ' + f.layout + ' · ' + d.rows.length + ' candidates',
+          dtable(
+            (S.pas ? ["Passport|mid"] : []).concat(
+            ["JAMB number|mid", "Candidate", "Sex|mid", "State", "Aggregate|mid",
+             "JAMB says|", "The University admits to|", "Faculty", "|num"]),
+            d.rows.map(function (r) {
+              var rr = capsResolved(r), ph = capsPhoto(r.regno);
+              return (S.pas
+                ? [ph && ph.url
+                    ? '<img src="' + ph.url + '" alt="" class="mugshot" ' +
+                      'title="' + esc(ph.file) + '">'
+                    : '<span class="mugshot mugshot--none" ' +
+                      'title="no passport uploaded for this candidate">' +
+                      capsInitials(r.name) + '</span>']
+                : []).concat(
+                    ['<span class="tnum">' + esc(r.regno) + '</span>',
+                '<strong>' + esc(r.name) + '</strong>' +
+                  (r.lga ? '<div class="sub2">' + esc(r.lga) + '</div>' : ''),
+                '<span class="sub2">' + esc(r.sex) + '</span>',
+                '<span class="sub2">' + esc(r.state) + '</span>',
+                r.agg ? '<b class="tnum">' + r.agg + '</b>' +
+                        '<div class="sub2">' + r.subjects.filter(function (s) { return s[0]; })
+                          .map(function (s) { return esc(s[0]) + ' ' + s[1]; }).join(' · ') +
+                          (r.eng ? ' · Eng ' + r.eng : '') + '</div>'
+                      : '<span class="sub2" title="a Direct Entry candidate sat no UTME">n/a</span>',
+                '<span class="sub2">' + esc(r.jname || '—') + '</span>' +
+                  (r.code ? '<div class="tnum sub2">' + r.code + '</div>' : ''),
+                rr.prog ? '<strong>' + esc(rr.prog) + '</strong>' +
+                          '<div class="sub2">' + esc(rr.dept) +
+                          (rr.fixed ? ' &middot; <span style="color:var(--chrome)">corrected</span>' : '') +
+                          '</div>'
+                        : '<span style="color:var(--red-ink);font-weight:600">not a programme here</span>',
+                rr.fac ? '<span class="sub2">' + (FACULTY[rr.fac] || rr.fac) + '</span>'
+                       : '<span class="sub2">&mdash;</span>',
+                btn(rr.prog ? 'ghost' : 'urgent', rr.prog ? 'Edit' : 'Resolve',
+                    ' data-caps="editrow:' + esc(r.regno) + '"')]);
+            }), 1520)) +
+
+        (S.pas
+          ? (function () {
+              var without = d.rows.filter(function (r) { return !capsPhoto(r.regno); }).length;
+              return without
+                ? note('info', without + ' of these ' + d.rows.length + ' candidates have no passport yet',
+                    'The photographs are a separate download and arrive on their own schedule, so a gap here ' +
+                    'is ordinary rather than an error. The initials stand in until the file appears, and the ' +
+                    'match is made on the registration number the moment it does.',
+                    btn('ghost', 'Go to the passports', ' data-go="t/candidatedata"'))
+                : '';
+            }())
+          : note('info', 'Upload the passports to see them beside the names',
+              'JAMB sends the photographs as a separate folder, each file named with the candidate\u2019s ' +
+              'registration number. Once uploaded they appear in this list, which is what an officer checking ' +
+              'a name against a face actually needs.',
+              btn('ghost', 'Go to the passports', ' data-go="t/candidatedata"'))) +
+
+        '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+          btn('ghost', 'Export this list') +
+          btn('ghost', 'Reset — prototype control', ' data-caps="reset"') +
+        '</div>') +
+
+    /* ── the two names, always visible ── */
+    panel('One course code, two names',
+      'The University\u2019s programme table is keyed on the same C-code JAMB uses \u00b7 ' +
+      'all 92 \u00b7 56 of the names differ',
+      dtable(["Code|mid", "JAMB calls it", "The University calls it", "Department|mid", "Faculty", "|num"],
+        Object.keys(PROGT).sort().map(function (c) {
+          /* through progOf, so an amendment made above is what the table
+             shows — reading PROGT directly left the edit saved and invisible */
+          var pc = progOf(c);
+          var m = [JNAME[c] || '', pc[0], pc[1], pc[2]];
+          var same = m[1] && m[0].replace(/&amp;/g, '&').toUpperCase() === m[1].toUpperCase();
+          return ['<b class="tnum">' + c + '</b>',
+            '<span class="sub2">' + m[0] + '</span>',
+            m[1] ? (same ? '<span class="sub2">' + m[1] + '</span>'
+                         : '<strong>' + m[1] + '</strong>') +
+                   (S.capsProgEdit[c]
+                     ? '<div class="sub2" style="color:var(--chrome)">amended &middot; ' +
+                       esc(S.capsProgEdit[c].instr) + '</div>' : '')
+                 : pil('bad', 'not a programme here'),
+            m[2] ? '<span class="tnum">' + m[2] + '</span>' : '<span class="sub2">&mdash;</span>',
+            m[3] ? '<span class="sub2">' + FACULTY[m[3]] + '</span>'
+                 : '<span class="sub2">&mdash;</span>',
+            btn('ghost', 'Edit', ' data-caps="editprog:' + c + '"')];
+        }), 1180)) +
+
+    note('info', 'JAMB\u2019s name is the JOIN, not a footnote',
+      'The download names the course and gives no code, so <b>JAMB\u2019s name is what the row is matched ' +
+      'on</b> &mdash; it is the only thing in the file that says which programme the candidate was admitted ' +
+      'to. The University\u2019s name is then the label: it is what appears on the registration form, the ' +
+      'matriculation list and the certificate. <b>C00061</b> is the case that shows why the two cannot be ' +
+      'collapsed. JAMB calls it <i>Medicine &amp; Surgery</i>; this University calls it <b>MBBS</b>. That is ' +
+      'not a missing award prefix or a capitalisation difference &mdash; the two institutions use different ' +
+      'words for the same degree, and only one of them belongs on a certificate. The 36 names that match ' +
+      'today are not a rule: either side can edit a label, so the alias is held per code rather than worked ' +
+      'out by comparing strings. A name the alias list does not carry is a finding with a candidate against ' +
+      'it, never a guess.') +
+
+        note('bad', 'One thing to check before this file is sent anywhere',
+      'The real Direct Entry file the Directorate examined was 2.4&nbsp;MB for 26 rows. The rows were 3&nbsp;KB ' +
+      'of it; the rest was Excel’s cache of workbooks it had been linked to, carrying <b>24,820 other ' +
+      'candidates’ numbers, names, sex, state and aggregate scores</b> invisibly inside it, along with the ' +
+      'officer’s own file path. Under the NDPA 2023 that is a disclosure of personal data every time the ' +
+      'file is e-mailed. Pasting the rows into a fresh workbook removes it, and this screen reports it on ' +
+      'every file it reads.');
+  }

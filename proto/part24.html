@@ -1,0 +1,580 @@
+  /* ══════════════════════════════════════════════════════════════════
+     Tables: fit the width, paginate, export.
+
+     Every table in the portal goes through one post-render pass rather
+     than through 170 call sites. The pass reads the table's own header
+     row, stamps each cell with the column it belongs to (so the phone
+     can stack the row and still name every field), records the data for
+     export, hides the rows outside the current page, and appends the
+     footer that carries the pager and the export control.
+     ═════════════════════════════════════════════════════════════════ */
+
+  var PAGE = 10;
+  var TBL = {};                    /* table id -> { cols, rows, title } */
+
+  /* Readable text out of a cell that may hold two lines, a pill and a
+     button. Buttons and icons are controls, not data, so they are left
+     out of the export. */
+  function cellText(td) {
+    var out = [];
+    (function walk(node) {
+      for (var i = 0; i < node.childNodes.length; i++) {
+        var k = node.childNodes[i];
+        if (k.nodeType === 3) { out.push(k.nodeValue); continue; }
+        if (k.nodeType !== 1) { continue; }
+        var tag = k.tagName.toLowerCase();
+        if (tag === "svg" || tag === "button" || tag === "input" || tag === "select") { continue; }
+        if (tag === "br") { out.push(" — "); continue; }
+        if (tag === "div" || tag === "p") { out.push(" — "); }
+        walk(k);
+      }
+    }(td));
+    return out.join("")
+      .replace(/\s+/g, " ")
+      .replace(/(\s*—\s*)+/g, " — ")
+      .replace(/^\s*—\s*|\s*—\s*$/g, "")
+      .trim();
+  }
+
+  function tblTitle(tb) {
+    var card = tb.closest(".card");
+    var h = card && card.querySelector(".card__title");
+    if (h) { return h.textContent.trim(); }
+    var p = document.querySelector(".topbar h1");
+    return p ? p.textContent.trim() : "Records";
+  }
+
+  function pgKey(id) {
+    return S.route + "|" + (S.role === "staff" ? S.srole : S.role) + "|" + id;
+  }
+
+  function pagerHTML(key, page, pages, from, to, n) {
+    var b = [];
+    b.push('<button class="pg__b" data-pg="' + key + ':' + (page - 1) + '"' +
+      (page === 0 ? ' disabled' : '') + ' aria-label="Previous page">&larr;</button>');
+
+    /* a window of five, with the ends always reachable */
+    var seen = {}, list = [], i;
+    var want = [0, 1, page - 2, page - 1, page, page + 1, page + 2, pages - 2, pages - 1];
+    for (i = 0; i < want.length; i++) {
+      if (want[i] >= 0 && want[i] < pages && !seen[want[i]]) { seen[want[i]] = 1; list.push(want[i]); }
+    }
+    list.sort(function (x, y) { return x - y; });
+    for (i = 0; i < list.length; i++) {
+      if (i && list[i] - list[i - 1] > 1) { b.push('<span class="pg__gap">&hellip;</span>'); }
+      b.push('<button class="pg__b' + (list[i] === page ? ' is-on' : '') + '" data-pg="' +
+        key + ':' + list[i] + '">' + (list[i] + 1) + '</button>');
+    }
+    b.push('<button class="pg__b" data-pg="' + key + ':' + (page + 1) + '"' +
+      (page === pages - 1 ? ' disabled' : '') + ' aria-label="Next page">&rarr;</button>');
+
+    return '<div class="tfoot__n">Showing <b class="tnum">' + from + '&ndash;' + to +
+      '</b> of <b class="tnum">' + n + '</b></div>' +
+      '<div class="pg">' + b.join('') + '</div>';
+  }
+
+  function exportBtn(id) {
+    return '<button class="btn btn--ghost btn--sm tfoot__x" data-ex="open:' + id + '">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M4 19h16"/></svg>' +
+      'Export</button>';
+  }
+
+  /* A table stacks when it does not fit, measured, rather than at a width
+     guessed in advance. Called after every render and on resize. The class is
+     removed before measuring, because a stacked table always "fits" and would
+     otherwise never unstack when the window grows. */
+  function fitTables() {
+    var list = document.querySelectorAll("table.tbl--data");
+    for (var i = 0; i < list.length; i++) {
+      var tb = list[i], wrap = tb.parentNode;
+      if (!wrap || !wrap.classList || !wrap.classList.contains("tablewrap")) { continue; }
+      tb.classList.remove("tbl--stack");
+      if (tb.scrollWidth > wrap.clientWidth + 1) { tb.classList.add("tbl--stack"); }
+    }
+  }
+
+  var fitPending = 0;
+  window.addEventListener("resize", function () {
+    if (fitPending) { return; }
+    fitPending = requestAnimationFrame(function () { fitPending = 0; fitTables(); });
+  });
+
+  /* ── searching a table ────────────────────────────────────────────
+     Written once, here, rather than on each screen — the same reasoning
+     as the act registry. Every data table in the portal gets it, and a
+     table added next year gets it without anybody remembering to.
+
+     It filters IN PLACE and never re-renders: a full render rebuilds
+     the input and takes the caret away mid-word, which is the defect
+     the score sheet already had to solve. Paging is applied over the
+     MATCHES rather than over the rows, so page 2 of a search is page 2
+     of what you searched for.                                        */
+  var TBLDOM = {};
+
+  function tblSearchable(total) { return total > 8; }
+
+  function tblApply(id) {
+    var d = TBLDOM[id];
+    if (!d) { return; }
+    var q = (S.tq[id] || "").toLowerCase().trim();
+    var terms = q ? q.split(/\s+/) : [];
+    var match = [], i;
+
+    for (i = 0; i < d.texts.length; i++) {
+      var hay = d.texts[i], ok = true;
+      for (var w = 0; w < terms.length; w++) {
+        if (hay.indexOf(terms[w]) < 0) { ok = false; break; }
+      }
+      if (ok) { match.push(i); }
+    }
+
+    var total = match.length;
+    var pages = Math.max(1, Math.ceil(total / PAGE));
+    var key = pgKey(id);
+    var page = Math.min(Math.max(0, S.pg[key] || 0), pages - 1);
+    var from = total ? page * PAGE + 1 : 0;
+    var to = Math.min(total, (page + 1) * PAGE);
+
+    for (i = 0; i < d.rows.length; i++) { d.rows[i].hidden = true; }
+    for (i = from - 1; i >= 0 && i <= to - 1; i++) { d.rows[match[i]].hidden = false; }
+
+    d.foot.innerHTML =
+      (pages > 1
+        ? pagerHTML(key, page, pages, from, to, total)
+        : '<div class="tfoot__n"><b class="tnum">' + total + '</b> ' +
+          (total === 1 ? "row" : "rows") +
+          (q ? ' matching <b>' + esc(S.tq[id]) + '</b>, of ' + d.texts.length : '') + '</div>') +
+      exportBtn(id);
+
+    if (q && !total) {
+      d.foot.innerHTML = '<div class="tfoot__n">Nothing matches <b>' + esc(S.tq[id]) +
+        '</b> in these ' + d.texts.length + ' rows. ' +
+        '<button class="srch__x" data-tq="' + id + ':">Clear</button></div>';
+    }
+    fitTables();
+  }
+
+  function enhanceTables() {
+    /* cleared in place rather than reassigned: anything holding a reference to
+       it — a harness, a later handler — would otherwise keep the old object
+       and see an empty table registry for ever */
+    for (var k in TBLDOM) { if (TBLDOM.hasOwnProperty(k)) { delete TBLDOM[k]; } }
+    var list = document.querySelectorAll("table"), seq = 0;
+    for (var n = 0; n < list.length; n++) {
+      var tb = list[n];
+      if (tb.closest(".docsheet")) { continue; }      /* issued documents print as they are */
+      tb.style.minWidth = "";                          /* nothing is scrolled sideways any more */
+
+      var head = tb.tHead, body = tb.tBodies[0];
+      if (!body) { continue; }
+
+      var cols = [], c;
+      if (head && head.rows.length) {
+        var hr = head.rows[head.rows.length - 1];
+        for (c = 0; c < hr.cells.length; c++) { cols.push(hr.cells[c].textContent.trim()); }
+      }
+      if (!cols.length) { tb.classList.add("tbl--plain"); continue; }   /* a key/value list, not a record set */
+
+      tb.classList.add("tbl--data");
+      var id = "t" + (seq++), rows = [], r;
+      for (r = 0; r < body.rows.length; r++) {
+        var tr = body.rows[r], cells = [];
+        for (c = 0; c < tr.cells.length; c++) {
+          var td = tr.cells[c];
+          if (cols[c]) { td.setAttribute("data-l", cols[c]); }
+          if (td.colSpan > 1) { td.setAttribute("data-span", "1"); }
+          cells.push(cellText(td));
+        }
+        rows.push(cells);
+      }
+      /* a column that holds nothing but buttons is a control, not data;
+         it does not belong in a spreadsheet somebody else opens */
+      if (rows.length) {
+        for (c = cols.length - 1; c >= 0; c--) {
+          var empty = true;
+          for (r = 0; r < rows.length; r++) { if (rows[r][c]) { empty = false; break; } }
+          if (!empty) { continue; }
+          cols.splice(c, 1);
+          for (r = 0; r < rows.length; r++) { rows[r].splice(c, 1); }
+        }
+      }
+
+      TBL[id] = { cols: cols, rows: rows, title: tblTitle(tb) };
+
+      var total = body.rows.length;
+      var wrap = tb.closest(".tablewrap") || tb;
+
+      /* one searchable text per row, built once */
+      var texts = [], trs = [];
+      for (r = 0; r < total; r++) {
+        trs.push(body.rows[r]);
+        texts.push(body.rows[r].textContent.replace(/\s+/g, " ").toLowerCase());
+      }
+
+      var foot = document.createElement("div");
+      foot.className = "tfoot";
+      if (wrap.parentNode) { wrap.parentNode.insertBefore(foot, wrap.nextSibling); }
+
+      TBLDOM[id] = { table: tb, rows: trs, texts: texts, foot: foot, wrap: wrap };
+
+      if (tblSearchable(total) && wrap.parentNode) {
+        var bar = document.createElement("div");
+        bar.className = "tsrch";
+        bar.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/>' +
+          '<path d="M20 20l-3.5-3.5"/></svg>' +
+          '<input data-tq="' + id + '" value="' + esc(S.tq[id] || "") + '" ' +
+          'placeholder="Search these ' + total + ' rows\u2026" ' +
+          'aria-label="Search this table" autocomplete="off" spellcheck="false">' +
+          (S.tq[id] ? '<button class="srch__x" data-tq="' + id + ':">Clear</button>' : '');
+        wrap.parentNode.insertBefore(bar, wrap);
+      }
+
+      tblApply(id);
+    }
+  }
+
+  /* ── export ──────────────────────────────────────────────────────
+     Four formats off one table. CSV and the Office formats are built
+     here and handed to the browser; PDF is the same sheet the portal
+     prints everywhere else, so it carries the letterhead and the
+     verification line rather than being a screenshot of a web page. */
+
+  var EX_FMT = {
+    csv:  { label: "CSV",   ext: "csv",  mime: "text/csv;charset=utf-8",
+            sub: "Opens in Excel, Google Sheets, SPSS, R" },
+    xls:  { label: "Excel", ext: "xlsx", mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            sub: "A real workbook, with the headings in row one" },
+    doc:  { label: "Word",  ext: "docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            sub: "For a memo that quotes the figures" },
+    pdf:  { label: "PDF",   ext: "pdf",  mime: "application/pdf",
+            sub: "On University letterhead, with a verification code" }
+  };
+  var EX_ORDER = ["pdf", "csv", "xls", "doc"];
+
+  /* ── a zip writer, so Excel and Word get real files ───────────────
+     Both formats are zipped XML. Everything is stored uncompressed,
+     which is a valid zip and keeps this to one screen of code with no
+     library behind it. */
+
+  var CRC_T = (function () {
+    var t = [], c, n, k;
+    for (n = 0; n < 256; n++) {
+      c = n;
+      for (k = 0; k < 8; k++) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); }
+      t[n] = c >>> 0;
+    }
+    return t;
+  }());
+
+  function crc32(bytes) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) { c = CRC_T[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); }
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function utf8(str) {
+    if (window.TextEncoder) { return new TextEncoder().encode(str); }
+    var s = unescape(encodeURIComponent(str)), a = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) { a[i] = s.charCodeAt(i); }
+    return a;
+  }
+
+  function zip(files) {                       /* [ [name, string], … ] */
+    var parts = [], central = [], offset = 0, i;
+
+    function u16(v) { return [v & 0xFF, (v >>> 8) & 0xFF]; }
+    function u32(v) { return [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF]; }
+
+    for (i = 0; i < files.length; i++) {
+      var name = utf8(files[i][0]), data = utf8(files[i][1]), crc = crc32(data);
+      var local = [].concat(
+        u32(0x04034B50), u16(20), u16(0x0800), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+      parts.push(new Uint8Array(local), name, data);
+      central.push([].concat(
+        u32(0x02014B50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0),
+        u32(crc), u32(data.length), u32(data.length),
+        u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset)), name);
+      offset += local.length + name.length + data.length;
+    }
+
+    var cdStart = offset, cdSize = 0;
+    for (i = 0; i < central.length; i += 2) {
+      parts.push(new Uint8Array(central[i]), central[i + 1]);
+      cdSize += central[i].length + central[i + 1].length;
+    }
+    parts.push(new Uint8Array([].concat(
+      u32(0x06054B50), u16(0), u16(0),
+      u16(files.length), u16(files.length), u32(cdSize), u32(cdStart), u16(0))));
+
+    var total = 0;
+    for (i = 0; i < parts.length; i++) { total += parts[i].length; }
+    var out = new Uint8Array(total), at = 0;
+    for (i = 0; i < parts.length; i++) { out.set(parts[i], at); at += parts[i].length; }
+    return out;
+  }
+
+  function xmlEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+  }
+  function colRef(i) {                          /* 0 -> A, 26 -> AA */
+    var s = "";
+    do { s = String.fromCharCode(65 + (i % 26)) + s; i = Math.floor(i / 26) - 1; } while (i >= 0);
+    return s;
+  }
+
+  function xlsxFile(t) {
+    var all = [t.cols].concat(t.rows);
+    var sheet = all.map(function (row, r) {
+      return '<row r="' + (r + 1) + '">' + row.map(function (cell, c) {
+        var num = /^-?[\d,]*\.?\d+$/.test(String(cell).replace(/[₦%,\s]/g, "")) &&
+                  /\d/.test(String(cell)) && r > 0;
+        var plain = String(cell == null ? "" : cell);
+        return num
+          ? '<c r="' + colRef(c) + (r + 1) + '"><v>' + plain.replace(/[^0-9.\-]/g, "") + '</v></c>'
+          : '<c r="' + colRef(c) + (r + 1) + '" t="inlineStr"><is><t xml:space="preserve">' +
+            xmlEsc(plain) + '</t></is></c>';
+      }).join('') + '</row>';
+    }).join('');
+
+    return zip([
+      ["[Content_Types].xml",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '</Types>'],
+      ["_rels/.rels",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+        '</Relationships>'],
+      ["xl/workbook.xml",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<sheets><sheet name="' + xmlEsc(t.title.slice(0, 28)) + '" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+      ["xl/_rels/workbook.xml.rels",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '</Relationships>'],
+      ["xl/worksheets/sheet1.xml",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<sheetData>' + sheet + '</sheetData></worksheet>']
+    ]);
+  }
+
+  function docxFile(t) {
+    function cell(v, head) {
+      return '<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/>' +
+        (head ? '<w:shd w:val="clear" w:fill="EDF1F3"/>' : '') + '</w:tcPr>' +
+        '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r>' +
+        (head ? '<w:rPr><w:b/></w:rPr>' : '') +
+        '<w:t xml:space="preserve">' + xmlEsc(v) + '</w:t></w:r></w:p></w:tc>';
+    }
+    var rows = '<w:tr>' + t.cols.map(function (c) { return cell(c, true); }).join('') + '</w:tr>' +
+      t.rows.map(function (r) {
+        return '<w:tr>' + r.map(function (c) { return cell(c, false); }).join('') + '</w:tr>';
+      }).join('');
+
+    var doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+      '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="26"/></w:rPr>' +
+      '<w:t xml:space="preserve">Rev. Fr. Moses Orshio Adasu University, Makurdi</w:t></w:r></w:p>' +
+      '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="22"/></w:rPr>' +
+      '<w:t xml:space="preserve">' + xmlEsc(t.title) + '</w:t></w:r></w:p>' +
+      '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="18"/><w:color w:val="5C6570"/></w:rPr>' +
+      '<w:t xml:space="preserve">Extracted ' + exToday() + ' · ' + t.rows.length + ' rows</w:t></w:r></w:p>' +
+      '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>' +
+      ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (s) {
+        return '<w:' + s + ' w:val="single" w:sz="4" w:color="C9D2D8"/>';
+      }).join('') +
+      '</w:tblBorders></w:tblPr><w:tblGrid>' +
+      t.cols.map(function () {
+        return '<w:gridCol w:w="' + Math.floor(14400 / t.cols.length) + '"/>';
+      }).join('') +
+      '</w:tblGrid>' + rows + '</w:tbl>' +
+      '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/></w:sectPr>' +
+      '</w:body></w:document>';
+
+    return zip([
+      ["[Content_Types].xml",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+        '</Types>'],
+      ["_rels/.rels",
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+        '</Relationships>'],
+      ["word/document.xml", doc]
+    ]);
+  }
+
+  function slug(s) {
+    return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+  }
+  function exToday() {
+    var d = new Date();
+    return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+  }
+  function exName(t, fmt) { return slug(t.title) + "_" + exToday() + "." + EX_FMT[fmt].ext; }
+
+  function csvCell(v) {
+    v = String(v == null ? "" : v);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function exCsv(t) {
+    var out = [t.cols.map(csvCell).join(",")];
+    for (var i = 0; i < t.rows.length; i++) { out.push(t.rows[i].map(csvCell).join(",")); }
+    return out.join("\r\n");
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function exBuild(t, fmt) {
+    if (fmt === "csv") { return exCsv(t); }
+    if (fmt === "xls") { return xlsxFile(t); }
+    return docxFile(t);
+  }
+
+  /* The claude.ai viewer hands a generated file to the reader through
+     the downloads capability; opened as a plain file, the page falls
+     back to an object URL. Either way the export is a real file. */
+  var DL = null;
+  try {
+    if (window.claude && typeof window.claude.use === "function") {
+      window.claude.use("downloads").then(function (d) { DL = d; }, function () { DL = null; });
+    }
+  } catch (e) { DL = null; }
+
+  function exSaveNow() {
+    var t = TBL[S.ex.id];
+    if (!t) { return; }
+    var fmt = S.ex.fmt, meta = EX_FMT[fmt], name = exName(t, fmt);
+
+    if (fmt === "pdf") {
+      try { window.print(); } catch (er) { /* the viewer may block printing */ }
+      S.exMsg = 'Choose “Save as PDF” in the print dialogue to keep ' + name + '.';
+      render(); return;
+    }
+
+    var blob = new Blob([exBuild(t, fmt)], { type: meta.mime });
+    if (DL) {
+      DL.save({ filename: name, data: blob }).then(function () {
+        S.exMsg = "Saved " + name + " — " + t.rows.length + " rows."; render();
+      }, function (err) {
+        var c = err && err.code;
+        S.exMsg = c === "declined"     ? "The download was declined."
+                : c === "rate_limited" ? "A download is already waiting; try again in a moment."
+                : "That file could not be saved here (" + (c || "unavailable") + ").";
+        render();
+      });
+      S.exMsg = "Preparing " + name + "…"; render(); return;
+    }
+
+    S.exMsg = exDownload(name, meta.mime, blob)
+      ? "Saved " + name + " — " + t.rows.length + " rows."
+      : "This preview cannot write files. In the portal the server streams " + name + ".";
+    render();
+  }
+
+  function exDownload(name, mime, data) {
+    try {
+      var blob = data instanceof Blob ? data : new Blob([data], { type: mime });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = name; a.style.display = "none";
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); a.parentNode && a.parentNode.removeChild(a); }, 500);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function exCopy(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); return true; }
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* the sheet the export is shown on, before it leaves the portal */
+  function exOverlay() {
+    var t = TBL[S.ex.id];
+    if (!t) { return ''; }
+    var fmt = S.ex.fmt, meta = EX_FMT[fmt];
+    var name = exName(t, fmt);
+    var shown = t.rows.slice(0, 40);
+
+    var preview;
+    if (fmt === "csv") {
+      var lines = [t.cols.join(",")].concat(shown.map(function (r) { return r.map(csvCell).join(","); }));
+      preview = '<pre class="ex__csv">' + esc(lines.join("\n")) +
+        (t.rows.length > shown.length ? "\n… " + (t.rows.length - shown.length) + " more rows" : "") + '</pre>';
+    } else {
+      preview = docTable(t.cols, shown.map(function (r) { return r.map(esc); })) +
+        (t.rows.length > shown.length
+          ? '<p style="font-family:var(--sans);font-size:10.5px;color:#7A858F">' +
+            (t.rows.length - shown.length) + ' further rows are in the file.</p>'
+          : '');
+    }
+
+    /* the scope the list was read under travels with the file, so a
+       spreadsheet that reaches somebody else says what it is a list of */
+    var meta2 = [["Extracted", exToday()], ["Rows", String(t.rows.length)]];
+    if (S.role === "staff") {
+      meta2.push(["Scope", scopeTrail().replace(/<[^>]*>/g, "") + " &middot; " + S.sc.session]);
+    }
+    meta2.push(["By", S.role === "staff"
+      ? ROLES[S.srole].who + ", " + ROLES[S.srole].label
+      : "ADAMU, Grace Mwuese, MOAUM/CSC/23/1487"]);
+
+    var sheet = fmt === "pdf" || fmt === "doc" || fmt === "xls"
+      ? docSheet(t.title, meta2, preview,
+          fmt === "pdf" ? VFY("EXP-" + exToday().replace(/-/g, "") + "-0418", "this extract") : "", null)
+      : '<div class="docsheet">' +
+          '<h4 class="dt">' + esc(t.title) + '</h4>' +
+          '<div class="meta"><span>File <b>' + esc(name) + '</b></span>' +
+          '<span>Rows <b class="tnum">' + t.rows.length + '</b></span>' +
+          '<span>Columns <b class="tnum">' + t.cols.length + '</b></span></div>' +
+          preview +
+        '</div>';
+
+    return '<div class="doc-scrim" data-ex="close">' +
+      '<div class="doc-wrap" data-stop="1">' +
+        '<div class="doc-bar">' +
+          '<span class="t">' + esc(t.title) + ' &middot; ' + esc(name) + '</span>' +
+          (fmt === "csv" ? '<button class="btn btn--ghost btn--sm" data-ex="copy">Copy</button>' : '') +
+          '<button class="btn btn--primary btn--sm" data-ex="save">' +
+            (fmt === "pdf" ? "Print or save as PDF" : "Download " + meta.label) + '</button>' +
+          '<button class="btn btn--ghost btn--sm" data-ex="close">Close</button>' +
+        '</div>' +
+
+        '<div class="ex__tabs">' + EX_ORDER.map(function (k) {
+          return '<button class="ex__t' + (k === fmt ? ' is-on' : '') + '" data-ex="fmt:' + k + '">' +
+            '<span class="t">' + EX_FMT[k].label + '</span>' +
+            '<span class="s">' + EX_FMT[k].sub + '</span></button>';
+        }).join('') + '</div>' +
+
+        (S.exMsg ? '<div class="ex__msg">' + esc(S.exMsg) + '</div>' : '') +
+        sheet +
+        '<div style="height:26px"></div>' +
+      '</div>' +
+    '</div>';
+  }

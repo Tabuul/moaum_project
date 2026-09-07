@@ -1,0 +1,84 @@
+
+  /* ══ TEACHING: course spaces, question banks, examinations ═══════ */
+
+  function tLms() {
+    return panel('CSC 311 — course space', '84 students enrolled automatically from approved registrations', pbody(
+      '<div class="grid grid--4">' +
+        '<div class="tile"><span class="eyebrow">Materials published</span><span class="n tnum">11</span><span class="c">Weeks 1–4</span></div>' +
+        '<div class="tile"><span class="eyebrow">Assignments</span><span class="n tnum">3</span><span class="c">1 open</span></div>' +
+        '<div class="tile"><span class="eyebrow">Submissions</span><span class="n tnum">61</span><span class="c">of 84 · closes Friday</span></div>' +
+        '<div class="tile"><span class="eyebrow">Never signed in</span><span class="n tnum" style="color:var(--red-ink)">7</span><span class="c">Since the semester opened</span></div>' +
+      '</div>')) +
+    panel('Assignments', '', dtable(
+      ['Assignment', 'Opens|mid', 'Closes|mid', 'Submitted|mid', 'Marked|mid', 'Weight|mid', 'Action|num'], [
+        [two('Problem set 3 — divide and conquer', 'Individual · similarity check on'), '<span class="tnum sub2">28 Aug</span>', '<span class="tnum sub2">11 Sept</span>', '<span class="tnum">61</span>', '<span class="tnum">0</span>', '<span class="tnum">10%</span>', btn('primary', 'Mark')],
+        [two('Problem set 2 — asymptotic analysis', 'Individual'), '<span class="tnum sub2">14 Aug</span>', '<span class="tnum sub2">28 Aug</span>', '<span class="tnum">80</span>', '<span class="tnum">80</span>', '<span class="tnum">10%</span>', btn('ghost', 'Review')],
+        [two('Laboratory report 1', 'Pairs'), '<span class="tnum sub2">7 Aug</span>', '<span class="tnum sub2">21 Aug</span>', '<span class="tnum">42</span>', '<span class="tnum">42</span>', '<span class="tnum">10%</span>', btn('ghost', 'Review')]
+      ], 980)) +
+    note('info', 'The gradebook total becomes the continuous assessment mark',
+      'When you promote it, it lands in the CA component of the score sheet — where it still goes through verification, departmental, faculty and Senate approval like any other mark.',
+      btn('primary', 'Promote CA total to the score sheet')) +
+    panel('Engagement — students at risk', 'Feeds the early-warning report', dtable(
+      ['Student', 'Last sign-in', 'Materials|mid', 'Submissions|mid', 'Attendance|mid', 'Flag|num'], [
+        [two('AKAAKA, Sesugh Daniel', 'MOAUM/CSC/23/1423'), '<span class="sub2">Never</span>', '<span class="tnum">0%</span>', '<span class="tnum">0 of 3</span>', '<span class="tnum">33%</span>', pil('bad', 'High risk')],
+        [two('AGBO, Ochanya Faith', 'MOAUM/CSC/23/1415'), '<span class="sub2 tnum">14 Aug</span>', '<span class="tnum">18%</span>', '<span class="tnum">1 of 3</span>', '<span class="tnum">58%</span>', pil('bad', 'High risk')],
+        [two('TSEMBE, Aondowase', 'MOAUM/CSC/23/1502'), '<span class="sub2 tnum">2 Sept</span>', '<span class="tnum">44%</span>', '<span class="tnum">2 of 3</span>', '<span class="tnum">75%</span>', pil('info', 'Watch')]
+      ], 900));
+  }
+
+  function tCbtBank() {
+    return tiles([
+      ['Questions in bank', '1,284', null, 'CSC 311 · all topics'],
+      ['Approved', '1,102', 'var(--green-ink)', 'Peer-reviewed'],
+      ['Awaiting review', '182', 'var(--chrome)', 'Cannot be used yet'],
+      ['Retired', '96', null, 'Poor discrimination']
+    ]) +
+    note('info', 'A question cannot enter a live paper until a second academic has approved it',
+      'Authoring and approval are separate acts by separate people, the same rule that governs results. Item analysis after each exam retires questions that do not discriminate.') +
+    panel('Question bank', 'CSC 311 — Algorithms & Complexity', dtable(
+      ['Topic', 'Total|mid', 'Easy|mid', 'Medium|mid', 'Hard|mid', 'Mean facility|mid', 'Status|num'], [
+        ['Asymptotic analysis', '<span class="tnum">218</span>', '<span class="tnum">64</span>', '<span class="tnum">104</span>', '<span class="tnum">50</span>', '<span class="tnum">0.62</span>', pil('ok', 'Healthy')],
+        ['Divide and conquer', '<span class="tnum">186</span>', '<span class="tnum">52</span>', '<span class="tnum">90</span>', '<span class="tnum">44</span>', '<span class="tnum">0.58</span>', pil('ok', 'Healthy')],
+        ['Greedy algorithms', '<span class="tnum">142</span>', '<span class="tnum">40</span>', '<span class="tnum">72</span>', '<span class="tnum">30</span>', '<span class="tnum">0.55</span>', pil('ok', 'Healthy')],
+        ['Dynamic programming', '<span class="tnum">98</span>', '<span class="tnum">22</span>', '<span class="tnum">48</span>', '<span class="tnum">28</span>', '<span class="tnum">0.41</span>', pil('bad', 'Thin — 98 for a 60-item paper')],
+        ['NP-completeness', '<span class="tnum">64</span>', '<span class="tnum">12</span>', '<span class="tnum">30</span>', '<span class="tnum">22</span>', '<span class="tnum">0.38</span>', pil('bad', 'Thin')]
+      ], 900)) +
+    panel('Examination blueprint', 'CSC 311 final · 60 items · 2 hours', dtable(
+      ['Topic', 'Items|mid', 'Easy|mid', 'Medium|mid', 'Hard|mid', 'Pool sufficient|num'], [
+        ['Asymptotic analysis', '<span class="tnum">14</span>', '<span class="tnum">4</span>', '<span class="tnum">7</span>', '<span class="tnum">3</span>', pil('ok', 'Yes — 218 available')],
+        ['Divide and conquer', '<span class="tnum">14</span>', '<span class="tnum">4</span>', '<span class="tnum">7</span>', '<span class="tnum">3</span>', pil('ok', 'Yes — 186 available')],
+        ['Greedy algorithms', '<span class="tnum">12</span>', '<span class="tnum">3</span>', '<span class="tnum">6</span>', '<span class="tnum">3</span>', pil('ok', 'Yes — 142 available')],
+        ['Dynamic programming', '<span class="tnum">12</span>', '<span class="tnum">3</span>', '<span class="tnum">6</span>', '<span class="tnum">3</span>', pil('bad', 'Marginal')],
+        ['NP-completeness', '<span class="tnum">8</span>', '<span class="tnum">2</span>', '<span class="tnum">4</span>', '<span class="tnum">2</span>', pil('bad', 'Marginal')]
+      ], 880)) +
+    note('info', 'Every candidate gets a different paper from the same blueprint',
+      'Items are drawn to the blueprint per candidate, and both question and option order are randomised. Two students sitting side by side see different papers of equal difficulty.');
+  }
+
+  function tExams() {
+    return scopeBar('sessions', { course: true }) +
+    note('bad', 'Hall B lost its uplink at 10:12 and is running on the local hall server',
+      'All 118 candidates are still answering. Responses are buffering locally and will synchronise when the link returns. No time has been lost and no answer has been lost.') +
+    tiles([
+      ['Candidates sitting', '412', null, 'Across three halls'],
+      ['Submitted', '96', 'var(--green-ink)', 'Auto-marked already'],
+      ['Incidents logged', '3', 'var(--chrome)', '1 malpractice, 2 technical'],
+      ['Halls online', '2 of 3', 'var(--red-ink)', 'Hall B on local buffer']
+    ]) +
+    panel('Live sessions', 'CSC 311 final · 09:00 – 11:00', dtable(
+      ['Hall', 'Candidates|mid', 'Started|mid', 'Submitted|mid', 'Link', 'Action|num'], [
+        ['CBT Hall A', '<span class="tnum">160</span>', '<span class="tnum">160</span>', '<span class="tnum">61</span>', pil('ok', 'Online'), btn('ghost', 'Open console')],
+        ['CBT Hall B', '<span class="tnum">118</span>', '<span class="tnum">118</span>', '<span class="tnum">22</span>', pil('bad', 'Buffering locally'), btn('urgent', 'Open console')],
+        ['CBT Hall C', '<span class="tnum">134</span>', '<span class="tnum">134</span>', '<span class="tnum">13</span>', pil('ok', 'Online'), btn('ghost', 'Open console')]
+      ], 780)) +
+    panel('Invigilator console — Hall A', 'Live', dtable(
+      ['Seat|mid', 'Candidate', 'Identity check|mid', 'Answered|mid', 'Time left|mid', 'Action|num'], [
+        ['<span class="tnum">A-042</span>', two('ADAMU, Grace Mwuese', 'MOAUM/CSC/23/1487'), pil('ok', 'Photo matched'), '<span class="tnum">44 of 60</span>', '<span class="tnum">38 min</span>', btn('ghost', 'Log incident')],
+        ['<span class="tnum">A-043</span>', two('ABAAGU, Terkimbi John', 'MOAUM/CSC/23/1401'), pil('ok', 'Photo matched'), '<span class="tnum">60 of 60</span>', '<span class="sub2">Submitted</span>', btn('ghost', 'Log incident')],
+        ['<span class="tnum">A-044</span>', two('AGBO, Ochanya Faith', 'MOAUM/CSC/23/1415'), pil('bad', 'Manual override'), '<span class="tnum">31 of 60</span>', '<span class="tnum">38 min</span>', btn('urgent', 'Malpractice logged')],
+        ['<span class="tnum">A-045</span>', two('AKAAKA, Sesugh Daniel', 'MOAUM/CSC/23/1423'), pil('bad', 'Absent'), '—', '—', btn('ghost', 'Mark absent')],
+        ['<span class="tnum">A-046</span>', two('ANYEBE, Ruth Onyilo', 'MOAUM/CSC/23/1430'), pil('ok', 'Photo matched'), '<span class="tnum">52 of 60</span>', '<span class="tnum">38 min</span>', btn('ghost', 'Log incident')]
+      ], 940)) +
+    note('info', 'Every interaction is logged for dispute resolution',
+      'If a candidate later claims the system lost their answers, the log shows each save with its timestamp. That evidence is what makes a malpractice or technical appeal resolvable.');
+  }

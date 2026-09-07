@@ -1,0 +1,269 @@
+  /* ══════════════════════════════════════════════════════════════════
+     THE INSTITUTIONAL OVERVIEW, IN CHARTS
+
+     Colour is assigned by the job it does, not by taste:
+
+       STATUS   approved / pending / not submitted — the fixed status
+                palette, never reused for a series, and always shipped
+                with a label beside the swatch, because two of the four
+                status steps sit below 3:1 on a white ground.
+       CATEGORICAL  identity with no order — levels, series on a line —
+                from a fixed slot order, never cycled.
+       SEQUENTIAL   one hue for magnitude — a single-series bar chart
+                carries one colour, and no legend, because the title
+                already names the series.
+
+     Every chart carries its own table underneath. That is not a
+     duplicate: it is the relief the palette's contrast warning
+     obliges, and it is what an administrator quotes in a memo.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* ── palette ────────────────────────────────────────────────────
+     Validated against a white chart surface: categorical slots 1–5
+     pass every gate on the adjacent pairlist. */
+  var VZ = {
+    s1: "#2a78d6", s2: "#eb6834", s3: "#1baf7a", s4: "#eda100", s5: "#e87ba4",
+    good: "#0ca30c", warn: "#fab219", crit: "#d03b3b",
+    seq: "#2a78d6", grid: "#E7EBEF", axis: "#8A939E"
+  };
+
+  function vzNum(n) { return n.toLocaleString(); }
+
+  /* ── donut ───────────────────────────────────────────────────────
+     Part of a whole, few slices, each directly labelled. A 2px gap of
+     the surface colour separates neighbouring arcs. */
+  function vzDonut(items, capLabel, capValue) {
+    var total = items.reduce(function (a, i) { return a + i.v; }, 0);
+    var R = 62, W = 20, C = 2 * Math.PI * R, at = 0;
+
+    var arcs = items.map(function (i) {
+      var frac = total ? i.v / total : 0;
+      var len = Math.max(0, frac * C - 2);          /* 2px surface gap */
+      var seg = '<circle class="vz__arc" cx="90" cy="90" r="' + R + '" fill="none" ' +
+        'stroke="' + i.c + '" stroke-width="' + W + '" ' +
+        'stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '" ' +
+        'stroke-dashoffset="' + (-at).toFixed(2) + '" transform="rotate(-90 90 90)">' +
+        '<title>' + i.l + ': ' + vzNum(i.v) + ' (' + Math.round(frac * 100) + '%)</title></circle>';
+      at += frac * C;
+      return seg;
+    }).join('');
+
+    return '<div class="vz__donut">' +
+      '<svg viewBox="0 0 180 180" width="180" height="180" role="img" ' +
+        'aria-label="' + capLabel + ': ' + items.map(function (i) { return i.l + ' ' + i.v; }).join(', ') + '">' +
+        '<circle cx="90" cy="90" r="' + R + '" fill="none" stroke="#F1F4F6" stroke-width="' + W + '"/>' +
+        arcs +
+        '<text x="90" y="86" text-anchor="middle" class="vz__cv">' + capValue + '</text>' +
+        '<text x="90" y="104" text-anchor="middle" class="vz__cl">' + capLabel + '</text>' +
+      '</svg>' +
+      '<div class="vz__key">' + items.map(function (i) {
+        var pct = total ? Math.round(i.v / total * 100) : 0;
+        return '<div class="vz__ki">' + (i.i || '') +
+          '<span class="vz__sw" style="background:' + i.c + '"></span>' +
+          '<span class="vz__kl">' + i.l + '</span>' +
+          '<b class="tnum">' + vzNum(i.v) + '</b>' +
+          '<span class="vz__kp tnum">' + pct + '%</span>' +
+        '</div>';
+      }).join('') + '</div>' +
+    '</div>';
+  }
+
+  /* ── horizontal bars, one series ─────────────────────────────── */
+  function vzHBars(items, colour) {
+    var max = items.reduce(function (a, i) { return Math.max(a, i.v); }, 0) || 1;
+    return '<div class="vz__hb">' + items.map(function (i) {
+      return '<div class="vz__hr" title="' + i.l + ': ' + vzNum(i.v) + '">' +
+        '<span class="vz__hl">' + i.l + '</span>' +
+        '<span class="vz__ht"><span class="vz__hf" style="width:' +
+          (i.v / max * 100).toFixed(1) + '%;background:' + (colour || VZ.seq) + '"></span></span>' +
+        '<b class="vz__hv tnum">' + vzNum(i.v) + '</b>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  /* ── stacked horizontal bars ─────────────────────────────────── */
+  function vzStack(rows, keys) {
+    var max = rows.reduce(function (a, r) {
+      return Math.max(a, r.parts.reduce(function (b, p) { return b + p; }, 0)); }, 0) || 1;
+    return '<div class="vz__hb">' + rows.map(function (r) {
+      var tot = r.parts.reduce(function (a, p) { return a + p; }, 0);
+      return '<div class="vz__hr">' +
+        '<span class="vz__hl">' + r.l + '</span>' +
+        '<span class="vz__ht" style="width:' + (tot / max * 100).toFixed(1) + '%">' +
+          r.parts.map(function (p, i) {
+            return '<span class="vz__seg" style="flex:' + p + ' 1 0;background:' + keys[i].c + '"' +
+              ' title="' + keys[i].l + ': ' + vzNum(p) + '"></span>';
+          }).join('') +
+        '</span>' +
+        '<b class="vz__hv tnum">' + vzNum(r.parts[0]) + '</b>' +
+      '</div>';
+    }).join('') + '</div>' + vzLegend(keys);
+  }
+
+  function vzLegend(keys) {
+    return '<div class="vz__leg">' + keys.map(function (k) {
+      return '<span class="vz__li">' + (k.i || '') +
+        '<span class="vz__sw" style="background:' + k.c + '"></span>' + k.l + '</span>';
+    }).join('') + '</div>';
+  }
+
+  /* ── line chart, cumulative, two series ──────────────────────── */
+  function vzLine(series, xs, yMax, yLabel) {
+    var W = 660, H = 236, L = 52, R = 118, T = 14, B = 44;
+    var pw = W - L - R, ph = H - T - B;
+    var x = function (i) { return L + (xs.length < 2 ? 0 : i / (xs.length - 1) * pw); };
+    var y = function (v) { return T + ph - (v / yMax) * ph; };
+
+    var ticks = [0, 0.25, 0.5, 0.75, 1].map(function (f) {
+      var v = Math.round(yMax * f);
+      return '<line x1="' + L + '" y1="' + y(v) + '" x2="' + (L + pw) + '" y2="' + y(v) +
+        '" stroke="' + VZ.grid + '" stroke-width="1"/>' +
+        '<text x="' + (L - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="vz__ax">' + vzNum(v) + '</text>';
+    }).join('');
+
+    var xlab = xs.map(function (t, i) {
+      return '<text x="' + x(i) + '" y="' + (T + ph + 20) + '" text-anchor="middle" class="vz__ax">' + t + '</text>';
+    }).join('');
+
+    var paths = series.map(function (s) {
+      var pts = s.v.map(function (v, i) { return x(i).toFixed(1) + ',' + y(v).toFixed(1); }).join(' ');
+      var last = s.v.length - 1;
+      return '<polyline points="' + pts + '" fill="none" stroke="' + s.c +
+          '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+        s.v.map(function (v, i) {
+          return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="4" fill="' + s.c +
+            '" stroke="#fff" stroke-width="2"><title>' + s.l + ', ' + xs[i] + ': ' + vzNum(v) + '</title></circle>';
+        }).join('') +
+        '<text x="' + (x(last) + 10) + '" y="' + (y(s.v[last]) + 4) + '" class="vz__end" fill="' + s.c + '">' +
+          s.l + ' ' + vzNum(s.v[last]) + '</text>';
+    }).join('');
+
+    return '<svg class="vz__svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + yLabel + '">' +
+      ticks +
+      '<line x1="' + L + '" y1="' + (T + ph) + '" x2="' + (L + pw) + '" y2="' + (T + ph) +
+        '" stroke="' + VZ.axis + '" stroke-width="1"/>' +
+      xlab + paths +
+    '</svg>';
+  }
+
+  /* ── vertical bars, ordered categories ───────────────────────── */
+  function vzVBars(items) {
+    var max = items.reduce(function (a, i) { return Math.max(a, i.v); }, 0) || 1;
+    return '<div class="vz__vb">' + items.map(function (i) {
+      return '<div class="vz__vc" title="' + i.l + ': ' + i.v + '%">' +
+        '<b class="vz__vv tnum">' + i.v + '%</b>' +
+        '<span class="vz__vt"><span class="vz__vf" style="height:' +
+          (i.v / max * 100).toFixed(1) + '%;background:' + i.c + '"></span></span>' +
+        '<span class="vz__vl">' + i.l + '</span>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  /* ── the data ────────────────────────────────────────────────── */
+
+  var STU_BY_FAC = [
+    ["Science", 4180], ["Education", 3940], ["Management Sciences", 3380],
+    ["Social Sciences", 3120], ["Arts", 2860], ["Postgraduate School", 2480],
+    ["Agriculture", 2410], ["Engineering", 2240], ["Environmental Sciences", 1860],
+    ["Law", 1720], ["Basic Medical Sciences", 1340], ["Clinical Sciences", 1180],
+    ["Nursing Sciences", 980], ["Pharmaceutical Sciences", 760]
+  ];
+
+  var STU_BY_LEVEL = [["100 Level", 9120], ["200 Level", 7880], ["300 Level", 6940],
+                      ["400 Level", 5910], ["500 Level", 2600]];
+
+  var WEEKS = ["Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5", "Wk 6", "Wk 7", "Wk 8", "Wk 9", "Wk 10"];
+  var W_SUB = [120, 340, 640, 980, 1320, 1660, 1940, 2160, 2330, 2442];
+  var W_APP = [0, 60, 210, 460, 760, 1060, 1360, 1650, 1880, 2045];
+
+  var GRADE_MIX = [["A", 14], ["B", 23], ["C", 27], ["D", 12], ["E", 9], ["F", 15]];
+
+  var STATUS_KEYS = [
+    { l: "Approved", c: VZ.good, i: tick(12, "#0ca30c") },
+    { l: "Pending in the chain", c: VZ.warn, i: ico("clock", 12, "#8a6300", 2.2) },
+    { l: "Never submitted", c: VZ.crit, i: warnIcon(12) }
+  ];
+
+  /* ── the screen ──────────────────────────────────────────────── */
+
+  function instOverview() {
+    var expected = FAC_RESULTS.reduce(function (a, f) { return a + f[1]; }, 0);
+    var subm = FAC_RESULTS.reduce(function (a, f) { return a + f[2]; }, 0);
+    var appr = FAC_RESULTS.reduce(function (a, f) { return a + f[3]; }, 0);
+    var pend = subm - appr, miss = expected - subm;
+
+    return note('info', 'The session so far, in figures',
+      'Every chart on this screen is drawn from the same record the desks work on, and each carries its table beneath it &mdash; ' +
+      'because a chart is for seeing the shape and a table is for quoting the number, and an institutional paper needs both.') +
+
+    tiles([
+      ["Students on the register", vzNum(UNI.students), null, UNI.faculties + " faculties &middot; " + UNI.departments + " departments"],
+      ["Result sets expected", vzNum(expected), null, "2026/2027 first semester"],
+      ["Past Senate", Math.round(appr / expected * 100) + "%", "var(--green-ink)", vzNum(appr) + " sets"],
+      ["Senate sits", "12 Sept", "var(--red-ink)", "6 days"]
+    ]) +
+
+    '<div class="grid grid--2">' +
+      panel('Where the ' + vzNum(expected) + ' result sets stand',
+        'Approved, pending, never submitted', pbody(
+        vzDonut([
+          { l: "Approved by Senate", v: appr, c: VZ.good, i: tick(13, "#0a7a3b") },
+          { l: "Pending in the chain", v: pend, c: VZ.warn, i: ico("clock", 13, "#8a6300", 2.2) },
+          { l: "Never submitted", v: miss, c: VZ.crit, i: warnIcon(13) }
+        ], "approved", Math.round(appr / expected * 100) + "%") +
+        note('bad', 'The two red-ish slices are different problems',
+          'A <b>pending</b> set is on a named desk and can be chased there. A set that was <b>never submitted</b> has no desk at all &mdash; ' +
+          'it is a lecturer who has not attested and a Head of Department who has not noticed.'))) +
+
+      panel('Students by level', 'All modes, all faculties', pbody(
+        vzDonut(STU_BY_LEVEL.map(function (r, i) {
+          return { l: r[0], v: r[1], c: [VZ.s1, VZ.s2, VZ.s3, VZ.s4, VZ.s5][i] };
+        }), "students", vzNum(UNI.students)) +
+        note('info', '500 Level is small because only five programmes reach it',
+          'MBBS, the LL.B, Pharm.D and the two Engineering programmes with a five-year run. Every other programme ends at 400.'))) +
+    '</div>' +
+
+    panel('Results by faculty', 'Each bar is that faculty&rsquo;s expected sets, split three ways', pbody(
+      vzStack(FAC_RESULTS.map(function (f) {
+        return { l: f[0], parts: [f[3], f[2] - f[3], f[1] - f[2]] };
+      }), STATUS_KEYS) +
+      note('bad', 'Clinical Sciences is the outlier, and it is not close',
+        'Sixty-two sets approved of a hundred and sixty-four expected &mdash; 38 per cent, against a University average of 72. ' +
+        'Fifty-eight have never been submitted. That single faculty is why the Health Sciences graduation list was deferred, ' +
+        'and it is where the Vice-Chancellor&rsquo;s question belongs.'))) +
+
+    panel('Results by faculty, in figures', 'The chart above, as numbers',
+      dtable(["Faculty", "Expected|mid", "Submitted|mid", "Approved|mid", "Pending|mid", "Never submitted|mid", "Approved %|num"],
+        FAC_RESULTS.map(function (f) {
+          var pct = Math.round(f[3] / f[1] * 100);
+          return ["<strong>" + f[0] + "</strong>",
+            '<span class="tnum">' + f[1] + '</span>', '<span class="tnum">' + f[2] + '</span>',
+            '<span class="tnum" style="color:var(--green-ink);font-weight:700">' + f[3] + '</span>',
+            '<span class="tnum">' + (f[2] - f[3]) + '</span>',
+            '<span class="tnum"' + (f[1] - f[2] > 30 ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' + (f[1] - f[2]) + '</span>',
+            '<b class="tnum"' + (pct < 55 ? ' style="color:var(--red-ink)"' : '') + '>' + pct + '%</b>'];
+        }))) +
+
+    panel('The semester week by week', 'Cumulative sets, submitted and approved', pbody(
+      vzLine([
+        { l: "Submitted", v: W_SUB, c: VZ.s1 },
+        { l: "Approved", v: W_APP, c: VZ.s2 }
+      ], WEEKS, 2840, "Cumulative result sets submitted and approved, weeks 1 to 10") +
+      vzLegend([{ l: "Submitted by the lecturer", c: VZ.s1 }, { l: "Approved by Senate", c: VZ.s2 }]) +
+      note('info', 'The gap between the two lines is the workflow',
+        'It is about four weeks wide and roughly constant, which is what a chain in good health looks like: ' +
+        'work arriving and work clearing at the same rate. A widening gap means a desk has stopped, and it shows here before anybody reports it.'))) +
+
+    '<div class="grid grid--2">' +
+      panel('Students by faculty', 'On the register, all levels', pbody(vzHBars(
+        STU_BY_FAC.map(function (r) { return { l: r[0], v: r[1] }; })))) +
+
+      panel('Grades across the University', 'Every graded entry this semester', pbody(
+        vzVBars(GRADE_MIX.map(function (g) {
+          return { l: g[0], v: g[1], c: g[0] === "F" ? VZ.crit : VZ.seq };
+        })) +
+        note('bad', 'Fifteen per cent of every graded entry is an F',
+          'That is roughly one entry in seven becoming a carryover, and a carryover consumes units in a later semester that a student then cannot spend on new courses. ' +
+          'It is worth asking Senate whether that is the examinations, the teaching, or the entry standard &mdash; the portal can say which courses, but not which cause.'))) +
+    '</div>';
+  }

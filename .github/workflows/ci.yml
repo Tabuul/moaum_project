@@ -1,0 +1,191 @@
+# ══════════════════════════════════════════════════════════════════════
+name: CI
+
+# Railway is set to deploy only what this workflow has passed. The gate is
+# three things, and each of them has caught something real:
+#
+#   1. THE BUILD IS REPRODUCIBLE. public/index.html is rebuilt from the 56
+#      parts and compared byte for byte. Without this, somebody edits the
+#      built file, the harnesses pass against the parts, and the thing
+#      deployed is a file nobody tested.
+#
+#   2. THE BROWSER HARNESSES. 11 of them, 600+ screen loads, every office,
+#      every route, five viewport widths. They have caught: a route
+#      enumeration that missed collapsed nav groups; a table that stacked
+#      at the wrong width; a refusal that was rendered nowhere at all.
+#
+#   3. THE DATABASE PROPERTIES. A real Postgres, the migrations applied in
+#      order by the same runner Railway uses, then check.sql — which
+#      reports how many checks RAN as well as how many failed, because a
+#      block that errors never reaches its assertion and would otherwise
+#      count as green.
+# ══════════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── the prototype: built from its parts, and driven in a real browser ──
+  web:
+    name: "Prototype — build reproducible, 11 harnesses green"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Playwright is the only build-time dependency, and it is not
+      # committed: it is installed here and nowhere near the deployed image.
+      - name: Install Playwright and Chromium
+        run: |
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+
+      - name: Rebuild from the parts and run every harness
+        run: node proto/runall.mjs
+
+      - name: The built page is exactly what the parts produce
+        run: |
+          python3 proto/build.py >/dev/null
+          if ! diff -q proto/moaum-portal-prototype.html public/index.html >/dev/null; then
+            echo "::error::public/index.html is not what proto/part*.html build."
+            echo "Run 'npm run build' and commit the result."
+            exit 1
+          fi
+          echo "public/index.html matches the parts."
+
+  # ── the database: the real migrations, then the property suite ────────
+  db:
+    name: "Database — migrations apply, 63 properties hold"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: moaumpp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://postgres:ci@localhost:5432/moaumpp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the postgresql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Apply the migrations with the same runner Railway uses
+        run: bash db/migrate.sh
+
+      # Applying them twice must be a no-op. If it is not, the runner is
+      # not doing its job and a redeploy would corrupt the database.
+      - name: Applying them again changes nothing
+        run: |
+          out=$(bash db/migrate.sh)
+          echo "$out"
+          echo "$out" | grep -q "0 applied" || {
+            echo "::error::A second run applied migrations again. The ledger is not holding."
+            exit 1; }
+
+      # And a migration edited after the fact must STOP the deployment.
+      - name: An edited migration stops the deployment
+        run: |
+          cp db/V009__admission_settings_2025_2026.sql /tmp/V009.bak
+          echo "-- a change made after this file was applied" >> db/V009__admission_settings_2025_2026.sql
+          if bash db/migrate.sh; then
+            echo "::error::An edited migration was accepted. It must not be."
+            cp /tmp/V009.bak db/V009__admission_settings_2025_2026.sql
+            exit 1
+          fi
+          cp /tmp/V009.bak db/V009__admission_settings_2025_2026.sql
+          echo "Refused, as it should be."
+
+      - name: The 63 properties
+        run: |
+          out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=off -q -f db/check.sql 2>&1)
+          echo "$out"
+          echo "$out" | grep -q "FOUNDATION GREEN" || {
+            echo "::error::The property suite is not green. A block that ERRORS never"
+            echo "reaches its assertion, so check the 'of N checks RAN' line too."
+            exit 1; }
+
+      # check.sql writes; verify.sql only reads, and is what runs on a real
+      # deployment. It has to pass on a database check.sql has been through.
+      - name: The read-only deployment verification
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f db/verify.sql
+
+  # ── the image Railway will actually build ─────────────────────────────
+  image:
+    name: "Container — builds, migrates, serves, answers readyz"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [web, db]
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: moaumpp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t moaumpp:ci .
+
+      - name: Run the migrations from inside the image
+        run: |
+          docker run --rm --network host -e DATABASE_URL=postgres://postgres:ci@localhost:5432/moaumpp \
+            moaumpp:ci bash db/migrate.sh
+
+      - name: Start it and ask whether it is ready
+        run: |
+          docker run -d --name portal --network host \
+            -e PORT=8080 -e DATABASE_URL=postgres://postgres:ci@localhost:5432/moaumpp \
+            moaumpp:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/readyz >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          echo "── /readyz ──"
+          curl -fsS http://localhost:8080/readyz | tee /tmp/ready.json
+          grep -q '"reachable": true' /tmp/ready.json || {
+            echo "::error::The service cannot reach the database."; docker logs portal; exit 1; }
+          echo
+          echo "── the page ──"
+          code=$(curl -s -o /tmp/page.html -w '%{http_code}' http://localhost:8080/)
+          [ "$code" = "200" ] || { echo "::error::GET / returned $code"; docker logs portal; exit 1; }
+          grep -q "MOAUM" /tmp/page.html || { echo "::error::The page served is not the portal."; exit 1; }
+          echo "served $(stat -c%s /tmp/page.html) bytes"
+          docker rm -f portal >/dev/null

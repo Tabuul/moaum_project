@@ -1,0 +1,690 @@
+
+  /* ══ ADMISSION SETTINGS, PER SESSION ═════════════════════════════════
+     Built 7 September 2026 from GUIDELINES FOR THE 2025/2026 UNDERGRADUATE
+     ADMISSIONS — Office of the Registrar (Academic Office), issued by the
+     Deputy Registrar as Secretary of the Central Admissions Committee for
+     the Acting Vice-Chancellor as Chairman.
+
+     ── Why this screen exists ────────────────────────────────────────
+     Every year that document is written, and every year its numbers
+     change: the NUC quota, the faculty distribution, the cut-off marks,
+     occasionally a programme's subject combination. Today the numbers
+     live in a Word file, are read by twelve Deans and some fifty Heads of
+     Department, and are applied by hand on a spreadsheet. Nothing in the
+     University can answer, of a graduate admitted four years ago, what
+     the cut-off was on the day she was admitted.
+
+     So the guidelines become SETTINGS: made for a session, checked
+     against themselves, and then PUT IN FORCE by the Committee's own
+     minute. Nothing else in the portal may admit, rank or cut off until
+     they are — not as a warning, as a refusal.
+
+     ── The settings check themselves ─────────────────────────────────
+     · the four criteria must total 100%
+     · the faculty quotas must total the NUC quota, to the unit
+     · every faculty must carry a cut-off
+     · every programme admitted into must carry a rule
+     · no programme may sit below its own faculty's cut-off
+
+     The 2025/2026 guidelines as issued FAIL two of those, and the screen
+     says so rather than letting the session open: the faculty quota
+     column for 2025/2026 is blank in the document against a stated total
+     of 10,198, and subject combinations are given for 64 of the 92
+     programmes the University runs.
+
+     ── And the questions the document raises ─────────────────────────
+     Six places where the guidelines say two things, or say something the
+     University's own tables contradict. They are listed on the screen in
+     the Committee's words, unanswered, because the Directorate of ICT
+     does not get to choose which reading of an admission rule is correct.
+                                                                        */
+  /* The 2025/2026 guidelines, transcribed. This is the DOCUMENT, not
+     the settings: the settings are what the office makes from it. */
+  var ADM_SRC = {
+    session: "2025/2026",
+    quota: 10198, wUtme: 70, wPutme: 30,
+    crit: {"NATIONAL_MERIT": 10, "STATE_MERIT": 35, "ELG": 30, "LOCALITY": 25},
+    ratios: {"utme": 80, "de": 20, "science": 60, "arts": 40},
+    cut: {"MS": 160, "AC": 180, "AR": 160, "BAMS": 180, "CM": 180, "ED": 160, "ES": 160, "LW": 220, "PS": 220, "SC": 160, "SS": 160, "TI": 160},
+    q24: {"MS": 800, "AC": 150, "AR": 800, "BAMS": 950, "CM": 800, "ED": 1150, "ES": 300, "LW": 100, "PS": 50, "SC": 2763, "SS": 1008, "TI": 400},
+    pcut: {"C00061": 220, "C49411": 200, "C49412": 200, "C00023": 180},
+    rules: {
+      "C51900": ["Five (5) SSCE credit passes in English Language, Mathematics, Physics, and any other two subjects from: Chemistry, Biology, Technical Drawing, Fine Arts, Geography, Economics, Building Construction, Land Surveying, at not more than two sittings.",
+       "Mathematics, Physics and any one of: Chemistry, Geography, Fine Arts or Technical Drawing.",
+       "Five SSCE credit passes, two of which must be at the advanced level; or National Diploma in a relevant field for 200 level; or HND in a relevant field with Upper Credit or Distinction for 300 level."],
+      "C72222": ["Five (5) SSCE credit passes in English Language, Mathematics, Physics, and any other two subjects from: Chemistry, Biology, Technical Drawing, Fine Arts, Geography, Economics, Building Construction, Land Surveying, at not more than two sittings.",
+       "Mathematics, Physics and any one of: Chemistry, Geography, Fine Arts or Technical Drawing.",
+       "Five SSCE credit passes, two of which must be at the advanced level; or National Diploma in a relevant field for 200 level; or HND in a relevant field with Upper Credit or Distinction for 300 level."],
+      "C40831": ["Five (5) SSCE credit passes in English Language, Mathematics, Physics, and any other two subjects from: Chemistry, Biology, Technical Drawing, Fine Arts, Geography, Economics, Building Construction, Land Surveying, at not more than two sittings.",
+       "Mathematics, Physics and any one of: Chemistry, Geography, Fine Arts or Technical Drawing.",
+       "Five SSCE credit passes, two of which must be at the advanced level; or National Diploma in a relevant field for 200 level; or HND in a relevant field with Upper Credit or Distinction for 300 level."],
+      "C00002": ["Five (5) SSC credit passes to include Literature in English, English Language and three other Arts or Social Science subjects.",
+       "Literature in English, one other Arts subject and another Arts or Social Science subject.",
+       "Two (2) 'A' Level passes to include Literature in English and one other Arts subject."],
+      "C00067": ["Five (5) SSC credit passes to include History and English Language.",
+       "History/Government and any other two (2) subjects from Arts and Social Sciences.",
+       "Two (2) 'A' Level passes in History and any other related subjects."],
+      "C00003": ["Five (5) SSC credit passes including French and English Language plus one other Arts subject.",
+       "French and any other two (2) subjects from Arts and Social Sciences.",
+       "Two (2) 'A' Level passes including French and one other Arts subject."],
+      "C00005": ["Five (5) SSC credit passes including English Language.",
+       "Any Language and two (2) other subjects.",
+       "Two (2) 'A' Level passes or NCE to include any Language, preferably an African Language."],
+      "C00094": ["Five (5) SSC credit passes to include English Language and four (4) other relevant subjects.",
+       "Any three (3) subjects.",
+       "Any two (2) 'A' Level passes."],
+      "C00062": ["Five (5) SSC credit passes to include English Language and CRS/IRS.",
+       "CRS/IRS and any other two (2) subjects.",
+       "Two (2) 'A' Level subjects to include Religious Studies (CRS/IRS)."],
+      "C00066": ["Five (5) SSC credit passes to include English Language and Arts subjects.",
+       "Literature in English and two (2) other relevant subjects.",
+       "Two (2) 'A' Level passes in Arts, Social Sciences or Science subjects."],
+      "C29132": ["Five (5) SSC credit passes in English Language, Mathematics, Biology, Chemistry and Physics.",
+       "Biology, Chemistry and Physics.",
+       "Two (2) 'A' Level passes chosen from Biology, Chemistry and Physics, in addition to the UTME requirements."],
+      "C18115": ["Five (5) SSC credit passes in English Language, Mathematics, Physics, Chemistry and Biology.",
+       "Physics, Chemistry and Biology.",
+       "Two (2) 'A' Level passes chosen from Chemistry, Physics and Biology/Zoology."],
+      "C49411": ["Five (5) SSC credit passes in English Language, Mathematics, Biology, Physics and Chemistry.",
+       "Physics, Chemistry and Biology.",
+       "Two (2) 'A' Level passes chosen from Physics, Chemistry and Biology."],
+      "C00061": ["Five (5) SSC credit passes in English Language, Mathematics, Physics, Chemistry and Biology.",
+       "Physics, Chemistry and Biology.",
+       "(i) 'A' Level passes in Physics, Chemistry and Biology or Zoology, in addition to the UTME requirements. (ii) BSc, BOS etc in a relevant programme."],
+      "C49412": ["Five (5) SSC credit passes in English Language, Mathematics, Biology, Physics and Chemistry.",
+       "Physics, Chemistry and Biology.",
+       "Two (2) 'A' Level passes chosen from Physics, Chemistry and Biology."],
+      "C13707": ["A minimum of five credit passes in relevant subjects at SSCE or GCE O'Level or their equivalents, to include English Language, Mathematics, Literature in English, and any other two (2) subjects.",
+       "Any three (3) from Arts or Social Science subjects.",
+       "Two (2) 'A' Level passes in Arts or Social Science subjects."],
+      "C60514": ["A minimum of five credit passes in relevant subjects at SSCE or GCE O'Level or their equivalents, to include English Language, Mathematics, Literature in English, and any other two (2) subjects.",
+       "Any three (3) from Arts or Social Science subjects.",
+       "Two (2) 'A' Level passes in Arts or Social Science subjects."],
+      "C62073": ["A minimum of five credit passes in relevant subjects at SSCE or GCE O'Level or their equivalents, to include English Language, Mathematics, Literature in English, and any other two (2) subjects.",
+       "Any three (3) from Arts or Social Science subjects.",
+       "Two (2) 'A' Level passes chosen from Accounting, Economics, Management, Mathematics, Geography and Statistics."],
+      "C94958": ["A minimum of five credit passes in relevant subjects at SSCE or GCE O'Level or their equivalents, to include English Language, Mathematics, Literature in English, and any other two (2) subjects.",
+       "Any three (3) from Arts or Social Science subjects.",
+       "Two (2) 'A' Level passes in Arts or Social Science subjects."],
+      "C48372": ["A minimum of five credit passes in relevant subjects at SSCE or GCE O'Level or their equivalents, to include English Language, Mathematics, Literature in English, and any other two (2) subjects.",
+       "Any three (3) from Arts or Social Science subjects.",
+       "Two (2) 'A' Level passes in Arts or Social Science subjects."],
+      "C98602": ["A minimum of five credit passes in relevant subjects at SSCE or GCE O'Level or their equivalents, to include English Language, Mathematics, Literature in English, and any other two (2) subjects.",
+       "Any three (3) from Arts or Social Science subjects.",
+       "Two (2) 'A' Level passes in Arts or Social Science subjects."],
+      "C00001": ["Five (5) 'O' Level credit passes to include English Language and Literature in English plus three (3) other Arts or Social Science subjects.",
+       "Literature in English and one (1) Art and any other subject.",
+       "(i) Two (2) 'A' Level passes in relevant teaching subjects including Literature in English. (ii) NCE credit or merit in two (2) relevant subjects."],
+      "C34921": ["Five (5) 'O' Level credit passes or TC II merit in five (5) subjects including English Language, Religious Studies and three (3) other Arts subjects.",
+       "Two (2) Arts subjects including Religious Studies and one (1) other subject.",
+       "Two (2) 'A' Level passes / NCE merit in Religious Studies and one (1) other Arts subject."],
+      "C62664": ["Five (5) 'O' Level credit passes to include English Language plus two (2) Arts/Social Science subjects.",
+       "Any three (3) of Christian Religious Studies, Economics, Geography/Physics, Government, History and Islamic Studies.",
+       "(i) NCE Social Studies from recognized Colleges. (ii) Two (2) 'A' Level passes in relevant subjects."],
+      "C00219": ["Same as in Educational Psychology, Guidance and Counselling.",
+       "Economics, Mathematics and one (1) other Social Science/Arts subject.",
+       "Same as in Educational Psychology, Guidance and Counselling."],
+      "C00220": ["Five (5) 'O' Level NTC/NBC credit passes or TC II merit including English Language with an 'O' Level pass in Mathematics.",
+       "Any three (3) subjects.",
+       "'A' Level passes or NCE in two (2) subjects plus the UTME requirements."],
+      "C00065": ["Five (5) 'O' Level credit passes including English Language.",
+       "Any three (3) subjects.",
+       "Two (2) 'A' Level passes chosen from relevant subjects."],
+      "C00010": ["Five (5) SSC credit passes / TC II merit passes including English Language, Biology or its equivalent.",
+       "Biology and any two (2) relevant subjects.",
+       "(i) Two (2) 'A' Level passes in any of Biology, Chemistry, Physics and Mathematics. (ii) NCE merit in Physical Education and credit in Arithmetical Process or Mathematics. (iii) Diploma in Health Education, Environmental Sanitation, Physical Education, Social Work or Health Administration with overall merit plus three (3) 'O' Level credit passes/TC II merit including English Language. (iv) NCE in Biology, Health Education or Integrated Science with a pass grade plus two (2) 'O' Level credit passes/TC II merit passes. (v) Registered Nurse plus five (5) 'O' Level credit passes including English Language."],
+      "C00012": ["Five (5) SSC credit passes in English Language, Biology, Chemistry, Mathematics and one (1) other subject.",
+       "Biology and two (2) other subjects from Chemistry, Mathematics and Physics.",
+       "NCE/'A' Level passes in Biology and one (1) other Science subject."],
+      "C00014": ["Five (5) SSC credits in Mathematics, Chemistry, English Language and two (2) of Physics, Biology and Agricultural Science.",
+       "Chemistry and two (2) other subjects chosen from Physics, Biology and Mathematics.",
+       "Two (2) 'A' Level/NCE passes including Chemistry and one (1) other Science subject."],
+      "C67895": ["Five (5) SSC credit passes or its equivalents including Mathematics, English Language and three (3) other Science subjects.",
+       "Mathematics, Physics and one of Biology, Chemistry and Geography.",
+       "Two (2) 'A' Level passes including Physics or Chemistry."],
+      "C44826": ["Five (5) SSC credit passes including Biology, Chemistry, English Language and Mathematics.",
+       "Any three (3) of Mathematics, Chemistry, Physics, Biology and Agricultural Science.",
+       "(i) NCE Integrated Science. (ii) NCE Science Education. (iii) 'A' Level passes in two (2) Science subjects."],
+      "C00016": ["Five (5) SSC credit passes to include English Language, Mathematics plus one (1) other Science subject.",
+       "Mathematics and any two (2) of the following Science subjects: Physics, Chemistry and Biology.",
+       "Two (2) 'A' Level passes / NCE in Mathematics and one (1) Science subject."],
+      "C00017": ["Five (5) 'O' Level credit passes to include English Language, Physics, Mathematics and two (2) other Science subjects or NTC/NBC.",
+       "Physics, Mathematics or Chemistry plus one (1) other subject.",
+       "(i) Two (2) 'A' Level passes in Physics and Mathematics. (ii) NCE credit/merit in relevant subjects."],
+      "C00025": ["Five (5) SSC credit passes in English Language, Geography, and any three (3) from Arts or Social Science subjects with at least a pass in Mathematics.",
+       "Geography and two (2) other Arts or Social Science subjects.",
+       "Two (2) 'A' Level passes in Geography and any one of Economics, Government, Physics, Chemistry, Biology and Mathematics."],
+      "C30468": ["Five (5) SSC credit passes in English Language, Mathematics, Geography, and any two (2) of Physics, Chemistry, Economics, Government, Biology, Art, History, IRK/CRK, Social Studies and Technical Drawing.",
+       "Mathematics, Geography and one of Economics, Physics, Chemistry.",
+       "(i) Two (2) 'A' Level passes in Geography and Mathematics. (ii) ND/HND upper credit in Town Planning or related programmes plus the UTME requirements."],
+      "C00033": ["Five (5) 'O' Level credit passes to include English Language, Literature in English and Mathematics.",
+       "Any three (3) Arts or Social Science subjects.",
+       "(i) Two (2) 'A' Level passes in Arts or Social Science subjects. (ii) NCE/ND/First Degree (Second Class Lower)."],
+      "C00019": ["Five (5) SSC credit passes including English Language, Mathematics, Economics and any other two (2) subjects. For NBC holders, the other two (2) relevant subjects could be from any of Principles of Accounts, Commerce, Office Practice and Secretarial Duties.",
+       "Mathematics, Economics plus any Social Science subject.",
+       "Two (2) 'A' Level passes chosen from Economics, Accounting, Business Management, Government and Geography."],
+      "C44827": ["Five (5) SSC credit passes to include English Language, Mathematics and any other subjects. For NBC, the other two (2) relevant subjects could be from Accounting, Principles of Accounts, Commerce, Office Practice and Economics.",
+       "Mathematics, Economics, plus any one (1) of Government and Geography.",
+       "Two (2) 'A' Level passes chosen from Accounting, Economics, Management, Mathematics, Geography and Statistics."],
+      "C44829": ["Five (5) SSC credit passes to include English Language, Mathematics and any other subjects. For NBC, the other two (2) relevant subjects could be from Accounting, Principles of Accounts, Commerce, Office Practice and Economics.",
+       "Mathematics, Economics, plus any one (1) of Government and Geography.",
+       "Two (2) 'A' Level passes chosen from Accounting, Economics, Management, Mathematics, Geography and Statistics."],
+      "C00021": ["Five (5) SSC credit passes including English Language, Mathematics, Economics, plus any two (2) of Accounting, Business Methods, Commerce, Government, Geography and Statistics.",
+       "Mathematics, Economics and one (1) other subject.",
+       "Two (2) 'A' Level passes chosen from Economics, Accounts, Business Management, Government, Geography or Statistics."],
+      "C44828": ["Five (5) SSC credit passes including English Language, Mathematics and any three (3) relevant subjects.",
+       "Mathematics, Economics plus one (1) other subject.",
+       "Two (2) 'A' Level passes chosen from Accounting, Management, Government and Geography."],
+      "C51691": ["Five (5) SSC credit passes to include English Language, Economics and Government. For NBC holders, the other relevant subjects could be from Accounting, Principles of Accounts, Commerce, Office Practice and Secretarial Duties.",
+       "Government, Economics and any other subject.",
+       "Two (2) 'A' Level passes chosen from Economics, Accounting, Business Management, Government, Geography and Statistics."],
+      "C73770": ["Five (5) SSC credit passes in English Language, Mathematics, Physics, Chemistry and Biology.",
+       "Physics, Chemistry and Biology.",
+       "(I) First degree not below Second Class Lower in a relevant field, in addition fulfilling the UTME requirements in line with University policy. (II) 'A' Level credits in Chemistry, Physics and Biology/Zoology/Botany, in addition fulfilling the UTME requirements in line with University policy. (III) Acceptable grade in a Pharmacy Technician Diploma from an institution accredited by the Pharmacists Council of Nigeria (PCN)."],
+      "C64548": ["Five (5) SSC credit passes in English Language, Chemistry, Mathematics, Physics and Biology.",
+       "Biology, Chemistry and Physics or Mathematics.",
+       "Two (2) 'A' Level passes chosen from Chemistry, Mathematics, Physics and Biology; or NCE/ND/HND in related programmes plus the UTME requirements."],
+      "C00060": ["Five (5) SSC credit passes to include English Language, Mathematics, Chemistry, Biology and any other Science subject.",
+       "Biology, Chemistry and Physics or Mathematics.",
+       "(i) Two (2) 'A' Level passes to include one (1) of Botany, Zoology, Biology or Chemistry. (ii) ND/NCE in related programme/subject."],
+      "C52295": ["Five (5) SSC credit passes in English Language, Mathematics, Chemistry, Biology and Physics.",
+       "Biology, Chemistry and either Physics or Mathematics.",
+       "Two (2) 'A' Level passes in Chemistry and any one (1) from Biology, Zoology or Botany."],
+      "C82347": ["Five (5) SSC credit passes in English Language, Mathematics, Biology, Chemistry and Physics.",
+       "Biology, Chemistry and any other Science subject.",
+       "Two (2) 'A' Level passes in Biology/Botany/Zoology and Chemistry or Physics."],
+      "C49638": ["Five (5) SSC credit passes in English Language, Mathematics, Biology and two (2) other Science subjects.",
+       "Biology and any two (2) of Physics, Chemistry and Mathematics.",
+       "Two (2) 'A' Level passes or NCE in Biology, Zoology or Botany and one other Science subject."],
+      "C00022": ["Five (5) SSC credit passes in English Language, Mathematics, Physics, Chemistry and Biology.",
+       "Chemistry and two (2) of Physics, Biology and Mathematics.",
+       "(i) Two (2) 'A' Level passes in Chemistry and any one (1) of Physics, Mathematics or Biology. (ii) ND/NCE with good grades in relevant 'O' Level subjects."],
+      "C52395": ["Five (5) SSC credit passes in English Language, Mathematics, Chemistry, Biology and Physics.",
+       "Biology, Chemistry and either Physics or Mathematics.",
+       "Two (2) 'A' Level passes in Chemistry and any one (1) from Biology, Zoology or Botany."],
+      "C22229": ["Five (5) SSC credit passes in English Language, Mathematics, Chemistry, Physics and Biology/Agricultural Science.",
+       "Chemistry, Mathematics and any of Physics/Biology/Agricultural Science.",
+       "(i) Two (2) 'A' Level passes in Chemistry and Mathematics. (ii) ND in Science Technology or ND in relevant programmes with the UTME requirements."],
+      "C00023": ["Five (5) SSC credit passes to include English Language, Mathematics, Physics plus two (2) other Science subjects.",
+       "Mathematics, Physics and one (1) of Biology, Chemistry, Agricultural Science, Economics and Geography.",
+       "(i) Two (2) 'A' Level passes in Science subjects including Mathematics. (ii) NCE merit in Mathematics and one (1) other Science or Social Science subject."],
+      "C00028": ["Five (5) SSC credit passes including English Language, Mathematics and Physics or Chemistry.",
+       "Mathematics and any two (2) of Physics, Chemistry and Economics or Geography.",
+       "(i) Two (2) 'A' Level passes in Mathematics and any other Science subject. (ii) NCE merit in Mathematics and one (1) of Physics, Chemistry or Economics."],
+      "C56345": ["Five (5) SSC credit passes to include English Language, Mathematics and at least three (3) subjects from Physics, Statistics, Chemistry, Further Mathematics, Economics and Geography.",
+       "Mathematics and any two (2) of Physics, Chemistry and Economics.",
+       "Two (2) 'A' Level passes to include Mathematics or Statistics; or NCE credit in relevant subjects."],
+      "C00029": ["Five (5) SSC credit passes in English Language, Physics, Chemistry, Mathematics and any other Science subject from Further Mathematics and Biology or Agricultural Science.",
+       "Physics, Mathematics and Chemistry or Biology.",
+       "NCE / Two (2) 'A' Level passes in Physics and Mathematics or Chemistry."],
+      "C00024": ["Five (5) SSC credit passes in English Language, Mathematics, Economics and any two (2) of Arts or Social Science subjects.",
+       "Economics, Mathematics and any of Government, History, Geography, Literature in English, French and Christian Religious Studies/Islamic Studies.",
+       "Two (2) 'A' Level passes in Economics and any one of Mathematics, Statistics, Geography, Physics, Chemistry, Agricultural Science, Accounting, Business Management, History and Government."],
+      "C00063": ["Five (5) SSC credit passes in English Language, Mathematics and three (3) other relevant Arts/Sciences/Social Sciences subjects.",
+       "Any three (3) subjects.",
+       "(i) Two (2) 'A' Level passes in a relevant subject plus the UTME requirements. (ii) NCE merit in relevant subjects."],
+      "C00030": ["Five (5) SSC credit passes in Government or History, English Language and three (3) other subjects. A pass in Mathematics is required.",
+       "Government or History plus two (2) other Social Science/Arts subjects.",
+       "Two (2) 'A' Level passes including Government or History."],
+      "C00031": ["Five (5) SSC credit passes in English Language, Mathematics, Biology or Animal Husbandry, Health Science, Government and any other two subjects from Arts or Social Sciences.",
+       "English Language and any three subjects from Government, Economics, Geography, Commerce, Biology and CRS.",
+       "Two (2) 'A' Level passes including Government or History."],
+      "C00032": ["Five (5) SSC credit passes in Government or History, English Language and three (3) other subjects. A pass in Mathematics is required.",
+       "Three (3) Social Science or Arts subjects.",
+       "Two (2) 'A' Level passes including Government or History."],
+      "C67773": ["Five (5) TC II merit, 'O' Level or NTC/NBC credit passes including English Language, Mathematics, Economics and two (2) other subjects in the Social Sciences or Arts. For NBC, the other subjects could be from Commerce, Office Practice, Principles of Accounts, Secretarial Duties, Typewriting and Shorthand.",
+       "Mathematics, Economics plus one (1) of Literature in English, History, Government, Geography, Chemistry and Physics.",
+       "(i) Two (2) 'A' Level passes or NCE merit in two (2) relevant subjects. (ii) NCE merit in Business Education Double Major."],
+      "C78876": ["Five (5) 'O' Level NTC/NBC credit passes or TC II merit including English Language, Mathematics, Home Economics, Biology and Chemistry.",
+       "Chemistry, Biology or Agricultural Science and one (1) other subject.",
+       "(i) NCE merit in Home Economics. (ii) 'A' Level passes in two (2) of Chemistry or any Biology, Botany and Agricultural Science. (iii) ND/HND credit in Home Economics or Food Science or Hotel and Catering Management or any other related programme."],
+      "C00096": ["Five (5) 'O' Level credit passes to include Physics or Mathematics.",
+       "Mathematics, Physics and one (1) other Science subject.",
+       "(i) Two (2) 'A' Level passes in Physics and Mathematics. (ii) ND lower credit in Civil Engineering, Production/Electrical Engineering. (iii) Final City and Guilds or its equivalent plus National Technical Certificate. (iv) NCE credit in Technical Education plus 'O' Level credit passes in Physics or Mathematics."]
+    }
+  };
+
+  var CRIT_LABEL = {
+    NATIONAL_MERIT: ["National Merit", "Open, nationwide, on the merit list alone"],
+    STATE_MERIT:    ["State Merit", "Benue State candidates, on merit"],
+    ELG:            ["Equality of Local Government", "Each Local Government represented"],
+    LOCALITY:       ["Locality", "The University's immediate catchment"]
+  };
+
+  var FAC_NAME = {
+    MS: "Management Sciences", AC: "Architecture", AR: "Arts",
+    BAMS: "Basic and Applied Medical Sciences", CM: "Communication and Media Studies",
+    ED: "Education", ES: "Environmental Sciences", LW: "Law",
+    PS: "Pharmaceutical Sciences", SC: "Science", SS: "Social Sciences",
+    TI: "Technology and Industrial Studies"
+  };
+
+  /* What the guidelines call each faculty, where it differs from what the
+     University's own programme table calls it. A quota is distributed
+     against one name and the programmes hang off the other. */
+  var FAC_GUIDE = {
+    MS: "Administration and Management", BAMS: "College of Health Sciences",
+    PS: "Pharmacy (quota table) / Pharmaceutical Sciences (subject combinations)",
+    TI: "Technology education"
+  };
+
+  /* ── the working copy ──────────────────────────────────────────────
+     ADM_SRC is the document. S.adm is what the office is making from it,
+     and the two are shown side by side so a changed number is visible as
+     a change rather than as a number. */
+  function admInit() {
+    if (S.adm) { return; }
+    var fq = {}, i;
+    Object.keys(FAC_NAME).forEach(function (f) {
+      fq[f] = { quota: null, cutoff: ADM_SRC.cut[f] || null };
+    });
+    S.adm = { tab: "session", session: ADM_SRC.session,
+              quota: ADM_SRC.quota, wUtme: ADM_SRC.wUtme, wPutme: ADM_SRC.wPutme,
+              crit: { NATIONAL_MERIT: ADM_SRC.crit.NATIONAL_MERIT,
+                      STATE_MERIT: ADM_SRC.crit.STATE_MERIT,
+                      ELG: ADM_SRC.crit.ELG, LOCALITY: ADM_SRC.crit.LOCALITY },
+              fq: fq, instrument: "", inForce: false, tried: false, pq: "" };
+  }
+
+  function admCritTotal() {
+    var t = 0; Object.keys(S.adm.crit).forEach(function (k) { t += S.adm.crit[k] || 0; });
+    return t;
+  }
+
+  function admQuotaTotal() {
+    var t = 0, any = false;
+    Object.keys(S.adm.fq).forEach(function (f) {
+      if (S.adm.fq[f].quota !== null && S.adm.fq[f].quota !== "") {
+        t += Number(S.adm.fq[f].quota) || 0; any = true;
+      }
+    });
+    return any ? t : 0;
+  }
+
+  /* every programme the University runs, and whether the guidelines say
+     anything at all about it — counted in both directions, as ever */
+  function admProgrammes() {
+    var out = [];
+    Object.keys(PROGT).forEach(function (c) {
+      var p = progOf(c), r = ADM_SRC.rules[c] || null;
+      out.push({ code: c, name: p ? p[0] : c, fac: p ? p[2] : "",
+                 rule: r, cut: ADM_SRC.pcut[c] || null });
+    });
+    out.sort(function (a, b) {
+      return a.fac === b.fac ? (a.name < b.name ? -1 : 1) : (a.fac < b.fac ? -1 : 1); });
+    return out;
+  }
+
+  function admWithRule()    { return admProgrammes().filter(function (p) { return p.rule; }); }
+  function admWithoutRule() { return admProgrammes().filter(function (p) { return !p.rule; }); }
+
+  /* the cut-off that would actually apply: the programme's own, else its
+     faculty's — resolved once, here, rather than in every screen that asks */
+  function admCutoffFor(p) {
+    if (p.cut) { return p.cut; }
+    var f = S.adm.fq[p.fac];
+    return f && f.cutoff ? f.cutoff : null;
+  }
+
+  /* ── what stands between these settings and a live session ──────── */
+  function admFindings() {
+    var out = [], t = admCritTotal(), q = admQuotaTotal(), i;
+
+    if (t !== 100) {
+      out.push(["The selection criteria do not total 100%",
+        "They total <b>" + t + "%</b>. The guidelines set National Merit 10, State Merit 35, " +
+        "Equality of Local Government 30 and Locality 25.", "Central Admissions Committee"]);
+    }
+    if (q !== S.adm.quota) {
+      out.push(["The faculty quotas do not total the NUC approved quota",
+        "Distributed <b>" + q.toLocaleString() + "</b> of <b>" + S.adm.quota.toLocaleString() +
+        "</b> — " + Math.abs(S.adm.quota - q).toLocaleString() + " place" +
+        (Math.abs(S.adm.quota - q) === 1 ? "" : "s") +
+        (q < S.adm.quota ? " unallocated." : " over the approved capacity.") +
+        " The 2025/2026 column in the guidelines is <b>blank</b>: paragraph 2.3 asks the Deans to " +
+        "distribute their faculty quota across their courses and submit it to the Academic Office, " +
+        "and until they do there are ten thousand places and nowhere to put them.",
+        "Deans of Faculties"]);
+    }
+    var noCut = Object.keys(S.adm.fq).filter(function (f) { return !S.adm.fq[f].cutoff; });
+    if (noCut.length) {
+      out.push([noCut.length + " facult" + (noCut.length === 1 ? "y has" : "ies have") +
+        " no UTME cut-off",
+        noCut.map(function (f) { return esc(FAC_NAME[f]); }).join(", ") +
+        " — a faculty with no cut-off admits on no rule at all.", "Central Admissions Committee"]);
+    }
+    var missing = admWithoutRule();
+    if (missing.length) {
+      out.push([missing.length + " of " + Object.keys(PROGT).length +
+        " programmes have no admission rule",
+        "The guidelines name a subject combination for " + admWithRule().length +
+        " programmes. The rest have no O&rsquo;Level requirement, no UTME subject combination and " +
+        "no Direct Entry rule, so <b>nobody may be admitted into them</b> until Senate states one. " +
+        "This is not the same as having no candidates: candidates will apply, and be told nothing.",
+        "Deans and Heads of Department"]);
+    }
+    var low = admProgrammes().filter(function (p) {
+      var f = S.adm.fq[p.fac];
+      return p.cut && f && f.cutoff && p.cut < f.cutoff; });
+    if (low.length) {
+      out.push([low.length + " programme cut-off" + (low.length === 1 ? " is" : "s are") +
+        " below the faculty's",
+        low.map(function (p) { return esc(p.name) + " at " + p.cut + " under " +
+          esc(FAC_NAME[p.fac]) + " at " + S.adm.fq[p.fac].cutoff; }).join("; ") + ".",
+        "Central Admissions Committee"]);
+    }
+    return out;
+  }
+
+  /* ── the questions the document itself raises ─────────────────────
+     Not defects in the portal, and not for the Directorate to settle.
+     Each is quoted, both readings are given, and the consequence of
+     guessing is named — because each of these changes who is admitted. */
+  var ADM_QUESTIONS = [
+    ["blocking", "English and Mathematics: compulsory everywhere, or not?",
+     "The closing note says <i>&ldquo;Credit passes in English and Mathematics are compulsory for " +
+     "all programmes of the University&rdquo;</i>. At least four programme rows say otherwise: " +
+     "B.A. Linguistics asks for five credits <i>including English Language</i> and does not mention " +
+     "Mathematics; B.Sc. Political Science and B.Sc. Sociology ask for <b>a pass</b> in Mathematics, " +
+     "which is not a credit; B.Ed. Guidance and Counselling likewise says <i>&ldquo;with an " +
+     "&lsquo;O&rsquo; Level pass in Mathematics&rdquo;</i>. Under the note those candidates are " +
+     "ineligible; under their own rows they qualify. Every Sociology and Political Science applicant " +
+     "in the state turns on this one sentence.", "Central Admissions Committee"],
+
+    ["blocking", "Equality of Local Government: 30% or not more than 50%?",
+     "Paragraph 2.4 sets ELG at <b>30%</b> of admissions. Paragraph 2.11 says recommendations on the " +
+     "basis of ELG <i>&ldquo;must not exceed 50%&rdquo;</i>. Thirty is a share to be filled; fifty is " +
+     "a ceiling not to be crossed. They are different instructions and they produce different lists.",
+     "Central Admissions Committee"],
+
+    ["blocking", "The Education exception: which ratio does 60:40 belong to?",
+     "Paragraph 1.0 reads <i>&ldquo;UTME/DE Ratio 80:20 (for all programmes except Education which " +
+     "is to maintain 60:40)&rdquo;</i>, and the next line sets the Science&ndash;Arts ratio at 60:40 " +
+     "for everybody. So the parenthesis reads either as <b>Education admits 40% by Direct Entry</b> " +
+     "— twice any other faculty — or as a restatement of the Science&ndash;Arts split that is already " +
+     "the rule. The Faculty's own 2024/2025 quota was 950 Science to 200 others, which is 83:17 and " +
+     "neither of them.", "Central Admissions Committee"],
+
+    ["answer", "Two names for four faculties",
+     "The quota table names <i>Administration and Management</i>, <i>College of Health Sciences</i>, " +
+     "<i>Pharmacy</i> and <i>Technology education</i>. The University&rsquo;s programme table names " +
+     "<i>Management Sciences</i>, <i>Basic and Applied Medical Sciences</i>, <i>Pharmaceutical " +
+     "Sciences</i> and <i>Technology and Industrial Studies</i> — and the guidelines themselves use " +
+     "<i>Faculty of Pharmaceutical Sciences</i> four pages later. A quota is distributed against one " +
+     "name while the programmes hang off the other, which is exactly how a faculty ends up counted " +
+     "twice or not at all.", "Academic Office"],
+
+    ["answer", "Biochemistry sits in two faculties",
+     "The subject combinations place <b>B.Sc. Biochemistry</b> under the Faculty of Science. The " +
+     "University&rsquo;s programme table places it under Basic and Applied Medical Sciences. Its " +
+     "candidates count against one faculty&rsquo;s quota and its cut-off comes from the other.",
+     "Academic Office"],
+
+    ["answer", "Mass Communication has no stated requirement",
+     "Six programmes of the Faculty of Communication and Media Studies are given subject " +
+     "combinations — Advertising, Broadcasting, Development Communication, Journalism, Public " +
+     "Relations and Strategic Communication. <b>Mass Communication</b>, the faculty&rsquo;s oldest " +
+     "programme, is not among them.", "Dean, Communication and Media Studies"]
+  ];
+
+  var ADM_TABS = [
+    ["session",  "Session and criteria",  "Quota, weighting and the four criteria"],
+    ["faculty",  "Faculty quotas",        "Distribution and cut-off marks"],
+    ["prog",     "Programme requirements", "O&rsquo;Level, UTME subjects, Direct Entry"],
+    ["force",    "Put in force",          "What stands in the way, and the minute that clears it"]
+  ];
+
+  /* ── the screen ───────────────────────────────────────────────── */
+  function tAdmissionSetup() {
+    admInit();
+    var tab = S.adm.tab, f = admFindings();
+
+    return note(S.adm.inForce ? 'ok' : 'info',
+      S.adm.inForce
+        ? 'The ' + esc(S.adm.session) + ' admission settings are in force'
+        : 'The ' + esc(S.adm.session) + ' admission settings are a DRAFT, and nothing may be admitted under them',
+      S.adm.inForce
+        ? 'Every cut-off, quota and subject combination the portal applies this session comes from ' +
+          'here, and carries the minute that approved it. A correction is a new version citing a new ' +
+          'minute; nothing is edited away.'
+        : 'These are the Central Admissions Committee&rsquo;s guidelines, made into settings the ' +
+          'portal can actually apply. Until they are put in force by the Committee&rsquo;s minute, ' +
+          '<b>no candidate can be ranked, cut off or admitted</b> — the portal refuses rather than ' +
+          'falling back on last year&rsquo;s numbers. Last year&rsquo;s quota applied to this ' +
+          'year&rsquo;s candidates is how a university over-admits by nine hundred and learns of it ' +
+          'at accreditation.') +
+
+    tiles([
+      ["NUC approved quota", S.adm.quota.toLocaleString(), null, "Carrying capacity, " + esc(S.adm.session)],
+      ["Distributed", admQuotaTotal().toLocaleString(),
+       admQuotaTotal() === S.adm.quota ? "var(--green-ink)" : "var(--red-ink)",
+       admQuotaTotal() === S.adm.quota ? "Balanced to the unit"
+         : (S.adm.quota - admQuotaTotal()).toLocaleString() + " unallocated"],
+      ["Programmes with a rule", admWithRule().length + " of " + Object.keys(PROGT).length,
+       admWithoutRule().length ? "var(--red-ink)" : "var(--green-ink)",
+       admWithoutRule().length ? admWithoutRule().length + " cannot be admitted into" : "All stated"],
+      ["Outstanding", String(f.length + ADM_QUESTIONS.filter(function (q) {
+         return q[0] === 'blocking'; }).length),
+       (f.length ? "var(--red-ink)" : "var(--chrome)"), "Findings and questions"]
+    ]) +
+
+    '<div class="card"><div class="card__body"><div class="rectabs">' +
+      ADM_TABS.map(function (t) {
+        return '<button class="rectab' + (tab === t[0] ? ' is-on' : '') +
+          '" data-as="tab:' + t[0] + '"><span class="t">' + t[1] +
+          '</span><span class="s">' + t[2] + '</span></button>';
+      }).join('') + '</div></div></div>' +
+
+    (tab === "session" ? admSession()
+     : tab === "faculty" ? admFaculty()
+     : tab === "prog" ? admProg()
+     : admForce(f));
+  }
+
+  /* ── 1 · the session ──────────────────────────────────────────── */
+  function admSession() {
+    var t = admCritTotal();
+    return panel('The aggregate score', 'Paragraph 2.6 &middot; NUC/JAMB approved weighting',
+      pbody(
+        '<div class="sub2" style="margin-bottom:10px">UTME is marked out of 400 and the ' +
+        'Post-UTME screening out of 100, so the UTME mark is <b>scaled to 100 before it is ' +
+        'weighted</b>. Adding 247 to 68.5 is not an aggregate, and a system that does it ranks ' +
+        'the whole University by UTME alone.</div>' +
+        dtable(["Component", "Weight|mid", "Worked example|num"], [
+          ["UTME", '<input class="tnum ws__in" style="width:74px" data-as="w:utme" value="' +
+             S.adm.wUtme + '"> %',
+           '<span class="sub2">247 of 400 &rarr; 61.8 &rarr; <b class="tnum">' +
+             (Math.round(247 / 400 * 100 * S.adm.wUtme) / 100) + '</b></span>'],
+          ["Post-UTME screening", '<input class="tnum ws__in" style="width:74px" data-as="w:putme" value="' +
+             S.adm.wPutme + '"> %',
+           '<span class="sub2">68.5 of 100 &rarr; <b class="tnum">' +
+             (Math.round(68.5 * S.adm.wPutme) / 100) + '</b></span>'],
+          ['<strong>Aggregate</strong>',
+           '<b class="tnum" style="color:' + (S.adm.wUtme + S.adm.wPutme === 100
+             ? 'var(--green-ink)' : 'var(--red-ink)') + '">' + (S.adm.wUtme + S.adm.wPutme) + ' %</b>',
+           '<strong class="tnum" style="font-size:15px">' + apAggregate(247, 68.5) + '</strong>']
+        ], 700)) +
+      (S.adm.wUtme + S.adm.wPutme !== 100
+        ? note('bad', 'The weighting does not total 100%',
+            'Two weights that do not total a hundred produce an aggregate on a scale nobody can ' +
+            'state, and every candidate is ranked on it.')
+        : '')) +
+
+    panel('The four selection criteria', 'Paragraph 2.4 &middot; total must be 100%',
+      dtable(["Criterion", "What it means", "Share|mid"],
+        Object.keys(CRIT_LABEL).map(function (k) {
+          return ['<strong>' + CRIT_LABEL[k][0] + '</strong>',
+                  '<span class="sub2">' + CRIT_LABEL[k][1] + '</span>',
+                  '<input class="tnum ws__in" style="width:74px" data-as="c:' + k + '" value="' +
+                    S.adm.crit[k] + '"> %'];
+        }).concat([['<strong>Total</strong>', '',
+          '<b class="tnum" style="font-size:15px;color:' +
+          (t === 100 ? 'var(--green-ink)' : 'var(--red-ink)') + '">' + t + ' %</b>']]), 760)) +
+
+    panel('The ratios and the caps', 'Paragraphs 1.0, 2.5 and 2.11',
+      dtable(["Rule", "As issued|mid", "Where it comes from"], [
+        ["UTME to Direct Entry", '<span class="tnum">' + ADM_SRC.ratios.utme + ':' +
+          ADM_SRC.ratios.de + '</span>', '<span class="sub2">1.0(v) &mdash; with an exception for ' +
+          'Education that reads two ways. See the questions.</span>'],
+        ["Science to Arts", '<span class="tnum">' + ADM_SRC.ratios.science + ':' +
+          ADM_SRC.ratios.arts + '</span>', '<span class="sub2">1.0(vi)</span>'],
+        ["Departmental recommendations", '<span class="tnum">80%</span>',
+         '<span class="sub2">2.5 &mdash; departments make 80% of the UTME merit recommendations</span>'],
+        ["Equality of Local Government ceiling", '<span class="tnum">50%</span>',
+         '<span class="sub2">2.11 &mdash; and 30% as a share at 2.4. See the questions.</span>'],
+        ["Index programmes, Preliminary placement", '<span class="tnum">6</span>',
+         '<span class="sub2">2.5 &mdash; under State Merit, two from each Senatorial Zone</span>'],
+        ["Most Preferred First only", pil('ok', 'Required'),
+         '<span class="sub2">2.8 &mdash; every recommended name must be on the MPF list</span>'],
+        ["University screening passed", pil('ok', 'Required'),
+         '<span class="sub2">2.7 &mdash; only candidates who passed the University&rsquo;s own ' +
+         'standard screening may be recommended</span>']
+      ], 900));
+  }
+
+  /* ── 2 · the faculties ────────────────────────────────────────── */
+  function admFaculty() {
+    var codes = Object.keys(FAC_NAME).sort(function (a, b) {
+      return FAC_NAME[a] < FAC_NAME[b] ? -1 : 1; });
+    var tot = admQuotaTotal(), t24 = 0;
+    codes.forEach(function (c) { t24 += ADM_SRC.q24[c] || 0; });
+
+    return note('info', 'The 2025/2026 column in the guidelines is blank',
+      'The document prints the 2024/2025 distribution beside an empty 2025/2026 column and a total ' +
+      'of <b>' + ADM_SRC.quota.toLocaleString() + '</b>. The 2024/2025 column totals <b>' +
+      t24.toLocaleString() + '</b>, which is the figure the document itself states, to the unit. ' +
+      'Paragraph 2.3 asks each Dean to distribute the faculty quota across the courses in the ' +
+      'faculty and submit it to the Academic Office; this is where it is submitted.') +
+
+    panel('Faculty quotas and cut-off marks', 'Paragraphs 2.3 and 2.13',
+      dtable(["Faculty", "As the guidelines name it", "2024/2025|num", "2025/2026|num",
+              "UTME cut-off|num"],
+        codes.map(function (c) {
+          return ['<strong>' + esc(FAC_NAME[c]) + '</strong>' +
+                    '<div class="sub2 tnum">' + c + '</div>',
+                  FAC_GUIDE[c] ? '<span class="sub2" style="color:var(--red-ink)">' +
+                    esc(FAC_GUIDE[c]) + '</span>' : '<span class="sub2">the same</span>',
+                  '<span class="tnum sub2">' + (ADM_SRC.q24[c] || 0).toLocaleString() + '</span>',
+                  '<input class="tnum ws__in" style="width:88px" data-as="q:' + c +
+                    '" value="' + (S.adm.fq[c].quota === null ? '' : S.adm.fq[c].quota) +
+                    '" placeholder="—">',
+                  '<input class="tnum ws__in" style="width:74px" data-as="k:' + c +
+                    '" value="' + (S.adm.fq[c].cutoff || '') + '">'];
+        }).concat([['<strong>Total</strong>', '',
+          '<b class="tnum">' + t24.toLocaleString() + '</b>',
+          '<b class="tnum" style="font-size:15px;color:' +
+            (tot === S.adm.quota ? 'var(--green-ink)' : 'var(--red-ink)') + '">' +
+            tot.toLocaleString() + '</b>' +
+            '<div class="sub2">of ' + S.adm.quota.toLocaleString() + '</div>', '']]), 1000)) +
+
+    panel('Programme cut-offs above their faculty&rsquo;s', 'Paragraph 2.13',
+      dtable(["Programme", "Faculty", "Faculty cut-off|num", "Programme cut-off|num"],
+        Object.keys(ADM_SRC.pcut).map(function (c) {
+          var p = progOf(c);
+          return ['<strong>' + esc(p ? p[0] : c) + '</strong>',
+                  '<span class="sub2">' + esc(FAC_NAME[p ? p[2] : ""] || "") + '</span>',
+                  '<span class="tnum sub2">' + (S.adm.fq[p ? p[2] : ""] || {}).cutoff + '</span>',
+                  '<b class="tnum">' + ADM_SRC.pcut[c] + '</b>'];
+        }), 800));
+  }
+
+  /* ── 3 · the programmes ───────────────────────────────────────── */
+  function admProg() {
+    var all = admProgrammes(), q = (S.adm.pq || "").toLowerCase();
+    var rows = q ? all.filter(function (p) {
+      return (p.name + " " + p.code + " " + FAC_NAME[p.fac]).toLowerCase().indexOf(q) > -1; }) : all;
+    var miss = admWithoutRule();
+
+    return (miss.length
+      ? note('bad', miss.length + ' of ' + all.length + ' programmes have no rule for this session',
+          'Nobody may be admitted into them. That is the correct behaviour and not a gap to be ' +
+          'papered over: a candidate admitted into a programme whose requirements nobody stated is ' +
+          'a candidate nobody can defend at accreditation. The Deans and Heads of Department below ' +
+          'have to state one.')
+      : '') +
+
+    panel('Every programme the University runs', admWithRule().length + ' of ' + all.length +
+      ' carry a requirement',
+      dtable(["Programme", "Faculty|mid", "Cut-off|num", "O&rsquo;Level requirement",
+              "UTME subjects", "Direct Entry"],
+        rows.map(function (p) {
+          var cut = admCutoffFor(p);
+          return ['<strong>' + esc(p.name) + '</strong><div class="sub2 tnum">' + p.code + '</div>',
+                  '<span class="sub2">' + esc(FAC_NAME[p.fac] || p.fac) + '</span>',
+                  cut ? '<b class="tnum">' + cut + '</b>' +
+                        (p.cut ? '<div class="sub2">its own</div>'
+                               : '<div class="sub2">faculty</div>')
+                      : pil('bad', 'none'),
+                  p.rule ? '<span class="sub2">' + esc(p.rule[0]) + '</span>'
+                         : pil('bad', 'not stated'),
+                  p.rule ? '<span class="sub2">' + esc(p.rule[1]) + '</span>' : '',
+                  p.rule ? '<span class="sub2">' + esc(p.rule[2]) + '</span>' : ''];
+        }), 1500));
+  }
+
+  /* The refusal is worked out at render, never stored. A refusal kept in
+     a variable outlives the thing it was refusing, and the screen then
+     scolds somebody for a number they have already corrected. */
+  function admRefusal(f) {
+    if (!S.adm.tried || S.adm.inForce) { return ""; }
+    if (!S.adm.instrument || !S.adm.instrument.trim()) {
+      return 'Settings with no instrument behind them are somebody\u2019s opinion about a cut-off. ' +
+             'Cite the Central Admissions Committee minute that approved them.';
+    }
+    if (f.length) {
+      return f.length + ' finding' + (f.length === 1 ? '' : 's') + ' still stand' +
+             (f.length === 1 ? 's' : '') + ', the first being <b>' + f[0][0] + '</b>. A session ' +
+             'opened over an unanswered finding is a session in which somebody is admitted against ' +
+             'a rule that was never set.';
+    }
+    return "";
+  }
+
+  /* ── 4 · putting it in force ──────────────────────────────────── */
+  function admForce(f) {
+    var blocking = ADM_QUESTIONS.filter(function (q) { return q[0] === 'blocking'; });
+
+    return (f.length
+      ? note('bad', f.length + ' finding' + (f.length === 1 ? ' stands' : 's stand') +
+          ' between these settings and a live session',
+          'Each names what is missing, by how much, and whose it is to answer. The session cannot ' +
+          'be put in force while any of them stands &mdash; not as a warning that can be clicked ' +
+          'past.')
+      : note('ok', 'Nothing outstanding',
+          'The settings check out. They still need the Committee&rsquo;s minute to take effect.')) +
+
+    (f.length
+      ? panel('Findings', 'All must clear before the session opens',
+          dtable(["Finding", "What it means", "Whose|mid"],
+            f.map(function (x) {
+              return ['<strong>' + x[0] + '</strong>', '<span class="sub2">' + x[1] + '</span>',
+                      '<span class="sub2">' + esc(x[2]) + '</span>'];
+            }), 1100))
+      : '') +
+
+    panel('Questions the guidelines raise', ADM_QUESTIONS.length + ' &middot; ' +
+      blocking.length + ' of them decide who is admitted',
+      dtable(["", "Question", "Whose|mid"],
+        ADM_QUESTIONS.map(function (q) {
+          return [q[0] === 'blocking' ? pil('bad', 'Blocking') : pil('grey', 'Answer'),
+                  '<strong>' + q[1] + '</strong><div class="sub2">' + q[2] + '</div>',
+                  '<span class="sub2">' + esc(q[3]) + '</span>'];
+        }), 1100)) +
+
+    '<div class="card"><div class="card__body">' +
+      '<div class="eyebrow">Put the ' + esc(S.adm.session) + ' settings in force</div>' +
+      '<div class="field"><label for="as-instr">Central Admissions Committee minute</label>' +
+        '<input id="as-instr" data-as="instr" value="' + esc(S.adm.instrument) +
+        '" placeholder="CAC/2025/07" autocomplete="off">' +
+        '<div class="hint">Settings without an instrument are somebody&rsquo;s opinion about a ' +
+        'cut-off. Every candidate admitted this session is admitted under this minute, and it is ' +
+        'what the University produces when one of them is queried in four years&rsquo; time.</div>' +
+      '</div>' +
+      (admRefusal(f) ? note('bad', 'Refused', admRefusal(f)) : '') +
+      (S.adm.inForce
+        ? note('ok', 'In force', 'Cited to <b>' + esc(S.adm.instrument) + '</b>. A change from here ' +
+            'is a new version citing a new minute; this one stays readable for as long as anybody ' +
+            'admitted under it is alive.')
+        : btn('primary', 'Put in force', ' data-as="force"')) +
+    '</div></div>';
+  }

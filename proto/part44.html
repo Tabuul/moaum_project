@@ -1,0 +1,188 @@
+
+  /* ══ HUMAN RESOURCE MANAGEMENT ══════════════════════════════════════
+     Paper P7. Seventeen HR processes — appointment, confirmation,
+     promotion, upgrade, conversion, transfer, secondment, redeployment,
+     acting, discipline, leave of absence, sabbatical, study leave,
+     suspension, resignation, retirement, dismissal.
+
+     They are not seventeen workflows. They are ONE workflow with
+     seventeen configurations, and they share a shape: a request, a
+     recommending authority, an approving authority, an instrument, and
+     an effective date. Building them separately would produce seventeen
+     screens that drift apart; building the shape once produces one
+     screen that cannot.
+
+     The instrument is the point at which this office touches every other.
+     `iam.office_assignments.instrument` is mandatory — every office in
+     the University is held by virtue of a letter or a Council minute —
+     and THIS is where that letter comes from. An implemented movement
+     without one is refused by the database, so an office nobody
+     authorised cannot come into existence.
+     ═════════════════════════════════════════════════════════════════ */
+
+  var HR_TYPES = [
+    ["APPOINTMENT",      "Appointment",            "Council",           "Creates the record and the first office"],
+    ["CONFIRMATION",     "Confirmation",           "Council",           "Ends probation; nothing else changes"],
+    ["PROMOTION",        "Promotion",              "Council",           "Grade and step, and the payroll from the effective date"],
+    ["UPGRADE",          "Upgrade",                "Council",           "A qualification earned in service"],
+    ["CONVERSION",       "Conversion",             "Council",           "Cadre changes; the person does not"],
+    ["TRANSFER",         "Transfer",               "Registrar",         "Unit changes; grade and step do not"],
+    ["SECONDMENT",       "Secondment",             "Council",           "Held elsewhere, paid here, office suspended"],
+    ["REDEPLOYMENT",     "Redeployment",           "Registrar",         "Within the University, at the same grade"],
+    ["ACTING",           "Acting appointment",     "Vice-Chancellor",   "Dated at both ends, always"],
+    ["DISCIPLINE",       "Disciplinary action",    "Council",           "On the record; may suspend an office"],
+    ["LEAVE_OF_ABSENCE", "Leave of absence",       "Registrar",         "Offices suspend for the duration"],
+    ["SABBATICAL",       "Sabbatical",             "Senate",            "Academic staff; teaching allocation released"],
+    ["STUDY_LEAVE",      "Study leave",            "Council",           "With or without pay, and it must say which"],
+    ["SUSPENSION",       "Suspension",             "Vice-Chancellor",   "Every office ends the same day"],
+    ["RESIGNATION",      "Resignation",            "Registrar",         "Notice period runs from acceptance"],
+    ["RETIREMENT",       "Retirement",             "Council",           "Age or service; the date is not negotiable"],
+    ["DISMISSAL",        "Dismissal",              "Council",           "Every office ends; the record remains"]
+  ];
+
+  /* the queue, as one working day finds it */
+  var HR_QUEUE = [
+    ["MOV/2026/0412", "PROMOTION",       "IORPUU, Terwase David",     "Academic",       "Lecturer I → Lecturer I (SL 3)", "1 Oct 2026", "RECOMMENDED", "Council of 14 October"],
+    ["MOV/2026/0413", "CONFIRMATION",    "AGBO, Ochanya Faith",       "Administrative", "Ends probation",                      "1 Sep 2026", "APPROVED",    "Letter not yet issued"],
+    ["MOV/2026/0414", "ACTING",          "OGWUCHE, Innocent O.",      "Academic",       "Acting Head of Department",           "1 Sep 2026", "IMPLEMENTED", "CNL/2026/91 · ends 31 Aug 2027"],
+    ["MOV/2026/0415", "TRANSFER",        "GBAKA, Sesugh Terkimbi",    "Administrative", "Bursary → Faculty of Science",   "15 Sep 2026","REQUESTED",   "Awaiting the Registrar"],
+    ["MOV/2026/0416", "STUDY_LEAVE",     "ANYEBE, Ruth Onyilo",       "Academic",       "Two years, with pay",                "1 Jan 2027", "REQUESTED",   "Bond not yet executed"],
+    ["MOV/2026/0417", "RETIREMENT",      "ATU, Bernard Ortwer",       "Academic",       "Attains 70 years",                    "3 Mar 2027", "RECOMMENDED", "Council of 14 October"],
+    ["MOV/2026/0418", "SUSPENSION",      "— withheld —",     "Administrative", "Pending investigation",              "8 Sep 2026", "APPROVED",    "Offices end the same day"],
+    ["MOV/2026/0419", "SECONDMENT",      "TSEMBE, Aondowase",         "Academic",       "NUC, twelve months",                 "1 Nov 2026", "REQUESTED",   "Awaiting Council"]
+  ];
+
+  var HR_STATE = {
+    REQUESTED:   ["info", "Requested"],
+    RECOMMENDED: ["info", "Recommended"],
+    APPROVED:    ["ok",   "Approved"],
+    IMPLEMENTED: ["ok",   "Implemented"],
+    DECLINED:    ["bad",  "Declined"],
+    WITHDRAWN:   ["bad",  "Withdrawn"]
+  };
+
+  function hrTypeName(code) {
+    for (var i = 0; i < HR_TYPES.length; i++) { if (HR_TYPES[i][0] === code) { return HR_TYPES[i][1]; } }
+    return code;
+  }
+  function hrCount(state) {
+    return HR_QUEUE.filter(function (r) { return r[6] === state; }).length;
+  }
+
+  /* ── the dashboard ───────────────────────────────────────────────── */
+  function tHrm() {
+    var awaitingLetter = HR_QUEUE.filter(function (r) { return r[6] === "APPROVED"; });
+
+    return note(awaitingLetter.length ? 'bad' : 'ok',
+      awaitingLetter.length
+        ? awaitingLetter.length + ' approved movement' + (awaitingLetter.length === 1 ? '' : 's') +
+          ' ' + (awaitingLetter.length === 1 ? 'has' : 'have') + ' no instrument yet'
+        : 'Every approved movement has been implemented',
+      awaitingLetter.length
+        ? 'An approved movement is not an implemented one. Until the letter is issued and its reference recorded, the ' +
+          'grade, the unit and the office it creates do not exist &mdash; and the portal will refuse to record an office ' +
+          'that cites no instrument. <b>Issuing the letter is what makes the decision real.</b>'
+        : 'Every movement approved by Council or the Registrar has a letter, and every letter has a reference the office ' +
+          'register can cite.',
+      awaitingLetter.length ? btn('urgent', 'Issue the first letter', ' data-hr="open:' + awaitingLetter[0][0] + '"') : '') +
+
+    tiles([
+      ["Awaiting decision", String(hrCount("REQUESTED") + hrCount("RECOMMENDED")), null, "Requested or recommended"],
+      ["Approved, not implemented", String(hrCount("APPROVED")),
+        hrCount("APPROVED") ? "var(--red-ink)" : null, "No instrument issued"],
+      ["Implemented this session", String(hrCount("IMPLEMENTED")), "var(--green-ink)", "Letter issued and cited"],
+      ["Movement types configured", String(HR_TYPES.length), null, "One workflow, not seventeen"]
+    ]) +
+
+    note('info', 'Seventeen processes, one workflow',
+      'Appointment, confirmation, promotion, upgrade, conversion, transfer, secondment, redeployment, acting, discipline, ' +
+      'leave of absence, sabbatical, study leave, suspension, resignation, retirement and dismissal all share the same ' +
+      'shape: a request, a recommending authority, an approving authority, an instrument and an effective date. They differ ' +
+      'in <b>who approves</b> and <b>what changes</b>, and both of those are configuration. Seventeen separate screens ' +
+      'would drift apart within a year; one screen with seventeen configurations cannot.') +
+
+    panel('Movements in progress', '2026/2027 &middot; ' + HR_QUEUE.length + ' open', dtable(
+      ['Reference|mid', 'Type', 'Member of staff', 'What changes', 'Effective|mid', 'State', 'Action|num'],
+      HR_QUEUE.map(function (r) {
+        var st = HR_STATE[r[6]] || ["info", r[6]];
+        return ['<span class="tnum sub2">' + r[0] + '</span>',
+          '<strong>' + hrTypeName(r[1]) + '</strong><div class="sub2">' + r[3] + '</div>',
+          r[2],
+          '<span class="sub2">' + r[4] + '</span>',
+          '<span class="tnum sub2">' + r[5] + '</span>',
+          pil(st[0], st[1]) + '<div class="sub2">' + r[7] + '</div>',
+          btn(r[6] === 'APPROVED' ? 'urgent' : 'ghost',
+              r[6] === 'APPROVED' ? 'Issue letter' : 'Open',
+              ' data-hr="open:' + r[0] + '"')];
+      }), 1180)) +
+
+    panel('The seventeen, and who approves each', 'Configuration, not code', dtable(
+      ['Movement', 'Approving authority', 'What it does'],
+      HR_TYPES.map(function (t) {
+        return ['<strong>' + t[1] + '</strong>', '<span class="sub2">' + t[2] + '</span>',
+                '<span class="sub2">' + t[3] + '</span>'];
+      }), 760)) +
+
+    note('info', 'Why the instrument is mandatory',
+      'Every office in this University is held by virtue of a letter or a Council minute, and the portal records that ' +
+      'reference on the grant (<code>office_assignments.instrument</code>). It is a NOT NULL column, so an office cannot ' +
+      'be created without one &mdash; and this is the office that issues them. The rule closes a loop: an acting ' +
+      'appointment nobody authorised cannot be typed into existence, because there would be nothing to cite.');
+  }
+
+  /* ── one movement, opened ────────────────────────────────────────── */
+  function tHrMovement() {
+    var ref = S.hr.open || HR_QUEUE[1][0];
+    var row = HR_QUEUE.filter(function (r) { return r[0] === ref; })[0] || HR_QUEUE[1];
+    var t = HR_TYPES.filter(function (x) { return x[0] === row[1]; })[0] || HR_TYPES[0];
+    var st = HR_STATE[row[6]] || ["info", row[6]];
+    var issued = S.hr.issued[ref];
+    var done = row[6] === "IMPLEMENTED" || issued;
+
+    return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+        pil(done ? 'ok' : st[0], done ? 'Implemented' : st[1]) +
+        '<span class="sub2 tnum">' + ref + '</span>' +
+        '<span style="flex-grow:1"></span>' +
+        btn('ghost', '&larr; All movements', ' data-go="t/hrm"') +
+      '</div>' +
+
+    panel(hrTypeName(row[1]) + ' &mdash; ' + row[2], row[3] + ' staff', pbody(
+      kvGrid([
+        ["Movement type", t[1]],
+        ["Approving authority", t[2]],
+        ["What changes", row[4]],
+        ["Effective from", '<span class="tnum">' + row[5] + '</span>'],
+        ["Requested by", "Head of Department"],
+        ["Recommended by", row[6] === 'REQUESTED' ? '<span class="sub2">not yet</span>' : "Appointments and Promotions Committee"],
+        ["Approved by", ['APPROVED','IMPLEMENTED'].indexOf(row[6]) >= 0 ? t[2] : '<span class="sub2">not yet</span>'],
+        ["Instrument", issued
+          ? '<span class="tnum">' + issued + '</span>'
+          : (row[6] === 'IMPLEMENTED' ? '<span class="tnum">' + row[7].split(' · ')[0] + '</span>'
+                                      : '<span style="color:var(--red-ink);font-weight:600">not issued</span>')]
+      ], 'grid--2'))) +
+
+    (done
+      ? note('ok', 'Implemented, and cited',
+          'The letter is issued and its reference is on the record. Any office this movement creates or ends can now cite ' +
+          'it, the payroll picks up the change from the effective date, and Internal Audit sees the movement beside the ' +
+          'payroll variance it explains.',
+          btn('ghost', 'Open the letter', ' data-doc="movement"') + ' ' +
+          btn('ghost', 'Back to the queue', ' data-go="t/hrm"'))
+      : note('bad', 'Approved, but not yet real',
+          'Until the instrument is issued this movement changes nothing: not the grade, not the unit, not the payroll, and ' +
+          'not the office. The portal will refuse to record an office assignment that cites no instrument, which is what ' +
+          'stops an unauthorised appointment from being typed into existence.',
+          btn('go', 'Issue the instrument', ' data-hr="issue:' + ref + '"') + ' ' +
+          btn('ghost', 'Return to the requesting office', ' data-hr="return:' + ref + '"'))) +
+
+    panel('What issuing the letter does', '', pbody(idSteps([
+      [done ? 'done' : 'now', 'The letter is generated and given a reference',
+        'On University letterhead, with a verification code. The reference is what every office assignment created by this movement will cite.'],
+      [done ? 'done' : 'todo', 'The staff record changes from the effective date',
+        'Grade, step, cadre or unit — whichever this movement type changes, and nothing else.'],
+      [done ? 'done' : 'todo', 'Any office it creates or ends is written with the instrument on it',
+        'An acting appointment is dated at both ends. A suspension ends every office the person holds, on the same day.'],
+      [done ? 'done' : 'todo', 'The payroll and Internal Audit see it',
+        'The payroll applies the change from the effective date; Audit sees the movement beside the variance it explains, which is how a variance stops being a question.']
+    ])));
+  }

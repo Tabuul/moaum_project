@@ -1,0 +1,76 @@
+
+  /* ══ THE COLLEGE OF HEALTH SCIENCES SYSTEM ════════════════════════
+     A link out, and the reason there is a link rather than a menu.
+
+     The College has its own academic system by decision of 6 September
+     2026 (CHS-MOAUMPP-001). Presenting it as another section of this
+     portal would be a lie about the architecture, and a costly one:
+     the failure this boundary risks is somebody entering a mark, a fee
+     or an identifier in the wrong system. So this screen says plainly
+     what lives where, and then leaves.                              */
+
+  function tCollege() {
+    var own = [
+      ["Person, identity, credentials", "One person, one identity, however many systems"],
+      ["Admission, and the admission number", "Admissions is JAMB-facing and University-wide"],
+      ["<b>The matriculation number</b>", "Permanent, never reused. Two minting systems make two students out of one person"],
+      ["Fees, invoices, the ledger, clearance", "Money is audited centrally and the Bursary is one office"],
+      ["The identity card", "One photograph, one record, one card"],
+      ["<b>Senate approval of a result</b>", "The Registrar signs one transcript from one record"],
+      ["The transcript and the certificate", "A degree is the University&rsquo;s award, not the College&rsquo;s"]
+    ];
+    var theirs = [
+      ["Academic periods, and their states", "The Third Semester, the 24- and 30-week posting levels"],
+      ["Course offerings within the College", "And registration against them"],
+      ["Continuous and clinical assessment", "Five components on a posting, not two"],
+      ["Clinical postings", "Schedules, groups, supervisors, attendance, completion"],
+      ["Promotion evaluation", "The rules recommend; the College Board decides"],
+      ["Professional examinations", "Gated on completed postings"]
+    ];
+
+    return note('info', 'The College of Health Sciences runs a separate system, and this is the seam',
+      'The MBBS programme does not fit a two-semester calendar, and not marginally: 300 Level runs a twenty-week Third Semester, 400 and 500 run twenty-four-week clinical postings, 600 runs thirty weeks, different levels of one programme run to different lengths inside one session, and a level can split into an A and a B cohort mid-session. A <code>semester</code> column cannot hold any of that. The College therefore has <b>CHS-AMS</b>, integrated with this portal for identity, fees and transcripts.',
+      '<a class="btn btn--primary btn--sm" href="' + CHS_URL + '" target="_blank" rel="noopener">Open CHS-AMS &rarr;</a>') +
+
+    tiles([
+      ["Held by this portal", "7 concerns", null, "Everything that outlives the College"],
+      ["Held by CHS-AMS", "6 concerns", "var(--chrome)", "The academic machinery peculiar to it"],
+      ["Integration points", "5", null, "Two synchronous, one event, two batch"],
+      ["Students in the College", "971", null, "Across six levels and three faculties"]
+    ]) +
+
+    '<div class="grid grid--2">' +
+      panel('This portal is the system of record for', 'Anything that outlives the College',
+        dtable(["Concern", "Why it sits here|num"],
+          own.map(function (r) { return [r[0], '<span class="sub2">' + r[1] + '</span>']; }), 620)) +
+
+      panel('CHS-AMS holds', 'The academic machinery peculiar to the College',
+        dtable(["Concern", "Why it sits there|num"],
+          theirs.map(function (r) { return [r[0], '<span class="sub2">' + r[1] + '</span>']; }), 620)) +
+    '</div>' +
+
+    panel('Where the two systems touch', 'Each with what happens when it fails',
+      dtable(["Ref|mid", "What it is", "Direction|mid", "On failure|num"], [
+        ["I-1", "<strong>Identity, at sign-in</strong><div class='sub2'>OIDC. The token carries the identifier, the matriculation number and the offices held.</div>", "CHS &rarr; here",
+         "New sign-ins stop. <b>No fallback to a local password store</b> — a fallback is a permanent second door"],
+        ["I-2", "<strong>Clearance, before registration</strong><div class='sub2'>Asked synchronously and never cached.</div>", "CHS &rarr; here",
+         "Registration is refused, never allowed provisionally. A provisional registration is an unpaid student holding a place"],
+        ["I-3", "<strong>Matriculation</strong><div class='sub2'><code>StudentMatriculated</code>. The College creates its record on receipt and never before.</div>", "here &rarr; CHS",
+         "Redelivered from the outbox; handlers are idempotent"],
+        ["I-4", "<strong>Results crossing to Senate</strong><div class='sub2'>A reconciliation, not a file drop.</div>", "CHS &rarr; here",
+         "The set does not reach Exams &amp; Records until every registered candidate is accounted for"],
+        ["I-5", "<strong>Enrolment reconciliation</strong><div class='sub2'>Nightly, both directions.</div>", "Both ways",
+         "Discrepancies go to the College Secretary <b>and</b> the Registrar — a divergence is a records question before it is a technical one"]
+      ].map(function (r) {
+        return ['<b class="tnum">' + r[0] + '</b>', r[1], '<span class="sub2">' + r[2] + '</span>',
+          '<span class="sub2">' + r[3] + '</span>'];
+      }), 1120)) +
+
+    note('bad', 'Why the results crossing is a reconciliation and not a file drop',
+      'This portal established that a score roll must be the whole register and not a filtered subset, because a filtered sheet <i>looks complete</i> at every desk it passes and the student finds out at graduation. <b>A set arriving from another system is a filtered subset by construction</b> &mdash; it contains exactly what the College chose to send. So the crossing counts both directions: entries matched, entries on the register with no mark, and entries submitted for somebody not on the register. The set waits until the last two are zero or explained. Without that, this boundary would reintroduce precisely the failure the University spent this month eliminating.') +
+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
+      '<a class="btn btn--primary" href="' + CHS_URL + '" target="_blank" rel="noopener">Open CHS-AMS &rarr;</a>' +
+      '<span class="sub2">Opens in a new tab. It is a separate system and it looks like one.</span>' +
+    '</div>';
+  }

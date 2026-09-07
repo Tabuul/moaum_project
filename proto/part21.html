@@ -1,0 +1,577 @@
+
+  /* ══ SCOPE ════════════════════════════════════════════════════════
+     Every list in the estate is a list of something within a faculty,
+     a department, a programme, a course and a level. One scope bar
+     does it everywhere, it carries between screens, and it is bounded
+     by the office you are signed in as: a Head of Department cannot
+     widen it past her department, however she arrives at the screen.
+                                                                    */
+
+  /* The University as it is: 14 faculties, 64 departments, and the
+     programmes under them. This is the top of the relationship chain
+     every list in the estate walks —
+
+       FACULTY → DEPARTMENT → PROGRAMME → STUDENT
+               → COURSE REGISTRATION → COURSE → RESULT
+
+     — and the scope bar is that chain, made selectable. */
+  /* ══════════════════════════════════════════════════════════════
+     THE ACADEMIC STRUCTURE — from the register at claude/11.
+
+     Fourteen faculties and sixty-four departments, taken from the
+     University's own published pages and reconciled in project document 11.
+     Department codes are those proposed to Senate at Appendix A of the
+     memorandum ICT/MOAUMPP/2026/01 — a code, once issued, is never reused.
+
+     Superseded on 6 September 2026. The previous structure was invented for
+     the prototype and was wrong in both directions: it carried a Faculty of
+     Engineering and a Faculty of Agriculture, which this University does not
+     have, and it omitted Communication and Media Studies, Technology and
+     Industrial Studies, Architecture and Basic Clinical Sciences, which it
+     does.
+
+     PROGRAMME NAMES ARE PLACEHOLDERS. The register records departments and
+     heads, not degrees. Only the named awards below — the clinical degrees
+     and the four the course catalogue is keyed on — are real. The rest are
+     derived from the department name and await SRS Q14, the CCMAS-aligned
+     curricula from the Deans and Academic Planning.
+     ══════════════════════════════════════════════════════════════ */
+  var FAC_DATA = [
+    ["arts", "Arts", [
+      ["eng", "English", ["B.A. English"]],
+      ["his", "History", ["B.A. History"]],
+      ["lin", "Linguistics and Languages", ["B.A. Linguistics and Languages"]],
+      ["rel", "Religion and Cultural Studies", ["B.A. Religion and Cultural Studies"]],
+      ["phi", "Philosophy", ["B.A. Philosophy"]],
+      ["tha", "Theatre Arts", ["B.A. Theatre Arts"]]]],
+    ["edu", "Education", [
+      ["mse", "Mathematics and Science Education", ["B.Sc.(Ed.) Mathematics", "B.Sc.(Ed.) Biology"]],
+      ["ase", "Arts and Social Sciences Education", ["B.A.(Ed.) English", "B.A.(Ed.) History"]],
+      ["edf", "Educational Foundations", ["B.Ed. Educational Foundations"]],
+      ["cur", "Curriculum and Teaching", ["B.Ed. Curriculum and Teaching"]],
+      ["lis", "Library and Information Science", ["B.Ed. Library and Information Science"]],
+      ["hke", "Human Kinetics and Health Education", ["B.Ed. Human Kinetics and Health Education"]],
+      ["vte", "Vocational and Technical Education", ["B.Ed. Vocational and Technical Education"]],
+      ["bed", "Business Education", ["B.Ed. Business Education"]]]],
+    ["sci", "Science", [
+      ["chm", "Chemistry", ["B.Sc. Chemistry", "B.Sc. Industrial Chemistry"]],
+      ["bio", "Biological Sciences", ["B.Sc. Biological Sciences", "B.Sc. Microbiology"]],
+      ["phy", "Physics", ["B.Sc. Physics"]],
+      ["mcs", "Mathematics and Computer Science", ["B.Sc. Computer Science", "B.Sc. Mathematics", "B.Sc. Statistics"]]]],
+    ["soc", "Social Sciences", [
+      ["eco", "Economics", ["B.Sc. Economics"]],
+      ["soc", "Sociology", ["B.Sc. Sociology"]],
+      ["psy", "Psychology", ["B.Sc. Psychology"]],
+      ["pol", "Political Science", ["B.Sc. Political Science"]],
+      ["pad", "Public Administration", ["B.Sc. Public Administration"]],
+      ["mac", "Mass Communication", ["B.Sc. Mass Communication"]]]],
+    ["law", "Law", [
+      ["pul", "Public Law", ["LL.B. Public Law"]],
+      ["pvl", "Private Law", ["LL.B. Private Law"]],
+      ["cml", "Commercial Law", ["LL.B. Commercial Law"]],
+      ["ilj", "International Law and Jurisprudence", ["LL.B. International Law and Jurisprudence"]]]],
+    ["mgt", "Management Sciences", [
+      ["acc", "Accounting", ["B.Sc. Accounting"]],
+      ["bam", "Business Management", ["B.Sc. Business Management"]]]],
+    ["env", "Environmental Sciences", [
+      ["geo", "Geography", ["B.Sc. Geography"]],
+      ["urp", "Urban and Regional Planning", ["B.Sc. Urban and Regional Planning"]]]],
+    ["cms", "Communication and Media Studies", [
+      ["adv", "Advertising", ["B.Sc. Advertising"]],
+      ["brc", "Broadcasting", ["B.Sc. Broadcasting"]],
+      ["dcs", "Development Communication Studies", ["B.Sc. Development Communication Studies"]],
+      ["jms", "Journalism and Media Studies", ["B.Sc. Journalism and Media Studies"]],
+      ["pbr", "Public Relations", ["B.Sc. Public Relations"]],
+      ["stc", "Strategic Communications", ["B.Sc. Strategic Communications"]]]],
+    ["tis", "Technology and Industrial Studies", [
+      ["tis", "Technology and Industrial Studies", ["B.Tech. Technology and Industrial Studies"]],
+      ["hec", "Home Economics", ["B.Tech. Home Economics"]]]],
+    ["arc", "Architecture", [
+      ["arc", "Architecture", ["B.Sc. Architecture"]]]],
+    ["phm", "Pharmaceutical Sciences", [
+      ["phs", "Pharmaceutical Sciences", ["Pharm.D. Doctor of Pharmacy"]]]],
+    ["bms", "Basic Medical Sciences", [
+      ["ana", "Anatomy", ["B.Sc. Anatomy"]],
+      ["psl", "Physiology", ["B.Sc. Physiology"]],
+      ["bch", "Biochemistry", ["B.Sc. Biochemistry"]],
+      ["mbc", "Medical Biochemistry", ["B.Sc. Medical Biochemistry"]]]],
+    ["bcs", "Basic Clinical Sciences", [
+      ["cpa", "Chemical Pathology", ["B.Sc. Chemical Pathology"]],
+      ["hae", "Haematology", ["B.Sc. Haematology"]],
+      ["mmp", "Medical Microbiology and Parasitology", ["B.Sc. Medical Microbiology and Parasitology"]],
+      ["apa", "Anatomical Pathology", ["B.Sc. Anatomical Pathology"]],
+      ["pct", "Pharmacology and Therapeutics", ["B.Sc. Pharmacology and Therapeutics"]]]],
+    ["cls", "Clinical Sciences", [
+      ["med", "Medicine", ["MB;BS Medicine and Surgery"]],
+      ["sur", "Surgery", ["MB;BS Medicine and Surgery"]],
+      ["obg", "Obstetrics and Gynaecology", ["Obstetrics and Gynaecology"]],
+      ["pae", "Paediatrics", ["Paediatrics"]],
+      ["pst", "Psychiatry", ["Psychiatry"]],
+      ["rad", "Radiology", ["Radiology"]],
+      ["ans", "Anaesthesiology", ["Anaesthesiology"]],
+      ["orl", "Otorhinolaryngology", ["Otorhinolaryngology"]],
+      ["oph", "Ophthalmology", ["Ophthalmology"]],
+      ["ech", "Epidemiology and Community Health", ["Epidemiology and Community Health"]],
+      ["nur", "Nursing Sciences", ["B.NSc. Nursing Science"]],
+      ["rrs", "Radiography and Radiation Sciences", ["B.Rad. Radiography"]],
+      ["mls", "Medical Laboratory Science", ["B.MLS Medical Laboratory Science"]]]]
+  ];
+
+  /* ── the College tier ────────────────────────────────────────────
+     Added 6 September 2026 from the College of Health Sciences paper
+     (REC-MOAUMPP-001 P4). Three of the fourteen faculties do not sit
+     directly under the University: they sit under a COLLEGE, which has
+     officers of its own that mirror the University's — a Provost where
+     the University has a Vice-Chancellor, a College Secretary where it
+     has a Registrar, a Finance Controller where it has a Bursar.
+
+     The register carried the three faculties with nothing above them,
+     so the scope ladder was one level short: University → Faculty →
+     Department → Programme, with no room for the office that actually
+     approves things in the College.
+
+     This is recorded here and in the structure screen. The College
+     will have an academic system of its own (CHS-MOAUMPP-001), so what
+     MOAUMPP needs is not the College's academic model but the fact of
+     the tier — because a Provost has to be able to sign in, and an
+     office has to be scopeable to a College.                        */
+  /* The College's own system. It is a SEPARATE system by decision of
+     6 September 2026, so the portal links out to it rather than
+     embedding it — and the link says so, because a person who cannot
+     tell which system they are in is how a mark or a fee ends up in
+     the wrong one. */
+  var CHS_URL = "https://claude.ai/code/artifact/5e0d3dc3-386f-4666-99d9-c08929569431";
+
+  var COLLEGES = [
+    { id: "chs", n: "College of Health Sciences", sys: "CHS-AMS", url: CHS_URL,
+      faculties: ["bms", "bcs", "cls"],
+      offices: [
+        ["Provost", "Prof. T. A. Ochigbo", "The College&rsquo;s counterpart of the Vice-Chancellor"],
+        ["College Secretary", "Mrs. V. N. Ivor", "The College&rsquo;s Registry"],
+        ["Finance Controller", "Mr. J. O. Amaakaven", "The Bursar&rsquo;s office within the College"]
+      ] }
+  ];
+
+  function collegeOf(facId) {
+    for (var i = 0; i < COLLEGES.length; i++) {
+      if (COLLEGES[i].faculties.indexOf(facId) > -1) { return COLLEGES[i]; }
+    }
+    return null;
+  }
+
+  /* the shape the rest of the portal reads */
+  var FACS = FAC_DATA.map(function (f) {
+    var col = collegeOf(f[0]);
+    return { id: f[0], n: f[2 - 1], college: col ? col.n : null,
+      collegeId: col ? col.id : null,
+      depts: f[2].map(function (d) {
+      return { id: d[0], n: d[1], progs: d[2].map(function (p, i) {
+        return { id: d[0] + (i ? String(i + 1) : ""), n: p };
+      }) };
+    }) };
+  });
+
+  /* The programme ids the existing course catalogue is keyed on.
+     Looked up by department code rather than by position: the previous
+     version indexed FACS[4].depts[0], which silently pointed at a different
+     department the moment the faculty order changed. */
+  (function () {
+    function dept(code) {
+      for (var i = 0; i < FACS.length; i++) {
+        for (var j = 0; j < FACS[i].depts.length; j++) {
+          if (FACS[i].depts[j].id === code) { return FACS[i].depts[j]; }
+        }
+      }
+      return null;
+    }
+    var mcs = dept("mcs"), chm = dept("chm");
+    if (mcs) { ["csc", "mth", "sta"].forEach(function (id, i) {
+      if (mcs.progs[i]) { mcs.progs[i].id = id; }
+    }); }
+    if (chm && chm.progs[0]) { chm.progs[0].id = "chm"; }
+  }());
+
+  var UNI = {
+    students: 32450,
+    faculties: FACS.length,
+    departments: FACS.reduce(function (a, f) { return a + f.depts.length; }, 0),
+    programmes: FACS.reduce(function (a, f) {
+      return a + f.depts.reduce(function (b, d) { return b + d.progs.length; }, 0); }, 0),
+    sets: 2840,               /* result sets expected this semester */
+    submittedPct: 86,
+    approvedPct: 72
+  };
+  UNI.submitted = Math.round(UNI.sets * UNI.submittedPct / 100);
+  UNI.approved  = Math.round(UNI.sets * UNI.approvedPct / 100);
+  UNI.pending   = UNI.submitted - UNI.approved;     /* in the chain, not yet approved */
+  UNI.missing   = UNI.sets - UNI.submitted;         /* never submitted */
+
+
+  var LEVELS = [100, 200, 300, 400, 500];
+
+  /* [code, title, units, semester] */
+  var COURSES_BY_PROG = {
+    csc: [["CSC 311", "Algorithms &amp; Complexity", 3, 1], ["CSC 321", "Database Systems", 3, 1],
+          ["MTH 212", "Linear Algebra II", 3, 1], ["CSC 331", "Operating Systems", 3, 2],
+          ["CSC 341", "Computer Networks", 3, 2], ["GST 301", "Entrepreneurship", 2, 2]],
+    mth: [["MTH 311", "Real Analysis", 3, 1], ["MTH 212", "Linear Algebra II", 3, 1],
+          ["MTH 322", "Numerical Methods", 3, 2]],
+    chm: [["CHM 311", "Physical Chemistry", 3, 1], ["CHM 321", "Organic Chemistry II", 3, 2]]
+  };
+
+  var SEMESTERS = [[1, "First semester"], [2, "Second semester"]];
+
+  /* the courses the current scope selects, semester included */
+  function scopeCourses() {
+    var s = scopeNow();
+    var list = COURSES_BY_PROG[s.prog] || COURSES_BY_PROG.csc;
+    if (s.sem) { list = list.filter(function (c) { return c[3] === Number(s.sem); }); }
+    if (s.course) { list = list.filter(function (c) { return c[0] === s.course; }); }
+    return list;
+  }
+
+  /* what a student is billed within the scope: the session, or one instalment of it */
+  function scopeBilled() {
+    var s = scopeNow();
+    if (!s.sem) { return { amount: 135000, label: "the session" }; }
+    return Number(s.sem) === 1
+      ? { amount: 90000, label: "instalment 1 of 2" }
+      : { amount: 45000, label: "instalment 2 of 2" };
+  }
+
+  function facById(id) { for (var i = 0; i < FACS.length; i++) { if (FACS[i].id === id) { return FACS[i]; } } return null; }
+  function deptById(f, id) {
+    if (!f) { return null; }
+    for (var i = 0; i < f.depts.length; i++) { if (f.depts[i].id === id) { return f.depts[i]; } } return null;
+  }
+  function progById(d, id) {
+    if (!d) { return null; }
+    for (var i = 0; i < d.progs.length; i++) { if (d.progs[i].id === id) { return d.progs[i]; } } return null;
+  }
+
+  /* a stable pseudo-count, so the same scope always shows the same figures */
+  function seedNum(key, lo, hi) {
+    var h = 0;
+    for (var i = 0; i < key.length; i++) { h = (h * 31 + key.charCodeAt(i)) % 100000; }
+    return lo + (h % (hi - lo + 1));
+  }
+
+  /* ── what each office may see ──────────────────────────────────── */
+
+  var SCOPE_CEILING = {
+    lecturer:  { fac: "sci", dept: "mcs", why: "You see the students registered for your own courses." },
+    hod:       { fac: "sci", dept: "mcs", why: "Your office is bounded by your department." },
+    /* an Exams Officer serves ONE programme. A department with three
+       programmes has three of them, and none sees the others. */
+    exams:     { fac: "sci", dept: "mcs", prog: "csc",
+                 why: "Your office is bounded by your programme, not your department. B.Sc. Mathematics and B.Sc. Statistics have their own Exams Officers." },
+    dean:      { fac: "sci", why: "Your office is bounded by your faculty." },
+    academic:  {}, registrar: {}, bursar: {}, admin: {}, vc: {}, services: {}, ict: {},
+    /* University-wide READ, and no write anywhere except a query. The
+       office that checks the money must not be able to move it. */
+    audit:     {},
+    library:   {}, security:  {}, records: {}, super: {}, dvc: {}, dregistrar: {},
+    facultyofficer: { fac: "sci", why: "Your office is bounded by your faculty." },
+    facultyexams:   { fac: "sci", why: "Your office is bounded by your faculty." }
+  };
+
+  function ceiling() {
+    return (S.role === "staff" && SCOPE_CEILING[S.srole]) ? SCOPE_CEILING[S.srole] : {};
+  }
+
+  /* the scope actually in force, after the ceiling is applied */
+  function scopeNow() {
+    var c = ceiling();
+    return {
+      fac:    c.fac  || S.sc.fac,
+      dept:   c.dept || S.sc.dept,
+      prog:   c.prog || S.sc.prog,
+      level:  S.sc.level,
+      sem:    S.sc.sem,
+      course: S.sc.course,
+      lockFac:  !!c.fac,
+      lockDept: !!c.dept,
+      lockProg: !!c.prog,
+      why: c.why || ""
+    };
+  }
+
+  /* ── the population the current scope selects ──────────────────── */
+
+  function scopePopulation() {
+    var s = scopeNow(), total = UNI.students;
+    if (!s.fac) { return { n: total, of: total }; }
+    var f = facById(s.fac);
+    var facN = seedNum("f" + s.fac, 640, 3240);
+    if (!s.dept) { return { n: facN, of: total }; }
+    var deptN = Math.round(facN / f.depts.length) + seedNum("d" + s.dept, -40, 60);
+    if (!s.prog) { return { n: deptN, of: total }; }
+    var d = deptById(f, s.dept);
+    var progN = Math.round(deptN / d.progs.length) + seedNum("p" + s.prog, -20, 30);
+    if (!s.level) { return { n: progN, of: total }; }
+    return { n: Math.round(progN / 4) + seedNum("l" + s.prog + s.level, -8, 12), of: total };
+  }
+
+  function scopeTrail() {
+    var s = scopeNow(), parts = [];
+    var f = facById(s.fac);
+    parts.push(f ? "Faculty of " + f.n : "The University");
+    var d = deptById(f, s.dept); if (d) { parts.push(d.n); }
+    var p = progById(d, s.prog); if (p) { parts.push(p.n); }
+    if (s.level) { parts.push(s.level + " Level"); }
+    if (s.course) { parts.push(s.course); }
+    if (s.sem) { parts.push(Number(s.sem) === 1 ? "First semester" : "Second semester"); }
+    return parts.join(' <span style="color:var(--faint)">&rsaquo;</span> ');
+  }
+
+  /* ── the bar itself ────────────────────────────────────────────── */
+
+  function sel(id, label, opts, value, disabled, anyLabel) {
+    return '<div class="scope__f"><label for="' + id + '">' + label + '</label>' +
+      '<select id="' + id + '" class="ws__select"' + (disabled ? ' disabled' : '') + '>' +
+      '<option value="">' + (anyLabel || "All") + '</option>' +
+      opts.map(function (o) {
+        return '<option value="' + o[0] + '"' + (String(value) === String(o[0]) ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select></div>';
+  }
+
+  /* opts: { course: true } to include the course selector */
+  function scopeBar(what, opts) {
+    opts = opts || {};
+    var s = scopeNow(), f = facById(s.fac), d = deptById(f, s.dept), p = progById(d, s.prog);
+    var pop = scopePopulation();
+
+    var courseOpts = [];
+    if (p && COURSES_BY_PROG[p.id]) {
+      courseOpts = COURSES_BY_PROG[p.id]
+        .filter(function (c) { return !s.sem || c[3] === Number(s.sem); })
+        .map(function (c) { return [c[0], c[0] + " " + c[1]]; });
+    }
+
+    return '<div class="scope">' +
+      '<div class="scope__row">' +
+        sel("sc-fac", "Faculty", FACS.map(function (x) { return [x.id, x.n]; }), s.fac, s.lockFac, "All faculties") +
+        sel("sc-dept", "Department", f ? f.depts.map(function (x) { return [x.id, x.n]; }) : [], s.dept,
+            s.lockDept || !f, f ? "All departments" : "Choose a faculty first") +
+        sel("sc-prog", "Programme", d ? d.progs.map(function (x) { return [x.id, x.n]; }) : [], s.prog,
+            s.lockProg || !d, d ? "All programmes" : "Choose a department first") +
+        sel("sc-level", "Level", LEVELS.map(function (l) { return [l, l + " Level"]; }), s.level, false, "All levels") +
+        (opts.course
+          ? sel("sc-course", "Course", courseOpts, s.course, !p, p ? "All courses" : "Choose a programme first")
+          : '') +
+        sel("sc-session", "Session", [["2026/2027", "2026/2027"], ["2025/2026", "2025/2026"], ["2024/2025", "2024/2025"]],
+            S.sc.session || "2026/2027", false, "2026/2027") +
+        sel("sc-sem", "Semester", SEMESTERS, s.sem, false, "Both semesters") +
+      '</div>' +
+
+      '<div class="scope__sum">' +
+        '<span class="trail">' + scopeTrail() + '</span>' +
+        '<span class="count">Showing <b class="tnum">' + pop.n.toLocaleString() + '</b> ' + what +
+          ' of <span class="tnum">' + pop.of.toLocaleString() + '</span></span>' +
+        (s.lockFac || s.lockDept || s.lockProg
+          ? '<span class="lock">' + ico('shield', 13, 'currentColor', 2) + s.why + '</span>'
+          : (S.sc.fac || S.sc.dept || S.sc.prog || S.sc.level || S.sc.course
+              ? '<button class="scope__clear" data-sc="clear">Clear the scope</button>' : '')) +
+        '<button class="scope__clear" data-doc="scopeexport">Export this list</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* ── the query workbench ───────────────────────────────────────── */
+
+  var RECORD_VIEWS = [
+    ["students", "Students", "Who is on the register"],
+    ["registration", "Course registration", "Who has registered, and for what"],
+    ["fees", "School fees", "Who owes what, and who has paid"],
+    ["results", "Results", "Where each result set has reached"],
+    ["exams", "Examinations", "Who sits what, where and when"],
+    ["allocation", "Course assignment", "Who teaches what"],
+    ["clearance", "Clearance", "Who is held, and by which unit"],
+    ["attendance", "Attendance", "Who is eligible to sit"]
+  ];
+
+  function recordTabs() {
+    return '<div class="rectabs">' + RECORD_VIEWS.map(function (v) {
+      return '<button class="rectab' + (S.sc.view === v[0] ? ' is-on' : '') + '" data-sc="view:' + v[0] + '">' +
+        '<span class="t">' + v[1] + '</span><span class="s">' + v[2] + '</span></button>';
+    }).join('') + '</div>';
+  }
+
+  /* A register long enough to page through. The first eight are the
+     students named elsewhere in the prototype, so a record opened from
+     one screen is the same person on another. */
+  var REC_FIXED = [
+    ["MOAUM/CSC/23/1401", "ABAAGU, Terkimbi John", 300],
+    ["MOAUM/CSC/23/1415", "AGBO, Ochanya Faith", 300],
+    ["MOAUM/CSC/23/1423", "AKAAKA, Sesugh Daniel", 300],
+    ["MOAUM/CSC/23/1430", "ANYEBE, Ruth Onyilo", 300],
+    ["MOAUM/CSC/23/1487", "ADAMU, Grace Mwuese", 300],
+    ["MOAUM/CSC/22/1188", "IORNONGU, Sewuese Mercy", 400],
+    ["MOAUM/CSC/22/1204", "UGOR, Terhemen Blessing", 400],
+    ["MOAUM/CSC/23/1502", "TSEMBE, Aondowase", 300]
+  ];
+
+  var REC_SUR = ["ABAH", "ADAKOLE", "AHIMA", "ALI", "AMEH", "ASHIEKAA", "ATIM", "ATOO",
+    "DAJOH", "EJEH", "GBAA", "IKPE", "INALEGWU", "IORLAHA", "IYUE", "KURA", "KWAGHDOO",
+    "MBAKAAN", "MZUUGH", "NGUAVESE", "OCHOGA", "ODEH", "ODUMA", "OGBAJE", "OGBE",
+    "OGWUCHE", "ONAZI", "ORKAA", "SEVAV", "SHIMA", "TARKAA", "TERKULA", "UDOO",
+    "VEREN", "WUESE", "YOHANNA", "ZAKI", "AONDONA"];
+
+  var REC_GIVEN = ["Doosuur Patience", "Msurshima Peter", "Iveren Joy", "Aondohemba Samuel",
+    "Erdoo Comfort", "Tersoo Emmanuel", "Ngodoo Rebecca", "Kwaghger Simon", "Ashiwel Grace",
+    "Terwase David", "Vershima Paul", "Mimi Deborah", "Ojoma Rita", "Ene Michael",
+    "Owoicho James", "Adaora Peace", "Inikpi Sarah", "Odoo Timothy", "Hembadoon Mercy",
+    "Sughnen Elizabeth", "Tyoapine Solomon", "Aluer Janet", "Kator Andrew", "Terna Victor",
+    "Nguveren Faith", "Iember Susan", "Aondoaseer Mark", "Mvendaga Isaac", "Ngohide Naomi",
+    "Torkwase Esther", "Wuese Angela", "Yina Godwin", "Ochanya Blessing", "Sesugh Bernard",
+    "Ngutor Lydia", "Terkimbi Paul", "Adoo Christiana", "Orkuma Felix"];
+
+  var REC_YEAR = { 100: "25", 200: "24", 300: "23", 400: "22" };
+
+  var REC_NAMES = (function () {
+    var out = REC_FIXED.slice();
+    for (var i = 0; i < REC_SUR.length; i++) {
+      var lvl = [100, 200, 300, 400][i % 4];
+      var no = 1100 + (i * 17) + (lvl / 100) * 7;
+      out.push(["MOAUM/CSC/" + REC_YEAR[lvl] + "/" + no,
+        REC_SUR[i] + ", " + REC_GIVEN[i % REC_GIVEN.length], lvl]);
+    }
+    return out;
+  }());
+
+  function recRows() {
+    var s = scopeNow();
+    return REC_NAMES.filter(function (r) { return !s.level || r[2] === Number(s.level); });
+  }
+
+  function recordBody() {
+    var v = S.sc.view || "students", rows = recRows(), pop = scopePopulation();
+    var shown = rows.length;
+
+    if (v === "students") {
+      return panel("Students", shown + " of " + pop.n.toLocaleString() + " shown", dtable(
+        ["Matriculation number", "Name", "Level|mid", "Status|mid", "CGPA|mid", "Action|num"],
+        rows.map(function (r) {
+          return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+            '<span class="tnum">' + r[2] + '</span>', pil('ok', 'Active'),
+            '<span class="tnum">' + (seedNum(r[0], 210, 480) / 100).toFixed(2) + '</span>',
+            btn('ghost', 'Open', ' data-go="t/student"')];
+        }), 900));
+    }
+
+    if (v === "registration") {
+      return tiles([
+        ["Expected", pop.n.toLocaleString(), null, "In this scope"],
+        ["Registered", Math.round(pop.n * 0.92).toLocaleString(), "var(--green-ink)", "92%"],
+        ["Not registered", Math.round(pop.n * 0.08).toLocaleString(), "var(--red-ink)", "Closes 24 September"],
+        ["Blocked at the Bursary", Math.round(pop.n * 0.031).toLocaleString(), "var(--red-ink)", "Cannot register"]
+      ]) +
+      panel("Registration", shown + " shown", dtable(
+        ["Matriculation number", "Name", "Level|mid", "Units|mid", "Submitted|mid", "Status|num"],
+        rows.map(function (r, i) {
+          var reg = i !== 7;
+          return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+            '<span class="tnum">' + r[2] + '</span>',
+            reg ? '<span class="tnum">' + (scopeNow().sem ? seedNum(r[0] + "u", 8, 13) : seedNum(r[0] + "u", 15, 24)) + '</span>' : '<span class="sub2">&mdash;</span>',
+            reg ? '<span class="sub2 tnum">15 Sep</span>' : '<span class="sub2">&mdash;</span>',
+            reg ? pil('ok', 'Approved') : pil('bad', 'Blocked &mdash; fees')];
+        }), 940));
+    }
+
+    if (v === "fees") {
+      var owed = Math.round(pop.n * 0.19), bill = scopeBilled();
+      return tiles([
+        ["Billed", "&#8358;" + (pop.n * bill.amount / 1000000).toFixed(1) + "m", null, money(bill.amount) + " &middot; " + bill.label],
+        ["Collected", "&#8358;" + (pop.n * bill.amount * 0.81 / 1000000).toFixed(1) + "m", "var(--green-ink)", "81%"],
+        ["Outstanding", "&#8358;" + (pop.n * bill.amount * 0.19 / 1000000).toFixed(1) + "m", "var(--red-ink)", owed.toLocaleString() + " students"],
+        ["Fully paid", (pop.n - owed).toLocaleString(), "var(--green-ink)", "Cleared to register"]
+      ]) +
+      panel("School fees", shown + " shown", dtable(
+        ["Matriculation number", "Name", "Billed &mdash; " + scopeBilled().label + "|num", "Paid|num", "Balance|num", "Status|num"],
+        rows.map(function (r, i) {
+          var bill2 = scopeBilled();
+          var bal = i % 3 === 2 ? Math.min(bill2.amount, seedNum(r[0] + "b", 15000, 95000)) : 0;
+          return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+            '<span class="tnum">' + money(bill2.amount) + '</span>',
+            '<span class="tnum">' + money(bill2.amount - bal) + '</span>',
+            bal ? '<span class="tnum" style="color:var(--red-ink);font-weight:700">' + money(bal) + '</span>'
+                : '<span class="tnum sub2">' + money(0) + '</span>',
+            bal ? pil('bad', 'Owing') : pil('ok', 'Cleared')];
+        }), 940));
+    }
+
+    if (v === "results") {
+      return panel("Result sets in this scope", "By stage", dtable(
+        ["Course", "Candidates|mid", "Stage", "Fail rate|mid", "Action|num"],
+        scopeCourses().map(function (c, i) {
+          var st = ["Senate approved", "Faculty Board", "Departmental Board", "Verified", "Submitted", "Not submitted"][i % 6];
+          return ['<strong class="tnum">' + c[0] + '</strong><div class="sub2">' + c[1] + '</div>',
+            '<span class="tnum">' + seedNum(c[0], 38, 128) + '</span>',
+            st === "Not submitted" ? '<span style="color:var(--red-ink);font-weight:700">' + st + '</span>' : st,
+            '<span class="tnum">' + seedNum(c[0] + "f", 6, 34) + '%</span>',
+            btn('ghost', 'Open', ' data-go="t/chain"')];
+        }), 900));
+    }
+
+    if (v === "exams") {
+      return panel("Examinations in this scope", (S.sc.session || "2026/2027") + " &middot; " + (scopeNow().sem ? (Number(scopeNow().sem) === 1 ? "first semester" : "second semester") : "both semesters"), dtable(
+        ["Course", "Date|mid", "Venue", "Candidates|mid", "Cleared|mid", "Mode|num"],
+        scopeCourses().map(function (c, i) {
+          var n = seedNum(c[0], 38, 128);
+          return ['<strong class="tnum">' + c[0] + '</strong><div class="sub2">' + c[1] + '</div>',
+            '<span class="sub2 tnum">' + [14, 15, 16, 17, 18, 21][i % 6] + ' Dec</span>',
+            '<span class="sub2">' + ["CBT Hall A", "CBT Hall B", "CBT Hall C", "Main Hall"][i % 4] + '</span>',
+            '<span class="tnum">' + n + '</span>',
+            '<span class="tnum">' + (n - (i % 3)) + '</span>',
+            i % 4 === 3 ? pil('grey', 'Paper') : pil('info', 'CBT')];
+        }), 940));
+    }
+
+    if (v === "allocation") {
+      return panel("Course assignment in this scope", "Who teaches what", dtable(
+        ["Course", "Units|mid", "Registered|mid", "Lecturer", "Second examiner", "Action|num"],
+        scopeCourses().map(function (c, i) {
+          var who = ["Dr. T. Iorpuu", "Dr. J. Adie", "Prof. F. Gbaoron", "Dr. T. Iorpuu", "", "Dr. N. Doki"][i % 6];
+          return ['<strong class="tnum">' + c[0] + '</strong><div class="sub2">' + c[1] + '</div>',
+            '<span class="tnum">' + c[2] + '</span>',
+            '<span class="tnum">' + seedNum(c[0], 38, 128) + '</span>',
+            who ? "<strong>" + who + "</strong>" : '<span style="color:var(--red-ink);font-weight:700">Unassigned</span>',
+            who ? '<span class="sub2">' + ["Dr. M. Adikpe", "Dr. T. Iorpuu", "Dr. J. Adie"][i % 3] + '</span>'
+                : '<span class="sub2" style="color:var(--red-ink)">Blocked</span>',
+            btn(who ? 'ghost' : 'urgent', who ? 'Reassign' : 'Assign', ' data-go="r/allocate"')];
+        }), 980));
+    }
+
+    if (v === "clearance") {
+      return panel("Clearance in this scope", "Graduating candidates", dtable(
+        ["Matriculation number", "Name", "Bursary|mid", "Dept|mid", "Library|mid", "Hostel|mid", "Status|num"],
+        rows.map(function (r, i) {
+          function m(ok) { return ok ? '<span style="color:var(--green-ink);font-weight:700">&#10003;</span>'
+                                     : '<span style="color:var(--red-ink);font-weight:700">&#10007;</span>'; }
+          var b = i % 4 !== 2, l = i % 5 !== 3;
+          return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+            m(b), m(true), m(l), m(true),
+            (b && l) ? pil('ok', 'Cleared') : pil('bad', 'Held')];
+        }), 980));
+    }
+
+    return panel("Attendance in this scope", "Senate requires 75% to sit", dtable(
+      ["Matriculation number", "Name", "Level|mid", "Attendance|mid", "Eligible|num"],
+      rows.map(function (r) {
+        var a = seedNum(r[0] + "a", 44, 98);
+        return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+          '<span class="tnum">' + r[2] + '</span>',
+          '<span class="tnum"' + (a < 75 ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' + a + '%</span>',
+          a >= 75 ? pil('ok', 'May sit') : pil('bad', 'Barred')];
+      }), 860));
+  }
+
+  function tRecords() {
+    var v = S.sc.view || "students";
+    var meta = RECORD_VIEWS.filter(function (x) { return x[0] === v; })[0];
+    return note('info', 'One scope, every query',
+      'Set the faculty, department, programme, level, course and semester once. It holds as you move between students, registration, fees, results, examinations, assignment, clearance and attendance &mdash; and it is carried into whatever you export, so a spreadsheet that reaches somebody else says what it is a list of.') +
+      recordTabs() +
+      scopeBar(meta[1].toLowerCase() === "students" ? "students" : "records", { course: true }) +
+      recordBody();
+  }

@@ -1,0 +1,430 @@
+  /* ══════════════════════════════════════════════════════════════════
+     THE STUDENT IDENTITY CARD
+
+     One card, three jobs: it says who the holder is at the gate, it is
+     the borrower's card at the Library, and it is the card an
+     invigilator asks for at the hall door. So it is personalised and
+     printed by the Library — which already runs the barcode and the
+     borrower record — and issued, blocked and replaced by Security,
+     which runs the gate. Neither office does both halves: the office
+     that prints a card is not the office that hands it over.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* ── Code 128B ───────────────────────────────────────────────────
+     A real symbology, not a picture of one: the same bars a handheld
+     scanner at the Library desk reads. Each pattern is six elements —
+     bar, space, bar, space, bar, space — eleven modules in all, and
+     the stop pattern carries a thirteenth. */
+  var C128 = [
+    "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+    "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+    "221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+    "212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+    "231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+    "231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+    "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+    "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+    "111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+    "214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+    "114131","311141","411131","211412","211214","211232","2331112"
+  ];
+
+  /* value sequence for a string, start B through the stop bars */
+  function c128Values(text) {
+    var vals = [104], sum = 104, i, v;                 /* 104 = Start B */
+    for (i = 0; i < text.length; i++) {
+      v = text.charCodeAt(i) - 32;
+      if (v < 0 || v > 94) { v = 63; }                 /* outside Code B, print '?' */
+      vals.push(v);
+      sum += v * (i + 1);
+    }
+    vals.push(sum % 103);                              /* check character */
+    vals.push(106);                                    /* stop */
+    return vals;
+  }
+
+  /* the bar/space run-lengths, in modules */
+  function c128Modules(text) {
+    var vals = c128Values(text), runs = [], i, j, p;
+    for (i = 0; i < vals.length; i++) {
+      p = C128[vals[i]];
+      for (j = 0; j < p.length; j++) { runs.push(Number(p.charAt(j))); }
+    }
+    return runs;
+  }
+
+  /* Drawn to the module, with a quiet zone of ten modules either side,
+     because a scanner needs the white as much as the black. */
+  function barcodeSVG(text, w, h, ink) {
+    var runs = c128Modules(text), total = 0, i;
+    for (i = 0; i < runs.length; i++) { total += runs[i]; }
+    var quiet = 10, units = total + quiet * 2;
+    var bars = [], x = quiet, dark = true;
+    for (i = 0; i < runs.length; i++) {
+      if (dark) { bars.push('<rect x="' + x + '" y="0" width="' + runs[i] + '" height="' + h + '"/>'); }
+      x += runs[i]; dark = !dark;
+    }
+    return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + units + ' ' + h +
+      '" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" ' +
+      'aria-label="Barcode ' + text + '"><rect width="' + units + '" height="' + h + '" fill="#fff"/>' +
+      '<g fill="' + (ink || "#000") + '">' + bars.join('') + '</g></svg>';
+  }
+
+  /* ── the holder ──────────────────────────────────────────────────
+     One record, read by both faces of the card and by every screen in
+     the issuing module. */
+  var CARD = {
+    name: "ADAMU, Grace Mwuese",
+    matric: "MOAUM/CSC/23/1487",
+    barcode: "MOAUM231487",                 /* what the scanner reads */
+    serial: "MU-2026-014873",
+    faculty: "Science",
+    prog: "B.Sc. Computer Science",
+    level: "300",
+    session: "2026/2027",
+    admitted: "2023",
+    graduates: "2027",
+    duration: "4 years",
+    blood: "O+",              /* the Clinic's screened value, not a stated one */
+    genotype: "AA",
+    kin: "ADAMU, Terhemba John",
+    kinPhone: "0806 552 1180",
+    issued: "18 September 2026",
+    expires: "31 October 2027",
+    expiresShort: "31 Oct 2027",
+    state: "issued"
+  };
+
+  var CARD_STATES = {
+    none:      ["No card", "bad", "The student has never held a card"],
+    photo:     ["Awaiting photograph", "bad", "Registry has not passed a photograph fit to print"],
+    queued:    ["Queued for printing", "info", "In the Library's next print run"],
+    printed:   ["Printed", "info", "On the Library's shelf, not yet handed over"],
+    collect:   ["Awaiting collection", "info", "At the Security post, for the holder in person"],
+    issued:    ["Issued", "ok", "In the holder's hand"],
+    blocked:   ["Blocked", "bad", "Reported lost or withdrawn; refused at every reader"],
+    expired:   ["Expired", "bad", "Past its validity date"]
+  };
+
+  /* ── the card ────────────────────────────────────────────────────
+     Drawn at ISO/IEC 7810 ID-1 — 85.6 by 54 millimetres — so what is
+     on the screen is the size of the thing in the hand, and what the
+     printer receives is already right. */
+
+  function idcCrest(size) {
+    return '<img src="' + CREST + '" alt="" style="width:' + size + 'px;height:' + size +
+      'px;object-fit:contain;flex-shrink:0">';
+  }
+
+  function idcField(label, value, mono) {
+    return '<div class="idc__f"><span class="idc__l">' + label + '</span>' +
+      '<span class="idc__v' + (mono ? ' tnum' : '') + '">' + value + '</span></div>';
+  }
+
+  function idCardFront(c, opts) {
+    c = c || CARD; opts = opts || {};
+    var void_ = opts.state === "blocked" || opts.state === "expired";
+    return '<div class="idc idc--front' + (void_ ? ' is-void' : '') + '">' +
+      '<div class="idc__guilloche"></div>' +
+      '<div class="idc__wm"><img src="' + CREST + '" alt=""></div>' +
+
+      '<div class="idc__head">' + idcCrest(26) +
+        '<div class="idc__uni">' +
+          '<span class="n">Rev. Fr. Moses Orshio Adasu University</span>' +
+          '<span class="a">Makurdi &middot; Benue State &middot; Nigeria</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="idc__rule"><i></i><b></b></div>' +
+
+      '<div class="idc__body">' +
+        '<div class="idc__photo">' +
+          '<svg viewBox="0 0 100 124" width="100%" height="100%" role="img" aria-label="Holder\'s photograph">' +
+            '<rect width="100" height="124" fill="#D7E2E9"/>' +
+            '<circle cx="50" cy="45" r="21" fill="#8FA5B4"/>' +
+            '<path d="M15 124c0-21 15-34 35-34s35 13 35 34Z" fill="#8FA5B4"/>' +
+          '</svg>' +
+          '<span class="idc__tag">Student</span>' +
+        '</div>' +
+
+        '<div class="idc__who">' +
+          '<div class="idc__name">' + c.name + '</div>' +
+          '<div class="idc__matric tnum">' + c.matric + '</div>' +
+          '<div class="idc__grid">' +
+            idcField("Faculty", c.faculty) +
+            idcField("Level", c.level, 1) +
+            idcField("Programme", c.prog) +
+            idcField("Blood group", c.blood, 1) +
+            idcField("Admitted", c.admitted, 1) +
+            idcField("Graduates", c.graduates, 1) +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="idc__foot">' +
+        '<span>Session <b class="tnum">' + c.session + '</b>' +
+          ' &middot; valid to <b class="tnum">' + c.expiresShort + '</b></span>' +
+        '<span class="idc__ser tnum">' + c.serial + '</span>' +
+      '</div>' +
+
+      (void_ ? '<div class="idc__void">' +
+        (opts.state === "blocked" ? "Blocked" : "Expired") + '</div>' : '') +
+    '</div>';
+  }
+
+  function idCardBack(c, opts) {
+    c = c || CARD; opts = opts || {};
+    return '<div class="idc idc--back">' +
+      '<div class="idc__strip">Property of the University &middot; not transferable</div>' +
+
+      '<div class="idc__code">' +
+        barcodeSVG(c.barcode, "100%", 38, "#111") +
+        '<div class="idc__cnum tnum">' + c.barcode + '</div>' +
+      '</div>' +
+
+      '<div class="idc__bcols">' +
+        '<div class="idc__terms">' +
+          '<b>Conditions</b>' +
+          '<p>This card is issued to the named student and is not transferable. ' +
+          'It must be produced on demand to any officer of the University, at the gate, ' +
+          'in the Library and at the door of an examination hall.</p>' +
+          '<p>A lost card is reported to Security at once; a card reported lost is refused ' +
+          'at every reader from the moment it is reported.</p>' +
+          '<p>If found, return to the Security post, Km 1 Gboko Road, Makurdi.</p>' +
+        '</div>' +
+        '<div class="idc__vfy">' +
+          '<div class="idc__qr">' + qr() + '</div>' +
+          '<div class="idc__vt">moaum.edu.ng/verify<br><span class="tnum">' + c.serial + '</span></div>' +
+          '<div class="idc__kin">In an emergency<br><b>' + c.kinPhone + '</b></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="idc__sig">' +
+        '<div><span></span>Holder&rsquo;s signature</div>' +
+        '<div><span></span>Registrar</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function idCardPair(c, opts, big) {
+    return '<div class="idc__pair' + (big ? ' is-big' : '') + '">' +
+      '<div class="idc__side"><span class="idc__face">Front</span>' + idCardFront(c, opts) + '</div>' +
+      '<div class="idc__side"><span class="idc__face">Back</span>' + idCardBack(c, opts) + '</div>' +
+    '</div>';
+  }
+
+  /* ── the queue both offices work ─────────────────────────────── */
+
+  var ID_QUEUE = [
+    ["MOAUM/CSC/23/1401", "ABAAGU, Terkimbi John", "300", "First card", "queued", "2 days"],
+    ["MOAUM/CSC/23/1415", "AGBO, Ochanya Faith", "300", "First card", "queued", "2 days"],
+    ["MOAUM/CSC/23/1423", "AKAAKA, Sesugh Daniel", "300", "First card", "printed", "1 day"],
+    ["MOAUM/CSC/23/1430", "ANYEBE, Ruth Onyilo", "300", "Replacement &mdash; lost", "collect", "4 hours"],
+    ["MOAUM/CSC/22/1188", "IORNONGU, Sewuese Mercy", "400", "Replacement &mdash; damaged", "printed", "1 day"],
+    ["MOAUM/CSC/25/1107", "ABAH, Doosuur Patience", "100", "First card", "photo", "6 days"],
+    ["MOAUM/CSC/25/1175", "AMEH, Erdoo Comfort", "100", "First card", "photo", "6 days"],
+    ["MOAUM/CSC/24/1131", "ADAKOLE, Msurshima Peter", "200", "Name changed", "queued", "3 days"],
+    ["MOAUM/CSC/23/1502", "TSEMBE, Aondowase", "300", "First card", "photo", "9 days"],
+    ["MOAUM/CSC/24/1199", "ASHIEKAA, Tersoo Emmanuel", "200", "First card", "collect", "2 hours"],
+    ["MOAUM/CSC/22/1204", "UGOR, Terhemen Blessing", "400", "Replacement &mdash; lost", "queued", "1 day"],
+    ["MOAUM/CSC/23/1291", "GBAA, Vershima Paul", "300", "First card", "printed", "1 day"]
+  ];
+
+  function idSteps(list) {
+    return '<div class="steps">' + list.map(function (s) { return step(s[0], s[1], s[2]); }).join('') + '</div>';
+  }
+
+  function idStock(label, left, of, colour) {
+    return '<div class="meter"><div style="display:flex;justify-content:space-between;gap:10px">' +
+      '<span style="font-size:12.5px;font-weight:600">' + label + '</span>' +
+      '<span class="sub2 tnum">' + left.toLocaleString() + ' of ' + of.toLocaleString() + '</span></div>' +
+      bar(Math.round(left / of * 100), colour) + '</div>';
+  }
+
+  function idcState(k) {
+    var s = CARD_STATES[k] || CARD_STATES.none;
+    return pil(s[1], s[0]);
+  }
+
+  function idQueueTable(filter) {
+    var rows = ID_QUEUE.filter(function (r) { return !filter || r[4] === filter; });
+    return dtable(
+      ["Matriculation number", "Name", "Level|mid", "Why", "Stage|mid", "Waiting|mid", "Action|num"],
+      rows.map(function (r) {
+        return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+          '<span class="tnum">' + r[2] + '</span>', r[3], idcState(r[4]),
+          '<span class="sub2 tnum">' + r[5] + '</span>',
+          r[4] === "photo"   ? '<span class="sub2">Registry</span>'
+          : r[4] === "queued" ? btn('ghost', 'Proof', ' data-doc="idcard"')
+          : r[4] === "printed" ? btn('ghost', 'To collection', ' data-idc="advance"')
+          : btn('primary', 'Hand over', ' data-idc="handover"')];
+      }));
+  }
+
+  /* ── Library: personalise and print ──────────────────────────── */
+
+  function tIdCards() {
+    var lib = S.srole === "library";
+    return note('info', 'Two offices, one card, and neither does both halves',
+      'The <b>Registry</b> owns the identity: the name, the programme and the department printed on the card come from the student record and are not retyped here. ' +
+      'The <b>Library</b> personalises and prints, because the barcode on the card is the borrower number it already issues &mdash; and because the student is standing there, it is also where the photograph and the signature are captured. ' +
+      '<b>Security</b> hands the card over against a face, blocks it when it is lost and takes it back when the holder leaves; the <b>Chief Security Officer</b> authorises the card before it is handed over. ' +
+      'A card that one office both printed and handed over is a card nobody checked.') +
+
+    tiles([
+      ["Awaiting a photograph", "3", "var(--red-ink)", "Not yet captured at the counter"],
+      ["Queued for printing", "4", "var(--chrome)", "Next run: today, 14:00"],
+      ["Printed, not collected", "3", null, "On the Library shelf"],
+      ["At the Security post", "2", "var(--green-ink)", "Awaiting the CSO&rsquo;s authorisation"]
+    ]) +
+
+    (lib ? note('info', 'The photograph is captured here, and written to the student record',
+      'A fresh student has no photograph on her record, so it has to be captured where she physically is &mdash; and that is this counter. But a photograph captured into a card system and nowhere else means the examination roll, the transcript and her next card draw from three different images. So this counter <b>captures</b>, and what it captures is written to the <b>student record</b>. The record is then what the card, the examination roll, the portal and every reprint are made from. Capture once, hold once, print from the record.') +
+
+    note('bad', 'The blood group is not the student&rsquo;s to state, and this counter does not ask',
+      'Every new student is screened at the Clinic each session for blood group, genotype and hepatitis B and C, so the University already holds a tested value. A blood group printed on an identity card is read in an emergency by somebody who will act on it &mdash; a number recalled at a counter, from memory, is not good enough for that. The card carries the Clinic&rsquo;s screened value or it carries nothing, and <b>an empty field is safe where a wrong one is not</b>.') +
+
+    note('info', 'A card is keyed on the matriculation number, so it cannot be made before matriculation',
+      'A candidate who has accepted, paid and registered has an <b>admission number</b> and no card. She is matriculated once her Faculty Officer has confirmed she registered, and the card is queued in the same moment. Nothing here can be produced for an admission number.') : '') +
+
+    panel(lib ? "Print queue" : "Cards for collection",
+      lib ? "Personalisation and printing" : "Handed over against a face", idQueueTable()) +
+
+    (lib ? panel('Card stock and consumables', 'Enough for 1,180 more cards', pbody(
+      '<div class="grid grid--3">' +
+        idStock('Blank cards &mdash; PVC, 760 micron', 1180, 4000, 'var(--chrome)') +
+        idStock('Colour ribbon (YMCKO) &mdash; prints left', 940, 3000, 'var(--green)') +
+        idStock('Overlay laminate &mdash; prints left', 310, 3000, 'var(--red)') +
+      '</div>' +
+      note('bad', 'The laminate runs out first',
+        'At the current rate the overlay runs out in about nine working days, and a card printed without it wears through in a session. Raise the requisition before the run on 14 September, not after it.',
+        btn('primary', 'Raise a requisition', ' data-go="t/requisitions"'))))
+     : panel('Verification at the gate', 'Last twenty scans', dtable(
+        ["Time|mid", "Barcode", "Holder", "Post", "Result|num"], [
+          ['<span class="tnum">08:41</span>', '<span class="tnum">MOAUM231487</span>', "ADAMU, Grace Mwuese", "Main gate", pil('ok', 'Admitted')],
+          ['<span class="tnum">08:39</span>', '<span class="tnum">MOAUM221204</span>', "UGOR, Terhemen Blessing", "Main gate", pil('bad', 'Reported lost')],
+          ['<span class="tnum">08:37</span>', '<span class="tnum">MOAUM231401</span>', "ABAAGU, Terkimbi John", "Main gate", pil('ok', 'Admitted')],
+          ['<span class="tnum">08:31</span>', '<span class="tnum">MOAUM241131</span>', "ADAKOLE, Msurshima Peter", "Library door", pil('ok', 'Admitted')],
+          ['<span class="tnum">08:22</span>', '<span class="tnum">MOAUM999104</span>', '<span class="sub2">Not on the register</span>', "Main gate", pil('bad', 'Refused')]
+        ]))) +
+
+    panel('The card as it will print', 'ISO/IEC 7810 ID-1 &middot; 85.6 &times; 54 mm',
+      pbody(idCardPair(CARD, { state: "issued" }, true) +
+        '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:4px">' +
+          btn('primary', 'Open the print sheet', ' data-doc="idcard"') +
+          btn('ghost', 'Send to the card printer') +
+          btn('ghost', 'Reprint this card') +
+        '</div>'));
+  }
+
+  /* ── Security: block, replace, take back ────────────────────── */
+
+  function tIdLost() {
+    return note('bad', 'A card reported lost is refused from the moment it is reported',
+      'Not from the moment a replacement is printed. The report blocks the barcode at every reader &mdash; the gate, the Library, the examination hall &mdash; and the block is what protects the student, because a found card in another hand is an identity, not a piece of plastic.') +
+
+    tiles([
+      ["Reported this session", "148", null, "Lost, stolen or damaged"],
+      ["Blocked now", "26", "var(--red-ink)", "Awaiting replacement"],
+      ["Replacement fee", "&#8358;2,500", null, "Waived on a first damage claim"],
+      ["Recovered and returned", "31", "var(--green-ink)", "Found and handed in"]
+    ]) +
+
+    panel('Reports', 'Newest first', dtable(
+      ["Reported|mid", "Matriculation number", "Holder", "What happened", "Fee|num", "Card|mid", "Action|num"], [
+        ['<span class="tnum">Today 07:55</span>', '<span class="tnum">MOAUM/CSC/22/1204</span>', "UGOR, Terhemen Blessing",
+          "Lost off campus", '<span class="tnum">&#8358;2,500</span>', pil('bad', 'Blocked'), btn('primary', 'Queue a replacement')],
+        ['<span class="tnum">Yesterday</span>', '<span class="tnum">MOAUM/CSC/23/1430</span>', "ANYEBE, Ruth Onyilo",
+          "Lost in the hostel", '<span class="tnum">&#8358;2,500</span>', pil('bad', 'Blocked'), '<span class="sub2">Printed &mdash; for collection</span>'],
+        ['<span class="tnum">3 Sept</span>', '<span class="tnum">MOAUM/CSC/22/1188</span>', "IORNONGU, Sewuese Mercy",
+          "Delaminated at the corner", '<span class="sub2">Waived</span>', pil('info', 'In use'), '<span class="sub2">Replacement printed</span>'],
+        ['<span class="tnum">2 Sept</span>', '<span class="tnum">MOAUM/CSC/24/1267</span>', "EJEH, Terwase David",
+          "Found and handed in", '<span class="sub2">&mdash;</span>', pil('ok', 'Unblocked'), '<span class="sub2">Returned to the holder</span>']
+      ])) +
+
+    panel('Cards taken back', 'A card belongs to the University, and comes back', pbody(
+      '<div class="grid grid--2">' +
+        idSteps([
+          ["done", "The student graduates", "The card is surrendered at final clearance, and the barcode stops at every reader that night."],
+          ["done", "The student withdraws or is rusticated", "Security collects the card with the withdrawal notice; the block is immediate."],
+          ["now", "The card expires", "It stops on the printed date whether or not anybody collects it."]
+        ]) +
+        note('info', 'Clearance is where a card is surrendered',
+          'The final clearance form carries a line for the identity card, signed by Security. A student who cannot produce it pays the replacement fee before the clearance is signed &mdash; which is how the University stops a live card leaving with somebody who has left.') +
+      '</div>'));
+  }
+
+  /* ── Security: the scan ─────────────────────────────────────── */
+
+  function tIdVerify() {
+    var hit = S.idc.scan;
+    return note('info', 'One scan, one answer',
+      'The reader at the gate does not open a record for the officer to read and interpret. It answers one question &mdash; may this person come in &mdash; and it answers it from the card state, not from the picture on the front, which is the part that is easy to fake.') +
+
+    panel('Scan a card', 'Handheld reader, or type the number', pbody(
+      '<div class="idc__scan">' +
+        '<div class="field" style="flex-grow:1;min-width:220px"><label for="idc-q">Barcode</label>' +
+          '<input id="idc-q" class="ctl tnum" value="' + (hit || "") + '" placeholder="MOAUM231487" autocomplete="off"></div>' +
+        '<button class="btn btn--primary" data-idc="scan:MOAUM231487">Scan a valid card</button>' +
+        '<button class="btn btn--urgent" data-idc="scan:MOAUM221204">Scan a blocked card</button>' +
+        (hit ? '<button class="btn btn--ghost" data-idc="clear">Clear</button>' : '') +
+      '</div>')) +
+
+    (hit === "MOAUM231487"
+      ? panel('Admitted', 'Main gate &middot; ' + "08:41",
+          pbody('<div class="idc__res is-ok">' + tick(30, 'var(--green-ink)') +
+            '<div><div class="idc__rt">Admitted</div>' +
+            '<div class="sub2">ADAMU, Grace Mwuese &middot; MOAUM/CSC/23/1487 &middot; 300 Level &middot; B.Sc. Computer Science</div></div></div>' +
+            '<div class="grid grid--2" style="margin-top:12px">' +
+              idCardFront(CARD, { state: "issued" }) +
+              kvGrid([["Card state", "Issued"], ["Valid to", CARD.expires],
+                      ["Registration", "Complete, 2026/2027"], ["Last seen", "Library door, yesterday 16:12"]], 'grid--2') +
+            '</div>'))
+      : hit === "MOAUM221204"
+      ? panel('Refused', 'Main gate &middot; ' + "08:39",
+          pbody('<div class="idc__res is-bad">' + warnIcon(30) +
+            '<div><div class="idc__rt">Refused &mdash; reported lost</div>' +
+            '<div class="sub2">This card was reported lost by UGOR, Terhemen Blessing at 07:55 today. The holder of this piece of plastic is not necessarily the student named on it.</div></div></div>' +
+            note('bad', 'What the officer does now',
+              'Keep the card, write the report, and send the person to the Security post &mdash; not away. If it is the student, she is carrying a card she reported lost an hour ago and there is a replacement waiting for her. If it is not, the University has just recovered a live identity.')))
+      : '') +
+
+    panel('Where the readers are', 'Every reader answers from the same card state', dtable(
+      ["Post", "What it controls", "Scans today|num", "Refused|num"], [
+        ["Main gate", "Entry to the campus", '<span class="tnum">3,184</span>', '<span class="tnum">11</span>'],
+        ["Library door", "Entry, and the loan desk", '<span class="tnum">1,902</span>', '<span class="tnum">4</span>'],
+        ["Examination halls", "The door of a hall in session", '<span class="tnum">640</span>', '<span class="tnum">2</span>'],
+        ["Hostel gates", "Entry to a hall of residence", '<span class="tnum">2,271</span>', '<span class="tnum">6</span>'],
+        ["Clinic", "The consulting record", '<span class="tnum">118</span>', '<span class="tnum">0</span>']
+      ]));
+  }
+
+  /* ── the student's own card ─────────────────────────────────── */
+
+  function sIdCard() {
+    return note('ok', 'Your card is issued and in your hand',
+      'The card below is the one printed for you. The barcode on the back is your borrower number at the Library and the number the gate reads; it does not change when a card is replaced &mdash; the serial does.') +
+
+    tiles([
+      ["Card state", "Issued", "var(--green-ink)", "Collected 18 September"],
+      ["Valid to", "31 Oct 2027", null, "Renewed each session"],
+      ["Serial", "MU-2026-014873", null, "Changes on replacement"],
+      ["Library loans", "1", null, "Due 14 September"]
+    ]) +
+
+    panel('Your identity card', 'This is a picture of the card, not the card',
+      pbody(idCardPair(CARD, { state: "issued" }, true) +
+        '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:4px">' +
+          btn('primary', 'Open the printable copy', ' data-doc="idcard"') +
+          btn('ghost', 'Report it lost', ' data-go="s/support"') +
+          btn('ghost', 'Request a replacement', ' data-go="s/support"') +
+        '</div>')) +
+
+    panel('What to do if you lose it', '', pbody(idSteps([
+      ["now", "Report it the same day, at the Security post or from Help &amp; requests",
+        "The report blocks the card at the gate, the Library and the examination hall within the minute. Until you report it, anybody holding it is you."],
+      ["todo", "Pay the replacement fee of ₦2,500",
+        "Waived once if the card failed rather than was lost — a delaminated corner or a barcode that no longer reads."],
+      ["todo", "Collect the new card from Security, in person",
+        "Not a friend, not a course representative. The officer hands a card to the face on it."]
+    ])));
+  }

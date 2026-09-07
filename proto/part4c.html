@@ -1,0 +1,92 @@
+
+  /* ── receipts ────────────────────────────────────────────────────── */
+  var RECEIPTS = {
+    r1: { no: "RCT-2026-19884", date: "5 September 2026", purpose: "School fees — instalment 2 of 2",
+          inv: "INV-2026-04412", amount: 45000, channel: "Bank transfer", rrr: "280 194 773 512",
+          code: "MOAUM-RCT-5J7Q-1XKD", split: true },
+    r2: { no: "RCT-2026-14210", date: "14 August 2026", purpose: "School fees — instalment 1 of 2",
+          inv: "INV-2026-04412", amount: 90000, channel: "Card", rrr: "280 188 402 771",
+          code: "MOAUM-RCT-2B9R-8TWM", split: true },
+    r3: { no: "RCT-2025-08120", date: "3 October 2025", purpose: "School fees 2025/2026",
+          inv: "INV-2025-03980", amount: 128000, channel: "Bank branch (Zenith, Makurdi)", rrr: "279 044 118 903",
+          code: "MOAUM-RCT-7C4L-3NQZ", split: true },
+    r4: { no: "RCT-2025-08644", date: "11 October 2025", purpose: "Hostel accommodation 2025/2026",
+          inv: "INV-2025-01144", amount: 40000, channel: "USSD", rrr: "279 051 776 220",
+          code: "MOAUM-RCT-6V1T-9YHF", split: false }
+  };
+  var currentReceipt = "r2";
+
+  function studentReceipt() {
+    var r = RECEIPTS[currentReceipt] || RECEIPTS.r2;
+    var uni = Math.round(r.amount * 0.95), state = r.amount - uni;
+    return '<div class="notice notice--ok">' + tick(18, 'var(--green-ink)') +
+        '<div><p style="color:var(--green-ink);font-weight:600">Payment confirmed with the bank on ' + r.date + '</p></div></div>' +
+
+      '<div class="doc" style="max-width:660px">' +
+        '<div class="doc__head">' +
+          '<img src="' + CREST + '" alt="University crest" style="width:46px;height:48px;object-fit:contain">' +
+          '<div class="u">REV. FR. MOSES ORSHIO ADASU<br>UNIVERSITY, MAKURDI</div>' +
+          '<div class="eyebrow">Official Payment Receipt</div>' +
+        '</div>' +
+
+        '<div style="display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:18px">' +
+          '<div class="kv"><span class="k">Receipt number</span><span class="v tnum">' + r.no + '</span></div>' +
+          '<div class="kv"><span class="k">Date</span><span class="v tnum">' + r.date + '</span></div>' +
+        '</div>' +
+
+        '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:18px">' +
+          '<div class="kv"><span class="k">Received from</span><span class="v">ADAMU, Grace Mwuese</span></div>' +
+          '<div class="kv"><span class="k">Matriculation number</span><span class="v tnum">MOAUM/CSC/23/1487</span></div>' +
+          '<div class="kv"><span class="k">Programme</span><span class="v">B.Sc. Computer Science · 300 Level</span></div>' +
+        '</div>' +
+
+        '<div class="tablewrap"><table style="min-width:400px">' +
+          '<thead><tr><th style="background:var(--chrome);color:#fff">Being payment for</th>' +
+          '<th class="num" style="background:var(--chrome);color:#fff">Amount</th></tr></thead><tbody>' +
+          '<tr><td>' + r.purpose + '<div class="sub2 tnum">Against invoice ' + r.inv + '</div></td>' +
+          '<td class="num tnum" style="font-weight:600">' + money(r.amount) + '</td></tr>' +
+          '<tr style="background:var(--bg)"><td style="font-weight:700">TOTAL RECEIVED</td>' +
+          '<td class="num tnum" style="font-weight:700;font-size:16px">' + money(r.amount) + '</td></tr>' +
+        '</tbody></table></div>' +
+
+        '<div style="display:flex;gap:24px;flex-wrap:wrap;margin:18px 0">' +
+          '<div class="kv"><span class="k">Channel</span><span class="v">' + r.channel + '</span></div>' +
+          '<div class="kv"><span class="k">Gateway reference (RRR)</span><span class="v tnum">' + r.rrr + '</span></div>' +
+        '</div>' +
+
+        (r.split
+          ? '<div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:18px;display:flex;flex-direction:column;gap:7px">' +
+            '<span class="eyebrow">Distribution</span>' +
+            row("University account", money(uni)) +
+            row("Benue State consolidated account", money(state)) +
+            '<div class="sub2">Applied automatically under the state IGR directive. ' +
+            '<span style="color:var(--red-ink);font-weight:600">[SPLIT % TO BE CONFIRMED BY BURSARY]</span></div></div>'
+          : '') +
+
+        '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--line-2)">' +
+          '<div style="width:74px;height:74px;border:1px solid var(--line);padding:5px;flex-shrink:0">' + qr() + '</div>' +
+          '<div class="kv" style="flex-grow:1;min-width:200px"><span class="k">Verification code</span>' +
+          '<span class="v tnum" style="letter-spacing:.5px">' + r.code + '</span>' +
+          '<span class="sub2">Check at moaum.edu.ng/verify · this receipt is valid without a signature</span></div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+        '<button class="btn btn--primary" data-doc="rcpt-fee">Download PDF</button>' +
+        '<button class="btn btn--ghost" data-doc="rcpt-fee">' + ico('print', 16, 'currentColor', 1.8) + 'Print</button>' +
+        '<button class="btn btn--ghost" data-go="s/fees">Back to invoices</button></div>';
+  }
+
+  /* ── passport photograph ─────────────────────────────────────────── */
+  // Neutral placeholder portrait: the real photograph is captured at
+  // matriculation and is the same image used on the ID card and at CBT
+  // identity verification.
+  function passport(w, h, radius) {
+    return '<div style="width:' + w + 'px;height:' + h + 'px;border-radius:' + (radius || 4) +
+      'px;overflow:hidden;border:1px solid var(--line);flex-shrink:0;background:#DCE6EC">' +
+      '<svg viewBox="0 0 100 124" width="100%" height="100%" role="img" aria-label="Student passport photograph">' +
+        '<rect width="100" height="124" fill="#DCE6EC"/>' +
+        '<circle cx="50" cy="46" r="22" fill="#94A9B6"/>' +
+        '<path d="M14 124c0-22 16-35 36-35s36 13 36 35Z" fill="#94A9B6"/>' +
+      '</svg></div>';
+  }

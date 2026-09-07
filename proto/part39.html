@@ -1,0 +1,188 @@
+
+  /* ══ MATRICULATION, AND THE OFFICE THAT RUNS IT ═══════════════════
+     Added 6 September 2026 from the Academic Office's own account of
+     the sequence (REC-MOAUMPP-001 F-1).
+
+     The correction is that a matriculation number is issued AFTER
+     course registration, not at admission acceptance. The candidate
+     carries an ADMISSION NUMBER through screening, fees and course
+     registration; the Faculty Officers then generate the list of
+     students who actually registered, the Academic Office confirms it,
+     and numbers are generated over that confirmed list in ONE RUN.
+
+     Three properties of the run are the design, and each of them is a
+     property the old sequence could not have:
+
+     · A number exists only for somebody who paid, registered and was
+       confirmed by her Faculty Officer. Issued at acceptance, one is
+       burned on every candidate who accepts and never appears — and a
+       matriculation number is permanent and never reused, so the
+       register then carries numbers against people who were never the
+       University's students.
+
+     · The run is ONE TRANSACTION over ONE SEQUENCE. Numbers are
+       contiguous within a department and session, and a run that fails
+       halfway allocates nothing. A partially matriculated list with
+       gaps is a records problem nobody can tidy afterwards, because
+       BR-007 forbids reusing the gaps.
+
+     · The faculty list is GENERATED from approved registrations, never
+       typed. It is the same discipline as the score sheet: a list
+       somebody keyed by hand is a list somebody can leave a name off,
+       and the omission is invisible because the list looks complete. */
+
+  var MAT_FACULTIES = [
+    ["Arts",                            412, 412, "confirmed", "Mr. T. Anzaku"],
+    ["Education",                       688, 688, "confirmed", "Mrs. A. Ikpe"],
+    ["Science",                         704, 701, "query",     "Mr. J. Ahile"],
+    ["Social Sciences",                 596, 596, "confirmed", "Mrs. R. Ogbe"],
+    ["Law",                             288, 288, "confirmed", "Mr. S. Utoo"],
+    ["Management Sciences",             344, 344, "confirmed", "Mrs. C. Adah"],
+    ["Environmental Sciences",          196, 196, "confirmed", "Mr. P. Iorkyaa"],
+    ["Communication and Media Studies", 421, 421, "confirmed", "Mrs. B. Tyona"],
+    ["Technology and Industrial Studies", 152, 152, "confirmed", "Mr. D. Gwaza"],
+    ["Architecture",                     88,  88, "confirmed", "Mr. E. Uja"],
+    ["Pharmaceutical Sciences",         124, 124, "confirmed", "Mrs. N. Iyorkyaa"],
+    ["Basic Medical Sciences",          266, 266, "confirmed", "Mr. A. Terhemba"],
+    ["Basic Clinical Sciences",         198, 198, "confirmed", "Mrs. G. Ashaver"],
+    ["Clinical Sciences",               210,   0, "awaited",   "Mr. O. Idoko"]
+  ];
+
+  function matTotals() {
+    var reg = 0, conf = 0, pending = 0;
+    MAT_FACULTIES.forEach(function (f) {
+      reg += f[1]; conf += f[2];
+      if (f[3] !== "confirmed") { pending++; }
+    });
+    return { reg: reg, conf: conf, pending: pending, gap: reg - conf };
+  }
+
+  /* ── the Academic Office screen ───────────────────────────────── */
+
+  function tMatriculation() {
+    var t = matTotals(), done = !!S.matRun;
+
+    return note(done ? 'ok' : t.pending ? 'bad' : 'info',
+      done ? t.conf.toLocaleString() + ' matriculation numbers issued in one run'
+           : t.pending ? t.pending + ' faculty list' + (t.pending === 1 ? ' is' : 's are') + ' not confirmed, so the run cannot start'
+           : 'Every faculty list is confirmed &mdash; the run may start',
+      done ? 'One transaction, one sequence, 12 October. Every number is contiguous within its department and session, and every one belongs to a student who paid, registered and was confirmed by her Faculty Officer. The numbers are now circulated to the faculties and to the students.'
+           : t.pending ? 'The run allocates every number or none. Starting it with a faculty outstanding would either leave those students unmatriculated after their classmates, or force a second run whose numbers sit at the end of the sequence rather than beside their department&rsquo;s &mdash; and a matriculation number, once issued, cannot be exchanged for a tidier one.'
+           : 'Confirm nothing further and press the button. The run is a single transaction: if it fails at the four-thousandth student it allocates nothing, and is repeated.') +
+
+    tiles([
+      ["Registered students", t.reg.toLocaleString(), null, "Approved registrations, all faculties"],
+      ["Confirmed by Faculty Officers", t.conf.toLocaleString(), t.gap ? "var(--red-ink)" : null,
+        t.gap ? t.gap + " under query" : "Ready to matriculate"],
+      ["Faculties outstanding", String(t.pending), t.pending ? "var(--red-ink)" : "var(--green-ink)",
+        t.pending ? "Clinical Sciences has not returned" : "All fourteen in"],
+      ["Numbers issued", done ? t.conf.toLocaleString() : "&mdash;", done ? "var(--green-ink)" : "var(--faint)",
+        done ? "Run MAT/2026/001, 12 October" : "No run has been made"]
+    ]) +
+
+    note('info', 'The faculty list is generated, not typed',
+      'A Faculty Officer opens the list of students with an approved course registration for the session and confirms it. He does not key names, and he cannot add one: a student who did not register does not appear, and a student who registered cannot be left off. It is the same rule as the score sheet, for the same reason &mdash; a list somebody typed is a list somebody can leave a name off, and the omission is invisible because the list still looks complete.') +
+
+    panel('Faculty lists', 'Generated from approved registrations for 2026/2027',
+      dtable(["Faculty", "Faculty Officer", "Registered|mid", "Confirmed|mid", "State|mid", "Action|num"],
+        MAT_FACULTIES.map(function (f) {
+          return ['<strong>' + f[0] + '</strong>', '<span class="sub2">' + f[4] + '</span>',
+            '<span class="tnum">' + f[1] + '</span>',
+            '<span class="tnum"' + (f[2] < f[1] ? ' style="color:var(--red-ink)"' : '') + '>' + f[2] + '</span>',
+            f[3] === "confirmed" ? pil('ok', 'Confirmed')
+              : f[3] === "query" ? pil('bad', '3 under query') : pil('info', 'Not returned'),
+            btn('ghost', 'Open')];
+        }), 900)) +
+
+    '<div class="grid grid--2">' +
+      panel('What the run does', 'One transaction, one sequence', pbody(idSteps([
+        [done ? "done" : "now", "Reconcile the confirmed lists against admissions and finance",
+          "Every student on a faculty list must have accepted an offer, been cleared, paid and registered. A name that fails any of the four is held back with the reason, not silently dropped."],
+        [done ? "done" : "todo", "Allocate serially, within department and session",
+          "MOAUM/CSC/26/1874 is the 1,874th Computer Science student of the 2026 entry. The serial comes from one sequence per department, so the numbers are contiguous."],
+        [done ? "done" : "todo", "Commit, or allocate nothing at all",
+          "A partially matriculated list leaves gaps in the sequence, and BR-007 forbids reusing them. The run is a single transaction for that reason and no other."],
+        [done ? "done" : "todo", "Publish, and queue the identity cards",
+          "The Library cannot make a card before this moment, because the card is keyed on the matriculation number."]
+      ]))) +
+
+      panel('Held back from this run', '3 students, all from Science', pbody(
+        dtable(["Admission number", "Name", "Why|num"], [
+          ['<span class="tnum">MOAUM/ADM/26/017744</span>', '<strong>AGER, Msurshima Peter</strong>',
+            '<span class="sub2">Registered 12 units. The minimum at 100 level is 18</span>'],
+          ['<span class="tnum">MOAUM/ADM/26/018015</span>', '<strong>ODOH, Ojoma Rita</strong>',
+            '<span class="sub2">Second instalment outstanding &mdash; registration was never approved</span>'],
+          ['<span class="tnum">MOAUM/ADM/26/018204</span>', '<strong>KWAGHGER, Simon Terwase</strong>',
+            '<span class="sub2">O&rsquo;Level statement expired on 3 November and has not been replaced</span>']
+        ], 660) +
+        note('bad', 'Held back is not rejected, and it is not silent',
+          'Each of these three keeps an admission number, keeps their registration and keeps their fee record. Each has a named reason and a named office to go to. They are matriculated in the next run once the reason is cleared &mdash; what they must not do is acquire a permanent number while the reason stands.'))) +
+    '</div>' +
+
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<button class="btn btn--primary"' + (t.pending && !done ? ' disabled' : '') +
+        ' data-mat="' + (done ? "undo" : "run") + '">' +
+        (done ? 'Undo the run &mdash; prototype control' : 'Run matriculation for ' + t.conf.toLocaleString() + ' students') + '</button>' +
+      '<span class="sub2">' + (t.pending && !done
+        ? 'Disabled while Clinical Sciences is outstanding'
+        : done ? 'Run MAT/2026/001 &middot; 12 October 2026 &middot; Mrs. D. A. Ochoga'
+               : 'This cannot be undone. A matriculation number is permanent.') + '</span>' +
+    '</div>' +
+
+    (done ? panel('Run MAT/2026/001', 'A sample of what was allocated',
+      dtable(["Admission number", "Matriculation number", "Name", "Department|num"],
+        [["MOAUM/ADM/26/018342", "MOAUM/CSC/26/1874", "OCHANYA, Faith Aondoaseer", "Computer Science"],
+         ["MOAUM/ADM/26/018343", "MOAUM/CSC/26/1875", "TSAVNANDE, Doosuur Patience", "Computer Science"],
+         ["MOAUM/ADM/26/018344", "MOAUM/CSC/26/1876", "AONDONA, Terwase David", "Computer Science"],
+         ["MOAUM/ADM/26/018388", "MOAUM/MTH/26/0912", "IKPE, Ngodoo Rebecca", "Mathematics"],
+         ["MOAUM/ADM/26/018390", "MOAUM/PHY/26/0455", "GBAOR, Sesugh Bernard", "Physics"]].map(function (r) {
+          return ['<span class="tnum sub2">' + r[0] + '</span>', '<b class="tnum">' + r[1] + '</b>',
+            '<strong>' + r[2] + '</strong>', '<span class="sub2">' + r[3] + '</span>'];
+        }), 820) +
+      note('info', 'The admission number is retired, not deleted',
+        'It stays on the record. A receipt, a screening slip or a clearance note issued under it is still that student&rsquo;s document, and must still resolve to her years later.')) : '');
+  }
+
+  /* ── the Faculty Officer's side of it ─────────────────────────── */
+
+  function tMatList() {
+    var conf = !!S.matList;
+    return note(conf ? 'ok' : 'info',
+      conf ? 'Your list is confirmed and has gone to the Academic Office'
+           : 'This list is generated from approved registrations',
+      conf ? '704 students registered; 701 confirmed. Three are under query and are named below with the reason. They keep their registrations and are matriculated in the next run.'
+           : 'You are not keying names. The list is every student in the Faculty of Science with an approved course registration for 2026/2027 &mdash; you cannot add a name to it and you cannot leave one off. What you are confirming is that these are the students who actually turned up and registered.') +
+
+    tiles([
+      ["Registered in the faculty", "704", null, "Approved registrations"],
+      ["Under query", "3", "var(--red-ink)", "Named below, with reasons"],
+      ["To be confirmed", "701", null, "Goes to the Academic Office"],
+      ["State", conf ? "Confirmed" : "Draft", conf ? "var(--green-ink)" : null, conf ? "12 October" : "Not yet submitted"]
+    ]) +
+
+    panel('Faculty of Science &mdash; students registered for 2026/2027', '704 registered &middot; showing the first eight',
+      dtable(["Admission number", "Name", "Department", "Units|mid", "Fees|mid", "State|num"],
+        [["MOAUM/ADM/26/018342", "OCHANYA, Faith Aondoaseer", "Mathematics and Computer Science", 21, 1, 1],
+         ["MOAUM/ADM/26/018343", "TSAVNANDE, Doosuur Patience", "Mathematics and Computer Science", 21, 1, 1],
+         ["MOAUM/ADM/26/017744", "AGER, Msurshima Peter", "Chemistry", 12, 1, 0],
+         ["MOAUM/ADM/26/018015", "ODOH, Ojoma Rita", "Biological Sciences", 18, 0, 0],
+         ["MOAUM/ADM/26/018188", "TERKULA, Yina Godwin", "Physics", 20, 1, 1],
+         ["MOAUM/ADM/26/018204", "KWAGHGER, Simon Terwase", "Chemistry", 19, 1, 0],
+         ["MOAUM/ADM/26/018276", "NGUVESE, Sughnen Elizabeth", "Biological Sciences", 22, 1, 1],
+         ["MOAUM/ADM/26/018301", "ORKUMA, Felix Terhemen", "Physics", 20, 1, 1]].map(function (r) {
+          return ['<span class="tnum">' + r[0] + '</span>', '<strong>' + r[1] + '</strong>',
+            '<span class="sub2">' + r[2] + '</span>',
+            '<span class="tnum"' + (r[3] < 18 ? ' style="color:var(--red-ink)"' : '') + '>' + r[3] + '</span>',
+            r[4] ? pil('ok', 'Paid') : pil('bad', 'Outstanding'),
+            r[5] ? pil('ok', 'For matriculation') : pil('bad', 'Query')];
+        }), 940)) +
+
+    note('bad', 'You cannot add a student to this list, and that is deliberate',
+      'Every officer who has ever run a matriculation has been asked to add one name at the counter &mdash; a student who paid but whose registration did not go through, a candidate whose file was mislaid. The answer is not to type the name here. It is to fix the registration, at which point the student appears on this list without anybody typing anything. A name typed onto a matriculation list is a permanent number issued on somebody&rsquo;s say-so.') +
+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<button class="btn btn--primary"' + (conf ? ' disabled' : '') + ' data-mat="' + (conf ? "" : "confirm") + '">' +
+        (conf ? 'Confirmed 12 October' : 'Confirm 701 students to the Academic Office') + '</button>' +
+      (conf ? btn('ghost', 'Undo &mdash; prototype control', ' data-mat="unconfirm"') : btn('ghost', 'Export the list')) +
+    '</div>';
+  }

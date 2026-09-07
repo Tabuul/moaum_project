@@ -1,0 +1,59 @@
+
+  /* ── shared building blocks for the module screens ───────────────── */
+  // t = [label, value, colour?, caption?]
+  function tiles(arr, cls) {
+    return '<div class="grid ' + (cls || 'grid--4') + '">' + arr.map(function (t) {
+      return '<div class="tile"><span class="eyebrow">' + t[0] + '</span>' +
+        '<span class="n tnum"' + (t[2] ? ' style="color:' + t[2] + '"' : '') + '>' + t[1] + '</span>' +
+        (t[3] ? '<span class="c">' + t[3] + '</span>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+
+  // cols: 'Header' or 'Header|num' / 'Header|mid'
+  /* the third argument used to set a minimum width; nothing scrolls
+     sideways any more, so it is accepted and ignored */
+  function dtable(cols, rows, minw) {
+    var cls = cols.map(function (c) { return c.split("|")[1] || ""; });
+    return '<div class="tablewrap"><table>' +
+      '<thead><tr>' + cols.map(function (c, i) {
+        return '<th class="' + cls[i] + '">' + c.split("|")[0] + '</th>';
+      }).join('') + '</tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr>' + r.map(function (cell, i) {
+          return '<td class="' + cls[i] + '">' + cell + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  function panel(title, right, inner) {
+    return '<div class="card"><div class="card__head"><span class="card__title">' + title + '</span>' +
+      (right ? '<span class="sub2" style="margin-left:auto">' + right + '</span>' : '') + '</div>' + inner + '</div>';
+  }
+  function pbody(inner, style) { return '<div class="card__body"' + (style ? ' style="' + style + '"' : '') + '>' + inner + '</div>'; }
+  function pil(kind, text) { return '<span class="pill pill--' + kind + '">' + text + '</span>'; }
+  function two(a, b) { return '<strong>' + a + '</strong><div class="sub2">' + b + '</div>'; }
+  function btn(kind, label, attrs) { return '<button class="btn btn--' + kind + ' btn--sm"' + (attrs || '') + '>' + label + '</button>'; }
+  function note(kind, title, text, action) {
+    var icon = kind === 'bad' ? warnIcon(19) : kind === 'ok' ? tick(19, 'var(--green-ink)') : ico('alert', 18, 'var(--chrome)', 2);
+    var col = kind === 'bad' ? 'var(--red-deep)' : kind === 'ok' ? 'var(--green-ink)' : 'var(--chrome)';
+    return '<div class="notice notice--' + kind + '">' + icon +
+      '<div><div class="notice__t" style="color:' + col + '">' + title + '</div>' +
+      '<p style="color:' + (kind === 'info' ? '#124A63' : col) + '">' + text + '</p>' +
+      (action ? '<div style="margin-top:11px">' + action + '</div>' : '') + '</div></div>';
+  }
+  function kvGrid(pairs, cls) {
+    return '<div class="grid ' + (cls || 'grid--4') + '">' + pairs.map(function (p) {
+      return '<div class="kv"><span class="k">' + p[0] + '</span><span class="v">' + p[1] + '</span></div>';
+    }).join('') + '</div>';
+  }
+  function bar(pct, colour) {
+    return '<div class="meter__bar" style="min-width:90px"><div class="meter__fill" style="width:' +
+      pct + '%;background:' + (colour || 'var(--chrome)') + '"></div></div>';
+  }
+  function stepRow(done, title, sub) {
+    return '<div class="step">' + (done
+      ? '<div class="step__mark step__mark--done">' + tick(12, '#fff') + '</div>'
+      : '<div class="step__mark step__mark--todo"></div>') +
+      '<div><div style="font-weight:600' + (done ? '' : ';color:var(--faint)') + '">' + title + '</div>' +
+      '<div class="sub2">' + sub + '</div></div></div>';
+  }

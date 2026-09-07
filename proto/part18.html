@@ -1,0 +1,410 @@
+
+  /* ══ PAYMENT GATEWAYS, LEDGER, CLEARANCE, ADMINISTRATION ═════════
+     Four screens the institution cannot run without: where money
+     comes in, how it is accounted for, who is cleared, and the one
+     desk that can see all of it.                                  */
+
+  var GATEWAYS = {
+    paystack: {
+      n: "Paystack", mode: "Live", on: 1, share: 48, ok: 99.4, settle: "T+1",
+      fee: "1.5% + &#8358;100, capped at &#8358;2,000",
+      channels: ["Card", "Bank transfer", "USSD", "QR"],
+      merchant: "MOAUM-PSK-4471", pk: "pk_live_8f21c904a77b3e5d1420ff88",
+      sk: "sk_live_••••••••••••••••••••••3e91", rotated: "2 March 2026",
+      hook: "https://portal.moaum.edu.ng/webhooks/paystack",
+      applies: "Tuition, acceptance, application, hostel, transcript",
+      note: "Highest success rate on cards and the only one with a working QR channel."
+    },
+    flutterwave: {
+      n: "Flutterwave", mode: "Live", on: 1, share: 22, ok: 99.1, settle: "T+1",
+      fee: "1.4%, capped at &#8358;2,000",
+      channels: ["Card", "Bank transfer", "USSD"],
+      merchant: "MOAUM-FLW-8820", pk: "FLWPUBK-2b71d0e4a9c8f5-X",
+      sk: "FLWSECK-••••••••••••••••••-X", rotated: "2 March 2026",
+      hook: "https://portal.moaum.edu.ng/webhooks/flutterwave",
+      applies: "Tuition, acceptance, application, hostel",
+      note: "Kept live as the failover for cards. Takes over automatically when Paystack errors exceed 2% over five minutes."
+    },
+    interswitch: {
+      n: "Interswitch / Quickteller", mode: "Live", on: 1, share: 19, ok: 98.6, settle: "T+2",
+      fee: "&#8358;300 flat + 1.5%",
+      channels: ["Card", "Quickteller web", "Bank branch", "POS"],
+      merchant: "MOAUM-ISW-1188", pk: "IKIAB40C1E9F2D77A3B0C4E5",
+      sk: "SECK-••••••••••••••••••••-A2", rotated: "19 January 2026",
+      hook: "https://portal.moaum.edu.ng/webhooks/interswitch",
+      applies: "Tuition, hostel, bank branch collections",
+      note: "The only channel that reaches a bank counter, which still carries a fifth of first-year payments."
+    },
+    remita: {
+      n: "Remita", mode: "Live", on: 1, share: 11, ok: 99.0, settle: "T+1",
+      fee: "&#8358;170 flat",
+      channels: ["Bank branch", "RRR", "Internet banking"],
+      merchant: "MOAUM-RMT-0042", pk: "2547881193",
+      sk: "RMT-••••••••••••••••-77", rotated: "14 April 2026",
+      hook: "https://portal.moaum.edu.ng/webhooks/remita",
+      applies: "State IGR-splittable charges only",
+      note: "Mandated for charges that split to Benue State internally generated revenue. The 95 / 5 split is applied by Remita at settlement, not by the University at month end."
+    },
+    monnify: {
+      n: "Monnify", mode: "Test", on: 0, share: 0, ok: 0, settle: "&mdash;",
+      fee: "1.0%, capped at &#8358;500",
+      channels: ["Card", "Bank transfer", "Reserved account"],
+      merchant: "MOAUM-MNF-TEST", pk: "MK_TEST_9E2A44C1B07D",
+      sk: "&mdash; not set", rotated: "&mdash;",
+      hook: "https://portal.moaum.edu.ng/webhooks/monnify",
+      applies: "Nothing &mdash; not enabled",
+      note: "Configured in test mode while its reserved-account model is evaluated for hostel collections. It receives no live traffic."
+    }
+  };
+  var GW_KEYS = ["paystack", "flutterwave", "interswitch", "remita", "monnify"];
+
+  function tGateways() {
+    var g = GATEWAYS[S.gw] || GATEWAYS.paystack;
+    return note('info', 'A secret key is written here and never read back',
+      'Keys are held in the platform vault, not in the database and not in a configuration file in the repository. Once saved, the portal can use a secret key but no screen and no member of staff can display it again &mdash; a compromised key is replaced, not recovered.') +
+
+    tiles([
+      ['Gateways live', '4', 'var(--green-ink)', 'One in test'],
+      ['Collected today', '&#8358;18.47m', null, '412 transactions'],
+      ['Weighted success rate', '99.1%', 'var(--green-ink)', 'Across live gateways'],
+      ['Keys due for rotation', '1', 'var(--red-ink)', 'Interswitch, within 30 days']
+    ]) +
+
+    panel('Configured gateways', 'Click a gateway to configure it', dtable(
+      ['Gateway', 'Mode|mid', 'Channels', 'Share|mid', 'Success|mid', 'Settles|mid', 'Action|num'],
+      GW_KEYS.map(function (k) {
+        var x = GATEWAYS[k];
+        return [
+          '<strong>' + x.n + '</strong><div class="sub2">' + x.merchant + '</div>',
+          x.on ? pil('ok', x.mode) : pil('grey', x.mode),
+          '<span class="sub2">' + x.channels.join(' &middot; ') + '</span>',
+          x.on ? '<span class="tnum">' + x.share + '%</span>' : '<span class="sub2">&mdash;</span>',
+          x.on ? '<span class="tnum">' + x.ok + '%</span>' : '<span class="sub2">&mdash;</span>',
+          '<span class="tnum sub2">' + x.settle + '</span>',
+          btn(S.gw === k ? 'primary' : 'ghost', S.gw === k ? 'Configuring' : 'Configure', ' data-gw="' + k + '"')
+        ];
+      }), 1080)) +
+
+    panel('Configure &mdash; ' + g.n, g.mode + ' mode', pbody(
+      '<div class="sub2">' + g.note + '</div>' +
+      kvGrid([
+        ["Mode", g.mode],
+        ["Merchant identifier", g.merchant],
+        ["Public key", g.pk],
+        ["Secret key", g.sk + " &middot; last replaced " + g.rotated],
+        ["Webhook endpoint", g.hook],
+        ["Settles", g.settle],
+        ["Channels enabled", g.channels.join(" &middot; ")],
+        ["What it may collect", g.applies]
+      ], 'grid--2')) +
+      '<div class="rfbar">' +
+        '<button class="btn btn--primary btn--sm" data-mdl="rec:gateway:' + (S.gw || "paystack") + '">Configure ' + g.n + '</button>' +
+        btn('ghost', 'Test the key') +
+        btn('ghost', 'Send a test event') +
+        btn('ghost', 'View this gateway&rsquo;s transactions', ' data-go="t/ledger"') +
+        '<span class="sub2">A secret key is written here and never read back.</span>' +
+      '</div>') +
+
+    note('bad', 'Two officers, and neither of them alone',
+      'A change to a live gateway &mdash; its keys, its mode, or what it may collect &mdash; is proposed by one officer and approved by another, exactly as a payment posting is. The Director of ICT can propose; the Bursar approves. Neither can do both, because a single person who can point the University&rsquo;s money at a different merchant account is the whole risk in one place.') +
+
+    panel('Routing and failover', 'Which gateway takes which payment, and what happens when one fails', dtable(
+      ['Payment', 'First choice', 'Failover', 'Rule|num'], [
+        [two('Tuition and user charges', 'Card, transfer, USSD'), 'Paystack', 'Flutterwave', '<span class="sub2">Failover when card errors exceed 2% over five minutes</span>'],
+        [two('Charges that split to State IGR', 'Statutory'), 'Remita', '<span class="sub2">None permitted</span>', '<span class="sub2">The 95 / 5 split is applied at settlement</span>'],
+        [two('Bank counter payments', 'For payers without a card'), 'Interswitch / Quickteller', 'Remita', '<span class="sub2">Reference resolves at any approved bank</span>'],
+        [two('Application and acceptance fees', 'High volume, short window'), 'Paystack', 'Flutterwave', '<span class="sub2">Both live through the admissions window</span>'],
+        [two('Hostel', 'Seasonal'), 'Paystack', 'Interswitch', '<span class="sub2">Reserved accounts under evaluation</span>']
+      ], 1000)) +
+
+    panel('Webhook and health log', 'Last twelve hours', dtable(
+      ['Time|mid', 'Gateway', 'Event', 'Signature|mid', 'Result|num'], [
+        ['<span class="sub2 tnum">11:52</span>', 'Paystack', '<span class="sub2">charge.success &middot; ref …773512</span>', pil('ok', 'Valid'), pil('ok', 'Settled &mdash; already posted by the reconciler')],
+        ['<span class="sub2 tnum">11:44</span>', 'Remita', '<span class="sub2">notification &middot; RRR 280194771043</span>', pil('ok', 'Valid'), pil('ok', 'Posted')],
+        ['<span class="sub2 tnum">11:31</span>', 'Interswitch', '<span class="sub2">transaction.completed</span>', pil('ok', 'Valid'), pil('ok', 'Posted')],
+        ['<span class="sub2 tnum">10:58</span>', 'Unknown', '<span class="sub2">charge.success &middot; forged reference</span>', pil('bad', 'Invalid'), pil('bad', 'Discarded and logged')],
+        ['<span class="sub2 tnum">09:12</span>', 'Flutterwave', '<span class="sub2">health check</span>', '<span class="sub2">&mdash;</span>', pil('ok', 'Responding, 240 ms')]
+      ], 1000)) +
+
+    note('info', 'A callback is a hint, not an instruction',
+      'The portal never credits a student because a gateway said so. On any callback it calls the gateway back and asks what that reference actually settled for, and posts what the gateway answers. It is the reason the forged callback at 10:58 cost nothing: it was discarded at the signature, and would have failed at verification even if it had not been.');
+  }
+
+  /* ── the ledger ───────────────────────────────────────────────── */
+
+  function tLedger() {
+    return tiles([
+      ['Collected today', '&#8358;18.47m', null, '412 transactions'],
+      ['Collected this session', '&#8358;1.84bn', 'var(--green-ink)', '78% of the estimate'],
+      ['Awaiting settlement', '&#8358;9.21m', 'var(--chrome)', 'T+1 and T+2, not yet in the bank'],
+      ['Unmatched', '&#8358;225,000', 'var(--red-ink)', '12 transactions']
+    ]) +
+
+    panel('Filter', '', pbody(
+      /* each filter carries its own label rather than folding the field
+         name into the option text: a select whose only clue is inside
+         the closed dropdown is unreadable to a screen reader and
+         unguessable once a value has been chosen */
+      '<div class="grid grid--4">' +
+        [['Session', '2026/2027'], ['Faculty', 'All'], ['Fee type', 'All'], ['Gateway', 'All'],
+         ['Status', 'All'], ['From', '1 September'], ['To', '8 September'], ['Channel', 'All']].map(function (f, i) {
+          var id = 'ldg-' + i;
+          return '<div class="field" style="margin:0">' +
+            '<label for="' + id + '">' + f[0] + '</label>' +
+            '<select id="' + id + '" class="ws__select" style="width:100%"><option>' + f[1] + '</option></select></div>';
+        }).join('') +
+      '</div>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:4px">' +
+        '<button class="btn btn--primary btn--sm">Apply</button>' +
+        btn('ghost', 'Export to Excel') + btn('ghost', 'Export the journal for the finance system') +
+      '</div>')) +
+
+    panel('Transactions', '412 today &middot; 8 shown', dtable(
+      ['Reference', 'When|mid', 'Payer', 'Charge', 'Gateway', 'Gross|num', 'Fee|num', 'Net to University|num', 'Status|num'], [
+        ['<span class="tnum sub2">280194773512</span>', '<span class="sub2 tnum">11:52</span>',
+         two('ADAMU, Grace Mwuese', 'MOAUM/CSC/23/1487'), '<span class="sub2">Tuition, instalment 2</span>', 'Paystack',
+         '<span class="tnum">&#8358;45,000</span>', '<span class="tnum sub2">&#8358;775</span>', '<span class="tnum">&#8358;42,750</span>', pil('ok', 'Settled')],
+        ['<span class="tnum sub2">280194771043</span>', '<span class="sub2 tnum">11:44</span>',
+         two('OCHANYA, Faith A.', 'APP/2026/018342'), '<span class="sub2">Acceptance fee</span>', 'Remita',
+         '<span class="tnum">&#8358;25,000</span>', '<span class="tnum sub2">&#8358;170</span>', '<span class="tnum">&#8358;23,750</span>', pil('ok', 'Settled')],
+        ['<span class="tnum sub2">280194768887</span>', '<span class="sub2 tnum">11:31</span>',
+         two('UGBEM, Terhemba Paul', 'MOAUM/LAW/22/0918'), '<span class="sub2">Tuition, part payment</span>', 'Interswitch',
+         '<span class="tnum">&#8358;90,000</span>', '<span class="tnum sub2">&#8358;1,650</span>', '<span class="tnum">&#8358;85,500</span>', pil('bad', 'Part payment')],
+        ['<span class="tnum sub2">280194766120</span>', '<span class="sub2 tnum">10:58</span>',
+         two('IORNONGU, Sewuese M.', 'MOAUM/EDU/24/2201'), '<span class="sub2">Hostel</span>', 'Paystack',
+         '<span class="tnum">&#8358;40,000</span>', '<span class="tnum sub2">&#8358;700</span>', '<span class="tnum">&#8358;38,000</span>', pil('ok', 'Settled')],
+        ['<span class="tnum sub2">TELLER/BR/44821</span>', '<span class="sub2 tnum">Yest. 14:22</span>',
+         two('Not identified', 'No reference quoted'), '<span class="sub2">Unknown</span>', 'Bank branch',
+         '<span class="tnum">&#8358;40,000</span>', '<span class="tnum sub2">&mdash;</span>', '<span class="tnum">&mdash;</span>', pil('bad', 'Unmatched')],
+        ['<span class="tnum sub2">280194765220</span>', '<span class="sub2 tnum">Yest. 22:41</span>',
+         two('ANYEBE, Ruth Onyilo', 'MOAUM/CSC/23/1430'), '<span class="sub2">Application fee</span>', 'Flutterwave',
+         '<span class="tnum">&#8358;2,300</span>', '<span class="tnum sub2">&#8358;32</span>', '<span class="tnum">&#8358;2,185</span>', pil('info', 'Awaiting settlement')],
+        ['<span class="tnum sub2">280194763004</span>', '<span class="sub2 tnum">Yest. 16:10</span>',
+         two('ABAAGU, Terkimbi John', 'MOAUM/CSC/23/1401'), '<span class="sub2">Transcript</span>', 'Paystack',
+         '<span class="tnum">&#8358;15,000</span>', '<span class="tnum sub2">&#8358;325</span>', '<span class="tnum">&#8358;14,250</span>', pil('ok', 'Settled')],
+        ['<span class="tnum sub2">280194762881</span>', '<span class="sub2 tnum">Yest. 15:02</span>',
+         two('AGBO, Ochanya Faith', 'MOAUM/CSC/23/1415'), '<span class="sub2">Tuition &mdash; duplicate</span>', 'Paystack',
+         '<span class="tnum">&#8358;45,000</span>', '<span class="tnum sub2">&#8358;775</span>', '<span class="tnum">&#8358;42,750</span>', pil('bad', 'Duplicate &mdash; credit raised')]
+      ], 1320)) +
+
+    two_col(
+      panel('Settlement by gateway', 'Money the gateway holds until it pays it over', dtable(
+        ['Gateway', 'Gross|mid', 'Expected|num'], [
+          ['Paystack', '<span class="tnum">&#8358;8.86m</span>', '<span class="sub2 tnum">9 Sep</span>'],
+          ['Flutterwave', '<span class="tnum">&#8358;4.06m</span>', '<span class="sub2 tnum">9 Sep</span>'],
+          ['Interswitch', '<span class="tnum">&#8358;3.51m</span>', '<span class="sub2 tnum">10 Sep</span>'],
+          ['Remita', '<span class="tnum">&#8358;2.04m</span>', '<span class="sub2 tnum">9 Sep</span>'],
+          ['<b>Total in transit</b>', '<b class="tnum">&#8358;18.47m</b>', '']
+        ], 420)),
+      panel('Where each naira went', 'Today', dtable(
+        ['Destination', 'Amount|num'], [
+          ['Gross collected', '<span class="tnum">&#8358;18,472,500</span>'],
+          ['Less gateway fees', '<span class="tnum sub2">&#8358;284,180</span>'],
+          ['To Benue State IGR, 5%', '<span class="tnum">&#8358;909,416</span>'],
+          ['<b>Net to the University</b>', '<b class="tnum">&#8358;17,278,904</b>']
+        ], 420))) +
+
+    note('info', 'Money received is not yet income earned',
+      'A student who pays the whole session in September has paid for two semesters. The ledger recognises the first semester now and holds the rest as a liability until the second opens, because a university that spends deferred fees as though they were this term&rsquo;s income discovers the hole in February.') +
+
+    panel('Ledger accounts', 'The portal is the subsidiary ledger; a journal is posted to the finance system nightly', dtable(
+      ['Account', 'Type|mid', 'Debit|num', 'Credit|num'], [
+        ['Bank &mdash; University collection account', '<span class="sub2">Asset</span>', '<span class="tnum">&#8358;17,278,904</span>', ''],
+        ['Gateway receivable &mdash; in transit', '<span class="sub2">Asset</span>', '<span class="tnum">&#8358;9,210,000</span>', ''],
+        ['Tuition income &mdash; first semester', '<span class="sub2">Income</span>', '', '<span class="tnum">&#8358;11,402,110</span>'],
+        ['Deferred fee income &mdash; second semester', '<span class="sub2">Liability</span>', '', '<span class="tnum">&#8358;5,876,794</span>'],
+        ['Benue State IGR payable', '<span class="sub2">Liability</span>', '', '<span class="tnum">&#8358;909,416</span>'],
+        ['Gateway charges', '<span class="sub2">Expense</span>', '<span class="tnum">&#8358;284,180</span>', ''],
+        ['Suspense &mdash; unmatched receipts', '<span class="sub2">Liability</span>', '', '<span class="tnum">&#8358;225,000</span>']
+      ], 900)) +
+
+    note('bad', 'The suspense account is a queue, not a resting place',
+      '&#8358;225,000 sits in suspense because twelve payers cannot be identified. Every naira in it belongs to somebody who believes they have paid and is being blocked from registering. It is cleared before the period closes, or the period does not close.',
+      btn('urgent', 'Open the investigations', ' data-go="t/exception"'));
+  }
+
+  /* ── clearance ────────────────────────────────────────────────── */
+
+  var CLR_UNITS = ["Bursary", "Department", "Faculty", "Library", "Health", "Hostel", "Works", "Alumni"];
+
+  function tClearance() {
+    var students = [
+      ["MOAUM/CSC/22/1188", "IORNONGU, Sewuese Mercy", "Computer Science", [1,1,1,1,1,1,1,1]],
+      ["MOAUM/CSC/22/1204", "UGOR, Terhemen Blessing", "Computer Science", [1,1,1,0,1,1,1,1]],
+      ["MOAUM/LAW/22/0918", "UGBEM, Terhemba Paul", "Public Law", [0,1,1,1,1,0,1,1]],
+      ["MOAUM/EDU/22/2044", "ATIM, Doosuur Grace", "Educational Foundations", [1,1,0,1,1,1,1,1]],
+      ["MOAUM/CHM/22/0771", "ORKAA, Aondoaseer J.", "Chemistry", [1,1,1,1,1,1,1,1]]
+    ];
+    return scopeBar('candidates', {}) +
+    note('info', 'Clearance is a set of independent sign-offs, not a form that travels',
+      'Each unit clears against its own record, in any order, and none of them holds a piece of paper for the student to carry. The candidate is cleared when the last unit signs, and the certificate is released by that fact rather than by anyone assembling the evidence.') +
+
+    tiles([
+      ['Candidates for clearance', '2,884', null, 'Graduating, 2025/2026'],
+      ['Fully cleared', '2,441', 'var(--green-ink)', '85%'],
+      ['Outstanding at one unit', '389', 'var(--chrome)', 'Usually the Bursary'],
+      ['Outstanding at two or more', '54', 'var(--red-ink)', 'Convocation is in six weeks']
+    ]) +
+
+    panel('Where candidates are held', 'By unit &middot; a candidate can be held by more than one', dtable(
+      ['Unit', 'Clears against', 'Holding|mid', 'Typical reason', 'Progress|num'], [
+        [two('Bursary', 'Financial clearance'), '<span class="sub2">Outstanding charges on any invoice</span>', '<span class="tnum">284</span>', '<span class="sub2">Unpaid balance or an unmatched payment</span>', bar(90, 'var(--green)')],
+        [two('Library', 'Books and fines'), '<span class="sub2">Items on loan, unpaid fines</span>', '<span class="tnum">96</span>', '<span class="sub2">A book never returned in 300 level</span>', bar(97, 'var(--green)')],
+        [two('Department', 'Academic clearance'), '<span class="sub2">Project, laboratory items, carryovers</span>', '<span class="tnum">41</span>', '<span class="sub2">Bound project not deposited</span>', bar(99, 'var(--green)')],
+        [two('Faculty', 'Faculty clearance'), '<span class="sub2">Faculty dues and equipment</span>', '<span class="tnum">18</span>', '<span class="sub2">Laboratory coat or equipment</span>', bar(99, 'var(--green)')],
+        [two('Health', 'Clinic'), '<span class="sub2">Outstanding clinic charges</span>', '<span class="tnum">12</span>', '<span class="sub2">Unpaid treatment</span>', bar(99, 'var(--green)')],
+        [two('Hostel', 'Accommodation'), '<span class="sub2">Room condition, keys, damage</span>', '<span class="tnum">27</span>', '<span class="sub2">Keys not returned</span>', bar(99, 'var(--green)')],
+        [two('Works and Maintenance', 'University property'), '<span class="sub2">Damage attributed to the candidate</span>', '<span class="tnum">4</span>', '<span class="sub2">Rare</span>', bar(99, 'var(--green)')],
+        [two('Alumni and Convocation', 'Dues and gown'), '<span class="sub2">Alumni registration, gown hire</span>', '<span class="tnum">208</span>', '<span class="sub2">Gown not yet collected</span>', bar(93, 'var(--green)')]
+      ], 1080)) +
+
+    panel('Candidates', '2,884 &middot; 5 shown', dtable(
+      ['Matriculation number', 'Name'].concat(CLR_UNITS.map(function (u) { return u.slice(0, 4) + '|mid'; })).concat(['Status|num']),
+      students.map(function (s) {
+        var all = s[3].every(function (x) { return x; });
+        return ['<span class="tnum">' + s[0] + '</span>', two(s[1], s[2])]
+          .concat(s[3].map(function (x) {
+            return x ? '<span style="color:var(--green-ink);font-weight:700">&#10003;</span>'
+                     : '<span style="color:var(--red-ink);font-weight:700">&#10007;</span>';
+          }))
+          .concat([all ? pil('ok', 'Cleared') : pil('bad', 'Held')]);
+      }), 1180)) +
+
+    two_col(
+      panel('UGBEM, Terhemba Paul', 'MOAUM/LAW/22/0918 &middot; held by two units', pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('todo', 'Bursary &mdash; not cleared', '&#8358;95,000 outstanding on INV-2026-04401. A payment of &#8358;90,000 was received as a part payment.') +
+          gate('done', 'Department &mdash; cleared', 'Dr. V. A. Shima &middot; 2 September &middot; project deposited') +
+          gate('done', 'Faculty &mdash; cleared', 'Prof. U. D. Ikonni &middot; 3 September') +
+          gate('done', 'Library &mdash; cleared', 'Dr. S. Hungwa &middot; 1 September &middot; no items on loan') +
+          gate('done', 'Health &mdash; cleared', 'Dr. E. Livinus &middot; 28 August') +
+          gate('todo', 'Hostel &mdash; not cleared', 'Room B14 keys not returned. &#8358;5,000 replacement charge raised on 4 September.') +
+          gate('done', 'Works &mdash; cleared', 'Automatic &middot; nothing attributed') +
+          gate('done', 'Alumni &mdash; cleared', 'Registered 20 August &middot; gown collected', 'last') +
+        '</div>')),
+      panel('What clearance releases', '', pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('todo', 'Name on the graduation list', 'Senate approves the list; an uncleared candidate is not on it.') +
+          gate('todo', 'Statement of result', 'Released to the candidate on full clearance.') +
+          gate('todo', 'Certificate', 'Printed only against a cleared, Senate-approved record.') +
+          gate('todo', 'Transcript to a third party', 'Blocked while any unit holds the candidate.') +
+          gate('todo', 'Convocation', 'Gown and seat allocated on clearance.', 'last') +
+        '</div>' +
+        '<div class="sub2" style="margin-top:10px">Each of these checks clearance at the moment it is attempted, inside the transaction. None of them reads a report that a clerk ran last week.'))) +
+
+    note('bad', 'A unit may hold a candidate; it may not hold one indefinitely without a reason on the record',
+      'Every hold names the unit, the officer, the date and the specific item outstanding, and the candidate sees all four on their own portal. A hold with no item against it is visible as such to the Registrar, which is what stops clearance being used as leverage.') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      btn('primary', 'Clear the selected candidates') + btn('ghost', 'Export the held list') +
+      btn('ghost', 'Notify held candidates') +
+    '</div>';
+  }
+
+  /* ── administration ───────────────────────────────────────────── */
+
+  var SCOPES = {
+    institution: ["The University", "32,450 students &middot; 2,714 staff &middot; 14 faculties"],
+    faculty:     ["Faculty of Science", "1,884 students &middot; 168 staff &middot; 4 departments"],
+    department:  ["Mathematics &amp; Computer Science", "412 students &middot; 14 staff &middot; 8 courses"]
+  };
+
+  /* figures per scope, stated rather than scaled, so they agree with the subtitle */
+  var SCOPE_FIG = {
+    institution: [["Students", "32,450", null, "On the register"],
+                  ["Registered", "19,884", "var(--green-ink)", "92% &middot; closes 24 Sept"],
+                  ["Collected", "&#8358;1.84bn", null, "78% of the estimate"],
+                  ["Outstanding", "&#8358;512m", "var(--red-ink)", "4,208 students"]],
+    faculty:     [["Students", "1,884", null, "Faculty of Science"],
+                  ["Registered", "1,791", "var(--green-ink)", "95% &middot; closes 24 Sept"],
+                  ["Collected", "&#8358;284m", null, "95% of the estimate"],
+                  ["Outstanding", "&#8358;15m", "var(--red-ink)", "61 students"]],
+    department:  [["Students", "412", null, "Mathematics &amp; Computer Science"],
+                  ["Registered", "396", "var(--green-ink)", "96% &middot; closes 24 Sept"],
+                  ["Collected", "&#8358;61m", null, "96% of the estimate"],
+                  ["Outstanding", "&#8358;2.4m", "var(--red-ink)", "9 students"]]
+  };
+
+  function rAdmin() {
+    var sc = S.scope || "institution", s = SCOPES[sc];
+
+    return panel("Scope", s[1], pbody(
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        Object.keys(SCOPES).map(function (k) {
+          return btn(sc === k ? 'primary' : 'ghost', SCOPES[k][0], ' data-scope="' + k + '"');
+        }).join('') +
+      '</div>' +
+      '<div class="sub2" style="margin-top:8px">Every figure below is the same measure at a different level. An administrator who can only see the institution cannot tell a Dean why her faculty is behind.</div>')) +
+
+    note('bad', 'Four things need a decision this week',
+      'Registration closes on 24 September with Law 27% short; twelve settlement exceptions are open; three courses have no lecturer ten days before lectures; and one critical security finding is eleven days overdue.') +
+
+    '<div class="grid grid--4">' +
+      SCOPE_FIG[sc].map(function (t) {
+        return '<div class="tile"><span class="eyebrow">' + t[0] + '</span>' +
+          '<span class="n tnum"' + (t[2] ? ' style="color:' + t[2] + '"' : '') + '>' + t[1] + '</span>' +
+          '<span class="c">' + t[3] + '</span></div>';
+      }).join('') +
+    '</div>' +
+
+    two_col(
+      panel('Academic pipeline', 'Where every result set is', dtable(
+        ['Stage', 'Sets|mid', 'Action|num'], [
+          ['Not submitted by the lecturer', '<span class="tnum" style="color:var(--red-ink)">7</span>', btn('urgent', 'Escalate')],
+          ['Awaiting verification', '<span class="tnum">6</span>', btn('ghost', 'View', ' data-go="t/scores"')],
+          ['Awaiting the Departmental Board', '<span class="tnum">4</span>', btn('ghost', 'View', ' data-go="t/approvals"')],
+          ['Awaiting the Faculty Board', '<span class="tnum">7</span>', btn('ghost', 'View', ' data-go="t/approvals"')],
+          ['Awaiting Senate', '<span class="tnum">13</span>', btn('ghost', 'View', ' data-go="t/chain"')],
+          ['Approved and published', '<span class="tnum" style="color:var(--green-ink)">98</span>', btn('ghost', 'View')]
+        ], 440)),
+      panel('Money', 'Today', dtable(
+        ['Measure', 'Value|mid', 'Action|num'], [
+          ['Collected today', '<span class="tnum">&#8358;18.47m</span>', btn('ghost', 'Ledger', ' data-go="t/ledger"')],
+          ['Awaiting settlement', '<span class="tnum">&#8358;9.21m</span>', btn('ghost', 'Gateways', ' data-go="t/gateways"')],
+          ['Unmatched in suspense', '<span class="tnum" style="color:var(--red-ink)">&#8358;225,000</span>', btn('urgent', 'Investigate', ' data-go="t/exception"')],
+          ['Gateways live', '<span class="tnum">4 of 5</span>', btn('ghost', 'Configure', ' data-go="t/gateways"')],
+          ['Payroll this month', '<span class="tnum">&#8358;418m</span>', btn('ghost', 'Payroll', ' data-go="t/payroll"')]
+        ], 460))) +
+
+    panel('By faculty', 'The same four measures, one row each', dtable(
+      ['Faculty', 'Students|mid', 'Registered|mid', 'Collected|mid', 'Results through|mid', 'Clearance|num'], [
+        ['Science', '<span class="tnum">1,884</span>', '<span class="tnum">95%</span>', '<span class="tnum">&#8358;284m</span>', '<span class="tnum">69%</span>', '<span class="tnum">88%</span>'],
+        ['Education', '<span class="tnum">3,240</span>', '<span class="tnum">90%</span>', '<span class="tnum">&#8358;402m</span>', '<span class="tnum">74%</span>', '<span class="tnum">86%</span>'],
+        ['Social Sciences', '<span class="tnum">2,760</span>', '<span class="tnum">91%</span>', '<span class="tnum">&#8358;361m</span>', '<span class="tnum">71%</span>', '<span class="tnum">85%</span>'],
+        ['Law', '<span class="tnum">980</span>', '<span class="tnum" style="color:var(--red-ink)">73%</span>', '<span class="tnum">&#8358;148m</span>', '<span class="tnum">66%</span>', '<span class="tnum" style="color:var(--red-ink)">71%</span>'],
+        ['College of Health Sciences', '<span class="tnum">1,410</span>', '<span class="tnum">98%</span>', '<span class="tnum">&#8358;418m</span>', '<span class="tnum">81%</span>', '<span class="tnum">92%</span>'],
+        ['Communication &amp; Media Studies', '<span class="tnum">640</span>', '<span class="tnum">94%</span>', '<span class="tnum">&#8358;88m</span>', '<span class="tnum">70%</span>', '<span class="tnum">&mdash;</span>']
+      ], 1000)) +
+
+    two_col(
+      panel('People and access', '', dtable(['Measure', 'Value|num'], [
+        ['Accounts, total', '<span class="tnum">23,716</span>'],
+        ['Staff accounts by office', '<span class="tnum">10 offices</span>'],
+        ['Privileged accounts', '<span class="tnum">71</span>'],
+        ['Second factor on privileged accounts', '<span class="tnum" style="color:var(--red-ink)">96%</span>'],
+        ['Dormant over 12 months', '<span class="tnum">1,204</span>']
+      ], 400)),
+      panel('Platform and compliance', '', dtable(['Measure', 'Value|num'], [
+        ['Uptime, 30 days', '<span class="tnum" style="color:var(--green-ink)">99.82%</span>'],
+        ['Last verified restore', '<span class="tnum sub2">02:15 today</span>'],
+        ['Open security findings', '<span class="tnum" style="color:var(--red-ink)">9</span>'],
+        ['DPIAs outstanding', '<span class="tnum" style="color:var(--red-ink)">2</span>'],
+        ['NDPA return due', '<span class="tnum sub2">31 March 2027</span>']
+      ], 400))) +
+
+    note('bad', 'This account can see everything and approve almost nothing',
+      'The administrator reads every module because somebody has to be able to answer &ldquo;where is it stuck&rdquo;. It cannot approve a result at any stage, cannot post a payment, cannot clear a candidate and cannot sign a credential &mdash; those belong to the offices that own them. Every screen it opens is written to the audit trail, and the Registrar reviews that log quarterly.') +
+
+    panel('Modules', 'Twenty-seven, and who owns each', dtable(
+      ['Module', 'Owner', 'State|num'], [
+        ['Admissions &middot; Student records &middot; Course registration', 'Registry, Academic Affairs', pil('ok', 'Live')],
+        ['Results &middot; Examinations &middot; CBT &middot; Learning', 'Departments, Exams Officers', pil('ok', 'Live')],
+        ['Fees &middot; Payments &middot; Gateways &middot; Ledger', 'Bursary', pil('ok', 'Live')],
+        ['Clearance &middot; Certificates &middot; Transcripts', 'Academic Affairs, Registry', pil('ok', 'Live')],
+        ['Hostel &middot; Library &middot; Health', 'Support Services', pil('ok', 'Live')],
+        ['Human resources &middot; Payroll &middot; Procurement', 'Registry, Bursary', pil('ok', 'Live')],
+        ['Research &middot; Alumni &middot; Reporting', 'Research Management, Advancement', pil('ok', 'Live')],
+        ['Identity &middot; Notifications &middot; API &middot; Governance', 'Directorate of ICT', pil('ok', 'Live')],
+        ['Security &middot; Recovery &middot; Release &middot; Cloud', 'Platform Engineering', pil('ok', 'Live')]
+      ], 780));
+  }

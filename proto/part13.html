@@ -1,0 +1,889 @@
+
+  /* ══ APPLICANT JOURNEY ═══════════════════════════════════════════
+     TEN stages from creating an account to receiving a matriculation
+     number. S.ap.stage is how far this applicant has actually got;
+     every screen renders its waiting state, its live state or its
+     completed state from that one number.
+
+     CORRECTED 6 September 2026, from the Academic Office's own account
+     of the sequence (REC-MOAUMPP-001 F-1). The prototype used to issue
+     the matriculation number after clearance and before course
+     registration. It is the other way round:
+
+       accept → pay to check and accept on the portal → screened,
+       online and physically → PAY FEES AND REGISTER COURSES →
+       Faculty Officers generate the list of registered students →
+       the Academic Office confirms it and GENERATES THE NUMBERS.
+
+     So the candidate carries an ADMISSION NUMBER through screening,
+     fees and course registration, and receives a matriculation number
+     only once her Faculty Officer has confirmed she registered.
+
+     This is not a reordering for tidiness. A matriculation number is
+     permanent and is never reused. Issued at acceptance, one is burned
+     on every candidate who accepts and never appears, and the register
+     then carries numbers against people who were never students.    */
+
+  var AP = {
+    no: "APP/2026/018342", name: "OCHANYA, Faith Aondoaseer", jamb: "202661018342CJ",
+    prog: "B.Sc. Computer Science", fac: "Science", session: "2026/2027",
+    utme: 247, pu: 68.5, cutoff: 62.0, merit: 34, places: 120,
+    feeApp: 2000, feePortal: 300, feeAccept: 25000
+  };
+  AP.utmeScaled = Math.round(AP.utme / 400 * 1000) / 10;             // 61.8
+
+  /* CORRECTED 7 September 2026 against the Central Admissions Committee's
+     GUIDELINES FOR THE 2025/2026 UNDERGRADUATE ADMISSIONS, paragraph 2.6:
+     the weighting is UTME 70% and Post-UTME 30%, not an even half each.
+     This prototype had 50/50, which is a different ranking of the same
+     candidates and therefore a different set of people admitted.
+
+     The weights are NOT written here. They are read from the session's
+     admission settings, so this screen and the Academic Office's cannot
+     disagree about what the University's own rule is. */
+  /* the weighting in force, as a pair */
+  function admW() {
+    return (typeof S !== "undefined" && S.adm) ? [S.adm.wUtme, S.adm.wPutme] : [70, 30];
+  }
+
+  function apAggregate(utme, pu) {
+    var wu = 70, wp = 30;
+    if (typeof S !== "undefined" && S.adm) { wu = S.adm.wUtme; wp = S.adm.wPutme; }
+    if (utme === null || utme === undefined || pu === null || pu === undefined) {
+      return null;                       /* absent is not zero */
+    }
+    return Math.round((utme / 400 * 100 * wu / 100 + pu * wp / 100) * 100) / 100;
+  }
+
+  var AP_STAGES = [
+    ["Account created", "Application account opened on the portal"],
+    ["Application fee paid", "Confirmed by the bank to the University"],
+    ["Application submitted", "Biodata, O&rsquo;Level results and documents"],
+    ["Screening slip issued", "Batch, venue and seat published"],
+    ["Screening score released", "Post-UTME result on the portal"],
+    ["Admission decision released", "Offer, waiting list or not offered"],
+    ["Offer accepted", "Acceptance fee paid within the deadline"],
+    ["Documents cleared", "Originals verified at the Registry"],
+    ["Fees paid and courses registered", "Under your admission number"],
+    ["Matriculated", "Matriculation number issued over the confirmed register"]
+  ];
+
+  function apAt(n) { return S.ap.stage >= n; }
+
+  /* stage N means milestone N is complete, so N is ticked and N+1 is in hand */
+  function apRail() {
+    return panel("Your application", AP_STAGES[Math.min(S.ap.stage, 9)][0],
+      '<div style="padding:4px 0">' +
+      AP_STAGES.map(function (s, i) {
+        var state = S.ap.stage >= i ? "done" : S.ap.stage + 1 === i ? "now" : "todo";
+        return '<div style="padding:9px 16px' + (i ? ';border-top:1px solid var(--line-2)' : '') + '">' +
+          step(state, s[0], s[1]) + '</div>';
+      }).join('') + '</div>');
+  }
+
+  /* indexed by S.ap.stage: what this applicant must do next, having got this far */
+  var AP_NEXT = [
+    ["Pay the application fee", "Nothing is submitted until the fee is confirmed.", "a/fee", "Go to payment"],
+    ["Complete and submit your application", "Applications close on Friday 12 September.", "a/apply", "Open the form"],
+    ["Wait for your screening batch", "Batches are published two days after applications close on 12 September.", "a/screening", "Screening slip"],
+    ["Sit the post-UTME screening", "Batch C, Tuesday 22 September, 11:00, CBT Hall B. Bring your slip and photo identification.", "a/screening", "Screening slip"],
+    ["Wait for the admission decision", "The Admissions Board meets once every score is released and every result is verified.", "a/status", "Admission status"],
+    ["Accept your offer and pay the acceptance fee", "The offer lapses on Friday 25 September and cannot be reinstated.", "a/accept", "Accept the offer"],
+    ["Present your original documents", "Registry, Administration Block, counter 4, from Monday 28 September.", "a/clearance", "Clearance checklist"],
+    ["Pay your fees and register your courses", "You do this under your admission number, before you are matriculated.", "a/matric", "What happens next"],
+    ["Wait for your matriculation number", "Your Faculty Officer confirms you registered; the Academic Office then issues numbers in one run.", "a/matric", "Matriculation"],
+    ["Sign in as a student", "Your matriculation number has been issued and your account has been converted.", "a/matric", "Matriculation"]
+  ];
+
+  function apControls() {
+    return '<div class="card" style="border-style:dashed">' + pbody(
+      '<div class="eyebrow" style="color:var(--muted)">Prototype control &mdash; not part of the design</div>' +
+      '<div class="sub2">Stage ' + (S.ap.stage + 1) + ' of 10 &middot; ' + AP_STAGES[Math.min(S.ap.stage, 9)][0] +
+      '. Advance to see how every screen changes as the application progresses.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">' +
+        btn('ghost', '&larr; Step back', ' data-ap="back"') +
+        btn('primary', 'Advance a stage &rarr;', ' data-ap="fwd"') +
+        btn('ghost', 'Reset to the start', ' data-ap="reset"') +
+      '</div>') + '</div>';
+  }
+
+  /* ══ POST-UTME REGISTRATION ═══════════════════════════════════════
+     The registration number is the first field and, until it is
+     verified, the ONLY field. Everything else stays hidden.
+
+     Why the order matters. A form that asks for a name lets the
+     candidate type one, and a typed name is a different person from the
+     one JAMB holds: "Terfa Sedoo-Aondoshima Precious" becomes "Precious
+     Terfa", the screening list and the JAMB record disagree, and the
+     disagreement is discovered at clearance, four months later, by a
+     clerk with a queue behind her. The name is therefore READ from the
+     list the Academic Office uploaded and shown back, never asked for.
+
+     What is being checked. The candidate is looked for on the list of
+     candidates JAMB gives the University — for Post-UTME, the list of
+     those who chose MOAUM. That list is uploaded by the Academic Office
+     on the JAMB admission lists screen. If nothing has been uploaded,
+     NOBODY can be verified, and the screen says exactly that instead of
+     letting everybody through: a Post-UTME roll that anybody may join is
+     not a roll.
+
+     A number that is not on the list is not a refusal of the candidate.
+     It is one of three things — the wrong number typed, a candidate who
+     chose another university, or a tranche the University has not yet
+     downloaded — and the screen names all three, because "not found" on
+     its own sends a nineteen-year-old to the gate at six in the morning
+     to be told the same thing by a security man.                    */
+
+  var REG_SHAPE = /^\d{12}[A-Z]{2,3}$/;
+
+  function regFind(num) {
+    var hit = null;
+    ["utme", "de"].forEach(function (k) {
+      var d = S.capsData[k];
+      if (!d || hit) { return; }
+      d.rows.forEach(function (r) {
+        if (!hit && String(r.regno || "").trim().toUpperCase() === num) {
+          hit = { row: r, list: k };
+        }
+      });
+    });
+    return hit;
+  }
+
+  /* Called on every keystroke. Idle until the number is the right shape,
+     because refusing a number half-typed teaches the candidate that the
+     portal is broken. */
+  function regCheck() {
+    var num = String(S.reg.num || "").trim().toUpperCase();
+    if (!REG_SHAPE.test(num)) { S.reg.state = "idle"; S.reg.cand = null; return; }
+    if (!capsAllCandidates().length) { S.reg.state = "nolist"; S.reg.cand = null; return; }
+    var hit = regFind(num);
+    S.reg.cand = hit;
+    S.reg.state = hit ? "found" : "none";
+  }
+
+  /* ── the two fields the University later has to reach her on ──────
+     Both are REQUIRED, and both are checked here rather than at the
+     first attempt to use them. An offer notice sent to an address with
+     a missing letter bounces into nobody's inbox; the offer lapses on
+     its own deadline; and the candidate learns in October that she was
+     admitted in September. That is a real way to lose a place, and it
+     costs nothing to prevent at the moment the address is typed.
+
+     The phone number is eleven digits. Nigerian mobile numbers are
+     eleven digits beginning with a zero, and the two ways they are
+     commonly written down are not that: +234 803 411 7725 (with the
+     country code, thirteen digits) and 803 411 7725 (with the zero
+     dropped, ten). Neither is refused — both are READ, converted, and
+     the conversion is shown, because a candidate who is told "invalid"
+     about a number she has used for six years assumes the portal is
+     broken rather than that the format differs.                     */
+
+  var EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+
+  /* One letter out on a provider is not a typing error the candidate can
+     see: gmial.com renders the same to a person reading it back. */
+  var MAIL_TYPO = {
+    "gmial.com": "gmail.com", "gmai.com": "gmail.com", "gmail.co": "gmail.com",
+    "gnail.com": "gmail.com", "gmail.con": "gmail.com", "gamil.com": "gmail.com",
+    "yahooo.com": "yahoo.com", "yaho.com": "yahoo.com", "yahoo.co": "yahoo.com",
+    "hotmial.com": "hotmail.com", "outlok.com": "outlook.com"
+  };
+
+  function regMailTypo(v) {
+    var at = String(v || "").toLowerCase().split("@");
+    return at.length === 2 ? (MAIL_TYPO[at[1]] || "") : "";
+  }
+
+  /* Read a number written any of the three usual ways. */
+  function regPhoneRead(v) {
+    var d = String(v || "").replace(/[^0-9]/g, ""), how = "";
+    if (d.length === 13 && d.indexOf("234") === 0) {
+      d = "0" + d.slice(3); how = "read from the +234 form";
+    } else if (d.length === 10 && d.charAt(0) !== "0") {
+      d = "0" + d; how = "the leading zero was added";
+    }
+    return { digits: d, how: how,
+             ok: d.length === 11 && d.charAt(0) === "0" };
+  }
+
+  function regPhoneHint() {
+    var r = regPhoneRead(S.reg.phone);
+    if (S.reg.err.phone) { return ''; }
+    if (!S.reg.phone) {
+      return 'Eleven digits, beginning with a zero. Written with +234 or without the zero is ' +
+             'fine &mdash; it is read either way.';
+    }
+    if (r.how && r.ok) {
+      return 'Read as <span class="tnum">' + esc(r.digits) + '</span> &mdash; ' + r.how + '.';
+    }
+    if (r.ok) { return 'Eleven digits. <b>Screening batches are sent here by SMS.</b>'; }
+    return '<span class="tnum">' + r.digits.length + '</span> of 11 digits so far.';
+  }
+
+  /* A field, its label, its required marker and its own error. An error
+     shown under the field it belongs to is one a person can act on; the
+     same words in a box at the bottom are a puzzle. */
+  function regField(id, label, key, input, hint) {
+    return '<div class="field"><label for="' + id + '">' + label +
+      '<span class="lreq">required</span></label>' + input +
+      (S.reg.err[key] ? '<div class="ferr">' + S.reg.err[key] + '</div>' : '') +
+      (hint ? '<div class="hint">' + hint + '</div>' : '') + '</div>';
+  }
+
+  /* Judged when Continue is pressed, never on every keystroke: a form
+     that turns red while you are still typing in it is a form that
+     scolds. */
+  function regJudge() {
+    var e = { email: "", phone: "", pw: "", pw2: "" };
+    var mail = String(S.reg.email || "").trim();
+
+    if (!mail) {
+      e.email = 'An email address is required. This is where the offer is sent.';
+    } else if (!EMAIL_SHAPE.test(mail)) {
+      e.email = 'That is not a complete address. It needs a name, an <b>@</b>, and a domain with a ' +
+                'dot in it &mdash; <span class="tnum">you@example.com</span>.';
+    }
+
+    var ph = regPhoneRead(S.reg.phone);
+    if (!String(S.reg.phone || "").trim()) {
+      e.phone = 'A phone number is required. Screening batches and venue changes are sent by SMS.';
+    } else if (!ph.ok) {
+      e.phone = ph.digits.length === 11
+        ? 'Eleven digits, but a Nigerian mobile number begins with a zero. Check the first digit.'
+        : 'That is <b>' + ph.digits.length + '</b> digit' + (ph.digits.length === 1 ? '' : 's') +
+          '. Eleven are needed, beginning with a zero &mdash; ' +
+          '<span class="tnum">0803 411 7725</span>. Written as +234 or without the zero is fine.';
+    }
+
+    if (!S.reg.pw) {
+      e.pw = 'Choose a password.';
+    } else if (S.reg.pw.length < 8) {
+      e.pw = 'Eight characters at the very least. This one account carries you to graduation.';
+    }
+    if (!e.pw && !S.reg.pw2) {
+      e.pw2 = 'Type it a second time.';
+    } else if (!e.pw && S.reg.pw !== S.reg.pw2) {
+      e.pw2 = 'The two do not match. Nothing has been saved and nothing is lost &mdash; type both ' +
+              'again, or press <b>Show</b> to see them.';
+    }
+    S.reg.err = e;
+    return !(e.email || e.phone || e.pw || e.pw2);
+  }
+
+  function regName(c) {
+    return c && c.row ? String(c.row.name || "") : "";
+  }
+
+  function regProg(c) {
+    if (!c || !c.row) { return ""; }
+    var p = progOf(c.row.code);
+    return p ? p[0] : (c.row.jname || "");
+  }
+
+  function applicantRegister() {
+    return '<div class="login-wrap">' +
+      '<div class="login-brand"><div>' +
+        '<div class="login-brand__top">' +
+          '<img src="' + CREST + '" alt="University crest" style="width:56px;height:58px;object-fit:contain">' +
+          '<div><span style="font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--chrome-dim)">Admissions ' + AP.session + '</span></div>' +
+        '</div>' +
+        '<div style="height:26px"></div>' +
+        '<h1>Create your application account</h1>' +
+        '<p>One account carries you from application through screening and admission, and becomes your student account on the day you matriculate.</p>' +
+      '</div>' +
+      '<div class="login-stats">' +
+        '<div class="login-stat"><span class="n tnum">12 Sep</span><span class="l">applications close</span></div>' +
+        '<div class="login-stat"><span class="n tnum">22 Sep</span><span class="l">screening begins</span></div>' +
+        '<div class="login-stat"><span class="n tnum">' + money(AP.feeApp + AP.feePortal) + '</span><span class="l">application fee</span></div>' +
+      '</div></div>' +
+
+      '<div class="login-panel"><div class="login-card">' +
+        '<div><div style="font-size:22px;font-weight:700;letter-spacing:-.4px">Post UTME Registration</div>' +
+        '<div class="hint" style="margin-top:4px">Your JAMB registration number first. Everything else follows from it.</div></div>' +
+
+        '<div class="field"><label for="rj">JAMB registration number</label>' +
+          '<input id="rj" class="tnum" data-reg="num" value="' + esc(S.reg.num) + '" ' +
+          'placeholder="202660176777GF" maxlength="15" autocomplete="off" spellcheck="false">' +
+          '<div class="hint">' +
+            (S.reg.state === "idle" && S.reg.num
+              ? 'Twelve digits and then two or three letters, exactly as JAMB issued it.'
+              : 'Checked against the list JAMB sent the University. Nothing else is asked for until it is found.') +
+          '</div></div>' +
+
+        (S.reg.state === "nolist"
+          ? note('bad', 'Nobody can be verified yet, and so nobody is let through',
+              'The Academic Office has not uploaded the list of candidates JAMB sent for this session. ' +
+              'Until it does, this screen cannot tell a real candidate from anybody who wandered onto it, ' +
+              'and it will not guess. A Post-UTME roll that anyone may join is not a roll.',
+              btn('primary', 'Upload the sample list (Academic Office)', ' data-reg="loadlist"'))
+          : '') +
+
+        (S.reg.state === "none"
+          ? note('bad', 'That number is not on the list JAMB sent the University',
+              'This is not a decision about you, and it is usually one of three things. ' +
+              '<b>One:</b> a digit is wrong &mdash; the number is twelve digits and then two or three ' +
+              'letters, and it is on your JAMB slip. <b>Two:</b> you did not choose this University on ' +
+              'CAPS, in which case change your institution with JAMB first. <b>Three:</b> JAMB sends the ' +
+              'list in tranches and yours has not reached us yet, in which case try again after ' +
+              'forty-eight hours. <b>Do not travel to the campus to resolve this</b> &mdash; nobody at ' +
+              'the gate can add you to a list that comes from JAMB.')
+          : '') +
+
+        (S.reg.state === "found"
+          ? note('ok', 'Found on the ' + (S.reg.cand.list === 'de' ? 'Direct Entry' : 'UTME') +
+              ' list JAMB sent the University',
+              'Your name below is read from that list. It is <b>not</b> a field you fill in, because a ' +
+              'name typed here would differ from the name JAMB holds and the two would be found to ' +
+              'disagree at clearance, months from now. If it is wrong, it is wrong at JAMB: correct it ' +
+              'there and it corrects itself here.') +
+
+            '<div class="field"><label>Surname and other names</label>' +
+              '<div class="readout">' + esc(regName(S.reg.cand)) + '</div>' +
+              '<div class="hint">From JAMB &middot; ' + esc(S.reg.num) + '</div></div>' +
+
+            (regProg(S.reg.cand)
+              ? '<div class="field"><label>Programme you chose</label>' +
+                '<div class="readout">' + esc(regProg(S.reg.cand)) + '</div>' +
+                '<div class="hint">As JAMB recorded it. Screening is against this programme.</div></div>'
+              : '') +
+
+            regField('re', 'Email address', 'email',
+              '<input id="re" type="email" data-reg="email" value="' + esc(S.reg.email) + '" ' +
+              'placeholder="you@example.com" autocomplete="off" spellcheck="false" required>',
+              'Every notice about your application is sent here &mdash; including the offer, which ' +
+              'lapses if it is not answered. Use an address you will still have in four years.') +
+
+            (regMailTypo(S.reg.email)
+              ? note('info', 'Did you mean ' + esc(regMailTypo(S.reg.email)) + '?',
+                  'One letter out in a provider&rsquo;s name is not a mistake anybody can see reading ' +
+                  'it back, and the address is still perfectly valid &mdash; it simply belongs to ' +
+                  'nobody. Nothing is refused here: if <span class="tnum">' +
+                  esc(String(S.reg.email).split("@")[1] || '') + '</span> is right, carry on.')
+              : '') +
+
+            regField('rp', 'Phone number', 'phone',
+              '<input id="rp" class="tnum" type="tel" data-reg="phone" value="' + esc(S.reg.phone) + '" ' +
+              'placeholder="0803 411 7725" inputmode="numeric" autocomplete="off" required>',
+              regPhoneHint()) +
+
+            '<div class="field"><label for="rw">Choose a password<span class="lreq">required</span></label>' +
+              '<div class="pwrow">' +
+                '<input id="rw" type="' + (S.reg.show ? 'text' : 'password') + '" data-reg="pw" ' +
+                'value="' + esc(S.reg.pw) + '" autocomplete="new-password" required>' +
+                '<button type="button" class="pweye" data-reg="show" ' +
+                'aria-pressed="' + (S.reg.show ? 'true' : 'false') + '">' +
+                (S.reg.show ? 'Hide' : 'Show') + '</button>' +
+              '</div>' +
+              (S.reg.err.pw ? '<div class="ferr">' + S.reg.err.pw + '</div>' : '') + '</div>' +
+
+            '<div class="field"><label for="rw2">Confirm password<span class="lreq">required</span></label>' +
+              '<input id="rw2" type="' + (S.reg.show ? 'text' : 'password') + '" data-reg="pw2" ' +
+              'value="' + esc(S.reg.pw2) + '" autocomplete="new-password" required>' +
+              (S.reg.err.pw2 ? '<div class="ferr">' + S.reg.err.pw2 + '</div>' : '') +
+              '<div class="hint">' + (S.reg.show
+                ? 'Both boxes are showing. Nobody standing behind you should be able to read them.'
+                : 'Asked twice because a password mistyped once locks you out of your own application ' +
+                  'on the morning of screening, and the portal cannot tell it from a stranger. ' +
+                  'Press <b>Show</b> if you would rather see what you typed.') +
+              '</div></div>' +
+
+            '<button class="btn btn--primary" data-reg="create">Continue</button>'
+          : '<button class="btn btn--primary" disabled ' +
+            'style="opacity:.45;cursor:not-allowed">Continue</button>' +
+            '<div class="hint" style="text-align:center">Enter your JAMB number to continue</div>') +
+
+        note('bad', 'The University sells nothing at the gate',
+          'No member of staff, agent or &ldquo;consultant&rdquo; can sell you a place, a higher score or a faster clearance. Every naira you owe is paid on this portal, to a reference this portal generates. Report any other demand to the Registrar.') +
+
+        '<div style="border-top:1px solid var(--line);padding-top:14px">' +
+          '<button class="btn btn--ghost btn--sm" data-go="login" style="width:100%">I already have an account</button></div>' +
+      '</div></div>' +
+    '</div>';
+  }
+
+  /* ── 1. overview ──────────────────────────────────────────────── */
+
+  function applicantDash() {
+    var nx = AP_NEXT[Math.min(S.ap.stage, 8)];
+    return tiles([
+      ["Application number", AP.no.split("/").slice(-1)[0], null, AP.no],
+      ["Programme applied for", AP.prog.replace("B.Sc. ", ""), null, "Faculty of " + AP.fac + " &middot; first choice"],
+      ["UTME score", String(AP.utme), null, "of 400 &middot; JAMB " + AP.jamb],
+      ["Stage", (S.ap.stage + 1) + " of 10", S.ap.stage >= 9 ? "var(--green-ink)" : "var(--chrome)", AP_STAGES[Math.min(S.ap.stage, 9)][0]]
+    ]) +
+
+    note(S.ap.stage >= 8 ? 'ok' : S.ap.stage === 5 ? 'bad' : 'info', nx[0], nx[1],
+      btn(S.ap.stage === 5 ? 'urgent' : 'primary', nx[3], ' data-go="' + nx[2] + '"')) +
+
+    two_col(apRail(),
+      panel("Dates you cannot miss", "", dtable(["Date|mid", "What closes"], [
+        ['<span class="tnum sub2">12 Sep</span>', two("Applications close", "No application is accepted after 23:59")],
+        ['<span class="tnum sub2">22 Sep</span>', two("Post-UTME screening", "Computer-based, on the main campus")],
+        ['<span class="tnum sub2">25 Sep</span>', two("Offers lapse", "Unaccepted places go to the waiting list")],
+        ['<span class="tnum sub2">28 Sep</span>', two("Clearance opens", "Originals presented at the Registry")],
+        ['<span class="tnum sub2">15 Oct</span>', two("Matriculation", "Freshmen entered on the register")]
+      ], 420))) +
+
+    apControls();
+  }
+
+  function two_col(a, b) {
+    return '<div class="grid grid--2" style="align-items:start">' + a + b + '</div>';
+  }
+
+  /* ── 2. the application form ──────────────────────────────────── */
+
+  function apSubj(name, grade, bad) {
+    return '<div style="display:flex;gap:8px;align-items:' + (bad ? 'flex-start' : 'center') + '">' +
+      '<div style="flex-grow:1;display:flex;flex-direction:column;gap:5px">' +
+        '<input value="' + name + '"' + (bad ? ' style="border-color:var(--red)"' : '') + ' aria-label="Subject" autocomplete="off">' +
+        (bad ? '<div style="display:flex;align-items:center;gap:6px">' + warnIcon(13) +
+          '<span class="sub2" style="color:var(--red-ink)">' + bad + '</span></div>' : '') +
+      '</div>' +
+      '<input value="' + grade + '" style="width:70px;text-align:center;font-weight:600' +
+        (bad ? ';border-color:var(--red);background:var(--red-wash);color:var(--faint)' : '') +
+        '" aria-label="Grade" autocomplete="off"></div>';
+  }
+
+  function applicantApply() {
+    if (apAt(2)) {
+      return note('ok', 'Your application was submitted on 9 September 2026 at 14:02',
+        'It can no longer be edited. If something on it is wrong, write to the Registry quoting your application number &mdash; do not create a second account, which will invalidate both.',
+        btn('ghost', 'Download acknowledgement slip', ' data-doc="ack"')) +
+      panel("What you submitted", AP.no, dtable(["Section", "Detail"], [
+        [two("Biodata", "From your JAMB record"), AP.name + ' &middot; 19 years &middot; Female &middot; Gwer West LGA, Benue State'],
+        [two("O&rsquo;Level", "One sitting"), 'WAEC May/June 2025 &middot; English B3, Mathematics A1, Physics B2, Chemistry B3, Biology C4'],
+        [two("Programme", "First choice"), AP.prog + ' &middot; Faculty of ' + AP.fac],
+        [two("Documents", "5 of 5 accepted"), 'O&rsquo;Level statement, birth certificate, LGA identification, JAMB slip, passport photograph'],
+        [two("Declaration", "Signed electronically"), 'Accepted 9 September 2026, 14:02, from 105.112.x.x']
+      ], 640)) + apControls();
+    }
+
+    if (!apAt(1)) {
+      return note('bad', 'The form opens when your application fee is confirmed',
+        'This is not a delay you can avoid by paying at a bank counter into a personal account. The portal releases the form the moment the bank confirms your payment against the reference it generated for you.',
+        btn('primary', 'Pay the application fee', ' data-go="a/fee"')) + apRail() + apControls();
+    }
+
+    return '<div class="card">' + pbody(
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          pil('ok', '1 Biodata') + pil('ok', '2 O&rsquo;Level') +
+          pil('info', '3 Documents') +
+          '<span class="pill" style="background:var(--bg);border:1px solid var(--line);color:var(--muted)">4 Review</span>' +
+        '</div>' +
+        '<div style="margin-top:6px"><div style="font-size:18px;font-weight:700;letter-spacing:-.3px">' + AP.prog + '</div>' +
+        '<div class="sub2">First choice &middot; Faculty of ' + AP.fac + ' &middot; ' + AP.session + ' session. Your programme choice comes from JAMB and cannot be changed here.</div></div>') +
+      '</div>' +
+
+      panel("1 &nbsp;Biodata", "Read from your JAMB record", pbody(
+        kvGrid([
+          ["Surname and other names", AP.name],
+          ["Date of birth", "14 March 2007"],
+          ["Sex", "Female"],
+          ["State and LGA of origin", "Benue &middot; Gwer West"],
+          ["JAMB registration number", '<span class="tnum">' + AP.jamb + '</span>'],
+          ["UTME score", '<span class="tnum">' + AP.utme + '</span>']
+        ], 'grid--3') +
+        '<div class="field" style="margin-top:4px"><label for="nok">Next of kin &mdash; name and phone</label>' +
+        '<input id="nok" value="OCHANYA, Terhemba John · 0806 552 1180" autocomplete="off"></div>')) +
+
+      panel("2 &nbsp;O&rsquo;Level results", "Up to two sittings are accepted", pbody(
+        '<div class="sub2">Enter your results exactly as they appear on your statement. The Registry verifies every result directly with WAEC or NECO before clearance; a result that does not verify voids the admission at any point, including after matriculation.</div>' +
+        '<div class="field"><label for="exno">Sitting 1 &mdash; WAEC May/June 2025, examination number</label>' +
+          '<input id="exno" class="tnum" value="4251808042" autocomplete="off"></div>' +
+        '<div class="field"><label>Subjects and grades</label>' +
+          apSubj('English Language', 'B3') + apSubj('Mathematics', 'A1') + apSubj('Physics', 'B2') +
+          apSubj('Chemistry', '&mdash;', 'Required for ' + AP.prog + ' &mdash; grade missing') +
+          apSubj('Biology', 'C4') +
+          '<button class="btn btn--ghost btn--sm" style="align-self:flex-start;margin-top:4px">+ Add a subject</button>' +
+        '</div>')) +
+
+      panel("3 &nbsp;Documents", "5 files &middot; 2 MB each, PDF or JPEG", dtable(
+        ["Document", "File", "Status|num"], [
+          [two("O&rsquo;Level statement of result", "WAEC 2025"), '<span class="sub2 tnum">waec-statement.pdf &middot; 412 KB</span>', pil('ok', 'Accepted')],
+          [two("Birth certificate or declaration of age", "NPC or sworn declaration"), '<span class="sub2 tnum">birth-cert.pdf &middot; 288 KB</span>', pil('ok', 'Accepted')],
+          [two("Local government identification", "Signed by the LGA"), '<span class="sub2 tnum">lga-ident.jpg &middot; 1.1 MB</span>', pil('ok', 'Accepted')],
+          [two("JAMB result slip", "Printed from the JAMB portal"), '<span class="sub2 tnum">jamb-slip.pdf &middot; 196 KB</span>', pil('ok', 'Accepted')],
+          [two("Passport photograph", "White background, taken this year"), '<span class="sub2 tnum">passport.jpg &middot; 84 KB</span>', pil('bad', 'Rejected &mdash; reupload')]
+        ], 700)) +
+
+      note('bad', 'Your passport photograph was rejected',
+        'The face occupies less than half the frame and the background is patterned. This photograph becomes your identity on the examination hall roll, your identity card and your certificate, so it is checked before it is accepted.',
+        btn('primary', 'Upload a new photograph')) +
+
+      panel("4 &nbsp;Review and submit", "", pbody(
+        note('bad', 'Two things must be settled before you can submit',
+          'Nothing is lost &mdash; everything you have entered is saved. Fix these two and the submit button opens.') +
+        '<div style="border:1px solid var(--red-line);border-radius:8px;overflow:hidden">' +
+          gate('todo', 'Chemistry grade is missing', 'It is one of the four subjects required for ' + AP.prog + '.') +
+          gate('todo', 'Passport photograph rejected', 'Upload a replacement that meets the stated requirements.', 'last') +
+        '</div>' +
+        '<label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-top:4px">' +
+          '<input type="checkbox" class="chk">' +
+          '<span>I declare that the particulars I have given are true. I understand that a false declaration voids my admission at any point, including after graduation.</span></label>' +
+        '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:4px">' +
+          '<button class="btn btn--ghost">Save and come back later</button>' +
+          '<button class="btn btn--primary" disabled style="opacity:.45;cursor:not-allowed">Submit application</button>' +
+          btn('ghost', 'Prototype: fix both and submit', ' data-ap="fwd"') +
+        '</div>')) +
+      apControls();
+  }
+
+  /* ── 3. application fee ───────────────────────────────────────── */
+
+  function applicantFee() {
+    var total = AP.feeApp + AP.feePortal;
+
+    if (apAt(1)) {
+      return note('ok', 'Payment confirmed &mdash; ' + money(total) + ' received',
+        'The bank confirmed this payment directly to the University. Your application form is now open.',
+        btn('primary', 'Open the application form', ' data-go="a/apply"')) +
+      panel("Receipt", "RCT-APP-2026-118342", dtable(["Field", "Value"], [
+        ["Reference", '<span class="tnum">MOAUM-APP-018342-7741</span>'],
+        ["Paid", '<span class="tnum">6 September 2026, 09:41</span>'],
+        ["Channel", "Card &middot; Verve ending 4417"],
+        ["Amount", '<strong class="tnum">' + money(total) + '</strong>'],
+        ["Confirmed by", "Bank-to-University server confirmation, not by this page"],
+        ["Status", pil('ok', 'Settled and reconciled')]
+      ], 520)) +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' + btn('ghost', 'Download receipt', ' data-doc="rcpt-app"') + ' ' + btn('ghost', 'Email me a copy') + '</div>' +
+      apControls();
+    }
+
+    return panel("Application and screening fee", AP.no, dtable(["Item", "Amount|num"], [
+        [two("Post-UTME screening fee", "Approved by Council for the " + AP.session + " session"), '<span class="tnum">' + money(AP.feeApp) + '</span>'],
+        [two("Portal and payment charge", "Charged by the payment provider, not the University"), '<span class="tnum">' + money(AP.feePortal) + '</span>'],
+        ['<strong>Total payable</strong>', '<strong class="tnum" style="font-size:16px">' + money(total) + '</strong>']
+      ], 480)) +
+
+    panel("Your payment reference", "Generated for you alone", pbody(
+      '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
+        '<div style="width:96px;height:96px;flex-shrink:0">' + qr() + '</div>' +
+        '<div style="min-width:200px">' +
+          '<div class="eyebrow">Reference</div>' +
+          '<div class="tnum" style="font-size:22px;font-weight:700;letter-spacing:.5px">MOAUM-APP-018342-7741</div>' +
+          '<div class="sub2" style="margin-top:6px">Quote this reference and nothing else. It is tied to your application number and expires in 24 hours; a new one is generated free of charge.</div>' +
+        '</div></div>')) +
+
+    panel("How you can pay", "Any of these", dtable(["Channel", "What to do", "Confirmed in|num"], [
+      [two("Card", "Verve, Mastercard, Visa"), "Pay here on the portal", '<span class="sub2">Seconds</span>'],
+      [two("Bank transfer", "From any Nigerian bank"), "Transfer to the account this reference opens", '<span class="sub2">Under 5 minutes</span>'],
+      [two("USSD", "From a phone with no internet"), "Dial the code shown after you choose USSD", '<span class="sub2">Under 5 minutes</span>'],
+      [two("Bank branch", "Over the counter"), "Present the reference at any approved bank", '<span class="sub2">Same day</span>']
+    ], 640)) +
+
+    note('info', 'A payment is confirmed by the bank, never by this page',
+      'If your network drops after you pay, do not pay again. The University asks the bank about your reference every ten minutes until it is answered, so a successful payment always reaches your account &mdash; even if this page never came back.') +
+
+    note('bad', 'Pay only against a reference this portal generated',
+      'Money sent to a personal account, an agent or a &ldquo;consultant&rdquo; does not reach the University and cannot be recovered by it. There is no fee that is paid anywhere but here.') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      btn('primary', 'Pay ' + money(total) + ' by card', ' data-ap="fwd"') +
+      btn('ghost', 'Show transfer details') + btn('ghost', 'Pay by USSD') +
+      btn('ghost', 'List of approved banks') +
+    '</div>' + apControls();
+  }
+
+  /* ── 4. screening slip ────────────────────────────────────────── */
+
+  function applicantScreening() {
+    if (!apAt(3)) {
+      return note('info', 'Your screening batch has not been published yet',
+        'Batches are published two days after applications close on 12 September, so that every candidate is placed. You will be notified by email and SMS, and the slip will appear here.') +
+      apRail() + apControls();
+    }
+
+    return note(apAt(4) ? 'ok' : 'info',
+      apAt(4) ? 'You were screened on 22 September' : 'Bring this slip and a valid identification document',
+      apAt(4) ? 'This slip is kept for your records. Your score is on the screening result page.'
+              : 'You will not be admitted into the hall without both. Arrive thirty minutes before your session; the doors close when it begins.',
+      (apAt(4) ? btn('primary', 'See your screening result', ' data-go="a/score"') + ' ' : '') +
+      btn('ghost', 'Download slip (PDF)', ' data-doc="screening"')) +
+
+    panel("Post-UTME screening slip", AP.no, pbody(
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">' +
+        passport(84, 104) +
+        '<div style="flex-grow:1;min-width:220px">' +
+          '<div style="font-family:var(--serif);font-size:19px;font-weight:700;letter-spacing:-.3px">' + AP.name + '</div>' +
+          '<div class="sub2">' + AP.no + ' &middot; JAMB ' + AP.jamb + '</div>' +
+          '<div class="sub2">' + AP.prog + ' &middot; Faculty of ' + AP.fac + '</div>' +
+        '</div>' +
+        '<div style="width:88px;height:88px;flex-shrink:0">' + qr() + '</div>' +
+      '</div>' +
+      '<div style="height:1px;background:var(--line-2)"></div>' +
+      kvGrid([
+        ["Batch", "C"], ["Date", "Tuesday 22 September 2026"],
+        ["Session", "11:00 &ndash; 12:00"], ["Venue", "CBT Hall B, ICT Directorate"],
+        ["Seat", '<span class="tnum">B-114</span>'], ["Duration", "60 minutes &middot; 60 questions"]
+      ], 'grid--3'))) +
+
+    panel("What to bring, and what you may not", "", dtable(["Bring", "Do not bring"], [
+      ["This slip, printed or on your phone", "Any phone, watch or electronic device into the hall"],
+      ["Your JAMB result slip", "Written material of any kind"],
+      ["A valid photo identification document", "Bags &mdash; there is no storage at the venue"],
+      ["A dark pen", "Anyone who is not sitting the screening"]
+    ], 560)) +
+
+    note('bad', 'Your photograph is checked at the door and again at your seat',
+      'The photograph on this slip is the one you uploaded. If the person who arrives is not the person in the photograph, both are reported to the Board and both lose the place. Every seat interaction is logged and kept.') +
+    apControls();
+  }
+
+  /* ── 5. screening result ──────────────────────────────────────── */
+
+  function applicantScore() {
+    if (!apAt(4)) {
+      return note('info', 'Scores are released when every batch has been screened',
+        'Screening runs from 22 to 25 September in batches. Releasing one batch before the others would let later candidates learn the questions, so all scores are released together.') +
+      apRail() + apControls();
+    }
+
+    var agg = apAggregate(AP.utme, AP.pu), above = agg >= AP.cutoff;
+    return tiles([
+      ["UTME", String(AP.utme), null, "of 400 &middot; scaled to " + AP.utmeScaled],
+      ["Post-UTME screening", String(AP.pu), null, "of 100 &middot; 41 of 60 correct"],
+      ["Aggregate", String(agg), above ? "var(--green-ink)" : "var(--red-ink)",
+       "Weighted " + admW()[0] + " / " + admW()[1]],
+      ["Departmental cut-off", String(AP.cutoff), null, AP.prog.replace("B.Sc. ", "") + " &middot; this session"]
+    ]) +
+
+    note(above ? 'ok' : 'bad',
+      above ? 'Your aggregate is above the cut-off for ' + AP.prog
+            : 'Your aggregate is below the cut-off for ' + AP.prog,
+      above ? 'Being above the cut-off does not by itself give you a place. Places are filled from the merit list downwards until the approved quota is full, and the cut-off can rise as the list is worked through.'
+            : 'You may still be considered for a related programme in the same faculty if places remain after the merit list is exhausted.') +
+
+    panel("How your aggregate was calculated", "Ratio approved by Senate for " + AP.session, dtable(
+      ["Component", "Raw|mid", "Of|mid", "Scaled|mid", "Weight|mid", "Contribution|num"], [
+        ["UTME", '<span class="tnum">' + AP.utme + '</span>', '<span class="tnum sub2">400</span>',
+         '<span class="tnum">' + AP.utmeScaled + '</span>',
+         '<span class="tnum">' + admW()[0] + '%</span>',
+         '<span class="tnum">' + (Math.round(AP.utmeScaled * admW()[0]) / 100) + '</span>'],
+        ["Post-UTME screening", '<span class="tnum">' + AP.pu + '</span>', '<span class="tnum sub2">100</span>',
+         '<span class="tnum">' + AP.pu + '</span>',
+         '<span class="tnum">' + admW()[1] + '%</span>',
+         '<span class="tnum">' + (Math.round(AP.pu * admW()[1]) / 100) + '</span>'],
+        ['<strong>Aggregate</strong>', "", "", "", "", '<strong class="tnum" style="font-size:15px">' + agg + '</strong>']
+      ], 660)) +
+
+    panel("Where you stand", "Merit list, " + AP.prog, pbody(
+      '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+        bar(Math.round(AP.merit / AP.places * 100), 'var(--green)') +
+        '<div><div style="font-size:15px;font-weight:700">Position ' + AP.merit + ' of ' + AP.places + ' places</div>' +
+        '<div class="sub2">418 candidates applied for ' + AP.places + ' approved places. Positions can move while the Board resolves ties and verifies results.</div></div>' +
+      '</div>')) +
+
+    note('info', 'If you think this score is wrong',
+      'Every question you saw, every answer you gave and every save your session made is logged with its timestamp. A remark is requested in writing at the Registry within seven days of release, and the log is what settles it.',
+      btn('ghost', 'Request a remark')) + apControls();
+  }
+
+  /* ── 6. admission status ──────────────────────────────────────── */
+
+  function applicantStatus() {
+    if (!apAt(5)) {
+      return note('info', 'Your application is with the Admissions Board',
+        'The Board meets once every screening score has been released and every O&rsquo;Level result has been verified with the examination bodies. Decisions are published here and by email on the same day &mdash; there is no earlier list circulating anywhere.') +
+      apRail() +
+      panel("What the Board can decide", "Three outcomes", dtable(["Outcome", "What it means"], [
+        [two("Offered", "A place on the merit list"), "Accept the offer and pay the acceptance fee before the deadline, or the place is released."],
+        [two("Waiting list", "Above the cut-off, but the quota is full"), "You are offered a place only if an offered candidate fails to accept in time."],
+        [two("Not offered", "Below the line for this programme"), "You may be considered for a related programme in the same faculty, or reapply next session."]
+      ], 560)) + apControls();
+    }
+
+    return '<div class="card" style="border-top:4px solid var(--green)">' + pbody(
+        '<div style="display:flex;align-items:center;gap:9px">' +
+          '<div style="width:26px;height:26px;border-radius:13px;background:var(--green);display:flex;align-items:center;justify-content:center">' + tick(14, '#fff') + '</div>' +
+          '<span class="eyebrow" style="color:var(--green-ink)">Offer of provisional admission</span></div>' +
+        '<div style="font-family:var(--serif);font-size:22px;font-weight:700;letter-spacing:-.3px">' + AP.prog + '</div>' +
+        '<div class="sub2">Faculty of ' + AP.fac + ' &middot; 100 Level &middot; ' + AP.session + ' session</div>' +
+        '<div style="height:1px;background:var(--line-2)"></div>' +
+        kvGrid([
+          ["UTME score", '<span class="tnum" style="font-size:16px;font-weight:700">' + AP.utme + '</span>'],
+          ["Screening", '<span class="tnum" style="font-size:16px;font-weight:700">' + AP.pu + '</span>'],
+          ["Aggregate", '<span class="tnum" style="font-size:16px;font-weight:700">' + apAggregate(AP.utme, AP.pu) + '</span>'],
+          ["Merit position", '<span class="tnum" style="font-size:16px;font-weight:700">' + AP.merit + ' of ' + AP.places + '</span>']
+        ])) + '</div>' +
+
+    (apAt(6)
+      ? note('ok', 'You accepted this offer on 19 September', 'Your place is held. Document clearance is the next step.',
+          btn('primary', 'Clearance checklist', ' data-go="a/clearance"'))
+      : note('bad', 'Accept by Friday 25 September',
+          'After this date the offer lapses automatically and your place goes to the next candidate on the waiting list. The University cannot reinstate a lapsed offer.',
+          btn('urgent', 'Accept the offer', ' data-go="a/accept"'))) +
+
+    note('info', 'Provisional means exactly that',
+      'This offer stands on the results you declared. The Registry verifies every one of them with WAEC, NECO and JAMB before clearance. A result that does not verify voids the admission at any point afterwards &mdash; including after you have graduated.') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      btn('ghost', 'Download admission letter', ' data-doc="adm"') + ' ' + btn('ghost', 'Download provisional letter for a sponsor', ' data-doc="prov"') +
+    '</div>' + apControls();
+  }
+
+  /* ── 7. accept the offer ──────────────────────────────────────── */
+
+  function applicantAccept() {
+    if (!apAt(5)) {
+      return note('info', 'There is nothing to accept yet',
+        'This page opens when the Admissions Board publishes its decision.') + apRail() + apControls();
+    }
+
+    if (apAt(6)) {
+      return note('ok', 'Offer accepted &mdash; ' + money(AP.feeAccept) + ' received',
+        'Your place is held and your student record has been opened. Bring your original documents to the Registry from Monday 28 September.',
+        btn('primary', 'Clearance checklist', ' data-go="a/clearance"')) +
+      panel("Receipt", "RCT-ACC-2026-118342", dtable(["Field", "Value"], [
+        ["Reference", '<span class="tnum">MOAUM-ACC-018342-9218</span>'],
+        ["Paid", '<span class="tnum">19 September 2026, 16:27</span>'],
+        ["Channel", "Bank transfer &middot; confirmed by the bank"],
+        ["Amount", '<strong class="tnum">' + money(AP.feeAccept) + '</strong>'],
+        ["Non-refundable", "Yes &mdash; the acceptance fee is not refunded if you later withdraw"],
+        ["Status", pil('ok', 'Settled and reconciled')]
+      ], 560)) +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' + btn('ghost', 'Download receipt', ' data-doc="rcpt-acc"') + ' ' + btn('ghost', 'Download admission letter', ' data-doc="adm"') + '</div>' +
+      apControls();
+    }
+
+    return note('bad', 'This offer lapses on Friday 25 September at 23:59',
+      'Three days remain. An offer that lapses cannot be reinstated, and the place is released to the waiting list automatically.') +
+
+    panel("To accept, you must do both", "", dtable(["What", "Detail", "Amount|num"], [
+      [two("Pay the acceptance fee", "Non-refundable. It is credited against your first session charges."),
+       '<span class="sub2">Paid here, on this portal</span>', '<strong class="tnum">' + money(AP.feeAccept) + '</strong>'],
+      [two("Sign the undertaking", "The University&rsquo;s conditions of studentship"),
+       '<span class="sub2">Signed electronically below</span>', '<span class="sub2">&mdash;</span>']
+    ], 640)) +
+
+    panel("Undertaking", "Read it before you sign", pbody(
+      '<div class="sub2" style="line-height:1.65">I accept the offer of provisional admission on the terms stated. I declare that the particulars and results I submitted are true and complete, and I understand that the University verifies them with the examination bodies. I undertake to abide by the statutes, regulations and disciplinary code of the University, and I accept that admission obtained on a false declaration is void at any time, including after the award of a degree.</div>' +
+      '<label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-top:6px">' +
+        '<input type="checkbox" class="chk" checked>' +
+        '<span>I have read the undertaking and I accept it.</span></label>')) +
+
+    note('info', 'Accepting does not complete your admission',
+      'It holds your place. Admission is complete only after the Registry has seen your original documents at clearance and Senate has approved the list.') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      btn('urgent', 'Accept and pay ' + money(AP.feeAccept), ' data-ap="fwd"') +
+      btn('ghost', 'Decline this offer') +
+    '</div>' + apControls();
+  }
+
+  /* ── 8. document clearance ────────────────────────────────────── */
+
+  function applicantClearance() {
+    var done = apAt(7);
+    var rows = [
+      ["O&rsquo;Level certificate or statement of result", "WAEC 2025, original", done ? "ok" : "query",
+       done ? "Verified with WAEC on 29 September" : "Your statement of result expires on 3 November. Bring the certificate when WAEC issues it."],
+      ["Birth certificate or declaration of age", "NPC certificate or sworn declaration", done ? "ok" : "ok", "Verified"],
+      ["Local government identification", "Signed and stamped by the LGA", done ? "ok" : "ok", "Verified"],
+      ["JAMB admission letter", "Printed from the JAMB portal", done ? "ok" : "todo", done ? "Verified" : "Not yet presented"],
+      ["Medical fitness certificate", "From the University Health Services", done ? "ok" : "todo", done ? "Issued 30 September" : "Booked for 29 September, 10:00"],
+      ["Passport photographs", "Six copies, white background", done ? "ok" : "todo", done ? "Received" : "Not yet presented"]
+    ];
+
+    if (!apAt(6)) {
+      return note('info', 'Clearance opens when you have accepted your offer',
+        'The Registry clears only candidates who have accepted and paid the acceptance fee.') + apRail() + apControls();
+    }
+
+    return note(done ? 'ok' : 'info',
+      done ? 'You are cleared' : 'Clearance is in person, at the Registry',
+      done ? 'Every document has been seen and verified. You may now pay your fees and register your courses &mdash; under your admission number. Your matriculation number is issued afterwards, over the list of students who actually registered.'
+           : 'Bring the originals, not photocopies. Administration Block, Registry counter 4, Monday to Friday 09:00 to 15:00 from 28 September. Nothing is paid at clearance.',
+      done ? btn('primary', 'What happens next', ' data-go="a/matric"') : btn('ghost', 'Book a clearance slot')) +
+
+    panel("Documents", (done ? "6" : "2") + " of 6 verified", dtable(
+      ["Document", "What is required", "Status|num"],
+      rows.map(function (r) {
+        return [two(r[0], r[3]), '<span class="sub2">' + r[1] + '</span>',
+          r[2] === "ok" ? pil('ok', 'Verified') : r[2] === "query" ? pil('bad', 'Query') : pil('info', 'Not presented')];
+      }), 700)) +
+
+    (done ? '' : note('bad', 'A statement of result is accepted once, and only for a time',
+      'It expires on 3 November. If the certificate has not replaced it on your file by then, your registration is suspended until it does. This is the single most common reason a first-year student is blocked in January.')) +
+
+    note('info', 'Nothing is paid at clearance, to anyone',
+      'Clearance is a check of documents. Any request for money at the counter, in the corridor or afterwards should be reported to the Registrar with the name and the date.') + apControls();
+  }
+
+  /* ── 9 and 10. registration, then matriculation ───────────────── */
+
+  function applicantMatric() {
+    if (!apAt(9)) {
+      return note('info', 'You register your courses first, and are matriculated afterwards',
+        'This is the order the Academic Office works in, and it is deliberate. You pay your fees and register your courses under your <b>admission number</b>. Your Faculty Officer then generates the list of students who actually registered, the Academic Office confirms it, and matriculation numbers are issued over that confirmed list in one run. A number is not issued to somebody who accepted an offer and did not come.') +
+      apRail() +
+
+      '<div class="grid grid--2">' +
+        panel("What you carry now", "Your admission number", pbody(
+          '<div class="tnum" style="font-family:var(--serif);font-size:clamp(19px,4vw,26px);font-weight:700;letter-spacing:.6px">MOAUM/ADM/26/018342</div>' +
+          '<div style="margin:8px 0 2px">' + btn('ghost', 'Advice of admission number', ' data-doc="admno"') + '</div>' +
+          '<p class="sub2" style="margin:0">Issued when you accepted your offer. It identifies you for screening, for your fees and for your course registration. Quote it at any counter until you are matriculated. It is kept on your record afterwards &mdash; it is retired, not deleted.</p>')) +
+
+        panel("What you will be issued", "Your matriculation number", pbody(
+          dtable(["Part", "Meaning"], [
+            ['<span class="tnum">MOAUM</span>', "The University"],
+            ['<span class="tnum">CSC</span>', "Your department &mdash; Computer Science"],
+            ['<span class="tnum">26</span>', "The session you were admitted in &mdash; " + AP.session],
+            ['<span class="tnum">1874</span>', "Your serial within that department and session"]
+          ], 420) +
+          '<p class="sub2" style="margin:0">It never changes, and it is never given to anybody else.</p>')) +
+      '</div>' +
+
+      panel("Between the two numbers", "What each office sees while you have no matriculation number", '<div style="padding:4px 0">' +
+        [['done', 'The Bursary', 'Bills you and receipts you under your admission number.'],
+         ['done', 'Your department', 'Registers your courses under your admission number.'],
+         ['now', 'Your Faculty Officer', 'Puts you on the list of students who registered. This is the step that makes you a candidate for matriculation.'],
+         ['todo', 'The Academic Office', 'Confirms the faculty list and runs matriculation. Your number is issued here.'],
+         ['todo', 'The Library', 'Cannot make your identity card yet &mdash; the card is keyed on the matriculation number.']
+        ].map(function (x, i) {
+          return '<div style="padding:9px 16px' + (i ? ';border-top:1px solid var(--line-2)' : '') + '">' + step(x[0], x[1], x[2]) + '</div>';
+        }).join('') + '</div>') +
+
+      note('info', 'Where a matriculation number does not exist yet, the portal says so',
+        'It does not quietly show your admission number in a field labelled matriculation number. Two identifiers that look alike in the same box is how a record ends up attached to the wrong person.') +
+      apControls();
+    }
+
+    return '<div class="card" style="border-top:4px solid var(--green)">' + pbody(
+      '<div style="display:flex;align-items:center;gap:9px">' +
+        '<div style="width:26px;height:26px;border-radius:13px;background:var(--green);display:flex;align-items:center;justify-content:center">' + tick(14, '#fff') + '</div>' +
+        '<span class="eyebrow" style="color:var(--green-ink)">Matriculation number issued</span></div>' +
+      '<div class="tnum" style="font-family:var(--serif);font-size:clamp(24px,5vw,34px);font-weight:700;letter-spacing:1px">MOAUM/CSC/26/1874</div>' +
+      '<div style="margin:10px 0 2px">' + btn('primary', 'Certificate of matriculation', ' data-doc="matcert"') + '</div>' +
+      '<div class="sub2">' + AP.name + ' &middot; ' + AP.prog + ' &middot; 100 Level</div>' +
+      '<div style="height:1px;background:var(--line-2)"></div>' +
+      '<div class="sub2">This number identifies you for the rest of your studies and beyond &mdash; on every course registration, every score sheet, every result slip, your certificate and your transcript. Quote it in all correspondence. It never changes.</div>') + '</div>' +
+
+    note('ok', 'Your application account is now your student account',
+      'Sign in with the same email and password. Your application number ' + AP.no + ' and your admission number MOAUM/ADM/26/018342 are both retired and both kept on your record &mdash; a document issued to you under either of them is still yours.',
+      btn('primary', 'Sign in as a student', ' data-ap="student"')) +
+
+    panel("How this number came to be issued", "The run of 12 October", '<div style="padding:4px 0">' +
+      [['done', 'You paid your fees and registered your courses', 'Under your admission number, between 15 and 24 September'],
+       ['done', 'Your Faculty Officer generated the list of registered students', 'From approved registrations. It was not typed'],
+       ['done', 'The Academic Office confirmed the faculty lists', '5,884 candidates across fourteen faculties &mdash; candidates, because the number is issued after registration'],
+       ['done', 'Matriculation numbers were generated in one run', 'One sequence, one transaction. 5,884 numbers or none'],
+       ['now', 'Your number was circulated to your faculty and to you', 'Today']
+      ].map(function (s, i) {
+        return '<div style="padding:9px 16px' + (i ? ';border-top:1px solid var(--line-2)' : '') + '">' + step(s[0], s[1], s[2]) + '</div>';
+      }).join('') + '</div>') +
+
+    panel("What happens now", "", '<div style="padding:4px 0">' +
+      [['done', 'Matriculation number issued', 'Today'],
+       ['now', 'Collect your identity card', 'At the Library. Bring your fee receipt; your photograph and signature are taken at the counter, and the card is authorised by the Chief Security Officer before it is handed over'],
+       ['todo', 'Take the matriculation oath', '33rd matriculation ceremony &middot; 15 October, 9:00, University Auditorium'],
+       ['todo', 'Attend medical screening at the Clinic', 'Blood group, genotype and hepatitis B and C. Your blood group is what prints on your identity card'],
+       ['todo', 'Second-semester registration', 'Under your matriculation number from now on']
+      ].map(function (s, i) {
+        return '<div style="padding:9px 16px' + (i ? ';border-top:1px solid var(--line-2)' : '') + '">' + step(s[0], s[1], s[2]) + '</div>';
+      }).join('') + '</div>') +
+
+    note('info', 'You are admitted provisionally until your results are verified',
+      'The Registry completes verification with WAEC, NECO and JAMB during your first session. Admission obtained on a result that does not verify is void at any point afterwards, including after graduation.') + apControls();
+  }

@@ -1,0 +1,314 @@
+  /* ══════════════════════════════════════════════════════════════════
+     THE RECORD FORM — one modal, every setup and settings screen
+
+     Every list in a configuration screen holds records, and a record
+     is added or amended in the same way wherever you meet it: a modal
+     opens over the list you were reading, carries the record's own
+     fields, states the rule that constrains it, and returns you to
+     that list with the change visible in it.
+
+     Three things are true of every one of these forms, and they are
+     the reason the engine is shared rather than written per screen:
+
+       · nothing is deleted — a record is ENDED with a date, and the
+         ended record stays on the list, greyed, because documents
+         already issued refer to it
+       · an amendment is signed — the confirmation names the office
+         that made it and the audit line it wrote
+       · a rule that the database enforces is stated on the form that
+         would breach it, so the refusal is never a surprise
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* ── lists promoted out of the screens, so a form can amend them ── */
+
+  var EXAMS_OFFICERS = [
+    ["Mathematics &amp; Computer Science", "B.Sc. Computer Science", "Dr. M. Adikpe", "acting", "1 Sep 2026", "31 Dec 2026"],
+    ["Mathematics &amp; Computer Science", "B.Sc. Mathematics", "Dr. S. Akaa", "substantive", "1 Aug 2025", "&mdash;"],
+    ["Mathematics &amp; Computer Science", "B.Sc. Statistics", "Dr. M. Ochigbo", "substantive", "1 Aug 2025", "&mdash;"],
+    ["Chemistry", "B.Sc. Chemistry", "Dr. G. Ayua", "substantive", "3 Oct 2024", "&mdash;"],
+    ["Chemistry", "B.Sc. Industrial Chemistry", "", "vacant", "&mdash;", "&mdash;"]
+  ];
+
+  var GRANTS = [
+    ["Mrs. R. T. Iorember", "MOAUM/STF/0918", "Librarian", "The University", "Registrar", "1 Sep 2024", "&mdash;"],
+    ["Mr. J. A. Anhwange", "MOAUM/STF/0230", "Chief Security Officer", "The University", "Registrar", "3 Jan 2022", "&mdash;"],
+    ["Dr. I. O. Ogwuche", "MOAUM/STF/0884", "Head of Department &middot; MCS", "Mathematics &amp; Computer Science", "Vice-Chancellor", "1 Aug 2025", "31 Jul 2027"],
+    ["Dr. I. O. Ogwuche", "MOAUM/STF/0884", "Lecturer", "Own courses", "Registrar", "12 Oct 2016", "&mdash;"],
+    ["Dr. M. Adikpe", "MOAUM/STF/1310", "Exams Officer &middot; MCS (acting)", "B.Sc. Computer Science", "Dean of Science", "1 Sep 2026", "31 Dec 2026"],
+    ["Mr. Terna Abuul", "MOAUM/STF/0774", "Director of ICT", "The platform", "Vice-Chancellor", "6 Mar 2023", "&mdash;"]
+  ];
+
+  var OFFICE_REACH = [
+    ["Lecturer", "Own courses", "Nothing", "Class list, attendance register", "Own students"],
+    ["Head of Department", "Department", "Departmental results, allocation", "Departmental result sheet", "Department"],
+    ["Faculty Officer", "Faculty", "Faculty compilation", "Faculty summary", "Faculty"],
+    ["Dean", "Faculty", "Faculty Board results", "Faculty Board minute", "Faculty"],
+    ["Exams &amp; Records", "The University", "Validation before Senate", "Transcripts, statements, result sheets", "All students"],
+    ["Registrar", "The University", "Senate minute, credentials", "Certificates, verification", "All records"],
+    ["Vice-Chancellor", "The University", "Senate, appointments", "Nothing directly", "All records"],
+    ["Super Administrator", "The platform", "Nothing academic", "Nothing academic", "Configuration and logs"]
+  ];
+
+  var LEVEL_ROWS = [
+    [100, "All programmes", 15, 27, "Yes"],
+    [200, "All programmes", 15, 27, "Yes"],
+    [300, "All programmes", 15, 27, "Yes"],
+    [400, "All programmes", 15, 24, "Yes"],
+    [500, "MBBS, LL.B and other five-year programmes", 15, 24, "Yes"]
+  ];
+
+  var WEIGHTINGS = [
+    ["All programmes", 30, 70, 40, "2024/2025", "in force"],
+    ["Laboratory courses", 40, 60, 40, "2024/2025", "in force"],
+    ["MBBS clinical", 50, 50, 50, "&mdash;", "pending Senate"]
+  ];
+
+  var WORKFLOW = [
+    [1, "Lecturer &mdash; entry and attestation", "No", "14 days", "Escalates to the HOD"],
+    [2, "Second examiner &mdash; verification", "No", "7 days", "Escalates to the HOD"],
+    [3, "Departmental board", "No", "7 days", "Escalates to the Dean"],
+    [4, "Faculty Officer &mdash; compilation", "No", "5 days", "Escalates to the Dean"],
+    [5, "Faculty Board", "No", "7 days", "Escalates to the Registrar"],
+    [6, "Exams &amp; Records &mdash; validation", "No", "7 days", "Named in the Senate schedule as outstanding"],
+    [7, "Senate", "No", "By sitting", "Carried to the next sitting"]
+  ];
+
+  var INTEGRATIONS = [
+    ["JAMB CAPS", "Admission list and candidate biodata", "https://api.jamb.gov.ng/caps", "connected", "Nightly, 06:00", "Today 06:00"],
+    ["NYSC", "Mobilisation &mdash; graduation list and NIN", "https://portal.nysc.org.ng/api", "connected", "On demand", "1 Sept"],
+    ["NIMC", "NIN verification", "https://sandbox.nimc.gov.ng/v1", "sandbox", "Per request", "Yesterday"],
+    ["Payment gateways", "Paystack, Flutterwave, Interswitch, Remita, Monnify", "Five separate endpoints", "connected", "Continuous", "Two minutes ago"],
+    ["NUC", "Returns and programme accreditation", "&mdash; filed by hand", "manual", "Annual", "March 2026"]
+  ];
+
+  var API_CLIENTS = [
+    ["Credential verification (public)", "verify:read", "10,000/day", 3184, "active", "&mdash;"],
+    ["Benue State Scholarship Board", "student:read, finance:read", "2,000/day", 118, "active", "31 Dec 2027"],
+    ["MOAUM mobile app", "student:*, finance:read", "100,000/day", 41209, "active", "&mdash;"],
+    ["Legacy portal bridge", "student:read", "500/day", 0, "deprecated", "31 Dec 2026"]
+  ];
+
+  var SOD_RULES = [
+    ["Score entry", "Result approval (same course)", "A lecturer cannot approve their own marks", "Refuse", 0],
+    ["Payment initiation", "Payment approval", "Maker and checker must differ", "Refuse", 0],
+    ["Requisition raising", "Tenders Board member", "Removes the buyer from the award decision", "Refuse", 1],
+    ["Student record edit", "Result amendment", "Prevents a single person rewriting a history", "Refuse", 0]
+  ];
+
+  var API_CONSUMERS = [
+    ["Public website", "moaum.edu.ng", "Directorate of ICT", "catalogue:read, calendar:read, staff:read", "50,000/day", 18442, "84 ms", "active"],
+    ["Credential verification", "Public, unauthenticated", "Registry", "verify:read", "10,000/day", 3184, "62 ms", "active"],
+    ["MOAUM mobile app", "iOS and Android", "Directorate of ICT", "student:*, finance:read", "100,000/day", 21209, "131 ms", "active"],
+    ["Benue State Scholarship Board", "External", "Bursary", "student:read, finance:read", "2,000/day", 118, "96 ms", "active"],
+    ["TETFund returns", "External, batch", "Academic Planning", "reporting:read", "500/day", 0, "&mdash;", "seasonal"],
+    ["Institutional repository harvester", "OAI-PMH", "Library", "research:read", "5,000/day", 1558, "210 ms", "active"],
+    ["Legacy portal bridge", "Retires 31 December", "Directorate of ICT", "student:read", "500/day", 0, "&mdash;", "deprecated"]
+  ];
+
+  var API_KEYS = [
+    ["Benue State Scholarship Board", "key_7f21&hellip;c904", "14 Sep 2025", "Today, 08:12", "13 Sep 2026", 1],
+    ["TETFund returns", "key_a180&hellip;21bb", "19 Sep 2025", "4 Aug 2026", "18 Sep 2026", 1],
+    ["Public website", "key_c552&hellip;8e13", "2 Mar 2026", "Today, 11:53", "1 Mar 2027", 0],
+    ["MOAUM mobile app", "key_11de&hellip;4a70", "2 Mar 2026", "Today, 11:53", "1 Mar 2027", 0]
+  ];
+
+  var ROLE_GRANTS = [
+    ["IORPUU, Terhemba (Dr.)", "MOAUM/STF/1142", "Head of Department", "Computer Science", "31 Jul 2027", "Registrar"],
+    ["ASHAVER, Mimi (Dr.)", "MOAUM/STF/0877", "Acting HOD", "Computer Science", "25 Sept 2026", "Dean of Science"],
+    ["TERWASE, Patience", "MOAUM/STF/0344", "Registry officer", "University-wide", "Open-ended", "Registrar"],
+    ["EXTERNAL &mdash; Prof. A. Bello", "University of Jos", "External examiner", "Computer Science &middot; 400 level", "31 Jan 2027", "Dean of Science"]
+  ];
+
+  /* ── the form engine ─────────────────────────────────────────── */
+
+  /* strip the two characters that would let a typed value break the page */
+  function recClean(s) { return String(s == null ? "" : s).replace(/[<>]/g, ""); }
+
+  /* values in this prototype are already entity-encoded (&mdash;, &amp;), so an
+     attribute needs only its quotes escaped — re-escaping the ampersand would
+     put "&amp;amp;" in the box and the field would read back wrong */
+  function recAttr(s) { return String(s == null ? "" : s).replace(/"/g, "&quot;"); }
+
+  function recFieldHTML(f, val) {
+    var id = "rf-" + f.k;
+    var v = (val && val[f.k] != null) ? String(val[f.k]) : (f.d != null ? String(f.d) : "");
+    var inner;
+    if (f.t === "sel") {
+      var opts = f.o || [];
+      var found = false;
+      var body = opts.map(function (o) {
+        var on = (o === v); if (on) { found = true; }
+        return '<option' + (on ? ' selected' : '') + '>' + o + '</option>';
+      }).join('');
+      if (v && !found) { body = '<option selected>' + v + '</option>' + body; }
+      inner = '<select id="' + id + '" class="ctl" data-rk="' + f.k + '">' + body + '</select>';
+    } else if (f.t === "set") {
+      /* A set, not a choice. The value is stored and read back as a
+         comma-separated list, and every option carries its own box —
+         nothing here is "the first one, and the rest if you remember". */
+      var have = v ? v.split(/\s*,\s*/) : [];
+      inner = '<div class="setctl' + ((f.o || []).length > 10 ? ' setctl--tall' : '') +
+        '" data-rkset="' + f.k + '">' +
+        (f.o || []).map(function (o, oi) {
+          var val = (f.ov && f.ov[oi]) ? f.ov[oi] : o;
+          var on = have.indexOf(val) >= 0;
+          return '<label' + (f.own && f.own === val ? ' class="setctl__own"' : '') + '>' +
+            '<input type="checkbox" class="chk" value="' + recAttr(val) + '"' + (on ? ' checked' : '') + '>' +
+            '<span>' + o + '</span></label>';
+        }).join('') + '</div>';
+    } else if (f.t === "area") {
+      inner = '<textarea id="' + id + '" class="ctl" rows="' + (f.rows || 2) + '"' +
+        (f.ph ? ' placeholder="' + recAttr(f.ph) + '"' : '') + ' data-rk="' + f.k + '">' + v + '</textarea>';
+    } else {
+      inner = '<input id="' + id + '" class="ctl' + (f.t === "num" ? ' tnum' : '') + (f.t === "ro" ? ' ctl--ro' : '') +
+        '" value="' + recAttr(v) + '"' + (f.t === "ro" ? ' readonly' : '') +
+        (f.ph ? ' placeholder="' + recAttr(f.ph) + '"' : '') + ' autocomplete="off" data-rk="' + f.k + '">';
+    }
+    return '<div class="field' + (f.full ? ' rf--full' : '') + '">' +
+      '<label for="' + id + '">' + f.l +
+        ((f.t === "ro" && f.l.indexOf("bio__t") < 0) ? ' <span class="bio__t bio__t--locked">not editable</span>' : '') + '</label>' +
+      inner + (f.hint ? '<span class="hint">' + f.hint + '</span>' : '') + '</div>';
+  }
+
+  function recFormHTML(def, val) {
+    return '<div class="grid grid--' + (def.cols || 2) + ' rfgrid">' +
+      def.fields.map(function (f) { return recFieldHTML(f, val); }).join('') + '</div>';
+  }
+
+  /* read every control the open form is carrying, by its data-rk key */
+  function recRead() {
+    var out = {}, els = document.querySelectorAll('.mdl [data-rk]');
+    for (var i = 0; i < els.length; i++) {
+      out[els[i].getAttribute("data-rk")] = recClean(els[i].value);
+    }
+    /* a set control has no single value — it has however many boxes are ticked */
+    var sets = document.querySelectorAll('.mdl [data-rkset]');
+    for (var s = 0; s < sets.length; s++) {
+      var boxes = sets[s].querySelectorAll('input[type="checkbox"]'), picked = [];
+      for (var b = 0; b < boxes.length; b++) { if (boxes[b].checked) { picked.push(boxes[b].value); } }
+      out[sets[s].getAttribute("data-rkset")] = recClean(picked.join(", "));
+    }
+    return out;
+  }
+
+  /* ── opening, saving, ending ─────────────────────────────────── */
+
+  function recOpen(kind, id) {
+    var def = REC[kind];
+    if (!def) { return; }
+    var val = (id && def.get) ? def.get(id) : null;
+    S.mdl = { kind: "rec", rec: kind, of: (id || ""), step: 0, val: val, mode: val ? "edit" : "new", msg: "" };
+  }
+
+  function recSaveNow() {
+    var def = REC[S.mdl.rec];
+    if (!def) { S.mdl = { kind: null, step: 0, of: "" }; return; }
+    var v = recRead();
+    var what = def.apply ? def.apply(S.mdl.of, v, S.mdl.mode) : "";
+    S.mdl = { kind: "recdone", rec: S.mdl.rec, of: S.mdl.of, step: 0,
+      mode: S.mdl.mode, val: v, msg: what || "" };
+  }
+
+  function recEndNow() {
+    var def = REC[S.mdl.rec];
+    var v = recRead();
+    var what = def && def.end ? def.end(S.mdl.of, v) : "";
+    S.mdl = { kind: "recdone", rec: S.mdl.rec, of: S.mdl.of, step: 0,
+      mode: "ended", val: v, msg: what || "" };
+  }
+
+  /* ── the buttons the screens use ─────────────────────────────── */
+
+  function recAdd(kind, label) {
+    return '<div class="rfbar"><button class="btn btn--primary btn--sm" data-mdl="rec:' + kind + '">+ ' +
+      (label || ("New " + (REC[kind] ? REC[kind].one : "record"))) + '</button></div>';
+  }
+  function recAddIn(kind, label, extra) {
+    return '<div class="rfbar"><button class="btn btn--primary btn--sm" data-mdl="rec:' + kind + '">+ ' +
+      label + '</button>' + (extra || '') + '</div>';
+  }
+  /* a settings block that is one record, not a list of them */
+  function recOne(kind, label) {
+    return '<div class="rfbar"><button class="btn btn--primary btn--sm" data-mdl="rec:' + kind + ':1">' +
+      label + '</button></div>';
+  }
+  function recBtn(kind, id, label, tone) {
+    return btn(tone || 'ghost', label || 'Edit', ' data-mdl="rec:' + kind + ':' + id + '"');
+  }
+
+  /* ── the modal itself ────────────────────────────────────────── */
+
+  function recModal() {
+    var def = REC[S.mdl.rec];
+    if (!def) { return ''; }
+    var isNew = S.mdl.mode === "new", val = S.mdl.val;
+    var title = isNew ? ("New " + def.one) : ((def.editVerb || "Edit") + " " + (def.name ? def.name(val) : def.one));
+    var sub = isNew ? (def.newSub || "") : (def.sub ? def.sub(val) : "");
+
+    if (S.mdl.mode === "ending") {
+      return modal("End " + (def.name ? def.name(val) : def.one), "It stays on the record",
+        note('bad', 'Ending is not deleting, and the difference is the whole point',
+          def.endWhy || 'This record is referred to by documents the University has already issued. Ending it stops it being used from the date you give, and leaves it readable for ever &mdash; ' +
+          'because a document that referred to it has to keep resolving. No application role in this system holds a DELETE grant on any table, this console included.') +
+        '<div class="grid grid--2 rfgrid">' +
+          recFieldHTML({ k: "endfrom", l: "Ended with effect from", t: "sel",
+            o: ["End of the current session", "End of the current semester", "Immediately", "A date I will type"] }, null) +
+          recFieldHTML({ k: "endwhy", l: "Reason, as it will read in the log", t: "text",
+            d: "Superseded by a restructuring resolved by Senate" }, null) +
+        '</div>',
+        '<button class="btn btn--ghost btn--sm" data-mdl="unend">&larr; Back to the form</button>' +
+        '<span style="flex-grow:1"></span>' +
+        '<button class="btn btn--urgent btn--sm" data-mdl="endnow">End it</button>');
+    }
+
+    var body =
+      (def.lead ? note(def.lead[0], def.lead[1], def.lead[2]) : '') +
+      (def.form ? def.form(val, S.mdl.of) : recFormHTML(def, val)) +
+      (def.rule ? note(def.rule[0], def.rule[1], def.rule[2]) : '');
+
+    var foot =
+      btn('ghost', 'Cancel', ' data-mdl="close"') +
+      (!isNew && def.end ? '<button class="btn btn--ghost btn--sm" data-mdl="end">End this ' + def.one + '</button>' : '') +
+      '<span style="flex-grow:1"></span>' +
+      '<button class="btn btn--primary btn--sm" data-mdl="save">' +
+        (isNew ? (def.newSave || ("Create the " + def.one)) : (def.save || "Save the change")) + '</button>';
+
+    return modal(title, sub, body, foot, def.wide !== false);
+  }
+
+  function recDoneModal() {
+    var def = REC[S.mdl.rec] || { one: "record" };
+    var mode = S.mdl.mode;
+    var head = mode === "ended" ? "Ended, and still on the record"
+             : mode === "new" ? "Created"
+             : "Amended";
+    var who = S.role === "staff" && ROLES[S.srole] ? ROLES[S.srole].who : "You";
+    var office = S.role === "staff" && ROLES[S.srole] ? ROLES[S.srole].label : "&mdash;";
+
+    return modal(head, S.mdl.msg || "",
+      note(mode === "ended" ? 'bad' : 'ok',
+        mode === "ended" ? 'It stops being used; it does not stop existing'
+          : mode === "new" ? 'The record exists from the date it names'
+          : 'The amendment is a further record, not an overwrite',
+        mode === "ended"
+          ? 'It will not appear where a live ' + def.one + ' is offered, and it still resolves everywhere a document already issued refers to it. Nothing was removed from any table.'
+          : mode === "new"
+          ? 'It carries the date it takes effect from. Nothing that happened before that date is changed by it &mdash; which is why a back-dated record is refused rather than accepted quietly.'
+          : 'The previous values are still readable in the log, with the date they stopped applying. This console amends by superseding; it has no way to overwrite.') +
+      kvGrid([
+        ["Record", def.one.charAt(0).toUpperCase() + def.one.slice(1)],
+        ["Act", mode === "ended" ? "Ended" : mode === "new" ? "Created" : "Amended"],
+        ["By", who],
+        ["Office", office],
+        ["When", "Today, " + nowClock()],
+        ["Audit line", "Written &mdash; append-only, and not editable from here"]
+      ], 'grid--2'),
+      btn('ghost', 'Make another change', ' data-mdl="rec:' + S.mdl.rec + '"') +
+      '<span style="flex-grow:1"></span>' +
+      btn('primary', 'Back to the list', ' data-mdl="close"'));
+  }
+
+  function nowClock() {
+    var d = new Date(), h = d.getHours(), m = d.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }

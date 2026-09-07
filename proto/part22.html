@@ -1,0 +1,201 @@
+
+  /* ══ SEARCH ═══════════════════════════════════════════════════════
+     The scope bar narrows a list. Search finds one thing. It is
+     bounded by the same office ceiling, and every search for a person
+     is written to the audit trail, because looking someone up is
+     processing their personal data whether or not anything changes.
+                                                                    */
+
+  var SEARCH_CORPUS = {
+    students: [
+      ["MOAUM/CSC/23/1487", "ADAMU, Grace Mwuese", "B.Sc. Computer Science", 300, "sci", "mcs", "Active"],
+      ["MOAUM/CSC/23/1401", "ABAAGU, Terkimbi John", "B.Sc. Computer Science", 300, "sci", "mcs", "Active"],
+      ["MOAUM/CSC/23/1415", "AGBO, Ochanya Faith", "B.Sc. Computer Science", 300, "sci", "mcs", "Active"],
+      ["MOAUM/CSC/23/1423", "AKAAKA, Sesugh Daniel", "B.Sc. Computer Science", 300, "sci", "mcs", "Active"],
+      ["MOAUM/CSC/23/1430", "ANYEBE, Ruth Onyilo", "B.Sc. Computer Science", 300, "sci", "mcs", "Active"],
+      ["MOAUM/CSC/22/1188", "IORNONGU, Sewuese Mercy", "B.Sc. Computer Science", 400, "sci", "mcs", "Active"],
+      ["MOAUM/CSC/23/1502", "TSEMBE, Aondowase", "B.Sc. Computer Science", 300, "sci", "mcs", "Fees owing"],
+      ["MOAUM/CHM/22/0771", "ORKAA, Aondoaseer Joseph", "B.Sc. Chemistry", 400, "sci", "chm", "Active"],
+      ["MOAUM/LAW/22/0918", "UGBEM, Terhemba Paul", "LL.B Law", 400, "law", "pub", "Fees owing"],
+      ["MOAUM/EDU/24/2201", "IORNONGU, Sewuese Grace", "B.Sc. (Ed.) Mathematics", 200, "edu", "mse", "Active"],
+      ["MOAUM/MED/21/0104", "ADAMU, Terkimbi Peace", "MBBS Medicine and Surgery", 500, "chs", "med", "Active"],
+      ["MOAUM/SOC/23/1740", "AGBO, Doosuur Faith", "B.Sc. Sociology", 300, "soc", "soc", "Withdrawn"]
+    ],
+    staff: [
+      ["MOAUM/STF/1142", "Dr. T. Iorpuu", "Lecturer", "Mathematics &amp; Computer Science", "sci", "mcs"],
+      ["MOAUM/STF/0884", "Dr. I. O. Ogwuche", "Head of Department", "Mathematics &amp; Computer Science", "sci", "mcs"],
+      ["MOAUM/STF/1310", "Dr. M. Adikpe", "Examinations Officer", "Mathematics &amp; Computer Science", "sci", "mcs"],
+      ["MOAUM/STF/0412", "Prof. B. O. Atu", "Dean", "Faculty of Science", "sci", ""],
+      ["MOAUM/STF/0301", "Dr. A. E. Otse", "Bursar", "Bursary", "", ""],
+      ["MOAUM/STF/0102", "Mr. B. T. Hemba", "Registrar", "Registry", "", ""],
+      ["MOAUM/STF/0790", "Mr. Terna Abuul", "Director of ICT", "Directorate of ICT", "", ""]
+    ],
+    courses: [
+      ["CSC 311", "Algorithms &amp; Complexity", 3, "Dr. T. Iorpuu", "sci", "mcs"],
+      ["CSC 321", "Database Systems", 3, "Dr. J. Adie", "sci", "mcs"],
+      ["CSC 331", "Operating Systems", 3, "Prof. F. Gbaoron", "sci", "mcs"],
+      ["MTH 212", "Linear Algebra II", 3, "Unassigned", "sci", "mcs"],
+      ["CHM 311", "Physical Chemistry", 3, "Dr. J. Adie", "sci", "chm"],
+      ["GST 301", "Entrepreneurship", 2, "Dr. N. Doki", "", ""]
+    ],
+    payments: [
+      ["280194773512", "&#8358;45,000", "ADAMU, Grace Mwuese", "Tuition, instalment 2", "Settled", "sci", "mcs"],
+      ["280194768887", "&#8358;90,000", "UGBEM, Terhemba Paul", "Tuition, part payment", "Part payment", "law", "pub"],
+      ["TELLER/BR/44821", "&#8358;40,000", "Not identified", "Bank branch, no reference", "Unmatched", "", ""],
+      ["MOAUM-APP-018342-7741", "&#8358;2,300", "OCHANYA, Faith A.", "Application fee", "Settled", "", ""]
+    ],
+    credentials: [
+      ["MOAUM-TR-9H2D-6PLV", "Official transcript", "ADAMU, Grace Mwuese", "Issued 9 Sept 2026", "sci", "mcs"],
+      ["MOAUM-RS-4T8N-9CQL", "Statement of results", "ADAMU, Grace Mwuese", "Published 12 Aug 2026", "sci", "mcs"],
+      ["MOAUM-CRF-7K4P-2WQX", "Course registration form", "ADAMU, Grace Mwuese", "Approved 15 Sept 2026", "sci", "mcs"]
+    ]
+  };
+
+  var SEARCH_KINDS = [
+    ["all", "Everything"], ["students", "Students"], ["staff", "Staff"],
+    ["courses", "Courses"], ["payments", "Payments"], ["credentials", "Credentials"]
+  ];
+
+  function inCeiling(fac, dept) {
+    var c = ceiling();
+    if (c.dept) { return dept === c.dept || (!fac && !dept); }
+    if (c.fac)  { return fac === c.fac || (!fac && !dept); }
+    return true;
+  }
+
+  function plain(x) { return String(x).replace(/&[a-z]+;/g, " ").toLowerCase(); }
+
+  function searchHits(kind) {
+    var q = plain(S.q || "").trim();
+    if (!q) { return []; }
+    var out = [];
+    function scan(key, rows, facIx, deptIx) {
+      if (kind !== "all" && kind !== key) { return; }
+      rows.forEach(function (r) {
+        if (!inCeiling(r[facIx], r[deptIx])) { return; }
+        if (r.some(function (c) { return plain(c).indexOf(q) > -1; })) { out.push([key, r]); }
+      });
+    }
+    scan("students", SEARCH_CORPUS.students, 4, 5);
+    scan("staff", SEARCH_CORPUS.staff, 4, 5);
+    scan("courses", SEARCH_CORPUS.courses, 4, 5);
+    scan("payments", SEARCH_CORPUS.payments, 5, 6);
+    scan("credentials", SEARCH_CORPUS.credentials, 4, 5);
+    return out;
+  }
+
+  /* an identifier typed in full goes straight to the record */
+  function exactHit() {
+    var q = plain(S.q || "").trim();
+    if (q.length < 8) { return null; }
+    var all = searchHits("all");
+    for (var i = 0; i < all.length; i++) {
+      if (plain(all[i][1][0]) === q) { return all[i]; }
+    }
+    return null;
+  }
+
+  function hitRow(kind, r) {
+    if (kind === "students") {
+      return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+        '<span class="sub2">' + r[2] + ' &middot; ' + r[3] + ' Level</span>',
+        r[6] === "Active" ? pil('ok', 'Active') : r[6] === "Withdrawn" ? pil('grey', 'Withdrawn') : pil('bad', r[6]),
+        btn('primary', 'Open record', ' data-go="t/student"')];
+    }
+    if (kind === "staff") {
+      return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+        '<span class="sub2">' + r[2] + ' &middot; ' + r[3] + '</span>', pil('info', 'Staff'),
+        btn('ghost', 'Open record', ' data-go="t/staff"')];
+    }
+    if (kind === "courses") {
+      return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+        '<span class="sub2">' + r[2] + ' units &middot; ' + r[3] + '</span>',
+        r[3] === "Unassigned" ? pil('bad', 'Unassigned') : pil('ok', 'Assigned'),
+        btn('ghost', 'Open', ' data-go="r/allocate"')];
+    }
+    if (kind === "payments") {
+      return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+        '<span class="sub2">' + r[2] + ' &middot; ' + r[3] + '</span>',
+        r[4] === "Settled" ? pil('ok', 'Settled') : pil('bad', r[4]),
+        btn('ghost', 'Open', ' data-go="' + (r[4] === "Unmatched" ? "t/exception" : "t/ledger") + '"')];
+    }
+    return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+      '<span class="sub2">' + r[2] + ' &middot; ' + r[3] + '</span>', pil('ok', 'Valid'),
+      btn('ghost', 'Verify', ' data-go="verify"')];
+  }
+
+  var KIND_LABEL = { students: "Students", staff: "Staff", courses: "Courses",
+                     payments: "Payments", credentials: "Credentials" };
+
+  function tSearch() {
+    var kind = S.qkind || "all", hits = searchHits(kind), q = (S.q || "").trim();
+    var c = ceiling(), ex = exactHit();
+
+    var head =
+      '<div class="srch">' +
+        '<div class="srch__in">' +
+          ico('user', 18, 'var(--faint)', 1.9) +
+          '<input id="srch-q" value="' + q.replace(/"/g, "&quot;") + '" autocomplete="off" ' +
+            'placeholder="Matriculation number, name, staff number, course code, payment reference or verification code">' +
+          (q ? '<button class="srch__x" data-q="clear">Clear</button>' : '') +
+        '</div>' +
+        '<div class="srch__kinds">' + SEARCH_KINDS.map(function (k) {
+          var n = k[0] === "all" ? searchHits("all").length : searchHits(k[0]).length;
+          return '<button class="srch__k' + (kind === k[0] ? ' is-on' : '') + '" data-q="kind:' + k[0] + '">' +
+            k[1] + (q ? ' <span class="n tnum">' + n + '</span>' : '') + '</button>';
+        }).join('') + '</div>' +
+      '</div>';
+
+    if (!q) {
+      return head +
+        note('info', 'Search finds one record; the scope bar narrows a list',
+          'Use search when you already know what you are looking for &mdash; a matriculation number a student has quoted on the phone, a payment reference from a bank statement, a verification code on a document an employer has sent in. Use Records &amp; queries when you want everyone who matches a description.') +
+        two_col(
+          panel('What you can search for', '', dtable(['Type', 'Example|num'], [
+            [two('Matriculation number', 'Exact matches jump straight to the record'), '<span class="tnum sub2">MOAUM/CSC/23/1487</span>'],
+            [two('Student or staff name', 'Surname or other names, in any order'), '<span class="sub2">Adamu, or Grace</span>'],
+            [two('Staff number', ''), '<span class="tnum sub2">MOAUM/STF/1142</span>'],
+            [two('Course code or title', ''), '<span class="tnum sub2">CSC 311, or Algorithms</span>'],
+            [two('Payment reference', 'Gateway reference, RRR or teller slip'), '<span class="tnum sub2">280194773512</span>'],
+            [two('Verification code', 'From a certificate or transcript'), '<span class="tnum sub2">MOAUM-TR-9H2D-6PLV</span>']
+          ], 460)),
+          panel('Recent searches', 'Yours, this session', pbody(
+            '<div style="display:flex;flex-direction:column;gap:7px;align-items:flex-start">' +
+              ['MOAUM/CSC/23/1487', 'Iornongu', 'CSC 311', '280194773512'].map(function (r) {
+                return '<button class="srch__recent" data-q="set:' + r + '">' + ico('clock', 13, 'var(--faint)', 2) + r + '</button>';
+              }).join('') +
+            '</div>'))) +
+        note('bad', 'Every search for a person is recorded against your account',
+          'Looking a student up is processing their personal data whether or not you change anything, so the search term, the time and your office go to the audit trail. The Registrar reviews that log quarterly. Search for people you have business with.');
+    }
+
+    return head +
+
+      (c.dept || c.fac
+        ? note('info', 'Your results are bounded by your office',
+            'You are searching within ' + (c.dept ? 'your department' : 'your faculty') +
+            '. A record outside it does not appear here at all, and is not reported to you as withheld &mdash; ' +
+            'it is simply not yours to see. If you need it for your work, ask the Registry.')
+        : '') +
+
+      (ex
+        ? note('ok', 'Exact match on ' + ex[1][0],
+            KIND_LABEL[ex[0]].replace(/s$/, "") + ' &middot; ' + ex[1][1] + '. An identifier typed in full goes straight to the record.',
+            btn('primary', 'Open ' + ex[1][1], ' data-go="' +
+              (ex[0] === "students" ? "t/student" : ex[0] === "staff" ? "t/staff" :
+               ex[0] === "courses" ? "r/allocate" : ex[0] === "payments" ? "t/ledger" : "verify") + '"'))
+        : '') +
+
+      (hits.length === 0
+        ? note('bad', 'Nothing matches &ldquo;' + q + '&rdquo;' + (c.dept ? ' within your department' : ''),
+            'Check the spelling, or try part of the name rather than all of it. A record that exists but sits outside your office will not appear here &mdash; ' +
+            'if you have business with it, the Registry can act on it or extend your access, recorded either way.',
+            btn('ghost', 'Clear the search', ' data-q="clear"') + ' ' + btn('ghost', 'Browse by scope instead', ' data-go="t/records"'))
+        : SEARCH_KINDS.slice(1).map(function (k) {
+            var rows = hits.filter(function (h) { return h[0] === k[0]; });
+            if (!rows.length) { return ''; }
+            return panel(k[1], rows.length + (rows.length === 1 ? ' match' : ' matches'), dtable(
+              ['Identifier', 'Name', 'Detail', 'Status|mid', 'Action|num'],
+              rows.map(function (h) { return hitRow(h[0], h[1]); }), 900));
+          }).join(''));
+  }

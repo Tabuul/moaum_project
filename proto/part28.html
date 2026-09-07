@@ -1,0 +1,754 @@
+  /* ══════════════════════════════════════════════════════════════════
+     THE DESKS A RESULT PASSES
+
+     Four offices work the same queue at four different stages, so they
+     are one screen with four sets of powers rather than four screens
+     that drift apart. What differs between them is real: which stage
+     they hold, what they may do to a set, and where it goes when they
+     are finished with it.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* ── the chain, finer than the spine ─────────────────────────────
+     The ten-stage spine is what a student sees. Behind stage five the
+     faculty is not one desk but three, and they do different work:
+
+       Faculty Examinations Officer  — an academic. Scrutiny: anomalies,
+         missing sheets, boundary cases, how absences were handled.
+       Faculty Officer               — a Registry officer posted to the
+         faculty. Compilation: the schedule, the Board papers, and the
+         transmission to Exams & Records afterwards. Secretary to the
+         Board, not a member of it.
+       Dean                          — chairs the Faculty Board. The
+         approving authority; the other two prepare what he approves.
+
+     Collapsing these into one "Faculty approves" step is how a set
+     ends up approved by a Board that never saw the anomaly. */
+
+  var CHAIN = [
+    { key: "lecturer",       stage: 3, label: "Lecturer &mdash; entry and attestation", who: "Course lecturer" },
+    { key: "verifier",       stage: 3, label: "Second examiner &mdash; verification", who: "Second examiner" },
+    { key: "hod",            stage: 4, label: "Departmental board", who: "Head of Department" },
+    { key: "facultyexams",   stage: 5, label: "Faculty scrutiny", who: "Faculty Examinations Officer" },
+    { key: "facultyofficer", stage: 5, label: "Faculty compilation", who: "Faculty Officer" },
+    { key: "dean",           stage: 5, label: "Faculty Board", who: "Dean, in the Board" },
+    { key: "records",        stage: 6, label: "Exams &amp; Records validation", who: "Exams &amp; Records" },
+    { key: "senate",         stage: 7, label: "Senate", who: "Senate, on the Registrar's minute" }
+  ];
+
+  function chainIdx(key) {
+    for (var i = 0; i < CHAIN.length; i++) { if (CHAIN[i].key === key) { return i; } }
+    return 0;
+  }
+
+  /* where a set sits in the chain: what has been decided this session,
+     or the first desk of the stage it started at */
+  function chainPos(code, stage) {
+    if (S.rp.pos && S.rp.pos[code] != null) { return S.rp.pos[code]; }
+    if (stage >= 7) { return CHAIN.length; }
+    for (var i = 0; i < CHAIN.length; i++) { if (CHAIN[i].stage >= stage) { return i; } }
+    return CHAIN.length;
+  }
+
+  /* the spine position a chain position corresponds to */
+  function rpAt(code, def) {
+    var pos = chainPos(code, def);
+    return pos >= CHAIN.length ? Math.max(def, 7) : CHAIN[pos].stage;
+  }
+
+  var DESKS = {
+    hod: {
+      key: "hod", title: "Departmental board", unit: "Mathematics &amp; Computer Science",
+      can: ["Read every set the department's lecturers have attested",
+            "Check each distribution against that course's own history",
+            "Approve on behalf of the departmental board",
+            "Return a set to the lecturer, with a reason on the record",
+            "Send the approved sets up to the faculty"],
+      cannot: "Approve a set you entered marks for, or verified as second examiner.",
+      next: "the Faculty Examinations Officer", back: "the lecturer", backTo: 0
+    },
+    facultyexams: {
+      key: "facultyexams", title: "Faculty scrutiny", unit: "Faculty of Science",
+      can: ["Read every departmental set in the faculty, before the Board does",
+            "Find the sets that have not arrived, and name who holds them",
+            "Check each fail rate against that course's five-year mean",
+            "Check the boundary cases &mdash; 38, 39, 48, 49 &mdash; and how absences were treated",
+            "Recommend to the Faculty Officer, or return to the department with a reason"],
+      cannot: "Approve. This desk scrutinises and recommends; the Board approves.",
+      next: "the Faculty Officer", back: "the department", backTo: 2
+    },
+    facultyofficer: {
+      key: "facultyofficer", title: "Faculty compilation", unit: "Faculty of Science",
+      can: ["Compile the faculty schedule from the scrutinised sets",
+            "Prepare the Board papers, with the outstanding sets named in them",
+            "Put the schedule to the Faculty Board",
+            "Record the Board's decisions as its secretary",
+            "Transmit the approved schedule to Exams &amp; Records afterwards"],
+      cannot: "Approve, or vote. The Faculty Officer is secretary to the Board, not a member of it.",
+      next: "the Faculty Board", back: "the Faculty Examinations Officer", backTo: 3
+    },
+    dean: {
+      key: "dean", title: "Faculty Board", unit: "Faculty of Science",
+      can: ["Chair the Board on the schedule the Faculty Officer prepared",
+            "Hear the Examinations Officer on anything flagged",
+            "Approve on the authority of the Board",
+            "Return a set to the department with the Board's reason",
+            "Sign the Board minute"],
+      cannot: "Approve a set you taught, or one you already approved lower down the chain.",
+      next: "Exams &amp; Records", back: "the department", backTo: 2
+    },
+    records: {
+      key: "records", title: "Exams &amp; Records validation", unit: "The University",
+      can: ["Receive each faculty's compiled and Board-approved schedule",
+            "Validate every set against the register and the grading scheme in force",
+            "Return a rejected set to the faculty it came from",
+            "Approve for the Senate schedule",
+            "Prepare the schedule the Registrar takes to Senate"],
+      cannot: "Change a mark. A wrong mark goes back to the department that owns the course.",
+      next: "Senate", back: "the faculty", backTo: 3
+    }
+  };
+
+  function deskOf() { return DESKS[S.srole] || DESKS.hod; }
+
+  /* the sets this desk can see, with where each one has got to */
+  function deskSets(d) {
+    return RP_SETS.filter(function (r) {
+      if (S.srole === "hod") { return r[2] === "Computer Science" || r[2] === "Mathematics"; }
+      return true;
+    }).map(function (r) {
+      return { code: r[0], title: r[1], dept: r[2], n: r[3],
+               pos: chainPos(r[0], r[4]), at: rpAt(r[0], r[4]),
+               fail: setFailPct(r[0]), who: r[6] };
+    });
+  }
+
+  /* the three faculty desks, drawn wherever one of them is signed in */
+  function facultyRail(activeKey) {
+    var keys = ["facultyexams", "facultyofficer", "dean"];
+    return panel('The faculty tier is three desks, not one',
+      'Each does different work, and the order matters', pbody(
+      '<div class="frail">' + keys.map(function (k, i) {
+        var d = DESKS[k], on = k === activeKey;
+        return '<div class="frail__d' + (on ? ' is-on' : '') + '">' +
+          '<span class="frail__n tnum">' + (i + 1) + '</span>' +
+          '<b>' + ROLES[k].label + '</b>' +
+          '<span class="frail__t">' + d.title + '</span>' +
+          '<span class="frail__c">' + d.cannot + '</span>' +
+        '</div>';
+      }).join('') + '</div>' +
+      note('info', 'Why they are separate',
+        'The Examinations Officer is an academic who reads the marks; the Faculty Officer is a Registry officer who compiles the papers and minutes the Board; the Dean chairs the Board and is the approving authority. ' +
+        'Put those three in one account and a set can be scrutinised, compiled and approved by the same person &mdash; which is exactly the case the Faculty Board exists to prevent.')));
+  }
+
+  function tResultDesk() {
+    var d = deskOf(), me = chainIdx(d.key), sets = deskSets(d);
+    var here = sets.filter(function (s) { return s.pos === me; });
+    var past = sets.filter(function (s) { return s.pos > me; });
+    var late = sets.filter(function (s) { return s.pos < me; });
+    var faculty = d.key === "facultyexams" || d.key === "facultyofficer" || d.key === "dean";
+
+    return note('info', d.title + ' &mdash; ' + d.unit,
+      'A set arrives from ' + d.back + ' and leaves for ' + d.next + '. ' +
+      '<b>What this desk may not do:</b> ' + d.cannot) +
+
+    (faculty ? facultyRail(d.key) : '') +
+
+    tiles([
+      ["On this desk now", String(here.length), "var(--chrome)", "Waiting on you"],
+      ["Not yet arrived", String(late.length), "var(--red-ink)", "Still behind you in the chain"],
+      ["Sent on", String(past.length), "var(--green-ink)", "Past this desk"],
+      ["Senate sits", "12 Sept", null, "6 days"]
+    ]) +
+
+    panel('What this office may do', 'Five acts, and no others', pbody(
+      '<div class="grid grid--2">' + d.can.map(function (c) {
+        return '<div style="display:flex;gap:9px;align-items:flex-start">' + tick(16, 'var(--green-ink)') +
+          '<span style="font-size:13px;line-height:1.5">' + c + '</span></div>';
+      }).join('') + '</div>')) +
+
+    (S.rp.msg ? note(S.rp.msg.indexOf("Returned") === 0 ? 'bad' : 'ok', S.rp.msg, S.rp.msg2 || '') : '') +
+
+    panel('On this desk', 'Open a set to read it, then decide',
+      dtable(["Course", "Department", "Candidates|mid", "Fail rate|mid", "Against its mean|mid", "Lecturer", "Action|num"],
+        here.map(function (s) {
+          var mean = seedNum(s.code + "mean", 8, 24);
+          var ratio = s.fail / mean;
+          var hot = ratio >= 2;
+          return [two('<span class="tnum">' + s.code + '</span>', s.title),
+            '<span class="sub2">' + s.dept + '</span>',
+            '<span class="tnum">' + s.n.toLocaleString() + '</span>',
+            '<span class="tnum"' + (hot ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' + s.fail + '%</span>',
+            hot ? pil('bad', ratio.toFixed(1) + '&times; the mean') : '<span class="sub2 tnum">' + ratio.toFixed(1) + '&times; &middot; normal</span>',
+            '<span class="sub2">' + s.who + '</span>',
+            btn(hot ? 'urgent' : 'primary', 'Open', ' data-rp="open:' + s.code + '"')];
+        }))) +
+
+    (late.length ? panel('Not yet arrived', 'These are what will hold the level, not the course',
+      dtable(["Course", "Department", "Candidates|mid", "Stopped at", "Waiting on", "Days|mid", "Action|num"],
+        late.map(function (s) {
+          return [two('<span class="tnum">' + s.code + '</span>', s.title),
+            '<span class="sub2">' + s.dept + '</span>',
+            '<span class="tnum">' + s.n.toLocaleString() + '</span>',
+            pil('bad', CHAIN[s.pos] ? CHAIN[s.pos].label : "&mdash;"),
+            '<span class="sub2">' + (CHAIN[s.pos] ? CHAIN[s.pos].who : "&mdash;") + '</span>',
+            '<span class="tnum" style="color:var(--red-ink);font-weight:600">' + seedNum(s.code, 3, 21) + '</span>',
+            btn('ghost', 'Send a reminder')];
+        }))) : '') +
+
+    panel('Send on to ' + d.next, '', pbody(
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+        '<button class="btn btn--primary" data-rp="forward">Forward ' + here.length +
+          ' approved set' + (here.length === 1 ? '' : 's') + ' to ' + d.next + '</button>' +
+        btn('ghost', 'Print the schedule', ' data-doc="scopeexport"') +
+        btn('ghost', 'Open the approval chain', ' data-go="t/chain"') +
+      '</div>' +
+      note('bad', 'A set with a missing sheet does not go forward on its own',
+        'Forwarding sends what is approved. What is not approved stays visible on this desk with the name of the person it is waiting on, because a schedule that quietly omits a course produces a level that cannot be computed and a graduation list that is short by one student.')));
+  }
+
+  /* ── Exams & Records: the examination session ────────────────── */
+
+  function tExamSession() {
+    return note('info', 'An examination session is the container everything else hangs in',
+      'It fixes the dates, the courses to be examined, the halls, the candidates and the deadline by which every score sheet must be in. Once it is open the portal can answer the only question that matters in December: which sheets are missing, and whose are they.') +
+
+    tiles([
+      ["Open sessions", "1", "var(--green-ink)", "2026/2027 First semester"],
+      ["Courses examined", "612", null, "Across five faculties"],
+      ["Candidates", "32,450", null, "Cleared and registered"],
+      ["Sheets due", "16 Jan", "var(--red-ink)", "126 days from opening"]
+    ]) +
+
+    panel('Create an examination session', '', pbody(
+      '<div class="grid grid--3">' +
+        '<div class="field"><label for="es-s">Academic session</label><select id="es-s" class="ctl"><option>2026/2027</option><option>2027/2028</option></select></div>' +
+        '<div class="field"><label for="es-m">Semester</label><select id="es-m" class="ctl"><option>First</option><option>Second</option></select></div>' +
+        '<div class="field"><label for="es-t">Type</label><select id="es-t" class="ctl"><option>Main examination</option><option>Re-sit</option><option>Special</option></select></div>' +
+        '<div class="field"><label for="es-f">Examinations begin</label><input id="es-f" class="ctl" value="8 December 2026" autocomplete="off"></div>' +
+        '<div class="field"><label for="es-e">Examinations end</label><input id="es-e" class="ctl" value="19 December 2026" autocomplete="off"></div>' +
+        '<div class="field"><label for="es-d">Score sheets due</label><input id="es-d" class="ctl" value="16 January 2027" autocomplete="off"></div>' +
+      '</div>' +
+      note('info', 'Opening a session generates every score sheet at once',
+        'One sheet per course offered, over the approved register at the moment of opening, in the name of the lecturer the department allocated. A course with no allocated lecturer generates no sheet &mdash; and appears immediately in the list below, which is where the three unallocated courses have been sitting since August.') +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+        '<button class="btn btn--primary btn--sm">Open the session</button>' +
+        btn('ghost', 'Save as a draft') +
+      '</div>')) +
+
+    panel('Submission monitor', 'Every faculty, live',
+      dtable(["Faculty", "Sheets expected|mid", "Submitted|mid", "Verified|mid", "Past the Board|mid", "Outstanding|mid", "Progress"], [
+        ["<strong>Science</strong>", '<span class="tnum">142</span>', '<span class="tnum">135</span>', '<span class="tnum">128</span>', '<span class="tnum">98</span>',
+          '<span class="tnum" style="color:var(--red-ink);font-weight:700">7</span>', bar(69, 'var(--chrome)')],
+        ["<strong>Education</strong>", '<span class="tnum">118</span>', '<span class="tnum">118</span>', '<span class="tnum">112</span>', '<span class="tnum">76</span>', '<span class="tnum">0</span>', bar(64, 'var(--green)')],
+        ["<strong>Social Sciences</strong>", '<span class="tnum">96</span>', '<span class="tnum">94</span>', '<span class="tnum">88</span>', '<span class="tnum">64</span>',
+          '<span class="tnum" style="color:var(--red-ink);font-weight:700">2</span>', bar(67, 'var(--chrome)')],
+        ["<strong>Law</strong>", '<span class="tnum">44</span>', '<span class="tnum">44</span>', '<span class="tnum">41</span>', '<span class="tnum">31</span>', '<span class="tnum">0</span>', bar(70, 'var(--green)')],
+        ["<strong>Health Sciences</strong>", '<span class="tnum">62</span>', '<span class="tnum">54</span>', '<span class="tnum">48</span>', '<span class="tnum">42</span>',
+          '<span class="tnum" style="color:var(--red-ink);font-weight:700">8</span>', bar(68, 'var(--red)')]
+      ])) +
+
+    panel('The seven sheets holding the Faculty of Science', 'Named, with the person and the days',
+      dtable(["Course", "Department", "Lecturer", "Candidates|mid", "Days late|mid", "Escalated to", "Action|num"],
+        [["CSC 371", "Computer Science", "Dr. P. Tsavnande", 62, 11, "Head of Department"],
+         ["MTH 331", "Mathematics", "Dr. S. Akaa", 84, 9, "Head of Department"],
+         ["STA 341", "Mathematics", "Dr. M. Ochigbo", 47, 8, "Head of Department"],
+         ["CHM 311", "Chemistry", "Prof. G. Ayua", 138, 6, "Dean"],
+         ["PHY 321", "Physics", "Dr. K. Tersoo", 71, 5, "Head of Department"],
+         ["BIO 311", "Biological Sciences", "Dr. F. Nyianshima", 156, 4, "Head of Department"],
+         ["MCB 321", "Biological Sciences", "Dr. A. Ugbah", 92, 2, "&mdash;"]].map(function (r) {
+          return ['<b class="tnum">' + r[0] + '</b>', '<span class="sub2">' + r[1] + '</span>', r[2],
+            '<span class="tnum">' + r[3] + '</span>',
+            '<span class="tnum" style="color:var(--red-ink);font-weight:700">' + r[4] + '</span>',
+            '<span class="sub2">' + r[5] + '</span>', btn('ghost', 'Remind') + ' ' + btn('urgent', 'Escalate')];
+        })));
+  }
+
+  /* ── Exams & Records: what it issues ─────────────────────────── */
+
+  function tExamsRec() {
+    return note('info', 'Exams &amp; Records is where a mark becomes a credential',
+      'Everything this office issues is generated from Senate-approved sets and nothing else. There is no screen here that types a result, and no path by which a document leaves this office carrying a figure that did not come through the chain.') +
+
+    tiles([
+      ["Sets validated", "98", "var(--green-ink)", "For the 12 September Senate"],
+      ["Returned to faculties", "6", "var(--red-ink)", "With a reason on each"],
+      ["Transcripts in production", "31", "var(--chrome)", "9 awaiting the Registrar"],
+      ["Graduands, provisional", "3,884", null, "2026 convocation"]
+    ]) +
+
+    panel('What this office issues', 'Each from approved sets only',
+      dtable(["Document", "Generated from", "Issued this session|mid", "Signed by", "Action|num"], [
+        ["<strong>Result sheet</strong> &mdash; departmental", "Approved sets for one course",
+          '<span class="tnum">98</span>', '<span class="sub2">Exams &amp; Records</span>', btn('ghost', 'Generate', ' data-doc="scoresheet"')],
+        ["<strong>Broadsheet</strong> &mdash; level and semester", "Every approved set for a level",
+          '<span class="tnum">24</span>', '<span class="sub2">Exams &amp; Records</span>', btn('ghost', 'Open', ' data-go="t/broadsheet"')],
+        ["<strong>Statement of results</strong>", "One candidate, one or more semesters",
+          '<span class="tnum">1,204</span>', '<span class="sub2">Exams &amp; Records</span>', btn('ghost', 'Generate', ' data-doc="slip"')],
+        ["<strong>Official transcript</strong>", "Every approved set, all attempts",
+          '<span class="tnum">218</span>', '<span class="sub2">Registrar</span>', btn('ghost', 'Open', ' data-go="t/transcripts"')],
+        ["<strong>Verification answer</strong>", "The record behind a code",
+          '<span class="tnum">640</span>', '<span class="sub2">Exams &amp; Records</span>', btn('ghost', 'Open', ' data-go="verify"')],
+        ["<strong>Graduation list</strong>", "Final CGPA and clearance",
+          '<span class="tnum">1</span>', '<span class="sub2">Senate</span>', btn('ghost', 'Open', ' data-go="t/graduation"')]
+      ])) +
+
+    panel('Verify a result', 'The answer a bank or an employer gets', pbody(
+      '<div class="idc__scan">' +
+        '<div class="field" style="flex-grow:1;min-width:220px"><label for="vr-c">Verification code or matriculation number</label>' +
+          '<input id="vr-c" class="ctl tnum" value="MOAUM/CSC/23/1487" autocomplete="off"></div>' +
+        '<button class="btn btn--primary">Verify</button>' +
+      '</div>' +
+      note('info', 'A verification answers one question and volunteers nothing',
+        'It confirms that a named person holds a named award of a stated class on a stated date, under both University names. It does not return the transcript, the marks or the biodata, because the enquirer is entitled to the fact and not to the record.'))) +
+
+    panel('Graduation records', '2026 convocation',
+      dtable(["Faculty", "Provisional graduands|mid", "Cleared|mid", "Held|mid", "First Class|mid", "State|num"], [
+        ["<strong>Science</strong>", '<span class="tnum">912</span>', '<span class="tnum">884</span>',
+          '<span class="tnum" style="color:var(--red-ink)">28</span>', '<span class="tnum">31</span>', pil('info', 'Awaiting Senate')],
+        ["<strong>Education</strong>", '<span class="tnum">1,104</span>', '<span class="tnum">1,092</span>', '<span class="tnum">12</span>', '<span class="tnum">18</span>', pil('info', 'Awaiting Senate')],
+        ["<strong>Social Sciences</strong>", '<span class="tnum">988</span>', '<span class="tnum">961</span>', '<span class="tnum">27</span>', '<span class="tnum">22</span>', pil('info', 'Awaiting Senate')],
+        ["<strong>Law</strong>", '<span class="tnum">402</span>', '<span class="tnum">399</span>', '<span class="tnum">3</span>', '<span class="tnum">9</span>', pil('ok', 'Ready')],
+        ["<strong>Health Sciences</strong>", '<span class="tnum">478</span>', '<span class="tnum">441</span>',
+          '<span class="tnum" style="color:var(--red-ink)">37</span>', '<span class="tnum">14</span>', pil('bad', 'MBBS Part II outstanding')]
+      ])) +
+
+    note('bad', 'Twenty-eight graduands in Science are held, and none of them is held for a mark',
+      'They are held at the Bursary, the Library or Security &mdash; an outstanding balance, a book, an identity card not surrendered. Each one is a clearance line with a named office against it, and each one is resolvable in an afternoon if the student is told which. That is what the student sees on their own clearance screen, rather than the word "held".');
+  }
+
+  /* ── University management: read, and where held, approve ────── */
+
+  var MGMT = {
+    vc:        { seat: "Vice-Chancellor", approves: "Senate business, appointments, the annual budget" },
+    dvc:       { seat: "Deputy Vice-Chancellor (Academic)", approves: "Academic policy, results to Senate, programme changes" },
+    registrar: { seat: "Registrar", approves: "The Senate minute, credentials, role grants" },
+    dregistrar:{ seat: "Deputy Registrar (Academic Affairs)", approves: "Result schedules to Senate, Senate papers" }
+  };
+
+  function tManagement() {
+    var m = MGMT[S.srole] || MGMT.vc;
+    return note('info', m.seat + ' &mdash; read everything, approve what this seat holds',
+      'Management sees the whole University and writes to almost none of it. What this seat may approve: <b>' + m.approves +
+      '</b>. Everything else on this screen is a figure to read and a question to ask, which is the correct relationship between an office of this kind and an operational record.') +
+
+    tiles([
+      ["Registered", "20,204", "var(--green-ink)", "93% of expected, session to date"],
+      ["Results past Senate", "98 of 142", "var(--chrome)", "Faculty of Science"],
+      ["Collected, session", "&#8358;1.84bn", null, "78% of the estimate"],
+      ["Sets not submitted", "17", "var(--red-ink)", "Across five faculties"]
+    ]) +
+
+    panel('Result processing across the University', 'Where every faculty stands, today',
+      dtable(["Faculty", "Expected|mid", "Past the Board|mid", "Validated|mid", "Past Senate|mid", "Outstanding|mid", "Progress"], [
+        ["<strong>Science</strong>", '<span class="tnum">142</span>', '<span class="tnum">128</span>', '<span class="tnum">98</span>', '<span class="tnum">98</span>',
+          '<span class="tnum" style="color:var(--red-ink);font-weight:700">7</span>', bar(69, 'var(--chrome)')],
+        ["<strong>Education</strong>", '<span class="tnum">118</span>', '<span class="tnum">112</span>', '<span class="tnum">76</span>', '<span class="tnum">76</span>', '<span class="tnum">0</span>', bar(64, 'var(--green)')],
+        ["<strong>Social Sciences</strong>", '<span class="tnum">96</span>', '<span class="tnum">88</span>', '<span class="tnum">64</span>', '<span class="tnum">64</span>',
+          '<span class="tnum" style="color:var(--red-ink)">2</span>', bar(67, 'var(--chrome)')],
+        ["<strong>Law</strong>", '<span class="tnum">44</span>', '<span class="tnum">41</span>', '<span class="tnum">31</span>', '<span class="tnum">31</span>', '<span class="tnum">0</span>', bar(70, 'var(--green)')],
+        ["<strong>Health Sciences</strong>", '<span class="tnum">62</span>', '<span class="tnum">48</span>', '<span class="tnum">42</span>', '<span class="tnum">0</span>',
+          '<span class="tnum" style="color:var(--red-ink);font-weight:700">8</span>', bar(0, 'var(--red)')]
+      ])) +
+
+    panel('Awaiting this seat', m.approves,
+      dtable(["Item", "From", "Raised|mid", "What it is", "Action|num"],
+        (S.srole === "vc" ? [
+          ["Senate schedule, first semester", "Registrar", "10 Sept", "98 sets across four faculties; Health Sciences deferred"],
+          ["Acting Exams Officer, MCS", "Dean of Science", "1 Sept", "Dr. M. Adikpe, to 31 December 2026"],
+          ["2027 capital budget", "Bursar", "28 Aug", "&#8358;4.1bn, of which &#8358;480m ICT"]
+        ] : S.srole === "dvc" ? [
+          ["Grading scheme variant, MBBS", "Dean of Health Sciences", "2 Sept", "Pass mark 50, own classification &mdash; D-Q5"],
+          ["B.Sc. Data Science", "Dean of Science", "29 Aug", "New programme, from 2027/2028"],
+          ["Result schedule to Senate", "Exams &amp; Records", "10 Sept", "Recommended for approval, outstanding named"]
+        ] : S.srole === "registrar" ? [
+          ["Senate minute SEN/2026/114", "Exams &amp; Records", "12 Sept", "Countersignature, then release"],
+          ["Transcripts for despatch", "Exams &amp; Records", "11 Sept", "9 awaiting signature"],
+          ["Office grant", "Super Administrator", "9 Sept", "Exams Officer (acting), MCS"]
+        ] : [
+          ["Senate papers, 12 September", "Exams &amp; Records", "10 Sept", "Schedule, outstanding list, deferral note"],
+          ["Faculty compilations", "Faculty Officers", "9 Sept", "Four received, one outstanding"],
+          ["Result queries, previous release", "Departments", "5 Sept", "18 opened, 14 answered"]
+        ]).map(function (r) {
+          return ["<strong>" + r[0] + "</strong>", '<span class="sub2">' + r[1] + '</span>',
+            '<span class="tnum sub2">' + r[2] + '</span>', '<span class="sub2">' + r[3] + '</span>',
+            btn('ghost', 'Read') + ' ' + btn('go', 'Approve')];
+        }))) +
+
+    note('bad', 'The Faculty of Health Sciences has nothing past Senate',
+      'Eight sheets are outstanding and MBBS Part II is incomplete, so the whole faculty was deferred rather than partly approved. That is the right decision and an expensive one: four hundred and seventy-eight graduands wait on the next sitting. The question for this seat is not whether the portal is working, but why eight sheets take eleven days.');
+  }
+
+  /* ── Lecturer: score entry ───────────────────────────────────── */
+
+  function scoreRows() {
+    /* Not "the students of this department" — every student whose
+       registration for this course was approved, drawn from the one
+       register the class list, the attendance roll and the broadsheet
+       all read. Six programmes across three faculties are eligible for
+       CSC 311, so six programmes appear here. Filtering this list to
+       the owning department would leave a registered candidate with no
+       mark, and the sheet would still look finished. */
+    return courseRoll(sheetNow().code).map(function (st, i) {
+      var abs = i === 3 && !S.absentSet;
+      var ca = abs ? null : seedNum(st.m + "ca", 8, 30);
+      var ex = abs ? null : seedNum(st.m + "ex", 12, 70);
+      return { n: i + 1, m: st.m, name: st.name, lv: st.lv, pn: st.pn,
+               own: st.own, basis: st.basis, ca: ca, ex: ex, abs: abs };
+    });
+  }
+
+
+  /* ── the upload template ─────────────────────────────────────────
+     Two files, not one. The blank carries every registered candidate
+     with the two columns the lecturer fills; the completed example is
+     the same file with marks in it, including the one row that shows
+     what an absence looks like. Both are generated from the live
+     register, so the matriculation numbers in the file are the ones
+     the importer will match on. */
+
+  function scoreTemplate(kind) {
+    var rows = scoreRows(), sample = kind === "sample";
+    return {
+      title: sheetNow().code + " score sheet " + (sample ? "completed example" : "upload template"),
+      cols: ["S/N", "Matriculation number", "Name", "Programme", "Level", "CA (max 30)", "Exam (max 70)"],
+      rows: rows.map(function (r, i) {
+        var ca = "", ex = "";
+        if (sample) {
+          if (i === 3) { ca = "ABS"; ex = "ABS"; }
+          else { ca = String(seedNum(r.m + "ca", 8, 30)); ex = String(seedNum(r.m + "ex", 12, 70)); }
+        }
+        return [String(r.n), r.m, r.name, r.pn, String(r.lv), ca, ex];
+      })
+    };
+  }
+
+  function tplOpen(kind) {
+    TBL.tpl = scoreTemplate(kind);
+    S.ex = { id: "tpl", fmt: "csv" };
+    S.exMsg = "";
+  }
+
+  function tplPanel() {
+    return panel('Upload a completed sheet', 'Or enter the marks above &mdash; the two paths meet at the same place', pbody(
+      '<div class="grid grid--2">' +
+        '<div>' +
+          '<div class="eyebrow">The file the importer expects</div>' +
+          '<div class="tplcols">' +
+            [["S/N", "Row number. Ignored on import."],
+             ["Matriculation number", "What the row is matched on. A number not on the register is rejected, not created."],
+             ["Name", "Carried for the eye only. A mismatch against the register is reported, not overwritten."],
+             ["Programme", "Which programme the candidate registered from. Carried so the sheet is legible, ignored on import &mdash; the register decides it, not the file."],
+             ["Level", "The candidate&rsquo;s level. Also carried, also ignored."],
+             ["CA (max 30)", "A whole number 0&ndash;30, or ABS."],
+             ["Exam (max 70)", "A whole number 0&ndash;70, or ABS."]].map(function (c) {
+              return '<div class="tplcol"><b>' + c[0] + '</b><span>' + c[1] + '</span></div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        note('info', 'Two files, so there is nothing to guess',
+          'The <b>template</b> is every registered candidate with the mark columns empty &mdash; open it, type two columns, save, upload. The <b>completed example</b> is the same file filled in, including the row that shows how an absence is written. Both are generated from this course&rsquo;s live register just now, so the matriculation numbers in them are the ones the importer matches on.') +
+      '</div>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+        '<button class="btn btn--primary btn--sm" data-tpl="blank">Download the template</button>' +
+        '<button class="btn btn--ghost btn--sm" data-tpl="sample">Download a completed example</button>' +
+        btn('ghost', 'Printable blank sheet', ' data-doc="scoresheet"') +
+        btn('go', 'Upload a completed file &rarr;', ' data-go="t/bulk"') +
+      '</div>' +
+      note('bad', 'An upload is checked before it is accepted, not after',
+        'A row whose matriculation number is not on the approved register is refused. A mark outside its range is refused. A blank that is neither a mark nor ABS is refused. The file is accepted whole or not at all &mdash; a half-imported sheet is worse than no sheet, because it looks finished.')));
+  }
+
+  function scoreEntry() {
+    var SHEET = sheetNow();
+    var sp = rollSplit(SHEET.code), t = skTotals();
+
+    return skGate() +
+
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      pil(t.ready ? 'ok' : 'bad', t.ready ? 'Complete &mdash; not yet submitted' : 'Draft &mdash; not submitted') +
+      '<span class="sk__saved">' + tick(14, 'var(--green-ink)') + 'Draft saved</span>' +
+      '<span style="flex-grow:1"></span>' +
+      btn('ghost', 'Upload in bulk instead &rarr;', ' data-go="t/bulk"') +
+      '<button class="btn btn--ghost btn--sm" data-tpl="blank">Download the template</button>' +
+      btn('ghost', 'Printable blank sheet', ' data-doc="scoresheet"') +
+      '<button class="btn btn--sm' + (t.ready ? ' btn--go' : '') + '"' + (t.ready ? '' : ' disabled') +
+        ' data-sk="submit">Submit and attest</button>' +
+    '</div>' +
+
+    tiles([
+      ["Candidates", String(t.n), null, "Every approved registration"],
+      ["From other programmes", String(sp.borrowed), sp.borrowed ? "var(--chrome)" : null, "They sat the same paper"],
+      ["CA out of", String(SHEET.caMax), null, "Weighting set by the Registry"],
+      ["Second examiner", "Dr. P. Tsavnande", null, "Set when the course was allocated"]
+    ]) +
+
+    note('info', sp.borrowed
+      ? 'This roll is every registered candidate, not this department\u2019s students'
+      : 'This roll is every registered candidate',
+      SHEET.code + ' was made available at creation to ' + CRS_ELIG[SHEET.code].offers.length +
+      ' programme and level pairs, so ' + sp.borrowed +
+      ' of the ' + sp.all + ' candidates below are not from the owning programme' +
+      (sp.borrowed ? ' &mdash; ' + sp.from.join(", ") : '') +
+      '. They registered the course the ordinary way and they sat the same paper. Mark them the same way.',
+      eligChips(SHEET.code)) +
+
+    /* ── the sheet itself: typed here, or uploaded from the file above ── */
+    skTable() +
+
+    tplPanel() +
+
+    note('info', 'You type two numbers; the system does the rest',
+      'CA plus examination gives a total; the total meets the grading scheme in force for this session; the scheme gives ' +
+      'a grade and a point. <b>Nobody types a grade</b>, so nobody can type the wrong one, and a change to the scheme cannot ' +
+      'leave behind a grade that no longer follows from the mark. The same three columns are computed identically whether ' +
+      'the marks were typed on this screen or imported from a spreadsheet.') +
+
+    panel('What happens when you attest', '', pbody(idSteps([
+      ["now", "The sheet is signed in your name and locked",
+        "You keep read access to it for the rest of the session. A correction after this point is made by the department, on the record, and both versions remain."],
+      ["todo", "It goes to the second examiner, Dr. P. Tsavnande",
+        "Set when the HOD allocated the course, not chosen now \u2014 the verifier has to exist before the marks do."],
+      ["todo", "Then the departmental board, then the Faculty",
+        "You will see it move. If it is returned, it comes back to you with the reason attached."]
+    ])));
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     OPENING A RESULT AND DECIDING IT
+
+     The desk lists sets; this screen is one set, opened. It shows the
+     marks, the distribution against the course's own history, and the
+     checks the portal ran before a human looked at it — then asks for
+     a decision and records who made it.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* the fail rate every screen shows is counted from the marks, not
+     stored beside them — one set of figures, as the review screen says */
+  var FAIL_CACHE = {};
+  function setFailPct(code) {
+    if (FAIL_CACHE[code] == null) { FAIL_CACHE[code] = markStats(courseMarks(code)).failPct; }
+    return FAIL_CACHE[code];
+  }
+
+  function setByCode(code) {
+    for (var i = 0; i < RP_SETS.length; i++) {
+      if (RP_SETS[i][0] === code) {
+        var r = RP_SETS[i];
+        return { code: r[0], title: r[1], dept: r[2], n: r[3], at: rpAt(r[0], r[4]), fail: r[5], who: r[6] };
+      }
+    }
+    return null;
+  }
+
+  /* the marks behind a set: the same register, seeded by the course, so
+     the distribution on this screen is the distribution in the table */
+  function courseMarks(code) {
+    /* the same roll the sheet was entered on — including the candidates
+       from other programmes, because a broadsheet that drops them is a
+       broadsheet that disagrees with the sheet it was compiled from */
+    var reg = courseRoll("CSC 311");
+    var target = setByCode(code), fail = target ? target.fail : 12;
+    return reg.map(function (st, i) {
+      var abs = (i % 17) === 3;
+      if (abs) { return { m: st.m, name: st.name, pn: st.pn, lv: st.lv, own: st.own, ca: null, ex: null, abs: true }; }
+      /* push the distribution toward the set's stated fail rate */
+      var low = (seedNum(st.m + code, 0, 99) < fail);
+      var ca = low ? seedNum(st.m + code + "c", 4, 17) : seedNum(st.m + code + "c", 15, 30);
+      var ex = low ? seedNum(st.m + code + "e", 8, 21) : seedNum(st.m + code + "e", 30, 70);
+      return { m: st.m, name: st.name, pn: st.pn, lv: st.lv, own: st.own, ca: ca, ex: ex, abs: false };
+    });
+  }
+
+  function markStats(rows) {
+    var g = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 }, abs = 0, sum = 0, n = 0;
+    rows.forEach(function (r) {
+      if (r.abs) { abs++; return; }
+      var t = r.ca + r.ex; sum += t; n++;
+      g[gradeOf(t)[0]]++;
+    });
+    return { g: g, abs: abs, n: n, mean: n ? sum / n : 0,
+             failed: g.F, passed: n - g.F,
+             failPct: n ? Math.round(g.F / n * 100) : 0 };
+  }
+
+  /* the checks the portal runs before a person is asked to decide */
+  function reviewChecks(set, rows, st) {
+    var mean5 = seedNum(set.code + "mean", 8, 24);
+    var ratio = st.failPct / mean5;
+    return [
+      [st.abs === 0 || true, "Every row carries a mark or an ABS",
+        st.abs ? st.abs + " row" + (st.abs === 1 ? " is" : "s are") + " recorded absent, which is not the same as zero and is not counted in the mean."
+               : "No row is blank."],
+      [true, "Every mark is within its range",
+        "Continuous assessment 0&ndash;30, examination 0&ndash;70. Nothing outside was accepted at entry."],
+      [true, "The register matches the sheet",
+        st.n + st.abs + " rows against " + (st.n + st.abs) + " approved registrations. No row was added after the sheet opened."],
+      [true, "The second examiner has verified",
+        "Dr. P. Tsavnande, set when the course was allocated, verified on 10 September."],
+      [ratio < 2, "The fail rate is within tolerance of the course's own history",
+        st.failPct + "% against a five-year mean of " + mean5 + "% &mdash; " + ratio.toFixed(1) +
+        "&times;. " + (ratio < 2
+          ? "Inside the tolerance the Board set, so this needs no explanation."
+          : "Outside the tolerance. This is not a reason to refuse the set, but it is a reason to hear the lecturer before approving it.")],
+      (function () {
+        var me = ROLES[S.srole] ? ROLES[S.srole].who : "";
+        var taught = set.who === me;
+        var already = ((S.rp.by || {})[set.code] || {}).who === me;
+        var ok = !taught && !already;
+        return [ok,
+          S.srole === "facultyexams" ? "You may scrutinise and recommend this set" : "You may act on this set",
+          taught
+            ? "You taught this course and entered these marks. BR-006 blocks the person who produced a mark from approving it &mdash; the set waits for somebody else at this desk, which is what a board is for."
+            : already
+              ? "You already acted on this set at the " + (S.rp.by || {})[set.code].desk +
+                " desk. No one person takes two decisions in one chain, however many offices they hold."
+              : "You have not acted on this set, and you did not teach the course."];
+      }())
+    ];
+  }
+
+  function gradeBar(label, count, total, colour) {
+    var pct = total ? Math.round(count / total * 100) : 0;
+    return '<div class="gdist__row">' +
+      '<span class="gdist__g" style="color:' + colour + '">' + label + '</span>' +
+      '<div class="gdist__t"><div class="gdist__f" style="width:' + pct + '%;background:' + colour + '"></div></div>' +
+      '<span class="gdist__n tnum">' + count + '</span>' +
+      '<span class="gdist__p tnum">' + pct + '%</span>' +
+    '</div>';
+  }
+
+  function resultReview() {
+    var code = S.rp.open || "CSC 311";
+    var set = setByCode(code);
+    if (!set) { return note('bad', 'No such result set', 'Go back to the desk and open one from the list.', btn('primary', 'Back to the desk', ' data-go="t/resultdesk"')); }
+
+    var rows = courseMarks(code), st = markStats(rows);
+    var checks = reviewChecks(set, rows, st);
+    var blocked = checks.filter(function (c) { return !c[0]; });
+    var br6 = !checks[5][0];                 /* the segregation-of-duties check */
+    var d = deskOf();
+    var acted = (S.rp.acted || {})[code + "|" + d.key];
+
+    return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+        btn('ghost', '&larr; Back to the desk', ' data-go="t/resultdesk"') +
+        rpPill(set.at) +
+        '<span class="sub2">Entered by ' + set.who + ' &middot; verified by Dr. P. Tsavnande</span>' +
+        '<span style="flex-grow:1"></span>' +
+        (acted ? pil(acted === "approved" ? 'ok' : 'bad',
+          acted === "approved" ? 'You approved this set' : 'You returned this set') : '') +
+      '</div>' +
+
+    (acted === "approved"
+      ? note('ok', (S.srole === "facultyexams" ? 'Recommended' : 'Approved') + ', and it has left this desk',
+          'The set is now with ' + d.next + '. Your name, your office and the time are on the act, and you cannot act on it again further along &mdash; BR-006 attaches to the person, not to the screen. Sign in as ' + d.next + ' and open it again to see what the next desk sees.')
+      : acted === "returned"
+      ? note('bad', 'Returned to ' + d.back,
+          'The reason you gave travels with it and is shown to the lecturer, who will see the set back in their own queue. Nothing was deleted: the version you read is still the version on the record, and the correction will be a new one beside it.')
+      : blocked.length
+      ? note('bad', 'Read this before you decide',
+          blocked.map(function (c) { return c[2]; }).join(" "))
+      : S.rp.needReason
+      ? note('bad', 'A return needs a reason',
+          'The lecturer has to be told what to correct, and the reason is what the Faculty and Exams &amp; Records will read when they ask why this set is late. Write one line in the box below and press Return again.')
+      : note('info', 'This set passed every automatic check',
+          'What the portal can check, it has. What it cannot check is whether these marks are right, which is why a person is being asked. The distribution and the full list are below.')) +
+
+    tiles([
+      ["Candidates", String(st.n + st.abs), null, "From the approved register"],
+      ["Passed", String(st.passed), "var(--green-ink)", (100 - st.failPct) + "% of those who sat"],
+      ["Failed", String(st.failed), st.failPct > 30 ? "var(--red-ink)" : null, st.failPct + "% of those who sat"],
+      ["Absent", String(st.abs), null, "Not counted in the mean"]
+    ]) +
+
+    '<div class="grid grid--2">' +
+      panel('Distribution', 'Of the ' + st.n + ' who sat', pbody(
+        '<div class="gdist">' + GRADES.map(function (g) {
+          return gradeBar(g[0], st.g[g[0]], st.n, g[4] === "var(--green-ink)" ? "var(--green)"
+            : g[4] === "var(--chrome)" ? "var(--chrome)" : "var(--red)");
+        }).join('') + '</div>' +
+        kvGrid([
+          ["Mean score", st.mean.toFixed(1) + " of 100"],
+          ["Pass mark", "40"],
+          ["Passed", st.passed + " of " + st.n],
+          ["Absent", st.abs + " — outside the mean"]
+        ], 'grid--2') +
+        note('info', 'The distribution is the marks, not a summary of them',
+          'Every bar is counted from the table below. Change one mark and the bar moves, because there is one set of figures on this screen and not two.'))) +
+
+      panel('Against this course&rsquo;s own history', 'Five sessions, same course', pbody(
+        dtable(["Session|mid", "Candidates|mid", "Fail rate|mid", "Mean|mid"],
+          ["2025/2026", "2024/2025", "2023/2024", "2022/2023", "2021/2022"].map(function (y) {
+            return ['<span class="tnum">' + y + '</span>',
+              '<span class="tnum">' + seedNum(code + y + "n", 54, 128) + '</span>',
+              '<span class="tnum">' + seedNum(code + y, 6, 26) + '%</span>',
+              '<span class="tnum">' + (seedNum(code + y + "m", 480, 620) / 10).toFixed(1) + '</span>'];
+          })) +
+        '<div style="display:flex;gap:9px;align-items:center;padding-top:4px">' +
+          '<b style="font-size:15px' + (st.failPct > 30 ? ';color:var(--red-ink)' : '') + '">This session: ' + st.failPct + '%</b>' +
+          '<span class="sub2">against a five-year mean of ' + seedNum(code + "mean", 8, 24) + '%</span>' +
+        '</div>')) +
+    '</div>' +
+
+    panel('What the portal checked', 'Before anybody was asked to decide', pbody(
+      '<div class="rchecks">' + checks.map(function (c) {
+        return '<div class="rcheck' + (c[0] ? '' : ' is-bad') + '">' +
+          (c[0] ? tick(17, 'var(--green-ink)') : warnIcon(17)) +
+          '<div><b>' + c[1] + '</b><span>' + c[2] + '</span></div></div>';
+      }).join('') + '</div>')) +
+
+    panel(code + ' &mdash; ' + set.title, set.dept + ' &middot; 2026/2027 First semester &middot; ' +
+        'every registered candidate, all programmes',
+      dtable(["Matriculation number", "Name", "Programme", "Lv|mid", "CA &mdash; 30|mid", "Exam &mdash; 70|mid", "Total|mid", "Grade|mid", "Points|mid"],
+        rows.map(function (r) {
+          var head = ['<span class="tnum">' + r.m + '</span>', "<strong>" + r.name + "</strong>",
+            progTag(r), '<span class="tnum">' + r.lv + '</span>'];
+          if (r.abs) {
+            return head.concat(['<span class="sub2">ABS</span>', '<span class="sub2">ABS</span>',
+              '<span class="sub2">&mdash;</span>', pil('info', 'Absent'), '<span class="sub2">&mdash;</span>']);
+          }
+          var t = r.ca + r.ex, g = gradeOf(t), edge = (t >= 38 && t <= 41) || (t >= 48 && t <= 51);
+          return head.concat([
+            '<span class="tnum">' + r.ca + '</span>', '<span class="tnum">' + r.ex + '</span>',
+            '<b class="tnum"' + (edge ? ' style="color:var(--chrome)"' : '') + '>' + t + '</b>' +
+              (edge ? '<div class="sub2" style="color:var(--chrome)">on a boundary</div>' : ''),
+            '<b style="color:' + g[4] + '">' + g[0] + '</b>',
+            '<span class="tnum">' + g[3] + '</span>']);
+        }), 1120)) +
+
+    (acted
+      ? panel('What happens next', '', pbody(idSteps(acted === "approved"
+          ? [["done", "You approved it, and it left this desk", "Recorded against your name and your office at this moment."],
+             ["now", "It is with " + d.next, "You will see it move on the pipeline; if it is returned to the department it comes back here."],
+             ["todo", "Then Exams &amp; Records, then Senate", "It becomes a result the day the minute is recorded, and not before."]]
+          : [["done", "You returned it to " + d.back, "With your reason attached."],
+             ["now", "The lecturer sees it in their own queue", "Marked returned, with what you wrote."],
+             ["todo", "It comes back to this desk when it is corrected", "As a new version beside the one you read, not instead of it."]])) +
+          '<div style="padding:0 16px 16px"><div style="display:flex;gap:9px;flex-wrap:wrap">' +
+            btn('primary', 'Back to the desk', ' data-go="t/resultdesk"') +
+            btn('ghost', 'Open the pipeline', ' data-go="t/pipeline"') +
+            btn('ghost', 'Undo &mdash; prototype control', ' data-rp="undo:' + code + '"') +
+          '</div></div>')
+
+      : panel('Decision', 'As ' + ROLES[S.srole].label + ', ' + d.unit, pbody(
+          '<div class="field"><label for="rr-reason">Reason &mdash; required to return, optional to approve</label>' +
+            '<textarea id="rr-reason" class="ctl" rows="2" placeholder="' +
+            (blocked.length
+              ? 'The fail rate is well outside this course&rsquo;s history. Say what the department found.'
+              : 'A note here is kept with the approval and is visible at every desk after yours.') +
+            '"></textarea></div>' +
+          '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+            '<button class="btn btn--go" data-rp="approve:' + code + '"' + (br6 ? ' disabled' : '') + '>' +
+              (S.srole === "facultyexams" ? "Recommend and send to " : "Approve and send to ") + d.next + '</button>' +
+            '<button class="btn btn--urgent" data-rp="return:' + code + '">Return to ' + d.back + '</button>' +
+            btn('ghost', 'Open the score sheet', ' data-go="t/sheet"') +
+            btn('ghost', 'Print this set', ' data-doc="scoresheet"') +
+          '</div>' +
+          (br6
+            ? note('bad', 'You cannot approve this one',
+                'The approve control is disabled because BR-006 blocks you, and it is disabled rather than hidden so you can see why. ' +
+                'Return it, or leave it for the desk to be taken by somebody else &mdash; the set does not move until a person who may decide it does.')
+            : '') +
+          note('bad', 'Approving is an act, not a click',
+            'It is recorded with your name, your office and this moment, and it is what BR-006 reads at the next desk: if you also hold an office further along this chain, you will be blocked there. That is the constraint working, not a fault.'))));
+  }

@@ -1,0 +1,357 @@
+
+  /* ══ CROSS-CUTTING PLATFORM MODULES ══════════════════════════════
+     Notifications · API management · disaster recovery · security
+     posture · release pipeline · cloud readiness. These are the six
+     modules that every other module leans on and nobody owns until
+     something breaks.                                              */
+
+  /* ── notifications & messaging ────────────────────────────────── */
+
+  function pNotify() {
+    return note('bad', 'The primary SMS gateway has been failing since 09:12',
+      '47 messages failed before the failover took effect and 12 of them were result-release notices. They have been requeued on the secondary gateway; none has been dropped, because a message is only marked sent when the gateway acknowledges it.',
+      btn('primary', 'Open the requeue') + ' ' + btn('ghost', 'Gateway status')) +
+
+    tiles([
+      ['Sent, 30 days', '412,880', null, 'All channels'],
+      ['Delivered', '96.4%', 'var(--green-ink)', 'SMS 94.2% · email 98.9%'],
+      ['Failed or bounced', '2,411', 'var(--red-ink)', '1,908 invalid numbers'],
+      ['Opted out', '183', null, 'Optional messages only']
+    ]) +
+
+    note('info', 'A notice that does not arrive is a notice that was never sent',
+      'Anything with a deadline attached &mdash; a result, a fee, a registration close, a summons &mdash; goes out on three channels and is also posted in the portal, which is the channel of record. A student who says they were not told is answered from the delivery log, not from memory.') +
+
+    panel('Message templates', '28 templates · 4 channels', dtable(
+      ['Template', 'Triggered by', 'Channels|mid', 'Audience|mid', 'Sent 30d|num'], [
+        [two('Result published', 'Statutory &mdash; cannot be opted out of'), 'Senate approves a result set', '<span class="sub2">SMS · email · push · portal</span>', '<span class="sub2">Students in the set</span>', '<span class="tnum">84,220</span>'],
+        [two('Fee deadline approaching', 'Statutory'), '7, 3 and 1 days before the due date', '<span class="sub2">SMS · email · portal</span>', '<span class="sub2">Students with a balance</span>', '<span class="tnum">61,455</span>'],
+        [two('Registration closing', 'Statutory'), '5 and 1 days before registration closes', '<span class="sub2">SMS · email · push · portal</span>', '<span class="sub2">Unregistered students</span>', '<span class="tnum">38,902</span>'],
+        [two('Payment confirmed', 'Statutory'), 'Settlement confirmed by the bank', '<span class="sub2">SMS · email · portal</span>', '<span class="sub2">Payer</span>', '<span class="tnum">54,118</span>'],
+        [two('Offer of admission released', 'Statutory'), 'Admissions Board publishes', '<span class="sub2">SMS · email · portal</span>', '<span class="sub2">Applicants</span>', '<span class="tnum">7,410</span>'],
+        [two('Hostel bed allocated', 'Statutory'), 'Allocation run completes', '<span class="sub2">SMS · portal</span>', '<span class="sub2">Allocated students</span>', '<span class="tnum">3,204</span>'],
+        [two('Disciplinary summons', 'Statutory &mdash; delivery receipt required'), 'Panel issues a summons', '<span class="sub2">SMS · email · portal · post</span>', '<span class="sub2">Named student</span>', '<span class="tnum">19</span>'],
+        [two('Inaugural lecture invitation', 'Optional &mdash; opt-out available'), 'Manual, by Public Relations', '<span class="sub2">Email · portal</span>', '<span class="sub2">Staff, alumni</span>', '<span class="tnum">22,880</span>']
+      ], 1000)) +
+
+    panel('Delivery log', 'Last hour · 1,284 messages', dtable(
+      ['Time|mid', 'Template', 'Recipient', 'Channel', 'Attempts|mid', 'Status|num'], [
+        ['<span class="sub2 tnum">11:52</span>', 'Payment confirmed', '<span class="sub2">MOAUM/CSC/23/1487</span>', 'SMS &rarr; secondary', '<span class="tnum">2</span>', pil('ok', 'Delivered')],
+        ['<span class="sub2 tnum">11:51</span>', 'Result published', '<span class="sub2">MOAUM/CSC/23/1401</span>', 'Email', '<span class="tnum">1</span>', pil('ok', 'Delivered')],
+        ['<span class="sub2 tnum">11:48</span>', 'Result published', '<span class="sub2">MOAUM/CSC/23/1423</span>', 'SMS &rarr; primary', '<span class="tnum">3</span>', pil('bad', 'Failed &mdash; requeued')],
+        ['<span class="sub2 tnum">11:44</span>', 'Fee deadline approaching', '<span class="sub2">MOAUM/LAW/22/0918</span>', 'SMS &rarr; secondary', '<span class="tnum">1</span>', pil('ok', 'Delivered')],
+        ['<span class="sub2 tnum">11:41</span>', 'Fee deadline approaching', '<span class="sub2">MOAUM/EDU/24/2201</span>', 'SMS', '<span class="tnum">3</span>', pil('bad', 'Invalid number &mdash; flagged')],
+        ['<span class="sub2 tnum">11:39</span>', 'Registration closing', '<span class="sub2">MOAUM/SCI/25/0774</span>', 'Push', '<span class="tnum">1</span>', pil('info', 'Device not registered')]
+      ], 940)) +
+
+    two_col(
+      panel('Channel health and cost', 'This month', dtable(
+        ['Channel', 'Delivered|mid', 'Unit cost|num'], [
+          ['SMS &mdash; primary', '<span class="tnum">88.1%</span>', '<span class="tnum">&#8358;3.20</span>'],
+          ['SMS &mdash; secondary', '<span class="tnum">97.6%</span>', '<span class="tnum">&#8358;4.10</span>'],
+          ['Email', '<span class="tnum">98.9%</span>', '<span class="sub2">Included</span>'],
+          ['Push (mobile app)', '<span class="tnum">91.4%</span>', '<span class="sub2">Free</span>'],
+          ['In-portal', '<span class="tnum">100%</span>', '<span class="sub2">Channel of record</span>']
+        ], 380)),
+      panel('Quiet hours and overrides', '21:00 &ndash; 06:00', pbody(
+        '<div class="sub2">Optional messages are held until 06:00. Three classes ignore quiet hours entirely, because holding them would cause the harm the message exists to prevent:</div>' +
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px">' +
+          gate('done', 'Examination and venue changes', 'A candidate must not travel to the wrong hall.') +
+          gate('done', 'Security and evacuation notices', 'Campus safety.') +
+          gate('done', 'Account security alerts', 'A sign-in from a new device at 02:00 is exactly when it matters.', 'last') +
+        '</div>'))) +
+
+    note('info', 'Students cannot opt out of a notice that carries a consequence',
+      'Results, fees, registration deadlines and disciplinary matters are sent under a statutory duty and the opt-out does not apply to them. Events, newsletters and invitations can be turned off in the portal, and the setting is honoured everywhere.');
+  }
+
+  /* ── API management ───────────────────────────────────────────── */
+
+  function pApi() {
+    return tiles([
+      ['Registered consumers', '7', null, '2 external, 5 internal'],
+      ['Requests today', '44,511', null, 'Peak 812/min at 09:40'],
+      ['Error rate', '0.31%', 'var(--green-ink)', 'Target below 1%'],
+      ['Keys due for rotation', '2', 'var(--red-ink)', 'Within 14 days']
+    ]) +
+
+    note('info', 'The public website is a consumer of this API, not a second copy of the data',
+      'Programmes, entry requirements, the academic calendar and the staff directory are read from here and rendered there. One approved record produces the administrative view and the public page, which is what stops the two drifting apart.') +
+
+    panel('Consumers', 'Every client is named, scoped and rate-limited', dtable(
+      ['Client', 'Owner', 'Scopes', 'Quota|mid', 'Used today|mid', 'p95|mid', 'Status|mid', 'Action|num'],
+      API_CONSUMERS.map(function (c, i) {
+        return [two(c[0], c[1]), '<span class="sub2">' + c[2] + '</span>',
+          '<span class="sub2 tnum">' + c[3] + '</span>',
+          '<span class="tnum">' + c[4] + '</span>',
+          '<span class="tnum">' + vzNum(c[5]) + '</span>',
+          '<span class="tnum">' + c[6] + '</span>',
+          c[7] === "active" ? pil('ok', 'Active') : c[7] === "seasonal" ? pil('info', 'Seasonal') : pil('bad', 'Deprecated'),
+          recBtn('consumer', i)];
+      })) +
+      recAddIn('consumer', 'Register a consumer',
+        '<span class="sub2">A scope without a lawful basis on the register is rejected at design review.</span>')) +
+
+    panel('Keys and rotation', 'No key lives longer than a year', dtable(
+      ['Client', 'Key', 'Issued|mid', 'Last used|mid', 'Expires|mid', 'Action|num'],
+      API_KEYS.map(function (k, i) {
+        return [k[0], '<span class="sub2 tnum">' + k[1] + '</span>',
+          '<span class="sub2 tnum">' + k[2] + '</span>', '<span class="sub2 tnum">' + k[3] + '</span>',
+          k[5] ? '<span class="tnum" style="color:var(--red-ink)">' + k[4] + '</span>'
+               : '<span class="tnum">' + k[4] + '</span>',
+          recBtn('apikey', i, k[5] ? 'Rotate now' : 'Rotate', k[5] ? 'urgent' : 'ghost')];
+      })) ) +
+
+    note('bad', 'Two keys expire within a fortnight and both belong to external bodies',
+      'Rotation is overlapping, not a cut-over: the new key is issued, both work for seven days, the consumer confirms, then the old one is revoked. Started late, it becomes an outage on somebody else&rsquo;s system during a scholarship disbursement.') +
+
+    panel('Endpoints', 'Version 1 &middot; 34 endpoints', dtable(
+      ['Endpoint', 'Method|mid', 'Calls today|mid', 'p95|mid', 'Errors|mid', 'Status|num'], [
+        ['<span class="tnum sub2">/v1/catalogue/programmes</span>', '<span class="tnum">GET</span>', '<span class="tnum">9,118</span>', '<span class="tnum">71 ms</span>', '<span class="tnum">0</span>', pil('ok', 'Stable')],
+        ['<span class="tnum sub2">/v1/verify/{credential}</span>', '<span class="tnum">GET</span>', '<span class="tnum">3,184</span>', '<span class="tnum">62 ms</span>', '<span class="tnum">4</span>', pil('ok', 'Stable')],
+        ['<span class="tnum sub2">/v1/students/{id}/registration</span>', '<span class="tnum">GET</span>', '<span class="tnum">14,772</span>', '<span class="tnum">128 ms</span>', '<span class="tnum">31</span>', pil('ok', 'Stable')],
+        ['<span class="tnum sub2">/v1/finance/invoices/{id}</span>', '<span class="tnum">GET</span>', '<span class="tnum">6,904</span>', '<span class="tnum">104 ms</span>', '<span class="tnum">12</span>', pil('ok', 'Stable')],
+        ['<span class="tnum sub2">/v1/students/{id}/results</span>', '<span class="tnum">GET</span>', '<span class="tnum">8,441</span>', '<span class="tnum">402 ms</span>', '<span class="tnum">88</span>', pil('bad', 'Slow &mdash; under review')],
+        ['<span class="tnum sub2">/v0/student-record</span>', '<span class="tnum">GET</span>', '<span class="tnum">0</span>', '<span class="sub2">&mdash;</span>', '<span class="tnum">0</span>', pil('bad', 'Sunset 31 Dec')]
+      ], 980)) +
+
+    two_col(
+      panel('Webhooks', 'Outbound events', dtable(
+        ['Subscriber', 'Event', 'Failed|num'], [
+          ['Mobile app', '<span class="sub2">result.published</span>', '<span class="tnum">0</span>'],
+          ['Scholarship Board', '<span class="sub2">payment.settled</span>', '<span class="tnum">2</span>'],
+          ['Public website', '<span class="sub2">news.published</span>', '<span class="tnum">0</span>']
+        ], 380)),
+      panel('Versioning and deprecation', 'Policy', pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('done', 'A breaking change ships as a new version', 'Never as a change to the version already in use.') +
+          gate('done', 'The old version is supported for twelve months', 'Announced on release day, not on the day it is switched off.') +
+          gate('done', 'Every response carries a Sunset header', 'A consumer that reads its own headers is warned automatically.') +
+          gate('todo', 'Consumers confirm migration before sunset', 'Two of seven have not yet confirmed for v0.', 'last') +
+        '</div>'))) +
+
+    note('info', 'No endpoint returns personal data without both a scope and a lawful basis',
+      'The scope is the technical permission; the lawful basis is the entry on the record of processing activities that says why this body may hold it at all. An endpoint added without the second is rejected at design review, not discovered at the audit.');
+  }
+
+  /* ── disaster recovery & continuity ───────────────────────────── */
+
+  function pDr() {
+    return note('ok', 'The August drill restored the full estate in 31 minutes against a four-hour objective',
+      'It also found that the Bursary reconciliation job did not restart automatically, which is now fixed. A drill that finds nothing has usually been run too gently.',
+      btn('ghost', 'Read the drill report')) +
+
+    tiles([
+      ['Recovery point, actual', '4 min', 'var(--green-ink)', 'Objective 15 min'],
+      ['Recovery time, measured', '31 min', 'var(--green-ink)', 'Objective 4 hours'],
+      ['Last verified restore', '02:15 today', 'var(--green-ink)', 'Automatic, nightly'],
+      ['Days since full drill', '22', null, 'Twice yearly &middot; next February']
+    ]) +
+
+    note('info', 'A backup that has never been restored is not a backup',
+      'Every night a restore runs into a scratch instance and an integrity check is executed against it. A failure pages the on-call engineer at 02:20, which is a far better time to discover it than during an outage.') +
+
+    panel('Objectives by data class', 'Not everything deserves the same protection', dtable(
+      ['Data class', 'Recovery point|mid', 'Recovery time|mid', 'Method', 'Status|num'], [
+        [two('Results and finance', 'Irreplaceable, and money'), '<span class="tnum">5 min</span>', '<span class="tnum">1 hour</span>', '<span class="sub2">Synchronous replication + WAL archive</span>', pil('ok', 'Met')],
+        [two('Academic records', 'Registration, transcripts, certificates'), '<span class="tnum">15 min</span>', '<span class="tnum">4 hours</span>', '<span class="sub2">Streaming replication</span>', pil('ok', 'Met')],
+        [two('Identity and access', 'Nobody works without it'), '<span class="tnum">15 min</span>', '<span class="tnum">1 hour</span>', '<span class="sub2">Replicated, with a cold standby realm</span>', pil('ok', 'Met')],
+        [two('Course materials and media', 'Reproducible from source'), '<span class="tnum">24 hours</span>', '<span class="tnum">24 hours</span>', '<span class="sub2">Nightly object-store snapshot</span>', pil('ok', 'Met')],
+        [two('Audit trail', 'Evidential &mdash; must survive the incident'), '<span class="tnum">5 min</span>', '<span class="tnum">4 hours</span>', '<span class="sub2">Append-only, replicated off-site</span>', pil('ok', 'Met')]
+      ], 1000)) +
+
+    panel('Drill history', 'Twice yearly, plus unannounced component failures', dtable(
+      ['Date|mid', 'Scenario', 'Recovery time|mid', 'Data lost|mid', 'Finding', 'Result|num'], [
+        ['<span class="sub2 tnum">14 Aug 2026</span>', 'Primary database host lost', '<span class="tnum">31 min</span>', '<span class="tnum">0</span>', '<span class="sub2">Bursary reconciliation did not restart &mdash; fixed</span>', pil('ok', 'Passed')],
+        ['<span class="sub2 tnum">19 Feb 2026</span>', 'Server room flooded, full site failover', '<span class="tnum">3 h 48 m</span>', '<span class="tnum">6 min</span>', '<span class="sub2">Off-site DNS time-to-live was 4 hours &mdash; now 300 s</span>', pil('ok', 'Passed, narrowly')],
+        ['<span class="sub2 tnum">11 Aug 2025</span>', 'Ransomware on a file share', '<span class="tnum">&mdash;</span>', '<span class="tnum">&mdash;</span>', '<span class="sub2">Backups were on the same domain and were reachable</span>', pil('bad', 'Failed &mdash; remediated')]
+      ], 1060)) +
+
+    two_col(
+      panel('The failure modes that actually occur here', 'Makurdi', dtable(
+        ['Event', 'Triggers|num'], [
+          [two('Grid failure', 'Weekly, sometimes daily'), '<span class="sub2">Automatic &mdash; inverter, then generator</span>'],
+          [two('Diesel exhausted', 'The real risk in a long outage'), '<span class="sub2">72-hour reserve, alert at 40%</span>'],
+          [two('Fibre cut on the Gboko road', 'Twice in 2025'), '<span class="sub2">Failover to the second carrier</span>'],
+          [two('Flooding on the river plain', 'Seasonal, August to October'), '<span class="sub2">Site failover to the off-site copy</span>'],
+          [two('Air-conditioning failure', 'Hot months'), '<span class="sub2">Thermal shutdown before hardware loss</span>']
+        ], 460)),
+      panel('Failover runbook', 'Seven steps, rehearsed', pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('done', '1 &nbsp;Declare', 'The on-call engineer declares; nobody waits for a meeting.') +
+          gate('done', '2 &nbsp;Notify', 'Registrar, Bursar and the status page, in that order.') +
+          gate('done', '3 &nbsp;Promote the standby', 'One command, tested monthly.') +
+          gate('done', '4 &nbsp;Redirect traffic', 'DNS at a 300-second time-to-live, and the reverse proxy.') +
+          gate('done', '5 &nbsp;Verify', 'Sign in, register a course, take a payment, read a result.') +
+          gate('done', '6 &nbsp;Communicate', 'Say what works and what does not. Silence is read as collapse.') +
+          gate('done', '7 &nbsp;Stand down and write it up', 'Within five working days, blameless.', 'last') +
+        '</div>'))) +
+
+    note('bad', 'Continuity does not extend to the services the University does not run',
+      'Remita, JAMB CAPS, NIMC and the SMS gateways fail on their own schedule and no drill of ours restores them. Each has a documented degraded mode instead &mdash; queue and retry, manual reconciliation, or a published pause &mdash; because pretending they are always up is how a registration window is lost.');
+  }
+
+  /* ── cybersecurity posture ────────────────────────────────────── */
+
+  function pSecurity() {
+    return note('bad', 'One critical finding is eleven days past its remediation date',
+      'The legacy portal bridge still accepts a shared credential with no second factor. It retires on 31 December, but it is reachable today and it can read student records.',
+      btn('urgent', 'Open finding SEC-2026-041') + ' ' + btn('ghost', 'Disable the bridge now')) +
+
+    tiles([
+      ['Second factor on privileged accounts', '96%', 'var(--red-ink)', '3 of 71 outstanding'],
+      ['Open findings', '9', null, '1 critical · 2 high · 6 moderate'],
+      ['Days since penetration test', '104', null, 'Annual · next in December'],
+      ['Patches overdue', '4', 'var(--red-ink)', 'All on the reporting replica']
+    ]) +
+
+    panel('Open findings', 'Ranked by severity, then by age', dtable(
+      ['Reference', 'Severity|mid', 'Finding', 'System', 'Age|mid', 'Owner', 'Status|num'], [
+        ['<span class="tnum">SEC-2026-041</span>', pil('bad', 'Critical'), 'Shared credential without a second factor', '<span class="sub2">Legacy portal bridge</span>', '<span class="tnum" style="color:var(--red-ink)">53 d</span>', '<span class="sub2">ICT</span>', pil('bad', 'Overdue by 11 days')],
+        ['<span class="tnum">SEC-2026-047</span>', pil('bad', 'High'), 'Reporting replica four patch levels behind', '<span class="sub2">Analytics</span>', '<span class="tnum">21 d</span>', '<span class="sub2">Platform</span>', pil('info', 'In progress')],
+        ['<span class="tnum">SEC-2026-049</span>', pil('bad', 'High'), 'Three privileged accounts without a second factor', '<span class="sub2">Identity</span>', '<span class="tnum">14 d</span>', '<span class="sub2">ICT</span>', pil('info', 'In progress')],
+        ['<span class="tnum">SEC-2026-052</span>', pil('info', 'Moderate'), 'Session lifetime longer than policy on the staff client', '<span class="sub2">Portal</span>', '<span class="tnum">9 d</span>', '<span class="sub2">Platform</span>', pil('info', 'Scheduled')],
+        ['<span class="tnum">SEC-2026-055</span>', pil('info', 'Moderate'), 'Object store bucket policy wider than needed', '<span class="sub2">Storage</span>', '<span class="tnum">4 d</span>', '<span class="sub2">Platform</span>', pil('info', 'Scheduled')]
+      ], 1080)) +
+
+    note('info', 'The attack that actually lands here is a phishing message at result time',
+      'Not an exploit &mdash; a message that says results are out and asks a student to sign in on a page that is not this one. The defences that matter against it are a second factor, a sign-in alert the student will actually read, and a portal address that never changes.') +
+
+    panel('Sign-in security, last 30 days', '', dtable(
+      ['Signal', 'Count|mid', 'Action taken', 'Trend|num'], [
+        ['Phishing pages reported and taken down', '<span class="tnum">6</span>', '<span class="sub2">Registrar notified, hosts contacted, students warned</span>', pil('bad', 'Rising near results')],
+        ['Credential-stuffing attempts blocked', '<span class="tnum">18,402</span>', '<span class="sub2">Rate limited by address and by account</span>', pil('ok', 'Contained')],
+        ['Impossible-travel sign-ins challenged', '<span class="tnum">47</span>', '<span class="sub2">Second factor demanded; 41 abandoned</span>', pil('ok', 'Working')],
+        ['Accounts locked and recovered', '<span class="tnum">212</span>', '<span class="sub2">Self-service recovery, identity re-verified</span>', pil('ok', 'Normal')],
+        ['Confirmed account compromises', '<span class="tnum">2</span>', '<span class="sub2">Both students, both without a second factor</span>', pil('bad', 'Investigated')]
+      ], 980)) +
+
+    panel('Privileged access', 'Reviewed quarterly by the Registrar and the Director of ICT', dtable(
+      ['Privilege', 'Holders|mid', 'Second factor|mid', 'Standing or on request|mid', 'Last review|num'], [
+        [two('Approve a result at Senate level', 'The last gate before a result is final'), '<span class="tnum">4</span>', pil('ok', 'All'), '<span class="sub2">Standing</span>', '<span class="sub2 tnum">1 Jul</span>'],
+        [two('Amend a settled payment', 'Money already reconciled'), '<span class="tnum">2</span>', pil('ok', 'All'), '<span class="sub2">On request, 4-hour window</span>', '<span class="sub2 tnum">1 Jul</span>'],
+        [two('Create or elevate a user', 'The account that makes other accounts'), '<span class="tnum">3</span>', pil('ok', 'All'), '<span class="sub2">Standing</span>', '<span class="sub2 tnum">1 Jul</span>'],
+        [two('Read the audit trail', 'Read-only, and itself audited'), '<span class="tnum">6</span>', pil('ok', 'All'), '<span class="sub2">Standing</span>', '<span class="sub2 tnum">1 Jul</span>'],
+        [two('Database superuser', 'Breaks every rule above it'), '<span class="tnum">3</span>', pil('bad', '2 of 3'), '<span class="sub2">On request, logged and paged</span>', '<span class="sub2 tnum">1 Jul</span>']
+      ], 1040)) +
+
+    note('info', 'No single person can both create an account and approve a result with it',
+      'The two privileges are held by different people and the system refuses to grant both to one account. It is the same rule that stops the person who enters a mark from being the person who verifies it &mdash; the control is worth nothing if one administrator can quietly assemble the whole chain.');
+  }
+
+  /* ── release pipeline ─────────────────────────────────────────── */
+
+  function pRelease() {
+    var stages = [
+      ['done', 'Build', '1 m 12 s'], ['done', 'Unit tests &mdash; 4,118', '3 m 04 s'],
+      ['done', 'Module boundary check', '22 s'], ['done', 'Integration tests &mdash; 612', '7 m 41 s'],
+      ['done', 'Migration dry-run on a copy of production', '2 m 18 s'],
+      ['done', 'Deploy to staging', '54 s'], ['now', 'Change advisory approval', 'Waiting since 09:20'],
+      ['todo', 'Deploy to production', '&mdash;']
+    ];
+    return note('bad', 'A change freeze is in force until 24 September',
+      'Course registration closes on the 24th. Nothing but a security fix goes to production while a registration or results window is open, and a security fix goes with the Registrar told first.') +
+
+    tiles([
+      ['Deployments this month', '14', null, 'Target: small and often'],
+      ['Change failure rate', '7%', 'var(--green-ink)', '1 of 14 rolled back'],
+      ['Lead time, commit to production', '2.1 days', 'var(--green-ink)', 'Median'],
+      ['Mean time to restore', '18 min', 'var(--green-ink)', 'Rollback is one command']
+    ]) +
+
+    panel('Pipeline &mdash; release 1.9.0', 'Triggered by merge to main, 09:04', pbody(
+      '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+      stages.map(function (s, i) {
+        return '<div style="padding:11px 16px;display:flex;align-items:center;gap:12px' +
+          (i ? ';border-top:1px solid var(--line-2)' : '') + '">' +
+          '<div style="flex-grow:1">' + step(s[0], s[1], s[0] === 'now' ? 'Two approvers required, and neither may be the author'
+            : s[0] === 'todo' ? 'Blocked by the change freeze' : 'Passed') + '</div>' +
+          '<span class="sub2 tnum">' + s[2] + '</span></div>';
+      }).join('') + '</div>')) +
+
+    note('info', 'The module boundary check is what keeps the modular monolith modular',
+      'A merge that reaches into another module&rsquo;s internals instead of its published interface fails the build in twenty-two seconds. Without it the boundaries erode in a fortnight and the option to split a module into its own service quietly disappears.') +
+
+    panel('Recent releases', '', dtable(
+      ['Version|mid', 'Date|mid', 'Modules changed', 'Migrations|mid', 'Result|num'], [
+        ['<span class="tnum">1.8.4</span>', '<span class="sub2 tnum">2 Sep</span>', '<span class="sub2">Finance, notifications</span>', '<span class="tnum">2</span>', pil('ok', 'Clean')],
+        ['<span class="tnum">1.8.3</span>', '<span class="sub2 tnum">27 Aug</span>', '<span class="sub2">Results, reporting</span>', '<span class="tnum">1</span>', pil('ok', 'Clean')],
+        ['<span class="tnum">1.8.2</span>', '<span class="sub2 tnum">21 Aug</span>', '<span class="sub2">Course registration</span>', '<span class="tnum">3</span>', pil('bad', 'Rolled back in 18 min')],
+        ['<span class="tnum">1.8.1</span>', '<span class="sub2 tnum">21 Aug</span>', '<span class="sub2">Course registration &mdash; corrected</span>', '<span class="tnum">3</span>', pil('ok', 'Clean')],
+        ['<span class="tnum">1.8.0</span>', '<span class="sub2 tnum">12 Aug</span>', '<span class="sub2">Transcripts, certificates</span>', '<span class="tnum">5</span>', pil('ok', 'Clean')]
+      ], 940)) +
+
+    two_col(
+      panel('Environments', '', dtable(
+        ['Environment', 'Version|mid', 'Data|num'], [
+          ['Production', '<span class="tnum">1.8.4</span>', '<span class="sub2">Live</span>'],
+          ['Staging', '<span class="tnum">1.9.0</span>', '<span class="sub2">Masked copy, refreshed weekly</span>'],
+          ['Test', '<span class="tnum">1.9.0</span>', '<span class="sub2">Synthetic</span>'],
+          ['Development', '<span class="tnum">1.9.1-dev</span>', '<span class="sub2">Synthetic</span>']
+        ], 420)),
+      panel('Migration policy', 'Expand, then contract', pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('done', 'Add the new column, write to both', 'Release one. The old code still works.') +
+          gate('done', 'Backfill and read from the new', 'Release two, once the backfill is verified.') +
+          gate('done', 'Drop the old column', 'Release three, and never before.') +
+          gate('todo', 'Never destructive and behavioural in one release', 'A rollback must not need a restore.', 'last') +
+        '</div>'))) +
+
+    note('info', 'Rollback is a command, not a project',
+      'Every release must be reversible without restoring a backup, which is why a migration that destroys data is never shipped in the same release as the code that stopped using it. The one rollback this month took eighteen minutes and lost nothing.');
+  }
+
+  /* ── cloud readiness ──────────────────────────────────────────── */
+
+  function pCloud() {
+    return note('info', 'This is not a decision to move &mdash; it is a measure of whether the option stays open',
+      'The University runs on its own hardware in Makurdi and will for the foreseeable future. What is tracked here is whether the estate could move, in part or in whole, without a rewrite &mdash; because the cost of losing that option is only discovered when it is needed.') +
+
+    tiles([
+      ['Services container-ready', '11 of 12', 'var(--green-ink)', 'One legacy bridge left'],
+      ['State outside the application', '100%', 'var(--green-ink)', 'Database and object store only'],
+      ['Configuration in the environment', '100%', 'var(--green-ink)', 'No secrets in the image'],
+      ['Portable without a rewrite', '92%', null, 'By service count']
+    ]) +
+
+    panel('Readiness by criterion', '', dtable(
+      ['Criterion', 'Why it matters', 'State|num'], [
+        [two('Stateless application tier', 'Any instance can serve any request'), 'A server can be replaced or added without a session being lost', pil('ok', 'Met')],
+        [two('No writes to the local filesystem', 'Files go to the object store'), 'Documents survive the loss of the machine that received them', pil('ok', 'Met')],
+        [two('Object storage behind an interface', 'MinIO today, anything tomorrow'), 'Swapping the store is a configuration change, not a migration', pil('ok', 'Met')],
+        [two('Configuration and secrets injected', 'Never baked into an image'), 'The same artefact runs in every environment', pil('ok', 'Met')],
+        [two('Database portability', 'Standard PostgreSQL, no proprietary extension'), 'A managed PostgreSQL service can take it as it is', pil('ok', 'Met')],
+        [two('Infrastructure described as code', 'The estate can be rebuilt from a repository'), 'A move becomes a rehearsal rather than an archaeology exercise', pil('info', 'Partial &mdash; network still manual')],
+        [two('Observability independent of the host', 'Logs, metrics and traces leave the machine'), 'Diagnosis does not depend on reaching the box', pil('ok', 'Met')],
+        [two('Legacy portal bridge', 'The one component that assumes its own host'), 'Retires on 31 December and is not being ported', pil('bad', 'Not met &mdash; retiring')]
+      ], 1020)) +
+
+    panel('What could move, and what may not', 'Nigeria Data Protection Act 2023', dtable(
+      ['Workload', 'Personal data|mid', 'Could move', 'Constraint|num'], [
+        [two('Public website', 'Prospectus, news, staff directory'), pil('ok', 'None'), '<span class="sub2">Yes &mdash; the obvious first move</span>', pil('ok', 'No constraint')],
+        [two('Institutional repository', 'Open-access research'), pil('ok', 'None'), '<span class="sub2">Yes, with a content delivery network</span>', pil('ok', 'No constraint')],
+        [two('CBT examination burst capacity', 'Session data during examinations'), pil('bad', 'Yes'), '<span class="sub2">Only to a Nigerian region</span>', pil('info', 'Residency')],
+        [two('Student records and results', 'The core register'), pil('bad', 'Yes'), '<span class="sub2">Only to a Nigerian region, after a DPIA</span>', pil('bad', 'Residency + DPIA')],
+        [two('Health records', 'University clinic'), pil('bad', 'Yes, sensitive'), '<span class="sub2">Recommendation: remain on site</span>', pil('bad', 'Residency + consent')],
+        [two('Backups and off-site copies', 'Everything'), pil('bad', 'Yes'), '<span class="sub2">Nigerian region, encrypted, keys held here</span>', pil('info', 'Residency')]
+      ], 1060)) +
+
+    note('bad', 'Data residency is the binding constraint, not cost',
+      'Personal data of Nigerian data subjects is expected to remain in Nigeria unless a lawful transfer mechanism is in place. That rules out the cheapest regions of every major provider, and it is settled before a price is compared &mdash; not after.') +
+
+    two_col(
+      panel('Where cloud would pay', '', dtable(
+        ['Case', 'Why|num'], [
+          [two('CBT peaks', 'Twice a session, for ten days'), '<span class="sub2">Capacity sized for the peak sits idle for fifty weeks</span>'],
+          [two('Result release', 'Four hours of ten-fold traffic'), '<span class="sub2">Read replicas that exist only that afternoon</span>'],
+          [two('Off-site copies', 'Flood season'), '<span class="sub2">A second site without building one</span>'],
+          [two('Public website', 'Always'), '<span class="sub2">Cheaper, faster and holds no personal data</span>']
+        ], 480)),
+      panel('Where it would not', '', dtable(
+        ['Case', 'Why|num'], [
+          [two('Steady internal load', 'The other fifty weeks'), '<span class="sub2">Owned hardware already paid for is cheaper</span>'],
+          [two('Bandwidth-heavy media', 'Lecture recordings'), '<span class="sub2">Egress charges exceed the saving</span>'],
+          [two('Anything needing the campus network', 'Clinic devices, CBT halls'), '<span class="sub2">Latency and an internet link that fails</span>'],
+          [two('Sensitive health data', 'Clinic records'), '<span class="sub2">Consent and residency make it not worth it</span>']
+        ], 480)));
+  }

@@ -1,0 +1,14 @@
+{
+  "name": "moaumpp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MOAUM Unified University Portal — Rev. Fr. Moses Orshio Adasu University, Makurdi",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "python3 proto/build.py && cp proto/moaum-portal-prototype.html public/index.html",
+    "start": "node web/server.js",
+    "migrate": "bash db/migrate.sh",
+    "check:db": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=off -f db/check.sql",
+    "check:web": "node proto/runall.mjs"
+  }
+}

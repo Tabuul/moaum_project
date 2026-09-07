@@ -1,0 +1,271 @@
+
+  /* ── transcript module ───────────────────────────────────────────── */
+  var TR_DEST = {
+    institution: ["Another institution", "Sent directly to the receiving registry — never through you"],
+    employer:    ["Employer", "Sent directly to the employer's stated address"],
+    embassy:     ["Embassy or foreign body", "International rate applies"],
+    myself:      ["Myself", "Marked ‘student copy’ and not accepted as official by most bodies"]
+  };
+
+  function trFee() {
+    var base = S.tr.dest === "embassy" ? 25000 : 10000;
+    var courier = S.tr.hardcopy ? 6500 : 0;
+    var express = S.tr.express ? 7500 : 0;
+    var extra = (S.tr.copies - 1) * 4000;
+    return { base: base, courier: courier, express: express, extra: extra,
+             total: base + courier + express + extra };
+  }
+  function trClearance() {
+    return [
+      { k: "Library", ok: true, note: "No items on loan, no outstanding fines" },
+      { k: "Bursary", ok: S.feesPaid, note: S.feesPaid ? "No outstanding balance" : "₦45,000 outstanding on INV-2026-04412" },
+      { k: "Department", ok: true, note: "Computer Science · no academic bar" }
+    ];
+  }
+
+  function studentTranscript() {
+    var st = S.tr.stage;
+    if (st === "new") { return trRequest(); }
+    if (st === "pay") { return trPay(); }
+    if (st === "issued") { return trIssued(); }
+    return trTracking();
+  }
+
+  /* step 1 — build the request */
+  function trRequest() {
+    var f = trFee();
+    return '<div class="card"><div class="card__head"><span class="card__title">Request an official transcript</span>' +
+      '<span class="sub2" style="margin-left:auto">Step 1 of 3</span></div>' +
+      '<div class="card__body" style="gap:18px">' +
+
+        '<div class="field"><label>Who is it going to?</label>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            Object.keys(TR_DEST).map(function (k) {
+              var on = S.tr.dest === k;
+              return '<button class="pill pill--pick" data-tr="dest:' + k + '" style="padding:10px 14px;font-size:13px;' +
+                (on ? 'background:var(--sky-bg);border:1px solid var(--chrome);color:var(--chrome)'
+                    : 'background:var(--surface);border:1px solid var(--line);color:var(--muted)') + '">' +
+                TR_DEST[k][0] + '</button>';
+            }).join('') +
+          '</div>' +
+          '<div class="sub2" style="margin-top:6px">' + TR_DEST[S.tr.dest][1] + '</div>' +
+        '</div>' +
+
+        '<div class="field"><label for="dest">Recipient</label>' +
+          '<input id="dest" value="University of Ibadan, Office of the Registrar" autocomplete="off"></div>' +
+        '<div class="field"><label for="demail">Recipient email</label>' +
+          '<input id="demail" value="transcripts@ui.edu.ng" autocomplete="off"></div>' +
+
+        '<div class="field"><label>Delivery</label>' +
+          trOpt("hardcopy:0", !S.tr.hardcopy, "Secure digital link", "Signed PDF with a verification code. Included.") +
+          trOpt("hardcopy:1", S.tr.hardcopy, "Sealed hard copy by courier", "Printed on security stationery. " + money(6500) + ".") +
+        '</div>' +
+
+        '<div class="field"><label>Processing</label>' +
+          trOpt("express:0", !S.tr.express, "Normal — 3 to 5 working days", "Included.") +
+          trOpt("express:1", S.tr.express, "Express — next working day", "Priority production. " + money(7500) + ".") +
+        '</div>' +
+
+        '<div class="field"><label>Copies</label>' +
+          '<div style="display:flex;align-items:center;gap:12px">' +
+            '<button class="btn btn--ghost btn--sm btn__step" data-tr="copies:-1"' +
+              (S.tr.copies <= 1 ? ' disabled' : '') + '>−</button>' +
+            '<span class="tnum" style="font-size:17px;font-weight:700;min-width:20px;text-align:center">' + S.tr.copies + '</span>' +
+            '<button class="btn btn--ghost btn--sm btn__step" data-tr="copies:1"' +
+              (S.tr.copies >= 5 ? ' disabled' : '') + '>+</button>' +
+            '<span class="sub2">Each additional copy ' + money(4000) + '</span>' +
+          '</div>' +
+        '</div>' +
+
+        '<div style="background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:14px;display:flex;flex-direction:column;gap:8px">' +
+          row("Transcript fee (" + (S.tr.dest === "embassy" ? "international" : "local") + ")", money(f.base)) +
+          (f.courier ? row("Courier, sealed hard copy", money(f.courier)) : "") +
+          (f.express ? row("Express processing", money(f.express)) : "") +
+          (f.extra ? row((S.tr.copies - 1) + " additional cop" + (S.tr.copies > 2 ? "ies" : "y"), money(f.extra)) : "") +
+          '<div style="height:1px;background:var(--line)"></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+            '<strong>Total payable</strong>' +
+            '<strong class="tnum" style="font-size:19px">' + money(f.total) + '</strong></div>' +
+        '</div>' +
+
+        '<button class="btn btn--primary" data-tr="submit" style="align-self:flex-start">Continue to payment</button>' +
+        '<div class="sub2">Production only starts once payment is confirmed and Library, Bursary and departmental clearance are complete.</div>' +
+      '</div></div>';
+  }
+
+  function trOpt(action, on, title, sub) {
+    return '<button class="pick" data-tr="' + action + '" data-on="' + (on ? 1 : 0) + '">' +
+      '<div class="pick__box" style="border-radius:11px">' + (on ? '<div style="width:9px;height:9px;border-radius:5px;background:#fff"></div>' : '') + '</div>' +
+      '<div style="flex-grow:1"><div class="pick__t">' + title + '</div><div class="pick__s">' + sub + '</div></div></button>';
+  }
+
+  /* step 2 — pay */
+  function trPay() {
+    var f = trFee();
+    return '<div class="card"><div class="card__head"><span class="card__title">Pay the transcript fee</span>' +
+      '<span class="sub2" style="margin-left:auto">Step 2 of 3</span></div>' +
+      '<div class="card__body">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+          '<div><div style="font-weight:600">Transcript to ' + TR_DEST[S.tr.dest][0].toLowerCase() + '</div>' +
+          '<div class="sub2 tnum">Invoice INV-2026-04907 · ' + S.tr.copies + ' cop' + (S.tr.copies > 1 ? 'ies' : 'y') +
+          (S.tr.express ? ' · express' : '') + (S.tr.hardcopy ? ' · courier' : ' · digital') + '</div></div>' +
+          '<strong class="tnum" style="font-size:22px">' + money(f.total) + '</strong>' +
+        '</div>' +
+        '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+          '<button class="btn btn--urgent" data-tr="paid">Pay ' + money(f.total) + '</button>' +
+          '<button class="btn btn--ghost" data-tr="back">Change the request</button>' +
+        '</div>' +
+      '</div></div>' +
+      '<div class="notice notice--info">' + ico('alert', 18, 'var(--chrome)', 2) +
+        '<div><div class="notice__t" style="color:var(--chrome)">The fee is not refundable once production starts</div>' +
+        '<p style="color:#124A63">If clearance fails, the request is held rather than cancelled — you keep your place in the queue and it resumes the moment the block clears.</p></div></div>';
+  }
+
+  /* step 3 — track */
+  function trTracking() {
+    var cl = trClearance();
+    var blocked = cl.some(function (c) { return !c.ok; });
+    var st = S.tr.stage;
+    var stages = [
+      { k: "Request received and paid", done: true, note: "Raised " + S.tr.raisedOn + " · " + money(trFee().total) + " confirmed" },
+      { k: "Clearance", done: !blocked, note: blocked ? "Held — one office has not cleared you" : "All three offices cleared" },
+      { k: "Produced by Exams &amp; Records", done: st === "verified" || st === "issued", note: st === "production" ? "Waiting in the production queue" : "Generated from your academic record" },
+      { k: "Signed by the Registrar", done: st === "issued", note: st === "issued" ? "Signed and released" : "Awaiting signature" },
+      { k: "Released to recipient", done: st === "issued", note: st === "issued" ? "Delivered" : "Not yet released" }
+    ];
+
+    return (blocked
+        ? '<div class="notice notice--bad">' + warnIcon(19) +
+          '<div><div class="notice__t" style="color:var(--red-deep)">Your request is held at clearance</div>' +
+          '<p style="color:var(--red-deep)">Bursary has not cleared you. Nothing is lost — production resumes automatically once the balance is settled.</p>' +
+          '<div style="margin-top:11px"><button class="btn btn--urgent btn--sm" data-go="s/pay">Settle ₦45,000</button></div></div></div>'
+        : '<div class="notice notice--info">' + ico('clock', 19, 'var(--chrome)', 2) +
+          '<div><div class="notice__t" style="color:var(--chrome)">In production</div>' +
+          '<p style="color:#124A63">Day ' + S.tr.day + ' of ' + (S.tr.express ? '1 working day' : '5 working days') + '. You will be notified the moment it is released.</p></div></div>') +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Request TRN-2026-00418</span>' +
+        '<span class="pill ' + (blocked ? 'pill--bad">Held' : 'pill--info">In production') + '</span>' +
+        '<span class="sub2" style="margin-left:auto">' + TR_DEST[S.tr.dest][0] + ' · ' +
+        (S.tr.hardcopy ? 'sealed hard copy' : 'digital') + '</span></div>' +
+        '<div class="card__body">' +
+          stages.map(function (s2, i) {
+            var mark = s2.done
+              ? '<div class="step__mark step__mark--done">' + tick(12, '#fff') + '</div>'
+              : (i === 1 && blocked)
+                ? '<div class="step__mark" style="background:var(--red)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></div>'
+                : '<div class="step__mark step__mark--todo"></div>';
+            return '<div class="step">' + mark + '<div><div style="font-weight:600' +
+              (s2.done ? '' : ';color:var(--faint)') + '">' + s2.k + '</div>' +
+              '<div class="sub2">' + s2.note + '</div></div></div>';
+          }).join('') +
+        '</div></div>' +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Clearance</span></div>' +
+        '<div class="tablewrap"><table><tbody>' +
+        cl.map(function (c) {
+          return '<tr><td style="width:150px"><strong>' + c.k + '</strong></td>' +
+            '<td class="sub2">' + c.note + '</td>' +
+            '<td class="num">' + (c.ok ? '<span class="pill pill--ok">Cleared</span>' : '<span class="pill pill--bad">Not cleared</span>') + '</td></tr>';
+        }).join('') + '</tbody></table></div></div>' +
+
+      (blocked ? '' :
+        '<div class="card" style="border-style:dashed"><div class="card__body">' +
+          '<div class="eyebrow" style="color:var(--muted)">Prototype control \u2014 not part of the design</div>' +
+          '<div class="sub2">These are Registry actions, shown here so the request can be followed to release. ' +
+          'A student never sees them; the student sees only the tracker above moving.</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">' +
+            (S.tr.stage === 'production'
+              ? '<button class="btn btn--primary btn--sm" data-tr="produce">Registry: compile and check the record</button>'
+              : '<button class="btn btn--primary btn--sm" data-tr="release">Registrar: sign and release</button>') +
+            '<button class="btn btn--ghost btn--sm" data-tr="reset">Start the request again</button>' +
+          '</div></div></div>');
+  }
+
+  /* released */
+  function trIssued() {
+    return '<div class="notice notice--ok">' + tick(19, 'var(--green-ink)') +
+        '<div><div class="notice__t" style="color:var(--green-ink)">Released on 9 September 2026</div>' +
+        '<p style="color:var(--green-ink)">Sent to transcripts@ui.edu.ng. The recipient opens it with the verification code below — nothing sensitive travels by email.</p></div></div>' +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Official transcript TRN-2026-00418</span>' +
+        '<span class="pill pill--ok" style="margin-left:auto">Valid</span></div>' +
+        '<div class="card__body">' +
+          '<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">' +
+            '<div style="width:96px;height:96px;border:1px solid var(--line);padding:6px;flex-shrink:0">' + qr() + '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:9px;min-width:220px;flex-grow:1">' +
+              '<div class="kv"><span class="k">Verification code</span>' +
+              '<span class="v tnum" style="font-size:15px;letter-spacing:.6px">MOAUM-TR-9H2D-6PLV</span></div>' +
+              '<div class="kv"><span class="k">Issued to</span><span class="v">University of Ibadan, Office of the Registrar</span></div>' +
+              '<div class="kv"><span class="k">Issued on</span><span class="v tnum">9 September 2026</span></div>' +
+              '<div class="sub2">Anyone can check this code at moaum.edu.ng/verify without contacting the University.</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:9px;flex-wrap:wrap;padding-top:4px">' +
+            '<button class="btn btn--primary" data-doc="transcript">Download your copy</button>' +
+            '<button class="btn btn--ghost" data-go="verify">See what the recipient sees</button>' +
+            '<button class="btn btn--ghost" data-tr="reset">Request another</button>' +
+          '</div>' +
+        '</div></div>' +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Request history</span></div>' +
+        '<div class="tablewrap"><table><tbody>' +
+        '<tr><td class="sub2 tnum" style="width:130px">9 Sept 2026</td><td>Signed by the Registrar and released to the recipient</td><td class="sub2" style="width:200px">P. Terwase (Registry)</td></tr>' +
+        '<tr><td class="sub2 tnum">8 Sept 2026</td><td>Produced from the academic record and verified</td><td class="sub2">Exams &amp; Records</td></tr>' +
+        '<tr><td class="sub2 tnum">6 Sept 2026</td><td>Clearance completed — Library, Bursary, Department</td><td class="sub2">Automatic</td></tr>' +
+        '<tr><td class="sub2 tnum">5 Sept 2026</td><td>Request raised and fee confirmed</td><td class="sub2">Self-service</td></tr>' +
+        '</tbody></table></div></div>';
+  }
+
+  /* ── public verification (no sign-in) ────────────────────────────── */
+  function publicVerify() {
+    var issued = S.tr.stage === "issued";
+    return '<div style="min-height:100vh;background:var(--bg);display:flex;flex-direction:column">' +
+      '<div style="background:var(--chrome);padding:16px 24px;display:flex;align-items:center;gap:12px">' +
+        '<img src="' + CREST + '" alt="" style="width:34px;height:35px;object-fit:contain">' +
+        '<div><div style="font-family:var(--serif);font-size:14px;font-weight:700;color:#fff">Credential verification</div>' +
+        '<div style="font-size:10.5px;color:var(--chrome-dim)">Rev. Fr. Moses Orshio Adasu University, Makurdi</div></div>' +
+        '<span style="flex-grow:1"></span>' +
+        '<button class="btn btn--sm" data-go="login" style="color:#fff;border:1px solid var(--chrome-2)">Portal sign-in</button>' +
+      '</div>' +
+
+      '<div style="flex-grow:1;display:flex;justify-content:center;padding:32px 20px 60px">' +
+        '<div style="width:100%;max-width:640px;display:flex;flex-direction:column;gap:16px">' +
+          '<div><h2 style="margin:0 0 6px;font-size:22px;letter-spacing:-.4px">Check a certificate or transcript</h2>' +
+          '<p class="sub2" style="margin:0;max-width:60ch">Enter the code printed on the document, or scan its QR code. No account needed. ' +
+          'This page is the University’s authoritative answer — employers do not need to write to Registry.</p></div>' +
+
+          '<div class="card"><div class="card__body" style="flex-direction:row;gap:10px;align-items:flex-end;flex-wrap:wrap">' +
+            '<div class="field" style="flex-grow:1;min-width:220px"><label for="vc">Verification code</label>' +
+            '<input id="vc" class="tnum" value="MOAUM-TR-9H2D-6PLV" autocomplete="off"></div>' +
+            '<button class="btn btn--primary">Verify</button>' +
+          '</div></div>' +
+
+          (issued
+            ? '<div class="card" style="border-top:4px solid var(--green)"><div class="card__body">' +
+                '<div style="display:flex;align-items:center;gap:9px">' +
+                  '<div style="width:26px;height:26px;border-radius:13px;background:var(--green);display:flex;align-items:center;justify-content:center">' + tick(14, '#fff') + '</div>' +
+                  '<span class="eyebrow" style="color:var(--green-ink)">Valid — issued by this University</span></div>' +
+                '<div class="tablewrap"><table><tbody>' +
+                  vrow("Document", "Official academic transcript") +
+                  vrow("Holder", "ADAMU, Grace Mwuese") +
+                  vrow("Programme", "B.Sc. Computer Science") +
+                  vrow("Status", "Undergraduate, in progress — 300 Level") +
+                  vrow("Issued on", "9 September 2026") +
+                  vrow("Issued to", "University of Ibadan, Office of the Registrar") +
+                  vrow("Issuing institution", "Rev. Fr. Moses Orshio Adasu University, Makurdi") +
+                '</tbody></table></div>' +
+                '<div class="sub2">Checked ' + new Date().toISOString().slice(0, 10) + '. Only these fields are disclosed — grades are not shown to a verifier.</div>' +
+              '</div></div>' +
+              '<div class="notice notice--info">' + ico('alert', 18, 'var(--chrome)', 2) +
+                '<div><div class="notice__t" style="color:var(--chrome)">Documents issued before 30 December 2024</div>' +
+                '<p style="color:#124A63">Credentials awarded before that date were issued as <strong>Benue State University, Makurdi</strong> and display that name. Both names resolve here — an older certificate is not a forgery.</p></div></div>'
+            : '<div class="notice notice--bad">' + warnIcon(19) +
+              '<div><div class="notice__t" style="color:var(--red-deep)">No record for that code</div>' +
+              '<p style="color:var(--red-deep)">This code has not been issued, or it has been revoked. In the prototype, release a transcript from the student or Registry screens first, then check again.</p></div></div>') +
+        '</div>' +
+      '</div></div>';
+  }
+
+  function vrow(k, v) {
+    return '<tr><td class="sub2" style="width:180px">' + k + '</td><td><strong>' + v + '</strong></td></tr>';
+  }

@@ -1,0 +1,221 @@
+  /* ══════════════════════════════════════════════════════════════════
+     THE UNIVERSITY ADMINISTRATOR'S DASHBOARD
+
+     The whole institution on one screen, and — because the figures on
+     it are only as trustworthy as the model behind them — the two
+     chains those figures come from, drawn out:
+
+       the RECORD chain, which is what the database is shaped like, and
+       the CALCULATION chain, which is how a score becomes a class of
+       degree. Both are shown with live numbers, so the dashboard can
+       be checked rather than believed.
+     ═════════════════════════════════════════════════════════════════ */
+
+  function chainStep(label, value, sub, tone) {
+    return '<div class="dch__s' + (tone ? ' is-' + tone : '') + '">' +
+      '<span class="dch__l">' + label + '</span>' +
+      (value ? '<span class="dch__v tnum">' + value + '</span>' : '') +
+      (sub ? '<span class="dch__u">' + sub + '</span>' : '') +
+    '</div>';
+  }
+
+  function chainOf(steps) {
+    return '<div class="dch">' + steps.map(function (s, i) {
+      return (i ? '<span class="dch__a" aria-hidden="true">&rarr;</span>' : '') +
+        chainStep(s[0], s[1], s[2], s[3]);
+    }).join('') + '</div>';
+  }
+
+  /* ── the record chain ────────────────────────────────────────────
+     FACULTY → DEPARTMENT → PROGRAMME → STUDENT →
+     COURSE REGISTRATION → COURSE → RESULT                        */
+  function recordChain() {
+    var regs = Math.round(UNI.students * 5.4);        /* ~5.4 courses each */
+    return panel('How the record is shaped',
+      'Every list in the portal is a walk down this chain', pbody(
+      chainOf([
+        ["Faculty", String(UNI.faculties), "&mdash;"],
+        ["Department", String(UNI.departments), "belongs to one faculty"],
+        ["Programme", String(UNI.programmes), "belongs to one department"],
+        ["Student", UNI.students.toLocaleString(), "admitted into one programme"],
+        ["Course registration", regs.toLocaleString(), "one per course, per session"],
+        ["Course", "1,284", "owned by one department"],
+        ["Result", UNI.sets.toLocaleString() + " sets", "one per course offering", "hot"]
+      ]) +
+      note('info', 'The chain is the authorisation, not only the schema',
+        'A Head of Department is bounded at <b>Department</b>; an Examinations Officer at <b>Programme</b>; a Dean and a Faculty Officer at <b>Faculty</b>. ' +
+        'The scope bar on every list is this chain made selectable, and an office cannot widen it past the level its grant is bounded to. ' +
+        'One model does the structure, the reporting and the access control &mdash; which is why a report and a permission can never disagree.')));
+  }
+
+  /* ── the calculation chain ───────────────────────────────────────
+     STUDENT → REGISTRATION → SCORE → GRADE → GRADE POINT →
+     QUALITY POINT → GPA → CGPA → STANDING → GRADUATION → TRANSCRIPT */
+  function gradeChain() {
+    var rows = BS_COURSES.map(function (c) {
+      var mk = myMark(c[0]);
+      var total = mk && !mk.abs ? mk.ca + mk.ex : null;
+      var g = total == null ? null : gradeOf(total);
+      return { code: c[0], units: c[1], total: total, g: g,
+               qp: g ? g[3] * c[1] : 0, abs: !total };
+    });
+    var units = rows.reduce(function (a, r) { return a + (r.abs ? 0 : r.units); }, 0);
+    var qp = rows.reduce(function (a, r) { return a + r.qp; }, 0);
+    var gpa = units ? qp / units : 0;
+    var cgpa = 3.42;
+
+    return panel('How a score becomes a class of degree',
+      'Worked on one candidate, with this semester&rsquo;s own figures', pbody(
+      chainOf([
+        ["Student", "1", "ADAMU, Grace Mwuese"],
+        ["Registration", String(rows.length), "approved courses"],
+        ["Score", "CA + Exam", "out of 30 and 70"],
+        ["Grade", "A &ndash; F", "from the scheme in force"],
+        ["Grade point", "5 &ndash; 0", "one per grade"],
+        ["Quality point", String(qp), "grade point &times; units"],
+        ["GPA", gpa.toFixed(2), qp + " &divide; " + units, "hot"],
+        ["CGPA", cgpa.toFixed(2), "over every session"],
+        ["Standing", "&mdash;", classOf(cgpa)],
+        ["Graduation", "&mdash;", "on the final CGPA"],
+        ["Transcript", "&mdash;", "every attempt, both names"]
+      ]) +
+
+      dtable(["Course", "Units|mid", "Score|mid", "Grade|mid", "Grade point|mid", "Quality point|mid"],
+        rows.map(function (r) {
+          if (r.abs) {
+            return ['<b class="tnum">' + r.code + '</b>', '<span class="tnum">' + r.units + '</span>',
+              pil('bad', 'ABS'), '<span class="sub2">&mdash;</span>', '<span class="sub2">&mdash;</span>',
+              '<span class="sub2">not counted</span>'];
+          }
+          return ['<b class="tnum">' + r.code + '</b>', '<span class="tnum">' + r.units + '</span>',
+            '<span class="tnum">' + r.total + '</span>',
+            '<b style="color:' + r.g[4] + '">' + r.g[0] + '</b>',
+            '<span class="tnum">' + r.g[3] + '</span>',
+            '<b class="tnum">' + r.g[3] + ' &times; ' + r.units + ' = ' + r.qp + '</b>'];
+        })) +
+
+      '<div class="gsum">' +
+        '<div><span class="eyebrow">Quality points</span><b class="tnum">' + qp + '</b></div>' +
+        '<span class="gsum__op">&divide;</span>' +
+        '<div><span class="eyebrow">Units counted</span><b class="tnum">' + units + '</b></div>' +
+        '<span class="gsum__op">=</span>' +
+        '<div><span class="eyebrow">GPA this semester</span><b class="tnum" style="color:var(--green-ink)">' + gpa.toFixed(2) + '</b></div>' +
+      '</div>' +
+
+      dtable(["Step", "What it is", "Where it is decided", "Rule"], [
+        ["<strong>Score</strong>", "CA out of 30 + examination out of 70", "The lecturer, attested", "Every row carries a mark or an ABS"],
+        ["<strong>Grade</strong>", "A to F", "The grading scheme in force for that session", "Computed, never typed"],
+        ["<strong>Grade point</strong>", "5 to 0", "The same scheme", "A=5 B=4 C=3 D=2 E=1 F=0"],
+        ["<strong>Quality point</strong>", "Grade point &times; course units", "Arithmetic", "A 3-unit A is 15; a 2-unit A is 10"],
+        ["<strong>GPA</strong>", "Quality points &divide; units, one semester", "Arithmetic", "ABS contributes neither"],
+        ["<strong>CGPA</strong>", "Quality points &divide; units, every session", "Arithmetic", "D-Q2: does a passed repeat replace the failure?"],
+        ["<strong>Academic standing</strong>", "Good standing, probation, withdrawal", "Senate regulation", "Below 1.00 for two consecutive sessions is withdrawal"],
+        ["<strong>Graduation</strong>", "Class of degree on the final CGPA", "Senate, on the graduation list", "Requires clearance from every unit, and no outstanding carryover"],
+        ["<strong>Transcript</strong>", "Every attempt, both University names", "Registrar", "Compiled from Senate-approved sets only"]
+      ]) +
+
+      '<div class="grid grid--3">' +
+        kvGrid([["Standing at 3.42", classOf(3.42)], ["Probation", "CGPA below 1.50"],
+                ["Withdrawal", "Below 1.00, two sessions running"]], 'grid--1') +
+        kvGrid([["Graduation floor", "CGPA 1.00 and no carryover"], ["Clearance", "Bursary, Library, Security, Department"],
+                ["Approved by", "Senate, on the graduation list"]], 'grid--1') +
+        kvGrid([["Transcript shows", "Every attempt, including failures"], ["Names", "Both, before and after 30 Dec 2024"],
+                ["Source", "Senate-approved sets only"]], 'grid--1') +
+      '</div>' +
+
+      note('bad', 'Two things this arithmetic will not do',
+        'An <b>absence is not a zero</b> &mdash; it contributes no quality point and no unit, so it lowers nothing; a zero contributes a unit and no point, and lowers a great deal. ' +
+        'And <b>nobody types a grade</b>: the score meets the scheme in force for that session and the scheme returns the grade and the point. ' +
+        'Change the scheme and old results keep their old grading, because the scheme is dated and the result knows which one it was earned under.')));
+  }
+
+  /* ── the dashboard ───────────────────────────────────────────── */
+
+  /* [faculty, expected, submitted, approved] — these sum to exactly
+     2,840 expected, 2,442 submitted (86%) and 2,045 approved (72%),
+     so the tiles above are the columns below added up, not figures
+     typed beside them. */
+  var FAC_RESULTS = [
+    ["Science", 412, 372, 338], ["Education", 336, 302, 264], ["Arts", 288, 251, 216],
+    ["Social Sciences", 274, 246, 208], ["Management Sciences", 236, 214, 183],
+    ["Agriculture", 212, 178, 142], ["Engineering", 196, 164, 131],
+    ["Environmental Sciences", 168, 145, 118], ["Law", 148, 138, 121],
+    ["Basic Medical Sciences", 158, 121, 88], ["Clinical Sciences", 164, 106, 62],
+    ["Nursing Sciences", 96, 84, 71], ["Pharmaceutical Sciences", 84, 66, 48],
+    ["Postgraduate School", 68, 55, 55]
+  ];
+
+  function uniAdmin() {
+    var expected = FAC_RESULTS.reduce(function (a, f) { return a + f[1]; }, 0);
+    var subm = FAC_RESULTS.reduce(function (a, f) { return a + f[2]; }, 0);
+    var appr = FAC_RESULTS.reduce(function (a, f) { return a + f[3]; }, 0);
+    var pend = subm - appr, miss = expected - subm;
+
+    return note('info', 'The University, today',
+      'Every figure below is counted from the record, not entered on this screen. ' +
+      'The two chains further down are where they come from &mdash; the shape of the record, and the arithmetic that turns a score into a class of degree. ' +
+      'If a number here looks wrong, it is the chain that is wrong, and it can be walked.') +
+
+    '<div class="grid grid--3">' +
+      '<div class="tile"><span class="eyebrow">Total students</span>' +
+        '<span class="n tnum">' + UNI.students.toLocaleString() + '</span>' +
+        '<span class="c">On the register, all levels and modes</span></div>' +
+      '<div class="tile"><span class="eyebrow">Total faculties</span>' +
+        '<span class="n tnum">' + UNI.faculties + '</span>' +
+        '<span class="c">Including the Postgraduate School</span></div>' +
+      '<div class="tile"><span class="eyebrow">Total departments</span>' +
+        '<span class="n tnum">' + UNI.departments + '</span>' +
+        '<span class="c">' + UNI.programmes + ' programmes under them</span></div>' +
+    '</div>' +
+
+    '<div class="grid grid--3">' +
+      '<div class="tile"><span class="eyebrow">Results submitted</span>' +
+        '<span class="n tnum">' + Math.round(subm / expected * 100) + '%</span>' +
+        '<span class="c tnum">' + subm.toLocaleString() + ' of ' + expected.toLocaleString() + ' expected sets</span>' +
+        bar(Math.round(subm / expected * 100), 'var(--chrome)') + '</div>' +
+      '<div class="tile"><span class="eyebrow">Results approved</span>' +
+        '<span class="n tnum" style="color:var(--green-ink)">' + Math.round(appr / expected * 100) + '%</span>' +
+        '<span class="c tnum">' + appr.toLocaleString() + ' past Senate</span>' +
+        bar(Math.round(appr / expected * 100), 'var(--green)') + '</div>' +
+      '<div class="tile"><span class="eyebrow">Pending results</span>' +
+        '<span class="n tnum" style="color:var(--red-ink)">' + pend.toLocaleString() + '</span>' +
+        '<span class="c tnum">in the chain &middot; ' + miss.toLocaleString() + ' never submitted</span>' +
+        bar(Math.round(pend / expected * 100), 'var(--red)') + '</div>' +
+    '</div>' +
+
+    note('bad', miss.toLocaleString() + ' sets have not been submitted at all, and ' + pend.toLocaleString() + ' are stuck between desks',
+      'These are two different problems with two different owners. A set that was <b>never submitted</b> is a lecturer and a Head of Department; ' +
+      'a set that is <b>pending</b> is sitting on a named desk in the approval chain and can be seen there. ' +
+      'Clinical Sciences accounts for a fifth of both &mdash; that is where to look first, and it is why the Faculty of Health Sciences was deferred at the last Senate.',
+      btn('primary', 'Open the result pipeline', ' data-go="t/pipeline"')) +
+
+    panel('Results by faculty', 'Expected, submitted, approved &mdash; and what is missing',
+      dtable(["Faculty", "Departments|mid", "Expected|mid", "Submitted|mid", "Approved|mid", "Pending|mid", "Not submitted|mid", "Approved"],
+        FAC_RESULTS.map(function (f, i) {
+          var fac = FACS[i] || { depts: [] };
+          var p = f[2] - f[3], m = f[1] - f[2];
+          var pct = Math.round(f[3] / f[1] * 100);
+          return ["<strong>" + f[0] + "</strong>",
+            '<span class="tnum">' + fac.depts.length + '</span>',
+            '<span class="tnum">' + f[1] + '</span>',
+            '<span class="tnum">' + f[2] + '</span>',
+            '<span class="tnum" style="color:var(--green-ink);font-weight:700">' + f[3] + '</span>',
+            '<span class="tnum"' + (p > 40 ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' + p + '</span>',
+            '<span class="tnum"' + (m > 30 ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' + m + '</span>',
+            bar(pct, pct >= 75 ? 'var(--green)' : pct >= 55 ? 'var(--chrome)' : 'var(--red)')];
+        }))) +
+
+    recordChain() +
+    gradeChain() +
+
+    panel('The institution in figures', 'As at ' + "5 September 2026", pbody(kvGrid([
+      ["Students on the register", UNI.students.toLocaleString()],
+      ["Faculties", String(UNI.faculties)],
+      ["Departments", String(UNI.departments)],
+      ["Programmes", String(UNI.programmes)],
+      ["Courses in the catalogue", "1,284"],
+      ["Result sets expected this semester", UNI.sets.toLocaleString()],
+      ["Staff accounts with an office", "1,914"],
+      ["Offices that can sign in", String(ROLE_KEYS.length)]
+    ], 'grid--4')));
+  }

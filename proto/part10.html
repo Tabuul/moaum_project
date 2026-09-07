@@ -1,0 +1,195 @@
+
+  /* ══ HUMAN RESOURCES ═════════════════════════════════════════════ */
+
+  function hStaff() {
+    return tiles([
+      ['Established posts', '3,102', null, 'Council-approved'],
+      ['Filled', '2,714', null, '87.5% of establishment'],
+      ['Vacant', '388', 'var(--red-ink)', '212 academic, 176 non-teaching'],
+      ['Retiring in 12 months', '64', 'var(--chrome)', 'Succession planning needed']
+    ]) +
+    note('info', 'Academic staff strength feeds the NUC accreditation return directly',
+      'Staff/student ratio, qualification mix and rank distribution are computed from these records — nobody assembles them by hand at accreditation time.') +
+    panel('Staff register', 'Faculty of Science', dtable(
+      ['Staff no.', 'Name', 'Rank', 'Department', 'Qualification|mid', 'Status|num'], [
+        ['<span class="tnum">MOAUM/STF/1142</span>', 'IORPUU, Terhemba (Dr.)', 'Senior Lecturer', 'Computer Science', '<span class="sub2">Ph.D · CONUASS 05</span>', pil('ok', 'Active')],
+        ['<span class="tnum">MOAUM/STF/0877</span>', 'ASHAVER, Mimi (Dr.)', 'Lecturer I', 'Computer Science', '<span class="sub2">Ph.D · CONUASS 04</span>', pil('ok', 'Active')],
+        ['<span class="tnum">MOAUM/STF/1509</span>', 'ADZANDE, Sunday', 'Lecturer II', 'Computer Science', '<span class="sub2">M.Sc · CONUASS 03</span>', pil('info', 'Study leave — Ph.D')],
+        ['<span class="tnum">MOAUM/STF/0455</span>', 'UGBEDE, Simon A.', 'Chief Technologist', 'Computer Science', '<span class="sub2">HND · CONTISS 13</span>', pil('bad', 'Separated 31 Aug')],
+        ['<span class="tnum">MOAUM/STF/0221</span>', 'ITYOKUMBUL, John (Prof.)', 'Professor', 'Mathematics', '<span class="sub2">Ph.D · CONUASS 07</span>', pil('ok', 'Active')]
+      ], 940)) +
+    panel('Qualification mix — NUC return', 'Computer Science', dtable(
+      ['Rank', 'Ph.D|mid', 'M.Sc|mid', 'B.Sc|mid', 'Total|mid'], [
+        ['Professor / Reader', '<span class="tnum">3</span>', '<span class="tnum">0</span>', '<span class="tnum">0</span>', '<span class="tnum">3</span>'],
+        ['Senior Lecturer', '<span class="tnum">5</span>', '<span class="tnum">0</span>', '<span class="tnum">0</span>', '<span class="tnum">5</span>'],
+        ['Lecturer I / II', '<span class="tnum">4</span>', '<span class="tnum">9</span>', '<span class="tnum">0</span>', '<span class="tnum">13</span>'],
+        ['Assistant Lecturer / Graduate Assistant', '<span class="tnum">0</span>', '<span class="tnum">6</span>', '<span class="tnum">4</span>', '<span class="tnum">10</span>']
+      ], 520) +
+      '<div style="padding:12px 16px;background:var(--bg);border-top:1px solid var(--line)" class="sub2">' +
+      'Staff/student ratio 1:29 against the NUC benchmark of 1:30 for Computer Science. Ph.D holders 38.7% against a 70% target.</div>');
+  }
+
+  function hRecruitment() {
+    return panel('Open vacancies', '2026 recruitment cycle', dtable(
+      ['Post', 'Department', 'Applications|mid', 'Stage', 'Action|num'], [
+        [two('Lecturer II — Computer Science', 'Ph.D required · CONUASS 03'), 'Computer Science', '<span class="tnum">184</span>', pil('info', 'Shortlisting'), btn('primary', 'Open')],
+        [two('Senior Lecturer — Pharmacology', 'Ph.D + 6 years · CONUASS 05'), 'Health Sciences', '<span class="tnum">42</span>', pil('info', 'Interview scheduled'), btn('primary', 'Open')],
+        [two('Systems Administrator', 'B.Sc + 5 years · CONTISS 09'), 'ICT Directorate', '<span class="tnum">311</span>', pil('bad', 'Shortlisting overdue'), btn('urgent', 'Open')],
+        [two('Chief Technologist', 'HND + 12 years · CONTISS 13'), 'Computer Science', '<span class="tnum">67</span>', pil('ok', 'Offer issued'), btn('ghost', 'Open')]
+      ], 820)) +
+    panel('Lecturer II, Computer Science — shortlist', 'Scored against the advertised criteria', dtable(
+      ['Candidate', 'Qualification', 'Publications|mid', 'Teaching|mid', 'Score|mid', 'Recommendation|num'], [
+        ['ORNGU, Aondoaseer (Dr.)', 'Ph.D Computer Science, UNN 2023', '<span class="tnum">11</span>', '<span class="tnum">4 yrs</span>', '<span class="tnum" style="font-weight:700">86</span>', pil('ok', 'Invite')],
+        ['NGUAVASE, Terhemen (Dr.)', 'Ph.D Software Engineering, ABU 2022', '<span class="tnum">8</span>', '<span class="tnum">3 yrs</span>', '<span class="tnum" style="font-weight:700">81</span>', pil('ok', 'Invite')],
+        ['ABAAGU, Doosuur (Dr.)', 'Ph.D Information Systems, UI 2024', '<span class="tnum">6</span>', '<span class="tnum">2 yrs</span>', '<span class="tnum" style="font-weight:700">74</span>', pil('info', 'Reserve')],
+        ['SAAKA, Emmanuel', 'M.Sc Computer Science, BSU 2019', '<span class="tnum">2</span>', '<span class="tnum">5 yrs</span>', '<span class="tnum" style="font-weight:700">52</span>', pil('bad', 'Below Ph.D requirement')]
+      ], 900));
+  }
+
+  function hLeave() {
+    return tiles([
+      ['On leave today', '84', null, 'Across the University'],
+      ['Awaiting your approval', '6', 'var(--red-ink)', 'Computer Science'],
+      ['Annual leave taken', '61%', null, 'Average across staff'],
+      ['Untaken, expiring Dec', '412 days', 'var(--chrome)', 'Across 96 staff']
+    ]) +
+    panel('Leave requests awaiting you', 'Head of Department, Computer Science', dtable(
+      ['Staff', 'Type', 'Period', 'Days|mid', 'Cover', 'Action|num'], [
+        [two('ASHAVER, Mimi (Dr.)', 'Lecturer I'), 'Annual', '<span class="tnum">14 – 25 Sept</span>', '<span class="tnum">10</span>', 'Dr. S. Adzande', btn('go', 'Approve') + ' ' + btn('ghost', 'Decline')],
+        [two('UGBA, Terkimbi', 'Technologist II'), 'Casual', '<span class="tnum">11 – 12 Sept</span>', '<span class="tnum">2</span>', '<span class="sub2">Not required</span>', btn('go', 'Approve') + ' ' + btn('ghost', 'Decline')],
+        [two('IORLIAM, Sewuese (Dr.)', 'Lecturer II'), 'Maternity', '<span class="tnum">1 Oct – 26 Dec</span>', '<span class="tnum">84</span>', 'To be assigned', btn('go', 'Approve') + ' ' + btn('ghost', 'Decline')],
+        [two('ADZANDE, Sunday', 'Lecturer II'), 'Study leave (with pay)', '<span class="tnum">1 Oct 2026 – 30 Sept 2029</span>', '<span class="tnum">3 yrs</span>', '<span style="color:var(--red-ink)">Teaching load unassigned</span>', btn('urgent', 'Needs a bonding agreement')]
+      ], 940)) +
+    note('bad', 'Study leave with pay requires a bonding agreement before approval',
+      'Dr. Adzande would be bonded to serve three years on return. The agreement must be executed and uploaded before the leave is approved, or the University has no recourse.');
+  }
+
+  function hAppraisal() {
+    return note('info', 'Promotion eligibility is computed, not argued',
+      'Years on grade, publication count in accredited outlets, teaching load and appraisal outcome are all held in the record. The committee sees the same figures every candidate sees.') +
+    panel('Promotion candidates', '2026 exercise · Faculty of Science', dtable(
+      ['Candidate', 'Current rank', 'Years on grade|mid', 'Publications|mid', 'APER|mid', 'Eligibility|num'], [
+        ['IORPUU, Terhemba (Dr.)', 'Senior Lecturer', '<span class="tnum">4</span>', '<span class="tnum">18</span>', '<span class="tnum">A</span>', pil('ok', 'Eligible — Reader')],
+        ['ASHAVER, Mimi (Dr.)', 'Lecturer I', '<span class="tnum">3</span>', '<span class="tnum">9</span>', '<span class="tnum">A</span>', pil('ok', 'Eligible — Senior Lecturer')],
+        ['ORKAA, Bem (Dr.)', 'Lecturer I', '<span class="tnum">3</span>', '<span class="tnum">4</span>', '<span class="tnum">B</span>', pil('bad', 'Short 2 publications')],
+        ['TERSOO, Aondona', 'Lecturer II', '<span class="tnum">2</span>', '<span class="tnum">3</span>', '<span class="tnum">B</span>', pil('bad', 'Minimum 3 years on grade')]
+      ], 900)) +
+    panel('Appraisal cycle', '2025/2026 APER', pbody(
+      '<div class="steps">' +
+        stepRow(true, 'Self-assessment', '2,610 of 2,714 staff submitted — 96.2%') +
+        stepRow(true, 'Supervisor assessment', '2,588 completed') +
+        stepRow(true, 'Faculty moderation', 'Completed 14 August') +
+        stepRow(false, 'Appointments &amp; Promotions Committee', 'Sits 3 October 2026') +
+      '</div>'));
+  }
+
+  /* ══ PROCUREMENT AND STORES ══════════════════════════════════════ */
+
+  function pRequisitions() {
+    return note('info', 'The procurement method is set by value, and cannot be overridden',
+      'Under ₦2.5m goes to quotation, ₦2.5m–₦25m to restricted tender, above ₦25m to open competitive bidding. Splitting a requisition to dodge a threshold is detected and blocked.') +
+    panel('Requisitions', '', dtable(
+      ['Reference', 'Item', 'Cost centre', 'Value|num', 'Method|mid', 'Stage|num'], [
+        ['<span class="tnum">RQ-2026-0912</span>', two('40 desktop computers', 'CBT Hall B refresh'), 'ICT Directorate', '<span class="tnum">₦34.0m</span>', pil('info', 'Open bidding'), pil('info', 'At Tenders Board')],
+        ['<span class="tnum">RQ-2026-0908</span>', two('Laboratory reagents', 'Semester consumables'), 'Health Sciences', '<span class="tnum">₦8.4m</span>', pil('info', 'Restricted tender'), pil('bad', 'Budget check failed')],
+        ['<span class="tnum">RQ-2026-0901</span>', two('Library book acquisition', '220 titles, CCMAS-aligned'), 'Library', '<span class="tnum">₦12.1m</span>', pil('info', 'Restricted tender'), pil('ok', 'PO raised')],
+        ['<span class="tnum">RQ-2026-0894</span>', two('Generator servicing', 'Quarterly, 3 units'), 'Works', '<span class="tnum">₦1.8m</span>', pil('info', 'Quotation'), pil('ok', 'Delivered')]
+      ], 940)) +
+    note('bad', 'RQ-2026-0908 failed the budget check',
+      'College of Health Sciences has ₦4m available against a ₦8.4m requisition. The commitment cannot be made until a virement is approved — the requisition is held, not rejected.');
+  }
+
+  function pTenders() {
+    return panel('RQ-2026-0912 — open competitive bidding', '40 desktop computers · ₦34.0m estimate', pbody(
+      '<div class="steps">' +
+        stepRow(true, 'Advertised', 'National dailies and the University website, 12 August · 21 days') +
+        stepRow(true, 'Bids submitted', '7 bids received, sealed until opening') +
+        stepRow(true, 'Public bid opening', '4 September, 10:00 · minutes recorded, bidders present') +
+        stepRow(true, 'Technical evaluation', '5 of 7 responsive') +
+        stepRow(false, 'Financial evaluation and award', 'Tenders Board sits 18 September') +
+      '</div>')) +
+    panel('Bid evaluation', 'Technical threshold 70%', dtable(
+      ['Bidder', 'Technical|mid', 'Bid price|num', 'Responsive|mid', 'Rank|num'], [
+        ['Chanchangi Systems Ltd', '<span class="tnum">88</span>', '<span class="tnum">₦31.4m</span>', pil('ok', 'Yes'), '<strong>1</strong>'],
+        ['Benue Digital Solutions', '<span class="tnum">81</span>', '<span class="tnum">₦32.8m</span>', pil('ok', 'Yes'), '<strong>2</strong>'],
+        ['Zenith Office Technologies', '<span class="tnum">79</span>', '<span class="tnum">₦33.9m</span>', pil('ok', 'Yes'), '<strong>3</strong>'],
+        ['Makurdi Computer Centre', '<span class="tnum">62</span>', '<span class="tnum">₦28.2m</span>', pil('bad', 'No — below threshold'), '—'],
+        ['Ashi Technologies', '<span class="tnum">—</span>', '<span class="tnum">₦29.9m</span>', pil('bad', 'No — tax clearance expired'), '—']
+      ], 760)) +
+    note('info', 'The lowest bid is not automatically the winner',
+      'Two bidders quoted less than the recommended award but failed technical evaluation — one on specification, one on an expired tax clearance certificate. Both reasons are recorded against the bid.');
+  }
+
+  function pStores() {
+    return tiles([
+      ['Stock lines', '1,842', null, 'Central stores'],
+      ['Below reorder level', '37', 'var(--red-ink)', 'Alert raised'],
+      ['Stock value', '₦184m', null, 'At cost'],
+      ['Last stock count', '31 Aug', null, 'Variance ₦412,000']
+    ]) +
+    panel('Items below reorder level', '', dtable(
+      ['Item', 'Location', 'On hand|mid', 'Reorder at|mid', 'Action|num'], [
+        ['A4 paper (reams)', 'Central stores', '<span class="tnum" style="color:var(--red-ink);font-weight:600">42</span>', '<span class="tnum">200</span>', btn('primary', 'Raise requisition')],
+        ['Toner — HP 26A', 'Central stores', '<span class="tnum" style="color:var(--red-ink);font-weight:600">6</span>', '<span class="tnum">30</span>', btn('primary', 'Raise requisition')],
+        ['Examination answer booklets', 'Exams store', '<span class="tnum" style="color:var(--red-ink);font-weight:600">1,100</span>', '<span class="tnum">5,000</span>', btn('urgent', 'Urgent — exams in Dec')],
+        ['Laboratory gloves (boxes)', 'Health Sciences store', '<span class="tnum" style="color:var(--red-ink);font-weight:600">18</span>', '<span class="tnum">80</span>', btn('primary', 'Raise requisition')]
+      ], 720)) +
+    panel('Fixed asset register', 'Sample — ICT Directorate', dtable(
+      ['Asset tag', 'Description', 'Custodian', 'Cost|num', 'Accum. dep.|num', 'Condition|num'], [
+        ['<span class="tnum">MOAUM/ICT/04188</span>', 'Dell PowerEdge R750 server', 'Data centre', '<span class="tnum">₦8.4m</span>', '<span class="tnum">₦3.36m</span>', pil('ok', 'Good')],
+        ['<span class="tnum">MOAUM/ICT/03902</span>', 'APC 20kVA UPS', 'Data centre', '<span class="tnum">₦4.2m</span>', '<span class="tnum">₦2.52m</span>', pil('info', 'Battery due')],
+        ['<span class="tnum">MOAUM/ICT/02744</span>', '100kVA generator', 'Data centre', '<span class="tnum">₦12.8m</span>', '<span class="tnum">₦7.68m</span>', pil('ok', 'Good')],
+        ['<span class="tnum">MOAUM/ICT/01744</span>', '30 × CBT workstations, Hall A', 'CBT Hall A', '<span class="tnum">₦18.0m</span>', '<span class="tnum">₦16.2m</span>', pil('bad', 'Due for disposal')]
+      ], 900));
+  }
+
+  /* ══ LIBRARY (staff) ═════════════════════════════════════════════ */
+
+  function lCirculation() {
+    return tiles([
+      ['Items in stock', '184,220', null, 'Print and audiovisual'],
+      ['On loan', '9,844', null, '5.3% of stock'],
+      ['Overdue', '1,102', 'var(--red-ink)', 'Fines posted automatically'],
+      ['E-resource sessions', '42,180', null, 'This session']
+    ]) +
+    panel('Circulation today', '', dtable(
+      ['Time|mid', 'Patron', 'Item', 'Action|mid', 'Due|num'], [
+        ['<span class="tnum">11:42</span>', two('ADAMU, Grace Mwuese', 'MOAUM/CSC/23/1487'), 'Introduction to Algorithms, 4th ed.', pil('ok', 'Issued'), '<span class="tnum">18 Sept</span>'],
+        ['<span class="tnum">11:38</span>', two('ABAAGU, Terkimbi John', 'MOAUM/CSC/23/1401'), 'Operating System Concepts, 10th ed.', pil('ok', 'Returned'), '—'],
+        ['<span class="tnum">11:20</span>', two('OGBU, Adakole Peter', 'MOAUM/LAW/19/0774'), 'Nigerian Legal System', pil('bad', 'Blocked — 2 overdue'), '—'],
+        ['<span class="tnum">10:55</span>', two('IORPUU, Terhemba (Dr.)', 'MOAUM/STF/1142'), 'Distributed Systems, 3rd ed.', pil('ok', 'Renewed'), '<span class="tnum">7 Oct</span>']
+      ], 840)) +
+    panel('Clearance requests', 'Required before transcripts, certificates and hostel re-allocation', dtable(
+      ['Student', 'Purpose', 'Items outstanding|mid', 'Fines|num', 'Decision|num'], [
+        [two('ADAMU, Grace Mwuese', 'MOAUM/CSC/23/1487'), 'Transcript', '<span class="tnum">1</span>', '<span class="tnum">₦100</span>', btn('ghost', 'Hold')],
+        [two('AGERA, Sesugh Emmanuel', 'MOAUM/CSC/21/0774'), 'Certificate collection', '<span class="tnum">0</span>', '<span class="tnum">₦0</span>', btn('go', 'Clear')],
+        [two('OGBU, Adakole Peter', 'MOAUM/LAW/19/0774'), 'Transcript', '<span class="tnum" style="color:var(--red-ink);font-weight:600">2</span>', '<span class="tnum">₦8,400</span>', btn('ghost', 'Hold')]
+      ], 780));
+  }
+
+  /* ══ HEALTH SERVICES (staff) ═════════════════════════════════════ */
+
+  function mClinic() {
+    return note('info', 'Clinical notes never leave this module',
+      'Registry sees a fitness status; the student 360 view shows an alert flag and nothing more. Every read of a patient record is logged against the clinician who opened it.') +
+    tiles([
+      ['Encounters today', '68', null, 'Walk-in and booked'],
+      ['Awaiting triage', '11', 'var(--red-ink)', 'Longest wait 24 min'],
+      ['Referrals this month', '32', null, 'To the Teaching Hospital'],
+      ['Pre-entry medicals', '3,410', null, '2026 intake · 87% complete']
+    ]) +
+    panel('Waiting list', 'University Health Services', dtable(
+      ['Arrived|mid', 'Patient', 'Presenting complaint', 'Triage|mid', 'Action|num'], [
+        ['<span class="tnum">11:18</span>', two('AKAAKA, Sesugh Daniel', 'MOAUM/CSC/23/1423'), 'Fever, chills — 2 days', pil('bad', 'Urgent'), btn('urgent', 'See now')],
+        ['<span class="tnum">11:26</span>', two('BEM, Doosuur Grace', 'MOAUM/LAW/21/0119'), 'Sprained wrist — sports', pil('info', 'Standard'), btn('primary', 'Open')],
+        ['<span class="tnum">11:31</span>', two('ADAMU, Grace Mwuese', 'MOAUM/CSC/23/1487'), 'Persistent headache — 4 days', pil('info', 'Standard'), btn('primary', 'Open')],
+        ['<span class="tnum">11:40</span>', two('UGBA, Terkimbi', 'MOAUM/STF/1877'), 'Blood pressure review', pil('ok', 'Routine'), btn('ghost', 'Open')]
+      ], 820)) +
+    panel('Pharmacy — stock alerts', 'Dispensing is posted against these balances', dtable(
+      ['Medicine', 'On hand|mid', 'Reorder at|mid', 'Expiry|mid', 'Status|num'], [
+        ['Artemether/Lumefantrine 20/120', '<span class="tnum">240</span>', '<span class="tnum">500</span>', '<span class="tnum sub2">Mar 2027</span>', pil('bad', 'Below level')],
+        ['Paracetamol 500mg', '<span class="tnum">4,800</span>', '<span class="tnum">2,000</span>', '<span class="tnum sub2">Aug 2027</span>', pil('ok', 'Adequate')],
+        ['Amoxicillin 500mg', '<span class="tnum">610</span>', '<span class="tnum">800</span>', '<span class="tnum sub2">Nov 2026</span>', pil('bad', 'Below level · expiring')],
+        ['ORS sachets', '<span class="tnum">1,200</span>', '<span class="tnum">600</span>', '<span class="tnum sub2">Jun 2028</span>', pil('ok', 'Adequate')]
+      ], 720));
+  }

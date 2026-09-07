@@ -1,0 +1,359 @@
+
+  /* ══ BULK UPLOAD OF RESULTS ═════════════════════════════════════════
+     The other way in. A lecturer who already keeps her marks in a
+     spreadsheet should not have to retype them, and a lecturer who does
+     not should not have to learn Excel. Both paths end at the same score
+     sheet and produce the same computed columns.
+
+     The flow is a staging area, not a load: download → fill → choose →
+     CHECK → commit. The check is the point. An import that writes as it
+     reads leaves a half-filled sheet behind when it hits a bad row, and
+     a half-filled sheet is worse than an empty one because it looks
+     finished. So the file is read whole, validated whole, reported on,
+     and only then written — or refused entirely.
+
+     Four things can be wrong with a row, and each is named rather than
+     counted: a matriculation number that is not on the approved
+     register; a mark outside its component's range; a cell that is
+     neither a number nor ABS; and a registered candidate the file does
+     not mention at all. The first three refuse the file. The fourth
+     does not — it is reported, because a lecturer may legitimately be
+     uploading half a sheet — but the roll will say so afterwards.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* ── the screen ──────────────────────────────────────────────── */
+  function tBulkUpload() {
+    var b = S.bulk;
+    return bulkSteps(b.step) +
+      (b.step === 1 ? bulkStep1()
+       : b.step === 2 ? bulkStep2()
+       : b.step === 3 ? bulkStep3()
+       : bulkStep4());
+  }
+
+  function bulkSteps(at) {
+    var names = ["Get the template", "Choose your file", "Check the report", "Commit"];
+    return '<div class="card"><div class="card__body">' +
+      '<div class="mdl__steps">' + names.map(function (n, i) {
+        var k = i + 1;
+        return '<span class="mdl__st' + (k === at ? ' is-on' : (k < at ? ' is-done' : '')) + '">' +
+          '<span class="mdl__sn">' + (k < at ? '&#10003;' : k) + '</span>' + n + '</span>';
+      }).join('') + '</div>' +
+      '<div class="sub2">' + sheetNow().code + ' &mdash; ' + sheetNow().title + ' &middot; ' +
+      courseRoll(sheetNow().code).length + ' registered candidates &middot; 2026/2027 first semester</div>' +
+    '</div></div>';
+  }
+
+  /* ── 1. the template ─────────────────────────────────────────── */
+  function bulkStep1() {
+    var SHEET = sheetNow();
+    return note('info', 'Start from the template, not from a blank spreadsheet',
+      'The template is <b>every candidate registered for this course</b>, in matriculation order, with the two mark columns empty. ' +
+      'It is generated from the live register the moment you ask for it, so the matriculation numbers in it are exactly the ones ' +
+      'the importer will match on. A file built from anything else &mdash; last year’s list, a departmental register, a ' +
+      'colleague’s copy &mdash; will have rows the importer refuses.') +
+
+    '<div class="grid grid--2">' +
+      panel('Download', 'Two files, so there is nothing to guess', pbody(
+        '<div style="display:flex;flex-direction:column;gap:9px">' +
+          '<button class="btn btn--primary" data-tpl="blank">Download the template (CSV)</button>' +
+          '<button class="btn btn--ghost" data-tpl="sample">Download a completed example</button>' +
+          btn('ghost', 'Printable blank sheet', ' data-doc="scoresheet"') +
+        '</div>' +
+        '<div class="sub2">The <b>template</b> is the roll with the mark columns empty &mdash; open it, type two columns, ' +
+        'save, come back. The <b>completed example</b> is the same file filled in, including the row that shows how an ' +
+        'absence is written.</div>')) +
+
+      panel('What the importer reads', 'Three columns. Everything else is yours', pbody(
+        '<div class="eyebrow">Required &mdash; the importer looks for these by name</div>' +
+        '<div class="tplcols">' +
+          [["Matriculation number", "What the row is matched on. A number not on the approved register is refused, never created."],
+           ["CA (max 30)", "A whole number 0&ndash;30, or <b>ABS</b>."],
+           ["Exam (max 70)", "A whole number 0&ndash;70, or <b>ABS</b>."]].map(function (c) {
+            return '<div class="tplcol"><b>' + c[0] + '</b><span>' + c[1] + '</span></div>';
+          }).join('') +
+        '</div>' +
+        '<div class="eyebrow" style="margin-top:11px">In the template for your benefit &mdash; delete them if you like</div>' +
+        '<div class="tplcols">' +
+          [["S/N", "So you can say &ldquo;row 31&rdquo; to a colleague."],
+           ["Name", "So you can check you are on the right line. A mismatch is reported, never written over the register."],
+           ["Programme", "So the eighteen candidates from other programmes are visible to you while you mark, and a stranger&rsquo;s matriculation number is not a surprise."],
+           ["Level", "Same reason: 300 and 400 Level candidates sit this paper together."]].map(function (c) {
+            return '<div class="tplcol"><b>' + c[0] + '</b><span>' + c[1] + '</span></div>';
+          }).join('') +
+        '</div>')) +
+    '</div>' +
+
+    note('info', 'Column <i>names</i> matter; column <i>positions</i> do not',
+      'The importer reads the heading row and finds the three columns it needs wherever they are. So you may delete the ' +
+      'programme and the level, reorder what is left, or add columns of your own &mdash; a working total, a note to ' +
+      'yourself, the script number &mdash; and the file still imports. A file with nothing in it but a matriculation ' +
+      'number and two marks imports exactly as well as the full template. <b>Nothing in the file can change a student&rsquo;s ' +
+      'programme, level or name</b>: the register decides those, and the file is only ever a carrier of marks.') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      btn('primary', 'I have my file &mdash; continue', ' data-bk="to:2"') +
+      btn('ghost', 'Type the marks in instead', ' data-go="t/sheet"') +
+    '</div>';
+  }
+
+  /* ── 2. choosing the file ────────────────────────────────────── */
+  function bulkStep2() {
+    return panel('Choose your completed file', 'Nothing is written until you have seen the report', pbody(
+      '<label class="drop" for="bk-file">' +
+        ico('box', 30, 'var(--chrome)', 1.6) +
+        '<div class="drop__t">Choose a file, or drop one here</div>' +
+        '<div class="drop__s">Comma-separated values (.csv). Save an Excel workbook as CSV before uploading &mdash; ' +
+        'one sheet, one course.</div>' +
+        '<input type="file" id="bk-file" accept=".csv,text/csv" hidden>' +
+      '</label>' +
+      (S.bulk.err ? '<div class="notice notice--bad" style="margin-top:2px">' + warnIcon(19) +
+        '<div><div class="notice__t" style="color:var(--red-deep)">That file could not be read</div>' +
+        '<p style="color:var(--red-deep)">' + S.bulk.err + '</p></div></div>' : '') +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+        btn('ghost', 'Use the completed example instead', ' data-bk="demo"') +
+        '<span class="sub2">Loads the example file this screen offers on the previous step, so the check can be walked without leaving the prototype.</span>' +
+      '</div>')) +
+
+    note('info', 'The file is read here and checked before anything is written',
+      'Nothing in this step reaches the score sheet. The importer reads every row, matches each one against the approved ' +
+      'register, and produces the report on the next screen. You decide whether to commit it.') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      btn('ghost', '&larr; Back to the template', ' data-bk="to:1"') +
+    '</div>';
+  }
+
+  /* ── 3. the report ───────────────────────────────────────────── */
+  function bulkStep3() {
+    var r = S.bulk.report;
+    if (!r) { return note('bad', 'No file has been checked yet', 'Choose a file first.',
+                          btn('primary', 'Choose a file', ' data-bk="to:2"')); }
+    var refusals = r.bad.length;
+    var clean = refusals === 0;
+
+    return (clean
+      ? note('ok', 'The file checks out &mdash; ' + r.ok + ' of ' + r.n + ' rows will be written',
+          'Every matriculation number in the file is on the approved register, every mark is inside its range, and every ' +
+          'cell is either a number or ABS. Committing writes these marks onto the score sheet, where you can still change ' +
+          'any of them before you attest.' +
+          (r.missing.length ? ' <b>' + r.missing.length + ' registered candidate' + (r.missing.length === 1 ? '' : 's') +
+            ' the file does not mention</b> will be left blank, and the sheet will say so.' : ''))
+      : note('bad', refusals + ' row' + (refusals === 1 ? '' : 's') + ' cannot be accepted, so none of the file is written',
+          'The file is accepted whole or not at all. A half-imported sheet is worse than an empty one, because it looks ' +
+          'finished. Correct the rows named below in your spreadsheet and upload it again &mdash; or go to the score sheet ' +
+          'and type these few by hand.')) +
+
+    (S.bulk.cols
+      ? '<div class="card"><div class="card__body" style="gap:7px">' +
+          '<div class="eyebrow">What the importer matched on</div>' +
+          '<div class="sub2">Your file has <b class="tnum">' + S.bulk.cols.n + '</b> columns. Three were used: ' +
+          S.bulk.cols.names.map(function (c) {
+            return '<code style="font-family:var(--mono,monospace);background:var(--bg);border:1px solid var(--line-2);' +
+                   'border-radius:4px;padding:1px 6px">' + esc(String(c || "").trim()) + '</code>';
+          }).join(' &middot; ') +
+          '. The rest were read past and changed nothing.</div>' +
+        '</div></div>'
+      : '') +
+
+    tiles([
+      ["Rows read", String(r.n), null, "Excluding the heading row"],
+      ["Matched to the register", String(r.ok), r.ok ? "var(--green-ink)" : null, "Will be written on commit"],
+      ["Refused", String(refusals), refusals ? "var(--red-ink)" : null, refusals ? "Named below" : "Nothing refused"],
+      ["Registered but not in the file", String(r.missing.length),
+        r.missing.length ? "var(--chrome)" : null, r.missing.length ? "Left blank, and reported" : "The file is complete"]
+    ]) +
+
+    (refusals
+      ? panel('Rows the importer refuses', 'Each one names the row in your file and what is wrong with it', dtable(
+          ["Row|mid", "Matriculation number", "What the file says", "Why it is refused"],
+          r.bad.map(function (x) {
+            return ['<span class="tnum">' + x.line + '</span>',
+              '<span class="tnum">' + esc(x.m || "&mdash;") + '</span>',
+              '<span class="sub2">CA <b>' + esc(x.ca) + '</b> &middot; Exam <b>' + esc(x.ex) + '</b></span>',
+              '<span style="color:var(--red-ink)">' + x.why + '</span>'];
+          }), 880))
+      : '') +
+
+    (r.missing.length
+      ? panel('Registered candidates the file does not mention', 'Not an error &mdash; but the sheet will be incomplete until they have an outcome', dtable(
+          ["Matriculation number", "Name", "Programme"],
+          r.missing.slice(0, 12).map(function (st) {
+            return ['<span class="tnum">' + st.m + '</span>', '<strong>' + st.name + '</strong>', progTag(st)];
+          }), 620))
+      : '') +
+
+    (r.mismatch.length
+      ? note('info', r.mismatch.length + ' name' + (r.mismatch.length === 1 ? '' : 's') + ' in the file differ from the register',
+          'The register decides the name, so nothing is overwritten &mdash; this is reported only, in case it means the file ' +
+          'was built from an older list. ' + r.mismatch.slice(0, 3).map(function (x) {
+            return '<b class="tnum">' + esc(x.m) + '</b>: file says &ldquo;' + esc(x.fileName) + '&rdquo;, register says &ldquo;' + x.regName + '&rdquo;';
+          }).join('; ') + '.')
+      : '') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      (clean ? btn('go', 'Commit ' + r.ok + ' marks to the score sheet', ' data-bk="commit"') : '') +
+      btn('ghost', 'Choose a different file', ' data-bk="to:2"') +
+      btn('ghost', 'Type the marks in instead', ' data-go="t/sheet"') +
+    '</div>';
+  }
+
+  /* ── 4. committed ────────────────────────────────────────────── */
+  function bulkStep4() {
+    var r = S.bulk.report || { ok: 0, missing: [] }, t = skTotals();
+    return note('ok', r.ok + ' marks written to the CSC 311 score sheet',
+      'They are on the sheet as a <b>draft</b>, exactly as if you had typed them, and the total, grade and point were ' +
+      'computed from them by the same engine. Nothing has been submitted: you can still change any mark, and the sheet ' +
+      'is not attested until you attest it.') +
+
+    tiles([
+      ["Written", String(r.ok), "var(--green-ink)", "From your file"],
+      ["Sheet now entered", t.done + " of " + t.n, t.ready ? "var(--green-ink)" : null,
+        t.ready ? "Complete" : "Draft"],
+      ["Still outstanding", String(t.left + t.bad), (t.left + t.bad) ? "var(--red-ink)" : null,
+        (t.left + t.bad) ? "Enter or mark absent" : "Nothing outstanding"],
+      ["Attested", "No", null, "You have not signed it yet"]
+    ]) +
+
+    ((t.left + t.bad)
+      ? note('bad', (t.left + t.bad) + ' candidate' + ((t.left + t.bad) === 1 ? '' : 's') + ' still without an outcome',
+          'The file did not carry them, so the sheet is not yet complete. Open it and type the few that are left, or mark ' +
+          'them absent. The sheet cannot be attested with a blank row.')
+      : '') +
+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      btn('primary', 'Open the score sheet', ' data-go="t/sheet"') +
+      btn('ghost', 'Upload another file', ' data-bk="again"') +
+    '</div>';
+  }
+
+  /* ── reading and checking the file ─────────────────────────────
+     Columns are matched by their HEADER, never by their position.
+     That distinction is the whole answer to "why is the programme in
+     this file?": it is there for the person, not for the importer, and
+     because nothing is positional she may delete it, move it, or add
+     columns of her own without breaking anything. A file whose only
+     columns are the matriculation number and the two marks imports
+     exactly as well as the full template.
+
+     Only three columns are looked for. Everything else in the file —
+     the serial number, the name, the programme, the level, a running
+     total, a colleague's comments — is carried past untouched. */
+  function bulkParse(text) {
+    var SHEET = sheetNow();
+    var lines = text.split(/\r\n|\n|\r/).filter(function (l) { return l.trim() !== ""; });
+    if (!lines.length) { return { err: "The file is empty." }; }
+
+    var head = bulkSplit(lines[0]);
+    var ix = bulkHeader(head);
+    if (ix.m < 0 || ix.ca < 0 || ix.ex < 0) {
+      var miss = [];
+      if (ix.m < 0)  { miss.push("a <b>matriculation number</b> column"); }
+      if (ix.ca < 0) { miss.push("a <b>CA</b> column"); }
+      if (ix.ex < 0) { miss.push("an <b>examination</b> column"); }
+      return { err: "The first row of this file does not name " + miss.join(" or ") +
+        ". The importer reads column headings rather than column positions, so the heading has to say what the " +
+        "column is &mdash; anything containing &ldquo;matric&rdquo;, &ldquo;CA&rdquo; and &ldquo;exam&rdquo; will do. " +
+        "The row it read was: <i>" + esc(head.slice(0, 8).join(", ")) + "</i>. " +
+        "If this is an Excel workbook, save it as CSV first." };
+    }
+
+    var rows = [];
+    for (var i = 1; i < lines.length; i++) {
+      var f = bulkSplit(lines[i]);
+      rows.push({ line: i + 1,
+                  m:  (f[ix.m] || "").trim(),
+                  name: ix.name >= 0 ? (f[ix.name] || "").trim() : "",
+                  ca: (f[ix.ca] || "").trim(),
+                  ex: (f[ix.ex] || "").trim() });
+    }
+    if (!rows.length) { return { err: "The file has a heading row but no rows under it." }; }
+    return { rows: rows, cols: { n: head.length, used: 3,
+             names: [head[ix.m], head[ix.ca], head[ix.ex]] } };
+  }
+
+  /* find the three columns the importer needs, whatever they are called
+     and wherever they sit */
+  function bulkHeader(fields) {
+    var ix = { m: -1, name: -1, ca: -1, ex: -1 };
+    fields.forEach(function (raw, i) {
+      var h = String(raw || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (ix.m < 0 && /matric|regno|registrationnumber/.test(h)) { ix.m = i; return; }
+      if (ix.ex < 0 && /exam/.test(h)) { ix.ex = i; return; }
+      if (ix.ca < 0 && (/^ca\d*$/.test(h) || /^ca(max|score|mark)/.test(h) ||
+                        /continuousassessment/.test(h) || /^testscore/.test(h))) { ix.ca = i; return; }
+      if (ix.name < 0 && /^(name|fullname|surname|candidatename|studentname)/.test(h)) { ix.name = i; }
+    });
+    return ix;
+  }
+
+  /* a comma splitter that respects quotes, because a name may contain one */
+  function bulkSplit(line) {
+    var out = [], cur = "", q = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else { q = !q; } }
+      else if (ch === "," && !q) { out.push(cur); cur = ""; }
+      else { cur += ch; }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  function bulkCheck(rows) {
+    var SHEET = sheetNow();
+    var roll = courseRoll(SHEET.code), byM = {}, seen = {};
+    roll.forEach(function (st) { byM[st.m] = st; });
+
+    var ok = [], bad = [], mismatch = [];
+    rows.forEach(function (r) {
+      var st = byM[r.m];
+      if (!r.m) { bad.push(mk(r, "The row has no matriculation number")); return; }
+      if (!st) { bad.push(mk(r, "Not on the approved register for this course")); return; }
+      if (seen[r.m]) { bad.push(mk(r, "The same candidate appears twice in this file")); return; }
+      seen[r.m] = true;
+
+      var ca = bulkCell(r.ca, SHEET.caMax), ex = bulkCell(r.ex, SHEET.exMax);
+      if (ca.err) { bad.push(mk(r, "Continuous assessment: " + ca.err)); return; }
+      if (ex.err) { bad.push(mk(r, "Examination: " + ex.err)); return; }
+      if (ca.abs !== ex.abs) {
+        bad.push(mk(r, "One column says ABS and the other carries a mark &mdash; a candidate either sat or did not"));
+        return;
+      }
+      if (r.name && st.name.toUpperCase() !== r.name.toUpperCase()) {
+        mismatch.push({ m: r.m, fileName: r.name, regName: st.name });
+      }
+      ok.push({ m: r.m, abs: ca.abs, ca: ca.abs ? "" : String(ca.v), ex: ca.abs ? "" : String(ex.v) });
+    });
+
+    var missing = roll.filter(function (st) { return !seen[st.m]; });
+    return { n: rows.length, ok: ok.length, rows: ok, bad: bad, missing: missing, mismatch: mismatch };
+
+    function mk(r, why) { return { line: r.line, m: r.m, ca: r.ca || "—", ex: r.ex || "—", why: why }; }
+  }
+
+  function bulkCell(raw, max) {
+    var s = String(raw || "").trim();
+    if (s === "") { return { err: "the cell is empty &mdash; a blank is neither a mark nor an absence" }; }
+    if (/^abs(ent)?$/i.test(s)) { return { abs: true }; }
+    if (!/^\d+$/.test(s)) { return { err: "&ldquo;" + esc(s) + "&rdquo; is neither a whole number nor ABS" }; }
+    var n = Number(s);
+    if (n > max) { return { err: "&ldquo;" + s + "&rdquo; is above the maximum of " + max }; }
+    return { v: n, abs: false };
+  }
+
+  /* ── committing ──────────────────────────────────────────────── */
+  function bulkCommit() {
+    skSeed();
+    (S.bulk.report.rows || []).forEach(function (r) {
+      S.marks[r.m] = { ca: r.ca, ex: r.ex, abs: !!r.abs };
+    });
+    S.bulk.step = 4;
+  }
+
+  /* the completed example, as if it had been downloaded and uploaded */
+  function bulkDemoRows() {
+    return scoreTemplate("sample").rows.map(function (r, i) {
+      return { line: i + 2, m: r[1], name: r[2], ca: r[5], ex: r[6] };
+    });
+  }

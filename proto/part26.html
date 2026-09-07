@@ -1,0 +1,317 @@
+  /* ══════════════════════════════════════════════════════════════════
+     RESULT PROCESSING
+
+     One journey, ten stages, and every stage owned by a named office:
+
+       Student → Course registration → Lecturer → CA and examination
+       scores → Department → Faculty → Exams & Records → Senate →
+       the student's result → the transcript
+
+     The spine matters more than any one screen on it. A mark that
+     appears on a transcript can be walked back through every desk it
+     passed, and a result set that has stopped can be seen to have
+     stopped, with the name of the person it is waiting on.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* [key, label, office, what happens here, what it cannot pass without] */
+  var RP_STAGES = [
+    ["student", "Student", "The student",
+      "The student is admitted, matriculated and financially cleared for the session.",
+      "No clearance, no registration — BR-001, checked again inside the committing transaction."],
+    ["reg", "Course registration", "Student, approved by the HOD",
+      "Courses are chosen within the unit minimum and maximum and approved by the Head of Department.",
+      "A candidate not on the approved register has no score sheet row, and cannot acquire one later."],
+    ["lecturer", "Lecturer", "Course lecturer",
+      "The score sheet opens in the name of the lecturer the HOD allocated, over the approved register.",
+      "The sheet is generated, never uploaded from a list somebody kept separately."],
+    ["scores", "CA &amp; examination scores", "Course lecturer",
+      "Continuous assessment out of 30 and examination out of 70, entered or uploaded, then attested.",
+      "Every row carries a mark, an ABS or a withheld reason. ABS is not zero, and the engine treats them differently."],
+    ["dept", "Department", "Head of Department",
+      "The departmental board reads the distribution against the course's own history before it approves.",
+      "The second examiner must have verified. The person who entered the marks cannot be the person who verifies them."],
+    ["faculty", "Faculty", "Dean, in Faculty Board",
+      "The Faculty Board approves the set, or returns it to the department with a reason on the record.",
+      "An outlier fail rate is flagged against the course's five-year mean, and must be spoken to."],
+    ["exams", "Exams &amp; Records", "Academic Office, Registry",
+      "The Registry compiles the broadsheet, computes GPA and CGPA, and prepares the Senate schedule.",
+      "Every expected sheet is in. A missing sheet holds the whole level, not just the course."],
+    ["senate", "Senate", "Senate, on the Registrar's minute",
+      "Senate approves the results as a body and the minute number is recorded against every set in it.",
+      "Nothing is published before the minute exists. The minute is the authority, not the screen."],
+    ["result", "Student result", "The student",
+      "The result appears to the student with the grade, the GPA, the CGPA and the standing.",
+      "Published on the Senate minute, and never before — the embargo is enforced by the data, not by discipline."],
+    ["transcript", "Transcript", "Registrar",
+      "The transcript is compiled from approved sets only, all attempts included, both University names.",
+      "A set not approved by Senate does not exist to the transcript compiler."]
+  ];
+
+  /* result sets moving through the pipeline right now */
+  var RP_SETS = [
+    ["CSC 311", "Algorithms &amp; Complexity", "Computer Science", 84, 4, 11, "Dr. T. Iorpuu"],
+    ["CSC 321", "Database Systems", "Computer Science", 84, 5, 9, "Dr. T. Iorpuu"],
+    ["MTH 212", "Linear Algebra II", "Mathematics", 118, 5, 61, "Dr. S. Akaa"],
+    ["CSC 331", "Operating Systems", "Computer Science", 79, 3, 14, "Dr. P. Tsavnande"],
+    ["CSC 341", "Computer Networks", "Computer Science", 76, 3, 8, "Mrs. L. Adoo"],
+    ["STA 311", "Inference I", "Mathematics", 92, 3, 22, "Prof. B. O. Atu"],
+    ["CSC 411", "Distributed Systems", "Computer Science", 46, 7, 6, "Prof. A. Ityavyar"],
+    ["GST 301", "Entrepreneurship", "General Studies", 1840, 2, 4, "GST Directorate"],
+    ["CSC 351", "Software Engineering", "Computer Science", 81, 3, 12, "Dr. I. O. Ogwuche"],
+    ["MTH 311", "Real Analysis", "Mathematics", 64, 4, 31, "Dr. S. Akaa"],
+    ["CSC 361", "Compiler Construction", "Computer Science", 58, 2, 19, "Dr. P. Tsavnande"],
+    ["STA 321", "Regression Analysis", "Mathematics", 71, 5, 16, "Dr. M. Ochigbo"]
+  ];
+
+  var RP_IDX = {};
+  (function () { for (var i = 0; i < RP_STAGES.length; i++) { RP_IDX[RP_STAGES[i][0]] = i; } }());
+
+  function rpStageName(i) { return RP_STAGES[i] ? RP_STAGES[i][1] : "—"; }
+
+  function rpPill(i) {
+    if (i >= 7) { return pil('ok', rpStageName(i)); }
+    if (i <= 3) { return pil('bad', rpStageName(i)); }
+    return pil('info', rpStageName(i));
+  }
+
+  /* the spine, drawn once and reused */
+  function rpSpine(at) {
+    return '<div class="rp">' + RP_STAGES.map(function (s, i) {
+      var state = i < at ? "done" : i === at ? "now" : "todo";
+      return '<button class="rp__s is-' + state + '" data-rp="at:' + i + '">' +
+        '<span class="rp__n tnum">' + (i + 1) + '</span>' +
+        '<span class="rp__t">' + s[1] + '</span>' +
+        '<span class="rp__o">' + s[2] + '</span>' +
+      '</button>';
+    }).join('') + '</div>';
+  }
+
+  function tPipeline() {
+    var at = S.rp.at, s = RP_STAGES[at];
+    return note('info', 'One journey, and every stage has a name on it',
+      'A result is not a file that appears at the Registry in December. It is a record that starts when a student registers a course and ends on a transcript, and at every point in between there is exactly one office that holds it and one thing that has to be true before it moves. Choose a stage below to see which.') +
+
+    panel('The result pipeline', '2026/2027 &middot; First semester', pbody(rpSpine(at))) +
+
+    panel('Stage ' + (at + 1) + ' &middot; ' + s[1], s[2], pbody(
+      '<div class="grid grid--2">' +
+        '<div><div class="eyebrow">What happens here</div><p style="margin:5px 0 0;line-height:1.6">' + s[3] + '</p></div>' +
+        '<div><div class="eyebrow">What it cannot pass without</div><p style="margin:5px 0 0;line-height:1.6">' + s[4] + '</p></div>' +
+      '</div>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:6px">' +
+        '<button class="btn btn--ghost btn--sm" data-rp="back"' + (at === 0 ? ' disabled' : '') + '>&larr; Previous stage</button>' +
+        '<button class="btn btn--primary btn--sm" data-rp="fwd"' + (at === RP_STAGES.length - 1 ? ' disabled' : '') + '>Next stage &rarr;</button>' +
+        btn('ghost', 'Open the approval chain', ' data-go="t/chain"') +
+      '</div>')) +
+
+    tiles([
+      ["Expected sets", "142", null, "Faculty of Science, first semester"],
+      ["Past Senate", "98", "var(--green-ink)", "69% of the faculty"],
+      ["In the workflow", "37", "var(--chrome)", "Moving between desks"],
+      ["Not yet submitted", "7", "var(--red-ink)", "Senate sits in 6 days"]
+    ]) +
+
+    panel('Where every set is now', 'Newest movement first', dtable(
+      ["Course", "Department", "Candidates|mid", "Fail rate|mid", "Stage", "Waiting on", "Action|num"],
+      RP_SETS.map(function (r) {
+        var st = rpAt(r[0], r[4]), fp = setFailPct(r[0]), hot = fp > 40;
+        return [two('<span class="tnum">' + r[0] + '</span>', r[1]), '<span class="sub2">' + r[2] + '</span>',
+          '<span class="tnum">' + r[3].toLocaleString() + '</span>',
+          '<span class="tnum"' + (hot ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' + fp + '%</span>',
+          rpPill(st),
+          st >= 8 ? '<span class="sub2">Nobody &mdash; published</span>' : '<span class="sub2">' + RP_STAGES[st][2] + '</span>',
+          btn('ghost', 'Open', ' data-go="t/sheet"')];
+      }))) +
+
+    note('bad', 'MTH 212 is failing 61 per cent of a class of 118',
+      'The course\'s own five-year mean is 19 per cent. That is not a result to approve on the nod at Faculty Board, and it is not a result to refuse either: it is a result to ask a question about, in a meeting, with the lecturer present. The portal will carry it forward if the Board approves it &mdash; it simply refuses to let it pass unremarked.',
+      btn('primary', 'Open the Faculty Board queue', ' data-go="t/approvals"'));
+  }
+
+  /* ── the broadsheet the Registry compiles ────────────────────────
+     GPA is computed here from the same grading scheme the Super
+     Administrator maintains, so the figures on this screen and the
+     figures on a transcript come from one place. */
+
+  var GRADES = [
+    ["A", 70, 100, 5, "var(--green-ink)"],
+    ["B", 60, 69, 4, "var(--green-ink)"],
+    ["C", 50, 59, 3, "var(--chrome)"],
+    ["D", 45, 49, 2, "var(--chrome)"],
+    ["E", 40, 44, 1, "var(--red-ink)"],
+    ["F", 0, 39, 0, "var(--red-ink)"]
+  ];
+
+  var CLASSES = [
+    ["First Class Honours", 4.50, 5.00],
+    ["Second Class Honours (Upper Division)", 3.50, 4.49],
+    ["Second Class Honours (Lower Division)", 2.40, 3.49],
+    ["Third Class Honours", 1.50, 2.39],
+    ["Pass", 1.00, 1.49]
+  ];
+
+  function gradeOf(score) {
+    for (var i = 0; i < GRADES.length; i++) {
+      if (score >= GRADES[i][1] && score <= GRADES[i][2]) { return GRADES[i]; }
+    }
+    return GRADES[GRADES.length - 1];
+  }
+  function classOf(cgpa) {
+    for (var i = 0; i < CLASSES.length; i++) {
+      if (cgpa >= CLASSES[i][1] && cgpa <= CLASSES[i][2]) { return CLASSES[i][0]; }
+    }
+    return "Fail";
+  }
+
+  /* the six courses a 300-level Computer Science student carries */
+  var BS_COURSES = [["CSC 311", 3], ["CSC 321", 3], ["MTH 212", 3], ["CSC 331", 3], ["CSC 341", 3], ["GST 301", 2]];
+
+  function bsRows() {
+    return REC_NAMES.filter(function (r) { return r[2] === 300; }).map(function (st) {
+      var pts = 0, units = 0, marks = BS_COURSES.map(function (c) {
+        var m = seedNum(st[0] + c[0], 28, 92);
+        var g = gradeOf(m);
+        pts += g[3] * c[1]; units += c[1];
+        return [m, g];
+      });
+      var gpa = units ? pts / units : 0;
+      return { st: st, marks: marks, units: units, pts: pts, gpa: gpa };
+    });
+  }
+
+  function tBroadsheet() {
+    var rows = bsRows();
+    var passed = rows.filter(function (r) { return r.gpa >= 1; }).length;
+    var mean = rows.reduce(function (a, r) { return a + r.gpa; }, 0) / (rows.length || 1);
+
+    return note('info', 'The broadsheet is computed, not typed',
+      'Every figure on this sheet comes from the approved score sheets and the grading scheme in force for the session. Nobody keys a GPA. If a mark changes at Faculty Board, this sheet changes with it, and so does the result the student sees and the transcript the Registrar signs &mdash; because they are one calculation, not three spreadsheets.') +
+
+    note('info', 'A broadsheet is by programme and level. A score sheet is by course.',
+      'They are different lists on purpose and it matters that nobody confuses them. A score sheet carries every candidate registered for one course, from every programme the course was made available to &mdash; the CSC 311 sheet carries Physics, Economics and Mathematics Education students. A broadsheet carries every candidate in one programme at one level, across all their courses, because a GPA belongs to a student in a programme. A student from another programme who took CSC 311 is marked on the CSC 311 sheet and appears on her own department&rsquo;s broadsheet, where her GPA is worked out.') +
+
+    scopeBar('the broadsheet', { course: false }) +
+
+    tiles([
+      ["Candidates", String(rows.length), null, "300 Level &middot; First semester"],
+      ["Mean GPA", mean.toFixed(2), null, "Unweighted, this level"],
+      ["Passed every course", String(passed), "var(--green-ink)", Math.round(passed / rows.length * 100) + "% of the level"],
+      ["Carrying over", String(rows.length - passed), "var(--red-ink)", "One or more F grades"]
+    ]) +
+
+    panel('Broadsheet &mdash; 300 Level, First semester',
+      'Grading scheme v3, in force from 2024/2025',
+      dtable(
+        ["Matriculation number", "Name"].concat(BS_COURSES.map(function (c) { return c[0] + "|mid"; }))
+          .concat(["Units|mid", "Points|mid", "GPA|mid", "Standing|num"]),
+        rows.map(function (r) {
+          return ['<span class="tnum">' + r.st[0] + '</span>', "<strong>" + r.st[1] + "</strong>"]
+            .concat(r.marks.map(function (m) {
+              return '<span class="tnum">' + m[0] + '</span><div class="sub2" style="color:' + m[1][4] +
+                ';font-weight:700">' + m[1][0] + '</div>';
+            }))
+            .concat(['<span class="tnum">' + r.units + '</span>',
+              '<span class="tnum">' + r.pts + '</span>',
+              '<span class="tnum" style="font-weight:700">' + r.gpa.toFixed(2) + '</span>',
+              r.gpa >= 1 ? pil('ok', 'Pass') : pil('bad', 'Carryover')]);
+        }))) +
+
+    panel('The grading scheme this sheet used', 'Effective-dated: a 2019 result is graded by the 2019 scheme',
+      dtable(["Grade|mid", "From|mid", "To|mid", "Points|mid", "Meaning"],
+        GRADES.map(function (g) {
+          return ['<b style="color:' + g[4] + '">' + g[0] + '</b>',
+            '<span class="tnum">' + g[1] + '</span>', '<span class="tnum">' + g[2] + '</span>',
+            '<span class="tnum">' + g[3] + '</span>',
+            g[3] >= 4 ? "Pass" : g[3] >= 1 ? "Pass" : "Fail &mdash; the course is carried over"];
+        })));
+  }
+
+  /* ── Senate ──────────────────────────────────────────────────── */
+
+  function tSenate() {
+    var approved = S.rp.senate;
+    return note(approved ? 'ok' : 'info',
+      approved ? 'Senate minute SEN/2026/114 is recorded' : 'Nothing is published before the minute exists',
+      approved
+        ? 'Ninety-eight result sets carry minute SEN/2026/114 of 12 September 2026. Every one of them is now visible to its candidates, appears on a statement of results, and is available to the transcript compiler. The minute number is on the face of each document.'
+        : 'Senate approves results as a body, on a schedule prepared by the Registry. Until the minute is recorded, a result set that has passed every other desk is still not a result: the student sees nothing, the statement of results cannot be issued, and the transcript compiler does not see the set at all.') +
+
+    tiles([
+      ["On the schedule", "98", null, "Faculty of Science"],
+      ["Withheld by the Board", "3", "var(--red-ink)", "Returned with a reason"],
+      ["Sets not submitted", "7", "var(--red-ink)", "Named in the minute as outstanding"],
+      ["Minute", approved ? "SEN/2026/114" : "Not yet", approved ? "var(--green-ink)" : "var(--chrome)", approved ? "12 September 2026" : "Senate sits 12 September"]
+    ]) +
+
+    panel('Senate schedule &mdash; 2026/2027 First semester', 'Prepared by the Registry', dtable(
+      ["Faculty", "Sets|mid", "Candidates|mid", "Mean GPA|mid", "Outstanding|mid", "Recommendation|num"], [
+        ["Science", '<span class="tnum">98</span>', '<span class="tnum">4,182</span>', '<span class="tnum">3.11</span>',
+          '<span class="tnum" style="color:var(--red-ink)">7</span>', pil('ok', 'Approve, outstanding named')],
+        ["Education", '<span class="tnum">76</span>', '<span class="tnum">3,904</span>', '<span class="tnum">3.34</span>', '<span class="tnum">0</span>', pil('ok', 'Approve')],
+        ["Social Sciences", '<span class="tnum">64</span>', '<span class="tnum">3,377</span>', '<span class="tnum">3.02</span>', '<span class="tnum">2</span>', pil('ok', 'Approve, outstanding named')],
+        ["Law", '<span class="tnum">31</span>', '<span class="tnum">1,209</span>', '<span class="tnum">2.88</span>', '<span class="tnum">0</span>', pil('ok', 'Approve')],
+        ["Health Sciences", '<span class="tnum">42</span>', '<span class="tnum">988</span>', '<span class="tnum">3.41</span>',
+          '<span class="tnum" style="color:var(--red-ink)">4</span>', pil('bad', 'Defer &mdash; MBBS Part II incomplete')]
+      ])) +
+
+    panel('Record the resolution', 'The Registrar, after Senate has risen', pbody(
+      '<div class="grid grid--3">' +
+        '<div class="field"><label for="sen-no">Minute number</label>' +
+          '<input id="sen-no" class="ctl tnum" value="' + (approved ? "SEN/2026/114" : "") + '" placeholder="SEN/2026/…" autocomplete="off"></div>' +
+        '<div class="field"><label for="sen-date">Date of the sitting</label>' +
+          '<input id="sen-date" class="ctl" value="12 September 2026" autocomplete="off"></div>' +
+        '<div class="field"><label for="sen-chair">Presided</label>' +
+          '<input id="sen-chair" class="ctl" value="Prof. T. T. Alabar, Vice-Chancellor" autocomplete="off"></div>' +
+      '</div>' +
+      '<div class="field"><label for="sen-res">Resolution as minuted</label>' +
+        '<textarea id="sen-res" class="ctl" rows="2">Senate approved the results of the 2026/2027 first semester examinations for the Faculties of Science, Education, Social Sciences and Law, and deferred the Faculty of Health Sciences pending the completion of MBBS Part II.</textarea></div>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+        (approved
+          ? btn('ghost', 'Withdraw the minute', ' data-rp="unsenate"') + btn('primary', 'Open publication', ' data-go="t/publish"')
+          : '<button class="btn btn--primary" data-rp="senate">Record the minute and release</button>') +
+        btn('ghost', 'Print the Senate schedule', ' data-doc="scopeexport"') +
+      '</div>' +
+      note('info', 'Two people, not one',
+        'The minute is recorded by the Registry and countersigned by the Registrar. The office that compiled the schedule does not also certify that Senate passed it &mdash; BR-006 applies to a minute exactly as it applies to a mark.')));
+  }
+
+  /* ── publication ─────────────────────────────────────────────── */
+
+  function tPublish() {
+    var live = S.rp.senate;
+    return note(live ? 'ok' : 'bad',
+      live ? 'Ninety-eight sets are live to their candidates' : 'Publication is held: there is no Senate minute',
+      live
+        ? 'Released at 18:02 on 12 September under minute SEN/2026/114. A candidate whose set was withheld sees that it was withheld and why, rather than an empty screen &mdash; which is the difference between a portal that informs and a portal that generates a queue at the Registry.'
+        : 'The release control below is not disabled as a courtesy. There is no minute to publish under, so there is nothing to release: the embargo lives in the data, and a database that has no approved set has nothing to show a student.') +
+
+    tiles([
+      ["Sets released", live ? "98" : "0", live ? "var(--green-ink)" : "var(--red-ink)", live ? "12 Sept, 18:02" : "Held"],
+      ["Candidates affected", live ? "4,182" : "0", null, "Faculty of Science"],
+      ["Statements issued", live ? "1,204" : "0", null, "Downloaded by students"],
+      ["Queries opened", live ? "18" : "0", null, "Result complaints, 5 days"]
+    ]) +
+
+    panel('What a release does, in order', '', pbody(idSteps([
+      [live ? "done" : "now", "The minute is recorded against every set in the schedule",
+        "Not against a batch job or a date. A set carries its minute number for the rest of its life, and so does every document generated from it."],
+      [live ? "done" : "todo", "The results become visible to their candidates",
+        "Grade, GPA, CGPA and standing. A withheld set shows as withheld, with the reason the Board recorded."],
+      [live ? "done" : "todo", "Statements of results become issuable",
+        "On letterhead, with the minute number and a verification code, and stating on its face that it is not a transcript."],
+      [live ? "done" : "todo", "The transcript compiler can see the set",
+        "A transcript is compiled from Senate-approved sets only. Before the minute, the set does not exist to it."],
+      [live ? "done" : "todo", "The result-query window opens for five working days",
+        "A query is against a mark, is routed to the department that owns the course, and is answered on the record."]
+    ]))) +
+
+    panel('Release control', live ? 'Released' : 'Held at the embargo', pbody(
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+        (live
+          ? btn('ghost', 'Withdraw the release', ' data-rp="unsenate"') +
+            btn('primary', 'Open a student result', ' data-go="s/results"')
+          : '<button class="btn btn--primary" disabled>Release to candidates</button>' +
+            '<span class="sub2">Record the Senate minute first.</span>' +
+            btn('ghost', 'Go to Senate', ' data-go="t/senate"')) +
+      '</div>'));
+  }

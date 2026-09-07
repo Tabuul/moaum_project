@@ -1,0 +1,280 @@
+
+  /* ══ HOSTEL AND ACCOMMODATION ═══════════════════════════════════════
+     Module HST. The Housing office's nav has promised this screen since
+     the shell was written and it did not exist — the link went nowhere.
+
+     HST-1 §1 states the reason the module exists in one sentence:
+     "Allocation is where discretion does the most damage, so it is
+     designed out." Everything below is that sentence made operable.
+
+     Discretion has two doors, not one, and both are shut here:
+
+       · the draw itself — a published seed, re-runnable to the same
+         result by anyone holding it, so a draw cannot be quietly re-run
+         until it produces a wanted list;
+       · the lapsed bed — when an allocation goes unpaid the bed does not
+         come back to this office to be given away. It goes to the next
+         name on the same list.
+
+     The second is the one universities forget. A transparent ballot with
+     a discretionary reserve list is a discretionary allocation with extra
+     steps, and every bed that lapses is a bed the office could sell.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var HS_SEED = "MOAUM/HST/2026-2027/0413";
+  var HS_SEED_ALT = "MOAUM/HST/2026-2027/0415";
+
+  /* halls: name, sex, rooms, beds, held by priority, balloted, out of service */
+  var HS_HALLS = [
+    ["Akpehe Hall",     "Female", 128, 512, 352, 152,  8],
+    ["Mbanyam Hall",    "Female", 108, 432, 288, 136,  8],
+    ["Idye Hall",       "Male",   132, 528, 356, 168,  4],
+    ["Wurukum Hall",    "Male",   118, 472, 316, 152,  4],
+    ["Postgraduate annexe", "Mixed by block", 59, 236, 160, 100, 0]
+  ];
+
+  /* priority categories, filled before the ballot is drawn at all */
+  var HS_PRIORITY = [
+    ["Students with a disability",  34, "Ground floor and adapted rooms, allocated first and by name.",
+      "Register of students with a disability, SIM"],
+    ["Fresh students",             742, "First session only. A student who has never lived in Makurdi cannot arrange a room from Gboko in September.",
+      "Admission cohort, SIM"],
+    ["Final year",                 466, "Final session only, and not repeated for a fifth year.",
+      "Level and expected completion, SIM"],
+    ["Sport and scholarship",       82, "Named lists from the Directorate of Sports and the Scholarships Board.",
+      "Two lists, both signed"],
+    ["Distance from home",         148, "Home address more than 400 km from Makurdi.",
+      "Address of record, SIM"]
+  ];
+
+  /* the ballot pool — real Benue names, the order decided by the seed */
+  var HS_POOL = [
+    ["MOAUM/24/CSC/1188", "AGBO, Doosuur Priscilla",  "Akpehe Hall"],
+    ["MOAUM/25/ECO/0442", "TERKULA, Iveren Grace",    "Mbanyam Hall"],
+    ["MOAUM/23/LAW/0913", "ODOH, Emmanuel Aondona",   "Idye Hall"],
+    ["MOAUM/26/BIO/0067", "SHAAHU, Msurshima John",   "Wurukum Hall"],
+    ["MOAUM/24/AGR/1502", "UGBEDE, Priscilla Ojoma",  "Mbanyam Hall"],
+    ["MOAUM/25/MTH/0338", "IORTIM, Sesugh Daniel",    "Idye Hall"],
+    ["MOAUM/24/POL/1067", "AKAAGERGER, Mimi",         "Akpehe Hall"],
+    ["MOAUM/25/CHM/0729", "TYOAKAA, Aondohemba",      "Wurukum Hall"],
+    ["MOAUM/23/ENG/0184", "ABUUL, Terkimbi Vincent",  "Idye Hall"],
+    ["MOAUM/26/SOC/0521", "NGUEVESE, Doofan Ruth",    "Mbanyam Hall"],
+    ["MOAUM/24/ACC/1341", "ORKAA, Bemgba Solomon",    "Wurukum Hall"],
+    ["MOAUM/25/EDU/0876", "AONDONA, Sewuese Faith",   "Akpehe Hall"],
+    ["MOAUM/24/PHY/0233", "GBAKA, Terhemba Michael",  "Idye Hall"],
+    ["MOAUM/26/MCB/0498", "IWUESE, Ngodoo Blessing",  "Mbanyam Hall"],
+    ["MOAUM/25/GEO/0655", "UTOO, Aondoaseer Peter",   "Wurukum Hall"],
+    ["MOAUM/24/ENG/1129", "TSEMBE, Kwaghaondo",       "Idye Hall"],
+    ["MOAUM/23/BFN/0407", "ADASU, Vershima Joy",      "Akpehe Hall"],
+    ["MOAUM/26/AGR/0312", "IORVER, Terver Emmanuel",  "Wurukum Hall"]
+  ];
+
+  /* allocations made and awaiting payment — hours left in the 72-hour hold */
+  var HS_HOLDS = [
+    ["MOAUM/24/CSC/1188", "AGBO, Doosuur Priscilla", "Akpehe Hall &middot; C-214 bed 4",  8],
+    ["MOAUM/25/ECO/0442", "TERKULA, Iveren Grace",   "Mbanyam Hall &middot; B-107 bed 1", 22],
+    ["MOAUM/23/LAW/0913", "ODOH, Emmanuel Aondona",  "Idye Hall &middot; A-031 bed 3",    41],
+    ["MOAUM/26/BIO/0067", "SHAAHU, Msurshima John",  "Wurukum Hall &middot; D-220 bed 2", 55],
+    ["MOAUM/24/AGR/1502", "UGBEDE, Priscilla Ojoma", "Mbanyam Hall &middot; C-018 bed 4", 69]
+  ];
+
+  var HS_APPLICATIONS = 6120;
+
+  /* ── the draw ─────────────────────────────────────────────────────
+     A ballot nobody can reproduce is not a ballot, it is an assertion.
+     The seed is published with the result and this function is the whole
+     of the draw: same seed in, same order out, on any machine, forever.
+     It is deliberately a named, ordinary function rather than a call to
+     Math.random(), because Math.random() cannot be audited.            */
+
+  function hsRandom(seed) {
+    var h = 2166136261, i;
+    for (i = 0; i < seed.length; i++) {
+      h = h ^ seed.charCodeAt(i);
+      h = (h + (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24)) >>> 0;
+    }
+    return function () {
+      h = (h + 0x6D2B79F5) >>> 0;
+      var t = h;
+      t = (Math.imul(t ^ (t >>> 15), t | 1)) >>> 0;
+      t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function hsDraw(seed) {
+    var rnd = hsRandom(seed), a = HS_POOL.slice(), i, j, t;
+    for (i = a.length - 1; i > 0; i--) {
+      j = Math.floor(rnd() * (i + 1));
+      t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function hsSeedNow() { return S.hs.alt ? HS_SEED_ALT : HS_SEED; }
+
+  /* ── the numbers, all computed from HS_HALLS so they cannot disagree ── */
+
+  function hsBeds()     { return HS_HALLS.reduce(function (n, r) { return n + r[3]; }, 0); }
+  function hsPriority() { return HS_HALLS.reduce(function (n, r) { return n + r[4]; }, 0); }
+  function hsBallot()   { return HS_HALLS.reduce(function (n, r) { return n + r[5]; }, 0); }
+  function hsOut()      { return HS_HALLS.reduce(function (n, r) { return n + r[6]; }, 0); }
+
+  function hsLapsed() {
+    return HS_HOLDS.filter(function (r) { return r[3] - S.hs.hours <= 0; });
+  }
+
+  function hsOdds() {
+    var contested = HS_APPLICATIONS - hsPriority();
+    return Math.round((hsBallot() / contested) * 1000) / 10;
+  }
+
+  /* ── the screen ───────────────────────────────────────────────────── */
+
+  function tHostel() {
+    var beds = hsBeds(), pri = hsPriority(), bal = hsBallot();
+    var lapsed = hsLapsed(), order = hsDraw(hsSeedNow());
+    var contested = HS_APPLICATIONS - pri;
+
+    return note('info', 'Allocation is where discretion does the most damage, so it is designed out',
+      'Priority categories are filled first, by rule and by name. What is left is drawn by ballot from a <b>published seed</b>, ' +
+      'and the draw below can be re-run from that seed by anybody holding it &mdash; including a student who believes it went ' +
+      'against them. When an allocation lapses unpaid, the bed does not return to this office. It goes to the next name on the ' +
+      'same list. Both doors are shut, because a transparent ballot with a discretionary reserve list is a discretionary ' +
+      'allocation with extra steps.') +
+
+    tiles([
+      ["Bed spaces", beds.toLocaleString(), null, hsOut() + " out of service, excluded from the draw"],
+      ["Applications", HS_APPLICATIONS.toLocaleString(), null, "For " + beds.toLocaleString() + " beds"],
+      ["Taken by priority", String(pri), null, "Filled before the ballot is drawn"],
+      ["Ballot odds", hsOdds() + "%", "var(--red-ink)", bal + " beds, " + contested.toLocaleString() + " applicants"]
+    ]) +
+
+    note('bad', 'The odds are published, because a student who knows them can act on them',
+      'After the priority categories are filled, ' + bal + ' beds remain for ' + contested.toLocaleString() + ' applicants &mdash; ' +
+      'about ' + hsOdds() + '%. The system cannot create beds and should not pretend otherwise. A student told in August that four ' +
+      'in five applicants will not get a room finds lodgings in August. A student told nothing until October finds them in October, ' +
+      'at October prices, and that is a hardship this office manufactured by staying quiet.') +
+
+    /* ── the draw ─────────────────────────────────────────────── */
+    panel('The draw',
+      '<span class="sub2">Seed <span class="tnum">' + hsSeedNow() + '</span></span>',
+      pbody(
+        '<div class="sub2" style="padding-bottom:10px">' +
+          'The seed is published with the result. Anyone holding it can reproduce this order exactly &mdash; which is what makes ' +
+          'it a ballot rather than a list somebody wrote. Press <b>Re-run</b> as often as you like: the order below will not move. ' +
+          'Change the seed and it changes completely, which is why the seed is fixed and published <b>before</b> the draw, not after.' +
+        '</div>' +
+
+        '<div class="hs__acts">' +
+          btn(S.hs.drawn ? 'ghost' : 'primary', S.hs.drawn ? 'Re-run the draw from this seed' : 'Run the draw', ' data-hs="draw"') +
+          btn('ghost', S.hs.alt ? 'Restore the published seed' : 'Draw with a different seed', ' data-hs="seed"') +
+          (S.hs.runs > 1
+            ? '<span class="hs__runs">' + ico('check', 15, 'var(--green-ink)', 2) +
+              ' Run ' + S.hs.runs + ' times &middot; identical order every time</span>'
+            : '') +
+        '</div>' +
+
+        (S.hs.drawn
+          ? '<div class="sub2" style="padding-bottom:8px">' +
+            'Twelve positions either side of the cut, out of ' + contested.toLocaleString() + ' in the draw. ' +
+            '<b>Position ' + bal + ' takes the last bed.</b> Everyone after it is a reserve, in the order the draw put them &mdash; ' +
+            'which is what a lapsed bed follows.</div>' +
+            dtable(['Position|mid', 'Matriculation number', 'Candidate', 'Hall requested', 'Outcome|num'],
+              order.slice(0, 12).map(function (r, i) {
+                var pos = bal - 4 + i, won = pos <= bal;
+                return ['<b class="tnum">' + pos + '</b>',
+                  '<span class="tnum sub2">' + r[0] + '</span>',
+                  r[1],
+                  '<span class="sub2">' + r[2] + '</span>',
+                  won ? pil('ok', 'Bed allocated')
+                      : pil('info', 'Reserve ' + (pos - bal))];
+              }), 880)
+          : '<div class="hs__empty">' + ico('scale', 22, 'var(--slate)', 1.6) +
+            '<div><b>The draw has not been run.</b><span class="sub2">The seed is already published. Running it here produces ' +
+            'the order below, and running it again produces the same order.</span></div></div>') +
+
+        (S.hs.alt
+          ? '<div class="sub2" style="padding-top:10px;color:var(--red-ink)"><b>This is not the published seed.</b> ' +
+            'A different seed gives a different order &mdash; which is exactly why the seed must be fixed and published before the ' +
+            'draw. A draw that can be re-seeded until it produces a wanted list is not a ballot.</div>'
+          : ''))) +
+
+    '<div class="grid grid--2">' +
+
+      /* ── priority ─────────────────────────────────────────── */
+      panel('Filled before the ballot', 'By rule and by name, never by application', dtable(
+        ['Category', 'Beds|mid', 'Verified against|num'],
+        HS_PRIORITY.map(function (r) {
+          return ['<strong>' + r[0] + '</strong><div class="sub2">' + r[2] + '</div>',
+            '<span class="tnum">' + r[1] + '</span>',
+            '<span class="sub2">' + r[3] + '</span>'];
+        }).concat([['<b>Total taken by priority</b>', '<b class="tnum">' + pri + '</b>', '']]), 620)) +
+
+      /* ── inventory ────────────────────────────────────────── */
+      panel('Inventory', 'A record, not a spreadsheet', dtable(
+        ['Hall', 'Beds|mid', 'Priority|mid', 'Ballot|mid', 'Out|mid'],
+        HS_HALLS.map(function (r) {
+          return ['<strong>' + r[0] + '</strong><div class="sub2">' + r[1] + ' &middot; ' + r[2] + ' rooms</div>',
+            '<span class="tnum">' + r[3] + '</span>',
+            '<span class="tnum sub2">' + r[4] + '</span>',
+            '<span class="tnum sub2">' + r[5] + '</span>',
+            r[6] ? '<b class="tnum" style="color:var(--red-ink)">' + r[6] + '</b>' : '<span class="sub2">&mdash;</span>'];
+        }), 620)) +
+    '</div>' +
+
+    /* ── the hold window ──────────────────────────────────────── */
+    panel('Awaiting payment',
+      '<span class="sub2">72-hour hold &middot; ' + (S.hs.hours ? 'advanced ' + S.hs.hours + ' hours' : 'as at now') + '</span>',
+      pbody(
+        '<div class="sub2" style="padding-bottom:10px">' +
+          'An allocation is not confirmed until the accommodation fee is paid. The hold is 72 hours, and it runs whether or not ' +
+          'anybody is watching. Advance the clock to see what the system does on its own &mdash; the bed lapses, and it goes to ' +
+          'the next name on the draw, not back to this desk.' +
+        '</div>' +
+
+        '<div class="hs__acts">' +
+          btn('ghost', 'Advance the hold window by 24 hours', ' data-hs="tick"') +
+          (S.hs.hours ? btn('ghost', 'Reset to now', ' data-hs="reset"') : '') +
+          (lapsed.length
+            ? '<span class="hs__runs" style="color:var(--red-ink)">' + ico('alert', 15, 'var(--red-ink)', 2) +
+              ' ' + lapsed.length + ' lapsed and reallocated automatically</span>'
+            : '') +
+        '</div>' +
+
+        dtable(['Matriculation number', 'Candidate', 'Bed held', 'Hold remaining|mid', 'What happened|num'],
+          HS_HOLDS.map(function (r, i) {
+            var left = r[3] - S.hs.hours;
+            var gone = left <= 0;
+            /* reserve 1 is the position immediately after the last bed, and
+               the display window starts four places before it — so the first
+               reserve is order[5], not order[0] */
+            var next = order[5 + i];
+            return ['<span class="tnum sub2">' + r[0] + '</span>',
+              r[1],
+              '<span class="sub2">' + r[2] + '</span>',
+              gone ? pil('bad', 'Lapsed')
+                   : '<b class="tnum" style="color:' + (left <= 12 ? 'var(--red-ink)' : 'inherit') + '">' + left + ' h</b>',
+              gone
+                ? '<span class="sub2">Bed released to <b>' + (next ? next[1] : 'the next reserve') + '</b>' +
+                  (next ? ', reserve ' + (i + 1) : '') + '</span>'
+                : '<span class="sub2">Held</span>'];
+          }), 940))) +
+
+    /* ── what this office cannot do ───────────────────────────── */
+    panel('What this office cannot do', 'The refusals are the design', pbody(idSteps([
+      ["done", "It cannot move a name up the draw",
+        "There is no control on this screen that reorders the ballot, because a control that exists is a control somebody will be asked to use. The order is a function of the seed and the pool, and both are published."],
+      ["done", "It cannot hold a lapsed bed back",
+        "A bed that lapses is reallocated by the same list that allocated it. The office is told what happened; it is not asked what should happen."],
+      ["now", "It cannot allocate against a bed that is out of service",
+        hsOut() + " beds are out of service and are excluded from the count the draw is run against. A waiting list drawn against beds that do not exist produces two students holding one key, and the Dean of Student Affairs unwinding it in person."],
+      ["todo", "It cannot decide the policy it enforces",
+        "Which categories carry priority, and in what order, is <b>D-Q10 &mdash; the Dean of Student Affairs</b>. The categories above are what the prototype assumed so the screen could be built and shown; they are not a decision the Directorate of ICT may make. If the University wants discretionary allocation kept, it should say so now rather than have it reappear later as a workaround."]
+    ]))) +
+
+    note('ok', 'What a student sees',
+      'The same draw, the same seed and their own position in it &mdash; win or lose. A student who was not allocated is told the ' +
+      'odds, their position, and the seed the draw was run from, which is the difference between a decision and a refusal. ' +
+      'The student-side view is under <b>Hostel</b> in the student portal.');
+  }

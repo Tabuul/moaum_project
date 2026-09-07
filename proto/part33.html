@@ -1,0 +1,168 @@
+  /* ══════════════════════════════════════════════════════════════════
+     SESSION AND SEMESTER SETUP — two offices, one screen
+
+     The Academic Office runs the calendar; the Super Administrator can
+     reach the same screen because the platform has to be configurable
+     when the Registry is not at its desk. They see the same controls
+     and the same warnings, and every change is signed by whoever made
+     it — the screen does not care which of them it is, but the log
+     does.
+     ═════════════════════════════════════════════════════════════════ */
+
+  var SESSIONS = [
+    ["2027/2028", "Sept 2027", "July 2028", "planned", "", 0],
+    ["2026/2027", "1 Sept 2026", "31 July 2027", "current", "SEN/2026/002", 32450],
+    ["2025/2026", "2 Sept 2025", "28 July 2026", "closed", "SEN/2025/004", 30188],
+    ["2024/2025", "9 Sept 2024", "1 Aug 2025", "closed", "SEN/2024/006", 28914]
+  ];
+
+  var SEM_WINDOWS = [
+    ["First", "15 Sept &ndash; 5 Dec", "24 Sept", "8 &ndash; 19 Dec", "16 Jan", "open"],
+    ["Second", "26 Jan &ndash; 15 May", "6 Feb", "18 &ndash; 29 May", "26 June", "closed"]
+  ];
+
+  function sessPill(s) {
+    return s === "current" ? pil('ok', 'Current')
+         : s === "planned" ? pil('info', 'Planned')
+         : pil('bad', 'Closed');
+  }
+
+  function tSession() {
+    var isSuper = S.srole === "super";
+    return note('info', 'The session is the spine everything else hangs on',
+      'Registration windows, fee schedules, grading schemes, examination sessions, result sets and the publication embargo are all bounded by a session and a semester. ' +
+      'Exactly one session is current at a time, and the portal will not let two overlap &mdash; that is an exclusion constraint in the database, not a check on this form.' +
+      (isSuper
+        ? ' You are here as the <b>Super Administrator</b>. The Academic Office runs this calendar day to day; you can reach it so the platform is configurable when the Registry is not at its desk, and the log records which of you made each change.'
+        : '')) +
+
+    tiles([
+      ["Current session", "2026/2027", "var(--green-ink)", "Opened 1 September 2026"],
+      ["Current semester", "First", null, "Ends 19 December 2026"],
+      ["Registration", "Closed", "var(--red-ink)", "Closed 24 September"],
+      ["Score sheets due", "16 Jan", "var(--chrome)", "126 days from opening"]
+    ]) +
+
+    panel('Academic sessions', 'One current, the rest closed or planned',
+      dtable(["Session|mid", "Opens|mid", "Closes|mid", "Senate minute", "Students|mid", "State|mid", "Action|num"],
+        SESSIONS.map(function (s, i) {
+          return ['<b class="tnum">' + s[0] + '</b>', '<span class="tnum">' + s[1] + '</span>',
+            '<span class="tnum">' + s[2] + '</span>',
+            s[4] ? '<span class="sub2 tnum">' + s[4] + '</span>' : '<span class="sub2">&mdash;</span>',
+            s[5] ? '<span class="tnum">' + vzNum(s[5]) + '</span>' : '<span class="sub2">&mdash;</span>',
+            sessPill(s[3]),
+            recBtn('session', i, s[3] === "closed" ? 'Reopen' : 'Edit')];
+        })) +
+      recAddIn('session', 'New session',
+        '<span class="sub2">It is held as planned until its Senate minute is recorded against it.</span>')) +
+
+    panel('Semesters of 2026/2027', 'Each with its own windows',
+      dtable(["Semester", "Lectures|mid", "Registration closes|mid", "Examinations|mid", "Results due|mid", "State|mid", "Action|num"],
+        SEM_WINDOWS.map(function (w, i) {
+          return ["<strong>" + w[0] + "</strong>", '<span class="tnum">' + w[1] + '</span>',
+            '<span class="tnum">' + w[2] + '</span>', '<span class="tnum">' + w[3] + '</span>',
+            '<span class="tnum">' + w[4] + '</span>',
+            w[5] === "open" ? pil('ok', 'Open') : pil('info', 'Not yet open'),
+            recBtn('semester', i, 'Edit windows')];
+        })) +
+      recAddIn('semester', 'New semester',
+        '<span class="sub2">Every date on that form changes what a student can do today.</span>')) +
+
+    panel('Levels and unit limits', 'Per level, per semester',
+      dtable(["Level|mid", "Applies to", "Minimum units|mid", "Maximum units|mid", "Carryover counts toward the maximum|mid", "Action|num"],
+        LEVEL_ROWS.map(function (l, i) {
+          return ['<b class="tnum">' + l[0] + '</b>', '<span class="sub2">' + l[1] + '</span>',
+            '<span class="tnum">' + l[2] + '</span>', '<span class="tnum">' + l[3] + '</span>',
+            l[4] === "Yes" ? tick(15, 'var(--green-ink)') : '<span class="sub2">No</span>',
+            recBtn('level', i)];
+        })) +
+      recAdd('level', 'New level'));
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     THE DEPARTMENT'S OWN CATALOGUE
+
+     A course belongs to a department, so the department creates it —
+     but a new course is not live because a Head of Department typed
+     it. It is a curriculum change, and it goes to the Faculty Board
+     and to Senate, because the NUC accredits a programme on the
+     courses it says it teaches.
+     ═════════════════════════════════════════════════════════════════ */
+
+  var DEPT_COURSES = [
+    ["CSC 311", "Algorithms &amp; Complexity", 3, 1, 300, "Compulsory", "Dr. T. Iorpuu", "live"],
+    ["CSC 321", "Database Systems", 3, 1, 300, "Compulsory", "Dr. T. Iorpuu", "live"],
+    ["CSC 331", "Operating Systems", 3, 2, 300, "Compulsory", "Dr. P. Tsavnande", "live"],
+    ["CSC 341", "Computer Networks", 3, 2, 300, "Elective", "Mrs. L. Adoo", "live"],
+    ["CSC 351", "Software Engineering", 3, 1, 300, "Compulsory", "Dr. I. O. Ogwuche", "live"],
+    ["CSC 361", "Compiler Construction", 3, 2, 300, "Elective", "Dr. P. Tsavnande", "live"],
+    ["CSC 371", "Machine Learning", 3, 2, 300, "Elective", "&mdash;", "senate"],
+    ["CSC 381", "Cloud &amp; Distributed Systems", 3, 2, 400, "Elective", "&mdash;", "board"],
+    ["MTH 212", "Linear Algebra II", 3, 1, 200, "Required", "Dr. S. Akaa", "live"],
+    ["MTH 311", "Real Analysis", 3, 1, 300, "Compulsory", "Dr. S. Akaa", "live"],
+    ["STA 311", "Inference I", 3, 1, 300, "Compulsory", "Prof. B. O. Atu", "live"],
+    ["STA 321", "Regression Analysis", 3, 2, 300, "Elective", "Dr. M. Ochigbo", "live"],
+    ["CSC 299", "Introduction to Cybernetics", 2, 2, 200, "Elective", "&mdash;", "ended"]
+  ];
+
+  function dcPill(s) {
+    return s === "live" ? pil('ok', 'Live')
+         : s === "board" ? pil('info', 'At the Faculty Board')
+         : s === "senate" ? pil('info', 'At Senate')
+         : pil('bad', 'Ended');
+  }
+
+  function tDeptCourses() {
+    var live = DEPT_COURSES.filter(function (c) { return c[7] === "live"; }).length;
+    var waiting = DEPT_COURSES.filter(function (c) { return c[7] === "board" || c[7] === "senate"; }).length;
+    var nolec = DEPT_COURSES.filter(function (c) { return c[7] === "live" && c[6] === "&mdash;"; }).length;
+
+    return note('info', 'The department owns its courses, and creates them',
+      'A course belongs to exactly one department &mdash; the one that teaches it, sets its score sheet and answers a query about a mark in it. ' +
+      'So the department adds it here. What the department cannot do is make it live on its own: a new course is a curriculum change, ' +
+      'the Faculty Board sees it and Senate approves it, because the NUC accredits a programme on the courses it says it teaches.') +
+
+    scopeBar('courses', {}) +
+
+    tiles([
+      ["Courses owned", String(DEPT_COURSES.length), null, "Mathematics &amp; Computer Science"],
+      ["Live this session", String(live), "var(--green-ink)", "Offered and allocated"],
+      ["Awaiting approval", String(waiting), "var(--chrome)", "Board or Senate"],
+      ["Live with no lecturer", String(nolec), nolec ? "var(--red-ink)" : null, nolec ? "No score sheet can open" : "All allocated"]
+    ]) +
+
+    panel('The department&rsquo;s catalogue', 'Every course this department owns',
+      dtable(["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Status", "Lecturer", "State|mid", "Action|num"],
+        DEPT_COURSES.map(function (c, i) {
+          return ['<b class="tnum">' + c[0] + '</b>', c[1],
+            '<span class="tnum">' + c[2] + '</span>',
+            '<span class="tnum">' + (c[3] === 1 ? "First" : "Second") + '</span>',
+            '<span class="tnum">' + c[4] + '</span>',
+            '<span class="sub2">' + c[5] + '</span>',
+            c[6] === "&mdash;" ? '<span class="sub2" style="color:var(--red-ink)">Not allocated</span>' : '<span class="sub2">' + c[6] + '</span>',
+            dcPill(c[7]),
+            recBtn('deptcourse', i) + " " +
+              (c[7] === "live" ? btn('ghost', 'Allocate', ' data-go="r/allocate"')
+                : c[7] === "ended" ? '<span class="sub2">On old records</span>'
+                : btn('ghost', 'Track'))];
+        })) +
+      recAddIn('deptcourse', 'New course',
+        '<span class="sub2">It goes to the Faculty Board, then to Senate &mdash; the department cannot make it live.</span>')) +
+
+    panel('What happens after you submit', '', pbody(idSteps([
+      ["done", "The department proposes it",
+        "With the units, the level, the semester, the prerequisite and the handbook description — because the Board will be asked all five."],
+      ["now", "The Faculty Board considers it",
+        "Chiefly: does it overlap something already taught in the faculty, and can the department staff it? CSC 381 is here now."],
+      ["todo", "Senate approves the curriculum change",
+        "CSC 371 is at this stage. Until Senate resolves it, no student can register for it and no score sheet exists for it."],
+      ["todo", "The NUC is told at the next accreditation return",
+        "A programme is accredited on the courses it says it teaches. A course taught but never declared is a finding at the next visit."],
+      ["todo", "The Head of Department allocates a lecturer",
+        "Which opens the course space, creates the score sheet in that lecturer's name, sets the second examiner and releases it to the timetable — all four at once."]
+    ]))) +
+
+    note('bad', 'Ending a course is not deleting it',
+      'A course that is no longer taught is <b>ended</b> with a date. It disappears from next session&rsquo;s registration and stays on every transcript that carries it, ' +
+      'because a degree earned in 2019 was earned on the courses that existed in 2019. Nothing in this catalogue is ever removed.');
+  }

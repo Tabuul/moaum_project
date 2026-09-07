@@ -1,0 +1,247 @@
+
+  /* ══ COURSE ELIGIBILITY AND THE COURSE ROLL ═══════════════════════
+     A course is owned by one department and OFFERED to a named set of
+     (programme, level) pairs. That set is decided when the course is
+     created — not later, not by exception, and not by a clerk who knows
+     the Head of Department. It goes to the Faculty Board with the
+     course and Senate approves it, because a course's reach is part of
+     the curriculum, not an administrative detail.
+
+     Two things follow, and both of them are the whole point:
+
+     · A Physics student at 300 level may register CSC 311 if, and only
+       if, B.Sc. Physics at 300 level is on the eligible set. Nobody has
+       to ask anybody. The registration is ordinary.
+
+     · The score sheet is therefore NOT "the students of the owning
+       department". It is every student whose registration for this
+       course was approved, whatever programme they came from. A sheet
+       that quietly filters to the owning department leaves a real
+       student with a real registration and no mark — and the loss is
+       invisible, because the sheet looks complete.
+
+     So there is exactly one function that answers "who is on this
+     course", and every screen that needs a roll calls it: the class
+     list, the score sheet, the printable blank, the attendance
+     register, the examination roll and the broadsheet. One register,
+     six screens. That discipline already held within a department; it
+     now holds across departments too.                               */
+
+  /* the eligible set, exactly as it is assigned at course creation */
+  var CRS_ELIG = {
+    "CSC 311": {
+      title: "Algorithms &amp; Complexity", units: 3, sem: 1,
+      owner: "mcs", ownerName: "Mathematics and Computer Science",
+      ownerProg: "csc",
+      offers: [
+        { pg: "csc", pn: "B.Sc. Computer Science",     dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",          lv: 300, basis: "Core",      take: 0 },
+        { pg: "csc", pn: "B.Sc. Computer Science",     dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",          lv: 400, basis: "Carryover", take: 0 },
+        { pg: "sta", pn: "B.Sc. Statistics",           dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",          lv: 300, basis: "Elective",  take: 6 },
+        { pg: "phy", pn: "B.Sc. Physics",              dc: "phy", dn: "Physics",                          fac: "Science",          lv: 300, basis: "Elective",  take: 5 },
+        { pg: "eco", pn: "B.Sc. Economics",            dc: "eco", dn: "Economics",                        fac: "Social Sciences",  lv: 300, basis: "Elective",  take: 4 },
+        { pg: "mse", pn: "B.Sc.(Ed.) Mathematics",     dc: "mse", dn: "Mathematics and Science Education", fac: "Education",       lv: 400, basis: "Required",  take: 3 }
+      ]
+    },
+
+    /* The lecturer teaches four courses, and the eligible set is the
+       reason each roll is the size it is. CSC 421 is a final-year core
+       with no borrowings; GST 301 is the opposite — a service course
+       owned by General Studies, which teaches nobody of its own, so
+       every candidate on it is borrowed. */
+    "CSC 341": {
+      title: "Computer Networks", units: 3, sem: 1,
+      owner: "mcs", ownerName: "Mathematics and Computer Science", ownerProg: "csc",
+      offers: [
+        { pg: "csc", pn: "B.Sc. Computer Science",   dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",   lv: 300, basis: "Core",      take: 0 },
+        { pg: "csc", pn: "B.Sc. Computer Science",   dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",   lv: 400, basis: "Carryover", take: 0 },
+        { pg: "phy", pn: "B.Sc. Physics",            dc: "phy", dn: "Physics",                          fac: "Science",   lv: 300, basis: "Elective",  take: 4 },
+        { pg: "mse", pn: "B.Sc.(Ed.) Mathematics",   dc: "mse", dn: "Mathematics and Science Education", fac: "Education", lv: 400, basis: "Required",  take: 2 }
+      ]
+    },
+
+    "CSC 421": {
+      title: "Distributed Systems", units: 3, sem: 1,
+      owner: "mcs", ownerName: "Mathematics and Computer Science", ownerProg: "csc",
+      offers: [
+        { pg: "csc", pn: "B.Sc. Computer Science",   dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",   lv: 400, basis: "Core",      take: 0 }
+      ]
+    },
+
+    "GST 301": {
+      title: "Entrepreneurship", units: 2, sem: 1,
+      owner: "gst", ownerName: "General Studies", ownerProg: "gst",
+      offers: [
+        { pg: "csc", pn: "B.Sc. Computer Science",   dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",         lv: 300, basis: "Required", take: 12 },
+        { pg: "sta", pn: "B.Sc. Statistics",         dc: "mcs", dn: "Mathematics and Computer Science", fac: "Science",         lv: 300, basis: "Required", take: 10 },
+        { pg: "phy", pn: "B.Sc. Physics",            dc: "phy", dn: "Physics",                          fac: "Science",         lv: 300, basis: "Required", take: 9  },
+        { pg: "eco", pn: "B.Sc. Economics",          dc: "eco", dn: "Economics",                        fac: "Social Sciences", lv: 300, basis: "Required", take: 11 },
+        { pg: "mse", pn: "B.Sc.(Ed.) Mathematics",   dc: "mse", dn: "Mathematics and Science Education", fac: "Education",      lv: 300, basis: "Required", take: 8  },
+        { pg: "eng", pn: "B.A. English",             dc: "eng", dn: "English",                          fac: "Arts",            lv: 300, basis: "Required", take: 9  }
+      ]
+    }
+  };
+
+  var ELIG_YEAR = { 100: "25", 200: "24", 300: "23", 400: "22" };
+
+  /* Candidates from a programme other than the one that owns the course.
+     Generated from the same surname and given-name pools the main
+     register uses, so a borrowed candidate reads like every other
+     candidate — because to the lecturer marking the sheet, they are. */
+  function eligBorrowed(code, o) {
+    var out = [];
+    for (var i = 0; i < o.take; i++) {
+      var key = code + o.pg + o.lv + i;
+      var sur = REC_SUR[seedNum(key + "s", 0, REC_SUR.length - 1)];
+      var giv = REC_GIVEN[seedNum(key + "g", 0, REC_GIVEN.length - 1)];
+      out.push({
+        m: "MOAUM/" + o.pg.toUpperCase() + "/" + ELIG_YEAR[o.lv] + "/" + (1100 + seedNum(key + "n", 10, 880)),
+        name: sur + ", " + giv, lv: o.lv, pg: o.pg, pn: o.pn, dc: o.dc, dn: o.dn,
+        fac: o.fac, basis: o.basis, own: false
+      });
+    }
+    return out;
+  }
+
+  /* THE roll for a course: everyone whose registration was approved */
+  function courseRoll(code) {
+    var c = CRS_ELIG[code || "CSC 311"];
+    if (!c) { return []; }
+    var out = [];
+    c.offers.forEach(function (o) {
+      if (o.pg === c.ownerProg) {
+        REC_NAMES.forEach(function (r) {
+          if (r[2] === o.lv) {
+            out.push({ m: r[0], name: r[1], lv: o.lv, pg: o.pg, pn: o.pn, dc: o.dc,
+                       dn: o.dn, fac: o.fac, basis: o.basis, own: true });
+          }
+        });
+      } else {
+        eligBorrowed(code || "CSC 311", o).forEach(function (b) { out.push(b); });
+      }
+    });
+    /* ordered by matriculation number, not by programme — a lecturer
+       marks a class, not six classes stapled together */
+    out.sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
+
+    /* Two candidates on one roll carrying the identical full name is not
+       impossible in a real register — the matriculation number is what
+       identifies a person here, not the name — but in a demonstration it
+       reads as a data fault rather than as a coincidence, and it invites
+       the wrong question. The seeded pools are large enough that a clash
+       is rare; where one occurs the given name is redrawn. */
+    var seen = {};
+    out.forEach(function (r) {
+      var n = 0;
+      while (seen[r.name]) {
+        n++;
+        r.name = r.name.split(",")[0] + ", " +
+          REC_GIVEN[seedNum(r.m + "g" + n, 0, REC_GIVEN.length - 1)];
+      }
+      seen[r.name] = true;
+    });
+
+    return out.map(function (r, i) { r.n = i + 1; return r; });
+  }
+
+  /* the split, for the sentence that has to appear wherever a roll does */
+  function rollSplit(code) {
+    var roll = courseRoll(code), own = 0, by = {}, order = [];
+    roll.forEach(function (r) {
+      if (r.own) { own++; return; }
+      if (by[r.pn] === undefined) { by[r.pn] = 0; order.push(r.pn); }
+      by[r.pn]++;
+    });
+    return {
+      all: roll.length, own: own, borrowed: roll.length - own,
+      from: order.map(function (k) {
+        return by[k] + " from " + progShort({ pn: k });
+      })
+    };
+  }
+
+  /* A printed extract of the roll. A printable is one page, so it shows
+     a sample — but the sample is drawn to be honest: the owning
+     programme's candidates AND one from each other eligible programme.
+     A printed class list that happens to show only Computer Science
+     names teaches the office reading it that only Computer Science
+     students are on the course. */
+  function docRoll(code) {
+    var roll = courseRoll(code || "CSC 311"), out = [], seen = {}, own = 0;
+    roll.forEach(function (r) {
+      if (r.own) { if (own < 6) { own++; out.push(r); } return; }
+      if (!seen[r.pg]) { seen[r.pg] = 1; out.push(r); }
+    });
+    out.sort(function (a, b) { return a.m < b.m ? -1 : a.m > b.m ? 1 : 0; });
+    return out;
+  }
+
+  /* The short programme name. B.Sc. Mathematics and B.Sc.(Ed.) Mathematics
+     are two different programmes in two different faculties; stripping the
+     award off both would leave one word standing for both of them, on a
+     sheet whose whole purpose is to say which programme a candidate is
+     from. So the education award is kept, in the shortest honest form. */
+  function progShort(r) {
+    return r.pn.replace(/^B\.(Sc|A|Ed)\.\(Ed\.\)\s*(.*)$/, "$2 (Ed.)")
+               .replace(/^B\.(Sc|A|Ed)\.\s*/, "");
+  }
+
+  /* the programme a candidate came from, wherever a roll is shown */
+  function progTag(r) {
+    var short = progShort(r);
+    return r.own ? '<span class="sub2">' + short + '</span>' : pil('info', short);
+  }
+
+  /* the eligible set as a line of chips */
+  function eligChips(code) {
+    var c = CRS_ELIG[code || "CSC 311"];
+    if (!c) { return ''; }
+    return '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+      c.offers.map(function (o) {
+        return pil(o.pg === c.ownerProg ? 'ok' : 'info',
+          progShort({ pn: o.pn }) + ' &middot; ' + o.lv + ' &middot; ' + o.basis);
+      }).join('') + '</div>';
+  }
+
+  /* ── the eligibility screen ───────────────────────────────────── */
+
+  function tEligibility() {
+    var c = CRS_ELIG["CSC 311"], sp = rollSplit("CSC 311"), roll = courseRoll("CSC 311");
+
+    return note('info', 'Who may offer this course was decided when the course was created',
+      'The eligible set is part of the course, like its units and its semester. It is assigned at creation, it goes to the Faculty Board with the course, and Senate approves it. Nothing on this screen is an exception granted to a named student &mdash; an exception is how a course quietly acquires a seventh cohort nobody accredited.') +
+
+    tiles([
+      ["Owning department", "Maths &amp; Computer Science", null, "Opens the sheet, holds the board"],
+      ["Eligible cohorts", String(c.offers.length), null, "Programme and level pairs"],
+      ["Registered", String(sp.all), null, "Approved registrations, all programmes"],
+      ["From other programmes", String(sp.borrowed), "var(--chrome)", "Across three faculties"]
+    ]) +
+
+    panel('CSC 311 &mdash; who may register it', 'Assigned at course creation &middot; amended only by a curriculum change',
+      dtable(["Programme", "Department", "Faculty", "Level|mid", "Basis|mid", "Registered|mid", "Relation|mid"],
+        c.offers.map(function (o) {
+          var n = roll.filter(function (r) { return r.pg === o.pg && r.lv === o.lv; }).length;
+          return ['<strong>' + o.pn + '</strong>', '<span class="sub2">' + o.dn + '</span>',
+            '<span class="sub2">' + o.fac + '</span>',
+            '<span class="tnum">' + o.lv + '</span>',
+            o.basis === "Core" ? pil('ok', 'Core') : pil('info', o.basis),
+            '<span class="tnum">' + n + '</span>',
+            o.pg === c.ownerProg ? pil('ok', 'Owns it')
+              : o.dc === c.owner ? '<span class="sub2">Same department</span>'
+              : '<span class="sub2">Borrows it</span>'];
+        }))) +
+
+    '<div class="grid grid--2">' +
+      panel('What a student sees', 'On the course registration form',
+        pbody(
+          '<p class="sub2" style="margin:0">A Physics student at 300 level opens her course form and CSC 311 is simply there, in the elective list, beside her own department&rsquo;s courses. She does not write to a Head of Department and she does not carry a paper form to two offices. If her programme and level are on the set, the course is offered to her; if they are not, the course is not on her form at all.</p>' +
+          note('ok', 'Eligibility is checked when the registration is made, not when the mark is entered',
+            'A registration outside the eligible set is refused at the form. That is the only place refusing it is cheap. Refusing it at the score sheet means a student has already sat an examination she was never registered for, and somebody has to decide what to do with a real script.'))) +
+
+      panel('What the lecturer sees', 'On the score sheet',
+        pbody(
+          '<p class="sub2" style="margin:0">All ' + sp.all + ' registered candidates, in one list, ordered by matriculation number. The programme is a column, not a filter. ' + sp.borrowed + ' of them are not Computer Science students &mdash; ' + sp.from.join(", ") + ' &mdash; and they are marked exactly like the rest, because they sat exactly the same paper.</p>' +
+          note('bad', 'A sheet that shows only the owning department is a sheet with missing marks that looks complete',
+            'This is the failure worth naming, because it is silent. The lecturer submits, the department approves, Senate approves, the results are released &mdash; and an Economics student who sat the paper has no mark. She finds out at graduation. The roll is drawn from the register for exactly this reason.'))) +
+    '</div>';
+  }

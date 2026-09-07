@@ -1,0 +1,469 @@
+  /* ══════════════════════════════════════════════════════════════════
+     SUPER ADMINISTRATOR
+
+     Everything the University is, as data: the faculties and the
+     departments, the calendar, the courses, the people, the roles they
+     hold, the grading scheme, the result settings, the audit log and
+     the configuration of the platform itself.
+
+     One rule runs through the whole console: nothing here is edited in
+     place and forgotten. Structure is effective-dated, every change is
+     signed, and the log is the only screen in the portal nobody can
+     write to — including the person reading it.
+     ═════════════════════════════════════════════════════════════════ */
+
+  var CFG_SECTIONS = [
+    ["structure", "Academic structure", "Faculties, departments, programmes"],
+    ["calendar",  "Calendar", "Sessions, semesters, levels"],
+    ["courses",   "Courses", "The catalogue, and who owns each course"],
+    ["users",     "Users", "Accounts, and the office each one holds"],
+    ["roles",     "Roles", "What an office may do, and what it may never do"],
+    ["grading",   "Grading systems", "Bands, points, classifications &mdash; effective-dated"],
+    ["results",   "Result settings", "Weightings, the workflow, the embargo"],
+    ["audit",     "Audit log", "Append-only. Nobody writes here, including you"],
+    ["system",    "System configuration", "Identity, integrations, retention, the platform"]
+  ];
+
+  function cfgNav() {
+    return '<div class="bio__nav">' + CFG_SECTIONS.map(function (s) {
+      return '<button class="bio__s' + (S.cfg.section === s[0] ? ' is-on' : '') + '" data-cfg="go:' + s[0] + '">' +
+        '<span class="t">' + s[1] + '</span><span class="d">' + s[2] + '</span></button>';
+    }).join('') + '</div>';
+  }
+
+  /* every editable list in the console carries the same three columns:
+     what it is, when it took effect, and who signed for it */
+  function cfgSigned(who, when) {
+    return '<span class="sub2">' + who + '<br>' + when + '</span>';
+  }
+
+  /* ── 1. academic structure ───────────────────────────────────── */
+  function cfgStructure() {
+    var deptRows = [];
+    FACS.forEach(function (f) {
+      f.depts.forEach(function (d) {
+        deptRows.push([f.n, d.n, d.progs.length, d.progs.map(function (p) { return p.n; }).join(", "), d.id]);
+      });
+    });
+
+    return note('info', 'Structure is effective-dated, because a degree is dated',
+      'A department that is split in 2028 did not exist in that form in 2023, and a transcript for a 2023 graduate must still say what it said then. So a faculty, a department and a programme each carry the date they came into being and the date they ceased &mdash; and nothing is ever deleted, only ended.') +
+
+    tiles([
+      ["Colleges", String(COLLEGES.length), null, "A tier above faculty"],
+      ["Faculties", String(FACS.length), null, "Three of them inside a College"],
+      ["Departments", String(deptRows.length), null, "Across all faculties"],
+      ["Programmes", String(deptRows.reduce(function (a, r) { return a + r[2]; }, 0)), null, "Undergraduate"]
+    ]) +
+
+    note('info', 'A College sits above its faculties, and has officers of its own',
+      'The register carried the three health faculties directly under the University, which made the scope ladder one level short. The College of Health Sciences has a <b>Provost</b> where the University has a Vice-Chancellor, a <b>College Secretary</b> where it has a Registrar, and a <b>Finance Controller</b> where it has a Bursar. An office that is bounded by a College needs a College to be bounded by.') +
+
+    panel('Colleges', 'Faculty is not always the top of the ladder',
+      COLLEGES.map(function (c) {
+        return dtable(["Office", "Who holds it", "Counterpart in the University|num"],
+          c.offices.map(function (o) {
+            return ['<strong>' + o[0] + '</strong>', '<span class="sub2">' + o[1] + '</span>',
+              '<span class="sub2">' + o[2] + '</span>'];
+          }), 720) +
+        '<div style="padding:10px 16px" class="sub2">' + c.n + ' comprises ' +
+          c.faculties.map(function (f) {
+            for (var i = 0; i < FACS.length; i++) { if (FACS[i].id === f) { return FACS[i].n; } }
+            return f;
+          }).join(", ") + '.</div>' +
+        (c.url ? '<div style="padding:0 16px 16px">' +
+          note('info', 'The College runs its own academic system',
+            '<b>' + c.sys + '</b> holds the academic machinery the MBBS programme needs and this portal&rsquo;s two-semester model cannot express &mdash; the Third Semester, clinical postings, promotion examinations and professional examinations. It is a <b>separate system</b>, integrated here for identity, fees and transcripts. It issues no matriculation number, holds no fee balance and prints no identity card; those stay in this portal.',
+            '<a class="btn btn--primary btn--sm" href="' + c.url + '" target="_blank" rel="noopener">Open ' + c.sys + ' &rarr;</a>' +
+            ' ' + btn('ghost', 'The boundary between the two', ' data-go="t/college"')) +
+        '</div>' : '');
+      }).join('')) +
+
+    panel('Faculties', 'Create, rename, or end &mdash; never delete',
+      dtable(["Faculty", "Code|mid", "College", "Departments|mid", "Dean", "Action|num"],
+        FACS.map(function (f) {
+          return ["<strong>" + f.n + "</strong>", '<span class="tnum">' + f.id.toUpperCase() + '</span>',
+            f.college ? pil('info', 'Health Sciences') : '<span class="sub2">Directly under the University</span>',
+            '<span class="tnum">' + f.depts.length + '</span>',
+            f.id === "sci" ? "Prof. B. O. Atu" : '<span class="sub2">Assigned in Users</span>',
+            recBtn('faculty', f.id)];
+        }), 940) +
+      recAddIn('faculty', 'New faculty',
+        '<span class="sub2">Ending a faculty is done on its own form &mdash; nothing on this console deletes.</span>')) +
+
+    panel('Departments and their programmes', 'A programme belongs to exactly one department',
+      dtable(["Faculty", "Department", "Programmes|mid", "Awards", "Action|num"],
+        deptRows.map(function (r) {
+          return ['<span class="sub2">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+            '<span class="tnum">' + r[2] + '</span>', '<span class="sub2">' + r[3] + '</span>',
+            recBtn('dept', r[4])];
+        })) +
+      recAddIn('dept', 'New department',
+        '<button class="btn btn--ghost btn--sm" data-mdl="rec:prog">+ New programme</button>')) +
+
+    panel('Programmes and their Examinations Officers',
+      'One officer per programme &mdash; not one per department',
+      dtable(["Department", "Programme", "Examinations Officer", "Appointed|mid", "Until|mid", "Action|num"],
+        EXAMS_OFFICERS.map(function (r, i) {
+          return ['<span class="sub2">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+            r[3] === "vacant"
+              ? '<span style="color:var(--red-ink);font-weight:600">Vacant &mdash; nobody holds this programme</span>'
+              : r[2] + (r[3] === "acting" ? ' <b>(acting)</b>' : ''),
+            '<span class="tnum">' + r[4] + '</span>',
+            '<span class="tnum sub2">' + r[5] + '</span>',
+            recBtn('exof', i, r[3] === "vacant" ? 'Appoint' : 'Edit', r[3] === "vacant" ? 'urgent' : 'ghost')];
+        })) +
+      recAdd('exof', 'Appoint an Examinations Officer')) +
+
+    note('bad', 'One department, several programmes, and an Examinations Officer for each',
+      'The Department of Mathematics &amp; Computer Science runs three programmes and has three Examinations Officers. ' +
+      'Each one sees the candidates, the score sheets and the examination roll of <b>their own programme</b> and no other &mdash; ' +
+      'the scope bar is locked to the programme, not to the department, wherever they arrive on a screen. ' +
+      'A vacant programme is worse than an unassigned course: nobody is verifying its results, and its sets will sit at the departmental board with nothing behind them.');
+  }
+
+  /* ── 2. calendar ─────────────────────────────────────────────── */
+  function cfgCalendar() {
+    return note('info', 'The session is the spine everything else hangs on',
+      'Registration windows, fee schedules, grading schemes, result sets and the embargo are all bounded by a session and a semester. Exactly one session is current at a time, and the portal will not let two overlap.') +
+
+    tiles([
+      ["Current session", "2026/2027", "var(--green-ink)", "Opened 1 September 2026"],
+      ["Current semester", "First", null, "Ends 19 December 2026"],
+      ["Sessions on record", "21", null, "Back to 2005/2006"],
+      ["Levels", "5", null, "100 to 500"]
+    ]) +
+
+    panel('Academic sessions', 'One current, the rest closed or planned',
+      dtable(["Session|mid", "Opens|mid", "Closes|mid", "Senate minute|mid", "State|mid", "Action|num"],
+        SESSIONS.map(function (s, i) {
+          return ['<b class="tnum">' + s[0] + '</b>', '<span class="tnum">' + s[1] + '</span>',
+            '<span class="tnum">' + s[2] + '</span>',
+            s[4] ? '<span class="tnum sub2">' + s[4] + '</span>' : '<span class="sub2">&mdash;</span>',
+            sessPill(s[3]), recBtn('session', i)];
+        })) +
+      recAdd('session', 'New session')) +
+
+    panel('Semesters of the current session', 'Each with its own windows',
+      dtable(["Semester", "Lectures|mid", "Registration closes|mid", "Examinations|mid", "Results due|mid", "State|mid", "Action|num"],
+        SEM_WINDOWS.map(function (w, i) {
+          return ["<strong>" + w[0] + "</strong>", '<span class="tnum">' + w[1] + '</span>',
+            '<span class="tnum">' + w[2] + '</span>', '<span class="tnum">' + w[3] + '</span>',
+            '<span class="tnum">' + w[4] + '</span>',
+            w[5] === "open" ? pil('ok', 'Open') : pil('info', 'Not yet open'),
+            recBtn('semester', i, 'Edit windows')];
+        }))) +
+
+    panel('Levels', 'A level is a stage, not a year of enrolment',
+      dtable(["Level|mid", "Applies to", "Minimum units|mid", "Maximum units|mid", "Action|num"],
+        LEVEL_ROWS.map(function (l, i) {
+          return ['<b class="tnum">' + l[0] + '</b>', '<span class="sub2">' + l[1] + '</span>',
+            '<span class="tnum">' + l[2] + '</span>', '<span class="tnum">' + l[3] + '</span>',
+            recBtn('level', i)];
+        })) +
+      recAdd('level', 'New level'));
+  }
+
+  /* ── 3. courses ──────────────────────────────────────────────── */
+  function cfgCourses() {
+    var rows = catalogueRows();
+    return note('info', 'A course is owned by one department and offered to a named set of others',
+      'Ownership and reach are two different things, and the second one is decided when the course is created. GST 301 belongs to one directorate and is offered to every faculty; CSC 311 belongs to Mathematics and Computer Science and is offered to Physics, Economics and Mathematics Education as well. The set is part of the course: it goes to the Faculty Board with it and Senate approves it. Nothing else decides whose registration form a course appears on, and nothing else decides who appears on its score sheet.') +
+
+    tiles([
+      ["Courses in the catalogue", "1,284", null, "Across 64 departments"],
+      ["Offered this semester", "612", "var(--chrome)", "With an allocated lecturer"],
+      ["Offered beyond their department", "204", null, "To at least one other department"],
+      ["Without a lecturer", "3", "var(--red-ink)", "No score sheet can open"]
+    ]) +
+
+    panel('Courses', 'The catalogue for the current session',
+      dtable(["Code|mid", "Title", "Units|mid", "Sem|mid", "Owning department", "Level|mid", "Offered to|mid", "Action|num"],
+        rows.map(function (r, i) {
+          var e = CRS_ELIG[r[0]];
+          var nd = e ? (function () {
+                var seen = {}, k = 0;
+                e.offers.forEach(function (o) { if (!seen[o.dc]) { seen[o.dc] = 1; k++; } });
+                return k;
+              }())
+            : seedNum(r[0] + "elig", 1, 5);
+          return ['<b class="tnum">' + r[0] + '</b>', r[1], '<span class="tnum">' + r[2] + '</span>',
+            '<span class="tnum">' + (r[3] === 1 ? "First" : "Second") + '</span>',
+            '<span class="sub2">' + r[4] + '</span>',
+            '<span class="tnum">' + r[0].replace(/\D/g, "").charAt(0) + '00</span>',
+            nd > 1 ? pil('info', nd + ' departments') : '<span class="sub2">Its own only</span>',
+            recBtn('course', i)];
+        })) +
+      recAddIn('course', 'New course',
+        '<span class="sub2">A department creates its own courses on its catalogue screen; this is the University-wide list.</span>'));
+  }
+
+  /* ── 4. users ────────────────────────────────────────────────── */
+  function cfgUsers() {
+    return note('bad', 'A role is granted by the Registrar, recorded here, and reviewed',
+      'The Directorate of ICT operates this console; it does not decide who holds an office. Every grant carries the authority that made it, a start date and an end date, because acting appointments are the normal case in a Nigerian university and an acting appointment that never ends is how a person keeps a power they no longer hold.') +
+
+    tiles([
+      ["Accounts", "24,806", null, "Students, staff, applicants"],
+      ["Staff accounts", "1,914", null, "With at least one office"],
+      ["Holding two offices", "63", "var(--chrome)", "A Dean who also teaches"],
+      ["Grants expiring in 30 days", "8", "var(--red-ink)", "Acting appointments"]
+    ]) +
+
+    panel('Staff accounts and the offices they hold', 'Newest grant first',
+      dtable(["Name", "Staff number|mid", "Office", "Bounded to", "Granted by", "From|mid", "To|mid", "Action|num"],
+        GRANTS.map(function (g, i) {
+          return ["<strong>" + g[0] + "</strong>", '<span class="tnum">' + g[1] + '</span>', g[2],
+            '<span class="sub2">' + g[3] + '</span>', '<span class="sub2">' + g[4] + '</span>',
+            '<span class="tnum">' + g[5] + '</span>',
+            g[6] === "&mdash;" ? '<span class="sub2">&mdash;</span>'
+              : '<span class="tnum" style="color:var(--red-ink)">' + g[6] + '</span>',
+            recBtn('grant', i)];
+        })) +
+      recAddIn('grant', 'Grant an office',
+        '<span class="sub2">Not effective until the Registrar countersigns.</span>'));
+  }
+
+  /* ── 5. roles ────────────────────────────────────────────────── */
+  function cfgRoles() {
+    return note('info', 'What an office may do, and the two things no office may do',
+      'A permission set is not a list of screens. It is a list of acts, each one bounded &mdash; a Head of Department approves results <b>within her department</b>, not results. And two rules override every permission set in the University: nobody approves twice in one chain, and nobody deletes.') +
+
+    panel('Offices and their reach',
+      'Bounded by department, faculty or the institution',
+      dtable(["Office", "Bounded to", "May approve", "May issue", "Reads|mid", "Action|num"],
+        OFFICE_REACH.map(function (o, i) {
+          return ["<strong>" + o[0] + "</strong>", '<span class="sub2">' + o[1] + '</span>',
+            o[2], o[3], '<span class="sub2">' + o[4] + '</span>', recBtn('office', i)];
+        })) +
+      recAdd('office', 'New permission set')) +
+
+    panel('The two rules no permission set overrides', '', pbody(
+      '<div class="grid grid--2">' +
+        note('bad', 'BR-006 &mdash; no two consecutive approvals by one person',
+          'A person who holds two offices in one chain &mdash; a Dean who taught the course &mdash; is blocked at the second desk, by a unique constraint on the approval act, not by a warning on a screen. The chain waits for somebody else, which is the point.') +
+        note('bad', 'Nobody deletes',
+          'No application role in this system holds a DELETE grant on any table. A record is corrected by a further record that supersedes it, and both remain. The Super Administrator is not an exception; the exception is the whole vulnerability.') +
+      '</div>' +
+      note('info', 'The Super Administrator has no academic authority',
+        'This console configures the platform. It cannot approve a result, sign a transcript or alter a mark &mdash; and it should not be able to, because the person who can change the grading scheme must not also be the person who can change a grade. If a mark is wrong, it is corrected by the department that owns the course, through the chain, on the record.')));
+  }
+
+  /* ── 6. grading systems ──────────────────────────────────────── */
+  function cfgGrading() {
+    return note('info', 'A grading scheme is dated, and results are graded by the scheme in force when they were earned',
+      'This is not a preference. A student who scored 48 in 2019 under a scheme where 45&ndash;49 was a D keeps that D on a transcript printed in 2041, whichever scheme the University uses by then. The bands are stored as effective-dated data with an exclusion constraint that makes an overlap impossible.') +
+
+    tiles([
+      ["Schemes on record", "3", null, "Since 2005/2006"],
+      ["In force", "v3", "var(--green-ink)", "From 2024/2025"],
+      ["Programmes on a variant", "2", "var(--chrome)", "MBBS and LL.B — pending"],
+      ["Overlapping bands", "0", "var(--green-ink)", "Prevented by constraint"]
+    ]) +
+
+    panel('Grading scheme v3', 'In force from 2024/2025 &middot; used by every programme except the two below',
+      dtable(["Grade|mid", "From|mid", "To|mid", "Points|mid", "Outcome", "Action|num"],
+        GRADES.map(function (g, i) {
+          return ['<b style="color:' + g[4] + ';font-size:15px">' + g[0] + '</b>',
+            '<span class="tnum">' + g[1] + '</span>', '<span class="tnum">' + g[2] + '</span>',
+            '<b class="tnum">' + g[3] + '</b>',
+            g[3] > 0 ? "Passed &mdash; counts toward the CGPA" : "Failed &mdash; the course is carried over",
+            recBtn('band', i)];
+        })) +
+      recAdd('band', 'New band')) +
+
+    panel('Degree classification', 'Applied to the final CGPA at graduation',
+      dtable(["Class", "CGPA from|mid", "CGPA to|mid", "Action|num"],
+        CLASSES.map(function (c, i) {
+          return ["<strong>" + c[0] + "</strong>", '<span class="tnum">' + c[1].toFixed(2) + '</span>',
+            '<span class="tnum">' + c[2].toFixed(2) + '</span>', recBtn('klass', i)];
+        })) +
+      recAdd('klass', 'New classification')) +
+
+    note('bad', 'D-Q5 is open: do Health Sciences and Law grade differently?',
+      'The MBBS and the LL.B commonly carry their own pass mark and their own classification. Until this is answered the prototype grades every programme on v3, and the answer changes what a Faculty of Health Sciences result set means. This is a decision for Senate, not for the Directorate of ICT.') +
+
+    panel('Schemes on record', 'A new scheme takes effect from a session, never from a date in the middle of one',
+      dtable(["Scheme|mid", "In force from|mid", "Applies to", "Pass mark|mid", "State|mid", "Action|num"], [
+        ['<b class="tnum">v3</b>', '<span class="tnum">2024/2025</span>', "All programmes",
+          '<span class="tnum">40</span>', pil('ok', 'In force'), btn('ghost', 'View')],
+        ['<b class="tnum">v2</b>', '<span class="tnum">2013/2014</span>', "All programmes",
+          '<span class="tnum">40</span>', pil('bad', 'Closed'), btn('ghost', 'View')],
+        ['<b class="tnum">v1</b>', '<span class="tnum">2005/2006</span>', "All programmes",
+          '<span class="tnum">45</span>', pil('bad', 'Closed'), btn('ghost', 'View')]
+      ]) +
+      recAddIn('scheme', 'New scheme',
+        '<span class="sub2">A closed scheme is never edited &mdash; results earned under it are graded by it for ever.</span>'));
+  }
+
+  /* ── 7. result settings ──────────────────────────────────────── */
+  function cfgResults() {
+    return note('info', 'The settings that decide what a result is and when it may be seen',
+      'These are the levers that change behaviour across the whole estate, so each one records who moved it and when. A change to a weighting does not touch a result already approved: it applies from the session you set it for.') +
+
+    panel('Assessment weighting', 'Per programme, per session',
+      dtable(["Applies to", "Continuous assessment|mid", "Examination|mid", "Pass mark|mid", "From|mid", "Action|num"],
+        WEIGHTINGS.map(function (w, i) {
+          return ["<strong>" + w[0] + "</strong>", '<span class="tnum">' + w[1] + '</span>',
+            '<span class="tnum">' + w[2] + '</span>', '<span class="tnum">' + w[3] + '</span>',
+            w[5] === "in force" ? '<span class="tnum">' + w[4] + '</span>' : '<span class="sub2">Pending Senate</span>',
+            recBtn('weight', i)];
+        })) +
+      recAdd('weight', 'New weighting')) +
+
+    panel('The result workflow', 'The chain a result set walks, and who may shorten it',
+      dtable(["Stage|mid", "Desk", "May be skipped", "Time limit|mid", "On expiry", "Action|num"],
+        WORKFLOW.map(function (w, i) {
+          return ['<span class="tnum">' + w[0] + '</span>', w[1], w[2],
+            '<span class="tnum">' + w[3] + '</span>', w[4], recBtn('stage', i)];
+        })) +
+      recAddIn('stage', 'New stage',
+        '<span class="sub2">A stage cannot be removed while a set is standing at it.</span>')) +
+
+    panel('Publication and queries', '', pbody(
+      '<div class="grid grid--2">' +
+        kvGrid([
+          ["Embargo", "No publication without a Senate minute"],
+          ["Release", "Manual, by Exams &amp; Records, after the minute"],
+          ["Withheld sets", "Shown to the candidate as withheld, with the reason"],
+          ["Query window", "5 working days from release"],
+          ["Query routed to", "The department owning the course"],
+          ["Mark change after release", "Requires a fresh chain and a Senate amendment minute"]
+        ], 'grid--2') +
+        note('bad', 'ABS is not zero, and the setting cannot be turned off',
+          'A candidate who was absent has no mark; a candidate who scored nothing has a mark of nothing. The engine treats them differently in the GPA, in the carryover rule and in the eligibility to re-sit, and a system that collapses the two produces a graduation list that is quietly wrong.') +
+      '</div>'));
+  }
+
+  /* ── 8. audit log ────────────────────────────────────────────── */
+  var AUDIT = [
+    ["12 Sep 18:02", "Result release", "Mrs. D. A. Ochoga", "Exams &amp; Records", "98 sets released under SEN/2026/114", "ok"],
+    ["12 Sep 17:48", "Senate minute recorded", "Mr. B. T. Hemba", "Registrar", "SEN/2026/114 &middot; countersigned", "ok"],
+    ["12 Sep 11:20", "Grading scheme viewed", "Mr. Terna Abuul", "Super Administrator", "v3 &mdash; read only, no change", ""],
+    ["11 Sep 16:31", "Result set returned", "Prof. B. O. Atu", "Dean", "MTH 212 returned to Mathematics &mdash; fail rate 3.2&times; the mean", "bad"],
+    ["11 Sep 14:02", "Approval blocked", "Dr. I. O. Ogwuche", "HOD", "BR-006 &mdash; already approved CSC 351 as second examiner", "bad"],
+    ["11 Sep 09:44", "Office granted", "Mr. B. T. Hemba", "Registrar", "Exams Officer (acting) to Dr. M. Adikpe, to 31 Dec 2026", "ok"],
+    ["10 Sep 15:19", "Score sheet attested", "Dr. T. Iorpuu", "Lecturer", "CSC 311 &middot; 84 rows &middot; 2 ABS", "ok"],
+    ["10 Sep 08:07", "Card blocked", "Mr. J. A. Anhwange", "Chief Security Officer", "MOAUM221204 reported lost", "bad"],
+    ["9 Sep 22:14", "Failed sign-in", '<span class="sub2">MOAUM/STF/0884</span>', "&mdash;", "4th attempt &middot; account locked 15 minutes", "bad"],
+    ["9 Sep 17:55", "Gateway key rotated", "Mr. Terna Abuul", "Super Administrator", "Paystack live secret &middot; two-person change, countersigned by the Bursar", "ok"],
+    ["9 Sep 10:31", "Biodata change approved", "Mrs. D. A. Ochoga", "Academic Office", "State of origin &middot; evidence: LGA letter", "ok"],
+    ["8 Sep 13:40", "Fee schedule published", "Dr. A. E. Otse", "Bursar", "2026/2027 &middot; instalment 1 of 2", "ok"]
+  ];
+
+  function cfgAudit() {
+    return note('bad', 'This is the one screen nobody can write to',
+      'The log is append-only at the database. No application role holds an UPDATE or a DELETE grant on it, the Super Administrator included &mdash; which is what makes it worth reading. An administrator who can edit the log is an administrator whose log proves nothing.') +
+
+    tiles([
+      ["Events today", "18,402", null, "All modules"],
+      ["Approvals", "312", null, "Across every chain"],
+      ["Blocked by BR-006", "4", "var(--red-ink)", "Segregation of duties"],
+      ["Retention", "7 years", null, "NDPA 2023 &middot; then archived"]
+    ]) +
+
+    panel('Filter', '', pbody(
+      '<div class="grid grid--4">' +
+        '<div class="field"><label for="au-m">Module</label><select id="au-m" class="ctl"><option>All modules</option><option>Results</option><option>Identity</option><option>Payments</option></select></div>' +
+        '<div class="field"><label for="au-a">Act</label><select id="au-a" class="ctl"><option>All acts</option><option>Approvals</option><option>Configuration</option><option>Sign-in</option></select></div>' +
+        '<div class="field"><label for="au-w">Who</label><input id="au-w" class="ctl" placeholder="Name or staff number" autocomplete="off"></div>' +
+        '<div class="field"><label for="au-d">When</label><select id="au-d" class="ctl"><option>Last 7 days</option><option>This session</option><option>All time</option></select></div>' +
+      '</div>')) +
+
+    panel('Audit log', 'Newest first &middot; append-only',
+      dtable(["When|mid", "Act", "Who", "Office", "What", "Outcome|mid"],
+        AUDIT.map(function (a) {
+          return ['<span class="tnum sub2">' + a[0] + '</span>', "<strong>" + a[1] + "</strong>",
+            a[2], '<span class="sub2">' + a[3] + '</span>', '<span class="sub2">' + a[4] + '</span>',
+            a[5] === "ok" ? pil('ok', 'Done') : a[5] === "bad" ? pil('bad', 'Refused or reversed') : pil('info', 'Read')];
+        })));
+  }
+
+  /* ── 9. system configuration ─────────────────────────────────── */
+  function cfgSystem() {
+    return note('info', 'The platform itself',
+      'Identity, integrations, retention and residency. Two of these are legal obligations rather than preferences, and they are marked as such.') +
+
+    '<div class="grid grid--2">' +
+      panel('Identity of the institution', 'Printed on every document', pbody(kvGrid([
+        ["Present name", "Rev. Fr. Moses Orshio Adasu University, Makurdi"],
+        ["Former name", "Benue State University, Makurdi"],
+        ["Renamed", "30 December 2024"],
+        ["Both names resolve in verification", "Yes &mdash; BR-013, and it is not optional"],
+        ["Domain", "moaum.edu.ng"],
+        ["Address", "Km 1, Gboko Road, PMB 102119, Makurdi"]
+      ], 'grid--2')) + recOne('identity', 'Amend the identity')) +
+
+      panel('Sign-in', '', pbody(kvGrid([
+        ["Student identifier", "Matriculation number"],
+        ["Staff identifier", "Staff number"],
+        ["Second factor", "Required for every staff office"],
+        ["Session length", "8 hours, or until sign-out"],
+        ["Failed attempts", "4, then a 15-minute lock"],
+        ["Password reset", "Self-service by e-mail and SMS"]
+      ], 'grid--2')) + recOne('signin', 'Amend the sign-in policy')) +
+    '</div>' +
+
+    panel('Integrations', 'What the portal talks to',
+      dtable(["Service", "What it does", "Base URL", "State|mid", "Last exchange|mid", "Action|num"],
+        INTEGRATIONS.map(function (t, i) {
+          return ["<strong>" + t[0] + "</strong>", t[1], '<span class="sub2 tnum">' + t[2] + '</span>',
+            t[3] === "connected" ? pil('ok', 'Connected') : t[3] === "sandbox" ? pil('info', 'Sandbox') : pil('info', 'Manual'),
+            '<span class="tnum">' + t[5] + '</span>',
+            recBtn('integration', i, 'Configure')];
+        })) +
+      recAddIn('integration', 'New integration',
+        btn('ghost', 'Open the payment gateways', ' data-go="t/gateways"'))) +
+
+    '<div class="grid grid--2">' +
+      panel('Data protection', 'NDPA 2023 &mdash; obligations, not settings', pbody(kvGrid([
+        ["Data Protection Officer", "Appointed &middot; named in the register"],
+        ["Compliance Audit Return", "Filed by 31 March each year"],
+        ["Breach notification", "72 hours to the NDPC"],
+        ["Residency", "Primary and replica in Nigeria"],
+        ["Retention &mdash; academic record", "Permanent"],
+        ["Retention &mdash; audit log", "7 years, then archived"]
+      ], 'grid--2')) + recOne('retention', 'Amend retention and residency')) +
+
+      panel('Platform', '', pbody(kvGrid([
+        ["Release", "0.9.4 &middot; deployed 4 September 2026"],
+        ["Modules", "27, as a modular monolith"],
+        ["Database", "PostgreSQL &middot; schema per module"],
+        ["Application roles with DELETE", "None"],
+        ["Backups", "Hourly, tested by restore monthly"],
+        ["Recovery objective", "1 hour RPO &middot; 4 hours RTO"]
+      ], 'grid--2'))) +
+    '</div>';
+  }
+
+  var CFG_BODY = {
+    structure: cfgStructure, calendar: cfgCalendar, courses: cfgCourses,
+    users: cfgUsers, roles: cfgRoles, grading: cfgGrading,
+    results: cfgResults, audit: cfgAudit, system: cfgSystem
+  };
+
+  function tSetup() {
+    var i = 0;
+    for (var n = 0; n < CFG_SECTIONS.length; n++) { if (CFG_SECTIONS[n][0] === S.cfg.section) { i = n; } }
+    return note('bad', 'This console configures the University. It cannot approve anything.',
+      'Every list here is structure, calendar, catalogue, people, rules and logs. None of it is a mark, a result, a clearance or a payment &mdash; because the office that sets the grading scheme must not be the office that can change a grade. The Super Administrator is powerful and deliberately narrow.') +
+
+    '<div class="bio">' + cfgNav() +
+      '<div class="bio__body">' + (CFG_BODY[S.cfg.section] || cfgStructure)() +
+        '<div class="bio__save">' +
+          '<button class="btn btn--ghost" data-cfg="prev"' + (i === 0 ? ' disabled' : '') + '>&larr; Back</button>' +
+          '<div class="bio__prog">' +
+            '<div class="bio__bar"><div class="bio__fill" style="width:' +
+              Math.round((i + 1) / CFG_SECTIONS.length * 100) + '%"></div></div>' +
+            '<span class="sub2">Section <b class="tnum">' + (i + 1) + '</b> of <span class="tnum">' +
+              CFG_SECTIONS.length + '</span></span>' +
+          '</div>' +
+          btn('ghost', 'Export this section', ' data-go="t/audit"') +
+          (i === CFG_SECTIONS.length - 1
+            ? '<button class="btn btn--go" data-cfg="go:structure">Back to the top</button>'
+            : '<button class="btn btn--primary" data-cfg="next">Next<span class="bio__nx">' +
+              CFG_SECTIONS[i + 1][1] + ' &rarr;</span></button>') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }

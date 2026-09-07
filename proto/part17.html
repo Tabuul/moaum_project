@@ -1,0 +1,1152 @@
+
+  /* ══ STAFF ROLES ═════════════════════════════════════════════════
+     Ten offices sign in here, and each sees only what its office
+     does. The workspace switcher is gone: a Head of Department does
+     not "switch to Bursary", she simply cannot reach it.          */
+
+  var ROLES = {
+    lecturer: {
+      label: "Lecturer", who: "Dr. T. Iorpuu", sub: "Computer Science", initials: "TI",
+      id: ["Staff number", "MOAUM/STF/1142"], home: "r/lecturer",
+      groups: [
+        { name: "Teaching", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/lecturer", icon: "home", label: "Dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "r/classlist", icon: "user", label: "Registered students" },
+          { id: "t/eligibility", icon: "swap", label: "Who may register it" },
+          { id: "t/lms", icon: "book", label: "Course spaces" },
+          { id: "r/upload", icon: "box", label: "Upload material" },
+          { id: "s/timetable", icon: "cal", label: "Teaching timetable" }
+        ]},
+        { name: "Assessment", items: [
+          { id: "t/sheet", icon: "doc", label: "Score entry", badge: "2" },
+          { id: "t/bulk", icon: "box", label: "Upload results (bulk)" },
+          { id: "t/scores", icon: "doc", label: "My score sheets" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/chain", icon: "check", label: "Approval chain" },
+          { id: "t/cbtbank", icon: "flask", label: "Question bank" }
+        ]},
+        { name: "Research", items: [
+          { id: "t/projects", icon: "flask", label: "My projects" },
+          { id: "t/ethics", icon: "scale", label: "Ethics & repository" }
+        ]},
+        { name: "Me", items: [
+          { id: "r/self", icon: "user", label: "Leave & payslip" }
+        ]}
+      ]
+    },
+
+    hod: {
+      label: "Head of Department", who: "Dr. I. O. Ogwuche", sub: "Mathematics &amp; Computer Science", initials: "IO",
+      id: ["Staff number", "MOAUM/STF/0884"], home: "r/hod",
+      groups: [
+        { name: "Department", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/hod", icon: "home", label: "Dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "r/allocate", icon: "swap", label: "Teaching allocation", badge: "3" },
+          { id: "t/deptcourses", icon: "book", label: "Department courses", badge: "2" },
+          { id: "r/classlist", icon: "user", label: "Registered students" },
+          { id: "t/students", icon: "cap", label: "Students" }
+        ]},
+        { name: "Results", items: [
+          { id: "t/resultdesk", icon: "check", label: "Result desk", badge: "4" },
+          { id: "t/approvals", icon: "check", label: "Departmental approvals" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/broadsheet", icon: "chart", label: "Broadsheet" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" },
+          { id: "t/scores", icon: "doc", label: "Score sheets" }
+        ]},
+        /* A Head of Department is a lecturer who also holds an office.
+           She teaches, she opens her own score sheets and she enters her
+           own marks — and none of that is a second account, a second
+           sign-in or a request to somebody in ICT. The office is added to
+           the person; it does not replace what the person already was.
+
+           This is exactly the case BR-006 exists for: when her own set
+           reaches the departmental desk she is holding, the approval is
+           blocked, because the constraint is on the person and not on the
+           office. She approves everybody else's sets and somebody else
+           approves hers. */
+        { name: "My teaching", items: [
+          { id: "t/sheet", icon: "doc", label: "Score entry", badge: "2" },
+          { id: "t/bulk", icon: "box", label: "Upload results (bulk)" },
+          { id: "t/scores", icon: "doc", label: "My score sheets" },
+          { id: "t/eligibility", icon: "swap", label: "Who may register it" },
+          { id: "t/lms", icon: "book", label: "Course spaces" },
+          { id: "r/upload", icon: "box", label: "Upload material" },
+          { id: "s/timetable", icon: "cal", label: "Teaching timetable" }
+        ]},
+        { name: "Staff", items: [
+          { id: "t/leave", icon: "cal", label: "Leave requests", badge: "2" },
+          { id: "t/appraisal", icon: "chart", label: "Appraisal" }
+        ]},
+        { name: "Resources", items: [
+          { id: "t/requisitions", icon: "box", label: "Requisitions" },
+          { id: "r/self", icon: "user", label: "Leave & payslip" }
+        ]}
+      ]
+    },
+
+    dean: {
+      label: "Dean", who: "Prof. B. O. Atu", sub: "Faculty of Science", initials: "BA",
+      id: ["Staff number", "MOAUM/STF/0412"], home: "r/dean",
+      groups: [
+        { name: "Faculty", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/dean", icon: "home", label: "Dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/students", icon: "cap", label: "Students" },
+          { id: "r/allocate", icon: "swap", label: "Teaching allocation" }
+        ]},
+        { name: "Faculty Board", items: [
+          { id: "t/resultdesk", icon: "check", label: "Result desk", badge: "7" },
+          { id: "t/approvals", icon: "check", label: "Faculty Board" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/broadsheet", icon: "chart", label: "Broadsheet" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" },
+          { id: "t/graduation", icon: "cap", label: "Graduation list" }
+        ]},
+        /* A Dean is a Professor. He lectures, and in a Nigerian
+           university he very often lectures a large service course. The
+           same rule holds: the office is added to the person, and BR-006
+           blocks him from approving at the Faculty Board a set he
+           himself entered. */
+        { name: "My teaching", items: [
+          { id: "t/sheet", icon: "doc", label: "Score entry" },
+          { id: "t/bulk", icon: "box", label: "Upload results (bulk)" },
+          { id: "t/scores", icon: "doc", label: "My score sheets" },
+          { id: "r/classlist", icon: "user", label: "Registered students" },
+          { id: "t/eligibility", icon: "swap", label: "Who may register it" },
+          { id: "t/lms", icon: "book", label: "Course spaces" },
+          { id: "r/upload", icon: "box", label: "Upload material" }
+        ]},
+        { name: "Faculty business", items: [
+          { id: "t/budget", icon: "chart", label: "Faculty budget" },
+          { id: "t/projects", icon: "flask", label: "Research in the faculty" },
+          { id: "t/requisitions", icon: "box", label: "Requisitions" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    /* ── Human Resource Management (P7) ─────────────────────────────
+       Seventeen staff processes are one workflow with seventeen
+       configurations, and this office issues the instrument that every
+       office assignment in the University has to cite. */
+    hrm: {
+      label: "Director of Human Resource Management", who: "Mrs. N. T. Ahemba",
+      sub: "Directorate of Human Resource Management", initials: "NA",
+      id: ["Staff number", "MOAUM/STF/0311"], home: "t/hrm",
+      groups: [
+        { name: "Staff movements", items: [
+          { id: "t/hrm", icon: "user", label: "Movements", badge: "8" },
+          { id: "t/movement", icon: "doc", label: "Open a movement" },
+          { id: "t/staff", icon: "user", label: "Staff records" },
+          { id: "t/recruit", icon: "user", label: "Recruitment" }
+        ]},
+        { name: "Establishment", items: [
+          { id: "t/payroll", icon: "card", label: "Payroll" },
+          { id: "t/leave", icon: "cal", label: "Leave requests", badge: "2" },
+          { id: "t/appraisal", icon: "chart", label: "Appraisal" }
+        ]},
+        { name: "Records", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/records", icon: "chart", label: "Records & queries" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    /* ── Housing, Welfare and Passages (P9) ─────────────────────────
+       Three duties that are one act: a claim of entitlement, verified
+       against a rule, put to a committee, settled with money or a key. */
+    housing: {
+      label: "Deputy Registrar (Housing, Welfare and Passages)", who: "Mr. D. A. Ityavyar",
+      sub: "Registry &middot; Housing, Welfare and Passages", initials: "DI",
+      id: ["Staff number", "MOAUM/STF/0417"], home: "t/housing",
+      groups: [
+        { name: "Claims", items: [
+          { id: "t/housing", icon: "bed", label: "Housing & welfare", badge: "6" },
+          { id: "t/hostel", icon: "bed", label: "Hostel allocation" }
+        ]},
+        { name: "Records", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/staff", icon: "user", label: "Staff records" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    audit: {
+      label: "Director of Internal Audit", who: "Mr. P. T. Iorlaha", sub: "Directorate of Internal Audit", initials: "PI",
+      id: ["Staff number", "MOAUM/STF/0208"], home: "t/prepayment",
+      groups: [
+        /* Every item in this office is a READ except raising and answering
+           a query. The office that checks the money cannot move it, and
+           that is a property of what exists here rather than of a
+           permission somebody could grant later. */
+        { name: "Pre-payments", items: [
+          { id: "t/prepayment", icon: "check", label: "Payment vouchers", badge: "7" },
+          { id: "t/pv", icon: "doc", label: "A voucher in full" },
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/records", icon: "chart", label: "Records & queries" }
+        ]},
+        { name: "Financial operations", items: [
+          { id: "t/auditrevenue", icon: "chart", label: "Revenue & student income", badge: "9" },
+          { id: "t/ledger", icon: "card", label: "Ledger" },
+          { id: "t/reconcile", icon: "swap", label: "Reconciliation" }
+        ]},
+        { name: "Personnel", items: [
+          { id: "t/auditpayroll", icon: "chart", label: "Payroll variance", badge: "6" },
+          { id: "t/auditstaff", icon: "user", label: "Staff movements" }
+        ]},
+        { name: "Assets", items: [
+          { id: "t/auditassets", icon: "box", label: "Assets register", badge: "!" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    exams: {
+      label: "Exams Officer (Programme)", who: "Dr. M. Adikpe", sub: "B.Sc. Computer Science", initials: "MA",
+      id: ["Staff number", "MOAUM/STF/1310"], home: "r/exams",
+      groups: [
+        { name: "Examinations", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/exams", icon: "home", label: "Dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/exams", icon: "flask", label: "CBT sessions", badge: "!" },
+          { id: "t/cbtbank", icon: "flask", label: "Question bank" },
+          { id: "r/classlist", icon: "user", label: "Examination roll" }
+        ]},
+        { name: "Results", items: [
+          { id: "t/scores", icon: "doc", label: "Score sheets", badge: "6" },
+          { id: "t/chain", icon: "check", label: "Approval chain" },
+          { id: "t/approvals", icon: "check", label: "Verification queue" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    academic: {
+      label: "Academic Office", who: "Mrs. D. A. Ochoga", sub: "Academic Affairs, Registry", initials: "DO",
+      id: ["Staff number", "MOAUM/STF/0655"], home: "r/academic",
+      groups: [
+        { name: "Records", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/academic", icon: "home", label: "Dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/students", icon: "cap", label: "Student records" },
+          { id: "t/biochange", icon: "user", label: "Biodata changes", badge: "4" },
+          { id: "r/classlist", icon: "user", label: "Registered students" },
+          { id: "t/admissions", icon: "doc", label: "Admissions" },
+          { id: "t/admissionsetup", icon: "doc", label: "Admission settings", badge: "!" },
+          { id: "t/capsintake", icon: "box", label: "JAMB admission lists", badge: "6" },
+          { id: "t/candidatedata", icon: "user", label: "Passports, DOB & O\u2019Level" },
+          { id: "t/matriculation", icon: "cap", label: "Matriculation", badge: "!" },
+          { id: "t/college", icon: "swap", label: "College of Health Sciences" }
+        ]},
+        { name: "Calendar", items: [
+          { id: "t/session", icon: "cal", label: "Session & semester setup" },
+          { id: "t/examsession", icon: "cal", label: "Examination sessions" }
+        ]},
+        { name: "Credentials", items: [
+          { id: "t/clearance", icon: "check", label: "Clearance", badge: "54" },
+          { id: "t/transcripts", icon: "doc", label: "Transcripts", badge: "9" },
+          { id: "t/certificates", icon: "cap", label: "Certificates" },
+          { id: "t/graduation", icon: "cap", label: "Graduation" }
+        ]},
+        { name: "Senate business", items: [
+          { id: "t/approvals", icon: "check", label: "Results to Senate" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    bursar: {
+      label: "Bursar", who: "Dr. A. E. Otse", sub: "Bursary", initials: "AO",
+      id: ["Staff number", "MOAUM/STF/0301"], home: "r/bursar",
+      groups: [
+        { name: "Students' accounts", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/bursar", icon: "home", label: "Dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/feesetup", icon: "card", label: "Fee setup" },
+          { id: "t/feesched", icon: "card", label: "Fee schedules" },
+          { id: "t/gateways", icon: "card", label: "Payment gateways", badge: "!" },
+          { id: "t/hanging", icon: "alert", label: "Hanging payments", badge: "7" },
+          { id: "t/exception", icon: "alert", label: "Payment investigation", badge: "!" },
+          { id: "t/refunds", icon: "swap", label: "Refunds & credits" }
+        ]},
+        { name: "NELFUND", items: [
+          { id: "t/nelstatus", icon: "user", label: "Applicants & status" },
+          { id: "t/nelfund", icon: "swap", label: "Remittances & wallets", badge: "7" },
+          { id: "t/nelmatch", icon: "swap", label: "Match a remittance" }
+        ]},
+        { name: "Expenditure and control", items: [
+          { id: "t/pv", icon: "doc", label: "Payment vouchers", badge: "1" },
+          { id: "t/payroll", icon: "card", label: "Payroll", badge: "3" },
+          { id: "t/budget", icon: "chart", label: "Budget" },
+          { id: "t/tenders", icon: "box", label: "Tenders" }
+        ]},
+        { name: "Cash and final account", items: [
+          { id: "t/cashdesk", icon: "card", label: "Cash office & assets" },
+          { id: "t/ledger", icon: "swap", label: "Transactions & accounts" },
+          { id: "t/reconcile", icon: "swap", label: "Reconciliation", badge: "12" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    library: {
+      label: "Librarian", who: "Mrs. R. T. Iorember", sub: "University Library", initials: "RI",
+      id: ["Staff number", "MOAUM/STF/0918"], home: "t/idcards",
+      groups: [
+        { name: "Identity cards", items: [
+          { id: "t/idcards", icon: "user", label: "Card printing", badge: "4" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/search", icon: "user", label: "Search" }
+        ]},
+        { name: "Library", items: [
+          { id: "t/circulation", icon: "book", label: "Circulation" },
+          { id: "t/clearance", icon: "check", label: "Library clearance", badge: "7" },
+          { id: "t/stores", icon: "box", label: "Stock & acquisitions" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    security: {
+      label: "Chief Security Officer", who: "Mr. J. A. Anhwange", sub: "Security Department", initials: "JA",
+      id: ["Staff number", "MOAUM/STF/0230"], home: "t/idverify",
+      groups: [
+        { name: "The gate", items: [
+          { id: "t/idverify", icon: "check", label: "Verify a card" },
+          { id: "t/idcards", icon: "user", label: "Card collection", badge: "2" },
+          { id: "t/idlost", icon: "alert", label: "Lost & replacement", badge: "!" }
+        ]},
+        { name: "Records", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/records", icon: "chart", label: "Records & queries" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    facultyexams: {
+      label: "Faculty Exams Officer", who: "Dr. C. U. Ijôrpuu", sub: "Faculty of Science", initials: "CI",
+      id: ["Staff number", "MOAUM/STF/0967"], home: "t/resultdesk",
+      groups: [
+        { name: "Scrutiny", items: [
+          { id: "t/resultdesk", icon: "check", label: "Scrutiny desk", badge: "9" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/broadsheet", icon: "chart", label: "Broadsheet" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" }
+        ]},
+        { name: "The faculty", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/scores", icon: "doc", label: "Score sheets" },
+          { id: "t/exams", icon: "flask", label: "Examinations" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    facultyofficer: {
+      label: "Faculty Officer", who: "Mr. S. T. Gbaka", sub: "Faculty of Science &middot; Registry", initials: "SG",
+      id: ["Staff number", "MOAUM/STF/1044"], home: "t/resultdesk",
+      groups: [
+        { name: "Results", items: [
+          { id: "t/resultdesk", icon: "check", label: "Result desk", badge: "9" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/broadsheet", icon: "chart", label: "Broadsheet" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" }
+        ]},
+        { name: "The faculty", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/students", icon: "cap", label: "Students" },
+          { id: "t/matlist", icon: "cap", label: "Registered students", badge: "!" },
+          { id: "t/scores", icon: "doc", label: "Score sheets" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    records: {
+      label: "Exams & Records", who: "Mr. A. T. Ityoughagba", sub: "Exams & Records Department", initials: "AI",
+      id: ["Staff number", "MOAUM/STF/0512"], home: "t/examsrec",
+      groups: [
+        { name: "Examinations", items: [
+          { id: "t/examsrec", icon: "home", label: "Dashboard" },
+          { id: "t/examsession", icon: "cal", label: "Examination sessions", badge: "!" },
+          { id: "t/resultdesk", icon: "check", label: "Validation desk", badge: "12" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/college", icon: "swap", label: "College of Health Sciences" }
+        ]},
+        { name: "Results", items: [
+          { id: "t/broadsheet", icon: "chart", label: "Broadsheets" },
+          { id: "t/senate", icon: "scale", label: "Senate schedule", badge: "!" },
+          { id: "t/publish", icon: "bell", label: "Publication" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" }
+        ]},
+        { name: "Credentials", items: [
+          { id: "t/transcripts", icon: "doc", label: "Transcripts", badge: "9" },
+          { id: "t/certificates", icon: "cap", label: "Certificates" },
+          { id: "t/graduation", icon: "cap", label: "Graduation records" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/search", icon: "user", label: "Search" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    dregistrar: {
+      label: "Deputy Registrar (Academic Affairs)", who: "Mrs. V. N. Akpen", sub: "Registry", initials: "VA",
+      id: ["Staff number", "MOAUM/STF/0398"], home: "t/mgmt",
+      groups: [
+        { name: "Senate business", items: [
+          { id: "t/mgmt", icon: "home", label: "Dashboard" },
+          { id: "t/senate", icon: "scale", label: "Senate schedule", badge: "!" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" }
+        ]},
+        { name: "Records", items: [
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/broadsheet", icon: "chart", label: "Broadsheets" },
+          { id: "t/transcripts", icon: "doc", label: "Transcripts" },
+          { id: "t/search", icon: "user", label: "Search" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    dvc: {
+      label: "DVC (Academic)", who: "Prof. M. I. Ajene", sub: "Deputy Vice-Chancellor, Academic", initials: "MA",
+      id: ["Staff number", "MOAUM/STF/0102"], home: "t/mgmt",
+      groups: [
+        { name: "Academic", items: [
+          { id: "t/mgmt", icon: "home", label: "Dashboard" },
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/senate", icon: "scale", label: "Senate schedule" },
+          { id: "t/mgmt", icon: "home", label: "Management dashboard" },
+          { id: "t/overview", icon: "chart", label: "Institutional overview" }
+        ]},
+        { name: "Reading", items: [
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/broadsheet", icon: "chart", label: "Broadsheets" },
+          { id: "t/graduation", icon: "cap", label: "Graduation" },
+          { id: "t/reports", icon: "doc", label: "Reports & returns" },
+          { id: "t/search", icon: "user", label: "Search" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    super: {
+      label: "Super Administrator", who: "Mr. Terna Abuul", sub: "Directorate of ICT", initials: "TA",
+      id: ["Staff number", "MOAUM/STF/0774"], home: "t/setup",
+      groups: [
+        { name: "Configuration", items: [
+          { id: "t/setup", icon: "server", label: "Setup console" },
+          { id: "t/session", icon: "cal", label: "Session & semester setup" },
+          { id: "t/users", icon: "user", label: "Users & roles" },
+          { id: "t/channels", icon: "bell", label: "Notification channels" },
+          { id: "t/migration", icon: "box", label: "Data migration", badge: "!" },
+          { id: "t/platform", icon: "server", label: "Platform" },
+          { id: "t/api", icon: "swap", label: "Integrations" },
+          { id: "t/college", icon: "swap", label: "College of Health Sciences" }
+        ]},
+        { name: "Assurance", items: [
+          { id: "t/audit", icon: "shield", label: "Audit log" },
+          { id: "t/security", icon: "shield", label: "Security" },
+          { id: "t/dr", icon: "box", label: "Backups & recovery" },
+          { id: "t/governance", icon: "scale", label: "Governance" }
+        ]},
+        { name: "Reading only", items: [
+          { id: "t/pipeline", icon: "swap", label: "Result pipeline" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/search", icon: "user", label: "Search" }
+        ]}
+      ]
+    },
+
+    registrar: {
+      label: "Registrar", who: "Mr. B. T. Hemba", sub: "Registry", initials: "BH",
+      id: ["Staff number", "MOAUM/STF/0102"], home: "r/registrar",
+      groups: [
+        { name: "Registry", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/registrar", icon: "home", label: "Dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/admissions", icon: "doc", label: "Admissions" },
+          { id: "t/students", icon: "cap", label: "Student records" },
+          { id: "t/biochange", icon: "user", label: "Biodata changes", badge: "4" },
+          { id: "t/certificates", icon: "cap", label: "Certificates" },
+          { id: "t/clearance", icon: "check", label: "Clearance", badge: "54" },
+          { id: "t/transcripts", icon: "doc", label: "Transcripts", badge: "9" },
+          { id: "t/college", icon: "swap", label: "College of Health Sciences" }
+        ]},
+        { name: "Staff and Council", items: [
+          { id: "t/staff", icon: "user", label: "Staff records" },
+          { id: "t/recruit", icon: "user", label: "Recruitment" },
+          { id: "t/approvals", icon: "check", label: "Senate business" }
+        ]},
+        { name: "Compliance", items: [
+          { id: "t/governance", icon: "scale", label: "Data governance", badge: "2" },
+          { id: "t/audit", icon: "shield", label: "Audit trail" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    ict: {
+      label: "Director of ICT", who: "Mr. Terna Abuul", sub: "Directorate of ICT", initials: "TA",
+      id: ["Staff number", "MOAUM/STF/0790"], home: "t/platform",
+      groups: [
+        { name: "Service", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/platform", icon: "server", label: "Platform & integrations", badge: "!" },
+          { id: "t/users", icon: "user", label: "Users & roles", badge: "1" },
+          { id: "t/gateways", icon: "card", label: "Payment gateways", badge: "!" },
+          { id: "t/notify", icon: "bell", label: "Notifications", badge: "!" },
+          { id: "t/security", icon: "shield", label: "Security posture", badge: "!" }
+        ]},
+        { name: "Engineering", items: [
+          { id: "t/api", icon: "swap", label: "API management", badge: "2" },
+          { id: "t/release", icon: "box", label: "Release pipeline" },
+          { id: "t/dr", icon: "life", label: "Disaster recovery" },
+          { id: "t/cloud", icon: "chart", label: "Cloud readiness" }
+        ]},
+        { name: "Governance", items: [
+          { id: "t/audit", icon: "shield", label: "Audit trail" },
+          { id: "t/governance", icon: "scale", label: "Data governance", badge: "2" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    services: {
+      label: "Support Services", who: "Dr. E. Livinus", sub: "Health, library, hostel, procurement", initials: "EL",
+      id: ["Staff number", "MOAUM/STF/1520"], home: "t/clinic",
+      groups: [
+        { name: "Student services", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/clinic", icon: "heart", label: "Clinic" },
+          { id: "t/circulation", icon: "book", label: "Library circulation" },
+          { id: "t/stores", icon: "box", label: "Stores & assets" }
+        ]},
+        { name: "Procurement", items: [
+          { id: "t/requisitions", icon: "box", label: "Requisitions" },
+          { id: "t/tenders", icon: "box", label: "Tenders" }
+        ]},
+        { name: "Advancement", items: [
+          { id: "t/alumni", icon: "cap", label: "Alumni register" }
+        ]},
+        { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] }
+      ]
+    },
+
+    admin: {
+      label: "System Administrator", who: "Mr. Terna Abuul", sub: "Directorate of ICT &middot; administration", initials: "TA",
+      id: ["Staff number", "MOAUM/STF/0790"], home: "r/admin",
+      groups: [
+        { name: "Institution", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "r/admin", icon: "home", label: "Administrator dashboard" },
+          { id: "t/records", icon: "chart", label: "Records & queries" },
+          { id: "t/overview", icon: "chart", label: "Institutional overview" },
+          { id: "t/reports", icon: "chart", label: "Reports & returns" }
+        ]},
+        { name: "Money", items: [
+          { id: "t/gateways", icon: "card", label: "Payment gateways", badge: "!" },
+          { id: "t/ledger", icon: "swap", label: "Transactions & accounts" },
+          { id: "t/reconcile", icon: "swap", label: "Reconciliation", badge: "12" },
+          { id: "t/exception", icon: "alert", label: "Payment investigation" },
+          { id: "t/feesched", icon: "card", label: "Fee schedules" }
+        ]},
+        { name: "Academic", items: [
+          { id: "t/clearance", icon: "check", label: "Clearance", badge: "54" },
+          { id: "t/students", icon: "cap", label: "Student records" },
+          { id: "t/admissions", icon: "doc", label: "Admissions" },
+          { id: "r/allocate", icon: "swap", label: "Teaching allocation" },
+          { id: "t/chain", icon: "doc", label: "Approval chain" }
+        ]},
+        { name: "Platform", items: [
+          { id: "t/users", icon: "user", label: "Users & roles" },
+          { id: "t/platform", icon: "server", label: "Platform & integrations" },
+          { id: "t/security", icon: "shield", label: "Security posture", badge: "!" },
+          { id: "t/audit", icon: "shield", label: "Audit trail" },
+          { id: "t/governance", icon: "scale", label: "Data governance", badge: "2" }
+        ]}
+      ]
+    },
+
+    vc: {
+      label: "Vice-Chancellor", who: "Prof. T. T. Alabar", sub: "Office of the Vice-Chancellor", initials: "TA",
+      id: ["Staff number", "MOAUM/STF/0001"], home: "t/overview",
+      groups: [
+        { name: "Institution", items: [
+          { id: "t/search", icon: "user", label: "Search" },
+          { id: "t/overview", icon: "home", label: "Institutional overview" },
+          { id: "t/reports", icon: "chart", label: "Reports & returns" },
+          { id: "t/budget", icon: "card", label: "Budget" }
+        ]},
+        { name: "Academic", items: [
+          { id: "t/approvals", icon: "check", label: "Senate business", badge: "7" },
+          { id: "t/graduation", icon: "cap", label: "Graduation" },
+          { id: "t/projects", icon: "flask", label: "Research" }
+        ]},
+        { name: "Assurance", items: [
+          { id: "t/audit", icon: "shield", label: "Audit trail" },
+          { id: "t/governance", icon: "scale", label: "Data governance" },
+          { id: "t/security", icon: "shield", label: "Security posture" }
+        ]}
+      ]
+    }
+  };
+
+  var ROLE_KEYS = ["lecturer", "hod", "exams", "facultyexams", "facultyofficer", "dean", "records", "academic", "audit",
+    "hrm", "housing", "bursar", "library", "security", "dregistrar", "registrar", "dvc", "vc",
+    "ict", "services", "admin", "super"];
+
+  /* every route a role can reach, for the "not your office" screen */
+  var ROLE_CAN = {};
+  ROLE_KEYS.forEach(function (k) {
+    ROLE_CAN[k] = {};
+    ROLES[k].groups.forEach(function (g) { g.items.forEach(function (it) { ROLE_CAN[k][it.id] = 1; }); });
+  });
+
+  function roleSwitch() {
+    return '<div class="card" style="border-style:dashed">' + pbody(
+      '<div class="eyebrow" style="color:var(--muted)">Prototype control &mdash; not part of the design</div>' +
+      '<div class="sub2">Signed in as <strong>' + ROLES[S.srole].who + '</strong>, ' + ROLES[S.srole].label +
+      '. Each office sees only its own work; switch to compare.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+        ROLE_KEYS.map(function (k) {
+          return btn(S.srole === k ? 'primary' : 'ghost', ROLES[k].label, ' data-srole="' + k + '"');
+        }).join('') +
+      '</div>') + '</div>';
+  }
+
+  /* ── lecturer ─────────────────────────────────────────────────── */
+
+  /* The registered count and the entered count are COMPUTED from the same
+     roll the score sheet is generated from. They used to be typed here,
+     and they disagreed with the sheet — the row said 84 registered and the
+     sheet showed 44. A dashboard figure that disagrees with the screen it
+     links to is worse than no figure. */
+  var LEC_COURSES = [
+    ["CSC 311", "Algorithms &amp; Complexity", "Verified",        "ok"],
+    ["CSC 341", "Computer Networks",           "Not entered",     "bad"],
+    ["CSC 421", "Distributed Systems",         "Senate approved", "ok"],
+    ["GST 301", "Entrepreneurship (shared)",   "Not entered",     "bad"]
+  ];
+
+  function lecCourse(code) {
+    skSeedCourse(code);
+    var roll = courseRoll(code), book = S.marks[code] || {};
+    var done = 0;
+    roll.forEach(function (r) {
+      var v = book[r.m];
+      if (v && (v.abs || (v.ca !== "" && v.ex !== "" && v.ca !== undefined && v.ex !== undefined))) { done++; }
+    });
+    return { n: roll.length, done: done, units: (CRS_ELIG[code] || {}).units || 3 };
+  }
+
+  function rLecturer() {
+    var lecOut = LEC_COURSES.filter(function (c) { return lecCourse(c[0]).done === 0; });
+    var lecFirst = lecOut.length ? lecOut[0][0] : "CSC 341";
+
+    return     (lecOut.length
+      ? note('bad', lecOut.length === 1
+          ? 'One score sheet is not entered and Senate sits in six days'
+          : lecOut.length + ' score sheets are not entered and Senate sits in six days',
+        lecOut.map(function (c) {
+          return '<b class="tnum">' + c[0] + '</b> (' + lecCourse(c[0]).n + ' candidates)';
+        }).join(' and ') + ' ' + (lecOut.length === 1 ? 'has' : 'have') +
+        ' no marks against ' + (lecOut.length === 1 ? 'it' : 'them') +
+        '. A sheet that misses this Senate waits for the next one, and those students carry an incomplete result into the second semester.',
+        btn('urgent', 'Enter ' + lecFirst + ' marks', ' data-go="t/sheet" data-course="' + lecFirst + '"') + ' ' +
+        btn('ghost', 'All score sheets', ' data-go="t/scores"'))
+      : note('ok', 'Every sheet you owe is entered',
+        'All four of your courses carry a mark or an ABS against every registered candidate. Nothing is waiting on you for this Senate.',
+        btn('ghost', 'All score sheets', ' data-go="t/scores"'))) +
+
+    /* Two ways in, offered as equals. Which one a lecturer uses depends
+       on whether she already keeps marks in a spreadsheet, and neither
+       answer should be the harder path to find. */
+    panel('Submitting your marks', 'Two ways in &mdash; they meet at the same score sheet', pbody(
+      '<div class="ways">' +
+        '<div class="way">' +
+          '<div class="way__h"><span class="way__i">' + ico('doc', 20, 'currentColor', 1.9) + '</span>' +
+            '<span class="way__t">Type them in</span></div>' +
+          '<div class="way__s">Every registered candidate is already on the sheet. Two boxes each &mdash; ' +
+          'CA and examination &mdash; and the total, grade and point appear as you type. Enter or &darr; ' +
+          'moves down the column, so a whole roll is entered from the keyboard.</div>' +
+          '<div class="way__b">' + btn('primary', 'Open the score sheet',
+            ' data-go="t/sheet" data-course="' + lecFirst + '"') + '</div>' +
+        '</div>' +
+        '<div class="way">' +
+          '<div class="way__h"><span class="way__i">' + ico('box', 20, 'currentColor', 1.9) + '</span>' +
+            '<span class="way__t">Upload in bulk</span></div>' +
+          '<div class="way__s">Already keep the marks in Excel? Download the template &mdash; it is this ' +
+          'course&rsquo;s live register &mdash; fill two columns, save as CSV and upload. The file is ' +
+          '<b>checked before anything is written</b>, and accepted whole or not at all.</div>' +
+          '<div class="way__b">' + btn('primary', 'Upload a completed sheet',
+            ' data-go="t/bulk" data-course="' + lecFirst + '"') + ' ' +
+            btn('ghost', 'Download the template', ' data-tpl="blank"') + '</div>' +
+        '</div>' +
+      '</div>')) +
+
+    tiles([
+      ['Courses this semester', String(LEC_COURSES.length), null, '3 owned, 1 shared'],
+      ['Candidates taught', String(LEC_COURSES.reduce(function (n, c) { return n + lecCourse(c[0]).n; }, 0)),
+        null, 'Across all four rolls'],
+      ['Sheets outstanding', String(lecOut.length), lecOut.length ? 'var(--red-ink)' : 'var(--green-ink)',
+        'Senate sits 18 September'],
+      ['Materials published', '11', null, 'Weeks 1&ndash;4']
+    ]) +
+
+    panel('My courses this semester', '2026/2027 &middot; first semester &middot; every course can be typed or uploaded', dtable(
+      ['Course', 'Units|mid', 'Registered|mid', 'Marks entered|mid', 'Result stage', 'Enter marks|num', 'Or upload|num'],
+      LEC_COURSES.map(function (c) {
+        var f = lecCourse(c[0]), none = f.done === 0;
+        /* the stage comes from scoreStage(), the same function the score-sheet
+           list uses, so the dashboard cannot call a sheet verified while the
+           sheet itself shows three candidates still to be entered */
+        var st = scoreStage(c);
+        return ['<strong class="tnum">' + c[0] + '</strong><div class="sub2">' + c[1] + '</div>',
+          '<span class="tnum">' + f.units + '</span>',
+          '<span class="tnum">' + f.n + '</span>',
+          '<span class="tnum"' + (f.done < f.n ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' +
+            f.done + '</span>',
+          pil(st.pill, st.text),
+          btn(none ? 'urgent' : 'ghost', none ? 'Type them in' : 'Open sheet',
+              ' data-go="t/sheet" data-course="' + c[0] + '"'),
+          btn('ghost', 'Upload &uarr;', ' data-go="t/bulk" data-course="' + c[0] + '"')];
+      }), 1040)) +
+
+    two_col(
+      panel('Downloads', 'Everything a lecturer asks the Registry for', pbody(
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+          btn('ghost', 'Class list &mdash; ' + sheetNow().code + ' (' + courseRoll(sheetNow().code).length + ' candidates)', ' data-doc="classlist"') +
+          btn('ghost', 'Attendance register &mdash; ' + sheetNow().code, ' data-doc="attreg"') +
+          btn('ghost', 'Blank score sheet &mdash; ' + sheetNow().code, ' data-doc="scoresheet"') +
+          btn('ghost', 'Examination roll &mdash; ' + sheetNow().code, ' data-doc="examroll"') +
+        '</div>' +
+        '<div class="sub2" style="margin-top:8px">Each is generated from the approved registrations at the moment you ask, so it is never out of date. The class list is the roll of account: a student who is not on it is not registered, whatever they tell you.</div>')),
+      panel('This week', '', dtable(['When|mid', 'What'], [
+        ['<span class="sub2 tnum">Mon 09:00</span>', two('CSC 311 lecture', 'LT2 &middot; 84 registered')],
+        ['<span class="sub2 tnum">Tue 11:00</span>', two('CSC 341 lecture', 'LT4 &middot; 61 registered')],
+        ['<span class="sub2 tnum">Wed 14:00</span>', two('CSC 421 laboratory', 'Lab 1 &middot; 38 registered')],
+        ['<span class="sub2 tnum">Thu 10:00</span>', two('Departmental Board', 'Results of six courses')],
+        ['<span class="sub2 tnum">Fri 16:00</span>', two('Problem set 3 closes', '61 of 84 submitted')]
+      ], 420))) +
+
+    panel('Students at risk in my courses', 'Feeds the early-warning report to the Head of Department', dtable(
+      ['Student', 'Course', 'Attendance|mid', 'Submissions|mid', 'CA so far|mid', 'Flag|num'], [
+        [two('AKAAKA, Sesugh Daniel', 'MOAUM/CSC/23/1423'), '<span class="tnum">CSC 311</span>', '<span class="tnum">33%</span>', '<span class="tnum">0 of 3</span>', '<span class="tnum">9 / 30</span>', pil('bad', 'High risk')],
+        [two('AGBO, Ochanya Faith', 'MOAUM/CSC/23/1415'), '<span class="tnum">CSC 311</span>', '<span class="tnum">58%</span>', '<span class="tnum">1 of 3</span>', '<span class="tnum">18 / 30</span>', pil('bad', 'High risk')],
+        [two('TSEMBE, Aondowase', 'MOAUM/CSC/23/1502'), '<span class="tnum">CSC 341</span>', '<span class="tnum">75%</span>', '<span class="tnum">2 of 3</span>', '<span class="tnum">21 / 30</span>', pil('info', 'Watch')]
+      ], 940)) +
+
+    note('info', 'You cannot see a student who is not registered for your course',
+      'The class list, the score sheet and the course space are all built from approved registrations. It is the reason a mark can never be entered for a student who never registered &mdash; which is how ghost results enter a system that allows it.');
+  }
+
+  function rClasslist() {
+    /* one register, six screens. This is the same roll the score sheet,
+       the attendance register, the examination roll and the broadsheet
+       are drawn from — and it is every approved registration, not the
+       owning department's students. */
+    var rows = courseRoll("CSC 311"), sp = rollSplit("CSC 311");
+    var blocked = "MOAUM/CSC/23/1502";
+
+    return scopeBar('students', { course: true }) +
+        tiles([
+      ['Registered', String(sp.all), null, 'Approved registrations only'],
+      ['Computer Science', String(sp.own), null, 'The owning programme'],
+      ['Other programmes', String(sp.borrowed), 'var(--chrome)', 'Across three faculties'],
+      ['Cleared to sit', String(sp.all - 1), 'var(--red-ink)', '1 blocked at the Bursary']
+    ]) +
+
+    note('info', 'This list is generated now, from approved registrations &mdash; all of them',
+      'It is not a file somebody exported in September. Add or drop a registration and this list changes. It is also not filtered to this department: CSC 311 was made available at creation to ' +
+      CRS_ELIG["CSC 311"].offers.length + ' programme and level pairs, so ' + sp.from.join(", ") +
+      ' appear here and on every roll drawn from it.',
+      btn('primary', 'Download class list', ' data-doc="classlist"') + ' ' +
+      btn('ghost', 'Attendance register', ' data-doc="attreg"') + ' ' +
+      btn('ghost', 'Examination roll', ' data-doc="examroll"')) +
+
+    panel('CSC 311 &mdash; Algorithms &amp; Complexity', sp.all + ' registered &middot; ' + sp.borrowed + ' from other programmes', dtable(
+      ['Matriculation number', 'Name', 'Programme', 'Level|mid', 'Basis|mid', 'Attendance|mid', 'Clearance|num'],
+      rows.map(function (r) {
+        var ok = r.m !== blocked;
+        return ['<span class="tnum">' + r.m + '</span>', '<strong>' + r.name + '</strong>',
+          progTag(r), '<span class="tnum">' + r.lv + '</span>',
+          r.basis === "Core" ? '<span class="sub2">Core</span>' : pil('info', r.basis),
+          '<span class="tnum">' + (ok ? (60 + (r.m.charCodeAt(14) % 40)) : 33) + '%</span>',
+          ok ? pil('ok', 'Cleared') : pil('bad', 'Blocked &mdash; fees')];
+      }), 1060)) +
+
+    note('bad', 'One registered student is not cleared to sit the examination',
+      'The candidate on MOAUM/CSC/23/1502 has an outstanding balance. He appears on the class list because he is registered, and he will appear on the examination roll marked as not cleared. The invigilator does not adjudicate that at the door &mdash; the Bursary does, before the day.');
+  }
+
+  function rUpload() {
+    return     panel('Upload course material', 'CSC 311 &mdash; Algorithms &amp; Complexity', pbody(
+      '<div class="field"><label for="ut">Title</label>' +
+        '<input id="ut" value="Week 5 — Dynamic programming" autocomplete="off"></div>' +
+      '<div class="grid grid--2">' +
+        '<div class="field"><label for="uw">Week</label><input id="uw" class="tnum" value="5" autocomplete="off"></div>' +
+        '<div class="field"><label for="uk">Kind</label><input id="uk" value="Lecture notes (PDF)" autocomplete="off"></div>' +
+      '</div>' +
+      '<div class="field"><label for="ud">Description shown to students</label>' +
+        '<input id="ud" value="Notes and worked examples for the week 5 lecture." autocomplete="off"></div>' +
+      '<div style="border:2px dashed var(--field);border-radius:10px;padding:24px;text-align:center;background:var(--bg)">' +
+        ico('box', 26, 'var(--faint)', 1.7) +
+        '<div style="font-weight:600;margin-top:8px">Drop a file here, or choose one</div>' +
+        '<div class="sub2">PDF, slides, documents, images, audio or video &middot; up to 200 MB</div>' +
+        '<div style="margin-top:12px">' + btn('ghost', 'Choose a file') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:14px;align-items:center;margin-top:4px">' + bar(72, 'var(--chrome)') +
+        '<span class="sub2 tnum">week5-dynamic-programming.pdf &middot; 1.8 MB &middot; 72%</span></div>' +
+      '<label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-top:4px">' +
+        '<input type="checkbox" class="chk" checked>' +
+        '<span>Notify the 84 registered students when this is published.</span></label>' +
+      '<label style="display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--muted)">' +
+        '<input type="checkbox" class="chk">' +
+        '<span>Deposit a copy in the institutional repository as an open educational resource.</span></label>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:4px">' +
+        '<button class="btn btn--ghost">Save as a draft</button>' +
+        '<button class="btn btn--primary">Publish to the course space</button></div>')) +
+
+    note('info', 'Material published here reaches only the students registered for this course',
+      'It is not a public upload. Access follows the approved registration list and ends one session after the student last registered for the course, which is what the retention schedule on the data governance register says.') +
+
+    panel('Published material', 'CSC 311 &middot; 11 items', dtable(
+      ['Item', 'Week|mid', 'Size|mid', 'Downloads|mid', 'Published|mid', 'Action|num'], [
+        [two('Week 4 &mdash; Greedy algorithms', 'Lecture notes (PDF)'), '<span class="tnum">4</span>', '<span class="tnum">1.4 MB</span>', '<span class="tnum">78</span>', '<span class="sub2 tnum">28 Aug</span>', btn('ghost', 'Download', ' data-doc="material" data-file="Week 4 — Greedy algorithms (PDF)"')],
+        [two('Week 3 &mdash; Divide and conquer', 'Lecture notes (PDF)'), '<span class="tnum">3</span>', '<span class="tnum">1.2 MB</span>', '<span class="tnum">81</span>', '<span class="sub2 tnum">21 Aug</span>', btn('ghost', 'Download', ' data-doc="material" data-file="Week 3 — Divide and conquer (PDF)"')],
+        [two('Problem set 3', 'Assignment &middot; closes Friday'), '<span class="tnum">3</span>', '<span class="tnum">240 KB</span>', '<span class="tnum">84</span>', '<span class="sub2 tnum">28 Aug</span>', btn('ghost', 'Download', ' data-doc="material" data-file="Problem set 3 (PDF)"')],
+        [two('Week 2 &mdash; Asymptotic analysis', 'Slides'), '<span class="tnum">2</span>', '<span class="tnum">2.1 MB</span>', '<span class="tnum">80</span>', '<span class="sub2 tnum">14 Aug</span>', btn('ghost', 'Download', ' data-doc="material" data-file="Week 2 — Asymptotic analysis (slides)"')]
+      ], 1000));
+  }
+
+  /* ── head of department ───────────────────────────────────────── */
+
+  var ALLOC = [
+    ["CSC 311", "Algorithms &amp; Complexity", 3, 84, "Dr. T. Iorpuu", "ok"],
+    ["CSC 321", "Database Systems", 3, 84, "Dr. J. Adie", "ok"],
+    ["CSC 331", "Operating Systems", 3, 84, "Prof. F. Gbaoron", "ok"],
+    ["CSC 341", "Computer Networks", 3, 61, "Dr. T. Iorpuu", "ok"],
+    ["CSC 351", "Software Engineering", 3, 77, "", "bad"],
+    ["CSC 421", "Distributed Systems", 3, 38, "Dr. T. Iorpuu", "ok"],
+    ["MTH 212", "Linear Algebra II", 3, 118, "", "bad"],
+    ["MTH 311", "Real Analysis", 3, 54, "", "bad"]
+  ];
+
+  function rHod() {
+    var unassigned = ALLOC.filter(function (a) { return !a[4]; }).length;
+    return     note('bad', unassigned + ' courses have no lecturer and lectures begin on 15 September',
+      'A course with no lecturer has no course space, no score sheet and no attendance register, and its students cannot be told where to be. MTH 212 alone carries 118 candidates, of whom 43 are repeating it.',
+      btn('urgent', 'Open teaching allocation', ' data-go="r/allocate"')) +
+
+    tiles([
+      ['Academic staff', '14', null, '9 full time, 5 part time'],
+      ['Courses this semester', '8', null, '3 unassigned'],
+      ['Students in the department', '412', null, '100&ndash;400 level'],
+      ['Sheets awaiting me', '4', 'var(--chrome)', 'Departmental Board']
+    ]) +
+
+    two_col(
+      panel('Results awaiting the Departmental Board', 'You are the second approval, never the first', dtable(
+        ['Course', 'Fail rate|mid', 'Action|num'], [
+          ['<strong class="tnum">CSC 311</strong><div class="sub2">Verified 4 Sep</div>', '<span class="tnum">11%</span>', btn('go', 'Approve', ' data-go="t/chain"')],
+          ['<strong class="tnum">CSC 321</strong><div class="sub2">Verified 4 Sep</div>', '<span class="tnum">18%</span>', btn('go', 'Approve', ' data-go="t/chain"')],
+          ['<strong class="tnum">MTH 212</strong><div class="sub2">Verified 5 Sep</div>', '<span class="pill pill--bad tnum">61%</span>', btn('urgent', 'Review', ' data-go="t/chain"')],
+          ['<strong class="tnum">CSC 421</strong><div class="sub2">Verified 5 Sep</div>', '<span class="tnum">8%</span>', btn('go', 'Approve', ' data-go="t/chain"')]
+        ], 400)),
+      panel('Staff teaching load', 'Approved maximum 12 units', dtable(
+        ['Lecturer', 'Units|mid', 'Load|num'], [
+          ['Dr. T. Iorpuu', '<span class="tnum">9</span>', bar(75, 'var(--green)')],
+          ['Dr. J. Adie', '<span class="tnum">6</span>', bar(50, 'var(--green)')],
+          ['Prof. F. Gbaoron', '<span class="tnum">3</span>', bar(25, 'var(--sky)')],
+          ['Dr. N. Doki', '<span class="tnum">0</span>', bar(0, 'var(--red)')],
+          ['Dr. A. Shamija', '<span class="tnum">12</span>', bar(100, 'var(--red)')]
+        ], 420))) +
+
+    note('bad', 'MTH 212 failed 61% of its candidates, against a five-year mean of 19%',
+      'That is not a result to approve and pass upward without looking. The Board should ask for the question paper, the marking scheme and the attendance register before it signs, because the three explanations &mdash; a hard paper, a mismarked question, or a cohort that was not taught &mdash; call for three different remedies.') +
+
+    panel('Department at a glance', '', dtable(
+      ['Indicator', 'Now|mid', 'Last session|mid', 'Comment|num'], [
+        ['Students on the register', '<span class="tnum">412</span>', '<span class="tnum">388</span>', '<span class="sub2">Growing faster than staffing</span>'],
+        ['Staff-to-student ratio', '<span class="tnum">1 : 29</span>', '<span class="tnum">1 : 28</span>', '<span class="sub2">NUC benchmark 1 : 20</span>'],
+        ['Courses without a lecturer', '<span class="tnum" style="color:var(--red-ink)">3</span>', '<span class="tnum">1</span>', '<span class="sub2">Two staff on study leave</span>'],
+        ['Carryover load', '<span class="tnum">43</span>', '<span class="tnum">31</span>', '<span class="sub2">Concentrated in MTH 212</span>'],
+        ['Repository deposits', '<span class="tnum">18</span>', '<span class="tnum">11</span>', '<span class="sub2">Open access mandate working</span>']
+      ], 880));
+  }
+
+  function rAllocate() {
+    return scopeBar('courses', { course: true }) +
+        note('bad', 'Three courses are unassigned and lectures begin on 15 September',
+      'Assigning a lecturer creates the course space, the score sheet and the attendance register, and lets the timetable place the class. Until then those students have nothing.') +
+
+    panel('Teaching allocation', '2026/2027 &middot; first semester &middot; Mathematics &amp; Computer Science', dtable(
+      ['Course', 'Units|mid', 'Registered|mid', 'Lecturer', 'Action|num'],
+      ALLOC.map(function (a) {
+        return ['<strong class="tnum">' + a[0] + '</strong><div class="sub2">' + a[1] + '</div>',
+          '<span class="tnum">' + a[2] + '</span>',
+          '<span class="tnum">' + a[3] + '</span>',
+          a[4] ? '<strong>' + a[4] + '</strong><div class="sub2">Assigned 12 August</div>'
+               : '<span style="color:var(--red-ink);font-weight:700">Unassigned</span><div class="sub2">Lectures begin in 10 days</div>',
+          a[4] ? btn('ghost', 'Reassign') : btn('urgent', 'Assign a lecturer', ' data-go="r/allocate"')];
+      }), 900)) +
+
+    panel('Assign a lecturer to MTH 212', 'Linear Algebra II &middot; 3 units &middot; 118 registered', pbody(
+      '<div class="sub2">Ordered by remaining capacity against the approved maximum of 12 units. A lecturer already at the maximum can still be assigned, but the assignment is recorded as an overload and reported to the Dean.</div>' +
+      dtable(['Lecturer', 'Field', 'Current load|mid', 'After this|mid', 'Status|num'], [
+        [two('Dr. N. Doki', 'Ph.D. Mathematics &middot; returned from study leave'), 'Analysis, algebra', '<span class="tnum">0 units</span>', '<span class="tnum">3 units</span>', btn('go', 'Assign', ' data-go="r/hod"')],
+        [two('Prof. F. Gbaoron', 'Professor of Physics &middot; teaches service courses'), 'Mathematical physics', '<span class="tnum">3 units</span>', '<span class="tnum">6 units</span>', btn('go', 'Assign', ' data-go="r/hod"')],
+        [two('Dr. J. Adie', 'Ph.D. Chemistry &middot; not a cognate field'), 'Computational chemistry', '<span class="tnum">6 units</span>', '<span class="tnum">9 units</span>', btn('ghost', 'Assign')],
+        [two('Dr. A. Shamija', 'At the approved maximum'), 'Statistics', '<span class="tnum">12 units</span>', '<span class="tnum" style="color:var(--red-ink)">15 units</span>', btn('urgent', 'Assign as an overload')]
+      ], 940))) +
+
+    note('info', 'Assigning a lecturer does four things at once',
+      'It opens the course space and enrols the 118 registered students in it; it creates the score sheet in that lecturer&rsquo;s name; it opens the attendance register; and it releases the course to the timetable. Nothing has to be set up separately afterwards, which is where the pieces usually drift apart.') +
+
+    panel('Second examiner and moderation', 'Set at allocation, not at examination time', dtable(
+      ['Course', 'Lecturer', 'Second examiner', 'Status|num'], [
+        ['<span class="tnum">CSC 311</span>', 'Dr. T. Iorpuu', 'Dr. M. Adikpe', pil('ok', 'Set')],
+        ['<span class="tnum">CSC 321</span>', 'Dr. J. Adie', 'Dr. T. Iorpuu', pil('ok', 'Set')],
+        ['<span class="tnum">MTH 212</span>', '<span class="sub2">Unassigned</span>', '<span class="sub2">&mdash;</span>', pil('bad', 'Blocked')],
+        ['<span class="tnum">CSC 421</span>', 'Dr. T. Iorpuu', '<span class="sub2">Not set</span>', pil('bad', 'Outstanding')]
+      ], 780)) +
+
+    note('bad', 'A course whose second examiner is not set cannot reach verification',
+      'The person who enters the marks may not be the person who verifies them, so the verifier has to exist before the marks do. Leaving it until results are due is what forces a department into the choice between a late result and a verification that is not one.');
+  }
+
+  /* ── dean, exams officer, academic officer, bursar, registrar ─── */
+
+  function rDean() {
+    return     note('bad', 'Seven result sets are with the Faculty Board and Senate sits in six days',
+      'One of them, MTH 212, carries a fail rate more than three times the course&rsquo;s five-year mean. Approving it unexamined is how a faculty discovers a marking error at the appeal stage instead of at the Board.',
+      btn('urgent', 'Open the Board queue', ' data-go="t/approvals"')) +
+
+    tiles([
+      ['Departments', '4', null, 'Faculty of Science'],
+      ['Students', '1,884', null, '100&ndash;400 level'],
+      ['Sheets expected', '142', null, '98 through Senate'],
+      ['Not submitted', '7', 'var(--red-ink)', 'Senate sits 18 September']
+    ]) +
+
+    two_col(
+      panel('By department', '', dtable(['Department', 'Sheets|mid', 'Through|num'], [
+        ['Mathematics &amp; Computer Science', '<span class="tnum">42</span>', bar(74, 'var(--green)')],
+        ['Chemistry', '<span class="tnum">38</span>', bar(82, 'var(--green)')],
+        ['Biological Sciences', '<span class="tnum">36</span>', bar(69, 'var(--sky)')],
+        ['Physics', '<span class="tnum">26</span>', bar(46, 'var(--red)')]
+      ], 400)),
+      panel('Outliers the Board should look at', 'Against each course&rsquo;s own history', dtable(
+        ['Course', 'Fail rate|mid', 'Mean|num'], [
+          ['<span class="tnum">MTH 212</span>', '<span class="pill pill--bad tnum">61%</span>', '<span class="tnum sub2">19%</span>'],
+          ['<span class="tnum">PHY 305</span>', '<span class="pill pill--bad tnum">44%</span>', '<span class="tnum sub2">21%</span>'],
+          ['<span class="tnum">CHM 311</span>', '<span class="tnum">9%</span>', '<span class="tnum sub2">17%</span>'],
+          ['<span class="tnum">BIO 321</span>', '<span class="tnum">14%</span>', '<span class="tnum sub2">15%</span>']
+        ], 400))) +
+
+    panel('Faculty business', '', dtable(['Item', 'Detail', 'Status|num'], [
+      [two('Graduation list', '284 candidates from the faculty'), 'Awaiting the last four result sets', pil('info', 'In progress')],
+      [two('Faculty budget', '&#8358;418m capital and recurrent'), '71% committed at the third quarter', pil('ok', 'On track')],
+      [two('Accreditation &mdash; B.Sc. Physics', 'NUC resource verification'), 'Staffing shortfall identified', pil('bad', 'Action needed')],
+      [two('Requisitions awaiting the Dean', 'Four, totalling &#8358;3.2m'), 'Laboratory consumables and a server', pil('info', 'Awaiting you')]
+    ], 820));
+  }
+
+  function rExams() {
+    return     note('info', 'Six sheets are with you for verification',
+      'Verification is arithmetic and completeness, not judgement about the marks: totals, the CA weighting, absences recorded as absent rather than zero, and every registered candidate accounted for. What you sign is that the sheet says what the marks say.',
+      btn('primary', 'Open the verification queue', ' data-go="t/scores"')) +
+
+    tiles([
+      ['Awaiting verification', '6', 'var(--chrome)', 'Departmental'],
+      ['Verified this week', '11', 'var(--green-ink)', 'Passed upward'],
+      ['Returned to lecturers', '2', 'var(--red-ink)', 'Arithmetic errors'],
+      ['CBT sessions today', '3', null, '412 candidates']
+    ]) +
+
+    panel('Verification queue', 'You may not verify a sheet you entered', dtable(
+      ['Course', 'Lecturer', 'Candidates|mid', 'Checks', 'Action|num'], [
+        ['<strong class="tnum">CSC 311</strong>', 'Dr. T. Iorpuu', '<span class="tnum">84</span>',
+         '<span class="sub2">84 of 84 marks &middot; totals agree &middot; 2 absences recorded</span>', btn('go', 'Verify', ' data-go="t/chain"')],
+        ['<strong class="tnum">CSC 321</strong>', 'Dr. J. Adie', '<span class="tnum">84</span>',
+         '<span class="sub2">84 of 84 marks &middot; totals agree</span>', btn('go', 'Verify', ' data-go="t/chain"')],
+        ['<strong class="tnum">MTH 212</strong>', 'Dr. A. Shamija', '<span class="tnum">118</span>',
+         '<span class="sub2" style="color:var(--red-ink)">3 candidates on the roll have no mark and no absence</span>', btn('urgent', 'Return')],
+        ['<strong class="tnum">CSC 421</strong>', 'Dr. M. Adikpe', '<span class="tnum">38</span>',
+         '<span class="sub2">You entered these marks</span>', '<button class="btn btn--sm" disabled>Not available to you</button>']
+      ], 980)) +
+
+    note('bad', 'You entered the marks for CSC 421, so you cannot verify them',
+      'Another academic must. It is the same rule that stops a Head of Department approving at two consecutive stages, and it applies to you exactly as it applies to everyone else.') +
+
+    panel('Examinations this week', '', dtable(['Course', 'Date|mid', 'Hall', 'Candidates|mid', 'Status|num'], [
+      ['<span class="tnum">CSC 311</span>', '<span class="sub2 tnum">Tue 09:00</span>', 'CBT Hall A', '<span class="tnum">160</span>', pil('ok', 'Ready')],
+      ['<span class="tnum">CSC 321</span>', '<span class="sub2 tnum">Tue 12:00</span>', 'CBT Hall B', '<span class="tnum">118</span>', pil('bad', 'Hall B on local buffer')],
+      ['<span class="tnum">MTH 212</span>', '<span class="sub2 tnum">Wed 09:00</span>', 'Main Hall', '<span class="tnum">118</span>', pil('info', 'Paper-based')]
+    ], 820));
+  }
+
+  function rAcademic() {
+    return     note('info', 'Nine transcript requests and two graduation lists are with Academic Affairs',
+      'Two of the transcripts are held because the candidate&rsquo;s file still carries a statement of result whose certificate never arrived.',
+      btn('primary', 'Open transcripts', ' data-go="t/transcripts"')) +
+
+    tiles([
+      ['Students on the register', '32,450', null, 'All levels'],
+      ['Registered this session', '19,884', null, '92% &middot; closes 24 Sept'],
+      ['Transcript requests', '9', 'var(--chrome)', '2 held'],
+      ['Results to Senate', '37', null, 'In the workflow']
+    ]) +
+
+    panel('Registration, by faculty', 'Closes 24 September', dtable(
+      ['Faculty', 'Expected|mid', 'Registered|mid', 'Blocked at the Bursary|mid', 'Progress|num'], [
+        ['Science', '<span class="tnum">1,884</span>', '<span class="tnum">1,791</span>', '<span class="tnum">61</span>', bar(95, 'var(--green)')],
+        ['Education', '<span class="tnum">3,240</span>', '<span class="tnum">2,908</span>', '<span class="tnum">204</span>', bar(90, 'var(--green)')],
+        ['Social Sciences', '<span class="tnum">2,760</span>', '<span class="tnum">2,511</span>', '<span class="tnum">148</span>', bar(91, 'var(--green)')],
+        ['Law', '<span class="tnum">980</span>', '<span class="tnum">712</span>', '<span class="tnum">188</span>', bar(73, 'var(--red)')],
+        ['College of Health Sciences', '<span class="tnum">1,410</span>', '<span class="tnum">1,388</span>', '<span class="tnum">9</span>', bar(98, 'var(--green)')]
+      ], 940)) +
+
+    note('bad', 'Law is 27% short with nine days to go, and 188 of those students are blocked at the Bursary',
+      'That is not a registration problem, it is a fees problem showing up in the registration figures. Extending registration will not move it; a payment plan approved by Council would.') +
+
+    panel('Credentials in hand', '', dtable(['Type', 'Open|mid', 'Oldest|mid', 'Held|num'], [
+      [two('Transcripts', 'To institutions and employers'), '<span class="tnum">9</span>', '<span class="tnum">6 days</span>', '<span class="tnum">2</span>'],
+      [two('Certificate reissues', 'Loss or damage'), '<span class="tnum">3</span>', '<span class="tnum">11 days</span>', '<span class="tnum">0</span>'],
+      [two('Verification requests', 'Employers, public service'), '<span class="tnum">184</span>', '<span class="sub2">Automatic</span>', '<span class="tnum">0</span>'],
+      [two('Name-change applications', 'Marriage, correction'), '<span class="tnum">6</span>', '<span class="tnum">4 days</span>', '<span class="tnum">1</span>']
+    ], 780));
+  }
+
+  function rBursar() {
+    return     note('bad', 'Twelve settlement exceptions are open and the period closes on Friday',
+      'One of them is &#8358;40,000 paid at a bank counter with no reference quoted. Until it is attributed, a student who has paid is blocked from registering.',
+      btn('urgent', 'Open the investigation', ' data-go="t/exception"') + ' ' + btn('ghost', 'Reconciliation', ' data-go="t/reconcile"')) +
+
+    tiles([
+      ['Collected this session', '&#8358;1.84bn', 'var(--green-ink)', '78% of the estimate'],
+      ['Outstanding', '&#8358;512m', 'var(--red-ink)', '4,208 students'],
+      ['Exceptions open', '12', 'var(--red-ink)', '&#8358;225,000'],
+      ['Payroll this month', '&#8358;418m', null, '2,714 staff']
+    ]) +
+
+    two_col(
+      panel('Collection by faculty', 'Session to date', dtable(['Faculty', 'Collected|mid', 'Rate|num'], [
+        ['Science', '<span class="tnum">&#8358;284m</span>', bar(95, 'var(--green)')],
+        ['Education', '<span class="tnum">&#8358;402m</span>', bar(90, 'var(--green)')],
+        ['Social Sciences', '<span class="tnum">&#8358;361m</span>', bar(91, 'var(--green)')],
+        ['Law', '<span class="tnum">&#8358;148m</span>', bar(73, 'var(--red)')],
+        ['Health Sciences', '<span class="tnum">&#8358;418m</span>', bar(98, 'var(--green)')]
+      ], 400)),
+      panel('Where the money goes', 'Every payment splits at settlement', dtable(['Destination', 'Share|num'], [
+        [two('University account', 'Operations and capital'), '<span class="tnum">95%</span>'],
+        [two('Benue State IGR', 'Internally generated revenue'), '<span class="tnum">5%</span>'],
+        [two('Split applied at', 'Settlement, not month end'), '<span class="sub2">Automatic</span>'],
+        [two('Reconciled to', 'The bank statement, daily'), '<span class="sub2">97.1% matched</span>']
+      ], 400))) +
+
+    note('info', 'No academic transaction completes while money is owed',
+      'The clearance gate is not a report the Bursary runs at the end of term; it is checked inside the transaction, at the moment a student tries to register, sit, graduate or order a transcript. That is why a payment that cannot be attributed is an urgent matter rather than an accounting one.') +
+
+    panel('Bursary business', '', dtable(['Item', 'Detail', 'Status|num'], [
+      [two('Payroll for September', '2,714 staff &middot; &#8358;418m'), 'Three variations awaiting approval', pil('info', 'Awaiting you')],
+      [two('Refunds and credits', '18 open &middot; &#8358;1.1m'), 'Duplicate payments and withdrawals', pil('info', 'In progress')],
+      [two('Tender &mdash; laboratory equipment', '&#8358;96m &middot; three bids'), 'Evaluation report with the committee', pil('info', 'In progress')],
+      [two('TETFund intervention return', 'Due 30 September'), 'Drawn from the ledger, awaiting sign-off', pil('bad', 'Due in 25 days')]
+    ], 820));
+  }
+
+  function rRegistrar() {
+    return     note('bad', 'The NDPA Compliance Audit Return is due on 31 March and two DPIAs are outstanding',
+      'The return is generated from the record of processing activities, but it is filed by the Data Protection Officer under your signature. Two processing activities &mdash; automated admission scoring and CBT proctoring &mdash; have no impact assessment.',
+      btn('urgent', 'Open data governance', ' data-go="t/governance"')) +
+
+    tiles([
+      ['Students on the register', '32,450', null, 'All levels and modes'],
+      ['Staff on the register', '2,714', null, '1,088 academic'],
+      ['Senate business', '37', null, 'Result sets in the workflow'],
+      ['Credentials in hand', '18', 'var(--chrome)', 'Transcripts and certificates']
+    ]) +
+
+    panel('Registry business', '', dtable(['Item', 'Detail', 'Status|num'], [
+      [two('Admissions ' + AP.session, '7,410 offers &middot; 5,884 accepted'), '711 offers unaccepted with three days left', pil('bad', 'Chasing')],
+      [two('Matriculation ceremony', '15 October &middot; 5,884 freshmen'), 'Oath forms and register being prepared', pil('info', 'In progress')],
+      [two('Vacancies &mdash; Bursar and Librarian', 'Advertised by Council'), 'Closing 30 September', pil('info', 'Open')],
+      [two('Convocation', '284 candidates from Science alone'), 'Awaiting the last result sets', pil('info', 'In progress')],
+      [two('Name of the University', 'Renamed 30 December 2024'), 'Credentials issued before that date bear the former name', pil('ok', 'Both names verify')]
+    ], 900)) +
+
+    note('info', 'Both names must resolve for as long as a graduate is alive',
+      'A degree awarded in 2011 says Benue State University, Makurdi. An employer verifying it in 2041 must get an answer, not a dead page. The verification service therefore accepts either name and answers for the same institution &mdash; and the old web domain must keep redirecting for the same reason.') +
+
+    panel('Council and Senate', '', dtable(['Body', 'Next sitting|mid', 'Papers|mid', 'Status|num'], [
+      ['Governing Council', '<span class="sub2 tnum">24 September</span>', '<span class="tnum">11</span>', pil('info', 'Papers circulating')],
+      ['Senate', '<span class="sub2 tnum">18 September</span>', '<span class="tnum">37</span>', pil('bad', '7 result sets outstanding')],
+      ['Congregation', '<span class="sub2 tnum">2 October</span>', '<span class="tnum">4</span>', pil('ok', 'Ready')],
+      ['Appointments and Promotions', '<span class="sub2 tnum">8 October</span>', '<span class="tnum">62</span>', pil('info', 'Appraisals in progress')]
+    ], 760));
+  }
+
+  /* ── the staff member as an employee ──────────────────────────── */
+
+  function rSelf() {
+    var r = ROLES[S.srole];
+    return     tiles([
+      ['Leave taken', '12 days', null, 'Of 30 &middot; 2026'],
+      ['Leave remaining', '18 days', 'var(--green-ink)', 'Expires 31 December'],
+      ['Last payslip', 'August', null, 'Paid 28 August'],
+      ['Appraisal', 'Due', 'var(--chrome)', 'Window closes 30 September']
+    ]) +
+
+    two_col(
+      panel('My record', r.who, pbody(kvGrid([
+        ['Staff number', '<span class="tnum">' + r.id[1] + '</span>'],
+        ['Office', r.label],
+        ['Unit', r.sub],
+        ['Appointment', 'Confirmed &middot; permanent'],
+        ['Grade', 'CONUASS 05, step 4'],
+        ['Next increment', '1 October 2026']
+      ], 'grid--2'))),
+      panel('Payslips', 'Twelve months', dtable(['Month|mid', 'Net|mid', 'Action|num'], [
+        ['<span class="sub2 tnum">August 2026</span>', '<span class="tnum">&#8358;418,220</span>', btn('ghost', 'Download', ' data-doc="payslip"')],
+        ['<span class="sub2 tnum">July 2026</span>', '<span class="tnum">&#8358;418,220</span>', btn('ghost', 'Download', ' data-doc="payslip"')],
+        ['<span class="sub2 tnum">June 2026</span>', '<span class="tnum">&#8358;409,880</span>', btn('ghost', 'Download', ' data-doc="payslip"')]
+      ], 420))) +
+
+    panel('Leave', '', dtable(['Type', 'From|mid', 'To|mid', 'Days|mid', 'Status|num'], [
+      ['Annual leave', '<span class="sub2 tnum">4 Aug</span>', '<span class="sub2 tnum">15 Aug</span>', '<span class="tnum">12</span>', pil('ok', 'Taken')],
+      ['Conference leave', '<span class="sub2 tnum">2 Oct</span>', '<span class="sub2 tnum">6 Oct</span>', '<span class="tnum">5</span>', pil('info', 'With the Head of Department')],
+      ['Annual leave', '<span class="sub2 tnum">21 Dec</span>', '<span class="sub2 tnum">31 Dec</span>', '<span class="tnum">9</span>', pil('info', 'Draft')]
+    ], 700)) +
+
+    note('info', 'Leave that overlaps a teaching commitment needs a named replacement',
+      'The request carries the courses you teach in that window and asks who will take them. A Head of Department approving leave is therefore approving a specific arrangement, not a date range.');
+  }
+
+  /* ── a route this office may not reach ────────────────────────── */
+
+  function rDenied() {
+    return     note('bad', 'This is not open to your office',
+      'You are signed in as ' + ROLES[S.srole].who + ', ' + ROLES[S.srole].label + '. The screen you asked for belongs to another office, and the portal does not show it rather than showing it and refusing the action. If you need it for your work, it is a role change requested from the Registrar, recorded and reviewed &mdash; not a favour from the Directorate of ICT.',
+      btn('primary', 'Back to my dashboard', ' data-go="' + ROLES[S.srole].home + '"'));
+  }

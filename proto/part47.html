@@ -1,0 +1,275 @@
+
+  /* ══ THE EXPENDITURE CHAIN ══════════════════════════════════════════
+     Built from the Bursary user-requirement paper (Okpali and Kundushima,
+     6 September 2026) and from a photograph of the University's own
+     PAYMENT VOUCHER, Office of the Bursar.
+
+     The form is the design. It carries, in this order:
+
+       financial year · date · voucher no · payee · bank · chq/mandate no
+       details · invoice or bill number · amount in naira and kobo
+       a code table of UNIT / HEAD / SUBHEAD with a CONTROL column
+       DEBIT TO
+       total amount in words
+       "I certify that the expenditure has been correctly classified and
+        that funds are available under the code(s) specified above."
+                                        — Expenditure Control Officer
+       FOR INTERNAL AUDIT USE ONLY: Prepared By, Approved By, each named
+       RECEIPT: received by, name, date, 50K stamp, signature
+
+     Three things in that layout are load-bearing and none of them is
+     decoration:
+
+     1. THE TOTAL IN WORDS. A figure can be altered with a pen; words
+        cannot, not without it showing. The specimen photographed for
+        this design carries exactly the alteration the words line exists
+        to catch — an amount struck through and a larger one written
+        above it, uninitialled. In a system the equivalent rule is that
+        the amount is entered ONCE and every other appearance of it is
+        computed: the words, the code lines, the mandate, the receipt.
+        Nothing that can be made to disagree is typed twice.
+
+     2. THE EXPENDITURE CONTROL OFFICER'S CERTIFICATE IS NOT THE AUDIT.
+        It is signed before the voucher goes to Internal Audit, and it
+        certifies two different things in one sentence — that the
+        expenditure is correctly CLASSIFIED, and that FUNDS ARE
+        AVAILABLE under the code. The second is arithmetic against a
+        budget line and the portal can evidence it outright. The first
+        is a judgement about the chart of accounts and the portal can
+        only assist it. So the screen splits them, the same way the
+        ninth contract check is split from the other eight.
+
+     3. THE CODE IS THREE SEGMENTS, NOT A STRING. Unit, head, subhead.
+        The Final Account desk reads the subhead to decide what is an
+        asset, and a code held as free text cannot be read that way.
+
+     The route the paper describes, which is the route implemented here:
+
+       application → VC approves → Bursar directs → desk officer raises
+       the PV → Expenditure Control Officer certifies → Internal Audit
+       → back to the Bursary → mandate to the bank → payee receipts it
+     ═══════════════════════════════════════════════════════════════════ */
+
+  /* ── the amount, in words ──────────────────────────────────────────
+     Computed, never typed. That is the whole point of the line: if the
+     words are generated from the figure then altering the figure alters
+     the words, and an alteration that rewrites itself is not one.     */
+
+  var PV_ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+    "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  var PV_TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  function pvUnder1000(n) {
+    var s = [];
+    if (n >= 100) { s.push(PV_ONES[Math.floor(n / 100)] + " Hundred"); n = n % 100; if (n) { s.push("and"); } }
+    if (n >= 20) { s.push(PV_TENS[Math.floor(n / 10)]); if (n % 10) { s.push(PV_ONES[n % 10]); } }
+    else if (n > 0) { s.push(PV_ONES[n]); }
+    return s.join(" ");
+  }
+
+  function nairaWords(n) {
+    n = Math.floor(n);
+    if (!n) { return "Zero Naira only"; }
+    var parts = [], scales = [[1000000000, "Billion"], [1000000, "Million"], [1000, "Thousand"]], i, q;
+    for (i = 0; i < scales.length; i++) {
+      q = Math.floor(n / scales[i][0]);
+      if (q) { parts.push(pvUnder1000(q) + " " + scales[i][1]); n = n % scales[i][0]; }
+    }
+    if (n) { parts.push((parts.length ? "" : "") + pvUnder1000(n)); }
+    return parts.join(" ") + " Naira only";
+  }
+
+  /* ── the voucher on the desk ───────────────────────────────────── */
+
+  var PV_LINES = [
+    ["949", "21", "0101", "Office furniture &mdash; Registry, 12 chairs and 4 desks", 2150000],
+    ["949", "21", "0104", "Delivery and installation", 180000],
+    ["949", "23", "0201", "Stationery &mdash; A4, 200 reams", 470000]
+  ];
+
+  var PV_HEAD = {
+    year: "2026", no: "PV/2026/1892", date: "6 September 2026",
+    payee: "Ternav Furniture and Supplies Ltd",
+    bank: "Zenith Bank Plc", account: "1014882057",
+    invoice: "TFS/INV/2026/0774",
+    debit: "949 &mdash; Capital, non-residential furniture and fittings",
+    source: "IGR", requestedBy: "Registry &mdash; Mr. B. T. Hemba",
+    vcMinute: "VC/APP/2026/0431, 28 August 2026"
+  };
+
+  /* code segments, so a code can be read rather than only printed */
+  var PV_CODES = {
+    "949": "Capital expenditure &mdash; furniture, fittings and equipment",
+    "21":  "Non-residential furniture",
+    "23":  "Consumable stores",
+    "0101": "Chairs, desks and office tables",
+    "0104": "Delivery, installation and assembly",
+    "0201": "Paper and printing consumables"
+  };
+
+  /* the seven stages the paper describes, and where this voucher is */
+  var PV_ROUTE = [
+    ["Application", "Registry, on the Vice-Chancellor's minute", "done"],
+    ["Vice-Chancellor approves", PV_HEAD.vcMinute, "done"],
+    ["Bursar directs the desk officer", "Expenditure and Control, 1 September", "done"],
+    ["Voucher raised", "Mr. E. A. Shwa, Expenditure and Control", "done"],
+    ["Expenditure Control Officer certifies", "Classification and availability of funds", "now"],
+    ["Internal Audit", "The pre-payment gate &mdash; ARC ADR-022", "todo"],
+    ["Mandate to the bank", "Prepared by Expenditure and Control", "todo"],
+    ["Payee receipts it", "Signed and stamped, 50 kobo revenue stamp", "todo"]
+  ];
+
+  function pvTotal() { return PV_LINES.reduce(function (a, r) { return a + r[4]; }, 0); }
+
+  /* the budget line the certificate turns on */
+  var PV_BUDGET = { code: "949/21", approved: 42000000, committed: 31480000 };
+  function pvAvailable() { return PV_BUDGET.approved - PV_BUDGET.committed; }
+  function pvFundsOk() { return pvAvailable() >= pvTotal(); }
+
+  /* A segment repeated down a column is the same segment, and printing
+     its meaning again on every row buries the one that changed. The
+     description shows once per distinct value; the number always shows,
+     because the number is what the Final Account desk reads. */
+  function pvSeg(seg, seen) {
+    var first = !seen[seg];
+    seen[seg] = true;
+    return '<span class="tnum">' + seg + '</span>' +
+      (first ? '<div class="sub2">' + (PV_CODES[seg] || "&mdash;") + '</div>' : '');
+  }
+
+  function tPaymentVoucher() {
+    var total = pvTotal(), ok = pvFundsOk();
+    var certified = S.pv.certified;
+
+    return note('info', 'The amount is entered once, and everything else that shows it is computed',
+      'A figure can be altered with a pen and words cannot, which is why the University&rsquo;s voucher carries a <b>total amount ' +
+      'in words</b> beneath the figures. The specimen photographed for this design carries exactly the alteration that line ' +
+      'exists to catch: an amount struck through and a larger one written above it, uninitialled. In a system the rule that ' +
+      'replaces the pen is simply that nothing which can be made to disagree is typed twice &mdash; the words below, the code ' +
+      'lines, the mandate and the receipt are all read from one figure.') +
+
+    tiles([
+      ["Voucher", PV_HEAD.no, null, "Financial year " + PV_HEAD.year],
+      ["Amount", money(total), null, "Computed from " + PV_LINES.length + " code lines"],
+      ["Budget line " + PV_BUDGET.code, money(pvAvailable()), ok ? "var(--green-ink)" : "var(--red-ink)",
+        ok ? "Available &mdash; sufficient" : "Available &mdash; short"],
+      ["Stage", certified ? "With Internal Audit" : "Awaiting certificate", certified ? null : "var(--chrome)",
+        certified ? "The pre-payment gate" : "Expenditure Control Officer"]
+    ]) +
+
+    panel('Payment voucher ' + PV_HEAD.no, 'Office of the Bursar &middot; Expenditure and Control', pbody(
+      kvGrid([
+        ["Financial year", PV_HEAD.year],
+        ["Date", PV_HEAD.date],
+        ["Voucher no", '<span class="tnum">' + PV_HEAD.no + '</span>'],
+        ["Payee", PV_HEAD.payee],
+        ["Bank", PV_HEAD.bank],
+        ["Cheque / mandate no", certified ? '<span class="tnum">MDT/2026/0774</span>'
+          : '<span class="sub2">Not yet raised &mdash; a mandate follows the audit act</span>'],
+        ["Invoice / bill number", '<span class="tnum">' + PV_HEAD.invoice + '</span>'],
+        ["Debit to", PV_HEAD.debit]
+      ], 'grid--2') +
+
+      '<div style="padding-top:12px">' +
+        dtable(['Unit|mid', 'Head|mid', 'Subhead|mid', 'Details', 'Naira|num', 'Kobo|mid'],
+          (function () { var seen = {}; return PV_LINES.map(function (r) {
+            return [pvSeg(r[0], seen), pvSeg(r[1], seen), pvSeg(r[2], seen), r[3],
+              '<b class="tnum">' + vzNum(r[4]) + '</b>', '<span class="tnum sub2">00</span>'];
+          }); }()).concat([[
+            '<b>Total</b>', '', '', '<span class="sub2">Three code lines</span>',
+            '<b class="tnum">' + vzNum(total) + '</b>', '<span class="tnum sub2">00</span>'
+          ]]), 900) +
+      '</div>' +
+
+      '<div class="pv__words">' +
+        '<span class="l">Total amount in words</span>' +
+        '<b>' + nairaWords(total) + '</b>' +
+        '<span class="sub2">Generated from the figure above. Alter the figure and this line alters with it, ' +
+        'which is what makes it worth having.</span>' +
+      '</div>')) +
+
+    /* ── the certificate, split in two ───────────────────────────── */
+    panel('The Expenditure Control Officer&rsquo;s certificate',
+      '<span class="sub2">Before Internal Audit, not after</span>', pbody(
+      '<div class="pv__cert">' +
+        '<div class="q">&ldquo;I certify that the expenditure has been correctly classified and that funds are available ' +
+        'under the code(s) specified above.&rdquo;</div>' +
+        '<div class="sub2">One sentence on the form, and two different questions. The portal answers one of them ' +
+        'outright and can only assist with the other, so the screen asks them separately rather than collecting one ' +
+        'signature for both.</div>' +
+      '</div>' +
+
+      dtable(['What is certified', 'Who can answer it|mid', 'Evidence|num'], [
+        ['<strong>Funds are available under the code</strong>' +
+          '<div class="sub2">Budget line ' + PV_BUDGET.code + ': ' + money(PV_BUDGET.approved) + ' approved, ' +
+          money(PV_BUDGET.committed) + ' already committed</div>',
+          pil('ok', 'The portal, outright'),
+          ok ? '<b class="tnum" style="color:var(--green-ink)">' + money(pvAvailable()) + ' available</b>' +
+               '<div class="sub2">Sufficient for ' + money(total) + '</div>'
+             : '<b class="tnum" style="color:var(--red-ink)">Short by ' + money(total - pvAvailable()) + '</b>'],
+        ['<strong>The expenditure is correctly classified</strong>' +
+          '<div class="sub2">That furniture belongs under 949/21/0101 and not somewhere else</div>',
+          pil('info', 'The officer, assisted'),
+          '<span class="sub2">The portal offers the three segments and what each means, and refuses a code that ' +
+          'is not open for the year. It cannot judge whether this purchase is that thing.</span>']
+      ], 820) +
+
+      '<div class="pv__acts">' +
+        (certified
+          ? note('ok', 'Certified by Mr. E. A. Shwa, 6 September 2026',
+              'Funds evidenced against ' + PV_BUDGET.code + '; classification attested in his own name. The voucher is with ' +
+              'Internal Audit and this office cannot move it further.')
+          : (ok
+              ? btn('primary', 'Certify and send to Internal Audit', ' data-pv="certify"')
+              : note('bad', 'It cannot be certified while the line is short',
+                  'The certificate says funds <b>are</b> available. There is no version of this screen that lets the officer ' +
+                  'sign that sentence over a line that does not hold the money, because the sentence would not be true.'))) +
+      '</div>')) +
+
+    /* ── where it is ─────────────────────────────────────────────── */
+    '<div class="grid grid--2">' +
+      panel('The route this voucher takes', 'From the Bursary paper, 6 September 2026', pbody(idSteps(
+        PV_ROUTE.map(function (s, i) {
+          var state = s[2];
+          if (certified && i === 4) { state = "done"; }
+          if (certified && i === 5) { state = "now"; }
+          return [state, s[0], s[1]];
+        })))) +
+
+      panel('The mandate', 'Prepared after the audit act, in the format the Bursary uses', pbody(
+        (certified
+          ? '<div class="pv__mdt">' +
+              ['SN', 'DATE', 'PV NO', 'PV CD NO', 'BANK', 'AC CD NO', 'NAME', 'DETAILS',
+               'RCPNT AC NO', 'MDN', 'BANK', 'TOTAL AMT'].map(function (f, i) {
+                var v = ['1', '06/09/26', '1892', '949/21/0101', 'Zenith', '1014882057',
+                         'Ternav Furniture and Supplies Ltd', 'Office furniture, Registry',
+                         '1014882057', 'MDT/2026/0774', 'Zenith Bank Plc', money(total)][i];
+                return '<div class="f"><span class="l">' + f + '</span><span class="v">' + v + '</span></div>';
+              }).join('') +
+            '</div>' +
+            '<div class="sub2">A mandate is an instruction to a named bank to pay a named payee a stated amount. ' +
+            'The total is the voucher&rsquo;s total, read from it rather than re-entered &mdash; a mandate that can carry a ' +
+            'different figure from the voucher it settles is the simplest fraud in a bursary.</div>'
+          : '<div class="hs__empty">' + ico('card', 22, 'var(--slate)', 1.6) +
+            '<div><b>No mandate yet.</b><span class="sub2">Mandates are prepared for vouchers that have passed Internal ' +
+            'Audit, singly or collectively. Preparing one before the audit act would make the gate ceremonial, and ' +
+            'ARC ADR-022 puts every University payment through it before money moves.</span></div></div>'))) +
+    '</div>' +
+
+    note('bad', 'What the paper form allows that this screen does not',
+      'The specimen carries an amount struck through and rewritten, and no initial beside it. The form has no way to refuse ' +
+      'that; the total in words is its only defence, and only if the words were written after the alteration. Here the ' +
+      'amount is a value rather than a mark on paper: it is entered once, the words and the mandate and the receipt are read ' +
+      'from it, and a change to it is an amendment with an author and a time rather than a stroke of a pen.') +
+
+    panel('What the receipt block is for', 'The bottom of the form, and the end of the chain', pbody(idSteps([
+      ["done", "The payee signs for the money, on the voucher itself",
+        "Not on a separate acknowledgement that can be filed apart from it. The receipt is on the same sheet as the authority to pay, which is why the sheet is the record."],
+      ["done", "A 50 kobo revenue stamp",
+        "A statutory requirement on a receipt, and the reason the block has a box for it. In the portal the receipt is generated with the stamp duty line on its face rather than a physical stamp, and the voucher records that it was."],
+      ["now", "The name is written as well as signed",
+        "A signature identifies nobody a year later. Every act in this chain &mdash; raised, certified, audited, approved, received &mdash; carries a name, an office and a time, and they are the same four fields at every step."],
+      ["todo", "Nothing here is deleted",
+        "A cancelled voucher is marked cancelled and keeps its number. A number that can be reused is a number that can be reissued against a different payment."]
+    ])));
+  }

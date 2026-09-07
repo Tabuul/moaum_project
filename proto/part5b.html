@@ -1,0 +1,74 @@
+
+  /* ── Registry: transcript production queue ───────────────────────── */
+  function staffTranscripts() {
+    var st = S.tr.stage, cleared = S.feesPaid;
+    var live = st === "production" || st === "verified" || st === "issued";
+
+    var stage, pill, action;
+    if (!live) {
+      stage = "Awaiting payment"; pill = 'pill--bad';
+      action = '<button class="btn btn--sm" disabled>Not payable yet</button>';
+    } else if (!cleared) {
+      stage = "Held at clearance"; pill = 'pill--bad';
+      action = '<button class="btn btn--sm" disabled title="Bursary has not cleared this student">Blocked — Bursary</button>';
+    } else if (st === "production") {
+      stage = "Ready to produce"; pill = 'pill--info';
+      action = '<button class="btn btn--primary btn--sm" data-tr="produce">Produce &amp; verify</button>';
+    } else if (st === "verified") {
+      stage = "Awaiting Registrar"; pill = 'pill--info';
+      action = '<button class="btn btn--go btn--sm" data-tr="release">Sign &amp; release</button>';
+    } else {
+      stage = "Released"; pill = 'pill--ok';
+      action = '<button class="btn btn--ghost btn--sm" data-go="verify">View verification</button>';
+    }
+
+    return '<div class="grid grid--4">' +
+        '<div class="tile"><span class="eyebrow">Open requests</span><span class="n tnum">9</span><span class="c">Across all destinations</span></div>' +
+        '<div class="tile"><span class="eyebrow">Held at clearance</span><span class="n tnum" style="color:var(--red-ink)">' + (cleared ? 2 : 3) + '</span><span class="c">Cannot be produced yet</span></div>' +
+        '<div class="tile"><span class="eyebrow">Breaching SLA</span><span class="n tnum" style="color:var(--red-ink)">1</span><span class="c">Over 5 working days</span></div>' +
+        '<div class="tile"><span class="eyebrow">Average turnaround</span><span class="n tnum">3.2 days</span><span class="c">Against a 10-day standard</span></div>' +
+      '</div>' +
+
+      '<div class="notice notice--info">' + ico('alert', 18, 'var(--chrome)', 2) +
+        '<div><div class="notice__t" style="color:var(--chrome)">Production is never manual re-typing</div>' +
+        '<p style="color:#124A63">Every transcript is generated from the approved academic record. Exams &amp; Records verifies it, the Registrar signs it — no one keys a grade at this stage.</p></div></div>' +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Production queue</span>' +
+        '<span class="sub2" style="margin-left:auto">Oldest first · SLA clock runs from payment</span></div>' +
+        '<div class="tablewrap"><table style="min-width:940px"><thead><tr>' +
+        '<th>Request</th><th>Student</th><th>Destination</th><th class="mid">Clearance</th>' +
+        '<th class="mid">SLA</th><th>Stage</th><th class="num">Action</th></tr></thead><tbody>' +
+
+        // the live request, driven by the student flow
+        '<tr' + (live && cleared && st !== "issued" ? ' style="background:var(--sky-bg)"' : '') + '>' +
+          '<td class="tnum">TRN-2026-00418</td>' +
+          '<td>ADAMU, Grace Mwuese<div class="sub2 tnum">MOAUM/CSC/23/1487</div></td>' +
+          '<td>' + TR_DEST[S.tr.dest][0] + '<div class="sub2">' + (S.tr.hardcopy ? 'Sealed hard copy' : 'Digital') +
+            (S.tr.express ? ' · express' : '') + ' · ' + S.tr.copies + ' cop' + (S.tr.copies > 1 ? 'ies' : 'y') + '</div></td>' +
+          '<td class="mid">' + (cleared
+            ? '<span class="pill pill--ok">3 of 3</span>'
+            : '<span class="pill pill--bad">2 of 3</span>') + '</td>' +
+          '<td class="mid tnum">' + (st === "issued" ? '—' : 'Day ' + S.tr.day) + '</td>' +
+          '<td><span class="pill ' + pill + '">' + stage + '</span>' +
+            (!cleared && live ? '<div class="sub2" style="color:var(--red-ink)">Bursary: ₦45,000 outstanding</div>' : '') + '</td>' +
+          '<td class="num">' + action + '</td></tr>' +
+
+        trRow("TRN-2026-00402", "IORVER, Doosuur Mercy", "MOAUM/CSC/23/1444", "Employer", "Digital · 1 copy", true, 6, "Awaiting Registrar", "pill--info", '<button class="btn btn--go btn--sm">Sign &amp; release</button>', true) +
+        trRow("TRN-2026-00399", "ABAAGU, Terkimbi John", "MOAUM/CSC/23/1401", "Another institution", "Sealed hard copy · 2 copies", true, 4, "Ready to produce", "pill--info", '<button class="btn btn--primary btn--sm">Produce &amp; verify</button>', false) +
+        trRow("TRN-2026-00391", "OGBU, Adakole Peter", "MOAUM/LAW/19/0774", "Embassy", "Sealed hard copy · express", false, 3, "Held at clearance", "pill--bad", '<button class="btn btn--sm" disabled>Blocked — Library</button>', false, "Library: 2 items on loan since March") +
+        trRow("TRN-2026-00380", "TERKIMBI, Sewuese Joy", "MOAUM/EDU/18/2210", "Myself", "Digital · 1 copy", true, 2, "Released", "pill--ok", '<button class="btn btn--ghost btn--sm">Verification</button>', false) +
+
+        '</tbody></table></div></div>';
+  }
+
+  function trRow(ref, name, matric, dest, mode, cleared, day, stage, pill, action, breach, note) {
+    return '<tr><td class="tnum">' + ref + '</td>' +
+      '<td>' + name + '<div class="sub2 tnum">' + matric + '</div></td>' +
+      '<td>' + dest + '<div class="sub2">' + mode + '</div></td>' +
+      '<td class="mid">' + (cleared ? '<span class="pill pill--ok">3 of 3</span>' : '<span class="pill pill--bad">2 of 3</span>') + '</td>' +
+      '<td class="mid tnum"' + (breach ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>Day ' + day + (breach ? ' ⚠' : '') + '</td>' +
+      '<td><span class="pill ' + pill + '">' + stage + '</span>' +
+        (note ? '<div class="sub2" style="color:var(--red-ink)">' + note + '</div>' : '') +
+        (breach ? '<div class="sub2" style="color:var(--red-ink)">Past the 5-day standard</div>' : '') + '</td>' +
+      '<td class="num">' + action + '</td></tr>';
+  }

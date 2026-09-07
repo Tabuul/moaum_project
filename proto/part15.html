@@ -1,0 +1,263 @@
+
+  /* ══ CRITICAL PATHS ══════════════════════════════════════════════
+     The result approval chain and the payment exception path. These
+     two carry the institutional risk: one decides whether a degree
+     is sound, the other whether the money is. Both are driven here
+     by a single state value so the whole path can be walked.      */
+
+  /* ── the approval chain ───────────────────────────────────────── */
+
+  var RS_ACTORS = {
+    lect: ["Dr. T. Iorpuu", "Lecturer &middot; Computer Science", "TI"],
+    exam: ["Dr. M. Adikpe", "Departmental Examinations Officer", "MA"],
+    hod:  ["Dr. I. O. Ogwuche", "Head, Mathematics &amp; Computer Science", "IO"],
+    dean: ["Prof. B. O. Atu", "Dean, Faculty of Science", "BA"],
+    sen:  ["Prof. E. E. Otor", "Deputy Vice-Chancellor (Academic), for Senate", "EO"]
+  };
+  var RS_ORDER = ["lect", "exam", "hod", "dean", "sen"];
+
+  /* stage N is complete; the actor who owns the move from N to N+1 */
+  var RS_STAGES = [
+    ["Draft", "Scores are being entered on the sheet", "lect", "Submit for verification"],
+    ["Submitted for verification", "With the departmental examinations officer", "exam", "Verify the sheet"],
+    ["Verified", "Arithmetic and completeness checked by a second academic", "hod", "Approve at Departmental Board"],
+    ["Departmental Board approved", "With the Faculty Board", "dean", "Approve at Faculty Board"],
+    ["Faculty Board approved", "With Senate", "sen", "Approve for Senate"],
+    ["Senate approved &mdash; published", "Visible to students; the result is now final", null, null]
+  ];
+
+  function rsActorOf(stage) { return stage > 0 ? RS_STAGES[stage - 1][2] : null; }
+
+  function rsLadder() {
+    var ev = [], st = S.rs.stage;
+    ev.push(["done", "Scores entered", "Dr. T. Iorpuu &middot; 84 of 84 marks &middot; 2 September, 16:40"]);
+    ev.push([st >= 1 ? "done" : "todo", "Submitted for verification", st >= 1 ? "Dr. T. Iorpuu &middot; 3 September, 09:12" : "Not yet submitted"]);
+    ev.push([st >= 2 ? "done" : st === 1 ? "now" : "todo", "Verified by a second academic",
+      st >= 2 ? "Dr. M. Adikpe &middot; totals and CA weighting re-computed &middot; 4 September, 11:05" : "With the examinations officer"]);
+    if (S.rs.returned) {
+      ev.push(["done", "Departmental Board approved", "Dr. I. O. Ogwuche &middot; 5 September, 14:20"]);
+      ev.push(["done", "Returned by the Faculty Board", "Prof. B. O. Atu &middot; 6 September, 10:31 &middot; &ldquo;Two scripts recorded as absent were sat &mdash; check the attendance register&rdquo;"]);
+      ev.push(["done", "Corrected and resubmitted", "Dr. T. Iorpuu &middot; two marks amended, both amendments recorded &middot; 8 September, 08:55"]);
+      ev.push(["done", "Re-verified", "Dr. M. Adikpe &middot; 8 September, 12:02"]);
+    }
+    ev.push([st >= 3 ? "done" : st === 2 ? "now" : "todo", "Departmental Board approved",
+      st >= 3 ? "Dr. I. O. Ogwuche &middot; " + (S.rs.returned ? "9 September, 09:40" : "5 September, 14:20") : "With the Head of Department"]);
+    ev.push([st >= 4 ? "done" : st === 3 ? "now" : "todo", "Faculty Board approved",
+      st >= 4 ? "Prof. B. O. Atu &middot; " + (S.rs.returned ? "10 September, 15:12" : "6 September, 10:31") : "With the Faculty Board"]);
+    ev.push([st >= 5 ? "done" : st === 4 ? "now" : "todo", "Senate approved and published",
+      st >= 5 ? "Prof. E. E. Otor for Senate &middot; 12 September, 11:00 &middot; released to 84 students" : "With Senate"]);
+
+    return panel("Approval chain", RS_STAGES[S.rs.stage][0],
+      '<div style="padding:4px 0">' + ev.map(function (e, i) {
+        return '<div style="padding:10px 16px' + (i ? ';border-top:1px solid var(--line-2)' : '') + '">' +
+          step(e[0], e[1], e[2]) + '</div>';
+      }).join('') + '</div>');
+  }
+
+  function rsActorBar() {
+    return panel("You are signed in as", "Prototype control &mdash; switch to see the chain from each desk",
+      pbody('<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        RS_ORDER.map(function (k) {
+          var a = RS_ACTORS[k], on = S.rs.actor === k;
+          return '<button class="btn btn--' + (on ? 'primary' : 'ghost') + ' btn--sm" data-rs="who:' + k + '" ' +
+            'style="flex-direction:column;align-items:flex-start;gap:1px;text-align:left">' +
+            '<span>' + a[0] + '</span>' +
+            '<span style="font-weight:400;opacity:.8;font-size:11px">' + a[1] + '</span></button>';
+        }).join('') + '</div>'));
+  }
+
+  function rsAction() {
+    var st = S.rs.stage;
+    if (st >= 5) {
+      return note('ok', 'Senate has approved this result set and it is published',
+        'Eighty-four students can now see their marks. Nothing on this sheet can be changed by anyone; a correction from this point is an amendment, which opens its own record and is reported to Senate at its next sitting.',
+        btn('ghost', 'Raise an amendment') + ' ' + btn('ghost', 'View as a student'));
+    }
+
+    var need = RS_STAGES[st][2], prev = rsActorOf(st), me = S.rs.actor;
+
+    if (me === need) {
+      return note('info', 'This stage is yours: ' + RS_STAGES[st][3],
+        'Approving is a signature. Your name, the time and the exact figures you approved are written to the audit trail and cannot afterwards be edited or deleted by anyone, including the Directorate of ICT.',
+        btn('go', RS_STAGES[st][3], ' data-rs="fwd"') + ' ' +
+        (st >= 2 ? btn('urgent', 'Return to the lecturer', ' data-rs="ret"') + ' ' : '') +
+        btn('ghost', 'Open the score sheet', ' data-go="t/sheet"'));
+    }
+
+    if (me === prev) {
+      return note('bad', 'You performed the previous stage, so this one is not open to you',
+        RS_ACTORS[me][0] + ' recorded the last approval on this sheet. The rule is not a matter of trust &mdash; it is that a single person must never be able to move a result from entry to publication alone. Another holder of the ' +
+        RS_ACTORS[need][1].replace(/&middot;.*/, '').trim() + ' role must act.',
+        btn('ghost', 'Ask ' + RS_ACTORS[need][0] + ' to act') + ' ' + btn('ghost', 'Open the score sheet', ' data-go="t/sheet"'));
+    }
+
+    return note('info', 'This sheet is with ' + RS_ACTORS[need][0],
+      'You are signed in as ' + RS_ACTORS[me][0] + ' (' + RS_ACTORS[me][1].replace(/&middot;/g, '&middot;') +
+      '). You can read the sheet and the chain, but the action at this stage belongs to another desk.',
+      btn('ghost', 'Open the score sheet', ' data-go="t/sheet"'));
+  }
+
+  function staffChain() {
+    var st = S.rs.stage;
+    return rsActorBar() +
+
+    tiles([
+      ["Course", "CSC 311", null, "Algorithms &amp; Complexity &middot; 3 units"],
+      ["Students", "84", null, "All 84 marks entered"],
+      ["Fail rate", "11%", "var(--green-ink)", "5-year mean 13% &middot; within range"],
+      ["Stage", (st + 1) + " of 6", st >= 5 ? "var(--green-ink)" : "var(--chrome)", RS_STAGES[st][0]]
+    ]) +
+
+    rsAction() +
+
+    (S.rs.returned ? note('info', 'This sheet was returned once and corrected',
+      'The Faculty Board sent it back on 6 September because two candidates recorded as absent had in fact sat the paper. Both marks were amended, both amendments are on the record with the reason, and the sheet re-entered the chain at verification &mdash; not at the stage it was returned from.') : '') +
+
+    two_col(rsLadder(),
+      panel("What the rules require", "BR-004 &middot; BR-006", pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('done', 'Four approvals, four desks', 'Verification, department, faculty, Senate. None can be skipped and none can be reordered.') +
+          gate('done', 'No two consecutive stages by one person', 'The system refuses it even where one person holds both offices.') +
+          gate('done', 'A mark is never overwritten', 'An amendment writes a new value and keeps the old one, with the reason and the author.') +
+          gate('done', 'Nothing reaches a student before Senate', 'There is no preview, no provisional release and no departmental leak path.') +
+          gate(st >= 5 ? 'done' : 'todo', 'The engine version is stored with the result',
+               'Grades were computed by GpaCalculator 2.1. If the grading scheme changes, this result still recomputes to what Senate approved.', 'last') +
+        '</div>'))) +
+
+    /* The total, the grade and the point are computed here from the two
+       marks, exactly as the engine computes them — they are not written
+       into this table. If the grading scheme changes, this screen changes
+       with it, which is the whole point of holding the bands as data. */
+    panel("Marks on this sheet", "CA and examination are recorded; total, grade and point are computed", dtable(
+      ["Student", "CA|mid", "Exam|mid", "Total|mid", "Grade|mid", "Point|mid", "Amended|num"],
+      [["ABAAGU, Terkimbi John", "MOAUM/CSC/23/1401", 27, 58, false],
+       ["ADAMU, Grace Mwuese", "MOAUM/CSC/23/1487", 24, 44, false],
+       ["AGBO, Ochanya Faith", "MOAUM/CSC/23/1415", 18, 31, true],
+       ["AKAAKA, Sesugh Daniel", "MOAUM/CSC/23/1423", 9, 18, true],
+       ["ANYEBE, Ruth Onyilo", "MOAUM/CSC/23/1430", 26, 51, false]
+      ].map(function (r) {
+        var tot = r[2] + r[3], g = gradeOf(tot);
+        return [two(r[0], r[1]),
+          '<span class="tnum">' + r[2] + '</span>',
+          '<span class="tnum">' + r[3] + '</span>',
+          '<b class="tnum">' + tot + '</b>',
+          pil(g[3] >= 4 ? 'ok' : g[3] >= 1 ? 'info' : 'bad', g[0]),
+          '<span class="tnum">' + g[3] + '</span>',
+          (r[4] && S.rs.returned) ? pil('bad', 'Amended &mdash; was absent') : '<span class="sub2">&mdash;</span>'];
+      }), 900)) +
+
+    note(st >= 5 ? 'ok' : 'bad',
+      st >= 5 ? 'What the student sees: their mark, their grade and the date Senate approved it'
+              : 'What the student sees right now: nothing at all',
+      st >= 5 ? 'Along with the engine version that produced the grade, so a query years later can be answered exactly.'
+              : 'The result page shows &ldquo;awaiting Senate approval&rdquo; for this course. Eighty-four students will ask their lecturer, and the honest answer is that it is at stage ' + (st + 1) + ' of 6 &mdash; which this chain lets the lecturer say precisely.') +
+
+    '<div class="card" style="border-style:dashed">' + pbody(
+      '<div class="eyebrow" style="color:var(--muted)">Prototype control &mdash; not part of the design</div>' +
+      '<div class="sub2">Stage ' + (st + 1) + ' of 6' + (S.rs.returned ? ' &middot; returned once' : '') +
+      '. Switch desk above to see who may act; step through to watch the chain fill in.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">' +
+        btn('ghost', '&larr; Step back', ' data-rs="back"') +
+        btn('primary', 'Advance a stage &rarr;', ' data-rs="fwd"') +
+        btn('ghost', 'Reset', ' data-rs="reset"') +
+      '</div>') + '</div>';
+  }
+
+  /* ── the payment exception path ───────────────────────────────── */
+
+  var PX_STEPS = [
+    ["Detected", "The settlement file holds money the University cannot attribute"],
+    ["Candidates proposed", "The system offers matches; it does not choose one"],
+    ["Match proposed by an officer", "One candidate selected, with the evidence recorded"],
+    ["Second officer approved", "Two people, never one, move money onto a record"],
+    ["Posted and settled", "The invoice clears and the student is told"]
+  ];
+
+  function pxLadder() {
+    var ev = [
+      ["Payment appeared in the settlement file", "Zenith Bank, Makurdi branch &middot; teller slip BR/44821 &middot; &#8358;40,000 &middot; 4 September, 14:22"],
+      ["Automatic matching failed", "No reference quoted on the teller slip. Three matching passes ran &mdash; reference, amount plus date, payer name &mdash; and none was conclusive."],
+      ["Candidates proposed to the Bursary", "Three students carry an open invoice of &#8358;40,000 raised within seven days of the payment."],
+      ["Match proposed", "Mr. S. Tamenbee &middot; candidate 2 &middot; teller slip names the payer as the student&rsquo;s guarantor of record"],
+      ["Second approval", "Dr. A. E. Otse, Bursar &middot; proposal and evidence reviewed independently"],
+      ["Posted to the invoice", "INV-2026-04412 settled &middot; student notified &middot; audit entry written &middot; original bank record untouched"]
+    ];
+    return panel("Investigation record", PX_STEPS[Math.min(S.px.step, 4)][0],
+      '<div style="padding:4px 0">' + ev.map(function (e, i) {
+        var state = S.px.step + 1 > i ? "done" : S.px.step + 1 === i ? "now" : "todo";
+        return '<div style="padding:10px 16px' + (i ? ';border-top:1px solid var(--line-2)' : '') + '">' +
+          step(state, e[0], e[1]) + '</div>';
+      }).join('') + '</div>');
+  }
+
+  function staffException() {
+    var st = S.px.step;
+    return note(st >= 4 ? 'ok' : 'bad',
+      st >= 4 ? '&#8358;40,000 posted to INV-2026-04412 and the exception is closed'
+              : '&#8358;40,000 is sitting in the University&rsquo;s account and belongs to somebody',
+      st >= 4 ? 'The student was notified within the minute and can see the payment on their fee page. The bank record was never altered &mdash; the posting is a new entry that points at it.'
+              : 'A payment the University cannot attribute is worse than a payment it never received: a student has paid, believes they have paid, and is being blocked from registering. The clock on this exception is the registration deadline, not the accounting period.') +
+
+    tiles([
+      ["Amount", "&#8358;40,000", null, "Bank branch, over the counter"],
+      ["Reference quoted", "None", "var(--red-ink)", "Teller slip BR/44821"],
+      ["Age", "1 day", null, "Must clear before the period closes"],
+      ["Step", (st + 1) + " of 5", st >= 4 ? "var(--green-ink)" : "var(--chrome)", PX_STEPS[Math.min(st, 4)][0]]
+    ]) +
+
+    (st >= 1 && st < 3 ? panel("Candidate matches", "Proposed by the system, chosen by a person", dtable(
+      ["Student", "Open invoice", "Amount|mid", "Raised|mid", "Evidence", "Action|num"], [
+        [two("IORNONGU, Sewuese Mercy", "MOAUM/EDU/24/2201"), '<span class="tnum sub2">INV-2026-04390</span>', '<span class="tnum">&#8358;40,000</span>', '<span class="sub2 tnum">1 Sep</span>',
+         '<span class="sub2">Amount and date match. Payer name on the slip does not correspond.</span>',
+         st === 2 ? '<span class="sub2">&mdash;</span>' : btn('ghost', 'Propose')],
+        [two("ADAMU, Grace Mwuese", "MOAUM/CSC/23/1487"), '<span class="tnum sub2">INV-2026-04412</span>', '<span class="tnum">&#8358;40,000</span>', '<span class="sub2 tnum">2 Sep</span>',
+         '<span class="sub2" style="color:var(--green-ink)">Payer named on the teller slip is the guarantor of record on this student&rsquo;s file.</span>',
+         st === 2 ? pil('info', 'Proposed') : btn('primary', 'Propose', ' data-px="fwd"')],
+        [two("UGBEM, Terhemba Paul", "MOAUM/LAW/22/0918"), '<span class="tnum sub2">INV-2026-04401</span>', '<span class="tnum">&#8358;40,000</span>', '<span class="sub2 tnum">3 Sep</span>',
+         '<span class="sub2">Amount and date match. No corroborating evidence.</span>',
+         st === 2 ? '<span class="sub2">&mdash;</span>' : btn('ghost', 'Propose')]
+      ], 1000)) : '') +
+
+    (st === 2 ? note('bad', 'A proposal is not a posting &mdash; a second officer must approve it',
+      'Mr. S. Tamenbee has proposed candidate 2 and recorded why. He cannot approve his own proposal, and the Bursar cannot approve a proposal he made himself either. Money moves onto a student record only when two people have independently agreed that it belongs there.',
+      btn('go', 'Approve as the Bursar', ' data-px="fwd"') + ' ' + btn('urgent', 'Reject the proposal', ' data-px="back"')) : '') +
+
+    (st === 3 ? note('info', 'Approved &mdash; post it to the invoice',
+      'The posting clears INV-2026-04412, releases the clearance gate that is currently blocking this student&rsquo;s registration, and notifies her on three channels.',
+      btn('go', 'Post &#8358;40,000 to INV-2026-04412', ' data-px="fwd"')) : '') +
+
+    (st === 0 ? note('info', 'Nothing here is done by hand until the machine has failed three times',
+      'Matching runs on the reference first, then on amount and date together, then on the payer name. Only what survives all three arrives on this screen &mdash; twelve transactions out of four hundred and twelve today.',
+      btn('primary', 'Run the matching passes', ' data-px="fwd"')) : '') +
+
+    two_col(pxLadder(),
+      panel("Why it is a posting, never an edit", "", pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('done', 'The bank record is never altered', 'It is evidence. The posting is a new entry that references it.') +
+          gate('done', 'Two people, recorded separately', 'Proposer and approver, and never the same person.') +
+          gate('done', 'The reason is stored with the entry', 'Not in a note somewhere &mdash; on the transaction, permanently.') +
+          gate('done', 'Reversal is another entry', 'A wrong posting is corrected by a contra entry, not by deletion.') +
+          gate('done', 'The student is told what changed', 'Silence after money moves is how disputes start.', 'last') +
+        '</div>'))) +
+
+    note('info', 'A payment is confirmed by the bank, never by the browser',
+      'The candidate&rsquo;s browser may never return from the payment page &mdash; on a Nigerian mobile network it frequently does not. Two independent paths therefore converge on one idempotent settlement: the gateway&rsquo;s server-to-server callback, and a reconciler that asks the bank about every outstanding reference every ten minutes. Whichever arrives first settles the payment; the second finds it already settled and does nothing.') +
+
+    panel("The other exception types, and how each resolves", "12 open today", dtable(
+      ["Exception", "What it means", "Resolution", "Approvals|num"], [
+        [two("Settled at the gateway, not posted internally", "The common one"), '<span class="sub2">The callback never arrived</span>', '<span class="sub2">Reconciler posts it automatically within ten minutes</span>', '<span class="sub2">None &mdash; automatic</span>'],
+        [two("Duplicate payment", "Paid twice after a timeout"), '<span class="sub2">Two settlements against one invoice</span>', '<span class="sub2">Credit raised automatically; student chooses refund or carry-forward</span>', '<span class="sub2">One, to release a refund</span>'],
+        [two("Amount differs from the invoice", "Part payment"), '<span class="sub2">&#8358;90,000 against a &#8358;95,000 invoice</span>', '<span class="sub2">Applied as part payment; the invoice stays open and the gate stays shut</span>', '<span class="sub2">None</span>'],
+        [two("No reference quoted", "This case"), '<span class="sub2">Branch payment, teller slip only</span>', '<span class="sub2">Investigated, proposed and approved as above</span>', '<span class="sub2">Two</span>'],
+        [two("Posted internally, absent from the settlement file", "Timing"), '<span class="sub2">Confirmed at 22:41, after the file was cut</span>', '<span class="sub2">Carried to tomorrow&rsquo;s file and matched then</span>', '<span class="sub2">None</span>']
+      ], 1060)) +
+
+    '<div class="card" style="border-style:dashed">' + pbody(
+      '<div class="eyebrow" style="color:var(--muted)">Prototype control &mdash; not part of the design</div>' +
+      '<div class="sub2">Step ' + (st + 1) + ' of 5 &middot; ' + PX_STEPS[Math.min(st, 4)][0] + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">' +
+        btn('ghost', '&larr; Step back', ' data-px="back"') +
+        btn('primary', 'Advance a step &rarr;', ' data-px="fwd"') +
+        btn('ghost', 'Reset', ' data-px="reset"') +
+      '</div>') + '</div>';
+  }

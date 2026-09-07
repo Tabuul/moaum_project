@@ -1,0 +1,303 @@
+
+  /* ══ THE CANDIDATE'S SEAT ═════════════════════════════════════════
+     The one screen in the estate whose failure costs a degree. It runs
+     without the portal chrome: there is no sidebar, no menu and no way
+     out except to submit, because a candidate must not be one stray
+     click from leaving the paper.                                    */
+
+  var CBT_TOTAL = 60;
+
+  var CBT_Q = [
+    { t: "What is the worst-case time complexity of merge sort on an array of n elements?",
+      o: ["O(n)", "O(n log n)", "O(n²)", "O(log n)"], a: 1,
+      topic: "Divide and conquer" },
+    { t: "A greedy algorithm is guaranteed to produce an optimal solution when the problem exhibits which two properties?",
+      o: ["Overlapping subproblems and optimal substructure",
+          "The greedy-choice property and optimal substructure",
+          "Optimal substructure and polynomial bounds",
+          "The greedy-choice property and memoisation"], a: 1,
+      topic: "Greedy algorithms" },
+    { t: "In the master theorem, T(n) = 2T(n/2) + Θ(n) solves to:",
+      o: ["Θ(n)", "Θ(n log n)", "Θ(n²)", "Θ(log n)"], a: 1,
+      topic: "Asymptotic analysis" },
+    { t: "Which statement about dynamic programming is correct?",
+      o: ["It applies only where subproblems are independent",
+          "It trades memory for repeated computation",
+          "It is always faster than the equivalent greedy algorithm",
+          "It requires the problem to be in NP"], a: 1,
+      topic: "Dynamic programming" },
+    { t: "A problem is NP-complete if it is in NP and:",
+      o: ["It can be solved in polynomial time",
+          "Every problem in NP reduces to it in polynomial time",
+          "It reduces to some problem in P",
+          "No polynomial-time algorithm has yet been found for it"], a: 1,
+      topic: "NP-completeness" },
+    { t: "What is the space complexity of the standard recursive implementation of binary search?",
+      o: ["O(1)", "O(log n)", "O(n)", "O(n log n)"], a: 1,
+      topic: "Divide and conquer" }
+  ];
+
+  function cbtQ(i) { return CBT_Q[i % CBT_Q.length]; }
+
+  function cbtCounts() {
+    var a = 0, f = 0;
+    for (var k in S.cbt.answers) { if (S.cbt.answers.hasOwnProperty(k)) { a++; } }
+    for (var j = 0; j < S.cbt.flagged.length; j++) { f++; }
+    return { answered: a, flagged: f, unanswered: CBT_TOTAL - a };
+  }
+
+  function cbtClock() {
+    var s = Math.max(0, S.cbt.left);
+    var m = Math.floor(s / 60), r = s % 60;
+    return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r;
+  }
+
+  /* ── the hall's connection state, shown honestly ───────────────── */
+  function cbtNet() {
+    if (S.net === "off") {
+      return '<span class="cbt__net cbt__net--bad">' + warnIcon(14) +
+        'Hall link down &middot; answers buffering on the hall server</span>';
+    }
+    if (S.net === "slow") {
+      return '<span class="cbt__net cbt__net--slow">' + ico('clock', 14, 'currentColor', 2) +
+        'Slow link &middot; answers saving, a little behind</span>';
+    }
+    return '<span class="cbt__net cbt__net--ok">' + tick(14, 'currentColor') + 'Saved</span>';
+  }
+
+  function cbtNavigator() {
+    var cells = [];
+    for (var i = 0; i < CBT_TOTAL; i++) {
+      var cls = "cbt__cell";
+      if (i === S.cbt.q) { cls += " is-current"; }
+      else if (S.cbt.flagged.indexOf(i) > -1) { cls += " is-flagged"; }
+      else if (S.cbt.answers.hasOwnProperty(i)) { cls += " is-answered"; }
+      else if (i <= S.cbt.seen) { cls += " is-seen"; }
+      cells.push('<button class="' + cls + '" data-cbt="go:' + i + '" aria-label="Question ' + (i + 1) + '">' + (i + 1) + '</button>');
+    }
+    return '<div class="cbt__nav">' + cells.join('') + '</div>';
+  }
+
+  function cbtLegend() {
+    return '<div class="cbt__legend">' +
+      '<span><i class="k k--answered"></i>Answered</span>' +
+      '<span><i class="k k--flagged"></i>Flagged</span>' +
+      '<span><i class="k k--seen"></i>Seen, not answered</span>' +
+      '<span><i class="k k--unseen"></i>Not yet seen</span>' +
+    '</div>';
+  }
+
+  /* ── 1. before the paper opens ─────────────────────────────────── */
+
+  function cbtBrief() {
+    return '<div class="cbt cbt--centre"><div class="cbt__sheet">' +
+      '<div class="cbt__brand">' +
+        '<img src="' + CREST + '" alt="" style="width:38px;height:39px;object-fit:contain">' +
+        '<div><div class="t">CSC 311 &mdash; Algorithms &amp; Complexity</div>' +
+        '<div class="s">First semester examination &middot; 2026/2027 &middot; ' + (S.cbt.practice ? 'PRACTICE' : 'CBT Hall A, seat A-042') + '</div></div>' +
+      '</div>' +
+
+      (S.cbt.practice
+        ? note('info', 'This is the practice test', 'Same screen, same timer, same navigation as the real paper. Nothing here is marked, and you may leave at any point.')
+        : note('info', 'Your identity has been checked at the door and will be checked again here',
+            'The photograph below is the one on your student record. If it is not you, say so to the invigilator now &mdash; a candidate found sitting for another loses the place, and so does the candidate they sat for.')) +
+
+      '<div class="cbt__id">' + passport(84, 104) +
+        '<div>' + kvGrid([
+          ['Candidate', 'ADAMU, Grace Mwuese'],
+          ['Matriculation number', '<span class="tnum">MOAUM/CSC/23/1487</span>'],
+          ['Seat', '<span class="tnum">A-042</span>'],
+          ['Paper', '60 questions &middot; 60 minutes']
+        ], 'grid--2') + '</div></div>' +
+
+      panel('Before you begin', '', pbody(
+        '<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">' +
+          gate('done', 'Every answer saves the moment you choose it', 'A power cut or a dropped link costs you at most the question you are on.') +
+          gate('done', 'You may move freely between questions', 'Answer them in any order, change any answer, and flag any you want to come back to.') +
+          gate('done', 'An unanswered question scores zero', 'There is no negative marking, so a guess is never worse than a blank.') +
+          gate('todo', 'The clock does not stop', 'Not for a network failure, not for a power cut, and not while you fetch the invigilator. It stops when you submit or when the hour ends.') +
+          gate('todo', 'Leaving this screen is recorded', 'Switching away from the paper is logged with its time. It is not by itself an offence, and it is evidence if one is alleged.', 'last') +
+        '</div>')) +
+
+      '<div class="cbt__acts">' +
+        (S.cbt.practice ? btn('ghost', 'Leave the practice', ' data-go="s/exams"') : '') +
+        '<button class="btn btn--primary" data-cbt="start">' +
+          (S.cbt.practice ? 'Begin the practice test' : 'Begin the examination') + '</button>' +
+      '</div>' +
+      '<div class="cbt__foot">Once you begin, the only way out of this screen is to submit.</div>' +
+    '</div></div>';
+  }
+
+  /* ── 2. sitting the paper ──────────────────────────────────────── */
+
+  function cbtSitting() {
+    var q = cbtQ(S.cbt.q), c = cbtCounts(), chosen = S.cbt.answers[S.cbt.q];
+    var low = S.cbt.left <= 300;
+
+    return '<div class="cbt">' +
+      '<header class="cbt__bar">' +
+        '<div class="cbt__who">' +
+          '<span class="t">CSC 311' + (S.cbt.practice ? ' &middot; practice' : '') + '</span>' +
+          '<span class="s">ADAMU, G. M. &middot; A-042</span>' +
+        '</div>' +
+        cbtNet() +
+        '<div class="cbt__clock' + (low ? ' is-low' : '') + '">' +
+          '<span class="l">Time remaining</span>' +
+          '<span class="v tnum" id="cbt-clock">' + cbtClock() + '</span>' +
+        '</div>' +
+      '</header>' +
+
+      (S.net === "off"
+        ? '<div class="cbt__alert">' + warnIcon(16) +
+          '<span>The hall has lost its uplink. You are answering on the hall server and nothing is lost &mdash; ' +
+          'your responses will synchronise when the link returns. <b>The clock has not stopped.</b></span></div>'
+        : '') +
+
+      '<div class="cbt__body">' +
+        '<main class="cbt__paper">' +
+          '<div class="cbt__qhead">' +
+            '<span class="n">Question ' + (S.cbt.q + 1) + ' <span class="of">of ' + CBT_TOTAL + '</span></span>' +
+            '<span class="topic">' + q.topic + '</span>' +
+            '<button class="cbt__flag' + (S.cbt.flagged.indexOf(S.cbt.q) > -1 ? ' is-on' : '') + '" data-cbt="flag">' +
+              (S.cbt.flagged.indexOf(S.cbt.q) > -1 ? 'Flagged' : 'Flag for review') + '</button>' +
+          '</div>' +
+
+          '<p class="cbt__stem">' + q.t + '</p>' +
+
+          '<div class="cbt__opts">' +
+            q.o.map(function (o, i) {
+              return '<button class="cbt__opt' + (chosen === i ? ' is-on' : '') + '" data-cbt="ans:' + i + '">' +
+                '<span class="ltr">' + "ABCD".charAt(i) + '</span><span class="tx">' + o + '</span></button>';
+            }).join('') +
+          '</div>' +
+
+          '<div class="cbt__save">' +
+            (chosen === undefined
+              ? '<span class="sub2">Not answered</span>'
+              : (S.net === "off"
+                  ? '<span class="sub2" style="color:var(--red-ink)">Answer held on the hall server</span>'
+                  : '<span class="sub2" style="color:var(--green-ink)">' + tick(13, 'var(--green-ink)') + ' Answer saved</span>')) +
+            (chosen !== undefined ? ' <button class="cbt__clear" data-cbt="clear">Clear my answer</button>' : '') +
+          '</div>' +
+
+          '<div class="cbt__move">' +
+            '<button class="btn btn--ghost" data-cbt="prev"' + (S.cbt.q === 0 ? ' disabled' : '') + '>&larr; Previous</button>' +
+            '<button class="btn btn--ghost" data-cbt="review">Review and submit</button>' +
+            '<button class="btn btn--primary" data-cbt="next"' + (S.cbt.q === CBT_TOTAL - 1 ? ' disabled' : '') + '>Next &rarr;</button>' +
+          '</div>' +
+        '</main>' +
+
+        '<aside class="cbt__side">' +
+          '<div class="cbt__count">' +
+            '<div><span class="n tnum">' + c.answered + '</span><span class="l">Answered</span></div>' +
+            '<div><span class="n tnum">' + c.flagged + '</span><span class="l">Flagged</span></div>' +
+            '<div><span class="n tnum">' + c.unanswered + '</span><span class="l">Left</span></div>' +
+          '</div>' +
+          cbtNavigator() + cbtLegend() +
+          '<button class="btn btn--urgent" style="width:100%;justify-content:center" data-cbt="review">Review and submit</button>' +
+          '<div class="cbt__hint">Every candidate in this hall has a different paper drawn to the same blueprint, and the options are in a different order. Comparing screens tells you nothing.</div>' +
+        '</aside>' +
+      '</div>' +
+
+      '<div class="cbt__ctl">' +
+        '<span class="eyebrow" style="color:var(--faint)">Prototype control</span>' +
+        btn('ghost', 'Answer 44 of them', ' data-cbt="fill"') +
+        btn('ghost', 'Two minutes left', ' data-cbt="rush"') +
+        btn(S.net === "off" ? 'primary' : 'ghost', 'Lose the hall link', ' data-net="' + (S.net === "off" ? "on" : "off") + '"') +
+      '</div>' +
+    '</div>';
+  }
+
+  /* ── 3. review before submitting ───────────────────────────────── */
+
+  function cbtReview() {
+    var c = cbtCounts();
+    return '<div class="cbt cbt--centre"><div class="cbt__sheet">' +
+      '<div class="cbt__brand">' +
+        '<img src="' + CREST + '" alt="" style="width:38px;height:39px;object-fit:contain">' +
+        '<div><div class="t">Review before you submit</div>' +
+        '<div class="s">CSC 311 &middot; ' + cbtClock() + ' remaining &middot; the clock is still running</div></div>' +
+      '</div>' +
+
+      tiles([
+        ['Answered', String(c.answered), 'var(--green-ink)', 'Of ' + CBT_TOTAL],
+        ['Flagged for review', String(c.flagged), 'var(--chrome)', 'Answered or not'],
+        ['Not answered', String(c.unanswered), c.unanswered ? 'var(--red-ink)' : 'var(--green-ink)', 'These will score zero'],
+        ['Time remaining', cbtClock(), null, 'Submitting ends the paper']
+      ]) +
+
+      (c.unanswered
+        ? note('bad', c.unanswered + ' questions have no answer, and each will score zero',
+            'There is no negative marking on this paper, so an answer chosen at random is never worse than leaving it blank. Go back and put something against every one of them.',
+            btn('primary', 'Go to the first unanswered', ' data-cbt="firstblank"'))
+        : note('ok', 'Every question has an answer', 'You may still change any of them before you submit.')) +
+
+      panel('Your paper', 'Tap any question to go back to it', pbody(cbtNavigator() + cbtLegend())) +
+
+      note('info', 'Submitting is final',
+        'The paper closes, the hall clock stops for you, and you may leave. Your responses are already saved &mdash; submitting is you saying that you have finished, not the system storing your work.') +
+
+      '<div class="cbt__acts">' +
+        '<button class="btn btn--ghost" data-cbt="back">&larr; Back to the paper</button>' +
+        '<button class="btn btn--urgent" data-cbt="submit">Submit my paper</button>' +
+      '</div>' +
+    '</div></div>';
+  }
+
+  /* ── 4. submitted ──────────────────────────────────────────────── */
+
+  function cbtDone() {
+    var c = cbtCounts();
+    return '<div class="cbt cbt--centre"><div class="cbt__sheet">' +
+      '<div style="display:flex;align-items:center;gap:11px">' +
+        '<div style="width:30px;height:30px;border-radius:15px;background:var(--green);display:flex;align-items:center;justify-content:center">' + tick(17, '#fff') + '</div>' +
+        '<div><div class="t" style="font-size:19px;font-family:var(--serif);font-weight:700">Your paper has been submitted</div>' +
+        '<div class="s sub2">CSC 311 &middot; Algorithms &amp; Complexity</div></div>' +
+      '</div>' +
+
+      panel('Submission record', 'Keep this reference', dtable(['Field', 'Value'], [
+        ['Candidate', '<strong>ADAMU, Grace Mwuese</strong><div class="sub2 tnum">MOAUM/CSC/23/1487</div>'],
+        ['Seat', '<span class="tnum">A-042, CBT Hall A</span>'],
+        ['Submitted at', '<span class="tnum">09:47:12</span>'],
+        ['Questions answered', '<span class="tnum">' + c.answered + ' of ' + CBT_TOTAL + '</span>'],
+        ['Responses recorded', '<span class="tnum">' + c.answered + '</span> &middot; last saved 09:47:09'],
+        ['Submission reference', '<span class="tnum">CBT-2026-A042-8841</span>'],
+        ['Response hash', '<span class="tnum sub2">9f2a…4c81</span>']
+      ], 520)) +
+
+      note('info', 'This is a receipt, not a result',
+        'It records what you submitted and when. Your mark goes through verification, the Departmental Board, the Faculty Board and Senate before it is published, and nothing before Senate is a result.') +
+
+      note('info', 'If you believe the system lost an answer',
+        'Every save this session made is logged with its timestamp, and so is every interruption. Raise it with the invigilator before you leave the hall, and quote the submission reference above &mdash; the log is what settles it.') +
+
+      '<div class="cbt__acts">' +
+        (S.cbt.practice
+          ? '<button class="btn btn--primary" data-cbt="reset">Practise again</button>'
+          : '') +
+        '<button class="btn btn--ghost" data-go="s/exams">Leave the hall</button>' +
+      '</div>' +
+    '</div></div>';
+  }
+
+  function studentCbt() {
+    if (S.cbt.phase === "brief")  { return cbtBrief(); }
+    if (S.cbt.phase === "review") { return cbtReview(); }
+    if (S.cbt.phase === "done")   { return cbtDone(); }
+    return cbtSitting();
+  }
+
+  /* the clock ticks without re-rendering the paper under the candidate */
+  var cbtTimer = null;
+  function startCbtClock() {
+    if (cbtTimer) { clearInterval(cbtTimer); cbtTimer = null; }
+    if (S.route !== "s/cbt" || S.cbt.phase !== "sitting") { return; }
+    cbtTimer = setInterval(function () {
+      S.cbt.left = Math.max(0, S.cbt.left - 1);
+      var el = document.getElementById("cbt-clock");
+      if (!el) { clearInterval(cbtTimer); cbtTimer = null; return; }
+      el.textContent = cbtClock();
+      if (S.cbt.left <= 300) { el.parentElement.classList.add("is-low"); }
+      if (S.cbt.left === 0) { clearInterval(cbtTimer); cbtTimer = null; S.cbt.phase = "review"; render(); }
+    }, 1000);
+  }

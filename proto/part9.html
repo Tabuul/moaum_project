@@ -1,0 +1,155 @@
+
+  /* ══ REGISTRY ════════════════════════════════════════════════════ */
+
+  function rAdmissions() {
+    return tiles([
+      ['Applications', '31,204', null, '2026 UTME cycle'],
+      ['Screened', '28,880', null, '92.6% sat the CBT'],
+      ['Offers issued', '4,180', 'var(--chrome)', 'Against 4,250 capacity'],
+      ['Accepted', '3,466', 'var(--green-ink)', '82.9% conversion']
+    ]) +
+    note('bad', '714 offers expire in 4 days',
+      'Unaccepted offers lapse automatically on 25 September and the places pass to the waiting list. No one has to remember to do it — but the waiting list should be reviewed before then.',
+      btn('urgent', 'Review the waiting list')) +
+    panel('Programmes — merit lists', 'Quota is the NUC-approved carrying capacity', dtable(
+      ['Programme', 'Applied|mid', 'Quota|mid', 'Offered|mid', 'Accepted|mid', 'Cut-off|mid', 'Stage|num'], [
+        [two('B.Sc. Computer Science', 'Faculty of Science'), '<span class="tnum">2,914</span>', '<span class="tnum">120</span>', '<span class="tnum">120</span>', '<span class="tnum">104</span>', '<span class="tnum">68.2</span>', pil('ok', 'Senate approved')],
+        [two('MBBS Medicine &amp; Surgery', 'College of Health Sciences'), '<span class="tnum">4,201</span>', '<span class="tnum">75</span>', '<span class="tnum">75</span>', '<span class="tnum">73</span>', '<span class="tnum">81.4</span>', pil('ok', 'Senate approved')],
+        [two('LL.B Law', 'Faculty of Law'), '<span class="tnum">3,880</span>', '<span class="tnum">110</span>', '<span class="tnum">110</span>', '<span class="tnum">96</span>', '<span class="tnum">74.0</span>', pil('ok', 'Senate approved')],
+        [two('B.Sc. Accounting', 'Management Sciences'), '<span class="tnum">2,610</span>', '<span class="tnum">150</span>', '<span class="tnum">150</span>', '<span class="tnum">121</span>', '<span class="tnum">64.8</span>', pil('info', 'Awaiting Senate')],
+        [two('B.A. English', 'Faculty of Arts'), '<span class="tnum">980</span>', '<span class="tnum">140</span>', '<span class="tnum">96</span>', '<span class="tnum">71</span>', '<span class="tnum">52.0</span>', pil('bad', 'Under quota')]
+      ], 900)) +
+    panel('JAMB reconciliation', 'Candidates whose portal data disagrees with the CAPS record', dtable(
+      ['JAMB no.', 'Name', 'Discrepancy', 'Action|num'], [
+        ['<span class="tnum">20261184AF</span>', 'ODEH, Blessing N.', '<span style="color:var(--red-ink)">Date of birth differs by 2 years</span>', btn('primary', 'Resolve')],
+        ['<span class="tnum">20263390BC</span>', 'SAAKA, Terhemba', '<span style="color:var(--red-ink)">Subject combination excludes Chemistry</span>', btn('primary', 'Resolve')],
+        ['<span class="tnum">20261902KD</span>', 'ENEJE, Onyeka', '<span class="sub2">Applied here but MOAUM not a CAPS choice</span>', btn('ghost', 'Change of institution')]
+      ], 720));
+  }
+
+  function rCertificates() {
+    return tiles([
+      ['Graduands 2026', '3,912', null, 'Senate-approved list'],
+      ['Certificates printed', '3,410', null, '87% of the list'],
+      ['Collected', '2,684', 'var(--green-ink)', 'Identity verified at collection'],
+      ['Security stock left', '1,180', 'var(--red-ink)', 'Reorder at 1,000']
+    ]) +
+    note('info', 'A certificate cannot be printed before Senate approves the award',
+      'The graduand list, the classification and the clearance are all checked by the system first. Stationery serial numbers are tracked from issue to collection, so a spoiled certificate is accounted for.') +
+    panel('Certificate register', 'Convocation 2026', dtable(
+      ['Certificate no.', 'Graduand', 'Award', 'Class|mid', 'Status|num'], [
+        ['<span class="tnum">MOAUM/C/26/00841</span>', two('AGERA, Sesugh Emmanuel', 'MOAUM/CSC/21/0774'), 'B.Sc. Computer Science', '<span class="sub2">2:1</span>', pil('ok', 'Collected 14 Aug')],
+        ['<span class="tnum">MOAUM/C/26/00842</span>', two('BEM, Doosuur Grace', 'MOAUM/LAW/21/0119'), 'LL.B Law', '<span class="sub2">2:1</span>', pil('info', 'Printed, awaiting collection')],
+        ['<span class="tnum">MOAUM/C/26/00843</span>', two('IKYAAGBA, Terkula', 'MOAUM/EDU/21/1802'), 'B.Ed. Education', '<span class="sub2">2:2</span>', pil('bad', 'Held — library clearance')],
+        ['<span class="tnum">MOAUM/C/24/00219</span>', two('UGWU, Chidinma P.', 'BSU/CSC/19/0433'), 'B.Sc. Computer Science', '<span class="sub2">1st</span>', pil('ok', 'Reissued — duplicate')]
+      ], 860)) +
+    note('info', 'Certificates awarded before 30 December 2024',
+      'They were issued as Benue State University, Makurdi and carry that name. Both names resolve in verification, so an older certificate is never mistaken for a forgery — see the last row above.') +
+    panel('Stationery control', 'Pre-printed security stock', dtable(
+      ['Batch', 'Serial range', 'Issued|mid', 'Used|mid', 'Spoiled|mid', 'Returned|mid'], [
+        ['<span class="tnum">B-2026-03</span>', '<span class="tnum">004001 – 006000</span>', '<span class="tnum">2,000</span>', '<span class="tnum">1,842</span>', '<span class="tnum">11</span>', '<span class="tnum">147</span>'],
+        ['<span class="tnum">B-2026-02</span>', '<span class="tnum">002001 – 004000</span>', '<span class="tnum">2,000</span>', '<span class="tnum">1,996</span>', '<span class="tnum">4</span>', '<span class="tnum">0</span>']
+      ], 700));
+  }
+
+  function rGraduation() {
+    return scopeBar('candidates', {}) +
+    note('bad', '38 finalists have an unmet requirement',
+      'The degree audit checks every curriculum rule — compulsory courses, elective credit minima, GST, project, and the minimum total credits. These 38 cannot be presented to Senate until each gap is closed or waived.',
+      btn('urgent', 'Open the exception list')) +
+    tiles([
+      ['Finalists', '4,102', null, '2025/2026 session'],
+      ['Audit passed', '3,950', 'var(--green-ink)', 'All requirements met'],
+      ['Outstanding requirement', '38', 'var(--red-ink)', 'Cannot graduate yet'],
+      ['Awaiting clearance', '114', 'var(--red-ink)', 'Library, Bursary or hostel']
+    ]) +
+    panel('Degree audit exceptions', 'Computed, not compiled by hand', dtable(
+      ['Student', 'Programme', 'Unmet requirement', 'CGPA|mid', 'Action|num'], [
+        [two('ADEKU, Ojochenemi', 'MOAUM/CSC/21/0912'), 'B.Sc. Computer Science', '<span style="color:var(--red-ink)">CSC 499 project not graded</span>', '<span class="tnum">3.11</span>', btn('primary', 'Chase department')],
+        [two('TSEMBE, Aondowase', 'MOAUM/CSC/21/1044'), 'B.Sc. Computer Science', '<span style="color:var(--red-ink)">2 credit units short in electives</span>', '<span class="tnum">2.84</span>', btn('ghost', 'Review')],
+        [two('OGAH, Ene Faith', 'MOAUM/MGT/21/0388'), 'B.Sc. Accounting', '<span style="color:var(--red-ink)">GST 301 outstanding</span>', '<span class="tnum">3.40</span>', btn('ghost', 'Review')],
+        [two('IORLIAM, Sewuese', 'MOAUM/EDU/21/2110'), 'B.Ed. Education', '<span style="color:var(--red-ink)">CGPA 1.42 — below pass threshold</span>', '<span class="tnum">1.42</span>', btn('ghost', 'Refer to Faculty Board')]
+      ], 880)) +
+    panel('Classification summary', 'Computed from the versioned classification table in force at each student\'s entry', dtable(
+      ['Class', 'Students|mid', 'Share|mid', 'CGPA range|num'], [
+        ['First Class Honours', '<span class="tnum">148</span>', '<span class="tnum">3.7%</span>', '<span class="tnum sub2">4.50 – 5.00</span>'],
+        ['Second Class Honours (Upper)', '<span class="tnum">1,384</span>', '<span class="tnum">35.0%</span>', '<span class="tnum sub2">3.50 – 4.49</span>'],
+        ['Second Class Honours (Lower)', '<span class="tnum">1,802</span>', '<span class="tnum">45.6%</span>', '<span class="tnum sub2">2.40 – 3.49</span>'],
+        ['Third Class Honours', '<span class="tnum">574</span>', '<span class="tnum">14.5%</span>', '<span class="tnum sub2">1.50 – 2.39</span>'],
+        ['Pass', '<span class="tnum">42</span>', '<span class="tnum">1.1%</span>', '<span class="tnum sub2">1.00 – 1.49</span>']
+      ], 560));
+  }
+
+  /* ══ BURSARY ═════════════════════════════════════════════════════ */
+
+
+  function bRefunds() {
+    return note('info', 'Maker and checker are always different people',
+      'The officer who raises a refund cannot approve it. The system refuses the second click rather than relying on anyone to remember the rule.') +
+    panel('Refund requests', '', dtable(
+      ['Reference', 'Payer', 'Reason', 'Amount|num', 'Stage', 'Action|num'], [
+        ['<span class="tnum">RF-2026-0188</span>', two('AGBO, Ochanya Faith', 'MOAUM/CSC/23/1415'), 'Duplicate payment — timeout retry', '<span class="tnum">₦25,000</span>', '<span class="sub2">Raised by P. Terwase</span>', btn('go', 'Approve')],
+        ['<span class="tnum">RF-2026-0187</span>', two('OGBU, Adakole Peter', 'MOAUM/LAW/19/0774'), 'Withdrawal before week 3', '<span class="tnum">₦67,500</span>', '<span class="sub2">Raised by you</span>', btn('primary', 'Awaiting another approver', ' disabled')],
+        ['<span class="tnum">RF-2026-0184</span>', two('Benue State Scholarship Board', 'Sponsor'), 'Over-remittance for 12 students', '<span class="tnum">₦180,000</span>', '<span class="sub2">Approved 2 Sept</span>', btn('ghost', 'Disbursement schedule')]
+      ], 900)) +
+    panel('Credits, waivers and scholarships', 'Applied against specific invoice lines', dtable(
+      ['Beneficiary', 'Type', 'Value|num', 'Approved by', 'Evidence|num'], [
+        [two('IORVER, Doosuur Mercy', 'MOAUM/CSC/23/1444'), 'Staff-child waiver — 50% tuition', '<span class="tnum">₦39,000</span>', '<span class="sub2">Bursar</span>', btn('ghost', 'Letter')],
+        [two('34 students', 'Faculty of Education'), 'Benue State Scholarship Board', '<span class="tnum">₦4.59m</span>', '<span class="sub2">Council</span>', btn('ghost', 'Award list')],
+        [two('AGERA, Sesugh Emmanuel', 'MOAUM/CSC/21/0774'), 'Vice-Chancellor\'s merit award', '<span class="tnum">₦135,000</span>', '<span class="sub2">Vice-Chancellor</span>', btn('ghost', 'Minute')]
+      ], 860));
+  }
+
+  function bPayroll() {
+    return note('bad', 'Three anomalies detected before commitment',
+      'Two staff share a bank account number, and one separated member of staff is still on the register. The run cannot be committed until each is cleared or explained.',
+      btn('urgent', 'Review anomalies')) +
+    tiles([
+      ['Staff on payroll', '2,714', null, 'September 2026'],
+      ['Gross', '&#8358;418m', null, 'Before deductions &middot; 2,714 staff'],
+      ['Statutory deductions', '&#8358;94.5m', null, 'PAYE, pension, NHF, NHIS'],
+      ['Net payable', '&#8358;323.5m', 'var(--chrome)', 'Bank schedule ready']
+    ]) +
+    panel('Pre-commitment checks', 'Every one must pass', pbody(
+      '<div class="steps">' +
+        stepRow(true, 'Establishment reconciled', '2,714 staff on payroll match 2,714 active appointments in HR') +
+        stepRow(true, 'Statutory rates current', 'PAYE bands, 8% pension, 2.5% NHF applied at September 2026 rates') +
+        stepRow(false, 'Anomaly review', '<span style="color:var(--red-ink)">3 outstanding — duplicate account (2), payment to separated staff (1)</span>') +
+        stepRow(false, 'Maker–checker sign-off', 'Awaiting the Bursar after anomalies are cleared') +
+      '</div>')) +
+    panel('Anomalies', '', dtable(
+      ['Staff', 'Issue', 'Amount|num', 'Action|num'], [
+        [two('ADAKOLE, John T.', 'MOAUM/STF/0912 · Works'), '<span style="color:var(--red-ink)">Bank account shared with MOAUM/STF/1877</span>', '<span class="tnum">₦318,400</span>', btn('urgent', 'Hold and investigate')],
+        [two('ENE, Grace O.', 'MOAUM/STF/1877 · Works'), '<span style="color:var(--red-ink)">Bank account shared with MOAUM/STF/0912</span>', '<span class="tnum">₦284,900</span>', btn('urgent', 'Hold and investigate')],
+        [two('UGBEDE, Simon A.', 'MOAUM/STF/0455 · Registry'), '<span style="color:var(--red-ink)">Separated 31 Aug — still on the register</span>', '<span class="tnum">₦402,100</span>', btn('urgent', 'Remove from run')]
+      ], 800)) +
+    panel('Statutory remittance schedule', 'Generated with the run', dtable(
+      ['Deduction', 'Authority', 'Amount|num', 'Due|num'], [
+        ['PAYE', 'Benue State Internal Revenue Service', '<span class="tnum">&#8358;46.4m</span>', '<span class="sub2 tnum">10 Oct 2026</span>'],
+        ['Pension (8% + 10%)', 'Per staff PFA<div class="sub2">&#8358;41.8m of this is the University&rsquo;s own 10% and is not a staff deduction, which is why the schedule totals more than the deductions above</div>', '<span class="tnum">&#8358;75.2m</span>', '<span class="sub2 tnum">7 Oct 2026</span>'],
+        ['NHF (2.5%)', 'Federal Mortgage Bank', '<span class="tnum">&#8358;10.5m</span>', '<span class="sub2 tnum">15 Oct 2026</span>'],
+        ['NHIS', 'Health insurance scheme', '<span class="tnum">&#8358;4.2m</span>', '<span class="sub2 tnum">15 Oct 2026</span>']
+      ], 640));
+  }
+
+  function bBudget() {
+    return note('info', 'Commitment accounting — budget is consumed at approval, not at payment',
+      'An approved requisition reduces the available balance immediately. That is what stops a cost centre committing money it has already promised elsewhere.') +
+    panel('Budget performance by cost centre', 'Financial year 2026', dtable(
+      ['Cost centre', 'Budget|num', 'Committed|num', 'Spent|num', 'Available|num', 'Utilisation'], [
+        ['Faculty of Science', '<span class="tnum">₦184m</span>', '<span class="tnum">₦31m</span>', '<span class="tnum">₦122m</span>', '<span class="tnum" style="font-weight:600">₦31m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(83) + '<span class="tnum sub2">83%</span></div>'],
+        ['College of Health Sciences', '<span class="tnum">₦402m</span>', '<span class="tnum">₦88m</span>', '<span class="tnum">₦310m</span>', '<span class="tnum" style="font-weight:600;color:var(--red-ink)">₦4m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(99, 'var(--red)') + '<span class="tnum sub2">99%</span></div>'],
+        ['Works and Physical Planning', '<span class="tnum">₦560m</span>', '<span class="tnum">₦214m</span>', '<span class="tnum">₦188m</span>', '<span class="tnum" style="font-weight:600">₦158m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(72) + '<span class="tnum sub2">72%</span></div>'],
+        ['Library', '<span class="tnum">₦96m</span>', '<span class="tnum">₦12m</span>', '<span class="tnum">₦58m</span>', '<span class="tnum" style="font-weight:600">₦26m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(73) + '<span class="tnum sub2">73%</span></div>'],
+        ['ICT Directorate', '<span class="tnum">₦148m</span>', '<span class="tnum">₦46m</span>', '<span class="tnum">₦74m</span>', '<span class="tnum" style="font-weight:600">₦28m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(81) + '<span class="tnum sub2">81%</span></div>']
+      ], 900)) +
+    note('bad', 'College of Health Sciences has ₦4m available against ₦88m committed',
+      'Further requisitions from this cost centre will be refused at budget check until a virement is approved by Council.') +
+    panel('Income and expenditure', 'Session to date, against budget', dtable(
+      ['', 'Budget|num', 'Actual|num', 'Variance|num'], [
+        ['<strong>Internally generated revenue</strong>', '<span class="tnum">₦2.80bn</span>', '<span class="tnum">₦2.41bn</span>', '<span class="tnum" style="color:var(--red-ink)">−₦390m</span>'],
+        ['<strong>State subvention</strong>', '<span class="tnum">₦4.10bn</span>', '<span class="tnum">₦4.10bn</span>', '<span class="tnum">₦0</span>'],
+        ['<strong>Personnel costs</strong>', '<span class="tnum">₦4.62bn</span>', '<span class="tnum">₦4.58bn</span>', '<span class="tnum" style="color:var(--green-ink)">₦40m</span>'],
+        ['<strong>Overheads and capital</strong>', '<span class="tnum">₦1.88bn</span>', '<span class="tnum">₦1.62bn</span>', '<span class="tnum" style="color:var(--green-ink)">₦260m</span>']
+      ], 620));
+  }

@@ -1,0 +1,104 @@
+
+  /* ══ THE PHONE ═══════════════════════════════════════════════════
+     Students and applicants were specified mobile-first, and most of
+     them will never open this on anything but a phone. Below 760px
+     the drawer is replaced by a bottom tab bar, the primary action of
+     the screen becomes a sticky bar above it, and the connection
+     state is shown rather than assumed.                            */
+
+  var TABS = {
+    student: [
+      { id: "s/dashboard", icon: "home", label: "Home" },
+      { id: "s/register", icon: "book", label: "Register" },
+      { id: "s/fees", icon: "card", label: "Fees" },
+      { id: "s/results", icon: "cap", label: "Results" },
+      { id: "more", icon: "swap", label: "More", badge: "6" }
+    ],
+    applicant: [
+      { id: "a/dashboard", icon: "home", label: "Overview" },
+      { id: "a/apply", icon: "doc", label: "Form" },
+      { id: "a/fee", icon: "card", label: "Fee" },
+      { id: "a/status", icon: "cap", label: "Status" },
+      { id: "more", icon: "swap", label: "More" }
+    ]
+  };
+
+  /* which tab a screen belongs under, so the right one lights up */
+  var TAB_OF = {
+    "s/dashboard": "s/dashboard", "s/notifications": "s/dashboard", "s/profile": "s/dashboard",
+    "s/register": "s/register", "s/form": "s/register", "s/courses": "s/register",
+    "s/timetable": "s/register", "s/attendance": "s/register",
+    "s/fees": "s/fees", "s/pay": "s/fees", "s/receipt": "s/fees", "s/hostel": "s/fees",
+    "s/results": "s/results", "s/slip": "s/results", "s/exams": "s/results", "s/transcript": "s/results",
+    "s/library": "more", "s/health": "more", "s/support": "more",
+    "a/dashboard": "a/dashboard", "a/matric": "a/dashboard",
+    "a/apply": "a/apply", "a/screening": "a/apply", "a/score": "a/apply",
+    "a/fee": "a/fee", "a/accept": "a/fee",
+    "a/status": "a/status", "a/clearance": "a/status"
+  };
+
+  /* the one action a screen exists for, raised to the thumb */
+  var CTA = {
+    "s/fees": ["Outstanding on INV-2026-04412", "&#8358;45,000", "Pay now", "urgent", "s/pay"],
+    "s/pay": ["Instalment 2 of 2", "&#8358;45,000", "Pay &#8358;45,000", "urgent", "paid"],
+    "s/register": ["22 units selected", "Registration closes 24 September", "Submit registration", "primary", "s/form"],
+    "s/transcript": ["Official transcript", "To the University of Ibadan", "Continue", "primary", null],
+    "a/fee": ["Application and screening fee", "&#8358;2,300", "Pay &#8358;2,300", "urgent", null],
+    "a/apply": ["Two items outstanding", "Applications close 12 September", "Review and submit", "primary", null],
+    "a/accept": ["Acceptance fee", "&#8358;25,000 &middot; offer lapses 25 September", "Accept and pay", "urgent", null],
+    "a/status": ["Offer of provisional admission", "B.Sc. Computer Science", "Accept the offer", "urgent", "a/accept"]
+  };
+
+  function tabbarHTML() {
+    var t = TABS[S.role];
+    if (!t) { return ''; }
+    var current = TAB_OF[S.route] || (S.role === "student" ? "s/dashboard" : "a/dashboard");
+    return '<nav class="tabbar" aria-label="Sections">' + t.map(function (x) {
+      var on = current === x.id;
+      return '<button data-go="' + (x.id === "more" ? "opennav" : x.id) + '"' +
+        (on ? ' aria-current="page"' : '') + ' aria-label="' + x.label + '">' +
+        ico(x.icon, 19, 'currentColor', on ? 2.1 : 1.8) +
+        '<span>' + x.label + '</span>' +
+        (x.badge ? '<span class="tb__badge">' + x.badge + '</span>' : '') + '</button>';
+    }).join('') + '</nav>';
+  }
+
+  function ctaHTML() {
+    if (!TABS[S.role]) { return ''; }
+    var c = CTA[S.route];
+    if (!c) { return ''; }
+    if (S.route === "s/fees" && S.feesPaid) { return ''; }
+    if (S.route === "s/pay" && S.feesPaid) { return ''; }
+    if (S.route === "a/status" && S.ap.stage >= 6) { return ''; }
+    if (S.route === "a/fee" && S.ap.stage >= 1) { return ''; }
+    if (S.route === "a/apply" && S.ap.stage >= 2) { return ''; }
+    if (S.route === "a/accept" && S.ap.stage >= 6) { return ''; }
+    return '<div class="stickybar">' +
+      '<div class="lab"><b>' + c[1] + '</b>' + c[0] + '</div>' +
+      '<button class="btn btn--' + c[3] + '"' + (c[4] ? ' data-go="' + c[4] + '"' : '') + '>' + c[2] + '</button>' +
+    '</div>';
+  }
+
+  function netbarHTML() {
+    if (S.net === "off") {
+      return '<div class="netbar">' + warnIcon(16) +
+        '<span>No connection. You are seeing what was last loaded &mdash; nothing you submit now will be sent until the network returns.</span></div>';
+    }
+    if (S.net === "slow") {
+      return '<div class="netbar netbar--slow">' + ico('clock', 16, 'currentColor', 2) +
+        '<span>Slow connection. Payments and submissions may take longer than usual; do not press twice.</span></div>';
+    }
+    return '';
+  }
+
+  /* the phone panel on the student dashboard, so the design is visible on a desktop too */
+  function phonePanel() {
+    return panel('On a phone', 'Where most students will use this', pbody(
+      '<div class="sub2">Below 760 pixels the drawer is replaced by a bottom tab bar, the action a screen exists for is raised to a sticky bar above the thumb, and the connection state is shown instead of assumed. Narrow this window to see it.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">' +
+        btn(S.net === "on" ? 'primary' : 'ghost', 'Good connection', ' data-net="on"') +
+        btn(S.net === "slow" ? 'primary' : 'ghost', 'Slow connection', ' data-net="slow"') +
+        btn(S.net === "off" ? 'primary' : 'ghost', 'No connection', ' data-net="off"') +
+      '</div>' +
+      '<div class="sub2" style="margin-top:4px">A student on a Nigerian mobile network loses the connection in the middle of a payment often enough that it is a design case, not an edge case. Nothing is lost: the payment settles from the bank&rsquo;s side and appears when the network returns.</div>'));
+  }

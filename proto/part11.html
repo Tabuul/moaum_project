@@ -1,0 +1,204 @@
+
+  /* ══ RESEARCH ADMINISTRATION ═════════════════════════════════════ */
+
+  function xProjects() {
+    return tiles([
+      ['Active projects', '148', null, 'Across 8 faculties'],
+      ['Grant value', '₦1.84bn', null, 'TETFund, NRF and international'],
+      ['Spend against grant', '62%', null, 'Weighted average'],
+      ['Reports overdue', '7', 'var(--red-ink)', 'To funders']
+    ]) +
+    note('bad', 'Seven funder reports are overdue',
+      'Late reporting jeopardises the next disbursement and, with TETFund, the institution\'s standing in the following cycle. Each has a named principal investigator.') +
+    panel('Research projects', '', dtable(
+      ['Reference', 'Title', 'Principal investigator', 'Funder', 'Value|num', 'Spend', 'Status|num'], [
+        ['<span class="tnum">RS-2024-0088</span>', 'Cassava mosaic resistance in Benue germplasm', 'Prof. J. Ityokumbul', 'TETFund NRF', '<span class="tnum">₦48m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(74) + '<span class="tnum sub2">74%</span></div>', pil('ok', 'Active')],
+        ['<span class="tnum">RS-2025-0141</span>', 'Machine learning for malaria case prediction', 'Dr. T. Iorpuu', 'TETFund IBR', '<span class="tnum">₦12m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(38) + '<span class="tnum sub2">38%</span></div>', pil('ok', 'Active')],
+        ['<span class="tnum">RS-2023-0044</span>', 'Maternal health outcomes in rural Benue', 'Dr. B. Ochefu', 'Wellcome Trust', '<span class="tnum">₦210m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(91) + '<span class="tnum sub2">91%</span></div>', pil('bad', 'Report overdue')],
+        ['<span class="tnum">RS-2026-0203</span>', 'Flood risk mapping for Makurdi metropolis', 'Dr. M. Ashaver', 'NRF', '<span class="tnum">₦34m</span>', '<div style="display:flex;align-items:center;gap:8px">' + bar(4) + '<span class="tnum sub2">4%</span></div>', pil('info', 'Just awarded')]
+      ], 1000)) +
+    note('info', 'Grant spend follows normal procurement rules',
+      'A grant does not create a parallel purchasing route. Requisitions charged to a project go through the same thresholds and Tenders Board, while remaining separately accountable to the funder.');
+  }
+
+  function xEthics() {
+    return note('bad', 'Human-subject research cannot proceed without a current approval',
+      'The system blocks data collection activities against an expired or pending ethics approval. Two projects below are affected.') +
+    panel('Ethics review', 'University Research Ethics Committee', dtable(
+      ['Reference', 'Project', 'Investigator', 'Submitted', 'Decision', 'Expires|num'], [
+        ['<span class="tnum">ERC-2026-0142</span>', 'Maternal health outcomes — phase 2', 'Dr. B. Ochefu', '<span class="sub2 tnum">14 Jul 2026</span>', pil('ok', 'Approved with conditions'), '<span class="tnum">13 Jul 2027</span>'],
+        ['<span class="tnum">ERC-2026-0155</span>', 'Student mental health survey', 'Dr. P. Aondona', '<span class="sub2 tnum">22 Aug 2026</span>', pil('info', 'Under review'), '—'],
+        ['<span class="tnum">ERC-2025-0098</span>', 'Adolescent nutrition study', 'Dr. G. Utubor', '<span class="sub2 tnum">3 Mar 2025</span>', pil('bad', 'Expired 2 Mar 2026'), '<span class="tnum" style="color:var(--red-ink)">Expired</span>'],
+        ['<span class="tnum">ERC-2026-0161</span>', 'Biometric attendance acceptability', 'Dr. T. Iorpuu', '<span class="sub2 tnum">1 Sept 2026</span>', pil('bad', 'Returned — DPIA required'), '—']
+      ], 940)) +
+    panel('Institutional repository', 'Theses, dissertations and publications', dtable(
+      ['Deposit', 'Type|mid', 'Author', 'Year|mid', 'Access|num'], [
+        ['A hybrid model for short-term flood prediction in Benue State', '<span class="sub2">Ph.D thesis</span>', 'ORNGU, Aondoaseer', '<span class="tnum">2026</span>', pil('ok', 'Open access')],
+        ['Determinants of maternal mortality in rural Benue', '<span class="sub2">Journal article</span>', 'OCHEFU, B. et al.', '<span class="tnum">2026</span>', pil('ok', 'Open access')],
+        ['Query optimisation for low-bandwidth campus networks', '<span class="sub2">M.Sc dissertation</span>', 'ADZANDE, Sunday', '<span class="tnum">2025</span>', pil('info', 'Embargo to Jun 2027')]
+      ], 800));
+  }
+
+  /* ══ ALUMNI RELATIONS ════════════════════════════════════════════ */
+
+  function zAlumni() {
+    return tiles([
+      ['Alumni on record', '104,882', null, 'Since 1996'],
+      ['Contactable', '61,340', null, '58.5% — email or phone verified'],
+      ['Gave this year', '1,912', 'var(--green-ink)', '₦84m raised'],
+      ['Verification requests', '2,140', null, 'From employers, this year']
+    ]) +
+    note('info', 'An alumnus keeps the same identity, not a new one',
+      'On graduation the student role ends and an alumnus role begins on the same person record. Their academic history, verification codes and any outstanding obligations follow them.') +
+    panel('Recent graduates added', 'Convocation 2026', dtable(
+      ['Name', 'Award', 'Year|mid', 'Contactable|mid', 'Employment|num'], [
+        ['AGERA, Sesugh Emmanuel', 'B.Sc. Computer Science (2:1)', '<span class="tnum">2026</span>', pil('ok', 'Email + phone'), '<span class="sub2">Software engineer, Lagos</span>'],
+        ['BEM, Doosuur Grace', 'LL.B Law (2:1)', '<span class="tnum">2026</span>', pil('ok', 'Email'), '<span class="sub2">Law School, Abuja</span>'],
+        ['IKYAAGBA, Terkula', 'B.Ed. Education (2:2)', '<span class="tnum">2026</span>', pil('bad', 'No verified contact'), '<span class="sub2">Not reported</span>'],
+        ['UGWU, Chidinma P.', 'B.Sc. Computer Science (1st)', '<span class="tnum">2024</span>', pil('ok', 'Email + phone'), '<span class="sub2">Ph.D candidate, Ibadan</span>']
+      ], 840)) +
+    panel('Graduate outcome survey', 'Feeds the NUC employability return', dtable(
+      ['Outcome', '2026|mid', '2025|mid', '2024|mid'], [
+        ['In paid employment', '<span class="tnum">44%</span>', '<span class="tnum">41%</span>', '<span class="tnum">39%</span>'],
+        ['NYSC service year', '<span class="tnum">31%</span>', '<span class="tnum">33%</span>', '<span class="tnum">34%</span>'],
+        ['Further study', '<span class="tnum">12%</span>', '<span class="tnum">11%</span>', '<span class="tnum">12%</span>'],
+        ['Seeking work', '<span class="tnum">9%</span>', '<span class="tnum">11%</span>', '<span class="tnum">13%</span>'],
+        ['No response', '<span class="tnum">4%</span>', '<span class="tnum">4%</span>', '<span class="tnum">2%</span>']
+      ], 480));
+  }
+
+  /* ══ ICT: identity, security, governance, platform ═══════════════ */
+
+  function iUsers() {
+    return note('info', 'A role is a set of named permissions, scoped to a unit',
+      'Nobody is given "admin". They are given, say, RES:SHEET_APPROVE scoped to the Department of Computer Science, valid until the end of this session — and it expires without anyone remembering.') +
+    panel('Role assignments', 'Recently changed', dtable(
+      ['Person', 'Role', 'Scope', 'Valid until|mid', 'Granted by', 'Action|num'],
+      ROLE_GRANTS.map(function (r, i) {
+        return [two(r[0], r[1]), r[2], '<span class="sub2">' + r[3] + '</span>',
+          r[4] === "Open-ended" ? '<span class="sub2">Open-ended</span>' : '<span class="tnum">' + r[4] + '</span>',
+          '<span class="sub2">' + r[5] + '</span>', recBtn('roleassign', i)];
+      })) +
+      recAddIn('roleassign', 'Assign a role',
+        '<span class="sub2">Nobody is given &ldquo;admin&rdquo; &mdash; a named permission, scoped to a unit, valid until a date.</span>')) +
+    panel('Segregation of duties', 'Conflicting roles the system refuses to assign together', dtable(
+      ['Role A', 'Role B', 'Why', 'What the system does', 'Violations|mid', 'Action|num'],
+      SOD_RULES.map(function (r, i) {
+        return [r[0], r[1], '<span class="sub2">' + r[2] + '</span>', r[3],
+          r[4] ? '<span class="tnum" style="color:var(--red-ink);font-weight:600">' + r[4] + '</span>'
+               : '<span class="tnum">0</span>',
+          recBtn('sod', i)];
+      })) +
+      recAdd('sod', 'New segregation rule')) +
+    note('bad', 'One segregation-of-duties conflict is live',
+      'A member of the Works Directorate who raises requisitions has been added to the Tenders Board. The assignment was blocked at creation and needs the Registrar\'s decision.');
+  }
+
+  function iAudit() {
+    return note('info', 'The audit trail cannot be edited through the application',
+      'The application holds insert and select rights on the audit store and nothing else. Records are hash-chained, so a deletion at database level is detectable.') +
+    panel('Audit trail', 'Privileged actions, last 24 hours', dtable(
+      ['Time|mid', 'Actor', 'Action', 'Target', 'Outcome|num'], [
+        ['<span class="tnum sub2">11:42:08</span>', 'P. Terwase (Registry)', 'CTP:SIGN — transcript released', '<span class="tnum">TRN-2026-00418</span>', pil('ok', 'Success')],
+        ['<span class="tnum sub2">10:18:55</span>', 'Dr. T. Iorpuu', 'RES:SHEET_APPROVE — attempted', '<span class="tnum">CSC 321</span>', pil('bad', 'Refused — SoD')],
+        ['<span class="tnum sub2">09:31:12</span>', 'Bursar', 'FIN:REFUND_APPROVE', '<span class="tnum">RF-2026-0184</span>', pil('ok', 'Success')],
+        ['<span class="tnum sub2">08:04:40</span>', 'System', 'EPS:RECONCILE — daily run', '<span class="tnum">4 Sept settlement</span>', pil('ok', '12 exceptions')],
+        ['<span class="tnum sub2">02:15:03</span>', 'admin.backup', 'DRC:RESTORE_TEST', '<span class="tnum">Nightly verification</span>', pil('ok', 'Verified')]
+      ], 900)) +
+    panel('Security alerts', 'Last 7 days', dtable(
+      ['Raised|mid', 'Alert', 'Detail', 'Status|num'], [
+        ['<span class="tnum sub2">3 Sept</span>', 'Bulk personal-data export', '412 student records exported by Registry — approved, step-up authentication passed', pil('ok', 'Cleared')],
+        ['<span class="tnum sub2">2 Sept</span>', 'Repeated authentication failure', '38 attempts against 14 student accounts from one IP — rate limited', pil('ok', 'Blocked')],
+        ['<span class="tnum sub2">31 Aug</span>', 'Out-of-hours privileged access', 'Payroll master data opened at 23:40 — explained and accepted', pil('ok', 'Cleared')]
+      ], 840));
+  }
+
+  function iGovernance() {
+    return note('bad', 'The Compliance Audit Return is due 31 March 2027',
+      'The Nigeria Data Protection Act requires it annually. The dataset below generates from the record of processing activities — but the DPO must still review and file it.') +
+    tiles([
+      ['Processing activities', '61', null, 'On the register'],
+      ['DPIAs complete', '7 of 9', 'var(--red-ink)', 'Two outstanding'],
+      ['Subject rights requests', '14', null, 'This year · all within SLA'],
+      ['Consent records', '32,450', null, 'Biometric and health data']
+    ]) +
+    panel('Record of processing activities', 'Nigeria Data Protection Act 2023', dtable(
+      ['Activity', 'Lawful basis', 'Sensitive|mid', 'Retention', 'DPIA|num'], [
+        ['Student academic records', 'Legal obligation · public task', pil('bad', 'No'), '<span class="sub2">Permanent</span>', '<span class="sub2">Not required</span>'],
+        ['Biometric identity verification at CBT', 'Explicit consent', pil('bad', 'Yes'), '<span class="sub2">Duration of study + 1 yr</span>', pil('ok', 'Complete')],
+        ['Health records (University clinic)', 'Vital interests · explicit consent', pil('bad', 'Yes'), '<span class="sub2">7 years after last contact</span>', pil('ok', 'Complete')],
+        ['Automated admission scoring', 'Public task', pil('bad', 'No'), '<span class="sub2">7 years</span>', pil('bad', 'Outstanding')],
+        ['CBT proctoring and session logging', 'Public task · legitimate interest', pil('bad', 'Yes'), '<span class="sub2">5 years</span>', pil('bad', 'Outstanding')]
+      ], 900)) +
+    panel('Data subject rights requests', 'Access, rectification, erasure, portability', dtable(
+      ['Reference', 'Type', 'Requester', 'Received', 'Due|mid', 'Status|num'], [
+        ['<span class="tnum">DSR-2026-014</span>', 'Access', 'Alumnus · 2019 graduate', '<span class="sub2 tnum">28 Aug</span>', '<span class="tnum">27 Sept</span>', pil('info', 'In progress')],
+        ['<span class="tnum">DSR-2026-013</span>', 'Rectification', 'Student · name spelling', '<span class="sub2 tnum">19 Aug</span>', '<span class="tnum">18 Sept</span>', pil('ok', 'Completed')],
+        ['<span class="tnum">DSR-2026-012</span>', 'Erasure', 'Unsuccessful applicant 2024', '<span class="sub2 tnum">11 Aug</span>', '<span class="tnum">10 Sept</span>', pil('bad', 'Partly refused — statutory retention')]
+      ], 900));
+  }
+
+  function iPlatform() {
+    return tiles([
+      ['Uptime, 30 days', '99.82%', 'var(--green-ink)', 'Target 99.5%'],
+      ['Last verified restore', '02:15 today', 'var(--green-ink)', 'Automatic nightly'],
+      ['Replication lag', '0.8 s', null, 'Primary to standby'],
+      ['Open incidents', '0', 'var(--green-ink)', 'None this week']
+    ]) +
+    note('info', 'A backup that has never been restored is not a backup',
+      'Every night a restore runs into a scratch instance and an integrity check is executed against it. A failure pages the on-call engineer — nobody discovers it during an actual outage.') +
+    panel('Backup and recovery', '', dtable(
+      ['Check', 'Target', 'Actual', 'Last run|mid', 'Status|num'], [
+        ['Recovery point objective', '≤ 15 min (5 min for results and finance)', '<span class="tnum">4 min</span>', '<span class="sub2 tnum">Continuous</span>', pil('ok', 'Met')],
+        ['Recovery time objective', '≤ 4 hours', '<span class="tnum">31 min</span>', '<span class="sub2 tnum">Drill, 14 Aug</span>', pil('ok', 'Met')],
+        ['Nightly restore verification', 'Every night', '<span class="tnum">Passed</span>', '<span class="sub2 tnum">02:15 today</span>', pil('ok', 'Passed')],
+        ['Off-site replication', 'Daily', '<span class="tnum">Current</span>', '<span class="sub2 tnum">01:40 today</span>', pil('ok', 'Current')],
+        ['Full DR drill', 'Twice yearly', '<span class="tnum">Feb, Aug</span>', '<span class="sub2 tnum">14 Aug 2026</span>', pil('ok', 'On schedule')]
+      ], 880)) +
+    panel('External integrations', 'Failure here is expected — the question is whether it is handled', dtable(
+      ['Integration', 'Purpose', 'Last success|mid', 'Failures 24h|mid', 'Status|num'], [
+        ['Remita', 'Fee collection and IGR split', '<span class="sub2 tnum">11:44</span>', '<span class="tnum">2</span>', pil('ok', 'Healthy')],
+        ['Paystack', 'Card and USSD collection', '<span class="sub2 tnum">11:41</span>', '<span class="tnum">0</span>', pil('ok', 'Healthy')],
+        ['SMS gateway (primary)', 'Transactional messages', '<span class="sub2 tnum">09:12</span>', '<span class="tnum">47</span>', pil('bad', 'Failing over to secondary')],
+        ['JAMB CAPS', 'Admission upload and confirmation', '<span class="sub2 tnum">4 Sept</span>', '<span class="tnum">0</span>', pil('info', 'Batch — seasonal')],
+        ['NIMC (NIN verification)', 'Identity assurance', '<span class="sub2 tnum">10:58</span>', '<span class="tnum">1</span>', pil('ok', 'Healthy')]
+      ], 900)) +
+    panel('API clients', 'External consumers of University data', dtable(
+      ['Client', 'Scopes', 'Quota|mid', 'Used today|mid', 'Credential expires|mid', 'Status|mid', 'Action|num'],
+      API_CLIENTS.map(function (c, i) {
+        return [c[0], '<span class="sub2 tnum">' + c[1] + '</span>',
+          '<span class="tnum">' + c[2] + '</span>', '<span class="tnum">' + vzNum(c[3]) + '</span>',
+          '<span class="tnum sub2">' + c[5] + '</span>',
+          c[4] === "active" ? pil('ok', 'Active') : pil('bad', 'Deprecated'),
+          recBtn('apiclient', i)];
+      })) +
+      recAddIn('apiclient', 'Register a client',
+        '<span class="sub2">A credential with an end date stops working by itself.</span>'));
+  }
+
+  /* ══ MANAGEMENT: reporting and returns ═══════════════════════════ */
+
+  function gReports() {
+    return panel('Standard reports', 'Run against the reporting store, never the live transaction tables', dtable(
+      ['Report', 'Owner', 'Frequency|mid', 'Last run|mid', '|num'], [
+        [two('Enrolment by programme, level and sex', 'NUC statutory return'), 'Registry', '<span class="sub2">Per session</span>', '<span class="sub2 tnum">1 Sept 2026</span>', btn('primary', 'Run')],
+        [two('Staff/student ratio by department', 'NUC accreditation'), 'HR', '<span class="sub2">Per session</span>', '<span class="sub2 tnum">1 Sept 2026</span>', btn('primary', 'Run')],
+        [two('IGR collections by revenue head', 'State treasury return'), 'Bursary', '<span class="sub2">Monthly</span>', '<span class="sub2 tnum">1 Sept 2026</span>', btn('primary', 'Run')],
+        [two('Graduation output and classification', 'Council and NUC'), 'Registry', '<span class="sub2">Per session</span>', '<span class="sub2 tnum">18 Aug 2026</span>', btn('primary', 'Run')],
+        [two('Debtors age analysis', 'Management'), 'Bursary', '<span class="sub2">Weekly</span>', '<span class="sub2 tnum">2 Sept 2026</span>', btn('primary', 'Run')],
+        [two('NDPC compliance audit return', 'Data protection'), 'DPO', '<span class="sub2">Annual</span>', '<span class="sub2 tnum">31 Mar 2026</span>', btn('primary', 'Run')]
+      ], 880)) +
+    note('info', 'Every report shows the moment its data was taken',
+      'Projections are refreshed from events and rebuilt nightly. A figure quoted in a Council paper can always be traced back to the transactions behind it.') +
+    panel('Enrolment by faculty', '2026/2027 · data as at 5 September 2026, 06:00', dtable(
+      ['Faculty', 'Male|num', 'Female|num', 'Total|num', 'Share|mid'], [
+        ['Science', '<span class="tnum">2,418</span>', '<span class="tnum">1,902</span>', '<span class="tnum" style="font-weight:600">4,320</span>', '<span class="tnum">21.8%</span>'],
+        ['Management Sciences', '<span class="tnum">1,844</span>', '<span class="tnum">2,110</span>', '<span class="tnum" style="font-weight:600">3,954</span>', '<span class="tnum">19.9%</span>'],
+        ['Social Sciences', '<span class="tnum">1,602</span>', '<span class="tnum">1,788</span>', '<span class="tnum" style="font-weight:600">3,390</span>', '<span class="tnum">17.1%</span>'],
+        ['Education', '<span class="tnum">1,204</span>', '<span class="tnum">1,566</span>', '<span class="tnum" style="font-weight:600">2,770</span>', '<span class="tnum">14.0%</span>'],
+        ['Arts', '<span class="tnum">988</span>', '<span class="tnum">1,242</span>', '<span class="tnum" style="font-weight:600">2,230</span>', '<span class="tnum">11.2%</span>'],
+        ['Law', '<span class="tnum">742</span>', '<span class="tnum">810</span>', '<span class="tnum" style="font-weight:600">1,552</span>', '<span class="tnum">7.8%</span>'],
+        ['Health Sciences', '<span class="tnum">604</span>', '<span class="tnum">588</span>', '<span class="tnum" style="font-weight:600">1,192</span>', '<span class="tnum">6.0%</span>'],
+        ['Environmental Sciences', '<span class="tnum">248</span>', '<span class="tnum">191</span>', '<span class="tnum" style="font-weight:600">439</span>', '<span class="tnum">2.2%</span>']
+      ], 660));
+  }

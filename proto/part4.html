@@ -1,0 +1,230 @@
+
+  /* payment, fees, results, form, transcript, profile ---------------- */
+  function studentPay() {
+    if (S.feesPaid) {
+      return '<div class="notice notice--ok">' + tick(19, 'var(--green-ink)') +
+        '<div><div class="notice__t" style="color:var(--green-ink)">Payment confirmed</div>' +
+        '<p style="color:var(--green-ink)">₦45,000 received and applied to invoice INV-2026-04412. Your clearance was recalculated automatically.</p>' +
+        '<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">' +
+        '<button class="btn btn--go btn--sm" data-go="s/register">Register courses</button>' +
+        '<button class="btn btn--ghost btn--sm" data-go="s/receipt" data-rcpt="r1">View receipt</button></div></div></div>';
+    }
+    return '<div class="card"><div class="card__body" style="align-items:center;text-align:center;gap:14px;padding:26px 18px">' +
+        '<div style="width:56px;height:56px;border-radius:28px;background:var(--sky-bg);display:flex;align-items:center;justify-content:center">' +
+          ico('clock', 26, 'var(--chrome)', 2) + '</div>' +
+        '<div><div style="font-size:18px;font-weight:700;letter-spacing:-.3px">Confirming your payment</div>' +
+        '<p class="sub2" style="margin:6px auto 0;max-width:44ch;line-height:1.55">We are checking directly with Remita. This usually takes under a minute and never more than 10.</p></div>' +
+        '<div class="meter__bar" style="width:100%;max-width:380px"><div class="meter__fill" style="width:62%;background:var(--sky)"></div></div>' +
+        '<button class="btn btn--primary btn--sm" data-go="paid">Simulate confirmation arriving</button>' +
+      '</div></div>' +
+
+      '<div class="notice notice--info">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--chrome)" stroke-width="2" style="flex-shrink:0;margin-top:1px"><path d="M12 3 4 6v6c0 5 3.4 8.3 8 9.3 4.6-1 8-4.3 8-9.3V6l-8-3Z"/><path d="M8.8 12.2 11 14.5l4.4-4.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '<div><div class="notice__t" style="color:var(--chrome)">You can safely close this page</div>' +
+        '<p style="color:#124A63">Your payment is recorded by the bank, not by this screen. Even if your network drops, we will find it and update your record automatically.</p></div></div>' +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Transaction</span></div>' +
+        '<div class="tablewrap"><table><tbody>' +
+          '<tr><td class="sub2" style="width:180px">Amount</td><td class="tnum" style="font-size:16px;font-weight:700">₦45,000.00</td></tr>' +
+          '<tr><td class="sub2">Purpose</td><td>School fees — instalment 2<div class="sub2 tnum">INV-2026-04412</div></td></tr>' +
+          '<tr><td class="sub2">Channel</td><td>Bank transfer</td></tr>' +
+          '<tr><td class="sub2">RRR</td><td class="tnum" style="font-weight:600;letter-spacing:.4px">280 194 773 512</td></tr>' +
+        '</tbody></table></div></div>' +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Where this goes</span></div>' +
+        '<div class="card__body">' +
+          row('University account', '₦42,750.00') +
+          row('Benue State consolidated account', '₦2,250.00') +
+          '<div class="sub2">Split applied automatically under the state IGR directive. ' +
+          '<span style="color:var(--red-ink);font-weight:600">[SPLIT % TO BE CONFIRMED BY BURSARY]</span></div>' +
+        '</div></div>';
+  }
+
+  function studentFees() {
+    var paid = S.feesPaid;
+    return '<div class="grid grid--3">' +
+        '<div class="tile"><span class="eyebrow">Session charge</span><span class="n tnum">₦135,000</span><span class="c">2026/2027 · 300 Level</span></div>' +
+        '<div class="tile"><span class="eyebrow">Paid</span><span class="n tnum" style="color:var(--green-ink)">' + (paid ? '₦135,000' : '₦90,000') + '</span><span class="c">' + (paid ? 'Two instalments' : 'Instalment 1 of 2') + '</span></div>' +
+        '<div class="tile"><span class="eyebrow">Outstanding</span><span class="n tnum" style="color:' + (paid ? 'var(--green-ink)' : 'var(--red-ink)') + '">' + (paid ? '₦0' : '₦45,000') + '</span><span class="c">' + (paid ? 'Cleared' : 'Due before 18 September') + '</span></div>' +
+      '</div>' +
+
+      /* The wallet is offered here rather than only on its own page,
+         because this is the screen a student opens when they owe money.
+         A balance the University is already holding should not require
+         them to find it. */
+      (walletBalance() > 0
+        ? note('ok', 'You have ' + money(walletBalance()) + ' in your NELFUND wallet',
+            'NELFUND has paid ' + money(walletBalance()) + ' to the University on your behalf and it has not yet been applied. ' +
+            (paid ? 'Your charges are settled, so it stays on the wallet.'
+                  : 'Applying it settles INV-2026-04412 without a bank transfer &mdash; the money is already here.'),
+            paid ? '<button class="btn btn--ghost btn--sm" data-go="s/wallet">Open the wallet</button>'
+                 : '<button class="btn btn--primary btn--sm" data-nlf="apply">Apply ' + money(45000) + ' from the wallet</button> ' +
+                   '<button class="btn btn--ghost btn--sm" data-go="s/wallet">Open the wallet</button>')
+        : note('info', 'Your NELFUND wallet is empty',
+            'Everything the Fund remitted for you has been applied to your charges.',
+            '<button class="btn btn--ghost btn--sm" data-go="s/wallet">See the statement</button>')) +
+
+      '<div class="card"><div class="card__head"><span class="card__title">Invoices</span></div>' +
+        '<div class="tablewrap"><table>' +
+        '<thead><tr><th>Invoice</th><th>Purpose</th><th class="num">Amount</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead><tbody>' +
+        '<tr><td class="tnum">INV-2026-04412</td><td>School fees 2026/2027<div class="sub2">Instalment plan · 2 of 2 · ' + (paid ? 'Paid from the NELFUND wallet' : 'Instalment 1 paid from the NELFUND wallet') + '</div></td>' +
+          '<td class="num tnum">₦135,000</td><td class="num tnum" style="font-weight:600">' + (paid ? '₦0' : '₦45,000') + '</td>' +
+          '<td>' + (paid ? '<span class="pill pill--ok">Paid</span>' : '<span class="pill pill--bad">Part paid</span>') + '</td>' +
+          '<td class="num">' + (paid ? '<button class="btn btn--ghost btn--sm" data-go="s/receipt" data-rcpt="r1">Receipt</button>' : '<button class="btn btn--urgent btn--sm" data-go="s/pay">Pay ₦45,000</button>') + '</td></tr>' +
+        '<tr><td class="tnum">INV-2025-03980</td><td>School fees 2025/2026</td><td class="num tnum">₦128,000</td><td class="num tnum">₦0</td>' +
+          '<td><span class="pill pill--ok">Paid</span></td><td class="num"><button class="btn btn--ghost btn--sm" data-go="s/receipt" data-rcpt="r3">Receipt</button></td></tr>' +
+        '<tr><td class="tnum">INV-2025-01144</td><td>Hostel accommodation 2025/2026</td><td class="num tnum">₦40,000</td><td class="num tnum">₦0</td>' +
+          '<td><span class="pill pill--ok">Paid</span></td><td class="num"><button class="btn btn--ghost btn--sm" data-go="s/receipt" data-rcpt="r4">Receipt</button></td></tr>' +
+        '</tbody></table></div></div>' +
+
+      '<div class="sub2">Every service the University charges for appears here. Nothing is released against a payment the bank has not confirmed.</div>';
+  }
+
+  function studentResults() {
+    var rows = [
+      ['2025/2026', 'Second', '3.67', '3.42', 'Good standing', 1],
+      ['2025/2026', 'First', '3.28', '3.30', 'Good standing', 0],
+      ['2024/2025', 'Second', '3.11', '3.31', 'Good standing', 0],
+      ['2024/2025', 'First', '3.44', '3.40', 'Good standing', 0],
+      ['2023/2024', 'Second', '3.36', '3.36', 'Good standing', 0]
+    ];
+    return '<div class="card"><div class="card__head"><span class="card__title">Published semesters</span>' +
+      '<span class="sub2">Senate-approved results only</span></div>' +
+      '<div class="tablewrap"><table><thead><tr><th>Session</th><th>Semester</th><th class="num">GPA</th><th class="num">CGPA</th><th>Standing</th><th></th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td class="tnum">' + r[0] + '</td><td>' + r[1] + '</td><td class="num tnum" style="font-weight:600">' + r[2] + '</td>' +
+          '<td class="num tnum">' + r[3] + '</td><td><span class="pill pill--ok">' + r[4] + '</span></td>' +
+          '<td class="num"><button class="btn btn--ghost btn--sm"' + (r[5] ? ' data-go="s/slip"' : '') + '>Open</button></td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+  }
+
+  function studentSlip() {
+    var g = [
+      ['CSC 212', 'Data Structures', 3, 78, 'A', 'var(--green)'],
+      ['CSC 232', 'Systems Programming', 3, 65, 'B', 'var(--chrome)'],
+      ['MTH 212', 'Linear Algebra II', 3, 38, 'F', 'var(--red)'],
+      ['CSC 242', 'Computer Architecture', 3, 71, 'A', 'var(--green)'],
+      ['GST 212', 'Peace & Conflict Resolution', 2, 69, 'B', 'var(--chrome)']
+    ];
+    return '<div class="card" style="background:var(--chrome);border-color:var(--chrome)"><div class="card__body">' +
+        '<div style="display:flex;gap:26px;flex-wrap:wrap">' +
+          '<div><div style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--chrome-ink)">Semester GPA</div>' +
+          '<div class="tnum" style="font-size:30px;font-weight:700;color:#fff;letter-spacing:-.8px">3.67</div></div>' +
+          '<div><div style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--chrome-ink)">Cumulative</div>' +
+          '<div class="tnum" style="font-size:30px;font-weight:700;color:#fff;letter-spacing:-.8px">3.42</div></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:9px;background:var(--green);border-radius:6px;padding:10px 13px">' +
+          tick(15, '#fff') + '<span style="color:#fff;font-weight:600">Good standing — proceed to 300 Level</span></div>' +
+      '</div></div>' +
+
+      '<div class="card"><div class="tablewrap"><table>' +
+        '<thead><tr><th>Course</th><th class="mid">Unit</th><th class="mid">Score</th><th class="mid">Grade</th></tr></thead><tbody>' +
+        g.map(function (r) {
+          return '<tr><td><strong class="tnum">' + r[0] + '</strong><div class="sub2">' + esc(r[1]) + '</div></td>' +
+            '<td class="mid tnum">' + r[2] + '</td><td class="mid tnum">' + r[3] + '</td>' +
+            '<td class="mid" style="font-weight:700;color:' + r[5] + '">' + r[4] + '</td></tr>';
+        }).join('') +
+        '<tr><td style="font-weight:700">Units registered 14 · passed 11</td><td colspan="3" class="num" style="font-weight:700;color:var(--muted)">GP 40.0</td></tr>' +
+        '</tbody></table></div></div>' +
+
+      '<div class="notice notice--bad">' + warnIcon(17) +
+        '<div><div class="notice__t" style="color:var(--red-deep)">One carryover</div>' +
+        '<p style="color:var(--red-deep)">MTH 212 will be added to your next registration automatically. You do not need to request it.</p></div></div>' +
+
+      '<div style="display:flex;gap:9px;flex-wrap:wrap"><button class="btn btn--primary" data-doc="slip">Download result slip</button></div>' +
+      '<div class="sub2">Published 12 August 2026 after Senate approval. Verification code MOAUM-RS-4T8N-9CQL.</div>';
+  }
+
+  function studentForm() {
+    var lines = [
+      ['MTH 212 Linear Algebra II', 3, 'C/OVER', 'var(--red-ink)'],
+      ['CSC 221 Digital Logic Design', 3, 'C/OVER', 'var(--red-ink)'],
+      ['CSC 311 Algorithms &amp; Complexity', 3, 'CORE', 'var(--muted)'],
+      ['CSC 321 Database Systems', 3, 'CORE', 'var(--muted)'],
+      ['CSC 331 Operating Systems', 3, 'CORE', 'var(--muted)'],
+      ['GST 301 Entrepreneurship', 2, 'GST', 'var(--muted)'],
+      ['CSC 341 Computer Networks', 3, 'ELECT', 'var(--muted)'],
+      ['CSC 355 Human–Computer Interaction', 2, 'ELECT', 'var(--muted)']
+    ];
+    return '<div class="notice notice--ok">' + tick(18, 'var(--green-ink)') +
+      '<div><p style="color:var(--green-ink);font-weight:600">Approved by your Head of Department on 15 September 2026</p></div></div>' +
+
+      '<div class="doc">' +
+        '<div class="doc__head">' +
+          '<img src="' + CREST + '" alt="University crest" style="width:46px;height:48px;object-fit:contain">' +
+          '<div class="u">REV. FR. MOSES ORSHIO ADASU<br>UNIVERSITY, MAKURDI</div>' +
+          '<div class="eyebrow">Course Registration Form</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-start">' +
+          passport(62, 77, 3) +
+          '<div class="kv"><span class="k">Name</span><span class="v">ADAMU, Grace Mwuese</span></div>' +
+          '<div class="kv"><span class="k">Matriculation number</span><span class="v tnum">MOAUM/CSC/23/1487</span></div>' +
+          '<div class="kv"><span class="k">Level</span><span class="v">300</span></div>' +
+          '<div class="kv"><span class="k">Session</span><span class="v tnum">2026/2027</span></div>' +
+        '</div>' +
+        '<div class="tablewrap"><table style="min-width:420px">' +
+          '<thead><tr><th style="background:var(--chrome);color:#fff">Course</th>' +
+          '<th class="mid" style="background:var(--chrome);color:#fff">Unit</th>' +
+          '<th class="num" style="background:var(--chrome);color:#fff">Type</th></tr></thead><tbody>' +
+          lines.map(function (l) {
+            return '<tr><td class="tnum">' + l[0] + '</td><td class="mid tnum">' + l[1] + '</td>' +
+              '<td class="num" style="font-size:11px;font-weight:600;color:' + l[3] + '">' + l[2] + '</td></tr>';
+          }).join('') +
+          '<tr style="background:var(--bg)"><td style="font-weight:700">TOTAL CREDIT UNITS</td>' +
+          '<td class="mid tnum" style="font-weight:700;font-size:14px">22</td><td></td></tr>' +
+        '</tbody></table></div>' +
+        '<div style="display:flex;gap:16px;align-items:center;margin-top:18px;flex-wrap:wrap">' +
+          '<div style="width:74px;height:74px;border:1px solid var(--line);padding:5px;flex-shrink:0">' + qr() + '</div>' +
+          '<div class="kv"><span class="k">Verification code</span>' +
+          '<span class="v tnum" style="letter-spacing:.5px">MOAUM-CRF-7K4P-2WQX</span>' +
+          '<span class="sub2">Scan or enter at moaum.edu.ng/verify</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+        '<button class="btn btn--primary" data-doc="regform">Download PDF</button>' +
+        '<button class="btn btn--ghost" data-doc="regform">' + ico('print', 16, 'currentColor', 1.8) + 'Print</button></div>';
+  }
+
+  function qr() {
+    return '<svg width="100%" height="100%" viewBox="0 0 29 29" shape-rendering="crispEdges" role="img" aria-label="Verification QR code">' +
+      '<rect width="29" height="29" fill="#fff"/><path fill="var(--ink)" d="M1 1h7v7H1V1Zm1 1v5h5V2H2Zm1 1h3v3H3V3Zm18-2h7v7h-7V1Zm1 1v5h5V2h-5Zm1 1h3v3h-3V3ZM1 21h7v7H1v-7Zm1 1v5h5v-5H2Zm1 1h3v3H3v-3ZM10 1h1v2h1V1h1v3h-1v1h-2V4h1V3h-1V1Zm4 2h1v1h2v1h-1v1h-2V5h1V4h-1V3Zm-4 4h2v1h1v1h-2v1h-1V7Zm4 1h1v1h1v2h-2V8Zm-4 4h1v1h2v-1h1v2h-1v1h-2v-1h-1v-1Zm5 0h2v1h-1v2h-1v-3Zm4 0h2v2h-1v1h-1v-3ZM10 16h1v1h1v-1h2v1h-1v1h-1v1h-2v-3Zm5 1h1v1h1v1h-2v-2Zm4-1h2v1h1v1h-2v1h-1v-3Zm4 1h2v2h-1v1h-1v-3ZM10 21h2v1h-1v2h1v1h-2v-4Zm4 0h1v2h1v-1h1v2h-1v1h-2v-4Zm5 1h1v1h2v1h-1v1h-2v-3Zm4 0h2v1h1v2h-1v-1h-2v-2ZM21 9h1v2h2v1h-1v1h-2V9Zm4 2h2v1h1v1h-2v1h-1v-3ZM10 9h1v1h1v1h-2V9Z"/></svg>';
+  }
+
+  function studentProfile() {
+    return '<div class="card"><div class="card__body" style="flex-direction:row;gap:20px;align-items:flex-start;flex-wrap:wrap">' +
+        passport(112, 139, 5) +
+        '<div style="display:flex;flex-direction:column;gap:9px;flex-grow:1;min-width:230px">' +
+          '<div><div style="font-size:19px;font-weight:700;letter-spacing:-.3px">ADAMU, Grace Mwuese</div>' +
+          '<div class="sub2 tnum">MOAUM/CSC/23/1487 · B.Sc. Computer Science · 300 Level</div></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            '<span class="pill pill--ok"><span class="dot" style="background:var(--green)"></span>Active</span>' +
+            '<span class="pill pill--info">Photograph on file</span>' +
+          '</div>' +
+          '<div class="sub2" style="max-width:52ch;line-height:1.55">Captured at matriculation on 14 October 2023. ' +
+          'This is the photograph printed on your identity card and shown to the invigilator when you sit a ' +
+          'computer-based examination, so it must remain a true likeness.</div>' +
+          '<div style="display:flex;gap:9px;flex-wrap:wrap;padding-top:2px">' +
+            '<button class="btn btn--ghost btn--sm">Request a photograph change</button>' +
+            '<button class="btn btn--ghost btn--sm">View identity card</button>' +
+          '</div>' +
+          '<div class="sub2">A change needs Registry approval — students cannot replace it themselves after matriculation.</div>' +
+        '</div>' +
+      '</div></div>' +
+
+      '<div class="grid grid--2">' +
+      '<div class="card"><div class="card__head"><span class="card__title">You can change these</span></div><div class="card__body">' +
+        '<div class="field"><label for="ph">Phone</label><input id="ph" value="0803 412 8890" autocomplete="off"></div>' +
+        '<div class="field"><label for="em">Personal email</label><input id="em" value="grace.adamu@example.com" autocomplete="off"></div>' +
+        '<div class="field"><label for="ad">Contact address</label><input id="ad" value="14 Ankpa Road, Makurdi, Benue State" autocomplete="off"></div>' +
+        '<button class="btn btn--primary btn--sm" style="align-self:flex-start">Save changes</button>' +
+      '</div></div>' +
+      '<div class="card"><div class="card__head"><span class="card__title">Only Registry can change these</span></div><div class="card__body">' +
+        '<div class="kv"><span class="k">Full name</span><span class="v">ADAMU, Grace Mwuese</span></div>' +
+        '<div class="kv"><span class="k">Matriculation number</span><span class="v tnum">MOAUM/CSC/23/1487</span></div>' +
+        '<div class="kv"><span class="k">Programme</span><span class="v">B.Sc. Computer Science</span></div>' +
+        '<div class="kv"><span class="k">Entry session &amp; mode</span><span class="v tnum">2023/2024 · UTME</span></div>' +
+        '<div class="kv"><span class="k">Curriculum version</span><span class="v tnum">v2023.1</span></div>' +
+        '<div class="sub2" style="margin-top:4px">Your curriculum version was fixed when you were admitted, so you are always assessed against the rules that applied then. To change a name or programme, apply through Registry with supporting documents.</div>' +
+      '</div></div>' +
+    '</div>';
+  }

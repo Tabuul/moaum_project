@@ -1,0 +1,751 @@
+
+  /* ══ ACTS ═══════════════════════════════════════════════════════════
+     202 buttons across 53 screens did nothing when pressed.
+
+     The wrong fix is 202 handlers. That is how they came to be inert in
+     the first place: every screen was written with its own controls and
+     the ones that were not on the demonstration path were left. Adding
+     202 more one-line handlers would leave the 203rd inert on the day
+     somebody adds a screen, and nobody would know.
+
+     So there is one dispatcher, one registry, and one rule — the rule
+     this whole design already argues for, applied to itself:
+
+         EVERY ACT CARRIES WHAT, WHO, WHICH OFFICE, AND WHEN.
+
+     Three things follow, and they are the reason this is worth doing
+     properly rather than quickly:
+
+     1. BINDING IS BY (ROUTE, LABEL), AT RENDER TIME. The buttons are
+        produced by string concatenation across forty-nine files. Rather
+        than edit all of them, actBind() walks the rendered DOM after
+        every render and attaches the act to any control the registry
+        knows. A button the registry does not know is marked UNBOUND and
+        says so when pressed. Silence is the failure mode being removed,
+        so nothing is allowed to fail silently — including this.
+
+     2. A REFUSAL IS AN ACT. "Not available to you", "Blocked — Library",
+        "Awaiting another approver" were dead buttons that looked
+        disabled. Pressed, they now say which rule holds them and what
+        would release it. A control that refuses without saying why sends
+        a person to an office; that is the cost this system exists to
+        remove, and a prototype that reproduces it teaches the wrong
+        thing.
+
+     3. WHAT YOU DID IS INSPECTABLE. Every act is written to a session
+        record — what, who, which office, when — readable at any moment
+        from the topbar. It is the same shape as the audit trail the
+        database keeps, demonstrated on the reader's own actions rather
+        than asserted in a note.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var ACT_SEQ = 0;
+
+  function actWho() {
+    if (S.role === "staff") { return [ROLES[S.srole].who, ROLES[S.srole].label]; }
+    if (S.role === "applicant") { return ["ADAMU, Grace Mwuese", "Applicant"]; }
+    return ["ADAMU, Grace Mwuese", "Student"];
+  }
+
+  function actStamp() {
+    var d = new Date();
+    function two(n) { return (n < 10 ? "0" : "") + n; }
+    return two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
+  }
+
+  /* the record. Kinds: done, refused, opened. */
+  function actRecord(kind, what, detail) {
+    var who = actWho();
+    ACT_SEQ = ACT_SEQ + 1;
+    S.acts.unshift({
+      n: ACT_SEQ, kind: kind, what: what, detail: detail || "",
+      who: who[0], office: who[1], at: actStamp(), route: S.route
+    });
+    if (S.acts.length > 60) { S.acts.pop(); }
+  }
+
+  function actSay(kind, title, text, link) {
+    S.toast = { kind: kind, title: title, text: text, link: link || "" };
+  }
+
+  /* ── the registry ─────────────────────────────────────────────────
+     Keyed by route, then by the exact label on the control. Each entry
+     is one of:
+
+       go:   navigate to a route
+       doc:  open a printable document
+       ex:   open the export sheet
+       ok:   [title, text]  — the act is performed and recorded
+       no:   [title, text]  — the act is refused, and the rule is named
+       ask:  [title, text]  — the act needs something the demo has not got
+
+     `ok` and `no` may carry `then` to move on afterwards.                */
+
+  var A_OK = "ok", A_NO = "no";
+
+  function ok(t, x, then) { return { k: A_OK, t: t, x: x, then: then }; }
+  function no(t, x) { return { k: A_NO, t: t, x: x }; }
+  function nav(r) { return { go: r }; }
+  function docu(d) { return { doc: d }; }
+  var EXPORT = { ex: true };
+
+  var ACTS = {
+
+    /* ── student ─────────────────────────────────────────────── */
+    "s/dashboard": {
+      "Course form Not yet available": no("The course form follows registration, not the other way round",
+        "The form is generated from approved registrations. Until the Head of Department approves this " +
+        "registration there is nothing on it to print, and a blank form with a matriculation number on it is " +
+        "worse than none.")
+    },
+    "s/results": { "Open": nav("s/slip") },
+    "s/carryover": {
+      "Add to next registration": ok("GST 301 added to your 2027/2028 registration",
+        "Carryovers count inside the credit maximum, so this reduces what you may add later. It is on the " +
+        "registration now rather than remembered separately, because a carryover remembered separately is a " +
+        "carryover that is forgotten at graduation.", "s/register")
+    },
+    "s/courses": {
+      "Materials (1 weeks)": ok("Week 1 materials opened",
+        "Held for this session and the two after it, then archived. Only students on the roll can read them, which includes the borrowed candidates and excludes anyone who dropped the course."),
+      "Materials (2 weeks)": ok("Week 2 materials opened", "Two files, 4.1 MB. Downloaded once and readable offline &mdash; a student on a poor connection should not have to be online to revise."),
+      "Materials (3 weeks)": ok("Week 3 materials opened", "Includes the tutorial sheet the assignment is set from."),
+      "Materials (4 weeks)": ok("Week 4 materials opened", "Uploaded 2 September by Dr. T. Iorpuu. The upload date is shown because material revised after an assignment was set is a fairness question."),
+      "Discussion": ok("Discussion opened", "Course discussions are moderated by the lecturer who owns the " +
+        "course space. Posts carry your matriculation number to the lecturer and your name to other students."),
+      "Open assignment": ok("Assignment opened", "CSC 311 assignment 2, due 19 September at 23:59. " +
+        "Submission closes at the deadline and a late submission is a separate act with its own record — " +
+        "the deadline is not quietly extended.")
+    },
+    "s/library": {
+      "Reserve": ok("Reserved", "You are first in the queue. The hold is released 48 hours after the book " +
+        "is returned if you have not collected it, because a hold nobody collects is a book nobody can borrow."),
+      "Join waiting list": ok("Added to the waiting list, position 3",
+        "You will be notified when it is your turn. The position is by the time you joined and by nothing else."),
+      "Open": ok("Catalogue record opened",
+        "Shelf mark, copies held, copies out, and the date the earliest is due back. What it does not show is who has it &mdash; a borrower is not public.")
+    },
+    "s/hostel": {
+      "Room condition report": ok("Condition report opened for C-214",
+        "What is recorded at check-in is what you are not charged for at check-out. A room signed for without " +
+        "a condition report is a room whose damage is yours by default."),
+      "Request a room change": ok("Room change requested",
+        "It goes to the Deputy Registrar (Housing, Welfare and Passages) and is decided against the vacancy " +
+        "position on the day, not against the waiting list. A change granted against a bed that is not free " +
+        "produces two students with one key.")
+    },
+    "s/profile": {
+      "Request a photograph change": ok("Photograph change requested",
+        "It goes to the Registry with the current photograph beside the proposed one. A student cannot replace " +
+        "their own photograph, because the photograph is what the identity card is checked against at the gate."),
+      "View identity card": nav("s/idcard"),
+      "Save changes": ok("Contact details saved",
+        "Phone number and address are yours to keep current and are saved directly. Name, date of birth and " +
+        "programme are not on this form &mdash; those are a change request with evidence, under I-STU-3.")
+    },
+    "s/health": {
+      "Book appointment": ok("Appointment booked &mdash; 9 September, 10:20, General Clinic",
+        "Your clinical record is held by the University Health Services and is not visible to any academic " +
+        "office. What the Registry can see is that you attended, never why.")
+    },
+    "s/support": {
+      "Submit request": ok("Request SR-2026-04488 raised with the Registry",
+        "Registry answers within two working days. You will be told here and by SMS. The reference is yours to " +
+        "quote and it does not change if the request moves between offices.")
+    },
+
+    /* ── applicant ───────────────────────────────────────────── */
+    "a/fee": { "Email me a copy": ok("Receipt emailed",
+      "Sent to the address on your application. The receipt is confirmed by the bank rather than by this " +
+      "browser, which is why it can be emailed at all.") },
+    "a/score": { "Request a remark": no("A post-UTME screening score is not remarked",
+      "The screening score is computed from your UTME score, your O'level grades and the screening test, and " +
+      "each of those is checked at its own source. What can be corrected is a wrong O'level grade, and that is " +
+      "a correction to the record rather than a remark of the score. Raise it with Admissions with the " +
+      "statement of result.") },
+    "a/accept": { "Decline this offer": ok("Offer declined",
+      "The place returns to the waiting list for your programme today rather than at the end of the acceptance " +
+      "window, because a place held by somebody who has declined is a place nobody gets.") },
+
+    /* ── lecturer, HOD, dean ─────────────────────────────────── */
+    "r/allocate": {
+      "Assign": ok("Assigned, and four things happened at once",
+        "The course space is open and the registered students are enrolled in it; the score sheet exists in " +
+        "that lecturer's name; the attendance register is open; and the course is released to the timetable. " +
+        "The second examiner is set now rather than at examination time, because the person who enters marks " +
+        "may not verify them and the verifier must exist before the marks do."),
+      "Reassign": ok("Reassigned", "The score sheet moves with the course and keeps every mark already " +
+        "entered. What changes is who may enter the rest, and the change is on the sheet's own record."),
+      "Assign as an overload": no("An overload needs the Dean, on the Head of Department's recommendation",
+        "The teaching load is already above the maximum for this member of staff. The recommendation goes up " +
+        "with a reason; the reason is what the Faculty Board reads, and an overload approved without one is a " +
+        "load nobody can defend when the results are late.")
+    },
+    "r/upload": {
+      "Choose a file": ok("File chosen &mdash; lecture-04.pdf, 2.1 MB",
+        "Material is held for the session and the two sessions after it, then archived. Students on the roll " +
+        "can read it; nobody else can, including students who dropped the course."),
+      "Save as a draft": ok("Saved as a draft", "Drafts are visible to you alone. Nothing reaches the course " +
+        "space until you publish it."),
+      "Publish to the course space": ok("Published to CSC 311",
+        "Every student on the roll is notified once, tonight, in a single digest rather than immediately &mdash; " +
+        "a notification for every file is a notification nobody reads.")
+    },
+    "r/exams": {
+      "Return": ok("Returned to the department with your finding",
+        "A returned set carries the finding that returned it, and the finding travels with the set. It cannot " +
+        "be returned empty: a set sent back without a reason comes back unchanged.", "t/pipeline"),
+      "Not available to you": no("This set is yours to see and not yours to decide",
+        "You entered these marks. BR-006 refuses the same person twice in one chain, and it is keyed on the " +
+        "person rather than the office &mdash; so holding a second office does not release it. The verification " +
+        "belongs to the second examiner set when the course was allocated.")
+    },
+    "t/lms": {
+      "Mark": ok("Assignment opened for marking",
+        "Marks entered here are the continuous assessment component and are promoted to the score sheet as a " +
+        "total rather than as individual assignments, because the score sheet is the record of account."),
+      "Review": ok("Submissions opened for review",
+        "Forty-one of forty-four submitted. The three outstanding are named, because an assignment reported only as a percentage is one nobody chases."),
+      "Promote CA total to the score sheet": ok("CA totals promoted to CSC 311",
+        "Forty-four totals written to the sheet. They can still be changed on the sheet before it is " +
+        "submitted; after submission a change is a result query.", "t/sheet")
+    },
+
+    /* ── examinations and results ────────────────────────────── */
+    "t/approvals": {
+      "Approve": ok("Approved and passed to the next desk",
+        "The approval is a row, not a status flag &mdash; it records who decided, when, and against which " +
+        "version of the set, and it is hash-chained to the one before it. A status column cannot answer any of " +
+        "those questions.", "t/chain"),
+      "Return": ok("Returned with your finding",
+        "The set goes back to the desk below with the finding attached. The finding cannot be empty."),
+      "Review": nav("t/review"),
+      "Remind": ok("Reminder sent", "One reminder, to the desk holding it, naming the set and how long it has " +
+        "been there. Reminders are not repeated daily: a reminder nobody can act on is noise."),
+      "Escalate": ok("Escalated to the Dean",
+        "Escalation does not move the decision &mdash; it tells somebody senior that a decision is not being made. " +
+        "The set stays where it is, which is the point."),
+      "Not available to you": no("You cannot take two decisions in one chain",
+        "BR-006, keyed on the person and not the office. You have already acted on this set once. No amount of " +
+        "switching offices releases it, and the database refuses it independently of this screen.")
+    },
+    "t/resultdesk": { "Send a reminder": ok("Reminder sent to the department",
+      "Naming the set, the desk holding it, and how many days. Sent once.") },
+    "t/publish": { "Release to candidates": no("The Senate minute has not been recorded",
+      "Release is the last act in the chain and it rests on a Senate approval that exists. Recording the minute " +
+      "is the step before this one, and it is not a formality: the minute is what a student is shown if they ask " +
+      "on what authority their result was published. <b>Go to Senate</b> records it, and this releases.") },
+    "t/examsrec": { "Verify": ok("Verified", "The second examiner's act. It is recorded against the person, " +
+      "so the same person cannot also have entered these marks.") },
+    "t/examsession": {
+      "Open the session": ok("Examination session opened",
+        "Dockets are generated from cleared candidates at the moment of opening, so a candidate cleared this " +
+        "morning is on the roll this afternoon."),
+      "Save as a draft": ok("Saved as a draft", "Nothing is generated and no candidate is notified until the " +
+        "session is opened."),
+      "Remind": ok("Reminder sent", "To the office holding the outstanding item, once."),
+      "Escalate": ok("Escalated", "The item stays where it is; somebody senior is told it is not moving.")
+    },
+    "t/exams": {
+      "Open console": ok("Invigilation console opened",
+        "Seat map, clearance per seat, and the incident log for this hall. The invigilator does not adjudicate clearance at the door &mdash; the roll already answers it."),
+      "Log incident": ok("Incident logged",
+        "An incident is logged at the time it happens with the invigilator's name on it. A log written after " +
+        "the paper is a recollection, and a recollection is not evidence."),
+      "Malpractice logged": no("This incident is already on the record and cannot be logged twice",
+        "One incident, one record. A second entry for the same event produces two findings against one " +
+        "candidate and the Examinations Board cannot tell whether that is one offence or two."),
+      "Mark absent": ok("Marked absent",
+        "ABS is not zero. An absent candidate has no mark, and a system that stores zero has decided the " +
+        "candidate failed &mdash; which is a decision the Board makes, not the register.")
+    },
+    "t/graduation": {
+      "Open the exception list": ok("Exception list opened &mdash; 23 candidates",
+        "Each with what is short: a course not passed, a fee outstanding, a clearance item held. A list that says only \u201cnot eligible\u201d produces twenty-three visits to this office."),
+      "Chase department": ok("Chased", "The department is told which candidates and which courses. Named, " +
+        "because a chase that does not name the outstanding item produces a reply asking which."),
+      "Review": ok("Candidate opened",
+        "Every attempt at every course, the classification the bands give, and the clearance answer live from each office that holds an item."),
+      "Refer to Faculty Board": ok("Referred to the Faculty Board",
+        "A candidate short of the requirement is a Board decision and not a system one. The system says what " +
+        "is short; the Board says what follows.")
+    },
+    "t/transcripts": {
+      "Sign & release": ok("Signed and released by the Registrar",
+        "The transcript carries both University names, because a degree awarded in 2011 says Benue State " +
+        "University and an employer verifying it in 2041 must get an answer.", "s/transcript"),
+      "Produce & verify": ok("Produced, with a verification code",
+        "Every attempt appears, including failures, with the grading scheme and classification bands that were " +
+        "in force. A transcript that shows only passes is not a transcript."),
+      "Verification": ok("Verification record opened",
+        "A transcript is verified by its code at moaum.edu.ng/verify without an email to this office. That is the point of the code: verification that does not consume the Registry\u2019s time."),
+      "Not payable yet": no("The fee cannot be paid before the request exists",
+        "An invoice is raised on the triggering event, and the event here is the request. Paying first produces " +
+        "money in suspense with nothing to allocate it against."),
+      "Blocked &mdash; Library": no("The Library holds a clearance item against this student",
+        "Two books outstanding. Clearance is answered live by the module that owns it rather than cached here, " +
+        "so this releases the moment the Library records the return &mdash; no second request is needed.")
+    },
+    "t/matriculation": { "Open": nav("t/matlist") },
+    "t/matlist": { "Export the list": EXPORT },
+    "t/students": { "Open": nav("t/student") },
+    "t/student": { "Change status": ok("Status change requested",
+      "A student's status is changed by the Registry on evidence, and the evidence is recorded with it. " +
+      "Withdrawal, suspension and deferment each have a different consequence for fees and for the transcript, " +
+      "so the reason is part of the record rather than a note beside it.") },
+    "t/biochange": {
+      "Compare and decide": ok("Comparison opened",
+        "The value on the record beside the value proposed, with the evidence attached to the request. Both are kept whichever way it is decided."),
+      "Approve with evidence": ok("Approved on the evidence attached",
+        "The old value and the new one are both kept. A biodata change that overwrites is a change nobody can " +
+        "audit, and the commonest fraud in a student record is a quiet change of name."),
+      "Ask for evidence": ok("Evidence requested",
+        "The student is told exactly which document is wanted. A request for 'supporting documents' produces " +
+        "the wrong documents."),
+      "Refuse &mdash; name mismatch": ok("Refused, with the reason recorded",
+        "The name on the affidavit does not match the name on the record it would change. The student is told " +
+        "which field differs rather than that the request was refused.")
+    },
+
+    /* ── registry, records and cards ─────────────────────────── */
+    "t/admissions": {
+      "Review the waiting list": ok("Waiting list opened",
+        "Ordered by aggregate and then by the time the application was completed. A place declined today returns here today rather than at the end of the window."),
+      "Resolve": ok("Resolved", "The candidate is told what changed and why, in the same message."),
+      "Change of institution": ok("Change of institution recorded with JAMB",
+        "It is JAMB's record that decides the candidate's institution; this records that the University has " +
+        "accepted the change, and the candidate is not admitted until JAMB confirms it.")
+    },
+    "t/capsintake": {
+      "Upload a new CAPS file": ok("File chooser opened",
+        "The list kind is already declared, so a file whose rows contradict it is refused whole rather than " +
+        "loaded and corrected afterwards. Nothing is written until the check has been read."),
+      "Download the reconciliation for the Registrar": ok("Reconciliation exported",
+        "Both directions, every name, and the office that owns each one. The Registrar's copy is the one that " +
+        "matters: half the findings are his to answer, not this office's."),
+      "Edit": ok("Opened for editing",
+        "JAMB's side is read-only wherever it appears: it is the evidence of what was approved and the only " +
+        "thing a row can be matched on. What is edited is the University's side."),
+      "Resolve": ok("Opened for correction",
+        "The candidate is admitted to a programme you choose, with a reason recorded. The row stays exactly " +
+        "as JAMB sent it."),
+      "Save the programme": ok("Programme amended",
+        "Recorded against you, the office you are in, and the instrument you cited. Every candidate on this " +
+        "code — on this list and every list still to come — is admitted to the amended programme."),
+      "Record the correction": ok("Correction recorded",
+        "Kept beside the original rather than over it, with the reason and the office. Both are readable " +
+        "afterwards, which is what lets somebody answer why a candidate's programme differs from the " +
+        "CAPS list."),
+      "Cancel": ok("Closed", "Nothing was changed."),
+      "Export this list": ok("List exported",
+        "Both namings on every row — what JAMB sent and what the University admitted them to — because a " +
+        "list carrying only one of them cannot be checked against the other."),
+      "Commit the UTME list": ok("UTME list committed",
+        "It is now the record. Every candidate on it may be issued an admission number; the matriculation " +
+        "number comes later, after course registration."),
+      "Commit the Direct Entry list": ok("Direct Entry list committed",
+        "Committed at 200 Level. Each prior qualification is still to be verified with its awarding " +
+        "institution, and that gate stands separately from this one."),
+      "Upload the UTME list": ok("UTME list read — 7 candidates",
+        "Read whole and checked before a row was written. The button you pressed fixed the list kind; a file " +
+        "whose rows carry no aggregate would have been refused entirely rather than loaded as UTME."),
+      "Upload the Direct Entry list": ok("Direct Entry list read — 7 candidates",
+        "Read at 200 Level. The file sends an aggregate of 0 for every Direct Entry candidate; 0 is not a " +
+        "score and is stored as absent, so nobody is ranked bottom of the University on a paper they never sat."),
+      "Upload a further UTME list": ok("Further UTME list read",
+        "The list is downloaded again through the season as it grows. Candidates already loaded are matched " +
+        "and left alone rather than duplicated."),
+      "Upload a further Direct Entry list": ok("Further Direct Entry list read",
+        "Direct Entry lists arrive weeks after the UTME ones and in more than one tranche."),
+      "View the list": nav("t/capsintake"),
+      "Map the outstanding codes": ok("Mapping opened",
+        "A JAMB course code is mapped to a University programme once, with the Senate approval it rests on. " +
+        "Until then no candidate on that code can be admitted, because there is no programme to admit them to."),
+      "Commit the UTME list to the register": ok("UTME list committed",
+        "Every candidate now has a University programme and may be issued an admission number. The " +
+        "matriculation number comes later, after course registration."),
+      "Commit the Direct Entry list to the register": ok("Direct Entry list committed",
+        "Committed at 200 Level. Each prior qualification is still to be verified with its awarding " +
+        "institution, and that gate stands separately from this one."),
+      "Edit": ok("Opened for editing",
+        "JAMB's side is read-only wherever it appears: it is the evidence of what was approved and the only " +
+        "thing a row can be matched on. What is edited is the University's side."),
+      "Resolve": ok("Opened for correction",
+        "The candidate is admitted to a programme you choose, with a reason recorded. The row stays exactly " +
+        "as JAMB sent it."),
+      "Save the programme": ok("Programme amended",
+        "Recorded against you, the office you are in, and the instrument you cited. Every candidate on this " +
+        "code — on this list and every list still to come — is admitted to the amended programme."),
+      "Record the correction": ok("Correction recorded",
+        "Kept beside the original rather than over it, with the reason and the office. Both are readable " +
+        "afterwards, which is what lets somebody answer why a candidate's programme differs from the " +
+        "CAPS list."),
+      "Cancel": ok("Closed", "Nothing was changed."),
+      "Export this list": ok("List exported",
+        "Both namings on every row — what JAMB sent and what the University admitted them to — because a " +
+        "list carrying only one of them cannot be checked against the other."),
+      "Work it": ok("Finding worked",
+        "The candidate is matched, created from the CAPS row, or referred with the reason. Nothing is created " +
+        "on a guess &mdash; a record invented to clear a queue is a student the University cannot account for."),
+      "Commit the UTME list": ok("UTME list committed",
+        "It is now the record. Every candidate on it may be issued an admission number; matriculation comes " +
+        "later, after registration."),
+      "Commit the Direct Entry list": ok("Direct Entry list committed",
+        "Committed at 200 Level. The prior qualification is still to be verified with each awarding " +
+        "institution, and that gate stands separately from this one."),
+      "Reset &mdash; prototype control": ok("Reset", "The findings are restored so the intake can be walked again."),
+      "Reset — prototype control": ok("Reset", "Both lists are unloaded so the intake can be walked again.")
+    },
+    "t/candidatedata": {
+      "Use two sample photographs": ok("Two sample passports loaded",
+        "The real files JAMB sends, at the size it sends them: 132 by 151 pixels, about 4 KB."),
+      "Use the sample instead": ok("Sample loaded", "Real column names, real shape, invented people."),
+      "Go to the admission lists": nav("t/capsintake"),
+      "Confirm the format with the Academic Office": ok("Query raised",
+        "Whether a date is DD-MM-YYYY or MM-DD-YYYY is not a preference; it decides how old somebody is. " +
+        "It is asked once and recorded, rather than assumed per file."),
+    },
+    "t/idcards": {
+      "Send to the card printer": ok("Sent to the card printer &mdash; batch of 34",
+        "The card serial belongs to the plastic and changes on every replacement; the barcode belongs to the " +
+        "person and does not. That is what keeps a loan history from breaking when a card is lost."),
+      "Reprint this card": ok("Reprint queued",
+        "A reprint issues a new card serial and blocks the old one from the moment it is reported, not from " +
+        "the moment the new one is printed.")
+    },
+    "t/idlost": { "Queue a replacement": ok("Replacement queued &mdash; &#8358;2,500",
+      "The old card is refused at every reader from now. The fee is waived where the card failed rather than " +
+      "was lost &mdash; a delaminated corner or a barcode that no longer reads.") },
+    "t/clearance": {
+      "Clear the selected candidates": ok("Cleared",
+        "Clearance is answered live by each office that holds an item. Clearing here records this office's " +
+        "answer; it does not overrule the Library's or the Bursary's."),
+      "Export the held list": EXPORT,
+      "Notify held candidates": ok("Held candidates notified",
+        "Each is told which office holds them and what would release it. A notice that says only 'not cleared' " +
+        "sends a student round every office in turn.")
+    },
+    "t/recruit": { "Open": ok("Application opened",
+      "Qualifications, referees and the shortlisting score against the advertised criteria. The criteria are fixed when the post is advertised, so a candidate cannot be scored against a requirement added later.") },
+    "t/leave": {
+      "Approve": ok("Leave approved",
+        "Approved is not implemented. The entitlement is not reduced and the cover is not arranged until the " +
+        "instrument is issued, which is the next step and is where this differs from a calendar."),
+      "Decline": ok("Declined, with the reason recorded",
+        "The reason goes to the applicant. A decline without one produces a second application identical to " +
+        "the first."),
+      "Needs a bonding agreement": no("Study leave with pay requires a bonding agreement first",
+        "The agreement is the University's security for the cost of the leave. Approving the leave before it " +
+        "exists means the agreement is negotiated by somebody who has already been told they may go.")
+    },
+    "t/mgmt": { "Read": ok("Paper opened",
+      "Management papers are read in the portal rather than circulated as attachments, so that the version approved is the version that was read."), "Approve": ok("Approved",
+      "Recorded against you by name and office. Management approval is an act in a chain like any other and " +
+      "carries the same four fields.") },
+
+    /* ── bursary and audit ───────────────────────────────────── */
+    "t/feesched": { "View": nav("t/feesetup") },
+    "t/ledger": {
+      "Apply": ok("Applied to the invoice",
+        "Every financial movement posts to the general ledger. There is no revenue path that bypasses it, " +
+        "which is what makes the subsidiary student ledger reconcile."),
+      "Export to Excel": EXPORT,
+      "Export the journal for the finance system": EXPORT
+    },
+    "t/reconcile": {
+      "Post now": ok("Posted", "The gateway's record and the ledger now agree on this transaction and the " +
+        "exception is closed with your name on the closure."),
+      "Apply as part payment": ok("Applied as a part payment",
+        "The balance stays outstanding and the student sees both the payment and what remains. A short payment " +
+        "silently written off is a balance the Bursary cannot explain."),
+      "Refund or carry forward": ok("Referred to the refunds desk",
+        "An overpayment is the student's money. It is refunded or carried forward on the student's " +
+        "instruction, never on the University's convenience."),
+      "Carry to tomorrow": ok("Carried to tomorrow's reconciliation",
+        "A transaction the bank has not settled is not an exception yet. It becomes one if it is still here " +
+        "after three days.")
+    },
+    "t/refunds": {
+      "Approve": ok("Approved &mdash; awaiting the second approver",
+        "A refund is request, verification, approval, disbursement, and the four are not all yours. " +
+        "Segregation of duties on money is the same rule as on a mark."),
+      "Awaiting another approver": no("You have already approved this refund",
+        "The second approval belongs to somebody else, and the constraint is keyed on the person. This is not " +
+        "a screen restriction &mdash; the database refuses the second act."),
+      "Disbursement schedule": EXPORT, "Letter": docu("receipt"), "Award list": EXPORT,
+      "Minute": ok("Minute recorded", "The minute is what the refund rests on and travels with it.")
+    },
+    "t/payroll": {
+      "Review anomalies": ok("Anomalies opened &mdash; 3 outstanding",
+        "Two members of staff sharing a bank account, and one separated member of staff still on the register. The run cannot be committed until each is cleared or explained."),
+      "Hold and investigate": ok("Held &mdash; the run cannot be committed",
+        "Two members of staff sharing one bank account is either an error or a fraud, and the run does not " +
+        "proceed until somebody has said which. That is what a pre-commitment check is for."),
+      "Remove from run": ok("Removed from the September run",
+        "A separated member of staff still on the register is removed from the run, not deleted from the " +
+        "record. The record is what shows the payment stopped and when.")
+    },
+    "t/nelmatch": {
+      "Send the four to the Registry": ok("Sent to the Registry",
+        "Four matriculation numbers the Fund used that this University does not recognise. They are almost " +
+        "always an old number format, and the Registry is the only office that can say."),
+      "Reverse the two withdrawals to the Fund": ok("Reversed to the Fund",
+        "Money for a student who withdrew is the Fund's, not the University's. It is returned rather than held " +
+        "against a future session."),
+      "Export the suspense report": EXPORT
+    },
+    "t/gateways": {
+      "Test the key": ok("Key tested &mdash; the gateway answered",
+        "A key is tested against the gateway rather than checked for length. A key that is well-formed and " +
+        "wrong fails at the first real payment, on a student."),
+      "Send a test event": ok("Test callback sent and received",
+        "The callback path is what fails in production, not the payment path. Testing it here is testing the " +
+        "half that breaks.")
+    },
+    "t/stores": {
+      "Raise requisition": ok("Requisition raised",
+        "A requisition reduces the available budget at commitment rather than at payment. Committing without " +
+        "reducing is how a budget line is overspent by three requisitions that each looked affordable."),
+      "Urgent &mdash; exams in Dec": ok("Requisition raised, marked urgent",
+        "1,100 answer booklets against a reorder level of 5,000, with examinations in December. Urgency is a " +
+        "field on the requisition rather than a phone call, so the procurement queue can be ordered by it.")
+    },
+    "t/circulation": {
+      "Hold": ok("Hold placed", "The book is held for the next reader in the queue for 48 hours."),
+      "Clear": ok("Cleared", "The Library's clearance item against this student is released. The clearance " +
+        "service answers live, so registration and transcripts unblock at once.")
+    },
+    "t/clinic": {
+      "See now": ok("Called through",
+        "The clinical record is the Medical Director's. No academic or administrative office sees a diagnosis " +
+        "&mdash; what leaves this module is attendance and, where the student consents, a fitness statement."),
+      "Open": ok("Case opened",
+        "Visible to the clinician and to nobody else. What leaves this module is that the student attended, and, where the student consents, a fitness statement.")
+    },
+
+    /* ── platform ────────────────────────────────────────────── */
+    "t/reports": { "Run": ok("Report queued",
+      "It runs against the read replica rather than the primary, so a heavy report cannot slow registration. " +
+      "You are told when it is ready.") },
+    "t/deptcourses": { "Track": nav("t/records") },
+    "t/migration": {
+      "Choose a file": ok("File chosen &mdash; hostel.csv, 6,120 rows",
+        "Matched by header name rather than by column position, so a column you do not need can be deleted " +
+        "from the file."),
+      "Report": EXPORT, "Rejections": EXPORT
+    },
+    "t/channels": {
+      "Send a test message": ok("Test message sent",
+        "To your own number, not to a student's. A channel tested against a real recipient is a channel that " +
+        "has already sent one wrong message."),
+      "Rotate the key": ok("Key rotated",
+        "The old key stays valid for one hour so messages in flight are not lost. A rotation that is instant " +
+        "drops whatever was queued."),
+      "View the delivery log": nav("t/notify")
+    },
+    "t/notify": { "Open the requeue": ok("Requeue opened &mdash; 1,022 failed messages",
+      "Failed deliveries are requeued in a batch with a reason each. A message that failed because a number is wrong is a Registry problem, not a gateway one, and the two are separated here."), "Gateway status": ok("Gateway reachable",
+      "Delivery is acknowledged by the gateway, not by us. What we record is what it told us and when.") },
+    "t/security": {
+      "Open finding SEC-2026-041": ok("Finding opened",
+        "A finding is owned by a named person with a date, not by 'ICT'. An unowned finding is a finding " +
+        "nobody closes."),
+      "Disable the bridge now": ok("Bridge disabled",
+        "Disabled immediately and recorded, with the person who disabled it. Reversing it is a second act " +
+        "with its own record rather than an undo.")
+    },
+    "t/dr": { "Read the drill report": ok("Drill report opened",
+      "A recovery objective nobody has rehearsed is a number in a document. The report says what the last " +
+      "rehearsal actually achieved against what was promised.") },
+    "t/college": { "Open CHS-AMS &rarr;": ok("CHS-AMS opens in a separate system",
+      "The College of Health Sciences runs its own academic management system. It is a link and not a menu " +
+      "item, because presenting a separate system as a section of this one is how a mark gets entered in the " +
+      "wrong place.") },
+    "t/setup": { "Open CHS-AMS &rarr;": ok("CHS-AMS opens in a separate system",
+      "A separate system with a shared identity. The boundary is deliberate and is drawn in CHS-MOAUMPP-001.") }
+  };
+
+  /* ── binding ──────────────────────────────────────────────────────
+     Runs after every render. Anything the registry knows gets its act;
+     anything it does not gets marked, so a control added later cannot
+     go quietly dead the way these 202 did.                            */
+
+  function actKey(el) {
+    return (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  /* The registry is written with HTML entities, because that is how the
+     rest of the prototype writes an em dash. innerText hands back the
+     character. Rather than require whoever adds an act to remember which
+     side they are on, the keys are decoded once per route and matched on
+     the decoded form. A registry that is fussy about how you typed a
+     dash is a registry people stop adding to. */
+  var ACT_DEC = {};
+
+  function actTable(route) {
+    if (ACT_DEC[route]) { return ACT_DEC[route]; }
+    var raw = ACTS[route] || {}, out = {}, k, el = document.createElement("span");
+    for (k in raw) {
+      if (Object.prototype.hasOwnProperty.call(raw, k)) {
+        el.innerHTML = k;
+        out[(el.textContent || "").replace(/\s+/g, " ").trim()] = raw[k];
+        out[k] = raw[k];
+      }
+    }
+    ACT_DEC[route] = out;
+    return out;
+  }
+
+  /* Every data-* attribute the click dispatcher already handles.
+     This was a literal selector string written by hand, and adding a screen
+     with a new attribute meant editing it as a SECOND, separate step — which
+     the JAMB intake screen duly forgot on 7 September, so the act framework
+     swallowed its controls and the list buttons did nothing. Two edits to add
+     one handler is one edit too many; the list is a named array now, so the
+     omission is at least in the same place as the addition. */
+  var WIRED = ["go","doc","mdl","ex","sk","bk","hr","hs","pv","tr","ap","cbt",
+               "rp","rs","px","bio","idc","nlf","q","tpl","cfg","gw","net","ch",
+               "mat","elect","scope","sc","pg","role","srole","stop","abs","mk",
+               "caps","capsfile","cd","cdfile","tq","reg","as"];
+  var WIRED_SEL = WIRED.map(function (k) { return "[data-" + k + "]"; }).join(",");
+
+  var ACT_BOUND = [];
+
+  function actBind() {
+    var root = document.querySelector(".main");
+    if (!root) { return; }
+    var table = actTable(S.route);
+    ACT_BOUND = [];
+    var i, els = root.querySelectorAll("button, .btn");
+    for (i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.closest(".topbar")) { continue; }
+      /* already wired by one of the screen's own handlers */
+      if (el.closest(WIRED_SEL)) { continue; }
+      var label = actKey(el);
+      if (!label) { continue; }
+      var hit = table[label];
+
+      /* A control the rules hold is rendered `disabled` on several
+         screens, and a disabled button cannot be pressed, so it cannot
+         say why it is held. That is the failure this framework exists to
+         remove, appearing in the controls where it matters most: "Not
+         available to you", "Blocked — Library", "Awaiting another
+         approver". Where the registry has something to say, the control
+         becomes aria-disabled rather than disabled — it looks exactly the
+         same, it is still skipped by nothing that matters, and pressing
+         it names the rule and what would release it. */
+      if (hit && el.disabled) {
+        el.disabled = false;
+        el.setAttribute("aria-disabled", "true");
+        el.classList.add("is-held");
+      }
+
+      if (hit) {
+        ACT_BOUND.push(hit);
+        el.setAttribute("data-act", String(ACT_BOUND.length - 1));
+      } else {
+        el.setAttribute("data-act", "?" + label);
+      }
+    }
+  }
+
+  function actRun(raw) {
+    if (raw.charAt(0) === "?") {
+      var label = raw.slice(1);
+      actRecord("refused", "Unbound control: " + label, S.route);
+      actSay("bad", "This control is not bound to an act",
+        "&ldquo;" + label + "&rdquo; on <b>" + S.route + "</b> is not in the act registry. It is reported rather " +
+        "than ignored, because a control that does nothing silently is the defect this framework was built to " +
+        "remove &mdash; including when the defect is its own.");
+      render();
+      return;
+    }
+    var a = ACT_BOUND[Number(raw)];
+    if (!a) { return; }
+
+    /* A control that navigates to the screen it is already on does
+       nothing, and does it invisibly. That is the defect this framework
+       exists to remove, so it is caught here rather than left to be
+       noticed: the registry entry is wrong and says so. */
+    if (a.go === S.route) {
+      actRecord("refused", "Registry error: self-navigation", S.route);
+      actSay("bad", "This control navigates to the screen it is already on",
+        "The act registry sends it to <b>" + a.go + "</b> and that is where you are. It is a registry error, " +
+        "reported rather than swallowed &mdash; a button that silently does nothing is what all of this was built " +
+        "to get rid of.");
+      render();
+      return;
+    }
+    if (a.go) { S.route = a.go; window.scrollTo(0, 0); render(); return; }
+    if (a.doc) { S.doc = a.doc; render(); return; }
+    if (a.ex) { S.ex = { title: "Export", scope: S.route }; render(); return; }
+
+    if (a.k === A_NO) {
+      actRecord("refused", a.t, S.route);
+      actSay("bad", a.t, a.x);
+    } else {
+      actRecord("done", a.t, S.route);
+      actSay("ok", a.t, a.x);
+    }
+    if (a.then) { S.route = a.then; window.scrollTo(0, 0); }
+    render();
+  }
+
+  /* ── the toast ────────────────────────────────────────────────── */
+
+  function actToastHtml() {
+    var t = S.toast;
+    if (!t) { return ""; }
+    var who = actWho();
+    return '<div class="tst tst--' + t.kind + '" role="status">' +
+      '<span class="tst__i">' + (t.kind === "bad" ? warnIcon(19) : tick(19, "var(--green-ink)")) + '</span>' +
+      '<span class="tst__b"><b>' + t.title + '</b>' +
+        '<span class="tst__x">' + t.text + '</span>' +
+        '<span class="tst__m">' + who[0] + ' &middot; ' + who[1] + ' &middot; ' + actStamp() +
+        ' &middot; <button class="tst__lnk" data-go="t/acts">see the session record</button></span>' +
+      '</span>' +
+      '<button class="tst__c" data-go="dismiss" aria-label="Dismiss">&times;</button></div>';
+  }
+
+  /* ── the session record ───────────────────────────────────────── */
+
+  function tActs() {
+    var done = S.acts.filter(function (a) { return a.kind === "done"; }).length;
+    var ref = S.acts.filter(function (a) { return a.kind === "refused"; }).length;
+
+    return note('info', 'Every act carries what, who, which office, and when',
+      'This is not a demonstration feature bolted on. It is the same four fields the database records for every ' +
+      'act in the system, shown for the acts <b>you</b> have taken in this session &mdash; so the rule can be ' +
+      'read rather than asserted. A refusal is recorded exactly as a success is, because the question an auditor ' +
+      'asks of this table is not what succeeded but who tried.') +
+
+    tiles([
+      ["Acts this session", String(S.acts.length), null, "Newest first"],
+      ["Carried out", String(done), "var(--green-ink)", "Each with a consequence"],
+      ["Refused", String(ref), ref ? "var(--red-ink)" : null, "Each naming its rule"],
+      ["Signed in as", actWho()[1], null, actWho()[0]]
+    ]) +
+
+    (S.acts.length
+      ? panel('The session record', 'What you have done, in order', dtable(
+          ['#|mid', 'Act', 'Outcome|mid', 'Office', 'Screen|mid', 'At|num'],
+          S.acts.map(function (a) {
+            return ['<span class="tnum sub2">' + a.n + '</span>',
+              '<strong>' + a.what + '</strong>',
+              a.kind === "done" ? pil('ok', 'Carried out') : pil('bad', 'Refused'),
+              '<span class="sub2">' + a.office + '</span>',
+              '<span class="tnum sub2">' + a.route + '</span>',
+              '<span class="tnum sub2">' + a.at + '</span>'];
+          }), 940))
+      : panel('The session record', 'Nothing yet', pbody(
+          '<div class="hs__empty">' + ico('doc', 22, 'var(--slate)', 1.6) +
+          '<div><b>You have not acted yet.</b><span class="sub2">Press any control anywhere in the portal and ' +
+          'it appears here with your name, your office and the time. Refusals appear too.</span></div></div>'))) +
+
+    note('ok', 'What this record is not',
+      'It is not the audit trail. The real one is hash-chained in the <code>platform</code> schema, written in the ' +
+      'same transaction as the act it records, and readable by the Directorate of Internal Audit and nobody else. ' +
+      'This is a session-local copy of the same shape, kept so a reader can see what the rule means without ' +
+      'being given a database.');
+  }

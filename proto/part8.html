@@ -1,0 +1,204 @@
+
+  /* ══ STUDENT: learning, assessment and services ══════════════════ */
+
+  function sTimetable() {
+    var slots = [
+      ["08:00", "CSC 311", "Algorithms & Complexity", "LT 2, Science Complex", "Dr. T. Iorpuu"],
+      ["10:00", "CSC 321", "Database Systems", "Computer Lab 1", "Dr. M. Ashaver"],
+      ["12:00", "", "Break", "", ""],
+      ["13:00", "GST 301", "Entrepreneurship Studies", "Main Auditorium", "GST Directorate"],
+      ["15:00", "MTH 212", "Linear Algebra II (carryover)", "LT 5, Maths Block", "Prof. J. Ityokumbul"]
+    ];
+    return note('info', 'Wednesday 9 September', 'Four lectures today. MTH 212 is your carryover — it clashes with nothing this semester, which is why it was accepted at registration.') +
+      panel('Today', 'Week 3 of 15',
+        dtable(['Time|mid', 'Course', 'Venue', 'Lecturer'], slots.map(function (s) {
+          if (!s[1]) { return ['<span class="sub2 tnum">' + s[0] + '</span>', '<span class="sub2">Break</span>', '', '']; }
+          return ['<strong class="tnum">' + s[0] + '</strong>', two(s[1], s[2]), s[3], '<span class="sub2">' + s[4] + '</span>'];
+        }), 620)) +
+      panel('This week', '',
+        dtable(['Day', 'Lectures|mid', 'Practicals|mid', 'First', 'Last'], [
+          ['Monday', '3', '0', '08:00 CSC 331', '14:00 GST 301'],
+          ['Tuesday', '2', '1', '10:00 CSC 341', '16:00 CSC 321 lab'],
+          ['<strong>Wednesday</strong>', '4', '0', '08:00 CSC 311', '15:00 MTH 212'],
+          ['Thursday', '3', '1', '08:00 CSC 355', '16:00 CSC 331 lab'],
+          ['Friday', '2', '0', '10:00 CSC 221', '13:00 CSC 311']
+        ], 560));
+  }
+
+  function sAttendance() {
+    var c = [
+      ["CSC 311", "Algorithms & Complexity", 11, 12, 92],
+      ["CSC 321", "Database Systems", 10, 12, 83],
+      ["CSC 331", "Operating Systems", 12, 12, 100],
+      ["GST 301", "Entrepreneurship Studies", 6, 11, 55],
+      ["MTH 212", "Linear Algebra II", 9, 11, 82]
+    ];
+    return note('bad', 'GST 301 is below the 75% threshold',
+      'You have attended 6 of 11 lectures. Departments may bar a student below 75% from sitting the examination — check with the GST Directorate before the semester ends.') +
+      panel('Attendance this semester', 'Recorded by QR check-in at each lecture',
+        dtable(['Course', 'Attended|mid', 'Held|mid', 'Rate', 'Status|num'], c.map(function (x) {
+          var ok = x[4] >= 75;
+          return [two(x[0], x[1]), '<span class="tnum">' + x[2] + '</span>', '<span class="tnum">' + x[3] + '</span>',
+            '<div style="display:flex;align-items:center;gap:9px">' + bar(x[4], ok ? 'var(--green)' : 'var(--red)') +
+            '<span class="tnum" style="font-weight:600">' + x[4] + '%</span></div>',
+            ok ? pil('ok', 'Eligible') : pil('bad', 'At risk')];
+        }), 640));
+  }
+
+  function sCourses() {
+    var cs = [
+      ["CSC 311", "Algorithms & Complexity", "Dr. T. Iorpuu", 4, 1, 78],
+      ["CSC 321", "Database Systems", "Dr. M. Ashaver", 2, 0, 61],
+      ["CSC 331", "Operating Systems", "Dr. S. Adzande", 3, 2, 44],
+      ["GST 301", "Entrepreneurship Studies", "GST Directorate", 1, 0, 20]
+    ];
+    return note('info', 'Two assignments due this week',
+      'CSC 311 problem set 3 closes Friday at 23:59. CSC 331 lab report closes Sunday. Late submission is accepted for 48 hours with a 10% penalty.') +
+      '<div class="grid grid--2">' + cs.map(function (c) {
+        return '<div class="card"><div class="card__body">' +
+          '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">' +
+            '<div><div style="font-weight:700;font-size:15px" class="tnum">' + c[0] + '</div>' +
+            '<div class="sub2">' + c[1] + '</div><div class="sub2">' + c[2] + '</div></div>' +
+            (c[4] ? pil('bad', c[4] + ' due') : pil('ok', 'Up to date')) +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:10px">' + bar(c[5]) +
+          '<span class="sub2 tnum">' + c[5] + '% of material accessed</span></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            btn('ghost', 'Materials (' + c[3] + ' weeks)') + btn('ghost', 'Discussion') +
+            (c[4] ? btn('primary', 'Open assignment') : '') +
+          '</div></div></div>';
+      }).join('') + '</div>' +
+      panel('Downloads for offline use', 'Lecture notes are compressed for low-bandwidth connections',
+        dtable(['Material', 'Course|mid', 'Size|num', '|num'], [
+          ['Week 3 — Divide and conquer (PDF)', 'CSC 311', '<span class="tnum">1.2 MB</span>', btn('ghost', 'Download', ' data-doc="material" data-file="Week 3 — Divide and conquer (PDF)"')],
+          ['Week 3 — Normalisation exercises (PDF)', 'CSC 321', '<span class="tnum">840 KB</span>', btn('ghost', 'Download', ' data-doc="material" data-file="Week 3 — Normalisation exercises (PDF)"')],
+          ['Week 2 — Process scheduling (slides)', 'CSC 331', '<span class="tnum">2.1 MB</span>', btn('ghost', 'Download', ' data-doc="material" data-file="Week 2 — Process scheduling (slides)"')]
+        ], 560));
+  }
+
+  function sExams() {
+    return note('info', 'Bring your identity card',
+      'Your photograph is checked against the record on file before the paper opens. Arrive 20 minutes early — late candidates are admitted at the invigilator\'s discretion and lose the time.') +
+      panel('Scheduled examinations', 'Computer-based',
+        dtable(['Course', 'Date & time', 'Venue|mid', 'Seat|mid', 'Status|num'], [
+          [two('CSC 311', 'Algorithms & Complexity'), '<span class="tnum">Mon 14 Dec · 09:00</span>', 'CBT Hall A', '<span class="tnum">A-042</span>', btn('primary', 'Enter the hall', ' data-go="s/cbt"')],
+          [two('CSC 321', 'Database Systems'), '<span class="tnum">Tue 15 Dec · 13:00</span>', 'CBT Hall B', '<span class="tnum">B-117</span>', pil('info', 'Docket ready')],
+          [two('GST 301', 'Entrepreneurship Studies'), '<span class="tnum">Thu 17 Dec · 09:00</span>', 'CBT Hall A', '<span class="tnum">A-089</span>', pil('bad', 'Attendance bar')],
+          [two('MTH 212', 'Linear Algebra II'), '<span class="tnum">Fri 18 Dec · 13:00</span>', 'CBT Hall C', '<span class="tnum">C-020</span>', pil('info', 'Docket ready')]
+        ], 660)) +
+      panel('Practice test', 'Familiarise yourself with the exam interface',
+        pbody('<p class="sub2" style="margin:0;line-height:1.6;max-width:62ch">The practice test uses the same screen, timer and navigation as the real examination. ' +
+          'Your answers save as you go, so a power cut or a dropped connection costs you at most the question you are on. Nothing here is marked.</p>' +
+          '<div>' + btn('primary', 'Start practice test', ' data-go="s/cbt" data-practice="1"') + '</div>'));
+  }
+
+  function sHostel() {
+    return note('ok', 'Bed space confirmed',
+      'Akpehe Hall, Block C, Room 214, bed 2. Confirmed 26 August after payment. Check-in from 1 September, 8am–6pm, at the porter\'s lodge.') +
+      '<div class="grid grid--2">' +
+        panel('Your allocation', '', pbody(
+          kvGrid([['Hall', 'Akpehe Hall (female)'], ['Block &amp; room', 'C · 214'], ['Bed', '2 of 4'],
+                  ['Session', '2026/2027'], ['Fee', '₦40,000 — paid'], ['Occupants', '4 students']], 'grid--2') +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px">' +
+            btn('ghost', 'Room condition report') + btn('ghost', 'Request a room change') + '</div>')) +
+        panel('Maintenance requests', 'Raised by anyone in the room', dtable(
+          ['Issue', 'Raised', 'Status|num'], [
+            ['Ceiling fan not working', '<span class="sub2 tnum">2 Sept</span>', pil('info', 'Assigned')],
+            ['Window latch broken', '<span class="sub2 tnum">28 Aug</span>', pil('ok', 'Fixed')]
+          ])) +
+      '</div>' +
+      panel('Allocation history', '', dtable(['Session|mid', 'Hall', 'Room|mid', 'Outcome|num'], [
+        ['<span class="tnum">2026/2027</span>', 'Akpehe Hall', '<span class="tnum">C-214</span>', pil('ok', 'Current')],
+        ['<span class="tnum">2025/2026</span>', 'Akpehe Hall', '<span class="tnum">A-108</span>', pil('ok', 'Cleared at check-out')],
+        ['<span class="tnum">2024/2025</span>', '—', '—', '<span class="sub2">Not allocated — ballot unsuccessful</span>']
+      ], 520));
+  }
+
+  function sLibrary() {
+    return panel('On loan to you', '3 items', dtable(
+      ['Item', 'Accession|mid', 'Due', 'Status|num'], [
+        [two('Introduction to Algorithms, 4th ed.', 'Cormen, Leiserson, Rivest &amp; Stein'), '<span class="tnum">CSC/004182</span>', '<span class="tnum">18 Sept</span>', pil('ok', '13 days')],
+        [two('Database System Concepts, 7th ed.', 'Silberschatz, Korth &amp; Sudarshan'), '<span class="tnum">CSC/003907</span>', '<span class="tnum">7 Sept</span>', pil('bad', '2 days overdue')],
+        [two('Operating System Concepts, 10th ed.', 'Silberschatz, Galvin &amp; Gagne'), '<span class="tnum">CSC/004055</span>', '<span class="tnum">24 Sept</span>', pil('ok', '19 days')]
+      ], 620)) +
+      note('bad', 'One item is overdue',
+        'A fine of ₦50 per day is posted to your student account automatically. ₦100 has accrued so far. Library clearance is required before a transcript or certificate is released.',
+        btn('urgent', 'Renew online', ' data-go="s/library"')) +
+      panel('Search the catalogue', '', pbody(
+        '<div class="field"><input value="distributed systems" aria-label="Search the catalogue" autocomplete="off"></div>' +
+        dtable(['Title', 'Copies|mid', 'Available|mid', '|num'], [
+          [two('Distributed Systems: Principles and Paradigms', 'Tanenbaum &amp; Van Steen · 2017'), '<span class="tnum">6</span>', '<span class="tnum" style="color:var(--green-ink);font-weight:600">2</span>', btn('primary', 'Reserve')],
+          [two('Designing Data-Intensive Applications', 'Kleppmann · 2017'), '<span class="tnum">4</span>', '<span class="tnum" style="color:var(--red-ink);font-weight:600">0</span>', btn('ghost', 'Join waiting list')],
+          [two('MOAUM institutional repository', 'Theses and dissertations · full text'), '—', '<span class="sub2">Online</span>', btn('ghost', 'Open')]
+        ], 620)));
+  }
+
+  function sHealth() {
+    return note('info', 'Only the clinic sees your medical notes',
+      'Registry and your department see a fitness status and nothing else. Every access to your record is logged and can be shown to you on request.') +
+      '<div class="grid grid--2">' +
+        panel('Book an appointment', '', pbody(
+          '<div class="field"><label for="hl-reason">Reason for visit</label>' +
+          '<input id="hl-reason" value="Persistent headache, 4 days" autocomplete="off"></div>' +
+          '<div class="field"><label>Preferred time</label>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            '<span class="pill pill--info">Tomorrow 09:00</span>' +
+            '<span class="pill" style="background:var(--bg);border:1px solid var(--line);color:var(--muted)">Tomorrow 11:30</span>' +
+            '<span class="pill" style="background:var(--bg);border:1px solid var(--line);color:var(--muted)">Thu 14:00</span></div></div>' +
+          '<div>' + btn('primary', 'Book appointment') + '</div>' +
+          '<div class="sub2">University Health Services, behind the Sports Complex. Walk-in triage runs 8am–4pm for urgent cases.</div>')) +
+        panel('On your record', 'Visible to the treating clinician only', pbody(
+          kvGrid([['Blood group', 'O+'], ['Genotype', 'AA'], ['Allergies', 'Penicillin'],
+                  ['Pre-entry medical', 'Completed 2023 — fit']], 'grid--2') +
+          '<div class="sub2">Blood group and genotype were recorded with your consent at matriculation. You can withdraw that consent at any time, and the record is then restricted rather than deleted.</div>')) +
+      '</div>' +
+      panel('Visit history', '', dtable(['Date', 'Reason', 'Outcome', 'Clinician|num'], [
+        ['<span class="tnum">12 Mar 2026</span>', 'Malaria — fever and chills', 'Treated, ACT course dispensed', '<span class="sub2">Dr. B. Ochefu</span>'],
+        ['<span class="tnum">04 Nov 2025</span>', 'Sports injury — left ankle', 'Referred to the Teaching Hospital for X-ray', '<span class="sub2">Nurse P. Aondona</span>']
+      ], 620));
+  }
+
+  function sSupport() {
+    return panel('Your requests', '', dtable(
+      ['Reference', 'Subject', 'Office', 'Raised', 'Status|num'], [
+        ['<span class="tnum">SR-2026-04471</span>', two('Course form shows the wrong level', 'Registration'), 'Registry', '<span class="sub2 tnum">3 Sept</span>', pil('info', 'With Registry')],
+        ['<span class="tnum">SR-2026-04102</span>', two('Payment not reflecting after 3 days', 'Fees'), 'Bursary', '<span class="sub2 tnum">21 Aug</span>', pil('ok', 'Resolved')]
+      ], 700)) +
+      panel('Raise a new request', '', pbody(
+        '<div class="field"><label>Which office?</label>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<span class="pill pill--info">Registry</span>' +
+          ['Bursary', 'ICT', 'Library', 'Hostel', 'Health'].map(function (o) {
+            return '<span class="pill" style="background:var(--bg);border:1px solid var(--line);color:var(--muted)">' + o + '</span>';
+          }).join('') + '</div></div>' +
+        '<div class="field"><label for="hl-problem">What is the problem?</label>' +
+          '<input id="hl-problem" value="" placeholder="Describe it in one line" autocomplete="off"></div>' +
+        '<div>' + btn('primary', 'Submit request') + '</div>' +
+        '<div class="sub2">Registry answers within 2 working days, Bursary within 3. You will be notified here and by SMS.</div>'));
+  }
+
+  function sNotifications() {
+    var n = [
+      ["ok", "Payment confirmed", "₦45,000 received against INV-2026-04412. Your clearance was recalculated.", "Today, 09:14"],
+      ["bad", "GST 301 attendance below threshold", "You have attended 6 of 11 lectures. 75% is required to sit the examination.", "Yesterday, 16:02"],
+      ["info", "Course registration closes in 6 days", "Friday 18 September, 11:59pm. Late registration attracts a ₦5,000 fee.", "8 Sept, 08:00"],
+      ["ok", "2025/2026 Second Semester result published", "GPA 3.67 · CGPA 3.42 · good standing.", "12 Aug, 18:40"],
+      ["info", "Library item due soon", "Database System Concepts is due on 7 September.", "4 Sept, 07:00"]
+    ];
+    return panel('Notifications', 'Transactional messages are always delivered — announcements respect your preferences',
+      '<div class="card__body" style="gap:0;padding:0">' + n.map(function (x, i) {
+        var col = x[0] === 'bad' ? 'var(--red)' : x[0] === 'ok' ? 'var(--green)' : 'var(--sky)';
+        return '<div style="padding:14px 16px;display:flex;gap:11px;' + (i < n.length - 1 ? 'border-bottom:1px solid var(--line-2)' : '') + '">' +
+          '<span class="dot" style="background:' + col + ';margin-top:7px"></span>' +
+          '<div style="flex-grow:1"><div style="font-weight:600">' + x[1] + '</div>' +
+          '<div class="sub2" style="line-height:1.5">' + x[2] + '</div></div>' +
+          '<span class="sub2" style="white-space:nowrap">' + x[3] + '</span></div>';
+      }).join('') + '</div>') +
+      panel('How we reach you', '', pbody(
+        dtable(['Channel', 'Transactional|mid', 'Announcements|mid'], [
+          ['Email · grace.adamu@example.com', pil('ok', 'Always on'), pil('ok', 'On')],
+          ['SMS · 0803 412 8890', pil('ok', 'Always on'), pil('bad', 'Off')],
+          ['In-app', pil('ok', 'Always on'), pil('ok', 'On')]
+        ], 480) +
+        '<div class="sub2">Results, payments and admission decisions are always sent — you cannot switch those off, because the University must be able to reach you about them.</div>'));
+  }

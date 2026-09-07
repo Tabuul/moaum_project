@@ -1,0 +1,663 @@
+
+  /* ══ THE THREE OTHER DOWNLOADS ══════════════════════════════════════
+     The admission list is not the only thing the Academic Office takes
+     from JAMB. Three more arrive, separately, and each is matched to a
+     candidate on the JAMB registration number:
+
+       · the PASSPORTS, as a folder of images named by the number
+       · the DATES OF BIRTH, as a spreadsheet
+       · the O'LEVEL results, as a spreadsheet
+
+     Built 7 September 2026 against real samples of all three.
+
+     ── The trailing space ────────────────────────────────────────────
+     Every registration number in the date-of-birth file ends with a
+     SPACE: "202440000065EA ". Joined raw against the admission list it
+     matches nothing at all, and the screen would report nought of three
+     matched — which reads as a broken import rather than as a stray
+     character, and is the kind of thing somebody spends an afternoon
+     on. Every key is trimmed on the way in, from every file, and the
+     screen says when trimming is what made a match.
+
+     ── The date that is two dates ────────────────────────────────────
+     Dates of birth arrive as text, DD-MM-YYYY. "05-07-2002" is the 5th
+     of July under that reading and the 7th of May under the other, and
+     nothing in the file says which. Where both parts are twelve or
+     less the date is AMBIGUOUS and is shown as such rather than parsed
+     on an assumption: a birthday silently moved by two months is a
+     candidate whose age at admission, and whose identity match against
+     NIN, are both quietly wrong.
+
+     ── O'Level is one row per SUBJECT ────────────────────────────────
+     Not one per candidate. Nine rows is one candidate with nine
+     subjects, so the file is collapsed by number before anything can
+     be said about whether a candidate qualifies. Grades A1 to C6 are
+     credits; D7, E8 and F9 are not. Subject names arrive abbreviated
+     and inconsistently — "English Lang.", "Lit. English",
+     "Bible Knowled/Crk" — so they are normalised before English and
+     Mathematics can be found in them.                                */
+
+  /* ── The sample photographs are GENERATED, not real ──────────────
+     Two real JAMB passports were supplied as samples and were embedded
+     here while the screen was being built. They are photographs of two
+     identifiable nineteen-year-olds, and this file is about to be served
+     from a public URL, so they are gone. What is here now is drawn: a
+     backdrop, a head and a pair of shoulders, at exactly the size JAMB
+     sends — 132 x 151 pixels, about 4 KB — because the SIZE is the point
+     being made and the faces never were.
+
+     The rule this follows: a demonstration never carries a real person's
+     face, name, registration number or result. Everything else in the
+     samples is invented for the same reason.                          */
+  var PAS_IMG_A = "data:image/jpeg;base64,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";
+  var PAS_IMG_B = "data:image/jpeg;base64,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";
+
+  var CRED = { A1: 1, B2: 1, B3: 1, C4: 1, C5: 1, C6: 1 };
+
+  function jkey(v) { return String(v || "").trim().toUpperCase(); }
+
+  /* ── the number inside a filename ─────────────────────────────────
+     JAMB names a passport after the candidate and then adds to it:
+
+         202660168863AH_Face.jpg
+
+     Stripping the extension leaves "202660168863AH_FACE", which matches
+     no candidate at all — so every photograph would have arrived as an
+     orphan and the screen would have said so about all of them. The
+     same class of thing as the trailing space in the date-of-birth
+     file, and just as quiet.
+
+     The suffix is not stripped by name, because "_Face" is a decision
+     JAMB made and can change. What is done instead is to FIND the
+     registration number in the filename: twelve digits followed by two
+     or three letters, which is the shape of every number in every file
+     they send — 202660176777GF is fourteen characters, 202660307120BGU
+     is fifteen. That survives "_Face", "_face", " (1)", "Copy of", a
+     folder path, and whatever JAMB appends next year.
+
+     A filename with no number in it is not guessed at. It is listed,
+     with its name, as something a person has to look at.             */
+  var JNUM = /(\d{12}[A-Za-z]{2,3})/;
+
+  function jambNumFromName(filename) {
+    var base = String(filename || "").split(/[\\/]/).pop();
+    var m = JNUM.exec(base);
+    if (!m) { return { num: "", how: "" }; }
+    var num = m[1].toUpperCase();
+    var rest = base.replace(/\.[^.]+$/, "");
+    return { num: num, how: rest === num ? "" : "from " + base };
+  }
+
+  /* ── passports ─────────────────────────────────────────────────── */
+  function passRead(files) {
+    var out = [], pending = files.length;
+    if (!pending) { return; }
+    S.pasBusy = true; render();
+    [].forEach.call(files, function (f) {
+      var got = jambNumFromName(f.name), num = got.num;
+      var img = new Image(), rd = new FileReader();
+      rd.onload = function () {
+        img.onload = function () {
+          out.push({ num: num, file: f.name, how: got.how, size: f.size,
+                     w: img.width, h: img.height, url: rd.result });
+          if (!--pending) { passTake(out); }
+        };
+        img.onerror = function () {
+          out.push({ num: num, file: f.name, how: got.how, size: f.size, w: 0, h: 0, url: "" });
+          if (!--pending) { passTake(out); }
+        };
+        img.src = rd.result;
+      };
+      rd.onerror = function () {
+        out.push({ num: num, file: f.name, how: got.how, size: f.size, w: 0, h: 0, url: "" });
+        if (!--pending) { passTake(out); }
+      };
+      rd.readAsDataURL(f);
+    });
+  }
+
+  function passTake(list) {
+    list.sort(function (a, b) { return a.num < b.num ? -1 : 1; });
+    S.pasBusy = false;
+    S.pas = list;
+    window.scrollTo(0, 0);
+    render();
+  }
+
+  /* ── the date-of-birth file ────────────────────────────────────── */
+  var DOB_COLS = { regnumber: "num", regno: "num", rgnum: "num",
+                   surname: "surname", firstname: "first", middlename: "middle",
+                   dateofbirth: "dob", regtype: "kind" };
+
+  function dobParse(rows) {
+    if (!rows.length) { return { err: "The file has no rows in it." }; }
+    var head = rows[0], ix = {}, i;
+    for (i = 0; i < head.length; i++) {
+      var f = DOB_COLS[capsNorm(head[i])];
+      if (f && ix[f] === undefined) { ix[f] = i; }
+    }
+    if (ix.num === undefined || ix.dob === undefined) {
+      return { err: "This file names no registration number (<b>Reg. Number</b>) or no " +
+                    "<b>DateofBirth</b> column. The row it read was: <i>" +
+                    esc(head.slice(0, 8).join(", ")) + "</i>" };
+    }
+    var out = [], trimmed = 0;
+    for (i = 1; i < rows.length; i++) {
+      var r = rows[i], raw = r[ix.num];
+      if (!raw) { continue; }
+      var num = jkey(raw);
+      if (String(raw) !== num) { trimmed++; }
+      var d = String(r[ix.dob] || "").trim(), m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(d);
+      var amb = !!(m && Number(m[1]) <= 12 && Number(m[2]) <= 12);
+      out.push({
+        num: num, raw: String(raw),
+        surname: r[ix.surname] || "", first: r[ix.first] || "", middle: r[ix.middle] || "",
+        dob: d, ambiguous: amb,
+        reading: m ? (m[1] + " " + ["January","February","March","April","May","June","July",
+                     "August","September","October","November","December"][Number(m[2]) - 1] +
+                     " " + m[3]) : "",
+        kind: r[ix.kind] || ""
+      });
+    }
+    return { rows: out, trimmed: trimmed };
+  }
+
+  /* ── the O'Level file ──────────────────────────────────────────── */
+  var OL_COLS = { regnum: "num", regnumber: "num", subjectname: "subject", grade: "grade",
+                  examseries: "series", examyear: "year", examtype: "type",
+                  examnumber: "exnum", datecreated: "created", instname: "inst" };
+
+  /* JAMB abbreviates and is not consistent about it */
+  function olSubject(s) {
+    var n = capsNorm(s);
+    if (/^english|^litenglish$/.test(n) && n !== "litenglish") { return "English Language"; }
+    if (n === "litenglish" || n === "literatureinenglish") { return "Literature in English"; }
+    if (/^math/.test(n)) { return "Mathematics"; }
+    if (/^princofaccount|^financialaccount|^accounting/.test(n)) { return "Financial Accounting"; }
+    if (/^bibleknowled|^crk|^christianreligious/.test(n)) { return "Christian Religious Studies"; }
+    if (/^computerstudies/.test(n)) { return "Computer Studies / ICT"; }
+    return String(s || "").trim();
+  }
+
+  function olParse(rows) {
+    if (!rows.length) { return { err: "The file has no rows in it." }; }
+    var head = rows[0], ix = {}, i;
+    for (i = 0; i < head.length; i++) {
+      var f = OL_COLS[capsNorm(head[i])];
+      if (f && ix[f] === undefined) { ix[f] = i; }
+    }
+    if (ix.num === undefined || ix.subject === undefined || ix.grade === undefined) {
+      return { err: "This file names no <b>RegNum</b>, <b>SubjectName</b> or <b>Grade</b> column. " +
+                    "The row it read was: <i>" + esc(head.slice(0, 9).join(", ")) + "</i>" };
+    }
+    /* one row per subject — collapse by candidate before anything can be said */
+    var by = {}, order = [], n = 0;
+    for (i = 1; i < rows.length; i++) {
+      var r = rows[i];
+      if (!r[ix.num]) { continue; }
+      n++;
+      var k = jkey(r[ix.num]);
+      if (!by[k]) {
+        by[k] = { num: k, subjects: [], type: r[ix.type] || "", series: r[ix.series] || "",
+                  year: r[ix.year] || "", exnum: r[ix.exnum] || "" };
+        order.push(k);
+      }
+      by[k].subjects.push({ raw: r[ix.subject], subject: olSubject(r[ix.subject]),
+                            grade: String(r[ix.grade] || "").trim().toUpperCase() });
+    }
+    order.forEach(function (k) {
+      var c = by[k], eng = null, mth = null, credits = 0;
+      c.subjects.forEach(function (s) {
+        if (CRED[s.grade]) { credits++; }
+        if (s.subject === "English Language") { eng = s.grade; }
+        if (s.subject === "Mathematics") { mth = s.grade; }
+      });
+      c.credits = credits; c.eng = eng; c.maths = mth;
+      c.meets = credits >= 5 && !!CRED[eng] && !!CRED[mth];
+    });
+    return { rows: order.map(function (k) { return by[k]; }), lines: n };
+  }
+
+  /* ── matching, counted in both directions ──────────────────────── */
+  function capsAllCandidates() {
+    var seen = {}, out = [];
+    ["utme", "de"].forEach(function (k) {
+      var d = S.capsData[k];
+      if (!d) { return; }
+      d.rows.forEach(function (r) {
+        var n = jkey(r.regno);
+        if (!seen[n]) { seen[n] = 1; out.push({ num: n, name: r.name, list: k }); }
+      });
+    });
+    return out;
+  }
+
+  function capsMatch(items) {
+    var cands = capsAllCandidates(), byNum = {};
+    cands.forEach(function (c) { byNum[c.num] = c; });
+    var matched = [], orphan = [];
+    items.forEach(function (it) {
+      if (byNum[it.num]) { matched.push(it); } else { orphan.push(it); }
+    });
+    var have = {};
+    items.forEach(function (it) { have[it.num] = 1; });
+    var missing = cands.filter(function (c) { return !have[c.num]; });
+    return { candidates: cands.length, matched: matched, orphan: orphan,
+             missing: missing, byNum: byNum };
+  }
+
+  /* ── the screen ───────────────────────────────────────────────── */
+  var CD_TABS = [
+    ["pas", "Passports", "A folder of images, named by the JAMB number"],
+    ["dob", "Dates of birth", "One spreadsheet row per candidate"],
+    ["ol",  "O’Level results", "One spreadsheet row per SUBJECT"]
+  ];
+
+  function tCandidateData() {
+    var tab = S.cdTab || "pas";
+    var cands = capsAllCandidates();
+
+    return note('info', 'Three separate downloads, all matched on the JAMB registration number',
+      'The passports, the dates of birth and the O’Level results come from JAMB as three different things ' +
+      'and arrive at different times. Each is matched to a candidate already on an admission list, and each ' +
+      'is counted <b>both ways</b>: what arrived with nobody to attach it to, and who is still waiting for it.') +
+
+    (!cands.length
+      ? note('bad', 'No admission list has been uploaded yet',
+          'There is nothing to match against. Upload the UTME or Direct Entry list first — these three ' +
+          'attach to candidates, they do not create them. A photograph is not an admission.',
+          btn('primary', 'Go to the admission lists', ' data-go="t/capsintake"'))
+      : '') +
+
+    '<div class="card"><div class="card__body">' +
+      '<div class="rectabs">' + CD_TABS.map(function (t) {
+        var n = t[0] === "pas" ? (S.pas ? S.pas.length : 0)
+              : t[0] === "dob" ? (S.dob ? S.dob.rows.length : 0)
+              : (S.ol ? S.ol.rows.length : 0);
+        return '<button class="rectab' + (tab === t[0] ? ' is-on' : '') +
+          '" data-cd="tab:' + t[0] + '"><span class="t">' + t[1] +
+          (n ? ' &middot; ' + n : '') + '</span><span class="s">' + t[2] + '</span></button>';
+      }).join('') + '</div>' +
+    '</div></div>' +
+
+    (tab === "pas" ? cdPassports(cands)
+     : tab === "dob" ? cdDob(cands)
+     : cdOlevel(cands));
+  }
+
+  function cdCounts(m, unit, one) {
+    return tiles([
+      ["Matched to a candidate", String(m.matched.length), "var(--green-ink)",
+       "Attached to the record"],
+      [one + " with no candidate", String(m.orphan.length),
+       m.orphan.length ? "var(--red-ink)" : null,
+       m.orphan.length ? "Held, not discarded" : "Everything attached"],
+      ["Candidates still waiting", String(m.missing.length),
+       m.missing.length ? "var(--chrome)" : "var(--green-ink)",
+       m.missing.length ? "No " + unit + " yet" : "Every candidate has one"],
+      ["On the admission lists", String(m.candidates), null, "UTME and Direct Entry"]
+    ]);
+  }
+
+  function cdOrphans(m, what) {
+    if (!m.orphan.length) { return ''; }
+    return note('bad', m.orphan.length + ' ' + what + ' match no candidate on either list',
+      'They are <b>held, not discarded</b>. A file that matches nobody today matches somebody the moment ' +
+      'the next tranche of the admission list is uploaded — JAMB sends these in a different order and on a ' +
+      'different day. Throwing them away means downloading them again, and being unable to say whether they ' +
+      'ever arrived.') +
+      panel('Held, waiting for a candidate', 'Matched again automatically when the next list is uploaded',
+        dtable(["JAMB number|mid", "What arrived"],
+          m.orphan.slice(0, 10).map(function (o) {
+            return ['<span class="tnum">' + esc(o.num) + '</span>',
+                    '<span class="sub2">' + esc(o.file || o.raw || o.num) + '</span>'];
+          }), 620));
+  }
+
+  function cdMissing(m, what) {
+    if (!m.missing.length) { return ''; }
+    return panel('Candidates with no ' + what + ' yet', m.missing.length + ' of ' + m.candidates,
+      dtable(["JAMB number|mid", "Candidate", "List|mid"],
+        m.missing.slice(0, 10).map(function (c) {
+          return ['<span class="tnum">' + esc(c.num) + '</span>',
+                  '<strong>' + esc(c.name) + '</strong>',
+                  pil(c.list === 'de' ? 'info' : 'grey', c.list === 'de' ? 'Direct Entry' : 'UTME')];
+        }), 700));
+  }
+
+  /* ── passports ─────────────────────────────────────────────────── */
+  function cdPassports(cands) {
+    var all = S.pas || [];
+    var named = all.filter(function (p) { return p.num; });
+    var unnamed = all.filter(function (p) { return !p.num; });
+    var m = S.pas ? capsMatch(named) : null;
+    var small = m ? m.matched.filter(function (p) { return p.w && p.w < 300; }) : [];
+    var derived = m ? named.filter(function (p) { return p.how; }) : [];
+
+    return '<div class="card"><div class="card__body">' +
+      '<div class="eyebrow">Upload the passports downloaded from JAMB</div>' +
+      '<label class="drop" for="cd-pas" style="cursor:pointer">' +
+        ico('box', 30, 'var(--chrome)', 1.6) +
+        '<div class="drop__t">Choose the whole folder of photographs</div>' +
+        '<div class="drop__s">JAMB names each file after the candidate and then adds to it — ' +
+        '<span class="tnum">202660168863AH_Face.jpg</span>. The registration number is read out of ' +
+        'the name, whatever is wrapped around it, and that is what it is matched on. ' +
+        'Select them all at once.</div>' +
+        '<input type="file" id="cd-pas" accept="image/*" multiple hidden data-cdfile="pas">' +
+      '</label>' +
+      (S.pasBusy ? '<div class="sub2">Reading…</div>' : '') +
+      '<div class="sub2">Nothing leaves this browser.</div>' +
+    '</div></div>' +
+
+    (!S.pas
+      ? note('info', 'No photographs uploaded yet',
+          'Choose the folder above, or press the sample.',
+          btn('ghost', 'Use two sample photographs', ' data-cd="demopas"'))
+      : cdCounts(m, "photograph", "Photographs") +
+
+        (derived.length
+          ? note('info', 'The registration number was read out of ' + derived.length +
+              ' filename' + (derived.length === 1 ? '' : 's'),
+              'JAMB does not send <span class="tnum">202660168863AH.jpg</span>. It sends ' +
+              '<span class="tnum">202660168863AH_Face.jpg</span>, and stripping only the extension ' +
+              'leaves <span class="tnum">202660168863AH_FACE</span>, which matches no candidate — so ' +
+              '<b>every photograph would have arrived as an orphan</b> and the screen would have said ' +
+              'so about all of them. The same class of thing as the trailing space in the ' +
+              'date-of-birth file, and just as quiet. The suffix is <b>not</b> stripped by name, ' +
+              'because <i>_Face</i> is JAMB’s decision and JAMB can change it: what is done instead ' +
+              'is to <b>find</b> the number in the name — twelve digits then two or three letters, ' +
+              'the shape of every number they send — which survives <i>_Face</i>, <i>_face</i>, ' +
+              '<i>(1)</i>, <i>Copy of</i>, and a folder path.') +
+            panel('What each number was read from', derived.length + ' of ' + named.length + ' filenames',
+              dtable(["JAMB number|mid", "The file as JAMB named it"],
+                derived.slice(0, 10).map(function (p) {
+                  return ['<span class="tnum">' + esc(p.num) + '</span>',
+                          '<span class="sub2 tnum">' + esc(p.file) + '</span>'];
+                }), 700))
+          : '') +
+
+        (unnamed.length
+          ? note('bad', unnamed.length + ' file' + (unnamed.length === 1 ? ' carries' : 's carry') +
+              ' no registration number in the name',
+              'Nothing in ' + (unnamed.length === 1 ? 'this name' : 'these names') + ' has the shape of ' +
+              'a JAMB number, so there is nobody to attach the photograph to and <b>no guess is made</b>. ' +
+              'It is named here, with the filename as it arrived, for somebody to look at — a phone camera ' +
+              'roll dragged in with the download, or a file renamed by hand on the way. A photograph put ' +
+              'against the wrong candidate is worse than one not put anywhere.') +
+            panel('Named, not guessed at', 'A person has to say who these belong to',
+              dtable(["The file as it arrived", "Size|num"],
+                unnamed.slice(0, 10).map(function (p) {
+                  return ['<span class="tnum">' + esc(p.file) + '</span>',
+                          '<span class="sub2">' + Math.round(p.size / 1024) + ' KB</span>'];
+                }), 620))
+          : '') +
+
+        cdOrphans(m, "photographs") +
+
+        (small.length
+          ? note('info', small.length + ' photograph' + (small.length === 1 ? ' is' : 's are') +
+              ' too small for an identity card',
+              'JAMB’s passports come at about <b>132 × 151 pixels</b> — roughly 11 × 13 mm once printed. ' +
+              'That is ample for screening a candidate at a desk and matching a face to a record, and it ' +
+              'is nowhere near enough for the identity card, which is why the card photograph is captured ' +
+              'at the counter instead. These are stored as the <b>screening</b> photograph and are not ' +
+              'offered to the card printer.')
+          : '') +
+
+        panel('Photographs attached', m.matched.length + ' of ' + m.candidates + ' candidates',
+          pbody('<div style="display:flex;flex-wrap:wrap;gap:12px">' +
+            m.matched.slice(0, 24).map(function (p) {
+              var c = m.byNum[p.num];
+              return '<div style="width:104px">' +
+                (p.url ? '<img src="' + p.url + '" alt="" style="width:104px;height:119px;' +
+                         'object-fit:cover;border:1px solid var(--line);border-radius:6px">'
+                       : '<div style="width:104px;height:119px;border:1px solid var(--red-line);' +
+                         'border-radius:6px;background:var(--red-bg)"></div>') +
+                '<div class="sub2 tnum" style="margin-top:4px">' + esc(p.num) + '</div>' +
+                '<div class="sub2" style="line-height:1.3">' + esc((c.name || "").split(",")[0]) + '</div>' +
+                '<div class="sub2">' + p.w + '×' + p.h + '</div>' +
+              '</div>';
+            }).join('') + '</div>')) +
+
+        cdMissing(m, "photograph"));
+  }
+
+  /* ── dates of birth ────────────────────────────────────────────── */
+  function cdDob(cands) {
+    var d = S.dob;
+    var m = d ? capsMatch(d.rows) : null;
+    var amb = d ? d.rows.filter(function (r) { return r.ambiguous; }) : [];
+
+    return '<div class="card"><div class="card__body">' +
+      '<div class="eyebrow">Upload the date-of-birth file</div>' +
+      '<label class="btn btn--primary" for="cd-dob" style="cursor:pointer;align-self:flex-start">' +
+        'Choose the date-of-birth file…' +
+        '<input type="file" id="cd-dob" accept=".xlsx" hidden data-cdfile="dob"></label>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        btn('ghost', 'Use the sample instead', ' data-cd="demodob"') + '</div>' +
+      (S.dobErr ? '' : '') +
+    '</div></div>' +
+
+    (S.dobErr ? note('bad', 'That file could not be read', S.dobErr) : '') +
+
+    (!d
+      ? note('info', 'No dates of birth uploaded yet', 'Choose the file above, or press the sample.')
+      : cdCounts(m, "date of birth", "Rows") +
+
+        (d.trimmed
+          ? note('info', d.trimmed + ' registration number' + (d.trimmed === 1 ? '' : 's') +
+              ' had a trailing space, and were trimmed',
+              'Every number in this file ends with a space &mdash; <span class="tnum">' +
+              '&ldquo;202440000065EA&nbsp;&rdquo;</span>. Joined as it arrives it matches <b>nothing at ' +
+              'all</b>, and the screen would report nought matched, which reads as a broken import rather ' +
+              'than as one stray character. Keys are trimmed on the way in from every file, and this note ' +
+              'says when trimming is what made the match.')
+          : '') +
+
+        (amb.length
+          ? note('bad', amb.length + (amb.length === 1 ? ' date of birth is' : ' dates of birth are') +
+              ' ambiguous',
+              'Dates arrive as text in the form <b>DD-MM-YYYY</b>, and nothing in the file says so. Where ' +
+              'both the day and the month are twelve or less the value reads equally well the other way ' +
+              'round: <span class="tnum">05-07-2002</span> is the 5th of July or the 7th of May. ' +
+              'That is not a rare edge: <b>144 of the 365 dates in a year &mdash; two in five &mdash; are ' +
+              'ambiguous under this format</b>, so on a list of four thousand candidates it is roughly ' +
+              'sixteen hundred birthdays. They are <b>not parsed on an assumption</b>: a birthday moved by ' +
+              'months is a candidate whose age at admission and whose match against NIN are both quietly ' +
+              'wrong, and nothing downstream would ever say so. One question to JAMB settles all of them.',
+              btn('urgent', 'Confirm the format with the Academic Office'))
+          : '') +
+
+        cdOrphans(m, "rows") +
+
+        panel('Dates of birth', m.matched.length + ' matched to a candidate',
+          dtable(["JAMB number|mid", "As JAMB gives the name", "On the admission list", "Date of birth|mid", "Reading"],
+            m.matched.slice(0, 14).map(function (r) {
+              var c = m.byNum[r.num];
+              return ['<span class="tnum">' + esc(r.num) + '</span>',
+                '<strong>' + esc([r.surname, r.first, r.middle].filter(Boolean).join(" ")) + '</strong>' +
+                  '<div class="sub2">surname, first and middle, in three columns</div>',
+                '<span class="sub2">' + esc(c.name) + '</span>' +
+                  '<div class="sub2">one column, on the admission list</div>',
+                '<span class="tnum">' + esc(r.dob) + '</span>',
+                r.ambiguous
+                  ? pil('bad', 'ambiguous')
+                  : '<span class="sub2">' + esc(r.reading) + '</span>'];
+            }), 1080)) +
+
+        cdMissing(m, "date of birth"));
+  }
+
+  /* ── O'Level ───────────────────────────────────────────────────── */
+  function cdOlevel(cands) {
+    var d = S.ol;
+    var m = d ? capsMatch(d.rows) : null;
+    var short = m ? m.matched.filter(function (r) { return !r.meets; }) : [];
+
+    return '<div class="card"><div class="card__body">' +
+      '<div class="eyebrow">Upload the O’Level file</div>' +
+      '<label class="btn btn--primary" for="cd-ol" style="cursor:pointer;align-self:flex-start">' +
+        'Choose the O’Level file…' +
+        '<input type="file" id="cd-ol" accept=".xlsx" hidden data-cdfile="ol"></label>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        btn('ghost', 'Use the sample instead', ' data-cd="demool"') + '</div>' +
+    '</div></div>' +
+
+    (S.olErr ? note('bad', 'That file could not be read', S.olErr) : '') +
+
+    (!d
+      ? note('info', 'No O’Level results uploaded yet', 'Choose the file above, or press the sample.')
+      : note('info', 'The file is one row per SUBJECT, not per candidate',
+          d.lines + ' rows collapsed to <b>' + d.rows.length + ' candidate' +
+          (d.rows.length === 1 ? '' : 's') + '</b>. Nine rows is one candidate with nine subjects, so ' +
+          'nothing can be said about whether anybody qualifies until the file is grouped by number. ' +
+          'JAMB also abbreviates subject names inconsistently &mdash; <i>English Lang.</i>, ' +
+          '<i>Lit. English</i>, <i>Bible Knowled/Crk</i> &mdash; so they are normalised before English and ' +
+          'Mathematics can be found among them.') +
+
+        cdCounts(m, "O’Level result", "Results") +
+        cdOrphans(m, "results") +
+
+        (short.length
+          ? note('bad', short.length + ' candidate' + (short.length === 1 ? ' does' : 's do') +
+              ' not meet five credits including English and Mathematics',
+              'A credit is A1 to C6; D7, E8 and F9 are not. This is the general minimum and it is checked ' +
+              'here because the file makes it free to check. <b>It is not the whole requirement:</b> each ' +
+              'programme also names the subjects it wants, and those are Senate’s to set rather than this ' +
+              'screen’s to assume.')
+          : '') +
+
+        panel('O’Level results', m.matched.length + ' matched to a candidate',
+          dtable(["JAMB number|mid", "Candidate", "Exam|mid", "Year|mid", "Subjects|mid",
+                  "Credits|mid", "English|mid", "Maths|mid", "Five credits|num"],
+            m.matched.map(function (r) {
+              var c = m.byNum[r.num];
+              return ['<span class="tnum">' + esc(r.num) + '</span>',
+                '<strong>' + esc(c.name) + '</strong>' +
+                  '<div class="sub2">' + r.subjects.map(function (s) {
+                    return esc(s.subject) + ' ' + s.grade; }).join(' · ') + '</div>',
+                '<span class="sub2">' + esc(r.type) + '</span>' +
+                  '<div class="sub2 tnum">' + esc(r.exnum) + '</div>',
+                '<span class="tnum">' + esc(r.year) + '</span>',
+                '<span class="tnum">' + r.subjects.length + '</span>',
+                '<b class="tnum">' + r.credits + '</b>',
+                r.eng ? (CRED[r.eng] ? pil('ok', r.eng) : pil('bad', r.eng)) : pil('bad', 'none'),
+                r.maths ? (CRED[r.maths] ? pil('ok', r.maths) : pil('bad', r.maths)) : pil('bad', 'none'),
+                r.meets ? pil('ok', 'Yes') : pil('bad', 'No')];
+            }), 1300)) +
+
+        note('info', 'The exam number is here so the result can be verified with WAEC, and it must be',
+          'JAMB passes on what the candidate declared and what the examination board returned; it is not ' +
+          'itself the awarding body. The University verifies the result directly with WAEC or NECO before ' +
+          'clearance, and a result that does not verify voids the admission &mdash; which is exactly why ' +
+          'the exam number travels with the grades rather than being asked for again later.') +
+
+        cdMissing(m, "O’Level result"));
+  }
+
+  /* ── the samples ──────────────────────────────────────────────── */
+  /* Dates of birth for the sample applicants. Every number carries the
+     trailing space the real file has; two candidates are deliberately
+     absent and one row belongs to nobody on either list. */
+  var DOB_DEMO = [["Reg. Number","Surname","FirstName","MiddleName","DateofBirth","RegType"],
+    ["202660176777GF ","Terfa","Sedoo-Aondoshima","Precious","31-08-2005","UTME"],
+    ["202660224740IB ","Ejeh","Mathias","Akpo","23-05-2006","UTME"],
+    ["202660711714BJ ","Agber","Perpetua","Doofan","05-07-2002","UTME"],
+    ["202660085041AI ","Aba","Doose","Faith","17-02-2006","UTME"],
+    ["202660168863AH ","Kwaor","Seember","Angel","14-11-2005","UTME"],
+    ["202660550118DM ","Terkula","Yina","Godwin","02-09-2004","UTME"],
+    ["202660881440FP ","Shaahu","Terwase","John","09-03-2005","UTME"],
+    ["202660993117KQ ","Iorpuu","Mimi","Doose","28-06-2005","UTME"],
+    ["202660307120BGU ","Abah","Cecilia","Ehi","11-12-2001","DE"],
+    ["202660155146GAU ","Abu","Abigail","Aladi","07-04-2002","DE"],
+    ["202660332729GBU ","Agbaden","Wueseter","Mary","19-10-2001","DE"],
+    ["202660419983BEU ","Tsavnande","Doosuur","Patience","25-01-2003","DE"],
+    ["202660201774AF ","Iorpuu","Terwase","David","03-08-2000","DE"],
+    ["202660663318EB ","Anyebe","Ruth","Onyilo","30-11-2002","DE"],
+    ["202661018342CJ ","Ochanya","Faith","Aondoaseer","23-04-2006","UTME"],
+    ["202440000065EA ","Akor","Ernen",null,"31-08-2005","UTME"]];
+
+  /* O’Level for the sample applicants — one row per SUBJECT, as JAMB
+     sends it. Direct Entry candidates are here too: a prior qualification
+     is in addition to the O’Level credits, never instead of them. */
+  var OL_DEMO = (function () {
+    var h = [["RegNum","SubjectName","Grade","ExamSeries","ExamYear","ExamType","ExamNumber","DateCreated","InstName"]];
+    var mk = function (num, yr, ex, subs) {
+      return subs.map(function (s) {
+        return [num, s[0], s[1], "School Exam", yr, "WAEC Only", ex, "2026-01-26 11:48:43", "MOAUM"]; });
+    };
+    return h
+      .concat(mk("202660176777GF","2025","4081331069", [["English Lang.", "C6"], ["Mathematics", "B3"], ["Physics", "A1"], ["Chemistry", "B3"], ["Biology", "A1"], ["Civic Education", "C6"], ["Economics", "B2"]]))
+      .concat(mk("202660224740IB","2024","4081447702", [["English Lang.", "C6"], ["Mathematics", "B3"], ["Physics", "A1"], ["Chemistry", "B3"], ["Biology", "A1"], ["Civic Education", "C6"], ["Economics", "B2"]]))
+      .concat(mk("202660711714BJ","2023","4092117744", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202660085041AI","2024","4092330156", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202660168863AH","2025","4081552290", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
+      .concat(mk("202660550118DM","2024","4093118820", [["English Lang.", "C4"], ["Mathematics", "C6"], ["Government", "B3"], ["Bible Knowled/Crk", "B2"], ["Lit. English", "C5"], ["Civic Education", "B3"]]))
+      .concat(mk("202660881440FP","2024","4110229931", [["English Lang.", "D7"], ["Mathematics", "C6"], ["Government", "C4"], ["Bible Knowled/Crk", "B3"], ["Lit. English", "C5"], ["Civic Education", "C6"]]))
+      .concat(mk("202660993117KQ","2025","4081990043", [["English Lang.", "C6"], ["Mathematics", "C5"], ["Biology", "C6"], ["Chemistry", "D7"]]))
+      .concat(mk("202660307120BGU","2021","4070118834", [["English Lang.", "C4"], ["Mathematics", "C6"], ["Government", "B3"], ["Bible Knowled/Crk", "B2"], ["Lit. English", "C5"], ["Civic Education", "B3"]]))
+      .concat(mk("202660155146GAU","2020","4061229007", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202660332729GBU","2021","4070553318", [["English Lang.", "B3"], ["Mathematics", "C5"], ["Economics", "A1"], ["Commerce", "B3"], ["Princ. of Account", "C6"], ["Government", "B3"], ["Lit. English", "C6"]]))
+      .concat(mk("202660419983BEU","2020","4061887720", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
+      .concat(mk("202660201774AF","2019","4051002284", [["English Lang.", "C4"], ["Mathematics", "C6"], ["Government", "B3"], ["Bible Knowled/Crk", "B2"], ["Lit. English", "C5"], ["Civic Education", "B3"]]))
+      .concat(mk("202660663318EB","2021","4070441192", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
+      .concat(mk("202660990025HEU","2020","4061773305", [["English Lang.", "B2"], ["Mathematics", "A1"], ["Physics", "B3"], ["Chemistry", "B2"], ["Further Maths", "C4"], ["Biology", "C5"]]))
+      .concat(mk("202661018342CJ","2025","4081663318", [["English Lang.", "B3"], ["Mathematics", "B2"], ["Physics", "C4"], ["Chemistry", "C5"], ["Biology", "C6"], ["Civic Education", "B3"], ["Economics", "C4"]]))
+      /* on nobody’s admission list — held, not discarded */
+      .concat(mk("202499999999ZZ","2024","4110000001", [["English Lang.", "B2"], ["Mathematics", "B3"], ["Biology", "A1"], ["Chemistry", "B3"], ["Physics", "C4"]]));
+  }());
+
+  /* Passports for the sample applicants, under the filenames JAMB really
+     uses — "202660168863AH_Face.jpg". Only two real photographs were
+     supplied, so the sample alternates them across the candidates: what
+     is being shown is the MATCHING, not the faces. Four candidates have
+     none, one file belongs to nobody on either list, and one is named
+     nothing a number can be read out of, so that the screen has to say
+     so rather than quietly hold it as an orphan.
+
+     The numbers are NOT written out here beside the filenames. They are
+     read out of the filenames by the same function the real upload uses,
+     so pressing the sample exercises the extraction rather than stepping
+     around it. */
+  var PAS_DEMO = (function () {
+    return [
+      ["202660176777GF_Face.jpg",  3775, PAS_IMG_A],
+      ["202660224740IB_Face.jpg",  3885, PAS_IMG_B],
+      ["202660711714BJ_Face.jpg",  3775, PAS_IMG_A],
+      ["202660085041AI_Face.jpg",  3885, PAS_IMG_B],
+      ["202660168863AH_Face.jpg",  3775, PAS_IMG_A],
+      ["202660550118DM_Face.jpg",  3885, PAS_IMG_B],
+      ["202660307120BGU_Face.jpg", 3775, PAS_IMG_A],
+      ["202660155146GAU_Face.jpg", 3885, PAS_IMG_B],
+      ["202660332729GBU_Face.jpg", 3775, PAS_IMG_A],
+      ["202660419983BEU_Face.jpg", 3885, PAS_IMG_B],
+      ["202660201774AF_Face.jpg",  3775, PAS_IMG_A],
+      ["202660663318EB_Face.jpg",  3885, PAS_IMG_B],
+      /* on nobody’s admission list — held, not discarded */
+      ["202661018342CJ_Face.jpg",  3775, PAS_IMG_A],
+      ["202499999999ZZ_Face.jpg",  3775, PAS_IMG_A],
+      /* no number anywhere in the name — named, not guessed at */
+      ["IMG-20260904-WA0031.jpg",  3885, PAS_IMG_B]
+    ].map(function (r) {
+      var got = jambNumFromName(r[0]);
+      return { num: got.num, how: got.how, file: r[0], size: r[1],
+               w: 132, h: 151, url: r[2] };
+    });
+  }());
+
+  function cdReadSheet(file, which) {
+    file.arrayBuffer().then(function (buf) { return xlsxRows(buf); })
+      .then(function (rows) { cdTakeSheet(which === "dob" ? dobParse(rows) : olParse(rows), which); })
+      .catch(function (e) {
+        cdTakeSheet({ err: "That file could not be read. " + esc(e.message || String(e)) +
+          " An .xlsx is expected." }, which);
+      });
+  }
+
+  function cdTakeSheet(res, which) {
+    if (which === "dob") { S.dobErr = res.err || ""; S.dob = res.err ? null : res; }
+    else                 { S.olErr  = res.err || ""; S.ol  = res.err ? null : res; }
+    S.cdTab = which;
+    window.scrollTo(0, 0);
+    render();
+  }

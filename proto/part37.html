@@ -1,0 +1,231 @@
+
+  /* ══ THE NELFUND WALLET ════════════════════════════════════════════
+     Every student has a wallet. It is the University's record of money
+     the Nigerian Education Loan Fund has remitted on that student's
+     behalf, and of what has been applied from it to their charges.
+
+     How the money actually moves, which is what this models:
+
+       · NELFUND pays INSTITUTIONAL CHARGES directly to the University,
+         in a bulk remittance covering many students at once.
+       · NELFUND pays UPKEEP directly into the student's own bank
+         account. It never passes through the University, and it does
+         not appear in this wallet as spendable value — showing it there
+         would teach students to expect cash at the Bursary.
+
+     So the wallet is not a bank account the student controls. It is a
+     ledger of institutional money held for them, which they apply to
+     their own invoices. That distinction is the whole design: it is why
+     the balance cannot be withdrawn, why it can only pay what NELFUND
+     funds, and why a clawback has to be able to un-clear a student.
+
+     The problem it exists to solve is ordinary and severe. NELFUND
+     remits in bulk; the University has to split that remittance across
+     named students. Until it does, a student whose loan was approved
+     and paid still shows as owing, and queues at the Bursary with a
+     letter in their hand. Unallocated money is what makes that queue.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* what NELFUND funds, and what it does not */
+  var NLF_COVERS = [
+    ["Tuition and session charges", true, "The institutional charge approved by Council for the session"],
+    ["Approved user charges", true, "Laboratory, library and examination charges on the same invoice"],
+    ["Accommodation", false, "Hostel is charged separately and is not an institutional charge"],
+    ["Transcripts and certificates", false, "Requested after the fact, and not part of the session charge"],
+    ["Late registration penalty", false, "A penalty is not a fee, and the Fund does not carry it"],
+    ["Card replacement", false, "Charged to the holder"]
+  ];
+
+  /* the student's own wallet ledger — append-only, balance derived */
+  function walletLedger() {
+    var l = [
+      { d: "12 Sep 2026", t: "NELFUND institutional charges, 2026/2027",
+        r: "NLF/2026/0918", inn: 135000, out: 0,
+        note: "Received from the Fund in a batch of 412 students" },
+      { d: "12 Sep 2026", t: "Applied to INV-2026-04412 &mdash; instalment 1",
+        r: "INV-2026-04412", inn: 0, out: 90000,
+        note: "Applied on receipt, against the instalment then due" }
+    ];
+    if (S.feesPaid) {
+      l.push({ d: "Today", t: "Applied to INV-2026-04412 &mdash; instalment 2",
+        r: "INV-2026-04412", inn: 0, out: 45000,
+        note: "Applied from the wallet by the student" });
+    }
+    var bal = 0;
+    return l.map(function (e) { bal += e.inn - e.out; e.bal = bal; return e; });
+  }
+
+  function walletBalance() {
+    var l = walletLedger();
+    return l.length ? l[l.length - 1].bal : 0;
+  }
+
+  /* ── the student's wallet ─────────────────────────────────────── */
+
+  function studentWallet() {
+    var led = walletLedger(), bal = walletBalance(), owed = S.feesPaid ? 0 : 45000;
+    var canClear = bal >= owed && owed > 0;
+
+    return tiles([
+      ["Wallet balance", money(bal), null, bal ? "Held by the University for your charges" : "Fully applied"],
+      ["Credited this session", money(135000), null, "NELFUND institutional charges"],
+      ["Applied to your invoices", money(135000 - bal), null, S.feesPaid ? "Both instalments" : "Instalment 1"],
+      ["Outstanding on your account", owed ? money(owed) : "&#8358;0", null,
+       owed ? "Instalment 2, due 18 September" : "Nothing owing"]
+    ]) +
+
+    (owed
+      ? (canClear
+          ? note('ok', 'Your wallet covers what you owe',
+              'There is ' + money(bal) + ' in the wallet and ' + money(owed) + ' outstanding on INV-2026-04412. ' +
+              'Applying it settles the invoice and clears you for registration in the same moment &mdash; there is no bank transfer to wait for, because the money is already with the University.',
+              '<button class="btn btn--primary btn--sm" data-nlf="apply">Apply ' + money(owed) + ' to INV-2026-04412</button>')
+          : note('bad', 'Your wallet does not cover the balance',
+              'There is ' + money(bal) + ' in the wallet against ' + money(owed) + ' outstanding. Apply what is there and pay the difference, or ask the Bursary whether a further remittance is expected for you.'))
+      : note('ok', 'Nothing outstanding',
+          'Your session charges are settled in full from the wallet. The receipts on your Fees page show NELFUND as the payer, which is what a sponsor or an employer will ask to see.')) +
+
+    panel('Wallet statement', 'Every movement, oldest first', dtable(
+      ["Date|mid", "Entry", "Reference|mid", "In|num", "Out|num", "Balance|num"],
+      led.map(function (e) {
+        return ['<span class="sub2">' + e.d + '</span>',
+          two(e.t, e.note),
+          '<span class="tnum sub2">' + e.r + '</span>',
+          e.inn ? '<span class="tnum" style="color:var(--green-ink);font-weight:600">' + money(e.inn) + '</span>' : '<span class="sub2">&mdash;</span>',
+          e.out ? '<span class="tnum">' + money(e.out) + '</span>' : '<span class="sub2">&mdash;</span>',
+          '<b class="tnum">' + money(e.bal) + '</b>'];
+      }), 760)) +
+
+    '<div class="grid grid--2">' +
+      panel('What the wallet may pay', 'Set by what the Fund covers', pbody(
+        dtable(["Charge", "Covered|mid", "Why|"],
+          NLF_COVERS.map(function (c) {
+            return [c[0], c[1] ? pil('ok', 'Yes') : pil('bad', 'No'), '<span class="sub2">' + c[2] + '</span>'];
+          }), 520) +
+        '<div class="sub2" style="margin-top:10px">The wallet cannot be withdrawn as cash and cannot be moved to another student. It pays charges, and only the charges the Fund carries.</div>')) +
+
+      panel('Your upkeep is not here', 'And that is not an error', pbody(
+        '<div style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:12px">' +
+          '<div><div class="eyebrow">Paid to the University</div><div class="tnum" style="font-size:22px;font-weight:700">' + money(135000) + '</div><div class="sub2">Institutional charges &mdash; this wallet</div></div>' +
+          '<div><div class="eyebrow">Paid to your bank account</div><div class="tnum" style="font-size:22px;font-weight:700">&#8358;20,000<span style="font-size:13px;font-weight:400"> / month</span></div><div class="sub2">Upkeep &mdash; direct from the Fund</div></div>' +
+        '</div>' +
+        '<div class="sub2">NELFUND pays your upkeep straight into the account you gave the Fund. It does not pass through the University, the University cannot see it, and the Bursary cannot release it to you. If your upkeep has not arrived, that is a question for NELFUND and not for this office &mdash; the number is on the Fund&rsquo;s portal.</div>')) +
+    '</div>' +
+
+    note('info', 'A loan is a debt, and this page is the record of it',
+      'Everything credited here is repayable to the Fund after you graduate, on the terms in your loan agreement. The statement above is the University&rsquo;s record of what was received on your behalf and what it was applied to. Keep it: if the Fund and the University ever disagree about a session, this is the document that settles it.');
+  }
+
+  /* ── the Bursary's view: remittance batches and what is unallocated ── */
+
+  var NLF_BATCHES = [
+    { ref: "NLF/2026/0918", d: "12 Sep 2026", amt: 51840000, n: 412, alloc: 412, rev: 0,
+      s: "ok", note: "Allocated in full on the day of receipt" },
+    { ref: "NLF/2026/0904", d: "4 Sep 2026", amt: 28350000, n: 226, alloc: 224, rev: 2,
+      s: "warn", note: "Two students withdrew before the session opened" },
+    { ref: "NLF/2026/0821", d: "21 Aug 2026", amt: 9720000, n: 78, alloc: 71, rev: 0,
+      s: "bad", note: "Seven matriculation numbers did not match the register" },
+    { ref: "NLF/2025/1114", d: "14 Nov 2025", amt: 44280000, n: 358, alloc: 358, rev: 0,
+      s: "ok", note: "Prior session, closed" }
+  ];
+
+  function nlfUnallocated() {
+    return NLF_BATCHES.reduce(function (a, b) {
+      return a + Math.round(b.amt / b.n) * (b.n - b.alloc - b.rev);
+    }, 0);
+  }
+
+  function tNelfund() {
+    var unalloc = nlfUnallocated();
+    var pending = NLF_BATCHES.reduce(function (a, b) { return a + (b.n - b.alloc - b.rev); }, 0);
+
+    return tiles([
+      ["Received this session", money(89910000), null, "Three batches, 716 students"],
+      ["Allocated to students", money(89910000 - unalloc), null, "Credited to a named wallet"],
+      ["Unallocated", money(unalloc), null, pending + " students not yet matched"],
+      ["Reversed to the Fund", money(251000), null, "2 students withdrew"]
+    ]) +
+
+    (pending
+      ? note('bad', pending + ' students have money the University is holding and they cannot see',
+          'A remittance is received in bulk and must be split across named students. Until it is, a student whose loan was approved and paid still shows as owing &mdash; and comes to this office with a letter from the Fund. Every naira below either sits on a student&rsquo;s wallet or sits here, and this figure is the queue.',
+          '<button class="btn btn--primary btn--sm" data-go="t/nelmatch">Match the ' + pending + ' outstanding</button>')
+      : note('ok', 'Every naira received is on a named wallet', 'There is nothing in suspense.')) +
+
+    panel('Remittance batches', 'From the Fund, newest first', dtable(
+      ["Reference|mid", "Received|mid", "Amount|num", "Students|num", "Allocated|num", "Unallocated|num", "State"],
+      NLF_BATCHES.map(function (b) {
+        var out = b.n - b.alloc - b.rev;
+        return ['<span class="tnum">' + b.ref + '</span>',
+          '<span class="sub2">' + b.d + '</span>',
+          '<span class="tnum">' + money(b.amt) + '</span>',
+          '<span class="tnum">' + b.n + '</span>',
+          '<span class="tnum">' + b.alloc + '</span>',
+          out ? '<b class="tnum" style="color:var(--red-ink)">' + out + '</b>' : '<span class="sub2">&mdash;</span>',
+          two(b.s === 'ok' ? pil('ok', 'Closed') : b.s === 'warn' ? pil('info', 'Reversals') : pil('bad', 'Unmatched'), b.note)];
+      }), 900)) +
+
+    '<div class="grid grid--2">' +
+      panel('Why a remittance fails to match', 'The seven from 21 August', pbody(
+        dtable(["Reason|", "Count|num", "Who resolves it"], [
+          ["Matriculation number not on the register", '<span class="tnum">4</span>', "Registry &mdash; the number may be from a prior format"],
+          ["Student withdrew after the Fund approved", '<span class="tnum">2</span>', "Bursary &mdash; reverse to the Fund"],
+          ["Name matches, number does not", '<span class="tnum">1</span>', "Registry &mdash; confirm identity before crediting"]
+        ], 520) +
+        '<div class="sub2" style="margin-top:10px">Nothing here is credited on a guess. A wallet credited to the wrong student is money the Fund will reclaim from a student who never had it.</div>')) +
+
+      panel('What this office must do for the Fund', 'Before a disbursement can be made', pbody(
+        '<div class="tplcols">' +
+          [["Confirm enrolment", "The Fund pays for students the University says are enrolled. An unconfirmed student is not paid, and the delay reads to them as a NELFUND delay."],
+           ["Upload the fee schedule", "The approved institutional charge for the session, by programme and level. It must be the schedule Council approved, not last session&rsquo;s."],
+           ["Upload the academic calendar", "The Fund aligns upkeep to the session, so a calendar that is not filed stalls upkeep for every student here."],
+           ["Reconcile and reverse", "A student who withdraws after approval is reversed to the Fund, not held."]].map(function (c) {
+            return '<div class="tplcol"><b>' + c[0] + '</b><span>' + c[1] + '</span></div>';
+          }).join('') +
+        '</div>')) +
+    '</div>' +
+
+    note('info', 'The reconciliation runs against the register, not against a spreadsheet',
+      'A batch is matched on matriculation number against the approved student register, the same register the class list and the score sheet are drawn from. A number that is not on it is refused rather than created &mdash; which is why the four unmatched rows above are the Registry&rsquo;s to answer, not this office&rsquo;s to force.');
+  }
+
+  /* the matching queue behind the Bursary's call to action */
+  function tNelMatch() {
+    var rows = [
+      ["MOAUM/CSC/22/0914", "IORNONGU, Sewuese Mercy", 129600, "Number not on the register",
+       "Registry", "A 2022 number in the pre-2023 format. Confirm and re-key."],
+      ["MOAUM/EDU/23/2201", "ATSEM, Doosuur Grace", 118000, "Number not on the register",
+       "Registry", "Programme changed after the Fund approved; the number moved with it."],
+      ["MOAUM/LAW/24/0355", "OGBU, Terkula Emmanuel", 142000, "Number not on the register",
+       "Registry", "Deferred the session. The Fund should be told before this is credited."],
+      ["MOAUM/SCI/23/1780", "UGOR, Aondona Peter", 135000, "Number not on the register",
+       "Registry", "Two students share a name; the number belongs to neither record."],
+      ["MOAUM/MGT/23/0447", "ADAKOLE, Ene Blessing", 121000, "Withdrew after approval",
+       "Bursary", "Reverse to the Fund. Do not hold."],
+      ["MOAUM/ART/23/1102", "SHAAHU, Terwase John", 118000, "Withdrew after approval",
+       "Bursary", "Reverse to the Fund. Do not hold."],
+      ["MOAUM/SOC/23/0890", "AGERA, Mimi Doose", 133000, "Name matches, number does not",
+       "Registry", "Confirm identity in person before any credit is made."]
+    ];
+    return note('bad', 'Seven remittances are held in suspense',
+      'Each row is money the Fund has paid and the University is holding. None of it may be credited on a guess: a wallet credited to the wrong student is money the Fund will later reclaim from someone who never received it. Four are the Registry&rsquo;s to resolve, three are this office&rsquo;s.') +
+
+      panel('Unmatched remittances', 'NLF/2026/0821 and NLF/2026/0904', dtable(
+        ["Matriculation number|mid", "Name on the remittance", "Amount|num", "Why it failed", "Owner|mid", "What resolves it"],
+        rows.map(function (r) {
+          return ['<span class="tnum">' + r[0] + '</span>', "<strong>" + r[1] + "</strong>",
+            '<span class="tnum">' + money(r[2]) + '</span>',
+            r[3] === "Withdrew after approval" ? pil('info', r[3]) : pil('bad', r[3]),
+            r[4] === "Registry" ? pil('grey', r[4]) : pil('grey', r[4]),
+            '<span class="sub2">' + r[5] + '</span>'];
+        }), 1000)) +
+
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+        btn('primary', 'Send the four to the Registry') + ' ' +
+        btn('ghost', 'Reverse the two withdrawals to the Fund') + ' ' +
+        btn('ghost', 'Export the suspense report') +
+      '</div>' +
+
+      note('info', 'Suspense is owned, not parked',
+        'Every row carries an office. A suspense account nobody owns is how money sits for a session and a student carries a debt they were never told about. This screen exists so that the figure on the Bursary dashboard has names behind it.');
+  }

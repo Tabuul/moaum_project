@@ -1,0 +1,297 @@
+  /* ══════════════════════════════════════════════════════════════════
+     NOTIFICATION CHANNELS, and MIGRATION FROM THE OLD PORTAL
+
+     Two configuration screens that belong to the same office and are
+     easy to under-build. Both are written around one idea: a message
+     that failed and a record that did not arrive are the same class of
+     problem — something the University believes happened, and did not.
+     ═════════════════════════════════════════════════════════════════ */
+
+  /* ── the four channels ───────────────────────────────────────── */
+
+  var CHANNELS = {
+    sms: {
+      label: "SMS", icon: "bell", vendor: "Termii",
+      alts: ["Termii", "Africa's Talking", "Twilio", "Infobip", "Bulk SMS Nigeria"],
+      state: "live", sent: 184206, ok: 96.4, cost: "&#8358;3.20", unit: "per page",
+      spend: "&#8358;589,459", why: "The only channel that reaches every student, including the ones with no data",
+      fields: [
+        ["Base URL", "https://api.ng.termii.com/api", "url"],
+        ["API key", "tm_live_••••••••••••4417", "secret"],
+        ["Sender ID", "MOAUM", "text"],
+        ["Route", "DND-enabled (route 2)", "select"],
+        ["Retries", "3, at 1 / 5 / 20 minutes", "text"],
+        ["Delivery report webhook", "/api/notify/sms/dlr", "url"]
+      ],
+      note: ["DND is the whole problem with SMS in Nigeria",
+        "A student on the Do-Not-Disturb list receives nothing on an ordinary route, and the gateway still reports it sent. " +
+        "The corporate route costs more per page and is the only one that reaches a DND number, which is why it is the default here and why the cost line is what it is."]
+    },
+    email: {
+      label: "E-mail", icon: "doc", vendor: "Amazon SES",
+      alts: ["Amazon SES", "SendGrid", "Postmark", "Mailgun", "University SMTP"],
+      state: "live", sent: 412884, ok: 99.1, cost: "&#8358;0.14", unit: "per message",
+      spend: "&#8358;57,804", why: "Everything with an attachment: receipts, statements, letters",
+      fields: [
+        ["Region", "eu-west-1", "select"],
+        ["Access key ID", "AKIA••••••••••7Q3D", "secret"],
+        ["Secret access key", "••••••••••••••••••••", "secret"],
+        ["From address", "no-reply@moaum.edu.ng", "text"],
+        ["Reply-to", "registry@moaum.edu.ng", "text"],
+        ["Bounce &amp; complaint webhook", "/api/notify/email/sns", "url"]
+      ],
+      note: ["SPF, DKIM and DMARC are configured, and that is why this channel works",
+        "A university that sends from an unauthenticated domain lands in spam, and a student who never saw the admission letter did not decline the offer &mdash; they never got it. " +
+        "DMARC is at <b>p=quarantine</b> and moves to <b>p=reject</b> once the last departmental mailing list is migrated."]
+    },
+    whatsapp: {
+      label: "WhatsApp", icon: "life", vendor: "Meta Cloud API",
+      alts: ["Meta WhatsApp Cloud API", "Termii WhatsApp", "Twilio WhatsApp", "360dialog"],
+      state: "pilot", sent: 21440, ok: 98.2, cost: "&#8358;4.80", unit: "per conversation",
+      spend: "&#8358;102,912", why: "Where students actually read. Templates only, outside the 24-hour window",
+      fields: [
+        ["Phone number ID", "10924••••••••3391", "text"],
+        ["Business account ID", "39118••••••••7204", "text"],
+        ["Permanent access token", "EAAG••••••••••••••••", "secret"],
+        ["Verify token", "••••••••••••", "secret"],
+        ["Webhook", "/api/notify/whatsapp/hook", "url"],
+        ["Approved templates", "6 &mdash; see below", "text"]
+      ],
+      note: ["Outside a 24-hour window, WhatsApp only carries an approved template",
+        "A free-text message to a student who has not written to you first will not be delivered. Every notification on this channel is therefore a template submitted to Meta and approved before it can be sent, " +
+        "which means a new notification type is a lead time, not a deployment."]
+    },
+    push: {
+      label: "Push", icon: "bell", vendor: "Firebase Cloud Messaging",
+      alts: ["Firebase Cloud Messaging", "OneSignal", "Expo Push"],
+      state: "off", sent: 0, ok: 0, cost: "Free", unit: "at this volume",
+      spend: "&#8358;0", why: "For the mobile app, once it ships. Cheapest channel and the least reliable",
+      fields: [
+        ["Project ID", "moaum-portal", "text"],
+        ["Service account JSON", "Not uploaded", "secret"],
+        ["APNs key (iOS)", "Not uploaded", "secret"],
+        ["Default topic", "all-students", "text"],
+        ["Collapse key", "By notification type", "text"],
+        ["Time to live", "72 hours", "text"]
+      ],
+      note: ["Push is never the only channel for anything that matters",
+        "A device can be off, reinstalled, or out of storage, and the notification is silently dropped. It is a convenience layer over SMS and e-mail, not a replacement for either &mdash; " +
+        "and the portal will not let a notification type be configured as push-only."]
+    }
+  };
+
+  var CH_ORDER = ["sms", "email", "whatsapp", "push"];
+
+  function chPill(state) {
+    return state === "live" ? pil('ok', 'Live')
+         : state === "pilot" ? pil('info', 'Pilot')
+         : pil('bad', 'Not configured');
+  }
+
+  /* which channel carries which notification */
+  var NOTIFY_MATRIX = [
+    ["Result published", 1, 1, 1, 1, "Every candidate in the released sets"],
+    ["Payment confirmed", 1, 1, 0, 1, "On settlement, never on redirect"],
+    ["Registration approved", 1, 1, 0, 1, "With the course form attached by e-mail"],
+    ["Clearance held", 1, 1, 1, 0, "With the office holding it named"],
+    ["Admission offer", 1, 1, 1, 0, "SMS first; the letter follows by e-mail"],
+    ["Identity card ready", 1, 0, 1, 1, "Collection point and hours"],
+    ["Examination timetable", 1, 1, 1, 1, "Seven days before, and again the night before"],
+    ["Library book overdue", 1, 1, 0, 1, "Daily until returned"],
+    ["Card reported lost", 1, 1, 0, 0, "To the holder, immediately"],
+    ["Password changed", 1, 1, 0, 0, "Security notice &mdash; cannot be turned off"],
+    ["Sign-in from a new device", 0, 1, 0, 1, "Security notice &mdash; cannot be turned off"],
+    ["Senate minute recorded", 0, 1, 0, 0, "To the offices in the chain, not to students"]
+  ];
+
+  function tChannels() {
+    var ch = CHANNELS[S.ch] || CHANNELS.sms;
+    var totalSpend = 589459 + 57804 + 102912;
+
+    return note('info', 'Four channels, and none of them is a fallback for the others',
+      'Each is configured here with its own credentials, its own delivery reporting and its own cost line. ' +
+      'A notification type names the channels it goes out on, and the portal sends on all of them &mdash; because a student who missed the SMS may read the e-mail, and one who has neither reads WhatsApp.') +
+
+    tiles([
+      ["Sent this session", vzNum(184206 + 412884 + 21440), null, "Across all channels"],
+      ["Delivered", "97.8%", "var(--green-ink)", "Confirmed by delivery report"],
+      ["Spend this session", "&#8358;" + vzNum(totalSpend), null, "Against a &#8358;900,000 budget"],
+      ["Channels live", "2 of 4", "var(--chrome)", "WhatsApp in pilot, push not configured"]
+    ]) +
+
+    panel('Channels', 'Choose one to configure', pbody(
+      '<div class="chgrid">' + CH_ORDER.map(function (k) {
+        var c = CHANNELS[k], on = k === (S.ch || "sms");
+        return '<button class="chcard' + (on ? ' is-on' : '') + '" data-ch="' + k + '">' +
+          '<span class="chcard__h">' + ico(c.icon, 16, on ? 'var(--chrome)' : 'var(--muted)', 2) +
+            '<b>' + c.label + '</b>' + chPill(c.state) + '</span>' +
+          '<span class="chcard__v">' + c.vendor + '</span>' +
+          '<span class="chcard__n tnum">' + (c.sent ? vzNum(c.sent) + ' sent &middot; ' + c.ok + '% delivered' : 'Nothing sent') + '</span>' +
+        '</button>';
+      }).join('') + '</div>')) +
+
+    panel(ch.label + ' &mdash; ' + ch.vendor, ch.why, pbody(
+      kvGrid([
+        ["Provider", ch.vendor],
+        ["State", ch.state === "live" ? "Live" : ch.state === "pilot" ? "Pilot &mdash; a named list only" : "Not configured"],
+        ["Sent this session", ch.sent ? vzNum(ch.sent) : "Nothing sent"],
+        ["Delivered", ch.sent ? ch.ok + "%" : "&mdash;"],
+        ["Cost", ch.cost + " " + ch.unit],
+        ["Spend this session", ch.spend]
+      ], 'grid--3') +
+      note('bad', ch.note[0], ch.note[1])) +
+      '<div class="rfbar">' +
+        '<button class="btn btn--primary btn--sm" data-mdl="rec:channel:' + (S.ch || "sms") + '">Configure ' + ch.label + '</button>' +
+        btn('ghost', 'Send a test message') +
+        btn('ghost', 'Rotate the key') +
+        btn('ghost', 'View the delivery log') +
+        '<span class="sub2">Credentials are held in the key store &mdash; written, never read back.</span>' +
+      '</div>') +
+
+    panel('Which channel carries what', 'A notification type names its channels; the portal sends on all of them',
+      dtable(["Notification", "SMS|mid", "E-mail|mid", "WhatsApp|mid", "Push|mid", "When it goes", "Action|num"],
+        NOTIFY_MATRIX.map(function (n, i) {
+          function cell(v) { return v ? tick(15, 'var(--green-ink)') : '<span class="sub2">&mdash;</span>'; }
+          return ["<strong>" + n[0] + "</strong>", cell(n[1]), cell(n[2]), cell(n[3]), cell(n[4]),
+            '<span class="sub2">' + n[5] + '</span>', recBtn('notify', i)];
+        })) +
+      recAdd('notify', 'New notification type')) +
+
+    panel('Delivery, last seven days', 'What was accepted, and what actually arrived',
+      dtable(["Channel", "Queued|mid", "Sent|mid", "Delivered|mid", "Failed|mid", "Rate|num"], [
+        ["<strong>SMS</strong>", '<span class="tnum">28,410</span>', '<span class="tnum">28,410</span>',
+          '<span class="tnum">27,388</span>', '<span class="tnum" style="color:var(--red-ink)">1,022</span>',
+          '<b class="tnum">96.4%</b>'],
+        ["<strong>E-mail</strong>", '<span class="tnum">61,204</span>', '<span class="tnum">61,204</span>',
+          '<span class="tnum">60,653</span>', '<span class="tnum">551</span>', '<b class="tnum">99.1%</b>'],
+        ["<strong>WhatsApp</strong>", '<span class="tnum">3,180</span>', '<span class="tnum">3,180</span>',
+          '<span class="tnum">3,123</span>', '<span class="tnum">57</span>', '<b class="tnum">98.2%</b>'],
+        ["<strong>Push</strong>", '<span class="tnum">0</span>', '<span class="tnum">0</span>',
+          '<span class="tnum">0</span>', '<span class="tnum">0</span>', '<span class="sub2">Not configured</span>']
+      ])) +
+
+    note('bad', 'A message the gateway accepted is not a message the student received',
+      'Every channel here reports two different things: that it took the message, and that it delivered it. The second number is the one that matters, and it is the one this screen shows. ' +
+      'The 1,022 SMS failures last week are 1,022 students who were not told something the University believes it told them.');
+  }
+
+  /* ── migration from the old portal ───────────────────────────── */
+
+  var MIG_SETS = [
+    ["Students", "students.csv", 28914, 28914, 0, "done", "Matched on matriculation number"],
+    ["Programmes &amp; departments", "structure.csv", 155, 155, 0, "done", "Mapped to the new faculty codes"],
+    ["Course catalogue", "courses.csv", 1284, 1284, 0, "done", "Owning department resolved by code"],
+    ["Registrations, 2023&ndash;2026", "registrations.csv", 486201, 484933, 1268, "review", "1,268 name a course that no longer exists"],
+    ["Results, 2016&ndash;2026", "results.csv", 1904226, 1901884, 2342, "review", "2,342 have no matching registration"],
+    ["Payments &amp; receipts", "payments.csv", 214880, 214880, 0, "done", "Reconciled against the bank statements"],
+    ["Staff records", "staff.csv", 2104, 2104, 0, "done", "Offices assigned by hand afterwards"],
+    ["Graduation lists, 2011&ndash;2026", "graduands.csv", 41320, 41320, 0, "done", "Both University names preserved"],
+    ["Photographs", "photos.zip", 26440, 24118, 2322, "review", "2,322 below the print resolution"],
+    ["Library loans, open", "loans.csv", 3844, 3844, 0, "done", ""],
+    ["Hostel allocations", "hostel.csv", 6120, 6120, 0, "queued", "Awaiting the 2026/2027 room map"],
+    ["Transcript requests, open", "transcripts.csv", 218, 0, 0, "queued", "To be migrated at cutover, not before"]
+  ];
+
+  function migPill(s) {
+    return s === "done" ? pil('ok', 'Loaded')
+         : s === "review" ? pil('bad', 'Rows rejected')
+         : pil('info', 'Queued');
+  }
+
+  function tMigration() {
+    var rows = MIG_SETS.reduce(function (a, m) { return a + m[2]; }, 0);
+    var ok = MIG_SETS.reduce(function (a, m) { return a + m[3]; }, 0);
+    var bad = MIG_SETS.reduce(function (a, m) { return a + m[4]; }, 0);
+
+    return note('info', 'Migration is a rehearsal, repeated, not an event',
+      'The old portal is loaded into the new one as often as it takes to get a clean run, into a staging database, with the same files and the same rules each time. ' +
+      'The cutover itself is then the run that happens to be last &mdash; which is the only way to know in advance how long it takes and what it breaks.') +
+
+    tiles([
+      ["Rows offered", vzNum(rows), null, "Across " + MIG_SETS.length + " files"],
+      ["Loaded", vzNum(ok), "var(--green-ink)", Math.round(ok / rows * 100) + "% of what was offered"],
+      ["Rejected", vzNum(bad), "var(--red-ink)", "Every one with a reason"],
+      ["Rehearsals so far", "4", null, "Last: 3 September, 6h 12m"]
+    ]) +
+
+    panel('Upload a file', 'CSV, or a zip of photographs', pbody(
+      '<div class="grid grid--3">' +
+        '<div class="field"><label for="mg-t">What this file is</label><select id="mg-t" class="ctl">' +
+          MIG_SETS.map(function (m) { return '<option>' + m[0] + '</option>'; }).join('') + '</select></div>' +
+        '<div class="field"><label for="mg-s">Source</label><select id="mg-s" class="ctl">' +
+          '<option>Old portal export (CSV)</option><option>Direct database extract</option>' +
+          '<option>Spreadsheet from a department</option><option>Zip of files</option></select></div>' +
+        '<div class="field"><label for="mg-m">Mode</label><select id="mg-m" class="ctl">' +
+          '<option>Validate only &mdash; write nothing</option><option>Load into staging</option>' +
+          '<option>Load into production (cutover)</option></select></div>' +
+      '</div>' +
+
+      '<div style="border:2px dashed var(--field);border-radius:10px;padding:26px;text-align:center;background:var(--bg)">' +
+        ico('box', 26, 'var(--faint)', 1.7) +
+        '<div style="font-weight:600;margin-top:8px">Drop the file here, or choose one</div>' +
+        '<div class="sub2">CSV up to 2 GB &middot; UTF-8 &middot; first row is the header</div>' +
+        '<div style="margin-top:12px;display:flex;gap:9px;justify-content:center;flex-wrap:wrap">' +
+          btn('ghost', 'Choose a file') +
+          '<button class="btn btn--ghost btn--sm" data-tpl="blank">Download a template</button>' +
+        '</div>' +
+      '</div>' +
+
+      note('bad', 'Validate first, and read the rejections before loading anything',
+        'A validate-only run writes nothing and produces the same rejection report a real load would. ' +
+        'Every rejected row is returned as a file you can open, correct and re-offer &mdash; the portal never silently drops a row, and never invents one to make a foreign key work.'))) +
+
+    panel('Files, and what happened to each',
+      vzNum(bad) + ' rows rejected across ' + MIG_SETS.filter(function (m) { return m[4]; }).length + ' files',
+      dtable(["What", "File", "Offered|mid", "Loaded|mid", "Rejected|mid", "State|mid", "Note", "Action|num"],
+        MIG_SETS.map(function (m, i) {
+          return ["<strong>" + m[0] + "</strong>", '<span class="sub2 tnum">' + m[1] + '</span>',
+            '<span class="tnum">' + vzNum(m[2]) + '</span>',
+            '<span class="tnum">' + vzNum(m[3]) + '</span>',
+            '<span class="tnum"' + (m[4] ? ' style="color:var(--red-ink);font-weight:700"' : '') + '>' + vzNum(m[4]) + '</span>',
+            migPill(m[5]), '<span class="sub2">' + m[6] + '</span>',
+            recBtn('migfile', i, 'Mapping') + " " +
+              (m[4] ? btn('urgent', 'Rejections') : btn('ghost', 'Report'))];
+        })) +
+      recAddIn('migfile', 'Add a file to the run',
+        '<span class="sub2">Every load is idempotent &mdash; re-offering the same file changes nothing.</span>')) +
+
+    panel('The order files must be loaded in', 'A row cannot reference something that is not there yet', pbody(
+      chainOf([
+        ["Structure", "155", "faculties, departments, programmes"],
+        ["Courses", "1,284", "each owned by a department"],
+        ["People", "31,018", "students and staff"],
+        ["Registrations", "486,201", "student &times; course &times; session"],
+        ["Results", "1,904,226", "one per registration", "hot"],
+        ["Payments", "214,880", "matched to students"],
+        ["Credentials", "41,320", "graduation and transcripts"]
+      ]) +
+      note('bad', 'The 2,342 orphaned results are the real work of this migration',
+        'They are marks with no matching registration &mdash; a student who sat a course the old system has no record of them registering for. ' +
+        'They cannot be loaded as they are, and they cannot be thrown away: each one is a mark on somebody&rsquo;s degree. ' +
+        'They go to the departments that own the courses, on paper, and come back as either a registration that was never recorded or a mark that was never earned.'))) +
+
+    panel('The rules every load obeys', '', pbody(
+      '<div class="grid grid--2">' +
+        '<div>' + idSteps([
+          ["done", "Validate against the same constraints as production",
+            "The staging database has every check, unique index and foreign key the live one has. A row that would fail in production fails here, months earlier."],
+          ["done", "Reject, never coerce",
+            "A malformed date is not guessed. A missing matriculation number is not generated. A course code that does not exist is not created to make the row fit."],
+          ["done", "Every load is idempotent",
+            "Re-offering the same file changes nothing. This is what makes a rehearsal repeatable and a partial failure recoverable."]
+        ]) + '</div>' +
+        '<div>' + idSteps([
+          ["done", "The old identifier is kept",
+            "Every migrated row carries the primary key it had in the old portal, so a dispute in 2031 can be traced back to what the old system actually held."],
+          ["now", "Nothing is deleted at cutover",
+            "The old portal is frozen read-only, not switched off, and stays that way for a full session. The first time somebody says the new figure is wrong, the old one must still be readable."],
+          ["todo", "Reconcile on counts before opening the doors",
+            "Students, registrations per session, results per session, money collected per session — each counted in both systems and signed off by the office that owns it, not by ICT."]
+        ]) + '</div>' +
+      '</div>')) +
+
+    note('bad', 'One decision has to be made before the cutover date is set',
+      'How many sessions of history come across. Ten years of results is 1.9 million rows and the awkward ones are all in the oldest years, where the old portal itself was inconsistent. ' +
+      'Migrating five years instead would halve the work and leave the Registry answering older transcript requests out of the frozen system by hand. ' +
+      'That is a Registrar&rsquo;s decision about service, not an ICT decision about data &mdash; and it is open.');
+  }

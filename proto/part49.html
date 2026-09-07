@@ -1,0 +1,289 @@
+
+  /* ══ NELFUND — THE TWO DESKS ════════════════════════════════════════
+     The Bursary paper gives NELFUND to two officers, and it is worth
+     noticing that it gives them different jobs rather than the same job
+     twice:
+
+       · the NELFUND Desk Officer in the Bursary views and reports, and
+         manages applicant status;
+       · the ICT NELFUND Desk Officer obtains the applicant list,
+         generates the approved and the not-approved lists, and builds
+         the student-facing dashboard, the wallet, the payment from the
+         wallet, the top-up and the refund request.
+
+     Read together they describe one thing: THE FUND DECIDES, THE
+     UNIVERSITY RECORDS, AND THE STUDENT MUST BE ABLE TO SEE WHICH.
+
+     Two rules follow and both are in the screen.
+
+     A student who was not approved must be told so, by name, and told
+     it early. The paper asks for a list of not-approved students as a
+     first-class output, not as the residue of the approved list, and
+     that is right: a student who believes their fees are covered and
+     is wrong finds out at registration, when it is too late to arrange
+     anything else.
+
+     And the wallet outlives the loan. Requirement 9 asks that wallets
+     stay active for the whole academic life and keep the complete
+     history of credits, top-ups, deductions, refunds, balance movements
+     and sponsor contributions. A wallet closed at the end of a session
+     is a wallet whose history has to be reconstructed from receipts the
+     next time anyone asks.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var NLS_TOTALS = { applied: 1284, approved: 716, refused: 402, pending: 166 };
+
+  var NLS_REFUSED = [
+    ["Not enrolled in the session applied for", 148, "The Fund checks against our register. A student on suspension applied."],
+    ["BVN does not match the name on the register", 96,
+      "Almost always a name order or a middle name. Correctable, and the student is told exactly which field to fix."],
+    ["Income assessment above the threshold", 88, "The Fund&rsquo;s decision. The University does not see the assessment."],
+    ["Duplicate application", 41, "Two applications, one student. The first stands."],
+    ["Institution code wrong on the application", 29,
+      "Applied under the old Benue State University code. Recoverable &mdash; the Fund reissues on correction."]
+  ];
+
+  var NLS_WALLET = [
+    ["2026/2027", "credit", "NELFUND disbursement, batch NLF/2026/03", 45000, "Loan"],
+    ["2026/2027", "debit",  "Applied to INV-2026-04412, second instalment", -45000, "Fees"],
+    ["2025/2026", "credit", "NELFUND disbursement, batch NLF/2025/07", 90000, "Loan"],
+    ["2025/2026", "debit",  "Applied to INV-2025-03980, full session", -90000, "Fees"],
+    ["2025/2026", "credit", "Top-up by the student, Remita RRR 280194330912", 12000, "Own funds"],
+    ["2025/2026", "debit",  "Applied to hostel charge HST-2025-0771", -12000, "Fees"],
+    ["2024/2025", "credit", "Benue State scholarship, third year", 60000, "Sponsor"],
+    ["2024/2025", "debit",  "Applied to INV-2024-02210", -55000, "Fees"],
+    ["2024/2025", "refund", "Refunded to the student, overpayment", -5000, "Refund"]
+  ];
+
+  var NLS_KIND = {
+    credit: ["ok", "Credit"], debit: ["info", "Applied"], refund: ["bad", "Refunded"]
+  };
+
+  function nlsBalance() {
+    return NLS_WALLET.reduce(function (a, r) { return a + r[3]; }, 0);
+  }
+  function nlsMoved() {
+    return NLS_WALLET.reduce(function (a, r) { return a + Math.abs(r[3]); }, 0);
+  }
+
+  function tNelStatus() {
+    var t = NLS_TOTALS;
+    var refusedTotal = NLS_REFUSED.reduce(function (a, r) { return a + r[1]; }, 0);
+    var recoverable = NLS_REFUSED[1][1] + NLS_REFUSED[4][1];
+
+    return note('info', 'The Fund decides, the University records, and the student must be able to see which',
+      'Nothing on this screen is the University&rsquo;s decision. What is the University&rsquo;s responsibility is that a student ' +
+      'knows where they stand <b>before</b> registration rather than at it &mdash; and that the ones who were refused for a reason ' +
+      'they can fix are told which field to fix, by name, rather than left to discover it.') +
+
+    tiles([
+      ["Applied", vzNum(t.applied), null, "2026/2027 session"],
+      ["Approved", vzNum(t.approved), "var(--green-ink)", money(89910000) + " received"],
+      ["Not approved", vzNum(t.refused), "var(--red-ink)", "Each told, by name"],
+      ["Still with the Fund", vzNum(t.pending), null, "No decision yet &mdash; and told that too"]
+    ]) +
+
+    note('bad', recoverable + ' of the ' + refusedTotal + ' refusals can be fixed by the student',
+      'A refusal for a wrong institution code or a name that does not match a BVN is not a judgement about anybody&rsquo;s means &mdash; ' +
+      'it is a typing error, and the Fund reissues on correction. Reporting it in the same column as an income assessment above ' +
+      'the threshold loses that difference, and with it loses ' + recoverable + ' students their fees.') +
+
+    panel('The three lists the ICT desk generates', 'Requirement 6 of the Bursary paper', pbody(
+      dtable(['List', 'Rows|mid', 'Who reads it', 'What it is for|num'], [
+        ['<strong>All applicants</strong>', '<b class="tnum">' + vzNum(t.applied) + '</b>',
+          'Bursary and ICT',
+          '<span class="sub2">The population. Everything else is a filter of it, so it is generated first and once.</span>'],
+        ['<strong>Approved</strong>', '<b class="tnum" style="color:var(--green-ink)">' + vzNum(t.approved) + '</b>',
+          'Bursary &mdash; matched to remittances',
+          '<span class="sub2">Each row is a wallet to be credited when the money arrives. It is not a receipt: approval and disbursement are different events and the screen keeps them apart.</span>'],
+        ['<strong>Not approved</strong>', '<b class="tnum" style="color:var(--red-ink)">' + vzNum(t.refused) + '</b>',
+          'The student, first',
+          '<span class="sub2">Named, with the reason and whether it can be corrected. A first-class list, not the residue of the approved one.</span>']
+      ], 820))) +
+
+    panel('Why the ' + refusedTotal + ' were refused', 'And which of them is the University&rsquo;s to help with', dtable(
+      ['Reason', 'Students|mid', 'Correctable|mid', 'What the student is told|num'],
+      NLS_REFUSED.map(function (r) {
+        var fixable = /BVN|Institution code/.test(r[0]);
+        return ['<strong>' + r[0] + '</strong>',
+          '<b class="tnum">' + r[1] + '</b>',
+          fixable ? pil('ok', 'Yes') : pil('info', 'No'),
+          '<span class="sub2">' + r[2] + '</span>'];
+      }), 940)) +
+
+    '<div class="grid grid--2">' +
+      panel('The wallet, over four sessions', 'Requirement 9: it outlives the loan', pbody(
+        '<div class="sub2" style="padding-bottom:9px">ADAMU, Grace Mwuese &middot; MOAUM/CSC/23/1487. Every credit, top-up, ' +
+        'deduction, refund and sponsor contribution since the wallet was opened. It is not closed at the end of a session, ' +
+        'because a wallet that closes is a history somebody has to rebuild from receipts.</div>' +
+        dtable(['Session|mid', 'What happened', 'Source|mid', 'Amount|num'],
+          NLS_WALLET.map(function (r) {
+            var k = NLS_KIND[r[1]];
+            return ['<span class="tnum sub2">' + r[0] + '</span>',
+              r[2],
+              pil(k[0], r[4]),
+              '<b class="tnum" style="color:' + (r[3] > 0 ? 'var(--green-ink)' : 'inherit') + '">' +
+                (r[3] > 0 ? '+' : '&minus;') + money(Math.abs(r[3])) + '</b>'];
+          }).concat([[
+            '<b>Balance</b>', '<span class="sub2">' + money(nlsMoved()) + ' has moved through it</span>', '',
+            '<b class="tnum">' + money(nlsBalance()) + '</b>'
+          ]]), 700))) +
+
+      panel('What a student may do with a wallet', 'The ICT desk&rsquo;s four functions', pbody(idSteps([
+        ["done", "See their status without asking anybody",
+          "Approved, not approved with the reason, or still with the Fund. The third is a real answer and is shown as one rather than as an empty space."],
+        ["done", "Pay fees from the wallet",
+          "One action, no bank transfer, no gateway. The money is already here and the only thing between it and the invoice is a click."],
+        ["now", "Top up when the loan does not cover the whole fee",
+          "A loan that covers " + money(45000) + " of a " + money(135000) + " session leaves a balance. The student adds to the same wallet rather than paying part at a gateway and part from the wallet and reconciling the two."],
+        ["todo", "Request a refund",
+          "Of an overpayment, or of a loan disbursed after the student had already paid. It is a request with an approval and a trail, not a transfer &mdash; and it is the one action on this list that another office has to agree to."]
+      ]))) +
+    '</div>' +
+
+    panel('Utilised, unutilised, and the difference the Fund asks about',
+      '<span class="sub2">Reconciliation, requirement 6</span>', pbody(
+      dtable(['Measure', 'Amount|num', 'What it means|num'], [
+        ["Received from the Fund", '<b class="tnum">' + money(89910000) + '</b>',
+          '<span class="sub2">Three batches, all matched to named students</span>'],
+        ["Applied to invoices", '<span class="tnum">' + money(84120000) + '</span>',
+          '<span class="sub2">Utilised. The University has been paid and the student owes that much less</span>'],
+        ["Sitting on wallets, unapplied", '<b class="tnum" style="color:var(--chrome)">' + money(5539000) + '</b>',
+          '<span class="sub2">Unutilised, and still the student&rsquo;s. Held, not spent &mdash; a student who withdraws takes it with them</span>'],
+        ["Reversed to the Fund", '<span class="tnum">' + money(251000) + '</span>',
+          '<span class="sub2">Two students withdrew before the money was applied</span>']
+      ], 760) +
+      '<div class="sub2" style="padding-top:9px">These four add up, and they are meant to be read as one sentence: ' +
+      money(89910000) + ' arrived, ' + money(84120000) + ' has settled invoices, ' + money(5539000) + ' is still on wallets ' +
+      'and ' + money(251000) + ' went back. <b>Unutilised is not idle money.</b> It belongs to named students and appears on ' +
+      'their own screen as theirs, which is the difference between holding it and sitting on it.</div>')) +
+
+    note('ok', 'Access to this is restricted, and the restriction is in the database',
+      'The paper asks that NELFUND transactions be reachable only by authorised personnel. That is a grant on two offices &mdash; ' +
+      'the NELFUND Desk Officer and the Director of ICT &mdash; and a row-level policy rather than a hidden menu item. A menu ' +
+      'that hides a screen still serves it to anyone who types the address.');
+  }
+
+
+  /* ══ FEE SETUP ══════════════════════════════════════════════════════
+     Requirements 3, 4 and 5 of the students' accounts paper, which are
+     one requirement seen from three sides.
+
+       3. a fee is set up against session, semester, faculty, department,
+          programme, level and student category, and a new session
+          inherits the last one rather than being retyped;
+       4. a fee item already paid for a session and semester cannot be
+          paid again without an authorised override;
+       5. a student cannot pay for a session or semester they were not
+          admitted, registered or enrolled in.
+
+     4 and 5 are the same rule in both directions: A CHARGE MUST BE ONE
+     A STUDENT CAN ACTUALLY OWE. A duplicate is money the University
+     will have to refund; a payment for a session the student was never
+     in is money nobody can allocate, and it is the commonest cause of
+     the suspense account that reconciliation exists to empty.
+
+     Both refusals are worth more than they look, because both are
+     refusals of money. A system that takes a payment it should not have
+     taken has not been generous — it has created work for the refund
+     desk and a balance the student cannot understand.
+     ═══════════════════════════════════════════════════════════════════ */
+
+  var FS_DIMS = [
+    ["Session", "2026/2027", "Every charge belongs to one session. Nothing is timeless."],
+    ["Semester", "First", "Some charges are per semester and some are per session, and the schedule says which."],
+    ["Faculty", "Science", "A faculty may carry a charge no other faculty carries."],
+    ["Department", "Mathematics &amp; Computer Science", "Below faculty, because laboratory charges are departmental."],
+    ["Programme", "B.Sc. Computer Science", "Professional programmes are priced on their own."],
+    ["Level", "300", "Fresh-student charges do not repeat, and final-year charges do not start early."],
+    ["Category", "Returning", "Fresh, returning, postgraduate, part-time, sandwich. The largest single differentiator."]
+  ];
+
+  var FS_ITEMS = [
+    ["Tuition", 90000, true, "session", "Returning, 300 level"],
+    ["Laboratory &mdash; Computer Science", 18000, true, "session", "Departmental"],
+    ["Development levy", 15000, true, "session", "All students"],
+    ["Examination", 4000, true, "semester", "Per semester"],
+    ["Library", 3000, true, "session", "All students"],
+    ["Sports and games", 2000, true, "session", "All students"],
+    ["Medical", 3000, true, "session", "All students"],
+    ["Identity card", 2000, false, "once", "Fresh students only &mdash; not charged here"],
+    ["Hostel accommodation", 40000, false, "session", "Optional &mdash; charged on allocation, never on the schedule"]
+  ];
+
+  function fsTotal() {
+    return FS_ITEMS.filter(function (r) { return r[2]; }).reduce(function (a, r) { return a + r[1]; }, 0);
+  }
+
+  function tFeeSetup() {
+    var charged = FS_ITEMS.filter(function (r) { return r[2]; });
+
+    return note('info', 'A charge must be one the student can actually owe',
+      'The seven dimensions below are not a filing system. They are what decides whether a particular student, in a particular ' +
+      'session, at a particular level, owes a particular thing &mdash; and a charge that cannot be resolved that precisely ends up ' +
+      'billed to somebody it does not apply to. The two refusals further down are the same rule read backwards: a payment for ' +
+      'a fee already settled, and a payment for a session the student was never enrolled in, are both refused.') +
+
+    panel('What a fee is set against', 'Requirement 3 &middot; seven dimensions, all of them required', dtable(
+      ['Dimension', 'This schedule|mid', 'Why it is a dimension and not a note|num'],
+      FS_DIMS.map(function (r) {
+        return ['<strong>' + r[0] + '</strong>',
+          '<span class="tnum">' + r[1] + '</span>',
+          '<span class="sub2">' + r[2] + '</span>'];
+      }), 880)) +
+
+    tiles([
+      ["Session charge", money(fsTotal()), null, charged.length + " items on this schedule"],
+      ["Carried from 2025/2026", String(FS_ITEMS.length), null, "Inherited, then amended"],
+      ["Changed this session", "2", "var(--chrome)", "Tuition +&#8358;6,000, laboratory +&#8358;3,000"],
+      ["Schedules on file", "31", null, "Back to 2011, none deleted"]
+    ]) +
+
+    '<div class="grid grid--2">' +
+      panel('The schedule', 'B.Sc. Computer Science &middot; 300 level &middot; returning', dtable(
+        ['Item', 'Amount|num', 'Charged|mid', 'Basis|num'],
+        FS_ITEMS.map(function (r) {
+          return [(r[2] ? '<strong>' : '<span class="sub2">') + r[0] + (r[2] ? '</strong>' : '</span>'),
+            (r[2] ? '<b class="tnum">' : '<span class="tnum sub2">') + money(r[1]) + (r[2] ? '</b>' : '</span>'),
+            r[2] ? pil('ok', 'Yes') : pil('info', 'No'),
+            '<span class="sub2">' + r[4] + '</span>'];
+        }).concat([[
+          '<b>Total</b>', '<b class="tnum">' + money(fsTotal()) + '</b>', '',
+          '<span class="sub2">Per session, examination per semester</span>'
+        ]]), 620)) +
+
+      panel('A new session inherits the last one', 'Requirement 3, and the reason it is there', pbody(idSteps([
+        ["done", "The 2025/2026 schedule is copied whole into 2026/2027",
+          "Thirty-one lines across every programme and level. Nobody retypes them, because retyping thirty-one lines produces a typing error and the error is a wrong invoice."],
+        ["done", "The copy is a draft until Council approves it",
+          "Inheriting is not approving. The new session's schedule exists so it can be amended and put up, not so it can quietly take effect."],
+        ["now", "Only the changes are made",
+          "Two lines this session: tuition and the Computer Science laboratory charge. The other twenty-nine are unchanged and are recorded as unchanged rather than as re-entered."],
+        ["todo", "The old version is closed, not replaced",
+          "Every invoice ever raised records which version priced it, which is what makes a 2024 invoice explicable in 2030."]
+      ]))) +
+    '</div>' +
+
+    panel('Two payments this schedule refuses', 'Requirements 4 and 5 &mdash; the same rule in both directions', pbody(
+      '<div class="fs__ref">' +
+        '<div class="r">' +
+          '<div class="h">' + ico('alert', 17, 'var(--red-ink)', 2) + '<b>The same fee item, twice</b></div>' +
+          '<div class="sub2">MOAUM/CSC/23/1487 paid the examination fee for 2026/2027 first semester on 21 August, ' +
+          'reference RRR&nbsp;280194330912. A second attempt at the same item, same session, same semester is refused ' +
+          'before a reference is generated &mdash; not after the money has moved.</div>' +
+          '<div class="sub2"><b>Overridable, by a named officer, with a reason recorded.</b> There are real cases: a reversed ' +
+          'payment, a charge raised twice in error. What there is not is a silent second charge.</div>' +
+        '</div>' +
+        '<div class="r">' +
+          '<div class="h">' + ico('alert', 17, 'var(--red-ink)', 2) + '<b>A session the student was not in</b></div>' +
+          '<div class="sub2">The same student cannot pay 2022/2023 fees. She was admitted in 2023. There is no schedule ' +
+          'that applies to her for that session, so there is nothing to price the payment against.</div>' +
+          '<div class="sub2">This is where suspense balances come from. Money arrives with a reference nobody can ' +
+          'allocate, sits in a clearing account, and turns up two years later in a reconciliation as a figure with no owner. ' +
+          '<b>Refusing it at the door is cheaper than every other way of dealing with it.</b></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="sub2" style="padding-top:4px">Both refusals name the rule they rest on and what the student should do ' +
+      'instead. A refusal that says only &ldquo;payment not allowed&rdquo; sends a person to the Bursary counter, and the counter ' +
+      'is where this office spends the time it does not have.</div>'));
+  }
