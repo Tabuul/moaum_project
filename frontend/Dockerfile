@@ -18,6 +18,9 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ ./
+# public/ holds no files yet, and git keeps no empty folders; the runtime
+# stage copies it, so it has to exist.
+RUN mkdir -p public
 # IBM Plex is fetched here, at build time, and served from this image —
 # the portal never calls Google Fonts from a browser.
 RUN npm run build
