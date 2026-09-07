@@ -48,6 +48,18 @@ const TYPES = {
 
 /* Ask the database what it is. Uses psql, which is in the image because
    the migrations need it — one tool, not two. */
+/* What a failed psql says is shown on a public URL. execFile puts the whole
+   command line — the connection string, password included — into
+   err.message, so only psql's own stderr is reported, and any connection
+   string that appears anywhere in it is redacted. */
+function redact(text) {
+  const t = String(text || "")
+    .replace(/postgres(?:ql)?:\/\/[^\s'"]+/g, "postgres://[redacted]")
+    .replace(/^Command failed:.*$/m, "")
+    .trim();
+  return t || "psql failed";
+}
+
 function dbState(cb) {
   if (!process.env.DATABASE_URL) {
     return cb({ reachable: false, why: "DATABASE_URL is not set on this service" });
@@ -56,8 +68,8 @@ function dbState(cb) {
     "SELECT (SELECT count(*) FROM public.schema_migration) || '|' || " +
     "coalesce((SELECT max(filename) FROM public.schema_migration), '-') || '|' || " +
     "coalesce((SELECT state FROM admissions.session_policy WHERE session = '2025/2026'), '-')"],
-    { timeout: 4000 }, function (err, out) {
-      if (err) { return cb({ reachable: false, why: String(err.message || err).trim() }); }
+    { timeout: 4000 }, function (err, out, stderr) {
+      if (err) { return cb({ reachable: false, why: redact(stderr || err.message || err) }); }
       const p = String(out).trim().split("|");
       cb({ reachable: true, migrations: Number(p[0]) || 0, latest: p[1],
            admissionSettings2025_2026: p[2] });
