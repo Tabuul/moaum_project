@@ -58,6 +58,31 @@ That last one is the point. A migration edited after it has been applied leaves 
 
 `check.sql` is **not** run on deployment. It creates people, policies and credentials and deliberately tampers with an audit row; it belongs in CI against a throwaway database. What runs after a real deployment is `db/verify.sql`, which only reads — and which asserts, on every deploy, that no application role holds `DELETE` anywhere, that nothing may write to `audit.*`, and that **an unattributed write is still refused**. That last property is the one the whole design rests on, so it is checked rather than assumed to have survived.
 
+## Getting this onto GitHub
+
+The repository lives at **https://github.com/Tabuul/moaum_project**.
+
+From a clone of the bundle:
+
+```bash
+git clone moaumpp.bundle moaum_project
+cd moaum_project
+git remote set-url origin https://github.com/Tabuul/moaum_project.git
+git push -u origin main
+```
+
+If GitHub created the repository with a README or a licence, that first push is
+rejected because the two histories are unrelated. The repository is new and the
+only thing in it is GitHub's own generated file, so the honest fix is to replace
+it:
+
+```bash
+git push -u origin main --force
+```
+
+Use `--force` **only** on this first push, and only while the repository holds
+nothing but GitHub's generated files. After that it would discard somebody's work.
+
 ## Deploying on Railway
 
 Two services in one project.
