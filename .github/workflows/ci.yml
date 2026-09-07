@@ -182,7 +182,7 @@ jobs:
       # recorded, a list-kind contradiction refused whole with a remedy.
       - name: Build and test
         working-directory: api
-        run: ./mvnw -B -ntp verify
+        run: chmod +x mvnw && ./mvnw -B -ntp verify
 
   # ── the frontend: type-checks and builds ──────────────────────────────
   frontend:
