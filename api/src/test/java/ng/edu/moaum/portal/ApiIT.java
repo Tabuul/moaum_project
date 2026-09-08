@@ -72,6 +72,15 @@ class ApiIT {
         assertThat(r.getBody().get("actorId")).isEqualTo(registrar.toString());
         assertThat(r.getBody().get("activeOffice")).isEqualTo("academic");
         assertThat(r.getBody().get("offices")).isEqualTo(List.of("registrar", "academic"));
+        /* the menu counts: a map of item id to what waits there, every value a count or the "!" mark */
+        assertThat(r.getBody().get("waiting")).isInstanceOf(Map.class);
+        Map<?, ?> waiting = (Map<?, ?>) r.getBody().get("waiting");
+        waiting.forEach((item, value) -> {
+            assertThat(String.valueOf(item)).startsWith("t/");
+            assertThat(String.valueOf(value)).matches("[1-9][0-9]*|!");
+        });
+        /* the registrar exists without an account, so at least one person waits on Users & roles */
+        assertThat(waiting.keySet().stream().map(String::valueOf)).contains("t/users");
     }
 
     @Test

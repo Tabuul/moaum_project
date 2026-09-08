@@ -30,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 class IamController {
 
     private final PersonService people;
+    private final WaitingRepository waiting;
 
-    IamController(PersonService people) {
+    IamController(PersonService people, WaitingRepository waiting) {
         this.people = people;
+        this.waiting = waiting;
     }
 
     /** The current principal: who, acting as what, with which offices available. */
@@ -55,6 +57,8 @@ class IamController {
             me.put("name", null);
             me.put("staffNumber", null);
         }
+        /* what waits in each queue, by menu item: the menu draws these, and nothing invented */
+        me.put("waiting", waiting.waiting());
         if (authentication instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken t) {
             me.put("sessionId", t.getToken().getClaimAsString("sid"));
         }

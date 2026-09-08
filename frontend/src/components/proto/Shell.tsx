@@ -77,13 +77,17 @@ export interface Me {
   name?: string | null;
   staffNumber?: string | null;
   sessionId?: string | null;
+  /** what waits in each queue, by menu item id: the count, or "!" where an act is needed (iam/me) */
+  waiting?: Record<string, string> | null;
 }
 
-function navWaiting(g: MenuGroup): number {
+/* the prototype drew its counts as fixtures; the portal draws what the API says is waiting, and nothing else */
+function navWaiting(g: MenuGroup, waiting: Record<string, string>): number {
   let n = 0;
   for (const it of g.items) {
-    if (!it.badge) continue;
-    n += /^\d+$/.test(it.badge) ? parseInt(it.badge, 10) : 1;
+    const badge = waiting[it.id];
+    if (!badge) continue;
+    n += /^\d+$/.test(badge) ? parseInt(badge, 10) : 1;
   }
   return n;
 }
@@ -101,6 +105,7 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
   const [said, setSaid] = useState<string | null>(null);
   const office = me?.activeOffice ?? null;
   const menu = (office && MENUS[office]) || FALLBACK;
+  const waiting = me?.waiting ?? {};
   const current = route === "r/academic" ? menu.home : route;
   const [t0, t1] = TITLES[current] ?? TITLES[route] ?? ["", ""];
   const label = roleLabel(office);
@@ -171,12 +176,12 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
           <div style={{ overflowY: "auto", flexGrow: 1, paddingBottom: 8 }}>
             {menu.groups.map((g) => {
               const open = isOpen(g);
-              const waiting = navWaiting(g);
+              const folded = navWaiting(g, waiting);
               return (
                 <div key={g.name}>
                   <button className="nav__gh" aria-expanded={open ? "true" : "false"} onClick={() => setNavg({ ...navg, [g.name]: !open })}>
                     <span className="gname">{g.name}</span>
-                    {!open && waiting ? <span className="gcount">{waiting}</span> : null}
+                    {!open && folded ? <span className="gcount">{folded}</span> : null}
                     <svg className="gchev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5 9l7 7 7-7" />
                     </svg>
@@ -188,7 +193,7 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
                           <>
                             <Ico name={it.icon} size={17} />
                             <span>{it.label}</span>
-                            {it.badge ? <span className="nav__badge">{it.badge}</span> : null}
+                            {waiting[it.id] ? <span className="nav__badge">{waiting[it.id]}</span> : null}
                           </>
                         );
                         const isCurrent = current === it.id ? "page" : undefined;
