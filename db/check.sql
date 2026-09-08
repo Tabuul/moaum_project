@@ -1744,16 +1744,16 @@ END $$;
 
 -- ── 103. a course with no sheet is unpublished, not unknown (V028) ──
 DO $$
-DECLARE st uuid; total int; unknown int; leaked int;
+DECLARE st uuid; v_total int; v_unknown int; v_leaked int;
 BEGIN
     SELECT id INTO st FROM people.student WHERE surname = 'CHECKSTUDENT';
     SELECT count(*), count(*) FILTER (WHERE published IS NULL),
            count(*) FILTER (WHERE NOT published AND (ca IS NOT NULL OR exam IS NOT NULL OR total IS NOT NULL OR grade IS NOT NULL))
-      INTO total, unknown, leaked
+      INTO v_total, v_unknown, v_leaked
       FROM assessment.student_results(st);
     PERFORM pg_temp.assert('A registered course with no published sheet reads as unpublished, never as unknown, and carries no mark',
-        total >= 1 AND unknown = 0 AND leaked = 0,
-        format('%s rows, %s with published NULL, %s unpublished rows carrying a mark', total, unknown, leaked));
+        v_total >= 1 AND v_unknown = 0 AND v_leaked = 0,
+        format('%s rows, %s with published NULL, %s unpublished rows carrying a mark', v_total, v_unknown, v_leaked));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

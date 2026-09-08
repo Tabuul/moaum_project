@@ -52,6 +52,15 @@ final class ItSupport {
     }
 
     @SuppressWarnings("rawtypes")
+    ResponseEntity<List> callList(String token, HttpMethod method, String path, Object body) {
+        RestClient.RequestBodySpec spec = client.method(method).uri(path)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header("X-Reason", "integration test")
+                .contentType(MediaType.APPLICATION_JSON);
+        return (body == null ? spec : spec.body(body)).retrieve().toEntity(List.class);
+    }
+
+    @SuppressWarnings("rawtypes")
     ResponseEntity<List> getList(String token, String path) {
         return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(List.class);
     }

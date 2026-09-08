@@ -174,7 +174,7 @@ class StudentPortalIT {
 
         // the services (V027): the department gives a slot and marks the register, and the student sees both
         UUID offering = offerings.get(0);
-        assertThat(it.call(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/slots",
+        assertThat(it.callList(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/slots",
                 Map.of("weekday", 3, "startsAt", "08:00", "endsAt", "10:00", "venue", "LT 2")).getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> marked = it.call(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/attendance",
                 Map.of("heldOn", "2090-10-01", "present", List.of(student)));
