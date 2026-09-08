@@ -190,7 +190,33 @@ class ApplicantIT {
         }
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("stage")).isEqualTo(7);
 
+        // every act above queued a notice on the record, and the applicant sees them on their own dashboard (V025)
+        List<Map<String, Object>> notices = (List<Map<String, Object>>) it.get(token, "/api/v1/applicant/me").getBody().get("notices");
+        assertThat(notices.size()).isGreaterThanOrEqualTo(10);
+        assertThat(notices.stream().map(n -> String.valueOf(n.get("subject"))).toList()).contains("Your place is held", "Your screening slip is ready");
+        assertThat(notices.stream().map(n -> String.valueOf(n.get("state"))).distinct().toList()).containsExactly("QUEUED");
+
+        // a forgotten password: the same answer for any identifier; the link goes out as a notice, kept as a hash, used once
+        assertThat(post("/api/v1/applicant/forgot", Map.of("identifier", "nobody-" + jamb + "@example.com")).getStatusCode().value()).isEqualTo(202);
+        assertThat(post("/api/v1/applicant/forgot", Map.of("identifier", appNo)).getStatusCode().value()).isEqualTo(202);
+        String body = jdbc.sql("""
+                SELECT n.body FROM platform.notice n JOIN admissions.application a ON a.id = n.about_id
+                 WHERE a.application_no = :no AND n.channel = 'EMAIL' AND n.subject LIKE 'Reset%' ORDER BY n.created_at DESC LIMIT 1
+                """).param("no", appNo).query(String.class).single();
+        String resetToken = body.replaceAll("(?s).*token=([0-9a-f]+).*", "$1");
+        assertThat(resetToken).hasSize(48);
+        assertThat(post("/api/v1/applicant/reset", Map.of("token", resetToken, "password", "short")).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> reset = post("/api/v1/applicant/reset", Map.of("token", resetToken, "password", "a brand new password"));
+        assertThat(reset.getStatusCode().value()).as(String.valueOf(reset.getBody())).isEqualTo(200);
+        // used once
+        assertThat(post("/api/v1/applicant/reset", Map.of("token", resetToken, "password", "another new password")).getStatusCode().value()).isEqualTo(422);
+        // the old password no longer signs in, the new one does, and the old session is ended
+        assertThat(post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", "a long enough password")).getStatusCode().value()).isEqualTo(422);
+        assertThat(post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", "a brand new password")).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(token, "/api/v1/applicant/me").getStatusCode().value()).isEqualTo(401);
+        String fresh = String.valueOf(reset.getBody().get("token"));
+
         // the applicant's token reaches nothing of the office's
-        assertThat(it.get(token, PATH + "/applicants").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(fresh, PATH + "/applicants").getStatusCode().value()).isEqualTo(403);
     }
 }

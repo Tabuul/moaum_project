@@ -44,6 +44,18 @@ export function Dashboard({ a }: { a: Application }) {
           ]} />
         </Panel>
       </TwoCol>
+      <Panel title="Notices sent to you" right={a.notices.length ? `${a.notices.length} · email and SMS` : "none yet"}>
+        {a.notices.length ? (
+          <DTable cols={["When|mid", "Notice", "Channel|mid", "Status|num"]} rows={a.notices.map((n) => [
+            <span className="tnum sub2" key="w">{when(n.created_at)}</span>,
+            <Two key="n" a={n.subject} b={n.body} />,
+            <span className="sub2" key="c">{n.channel === "SMS" ? `SMS · ${n.recipient}` : `Email · ${n.recipient}`}</span>,
+            n.state === "SENT" ? <Pil kind="ok" key="s">Sent</Pil> : n.state === "FAILED" ? <Pil kind="bad" key="s">Not delivered</Pil> : <Pil kind="info" key="s">Waiting to be sent</Pil>,
+          ])} />
+        ) : (
+          <PBody><div className="sub2">Every notice the portal sends you about this application is listed here as well, so nothing depends on a message reaching your phone.</div></PBody>
+        )}
+      </Panel>
     </>
   );
 }

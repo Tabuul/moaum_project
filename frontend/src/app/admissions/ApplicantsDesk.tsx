@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { CLEARANCE_ITEMS, DOCUMENT_KINDS, STAGES, type Application } from "@/lib/applicant";
+import { BASES, CLEARANCE_ITEMS, DOCUMENT_KINDS, STAGES, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -101,7 +101,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           num(x.utmeScore), (x.engGrade as string) ?? null, num(x.engPoint), (x.mathsGrade as string) ?? null, num(x.mathsPoint),
           o[0]?.subject ?? null, o[0]?.grade ?? null, o[0] ? num(o[0].points) : null, o[1]?.subject ?? null, o[1]?.grade ?? null, o[1] ? num(o[1].points) : null, o[2]?.subject ?? null, o[2]?.grade ?? null, o[2] ? num(o[2].points) : null,
           num(x.sittings), num(x.cbtScore) ?? 0, num(x.sittingPoints), num(x.olevelTotal), num(x.olevelRatio), num(x.utmeRatio), num(x.total),
-          (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
+          (x.decisionBasis as string) || (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
       };
       const merit = t.rows.filter((x) => x.decision === "OFFERED");
       const other = t.rows.filter((x) => x.decision === "WAITING");
@@ -285,8 +285,14 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                     <option value="">Choose…</option><option value="OFFERED">Offered</option><option value="WAITING">Waiting list</option><option value="NOT_OFFERED">Not offered</option>
                   </select>
                 </Field>
-                <Field id="dnote" label="Remark" hint="NM, SM, ELG… as it goes back to JAMB"><input id="dnote" className="ctl" value={val("dnote", open.decisionNote ?? "")} disabled={!office || !!open.decisionReleasedAt} onChange={(e) => setEdits({ ...edits, dnote: e.target.value })} /></Field>
-                <Btn kind="primary" disabled={!office || busy !== null || !!open.decisionReleasedAt || !val("decision", open.decision ?? "")} onClick={async () => { await send("decide", "PUT", `/applications/${open.id}/decision`, { decision: val("decision", open.decision ?? ""), note: val("dnote", open.decisionNote ?? "") || undefined }, `Board decision entered for ${open.applicationNo}`); await refreshOpen(open.id); }}>{busy === "decide" ? "Saving…" : "Enter the decision"}</Btn>
+                <Field id="dbasis" label="Basis" hint="What goes back to JAMB as the general remark; an offer names one">
+                  <select id="dbasis" className="ctl" value={val("dbasis", open.decisionBasis ?? "")} disabled={!office || !!open.decisionReleasedAt} onChange={(e) => setEdits({ ...edits, dbasis: e.target.value })}>
+                    <option value="">—</option>
+                    {BASES.map(([code, label]) => <option key={code} value={code}>{code} · {label}</option>)}
+                  </select>
+                </Field>
+                <Field id="dnote" label="Note" hint="Anything the Board minuted beyond the basis"><input id="dnote" className="ctl" value={val("dnote", open.decisionNote ?? "")} disabled={!office || !!open.decisionReleasedAt} onChange={(e) => setEdits({ ...edits, dnote: e.target.value })} /></Field>
+                <Btn kind="primary" disabled={!office || busy !== null || !!open.decisionReleasedAt || !val("decision", open.decision ?? "") || (val("decision", open.decision ?? "") === "OFFERED" && !val("dbasis", open.decisionBasis ?? ""))} onClick={async () => { await send("decide", "PUT", `/applications/${open.id}/decision`, { decision: val("decision", open.decision ?? ""), note: val("dnote", open.decisionNote ?? "") || undefined, basis: val("dbasis", open.decisionBasis ?? "") || undefined }, `Board decision entered for ${open.applicationNo}`); await refreshOpen(open.id); }}>{busy === "decide" ? "Saving…" : "Enter the decision"}</Btn>
               </div>
               <div className="sub2" style={{ marginTop: 6 }}>Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
             </PBody>

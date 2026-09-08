@@ -44,7 +44,8 @@ class SecurityConfig {
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/api/v1/platform/status",
                                 "/api/v1/auth/sign-in", "/api/v1/auth/bootstrap", "/api/v1/auth/offices",
-                                "/api/v1/applicant/lookup", "/api/v1/applicant/register", "/api/v1/applicant/sign-in").permitAll()
+                                "/api/v1/applicant/lookup", "/api/v1/applicant/register", "/api/v1/applicant/sign-in",
+                                "/api/v1/applicant/forgot", "/api/v1/applicant/reset").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
                 .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);

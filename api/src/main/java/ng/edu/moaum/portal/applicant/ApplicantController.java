@@ -138,6 +138,24 @@ class ApplicantController {
         return service.decline(account(authentication));
     }
 
+    public record Forgot(@NotBlank @Size(max = 200) String identifier) {
+    }
+
+    public record Reset(@NotBlank @Size(max = 200) String token, @NotBlank @Size(max = 200) String password) {
+    }
+
+    /** always 202: whether or not the identifier names an account, the answer is the same */
+    @PostMapping("/forgot")
+    ResponseEntity<Map<String, Object>> forgot(@Valid @RequestBody Forgot body, HttpServletRequest request) {
+        service.forgot(body.identifier(), request.getRemoteAddr());
+        return ResponseEntity.accepted().body(Map.of("accepted", true));
+    }
+
+    @PostMapping("/reset")
+    ApplicantService.SignedIn reset(@Valid @RequestBody Reset body, HttpServletRequest request) {
+        return service.reset(body.token(), body.password(), request.getRemoteAddr());
+    }
+
     private static UUID account(Authentication authentication) {
         return UUID.fromString(authentication.getName());
     }

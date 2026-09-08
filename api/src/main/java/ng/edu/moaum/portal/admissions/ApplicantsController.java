@@ -71,8 +71,11 @@ class ApplicantsController {
     public record Score(@NotNull @DecimalMin("0") @DecimalMax("100") BigDecimal score) {
     }
 
-    public record Decision(@NotBlank String decision, @Size(max = 400) String note) {
+    /** {@code basis}: NM, SM, ELG, LOCALITY, PLWD or OTHER — what goes back to JAMB as the general remark (V025); required for an offer */
+    public record Decision(@NotBlank String decision, @Size(max = 400) String note, @Size(max = 20) String basis) {
     }
+
+    private static final List<String> BASES = List.of("NM", "SM", "ELG", "LOCALITY", "PLWD", "OTHER");
 
     public record Clearance(@NotBlank String state, @Size(max = 400) String note) {
     }
@@ -96,7 +99,7 @@ class ApplicantsController {
                 SELECT a.id, a.application_no, c.surname, c.other_names, c.jamb_reg_no AS jamb_key, c.programme, c.entry_mode,
                        admissions.application_stage(a.id) AS stage,
                        a.fee_confirmed_at, a.submitted_at, sb.label AS batch, a.seat, a.screening_score, a.score_released_at,
-                       a.decision, a.decision_released_at, a.accepted_at, a.declined_at, a.cleared_at, acc.email, acc.phone,
+                       a.decision, a.decision_basis, a.decision_released_at, a.accepted_at, a.declined_at, a.cleared_at, acc.email, acc.phone,
                        (SELECT count(*) FROM admissions.fee_reference f WHERE f.application_id = a.id AND f.confirmed_at IS NULL AND f.expires_at > now()) AS references_open,
                        (SELECT count(*) FROM admissions.application_document d WHERE d.application_id = a.id AND d.superseded_at IS NULL AND d.status = 'PENDING') AS documents_pending,
                        st.admission_no, st.matric_no
@@ -266,7 +269,13 @@ class ApplicantsController {
             throw new DomainRuleViolation("APP_DECISION", "'" + body.decision() + "' is not one of the Board's three outcomes.",
                     new DomainRuleViolation.Remedy("OFFERED, WAITING or NOT_OFFERED.", "Admissions Board"));
         }
-        jdbc.sql("SELECT admissions.decide_application(:id, :d, :n)").param("id", id).param("d", d).param("n", body.note(), Types.VARCHAR).query(String.class).single();
+        String basis = body.basis() == null || body.basis().isBlank() ? null : body.basis().trim().toUpperCase();
+        if (basis != null && !BASES.contains(basis)) {
+            throw new DomainRuleViolation("APP_DECISION_BASIS", "'" + body.basis() + "' is not a basis the Board admits on.",
+                    new DomainRuleViolation.Remedy("NM, SM, ELG, LOCALITY, PLWD or OTHER — it is what goes back to JAMB.", "Admissions Board"));
+        }
+        jdbc.sql("SELECT admissions.decide_application(:id, :d, :n, :b)").param("id", id).param("d", d)
+                .param("n", body.note(), Types.VARCHAR).param("b", basis, Types.VARCHAR).query(String.class).single();
         return applicants.view(id, true);
     }
 
@@ -297,7 +306,7 @@ class ApplicantsController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.id, a.application_no, c.jamb_reg_no, c.jamb_key, c.surname, c.other_names, c.programme, c.entry_mode,
                        r.sex, r.state_of_origin, r.lga, r.aggregate AS utme, r.raw::text AS raw_text,
-                       a.decision, a.decision_note, a.decision_released_at, a.screening_score, a.submitted_at,
+                       a.decision, a.decision_note, a.decision_basis, a.decision_released_at, a.screening_score, a.submitted_at,
                        sr.utme_scaled, sr.screening, sr.screening_source, sr.weight_utme, sr.weight_putme, sr.aggregate AS total, sr.cutoff,
                        sc.olevel_total, sc.olevel_ceiling,
                        (SELECT count(DISTINCT st.id) FROM admissions.olevel_sitting st WHERE st.session = a.session AND st.jamb_key = c.jamb_key) AS sittings,
@@ -357,6 +366,7 @@ class ApplicantsController {
             row.put("cutoff", r.get("cutoff"));
             row.put("decision", r.get("decision"));
             row.put("decisionNote", r.get("decision_note"));
+            row.put("decisionBasis", r.get("decision_basis"));
             row.put("released", r.get("decision_released_at") != null);
             out.add(row);
         }

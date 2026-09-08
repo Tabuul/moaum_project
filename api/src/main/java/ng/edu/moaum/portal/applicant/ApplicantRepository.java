@@ -181,4 +181,44 @@ class ApplicantRepository {
     String decline(UUID applicationId) {
         return jdbc.sql("SELECT admissions.decline_offer(:id)").param("id", applicationId).query(String.class).single();
     }
+
+    /* ── the notices sent about this application (V025) ── */
+
+    List<Map<String, Object>> notices(UUID applicationId) {
+        return jdbc.sql("""
+                SELECT id, channel, recipient, subject, body, created_at, state, sent_at
+                  FROM platform.notice WHERE about_kind = 'application' AND about_id = :id ORDER BY created_at DESC LIMIT 30
+                """).param("id", applicationId).query().listOfRows();
+    }
+
+    void queueNotice(String channel, String recipient, String subject, String body, UUID applicationId) {
+        jdbc.sql("SELECT platform.queue_notice(:c, :r, :s, :b, 'application', :a)")
+                .param("c", channel).param("r", recipient).param("s", subject).param("b", body).param("a", applicationId).query().singleRow();
+    }
+
+    /* ── the password reset (V025) ── */
+
+    void newReset(UUID account, String tokenHash, Instant expires) {
+        jdbc.sql("INSERT INTO admissions.password_reset (account_id, token_hash, expires_at) VALUES (:a, :h, :e)")
+                .param("a", account).param("h", tokenHash).param("e", expires.atOffset(java.time.ZoneOffset.UTC)).update();
+    }
+
+    record Reset(UUID id, UUID accountId, OffsetDateTime expiresAt, OffsetDateTime usedAt) {
+    }
+
+    Optional<Reset> resetByHash(String tokenHash) {
+        return jdbc.sql("SELECT id, account_id, expires_at, used_at FROM admissions.password_reset WHERE token_hash = :h")
+                .param("h", tokenHash).query(Reset.class).optional();
+    }
+
+    void useReset(UUID id) {
+        jdbc.sql("UPDATE admissions.password_reset SET used_at = now() WHERE id = :id").param("id", id).update();
+    }
+
+    void setPassword(UUID account, String hash) {
+        jdbc.sql("UPDATE admissions.applicant_account SET password_hash = :h, failed_attempts = 0, locked_until = NULL WHERE id = :id")
+                .param("h", hash).param("id", account).update();
+        jdbc.sql("UPDATE platform.session SET ended_at = now(), ended_reason = 'password reset' WHERE person_id = :id AND ended_at IS NULL")
+                .param("id", account).update();
+    }
 }

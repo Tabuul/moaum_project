@@ -91,6 +91,8 @@ BEGIN
     DELETE FROM admissions.session_policy WHERE session = '9999/0000';
 
     -- the applicant's journey (V021): the application and everything hung on it, before the candidate
+    DELETE FROM platform.notice;
+    DELETE FROM admissions.password_reset;
     DELETE FROM admissions.clearance_document;
     DELETE FROM admissions.application_document_blob;
     DELETE FROM admissions.application_document;
@@ -148,7 +150,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 98
+\set EXPECTED 99
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1587,6 +1589,35 @@ BEGIN
     PERFORM pg_temp.assert('The JAMB lists load under one general cut-off, stated per session before the upload',
         admissions.load_cutoff_for('9996/9997') = 150 AND admissions.load_cutoff_for('9995/9996') IS NULL,
         'a candidate under it is read and held back, whatever the programme; the faculty and programme cut-offs are the screening''s');
+END $$;
+
+-- ══ V025 · NOTICES ON THE RECORD, AND THE BASIS OF AN OFFER ═════════════
+
+-- ── 99. a fact written is a notice queued, in the same transaction; an offer names its basis ──
+DO $$
+DECLARE app uuid; ok boolean; before int; after int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT a.id INTO app FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+     WHERE a.session = '9997/9998' AND c.jamb_reg_no = '20269999AP';
+    -- the acts of 91–96 queued notices: the fee, the seat, the result, the offer, the place held
+    SELECT count(*) INTO before FROM platform.notice WHERE about_id = app;
+    -- an offer with no basis is refused; with one it is recorded, and the basis is what goes back to JAMB
+    UPDATE admissions.application SET decision_released_at = NULL, decision = NULL, decision_basis = NULL WHERE id = app;
+    ok := false;
+    BEGIN
+        PERFORM admissions.decide_application(app, 'OFFERED', 'check', NULL);
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    PERFORM admissions.decide_application(app, 'OFFERED', 'check', 'SM');
+    PERFORM admissions.release_decisions('9997/9998');
+    SELECT count(*) INTO after FROM platform.notice WHERE about_id = app;
+    PERFORM pg_temp.assert('A fact written is a notice queued in the same transaction, and an offer names its basis',
+        before >= 8 AND after = before + 2 AND ok
+        AND (SELECT decision_basis FROM admissions.application WHERE id = app) = 'SM'
+        AND (SELECT count(*) FROM platform.notice WHERE about_id = app AND state = 'QUEUED' AND channel = 'SMS') >= 5,
+        'the applicant is told the moment the record changes, by email and by SMS, and the outbox says whether it went');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

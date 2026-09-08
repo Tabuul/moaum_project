@@ -102,7 +102,7 @@ export function Login({ next, offices }: { next: string; offices: { code: string
           {problem ? <ProblemNotice problem={problem} /> : null}
           <button className="btn btn--primary" type="submit" disabled={busy || !live || !uid || !pw}>{busy ? "Signing in…" : "Sign in"}</button>
           <div className="login-help">
-            <a href="#" onClick={(e) => e.preventDefault()} title="Ask the Registry to reset it">Forgot your password?</a>
+            {role === "applicant" ? <Link href="/login/forgot">Forgot your password?</Link> : <a href="#" onClick={(e) => e.preventDefault()} title="Ask the Registry to reset it">Forgot your password?</a>}
             {role === "applicant" ? <Link href="/apply">Post UTME Registration</Link> : <Link href="/login/first">First account</Link>}
           </div>
           {role === "applicant" ? (

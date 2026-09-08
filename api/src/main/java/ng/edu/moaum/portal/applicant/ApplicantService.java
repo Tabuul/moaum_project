@@ -56,10 +56,72 @@ public class ApplicantService {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
-    ApplicantService(ApplicantRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions) {
+    private final String portalUrl;
+
+    ApplicantService(ApplicantRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions,
+                     @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.repo = repo;
         this.issuer = issuer;
         this.tx = new TransactionTemplate(transactions);
+        this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
+    }
+
+    /* ── forgotten password (V025): a one-hour token, sent as a notice, kept as a hash, used once ── */
+
+    static String sha256(String s) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(d);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** always accepted, whether or not the identifier names an account — the page cannot be used to list accounts */
+    public void forgot(String identifier, String ip) {
+        ApplicantRepository.Account a = repo.byIdentifier(identifier).orElse(null);
+        atTheDoor(a == null ? null : a.id(), "applicant password reset requested", () -> {
+            if (a == null) {
+                repo.event(identifier, null, "RESET_UNKNOWN", ip);
+                return null;
+            }
+            byte[] raw = new byte[24];
+            random.nextBytes(raw);
+            String token = HexFormat.of().formatHex(raw);
+            repo.newReset(a.id(), sha256(token), Instant.now().plus(Duration.ofHours(1)));
+            String link = portalUrl + "/login/reset?token=" + token;
+            repo.queueNotice("EMAIL", a.email(), "Reset your MOAUM application password",
+                    "Somebody — we hope you — asked to reset the password of application " + a.applicationNo() + ". Open this link within the hour to choose a new one: "
+                            + link + " If you did not ask, ignore this; nothing changes until the link is used.", a.applicationId());
+            repo.queueNotice("SMS", a.phone(), "Reset your MOAUM application password",
+                    "MOAUM: reset your application password within the hour at " + link, a.applicationId());
+            repo.event(identifier, a.id(), "RESET_REQUESTED", ip);
+            return null;
+        });
+    }
+
+    public SignedIn reset(String token, String password, String ip) {
+        if (token == null || token.isBlank()) {
+            throw new DomainRuleViolation("AUTH_RESET_TOKEN", "The reset link is incomplete.",
+                    new DomainRuleViolation.Remedy("Open the link exactly as it was sent, or ask for a new one.", "You"));
+        }
+        if (password == null || password.length() < MIN_PASSWORD) {
+            throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
+                    new DomainRuleViolation.Remedy("This one account carries you to graduation.", "You"));
+        }
+        ApplicantRepository.Reset r = repo.resetByHash(sha256(token.trim())).orElse(null);
+        if (r == null || r.usedAt() != null || r.expiresAt().isBefore(OffsetDateTime.now())) {
+            throw new DomainRuleViolation("AUTH_RESET_TOKEN", "This reset link has expired or was already used.",
+                    new DomainRuleViolation.Remedy("Ask for a new one from the sign-in page; it is good for an hour and used once.", "You"));
+        }
+        String hash = encoder.encode(password);
+        ApplicantRepository.Account a = atTheDoor(r.accountId(), "applicant password reset", () -> {
+            repo.useReset(r.id());
+            repo.setPassword(r.accountId(), hash);
+            repo.event("", r.accountId(), "RESET_DONE", ip);
+            return repo.byId(r.accountId()).orElseThrow();
+        });
+        return signIn(a.email(), password, ip);
     }
 
     /** a transaction attributed to the applicant at the door, opened after the context is placed */
@@ -279,6 +341,9 @@ public class ApplicantService {
         v.put("decisionReleasedAt", a.get("decision_released_at"));
         v.put("decision", decisionVisible ? a.get("decision") : null);
         v.put("decisionNote", decisionVisible ? a.get("decision_note") : null);
+        v.put("decisionBasis", decisionVisible ? a.get("decision_basis") : null);
+        /* the notices sent about this application (V025): what was said, and whether it went */
+        v.put("notices", repo.notices(applicationId));
         v.put("undertakingAt", a.get("undertaking_at"));
         v.put("acceptanceConfirmedAt", a.get("acceptance_confirmed_at"));
         v.put("acceptedAt", a.get("accepted_at"));

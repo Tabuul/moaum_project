@@ -25,6 +25,18 @@ export interface ScreeningResult {
   places: number | null;
 }
 export interface ClearanceItem { item: string; state: "NOT_PRESENTED" | "VERIFIED" | "QUERY"; note: string | null; decidedAt: string | null }
+/** a notice queued about the application (V025): what was said, on which channel, and whether it went */
+export interface Notice { id: string; channel: "EMAIL" | "SMS"; recipient: string; subject: string; body: string; created_at: string; state: "QUEUED" | "SENT" | "FAILED"; sent_at: string | null }
+
+/** the basis of an offer, as JAMB's admission template names it in GENERAL REMARKS */
+export const BASES: [string, string][] = [
+  ["NM", "National Merit"],
+  ["SM", "State Merit"],
+  ["ELG", "Equality of Local Government"],
+  ["LOCALITY", "Locality"],
+  ["PLWD", "Persons Living With Disability"],
+  ["OTHER", "Other"],
+];
 
 export interface Application {
   id: string;
@@ -58,6 +70,8 @@ export interface Application {
   decisionReleasedAt: string | null;
   decision: "OFFERED" | "WAITING" | "NOT_OFFERED" | null;
   decisionNote: string | null;
+  decisionBasis: string | null;
+  notices: Notice[];
   undertakingAt: string | null;
   acceptanceConfirmedAt: string | null;
   acceptedAt: string | null;
