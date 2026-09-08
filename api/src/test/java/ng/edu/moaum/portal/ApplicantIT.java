@@ -137,10 +137,13 @@ class ApplicantIT {
         String appId = String.valueOf(mine.get("id"));
 
         // a screening batch, seated over the submitted applications
-        ResponseEntity<List> batches = it.call(academic, HttpMethod.POST, PATH + "/screening-batches",
-                Map.of("label", "C", "heldOn", "2026-09-22", "startsAt", "11:00", "endsAt", "12:00", "venue", "CBT Hall B, ICT Directorate", "capacity", 120))
-                .getStatusCode().is2xxSuccessful() ? it.getList(academic, PATH + "/screening-batches") : null;
-        assertThat(batches).isNotNull();
+        ResponseEntity<List> batches = open.post().uri(PATH + "/screening-batches")
+                .header(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer " + academic)
+                .header("X-Reason", "integration test")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("label", "C", "heldOn", "2026-09-22", "startsAt", "11:00", "endsAt", "12:00", "venue", "CBT Hall B, ICT Directorate", "capacity", 120))
+                .retrieve().toEntity(List.class);
+        assertThat(batches.getStatusCode().value()).as(String.valueOf(batches.getBody())).isEqualTo(200);
         String batchId = String.valueOf(((Map<?, ?>) batches.getBody().stream().filter(b -> "C".equals(((Map<?, ?>) b).get("label"))).findFirst().orElseThrow()).get("id"));
         ResponseEntity<Map> seated = it.call(academic, HttpMethod.POST, PATH + "/screening-batches/" + batchId + "/assign", Map.of());
         assertThat(((Number) seated.getBody().get("seated")).intValue()).isGreaterThanOrEqualTo(1);
