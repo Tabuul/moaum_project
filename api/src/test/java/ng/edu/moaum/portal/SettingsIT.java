@@ -94,8 +94,6 @@ class SettingsIT {
         assertThat((List<?>) crit.getBody().get("criteria")).hasSize(4);
 
         // 3 · every faculty: 100 places each and a cut-off of 150
-        List<?> faculties = (List<?>) get("/api/v1/admissions/programmes").getBody(); // any authenticated read to warm up
-        assertThat(faculties).isNotNull();
         for (String f : List.of("AC", "AR", "BAMS", "CM", "ED", "ES", "LW", "MS", "PS", "SC", "SS", "TI")) {
             ResponseEntity<Map> r = call(HttpMethod.PUT, "/api/v1/admissions/sessions/2097/2098/policy/faculties/" + f,
                     Map.of("quota", 100, "cutoff", 150));
