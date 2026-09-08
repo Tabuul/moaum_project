@@ -173,7 +173,7 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
             </select>
           </div>
 
-          <div style={{ overflowY: "auto", flexGrow: 1, paddingBottom: 8 }}>
+          <div className="nav__list" style={{ flexGrow: 1, paddingBottom: 8 }}>
             {menu.groups.map((g) => {
               const open = isOpen(g);
               const folded = navWaiting(g, waiting);

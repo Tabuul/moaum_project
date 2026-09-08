@@ -114,7 +114,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 84
+\set EXPECTED 87
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1288,6 +1288,67 @@ BEGIN
     PERFORM pg_temp.assert('A second JAMB name for a programme is kept beside the first',
         n = 1 AND (SELECT jamb_name FROM ref.jamb_alias WHERE code = 'C00061') = 'Medicine & Surgery',
         'both names resolve to MBBS; neither replaced the other');
+END $$;
+
+-- ══ V019 · A LIST LOADED IN ERROR IS WITHDRAWN, NOT DELETED ══════════════
+
+-- ── 85–87. a withdrawn list is kept, counts for nothing, and frees its numbers ──
+DO $$
+DECLARE b uuid := gen_random_uuid(); b2 uuid := gen_random_uuid();
+        n bigint; ok boolean; outcome text; again text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256,
+        rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b, '9998/9999', 'CAPS_DOWNLOAD', 'DIRECT_ENTRY', '\xB9'::bytea, 1,
+            current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw,
+        surname, other_names, jamb_code, aggregate, entry_mode)
+    VALUES (gen_random_uuid(), b, '9998/9999', '20269999ZZ', '{}'::jsonb,
+            'CHECKWITHDRAWN', 'Invented', 'C00061', NULL, 'DIRECT_ENTRY');
+
+    -- 85. without a reason, refused
+    ok := false;
+    BEGIN
+        PERFORM admissions.withdraw_batch(b, '  ');
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    PERFORM pg_temp.assert('A list is withdrawn for a reason, never silently', ok,
+        'the record must explain the space the withdrawal leaves');
+
+    -- 86. withdrawn: kept, marked, out of every count, and not committed
+    outcome := admissions.withdraw_batch(b, 'the office''s own layout was loaded before the CAPS download');
+    again := admissions.withdraw_batch(b, 'once more');
+    SELECT x.n INTO n FROM admissions.reconcile('9998/9999') x
+     WHERE x.finding = 'On the CAPS list, no candidate record';
+    ok := false;
+    BEGIN
+        PERFORM admissions.commit_batch(b);
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    PERFORM pg_temp.assert('A withdrawn list is kept, counts for nothing, and is never committed',
+        outcome = 'withdrawn' AND again = 'already withdrawn' AND n = 0 AND ok
+        AND (SELECT count(*) FROM admissions.caps_row WHERE batch_id = b AND withdrawn) = 1
+        AND (SELECT withdrawn_by IS NOT NULL AND withdrawn_reason LIKE 'the office%'
+               FROM admissions.caps_batch WHERE id = b),
+        'the upload happened and the record says so; nothing of it counts again');
+
+    -- 87. the registration numbers on it are free for the list that replaces it
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256,
+        rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b2, '9998/9999', 'CAPS_DOWNLOAD', 'DIRECT_ENTRY', '\xBA'::bytea, 1,
+            current_date, gen_random_uuid(), 'academic');
+    ok := true;
+    BEGIN
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw,
+            surname, other_names, jamb_code, aggregate, entry_mode)
+        VALUES (gen_random_uuid(), b2, '9998/9999', '20269999ZZ', '{}'::jsonb,
+                'CHECKWITHDRAWN', 'Invented', 'C00061', NULL, 'DIRECT_ENTRY');
+    EXCEPTION WHEN unique_violation THEN ok := false;
+    END;
+    PERFORM pg_temp.assert('The numbers on a withdrawn list are free for the list that replaces it', ok,
+        'a candidate is on one standing list, and the withdrawn rows are evidence, not a cohort');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

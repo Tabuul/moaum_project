@@ -328,6 +328,61 @@ class ApiIT {
         assertThat(restored.getBody().get("name")).isEqualTo(before.get("name"));
     }
 
+    @Test
+    void aListLoadedInErrorIsWithdrawnKeptAndItsNumbersFreed() {
+        List<Map<String, Object>> rows = List.of(row("DIRECT_ENTRY", null, "C00061"));
+        ResponseEntity<Map> loaded = client.post().uri("/api/v1/admissions/caps-batches")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(batch("DIRECT_ENTRY", rows))
+                .retrieve().toEntity(Map.class);
+        assertThat(loaded.getStatusCode().value()).as(String.valueOf(loaded.getBody())).isEqualTo(201);
+        String id = String.valueOf(((Map<?, ?>) loaded.getBody().get("batch")).get("id"));
+
+        ResponseEntity<Map> withdrawn = client.post().uri("/api/v1/admissions/caps-batches/" + id + "/withdraw")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("reason", "The office's own layout was loaded before the CAPS download"))
+                .retrieve().toEntity(Map.class);
+        assertThat(withdrawn.getStatusCode().value()).as(String.valueOf(withdrawn.getBody())).isEqualTo(200);
+        assertThat(withdrawn.getBody().get("outcome")).isEqualTo("withdrawn");
+
+        // kept, and marked: the batch is still listed, with the date and the reason
+        ResponseEntity<Map> kept = client.get().uri("/api/v1/admissions/caps-batches/" + id)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .retrieve().toEntity(Map.class);
+        assertThat(kept.getBody().get("withdrawnAt")).isNotNull();
+        assertThat(String.valueOf(kept.getBody().get("withdrawnReason"))).contains("own layout");
+
+        // never committed
+        ResponseEntity<Map> commit = client.post().uri("/api/v1/admissions/caps-batches/" + id + "/commit")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .retrieve().toEntity(Map.class);
+        assertThat(commit.getStatusCode().value()).isEqualTo(422);
+        assertThat(String.valueOf(commit.getBody().get("detail"))).contains("withdrawn");
+
+        // and the same candidates load again on the list that replaces it
+        ResponseEntity<Map> again = client.post().uri("/api/v1/admissions/caps-batches")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(batch("DIRECT_ENTRY", rows))
+                .retrieve().toEntity(Map.class);
+        assertThat(again.getStatusCode().value()).as(String.valueOf(again.getBody())).isEqualTo(201);
+
+        // a blank reason is refused before anything happens
+        ResponseEntity<Map> blank = client.post().uri("/api/v1/admissions/caps-batches/" + id + "/withdraw")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("reason", " "))
+                .retrieve().toEntity(Map.class);
+        assertThat(blank.getStatusCode().value()).isIn(400, 422);
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     static final java.security.SecureRandom RANDOM = new SecureRandom();

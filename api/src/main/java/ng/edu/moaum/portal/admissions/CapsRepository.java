@@ -18,7 +18,7 @@ class CapsRepository {
 
     private static final String BATCH_COLUMNS = """
             id, session, source, filename, encode(file_sha256, 'hex') AS file_sha256, rows_read, list_kind,
-            downloaded_on, uploaded_at, uploaded_by, uploaded_office, committed_at
+            downloaded_on, uploaded_at, uploaded_by, uploaded_office, committed_at, withdrawn_at, withdrawn_reason
             """;
 
     private final JdbcClient jdbc;
@@ -158,6 +158,12 @@ class CapsRepository {
                 .list()
                 .stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    /** {@code admissions.withdraw_batch}: kept and marked, out of every count, or refused with the database's reason. */
+    String withdraw(UUID batchId, String reason) {
+        return jdbc.sql("SELECT admissions.withdraw_batch(:id, :reason)").param("id", batchId).param("reason", reason)
+                .query(String.class).single();
     }
 
     String commit(UUID batchId) {

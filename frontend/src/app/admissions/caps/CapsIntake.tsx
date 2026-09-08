@@ -36,6 +36,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AliasMapper } from "./AliasMapper";
 import { ProgrammeEditor, type Department } from "./ProgrammeEditor";
+import { Field, Modal } from "@/components/proto/blocks";
 
 export interface CapsBatch {
   id: string;
@@ -50,6 +51,9 @@ export interface CapsBatch {
   uploadedBy: string;
   uploadedOffice: string;
   committedAt: string | null;
+  /** a list loaded in error: kept, marked, and out of every count (V019) */
+  withdrawnAt: string | null;
+  withdrawnReason: string | null;
 }
 
 export interface AdmissionPolicy {
@@ -131,6 +135,9 @@ export function CapsIntake({
   const router = useRouter();
   const [kind, setKind] = useState<ListKind>("UTME");
   const [editing, setEditing] = useState<Programme | null>(null);
+  const [withdrawing, setWithdrawing] = useState<CapsBatch | null>(null);
+  const [why, setWhy] = useState("");
+  const [withdrawn, setWithdrawn] = useState<Record<string, string>>({});
   const [file, setFile] = useState<Partial<Record<ListKind, FileInfo>>>({});
   const [rowsRead, setRowsRead] = useState<Partial<Record<ListKind, string[][]>>>({});
   const [busy, setBusy] = useState<ListKind | null>(null);
@@ -248,6 +255,24 @@ export function CapsIntake({
     }
   }
 
+  async function withdraw(b: CapsBatch) {
+    setCommitting(b.id);
+    setProblem(null);
+    try {
+      const r = await post(`/api/v1/admissions/caps-batches/${b.id}/withdraw`, `CAPS list ${b.filename ?? b.id} withdrawn: ${why.trim()}`, { reason: why.trim() });
+      if (r.ok) {
+        setWithdrawn({ ...withdrawn, [b.id]: why.trim() });
+        setWithdrawing(null);
+        setWhy("");
+        router.refresh();
+      } else {
+        setProblem(asProblem(r.status, r.body));
+      }
+    } finally {
+      setCommitting(null);
+    }
+  }
+
   async function commit(id: string, fromScreen: boolean) {
     setCommitting(id);
     setProblem(null);
@@ -296,7 +321,7 @@ export function CapsIntake({
               const ff = file[kk];
               const dd = data[kk];
               const isBusy = busy === kk;
-              const held = batches.filter((b) => b.listKind === kk);
+              const held = batches.filter((b) => b.listKind === kk && !b.withdrawnAt && !withdrawn[b.id]);
               return (
                 <div className="card" key={kk} style={{ borderColor: kind === kk ? "var(--chrome)" : "var(--line)" }}>
                   <div className="card__body">
@@ -675,13 +700,23 @@ export function CapsIntake({
               <span className="tnum" key="d">{b.downloadedOn}</span>,
               <span className="tnum" key="l">{new Date(b.uploadedAt).toLocaleString("en-GB")}</span>,
               <span className="sub2" key="b">{officeLabel(b.uploadedOffice)}</span>,
-              b.committedAt || committed[b.id] ? <Pil kind="ok" key="s">committed</Pil> : <Pil kind="info" key="s">held</Pil>,
-              b.committedAt || committed[b.id] ? (
+              b.withdrawnAt || withdrawn[b.id] ? (
+                <span key="s">
+                  <Pil kind="grey">withdrawn</Pil>
+                  <div className="sub2">{b.withdrawnReason ?? withdrawn[b.id]}</div>
+                </span>
+              ) : b.committedAt || committed[b.id] ? <Pil kind="ok" key="s">committed</Pil> : <Pil kind="info" key="s">held</Pil>,
+              b.withdrawnAt || withdrawn[b.id] || b.committedAt || committed[b.id] ? (
                 <span key="c" />
               ) : (
-                <Btn kind="go" key="c" onClick={() => void commit(b.id, false)} disabled={committing !== null || !mayLoad} title={!mayLoad ? "The list is committed by the Academic Office or the Registrar" : undefined}>
-                  {committing === b.id ? "Committing…" : "Commit"}
-                </Btn>
+                <span key="c" style={{ display: "inline-flex", gap: 6 }}>
+                  <Btn kind="go" onClick={() => void commit(b.id, false)} disabled={committing !== null || !mayLoad} title={!mayLoad ? "The list is committed by the Academic Office or the Registrar" : undefined}>
+                    {committing === b.id ? "Committing…" : "Commit"}
+                  </Btn>
+                  <Btn kind="ghost" onClick={() => { setWithdrawing(b); setWhy(""); }} disabled={committing !== null || !mayLoad} title="A list loaded in error is withdrawn, never deleted">
+                    Withdraw
+                  </Btn>
+                </span>
               ),
             ])}
           />
@@ -721,6 +756,30 @@ export function CapsIntake({
         />
       </Panel>
       {editing ? <ProgrammeEditor programme={editing} departments={departments} onClose={() => setEditing(null)} /> : null}
+      {withdrawing ? (
+        <Modal
+          title={`Withdraw ${withdrawing.filename ?? withdrawing.source}`}
+          sub={`${LISTS[withdrawing.listKind]?.label ?? withdrawing.listKind} · ${withdrawing.rowsRead} rows · loaded ${new Date(withdrawing.uploadedAt).toLocaleString("en-GB")}`}
+          onClose={() => setWithdrawing(null)}
+          foot={<>
+            <Btn kind="ghost" onClick={() => setWithdrawing(null)}>Cancel</Btn>
+            <span style={{ flexGrow: 1 }} />
+            <Btn kind="urgent" disabled={!why.trim() || committing !== null} onClick={() => void withdraw(withdrawing)}>
+              {committing === withdrawing.id ? "Withdrawing…" : "Withdraw the list"}
+            </Btn>
+          </>}
+        >
+          <Note kind="info" title="Withdrawn, not deleted">
+            The upload happened, and the record keeps saying so: the file, its rows, who loaded it and when. Withdrawn, the list counts for nothing &mdash; the reconciliation no longer sees it, it cannot be committed, and the registration numbers on it are free for the list that should have been loaded. A list whose candidates already hold admission numbers cannot be withdrawn.
+          </Note>
+          <div className="grid grid--2 rfgrid">
+            <Field id="wd-why" label="Why the list is withdrawn" hint="Goes on the record with the withdrawal" full>
+              <input id="wd-why" className="ctl" value={why} onChange={(e) => setWhy(e.target.value)} autoComplete="off" placeholder="The wrong file, the wrong kind of list, the wrong session…" />
+            </Field>
+          </div>
+          {problem ? <ProblemNotice problem={problem} /> : null}
+        </Modal>
+      ) : null}
 
       <Note kind="info" title="JAMB’s name is the JOIN, not a footnote">
         The download names the course and gives no code, so <b>JAMB&rsquo;s name is what the row is matched on</b>{" "}

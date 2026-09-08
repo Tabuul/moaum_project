@@ -58,6 +58,17 @@ class AdmissionsController {
         return Map.of("batchId", id, "outcome", outcome);
     }
 
+    record Withdrawal(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 400) String reason) {
+    }
+
+    /** A list loaded in error: kept as evidence, marked withdrawn for the reason given, and out of every count. */
+    @PostMapping("/caps-batches/{id}/withdraw")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> withdraw(@PathVariable UUID id, @Valid @RequestBody Withdrawal request) {
+        String outcome = intake.withdraw(id, request.reason());
+        return Map.of("batchId", id, "outcome", outcome);
+    }
+
     @GetMapping("/sessions/{session}/{year}/reconciliation")
     @PreAuthorize(READERS)
     List<Finding> reconciliation(@PathVariable String session, @PathVariable String year) {

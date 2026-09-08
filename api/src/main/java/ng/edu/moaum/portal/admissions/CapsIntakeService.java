@@ -123,6 +123,17 @@ public class CapsIntakeService {
         return caps.commit(id);
     }
 
+    /**
+     * A list loaded in error is withdrawn, never deleted: the batch and its
+     * rows stay as evidence, marked, and count for nothing. The database
+     * refuses it for a list whose candidates already hold admission numbers.
+     */
+    @Transactional
+    public String withdraw(UUID id, String reason) {
+        get(id);
+        return caps.withdraw(id, reason);
+    }
+
     @Transactional(readOnly = true)
     public List<Finding> reconcile(String session) {
         return caps.reconcile(session);

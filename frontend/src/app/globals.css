@@ -9,3 +9,11 @@
   --sans: var(--font-plex-sans), "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --serif: var(--font-plex-serif), "IBM Plex Serif", Georgia, "Times New Roman", serif;
 }
+
+/* One scroll for the sidebar, at the user's request: the whole menu — crest,
+   office, groups and foot — moves as one, with a thin bar in the chrome's own
+   colours, instead of a second scroller inside the list of groups. */
+.nav { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--chrome-2) transparent; }
+.nav::-webkit-scrollbar { width: 6px; }
+.nav::-webkit-scrollbar-thumb { background: var(--chrome-2); border-radius: 3px; }
+.nav::-webkit-scrollbar-track { background: transparent; }
