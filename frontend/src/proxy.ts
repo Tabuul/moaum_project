@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
  * open; everything else sends a visitor to sign in and back again after.
  */
 const SESSION_COOKIE = "moaum_session";
-const OPEN = ["/login", "/api/auth/", "/verify", "/healthz", "/crest.png", "/favicon.ico"];
+const OPEN = ["/login", "/apply", "/api/auth/", "/api/bff/api/v1/applicant/lookup", "/verify", "/healthz", "/crest.png", "/favicon.ico"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

@@ -12,7 +12,7 @@ const ROLE_LABEL: Record<string, string> = { student: "Student", staff: "Staff",
 const LOGIN_ID: Record<string, [string, string]> = {
   student: ["Matriculation number", "MOAUM/CSC/23/1487"],
   staff: ["Staff number", "MOAUM/STF/1142"],
-  applicant: ["Application number", "APP/2026/018342"],
+  applicant: ["Application number, email or JAMB number", "APP/26/000123"],
 };
 
 export function Login({ next, offices }: { next: string; offices: { code: string; label: string }[] }) {
@@ -25,14 +25,23 @@ export function Login({ next, offices }: { next: string; offices: { code: string
   const [problem, setProblem] = useState<Problem | null>(null);
   const f = LOGIN_ID[role];
 
+  const live = role === "staff" || role === "applicant";
+
   async function signIn() {
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch("/api/auth/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: uid, password: pw, office: office || undefined }) });
+      const r = role === "applicant"
+        ? await fetch("/api/auth/applicant/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: uid, password: pw }) })
+        : await fetch("/api/auth/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: uid, password: pw, office: office || undefined }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(j ?? { status: r.status, title: r.statusText });
+        return;
+      }
+      if (role === "applicant") {
+        router.push("/applicant");
+        router.refresh();
         return;
       }
       router.push(j.mustChange ? `/account/password?next=${encodeURIComponent(next)}` : next);
@@ -62,10 +71,10 @@ export function Login({ next, offices }: { next: string; offices: { code: string
         </div>
       </div>
       <div className="login-panel">
-        <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (role === "staff") void signIn(); }}>
+        <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (live) void signIn(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Sign in</div>
-            <div className="hint" style={{ marginTop: 4 }}>{role === "staff" ? "Each office sees only its own work." : "Student and applicant sign-in arrive with their modules."}</div>
+            <div className="hint" style={{ marginTop: 4 }}>{role === "staff" ? "Each office sees only its own work." : role === "applicant" ? "The account you made at Post-UTME registration." : "Student sign-in arrives with the student module."}</div>
           </div>
           <div className="role-tabs" role="tablist">
             {["student", "staff", "applicant"].map((r) => (
@@ -84,18 +93,24 @@ export function Login({ next, offices }: { next: string; offices: { code: string
           ) : null}
           <div className="field">
             <label htmlFor="uid">{f[0]}</label>
-            <input id="uid" value={uid} placeholder={f[1]} autoComplete="username" onChange={(e) => setUid(e.target.value)} disabled={role !== "staff"} />
+            <input id="uid" value={uid} placeholder={f[1]} autoComplete="username" onChange={(e) => setUid(e.target.value)} disabled={!live} />
           </div>
           <div className="field">
             <label htmlFor="pw">Password</label>
-            <input id="pw" type="password" value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} disabled={role !== "staff"} />
+            <input id="pw" type="password" value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} disabled={!live} />
           </div>
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <button className="btn btn--primary" type="submit" disabled={busy || role !== "staff" || !uid || !pw}>{busy ? "Signing in…" : "Sign in"}</button>
+          <button className="btn btn--primary" type="submit" disabled={busy || !live || !uid || !pw}>{busy ? "Signing in…" : "Sign in"}</button>
           <div className="login-help">
             <a href="#" onClick={(e) => e.preventDefault()} title="Ask the Registry to reset it">Forgot your password?</a>
-            <Link href="/login/first">First account</Link>
+            {role === "applicant" ? <Link href="/apply">Post UTME Registration</Link> : <Link href="/login/first">First account</Link>}
           </div>
+          {role === "applicant" ? (
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+              <Link href="/apply" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Post UTME Registration</Link>
+              <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
+            </div>
+          ) : null}
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
             <button type="button" className="btn btn--ghost btn--sm" style={{ width: "100%" }} disabled title="Arrives with the credentials module">Verify a certificate or transcript</button>
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed</div>

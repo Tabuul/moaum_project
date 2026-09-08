@@ -1,0 +1,16 @@
+import { Shell } from "@/components/proto/Shell";
+import { ProblemNotice } from "@/components/ProblemNotice";
+import { loadApplication } from "../load";
+import { Screening } from "../Screens2";
+
+export const dynamic = "force-dynamic";
+
+/** a/screening — the applicant's own application, as the database says it is */
+export default async function Page() {
+  const loaded = await loadApplication();
+  return (
+    <Shell route="a/screening" me={loaded.me}>
+      {loaded.app ? <Screening a={loaded.app} /> : <ProblemNotice problem={loaded.problem} />}
+    </Shell>
+  );
+}

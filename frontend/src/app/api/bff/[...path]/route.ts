@@ -45,7 +45,7 @@ async function forward(request: NextRequest, path: string[]): Promise<NextRespon
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
   }
-  return new NextResponse(await upstream.text(), { status: upstream.status, headers: responseHeaders });
+  return new NextResponse(await upstream.arrayBuffer(), { status: upstream.status, headers: responseHeaders });
 }
 
 type Context = { params: Promise<{ path: string[] }> };

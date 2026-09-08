@@ -2063,5 +2063,35 @@ export const MENUS: Record<string, Menu> = {
         ]
       }
     ]
+  },
+  "applicant": {
+    "label": "Applicant",
+    "home": "a/dashboard",
+    "groups": [
+      {
+        "name": "My application",
+        "items": [
+          { "id": "a/dashboard", "icon": "home", "label": "Overview" },
+          { "id": "a/apply", "icon": "doc", "label": "Application form" },
+          { "id": "a/fee", "icon": "card", "label": "Application fee" }
+        ]
+      },
+      {
+        "name": "Screening",
+        "items": [
+          { "id": "a/screening", "icon": "print", "label": "Screening slip" },
+          { "id": "a/score", "icon": "chart", "label": "Screening result" }
+        ]
+      },
+      {
+        "name": "Admission",
+        "items": [
+          { "id": "a/status", "icon": "cap", "label": "Admission status" },
+          { "id": "a/accept", "icon": "check", "label": "Accept your offer" },
+          { "id": "a/clearance", "icon": "shield", "label": "Document clearance" },
+          { "id": "a/matric", "icon": "user", "label": "Matriculation" }
+        ]
+      }
+    ]
   }
 };

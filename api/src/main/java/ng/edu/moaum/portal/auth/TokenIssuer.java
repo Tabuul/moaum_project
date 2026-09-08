@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
  * happens there and this issuer refuses by name.
  */
 @Component
-class TokenIssuer {
+public class TokenIssuer {
 
     private final byte[] key;
 
@@ -33,11 +33,11 @@ class TokenIssuer {
         this.key = hmacSecret == null || hmacSecret.isBlank() ? null : hmacSecret.getBytes(StandardCharsets.UTF_8);
     }
 
-    boolean available() {
+    public boolean available() {
         return key != null;
     }
 
-    String issue(UUID person, String name, List<String> offices, byte[] sessionId, Instant expires) {
+    public String issue(UUID person, String name, List<String> offices, byte[] sessionId, Instant expires) {
         if (key == null) {
             throw new DomainRuleViolation("AUTH_SIGN_IN_ELSEWHERE", "This portal verifies tokens issued by the University's identity provider; sign in there.",
                     new DomainRuleViolation.Remedy("Use the single sign-on page.", "Directorate of ICT"));

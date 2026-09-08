@@ -90,6 +90,18 @@ BEGIN
         (SELECT id FROM admissions.session_policy WHERE session = '9999/0000');
     DELETE FROM admissions.session_policy WHERE session = '9999/0000';
 
+    -- the applicant's journey (V021): the application and everything hung on it, before the candidate
+    DELETE FROM admissions.clearance_document;
+    DELETE FROM admissions.application_document_blob;
+    DELETE FROM admissions.application_document;
+    DELETE FROM admissions.fee_reference;
+    DELETE FROM platform.session WHERE active_office = 'applicant';
+    DELETE FROM admissions.application;
+    DELETE FROM admissions.applicant_account;
+    DELETE FROM admissions.applicant_event;
+    DELETE FROM admissions.screening_batch;
+    DELETE FROM admissions.applicant_fee WHERE session IN ('9998/9999', '9999/0000');
+
     -- the property session of V020, and the sittings derived from attachments
     DELETE FROM admissions.rule_subject WHERE group_id IN (
         SELECT g.id FROM admissions.rule_subject_group g
@@ -129,7 +141,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 90
+\set EXPECTED 94
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1422,6 +1434,80 @@ BEGIN
         r.relevant_known AND r.points = 28 AND r.bonus = 3 AND r.total = 31
         AND admissions.olevel_points('9998/9999', 'A1') = 10 AND admissions.olevel_points('2026/2027', 'A1') = 6,
         'Agricultural Science is not relevant to MBBS and is not counted; the stated points and bonus replace the defaults');
+END $$;
+
+-- ══ V021 · THE APPLICANT'S JOURNEY ═══════════════════════════════════════
+
+-- ── 91–94. the number against the list; the stage from the facts; the fee gate; the offer accepted ──
+DO $$
+DECLARE b uuid := gen_random_uuid(); acct uuid; app uuid; ref text; ok boolean; f record; st int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- 91. nobody is verified while no list is loaded; then the number is found and the name is read, never typed
+    SELECT * INTO f FROM admissions.applicant_lookup('9997/9998', '20269999AP');
+    ok := f.state = 'nolist';
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b, '9997/9998', 'CAPS_DOWNLOAD', 'UTME', '\xC1'::bytea, 1, current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+    VALUES (gen_random_uuid(), b, '9997/9998', '20269999AP', '{}'::jsonb, 'CHECKAPPLICANT', 'Invented Person', 'C00061', 287, 'UTME', 'F', 'Benue', 'Gwer West');
+    SELECT * INTO f FROM admissions.applicant_lookup('9997/9998', '20269999AP');
+    PERFORM pg_temp.assert('The JAMB number is verified against the list the Academic Office loaded, and the name is read from it',
+        ok AND f.state = 'found' AND f.surname = 'CHECKAPPLICANT' AND f.programme = 'MBBS'
+        AND (SELECT x.state FROM admissions.applicant_lookup('9997/9998', '20269999ZZ') x) = 'none',
+        'a Post-UTME roll that anybody may join is not a roll; a typed name is a different person from the one JAMB holds');
+
+    -- 92. registering makes the candidate record from the CAPS row and opens the application under a number
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    acct := admissions.register_applicant('9997/9998', '20269999AP', 'check.applicant@example.com', '08034117725',
+        '$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab');
+    SELECT a.id INTO app FROM admissions.application a WHERE a.account_id = acct;
+    PERFORM pg_temp.assert('Registering creates the candidate from the CAPS row and opens the application under a number',
+        EXISTS (SELECT 1 FROM admissions.candidate c JOIN admissions.applicant_account a ON a.candidate_id = c.id
+                 WHERE a.id = acct AND c.offer_state = 'PROPOSED' AND c.admitted_from IS NOT NULL AND c.programme = 'MBBS')
+        AND (SELECT application_no FROM admissions.application WHERE id = app) ~ '^APP/99/[0-9]{6}$'
+        AND admissions.application_stage(app) = 0
+        AND (SELECT x.state FROM admissions.applicant_lookup('9997/9998', '20269999AP') x) = 'registered',
+        'the reconciliation has a candidate record to find, and the applicant has one account');
+
+    -- 93. the form opens when the fee is confirmed by an office against the bank's record, not before
+    ok := false;
+    BEGIN
+        PERFORM admissions.submit_application(app, '127.0.0.1');
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    ref := admissions.new_fee_reference(app, 'APPLICATION');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM admissions.confirm_fee(ref, 'Bank transfer', 'check');
+    PERFORM pg_temp.assert('The form opens when the application fee is confirmed against the reference this portal generated',
+        ok AND ref LIKE 'MOAUM-APP-%' AND admissions.application_stage(app) = 1
+        AND (SELECT amount FROM admissions.fee_reference WHERE reference = ref) = 2300
+        AND admissions.confirm_fee(ref, 'Bank transfer', 'again') = 'already confirmed',
+        'nothing is submitted until the bank''s record says the fee arrived; a reference is confirmed once');
+
+    -- 94. the Board's released offer makes the candidate ADMITTED; the undertaking and the acceptance fee make them ACCEPTED
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    UPDATE admissions.application SET next_of_kin = 'CHECK Next of Kin · 08030000000', submitted_at = now() WHERE id = app;
+    INSERT INTO admissions.screening_batch (id, session, label, held_on, starts_at, ends_at, venue, capacity)
+    VALUES (gen_random_uuid(), '9997/9998', 'C', current_date + 10, '11:00', '12:00', 'CBT Hall B', 120);
+    st := admissions.assign_screening((SELECT id FROM admissions.screening_batch WHERE session = '9997/9998' AND label = 'C'));
+    UPDATE admissions.application SET screening_score = 68.5, score_entered_at = now() WHERE id = app;
+    PERFORM admissions.release_scores('9997/9998');
+    PERFORM admissions.decide_application(app, 'OFFERED', 'check');
+    PERFORM admissions.release_decisions('9997/9998');
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    PERFORM admissions.sign_undertaking(app);
+    ref := admissions.new_fee_reference(app, 'ACCEPTANCE');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM admissions.confirm_fee(ref, 'Card', NULL);
+    SELECT * INTO f FROM admissions.screening_result(app);
+    PERFORM pg_temp.assert('A released offer makes the candidate ADMITTED, and the undertaking with the acceptance fee makes them ACCEPTED',
+        st = 1 AND (SELECT seat FROM admissions.application WHERE id = app) = 'C-001'
+        AND f.aggregate = round((287 / 400.0 * 100 * 0.7 + 68.5 * 0.3)::numeric, 2) AND f.merit_position = 1
+        AND (SELECT offer_state FROM admissions.candidate c JOIN admissions.application a ON a.candidate_id = c.id WHERE a.id = app) = 'ACCEPTED'
+        AND admissions.application_stage(app) = 6,
+        'the same candidate the Academic Office brings onto the register with people.intake, and the same aggregate rule as its settings');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

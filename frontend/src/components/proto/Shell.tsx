@@ -43,6 +43,16 @@ export const ROUTES: Record<string, string> = {
   "r/self": "/me",
   "t/users": "/people",
   "a/password": "/account/password",
+  /* the applicant's journey (proto/part13.html) */
+  "a/dashboard": "/applicant",
+  "a/apply": "/applicant/apply",
+  "a/fee": "/applicant/fee",
+  "a/screening": "/applicant/screening",
+  "a/score": "/applicant/score",
+  "a/status": "/applicant/status",
+  "a/accept": "/applicant/accept",
+  "a/clearance": "/applicant/clearance",
+  "a/matric": "/applicant/matric",
 };
 
 /* the portal's own subtitles where the prototype's named an invented figure */
