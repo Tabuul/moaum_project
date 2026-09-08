@@ -1,6 +1,7 @@
 "use client";
 
 /** tMatriculation — proto/part39.html: one run, one sequence, one transaction, over the confirmed lists. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -25,7 +26,7 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/matriculation/sessions/${o.session}/run`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": `Matriculation run for ${o.session}` }, body: "{}" });
+      const r = await fetch(`/api/bff/api/v1/matriculation/sessions/${o.session}/run`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Matriculation run for ${o.session}`) }, body: "{}" });
       if (!r.ok) setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
       else router.refresh();
     } finally {

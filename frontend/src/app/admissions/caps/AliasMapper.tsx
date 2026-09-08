@@ -6,6 +6,7 @@
  * suggestion — the mapping is a person's act, recorded against their office,
  * because it decides what degree those candidates are admitted to.
  */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Programme } from "@/lib/caps";
@@ -57,7 +58,7 @@ export function AliasMapper({
     try {
       const response = await fetch(`/api/bff/api/v1/admissions/programmes/${encodeURIComponent(code)}/jamb-alias`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "X-Reason": `JAMB calls ${code} "${jambName}" — mapped from the CAPS download on the intake screen` },
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`JAMB calls ${code} "${jambName}", mapped from the CAPS download on the intake screen`) },
         body: JSON.stringify({ jambName }),
       });
       const body = await response.json().catch(() => null);

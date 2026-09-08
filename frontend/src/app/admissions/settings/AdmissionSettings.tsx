@@ -7,6 +7,7 @@
  * force" is admissions.put_in_force, which refuses by name until nothing
  * stands in the way and a minute is cited. Settings in force are not edited.
  */
+import { reasonHeader } from "@/lib/reason";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -149,7 +150,7 @@ export function AdmissionSettings({
     try {
       const response = await fetch(path, {
         method,
-        headers: { "Content-Type": "application/json", "X-Reason": reason },
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (response.ok) {

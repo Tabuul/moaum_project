@@ -1,6 +1,7 @@
 "use client";
 
 /** tClearance — proto/part18.html: independent sign-offs, not a form that travels. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -36,7 +37,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
 
   async function post(path: string, body: unknown, reason: string): Promise<boolean> {
     setProblem(null);
-    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reason }, body: JSON.stringify(body ?? {}) });
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
     if (r.status === 202) {
       const j = await r.json();
       setSaid(`${j.note} (${j.wouldNotify} would have been notified.)`);

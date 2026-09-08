@@ -1,6 +1,7 @@
 "use client";
 
 /** tExamSession — proto/part28.html: the container everything hangs in, and the sheets it is waiting on. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,7 +25,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
     setBusy(key);
     setProblem(null);
     try {
-      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reason }, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (r.status === 202) {
         setSaid((j && j.note) || "Accepted");

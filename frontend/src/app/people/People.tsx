@@ -5,6 +5,7 @@
  * form (part36): the people, the offices they hold under an instrument
  * with a start and an end, and the credential that signs each one in.
  */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -68,7 +69,7 @@ export function People({ q, persons, grants, offices, actingOffice }: {
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(path, { method, headers: { "Content-Type": "application/json", "X-Reason": reason }, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(path, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       if (!r.ok) {
         setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
         return false;

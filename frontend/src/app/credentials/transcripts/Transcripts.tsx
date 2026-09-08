@@ -1,6 +1,7 @@
 "use client";
 
 /** staffTranscripts — proto/part5b.html: the production queue, oldest first, the SLA clock from payment. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -19,7 +20,7 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
     setBusy(id);
     setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/credentials/transcript-requests/${id}/${action}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reason }, body: "{}" });
+      const r = await fetch(`/api/bff/api/v1/credentials/transcript-requests/${id}/${action}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: "{}" });
       if (!r.ok) setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
       else router.refresh();
     } finally {

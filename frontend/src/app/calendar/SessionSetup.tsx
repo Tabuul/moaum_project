@@ -8,6 +8,7 @@
  * The two rules that matter are the database's — one session current, none
  * overlapping — so this screen lets them refuse and shows the refusal.
  */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -67,7 +68,7 @@ export function SessionSetup({
     try {
       const response = await fetch(`/api/bff${path}`, {
         method,
-        headers: { "Content-Type": "application/json", "X-Reason": reason },
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (response.ok) {

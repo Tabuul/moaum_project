@@ -1,6 +1,7 @@
 "use client";
 
 /** tCandidateData — proto/part54.html: three downloads, matched on the registration number, both ways. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -73,7 +74,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": `${kind} download recorded for ${state.session}` }, body: JSON.stringify({ kind, items }) });
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${kind} download recorded for ${state.session}`) }, body: JSON.stringify({ kind, items }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`${j.recorded} recorded; ${(j.attached as { kind: string; newly_attached: number }[]).map((a) => `${a.newly_attached} ${a.kind.toLowerCase().replace("_", " ")}`).join(", ") || "nothing newly"} attached to a candidate.`);

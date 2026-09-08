@@ -10,6 +10,7 @@
  * its shape and says so. No number here is computed from anything but the
  * record.
  */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClearanceRow, StudentRecord } from "@/lib/student";
@@ -85,7 +86,7 @@ export function Student360({
     try {
       const response = await fetch(`/api/bff/api/v1/student/students/${s.id}/status`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Reason": `Change of status: ${instrument}` },
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Change of status: ${instrument}`) },
         body: JSON.stringify({ to, instrument, reason: reason || null }),
       });
       if (response.ok) {

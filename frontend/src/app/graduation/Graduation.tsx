@@ -1,6 +1,7 @@
 "use client";
 
 /** rGraduation — proto/part9.html: the degree audit, computed, and the list Senate approves. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,7 +27,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reason }, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(j ?? { status: r.status, title: r.statusText });

@@ -1,6 +1,7 @@
 "use client";
 
 /** rAdmissions — proto/part9.html: the cycle as the register shows it. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,7 +23,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/student/intake/${cycle.session}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": `Admitted candidates of ${cycle.session} brought onto the register` }, body: "{}" });
+      const r = await fetch(`/api/bff/api/v1/student/intake/${cycle.session}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Admitted candidates of ${cycle.session} brought onto the register`) }, body: "{}" });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(r.status === 404 ? { status: 404, title: "The student register is not yet served", detail: "The intake endpoint has not arrived on the portal; the admission numbers are issued the moment it does." } : j ?? { status: r.status, title: r.statusText });

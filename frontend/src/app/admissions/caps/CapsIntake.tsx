@@ -11,6 +11,7 @@
  *     when the database says it reconciles
  *   · one code, two names — the University's programmes and JAMB's aliases
  */
+import { reasonHeader } from "@/lib/reason";
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -207,7 +208,7 @@ export function CapsIntake({
   async function post(path: string, reason: string, body?: unknown): Promise<{ ok: boolean; body: unknown; status: number }> {
     const response = await fetch(`/api/bff${path}`, {
       method: "POST",
-      headers: { "X-Reason": reason, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: { "X-Reason": reasonHeader(reason), ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const json = await response.json().catch(() => null);

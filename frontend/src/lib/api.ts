@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { OFFICE_COOKIE } from "./offices";
 import { sessionToken } from "./session";
+import { reasonHeader } from "./reason";
 
 /**
  * The server side of the BFF (ARC §8): pages and route handlers call the API
@@ -54,7 +55,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
   }
   office = office ?? process.env.PORTAL_ACTIVE_OFFICE ?? null;
   if (office) headers["X-Active-Office"] = office;
-  if (options.reason) headers["X-Reason"] = options.reason;
+  if (options.reason) headers["X-Reason"] = reasonHeader(options.reason);
   if (options.correlationId) headers["X-Correlation-Id"] = options.correlationId;
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
 

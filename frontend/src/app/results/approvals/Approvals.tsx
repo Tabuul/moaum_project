@@ -1,6 +1,7 @@
 "use client";
 
 /** staffApprovals — proto/part5.html: the desk's queue, with its refusals on the row. */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -37,7 +38,7 @@ export function Approvals({
     setBusy(key);
     setProblem(null);
     try {
-      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reason }, body: JSON.stringify(body ?? {}) });
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       if (r.status === 202) {
         const j = await r.json();
         setSaid(j.note ?? "Accepted");

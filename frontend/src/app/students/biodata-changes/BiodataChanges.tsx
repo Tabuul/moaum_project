@@ -9,6 +9,7 @@
  * go on the record with it: the database refuses a blank one, and so does
  * the modal.
  */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -48,7 +49,7 @@ export function BiodataChanges({
     try {
       const response = await fetch(`/api/bff/api/v1/student/biodata-changes/${id}/${action}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Reason": `Biodata change: ${action}` },
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Biodata change: ${action}`) },
         body: JSON.stringify(body ?? {}),
       });
       if (response.ok) {

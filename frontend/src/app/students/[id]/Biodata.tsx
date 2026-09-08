@@ -7,6 +7,7 @@
  * written where it stands, on leaving it; a field that changes only on
  * evidence raises a request the Registry decides, and says that too.
  */
+import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import type { BiodataField, StudentRecord, Tier } from "@/lib/student";
 import { statusLabel } from "@/lib/student";
@@ -122,7 +123,7 @@ export function Biodata({ record, may }: { record: StudentRecord; may: boolean }
     setProblem(null);
     const response = await fetch(`/api/bff/api/v1/student/students/${s.id}/biodata/${field.field}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Reason": `Biodata: ${field.label}` },
+      headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Biodata: ${field.label}`) },
       body: JSON.stringify({ value }),
     });
     if (response.ok) {
