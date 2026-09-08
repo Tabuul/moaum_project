@@ -1,4 +1,6 @@
 import "server-only";
+import { cookies } from "next/headers";
+import { OFFICE_COOKIE } from "./offices";
 
 /**
  * The server side of the BFF (ARC §8): pages and route handlers call the API
@@ -41,7 +43,15 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
   const headers: Record<string, string> = { Accept: "application/json" };
   const token = process.env.PORTAL_API_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
-  const office = options.office ?? process.env.PORTAL_ACTIVE_OFFICE;
+  let office = options.office ?? null;
+  if (!office) {
+    try {
+      office = (await cookies()).get(OFFICE_COOKIE)?.value ?? null;
+    } catch {
+      office = null;
+    }
+  }
+  office = office ?? process.env.PORTAL_ACTIVE_OFFICE ?? null;
   if (office) headers["X-Active-Office"] = office;
   if (options.reason) headers["X-Reason"] = options.reason;
   if (options.correlationId) headers["X-Correlation-Id"] = options.correlationId;

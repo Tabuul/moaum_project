@@ -75,6 +75,13 @@ class AdmissionsController {
         return intake.policyFindings(session + "/" + year);
     }
 
+    /** The programmes and their JAMB names, so a list can be resolved before it is loaded. */
+    @GetMapping("/programmes")
+    @PreAuthorize(READERS)
+    List<Programme> programmes() {
+        return intake.programmes();
+    }
+
     /** {@code ?in=202699168863AH_Face.jpg} → the number the database reads out of it, or none. */
     @GetMapping("/reg-no")
     @PreAuthorize(READERS)

@@ -208,6 +208,20 @@ class ApiIT {
         assertThat(r.getBody().get("regNo")).isEqualTo("202699168863AH");
     }
 
+    @Test
+    void theProgrammesCarryTheirJambNames() {
+        ResponseEntity<List> r = client.get().uri("/api/v1/admissions/programmes")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .retrieve().toEntity(List.class);
+        assertThat(r.getStatusCode().value()).isEqualTo(200);
+        assertThat(r.getBody().size()).isGreaterThanOrEqualTo(90);
+        Map<?, ?> mbbs = (Map<?, ?>) r.getBody().stream()
+                .filter(p -> "C00061".equals(((Map<?, ?>) p).get("code"))).findFirst().orElseThrow();
+        assertThat(mbbs.get("name")).isEqualTo("MBBS");
+        assertThat(mbbs.get("jambName")).isEqualTo("Medicine & Surgery");
+        assertThat(mbbs.get("facultyName")).isEqualTo("Basic and Applied Medical Sciences");
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     static final SecureRandom RANDOM = new SecureRandom();

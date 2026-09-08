@@ -1,72 +1,11 @@
-@import "tailwindcss";
+/* The prototype's stylesheet, verbatim (proto/part1.html). The portal's
+   screens are the prototype's screens: same classes, same structure, same
+   CSS. Nothing is restyled here. */
+@import "../styles/prototype.css";
 
-/* ── Palette sampled from the University crest, as in the prototype ──
-   red #ED1B23 · blue #2CAAE1 · green #0CA54E · charcoal #221F20        */
+/* The only change: IBM Plex is served from this origin by next/font, so the
+   family names the prototype's variables name are the self-hosted ones. */
 :root {
-  --chrome: #0e3f55;
-  --chrome-2: #1b5a76;
-  --chrome-ink: #a8cfe2;
-  --chrome-dim: #7fb2ca;
-  --sky: #2caae1;
-  --sky-bg: #e8f5fb;
-  --sky-line: #b6ddf0;
-  --red: #ed1b23;
-  --red-ink: #b01218;
-  --red-bg: #fdeaeb;
-  --red-line: #f6bcbf;
-  --green: #0ca54e;
-  --green-ink: #0a7a3b;
-  --green-bg: #e6f6ed;
-  --green-line: #a9e0c1;
-  --ink: #221f20;
-  --muted: #5c6570;
-  --faint: #656e79;
-  --bg: #f4f6f8;
-  --surface: #ffffff;
-  --line: #dee3e8;
-  --line-2: #eceff2;
-  --field: #c3cbd3;
-}
-
-@theme inline {
-  --color-chrome: var(--chrome);
-  --color-chrome-2: var(--chrome-2);
-  --color-chrome-ink: var(--chrome-ink);
-  --color-chrome-dim: var(--chrome-dim);
-  --color-sky: var(--sky);
-  --color-sky-bg: var(--sky-bg);
-  --color-sky-line: var(--sky-line);
-  --color-red: var(--red);
-  --color-red-ink: var(--red-ink);
-  --color-red-bg: var(--red-bg);
-  --color-red-line: var(--red-line);
-  --color-green: var(--green);
-  --color-green-ink: var(--green-ink);
-  --color-green-bg: var(--green-bg);
-  --color-green-line: var(--green-line);
-  --color-ink: var(--ink);
-  --color-muted: var(--muted);
-  --color-faint: var(--faint);
-  --color-page: var(--bg);
-  --color-surface: var(--surface);
-  --color-line: var(--line);
-  --color-line-2: var(--line-2);
-  --font-sans: var(--font-plex-sans), "Segoe UI", system-ui, sans-serif;
-  --font-serif: var(--font-plex-serif), Georgia, "Times New Roman", serif;
-}
-
-html {
-  color-scheme: light;
-}
-
-body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.tnum {
-  font-variant-numeric: tabular-nums;
+  --sans: var(--font-plex-sans), "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --serif: var(--font-plex-serif), "IBM Plex Serif", Georgia, "Times New Roman", serif;
 }

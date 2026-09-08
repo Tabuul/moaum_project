@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_URL } from "@/lib/api";
+import { OFFICE_COOKIE } from "@/lib/offices";
 
 /**
  * The BFF (ARC §8, ADR-007): the browser talks to this origin only, and this
@@ -23,8 +24,9 @@ async function forward(request: NextRequest, path: string[]): Promise<NextRespon
   }
   const token = process.env.PORTAL_API_TOKEN;
   if (token) headers.set("authorization", `Bearer ${token}`);
-  if (!headers.has("x-active-office") && process.env.PORTAL_ACTIVE_OFFICE) {
-    headers.set("x-active-office", process.env.PORTAL_ACTIVE_OFFICE);
+  if (!headers.has("x-active-office")) {
+    const chosen = request.cookies.get(OFFICE_COOKIE)?.value ?? process.env.PORTAL_ACTIVE_OFFICE;
+    if (chosen) headers.set("x-active-office", chosen);
   }
 
   const url = `${API_URL}/${path.map(encodeURIComponent).join("/")}${request.nextUrl.search}`;

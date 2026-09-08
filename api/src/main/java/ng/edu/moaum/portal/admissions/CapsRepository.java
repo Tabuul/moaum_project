@@ -107,6 +107,19 @@ class CapsRepository {
                 .list();
     }
 
+    List<Programme> programmes() {
+        return jdbc.sql("""
+                SELECT p.code, p.name, p.dept_code, p.faculty_code, f.name AS faculty_name,
+                       a.jamb_name, p.category, p.archived
+                  FROM ref.programme p
+                  JOIN ref.faculty f ON f.code = p.faculty_code
+                  LEFT JOIN ref.jamb_alias a ON a.code = p.code
+                 ORDER BY p.code
+                """)
+                .query(Programme.class)
+                .list();
+    }
+
     Optional<String> regNoIn(String text) {
         return jdbc.sql("SELECT admissions.reg_no_in(:text)").param("text", text).query(String.class).optional();
     }

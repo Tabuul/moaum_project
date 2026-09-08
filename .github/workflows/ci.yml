@@ -186,7 +186,7 @@ jobs:
 
   # ── the frontend: type-checks and builds ──────────────────────────────
   frontend:
-    name: "Frontend — lints, type-checks, builds"
+    name: "Frontend — reads a spreadsheet, lints, type-checks, builds"
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -199,11 +199,12 @@ jobs:
       - name: Install
         working-directory: frontend
         run: npm ci
-      - name: Lint and build
+      - name: Test, lint and build
         working-directory: frontend
         env:
           PORTAL_API_URL: http://localhost:8081
         run: |
+          npm test
           npm run lint
           npm run build
 

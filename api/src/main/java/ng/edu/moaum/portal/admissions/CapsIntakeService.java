@@ -86,6 +86,12 @@ public class CapsIntakeService {
         return caps.policyFindings(session);
     }
 
+    /** Every programme with the name JAMB uses for it — what a CAPS download is resolved against. */
+    @Transactional(readOnly = true)
+    public List<Programme> programmes() {
+        return caps.programmes();
+    }
+
     /** The registration number inside a filename, by shape — {@code admissions.reg_no_in}. */
     @Transactional(readOnly = true)
     public Optional<String> regNoIn(String text) {
