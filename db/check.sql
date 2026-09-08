@@ -102,6 +102,11 @@ BEGIN
     DELETE FROM admissions.screening_batch;
     DELETE FROM admissions.applicant_fee WHERE session IN ('9998/9999', '9999/0000');
     DELETE FROM admissions.screening_exam_programme WHERE session IN ('9997/9998', '9998/9999', '9999/0000');
+    DELETE FROM admissions.programme_closed WHERE policy_id IN
+        (SELECT id FROM admissions.session_policy WHERE session IN ('9997/9998', '9998/9999', '9999/0000'));
+    DELETE FROM admissions.programme_rule WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9997/9998');
+    DELETE FROM admissions.faculty_quota WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9997/9998');
+    DELETE FROM admissions.session_policy WHERE session = '9997/9998';
 
     -- the property session of V020, and the sittings derived from attachments
     DELETE FROM admissions.rule_subject WHERE group_id IN (
@@ -142,7 +147,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 96
+\set EXPECTED 97
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -174,7 +179,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries all twenty-five offices',
-                           n = 25, n || ' offices');
+                           n = 26, n || ' offices (25 staff offices and the applicant, V021)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -1542,6 +1547,32 @@ BEGIN
     PERFORM pg_temp.assert('The four documents are needed to submit; the passport photograph can come at any time',
         ok AND (SELECT submitted_at FROM admissions.application WHERE id = app) IS NOT NULL,
         'a photograph arrives whenever the applicant has one, and is the one document outside the declaration');
+END $$;
+
+-- ══ V023 · A PROGRAMME CLOSED FOR A SESSION ═════════════════════════════
+
+-- ── 97. closed: needs no rule, and a candidate JAMB sent for it is told so at registration ──
+DO $$
+DECLARE pid uuid := gen_random_uuid(); b uuid := gen_random_uuid(); f record; n int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme) VALUES (pid, '9997/9998', 100, 70, 30);
+    -- a candidate JAMB sent for Computer Science, which the session then closes
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b, '9997/9998', 'CAPS_DOWNLOAD', 'UTME', '\xC2'::bytea, 1, current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode)
+    VALUES (gen_random_uuid(), b, '9997/9998', '20269999CL', '{}'::jsonb, 'CHECKCLOSED', 'Invented', 'C00023', 250, 'UTME');
+    SELECT * INTO f FROM admissions.applicant_lookup('9997/9998', '20269999CL');
+    n := CASE WHEN f.state = 'found' THEN 1 ELSE 0 END;
+    INSERT INTO admissions.programme_closed (policy_id, programme_code, reason) VALUES (pid, 'C00023', 'no intake this session');
+    SELECT * INTO f FROM admissions.applicant_lookup('9997/9998', '20269999CL');
+    PERFORM pg_temp.assert('A programme closed for the session needs no rule, and a candidate JAMB sent for it is told so at registration',
+        n = 1 AND f.state = 'closed' AND f.surname = 'CHECKCLOSED'
+        AND admissions.programme_is_closed('9997/9998', 'C00023')
+        AND NOT admissions.programme_is_closed('9998/9999', 'C00023')
+        AND NOT EXISTS (SELECT 1 FROM admissions.policy_findings('9997/9998') x WHERE x.finding LIKE 'Programmes with no%'),
+        'closed is a decision on the record, not an omission; the applicant is sent back to JAMB, not let through to nowhere');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

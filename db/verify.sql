@@ -56,10 +56,11 @@ BEGIN
     END;
 
     -- 4 · the offices are seeded
+    -- twenty-five staff offices, and the applicant (V021)
     SELECT count(*) INTO n FROM ref.office;
-    IF n <> 25 THEN
+    IF n <> 26 THEN
         RAISE EXCEPTION 'deployment verification failed: % offices in the register, '
-                        'expected 25.', n;
+                        'expected 26 (25 staff offices and the applicant).', n;
     END IF;
 
     -- 5 · the University's programme table is loaded

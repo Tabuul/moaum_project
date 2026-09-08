@@ -58,6 +58,9 @@ export interface AdmissionPolicy {
     olevelSittings: number | null;
   /** the O'Level subjects relevant to the programme — the ones the screening counts (V020) */
   olevelSubjects?: string[];
+  /** closed for the session (V023): not admitted into, needs no rule */
+  closed?: boolean;
+  closedReason?: string | null;
     stated: boolean;
   }[];
   findings: { finding: string; detail: string; owner: string }[];
@@ -142,6 +145,8 @@ export function AdmissionSettings({
   const [tried, setTried] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [newQuota, setNewQuota] = useState("");
+  const [choosing, setChoosing] = useState(false);
+  const [chosen, setChosen] = useState("");
 
   const may = actingOffice !== null && SECRETARIAT.includes(actingOffice);
   const locked = !may || !!policy?.inForce;
@@ -259,8 +264,10 @@ export function AdmissionSettings({
   /* ── derived ── */
   const critTotal = policy.criteria.reduce((a, c) => a + c.percent, 0);
   const quotaTotal = policy.facultyCutoffs.reduce((a, f) => a + (f.quota ?? 0), 0);
-  const withRule = policy.programmes.filter((p) => p.stated);
-  const withoutRule = policy.programmes.filter((p) => !p.stated);
+  const withRule = policy.programmes.filter((p) => p.stated && !p.closed);
+  /* a programme closed for the session needs no rule: it is not admitted into (V023) */
+  const closedThisSession = policy.programmes.filter((p) => p.closed);
+  const withoutRule = policy.programmes.filter((p) => !p.stated && !p.closed);
   const f = policy.findings;
   const blocking = ADM_QUESTIONS.filter((q) => q[0] === "blocking");
   const facultyCutoff = (code: string) => policy.facultyCutoffs.find((x) => x.facultyCode === code)?.cutoff ?? null;
@@ -400,7 +407,7 @@ export function AdmissionSettings({
           The Deans and Heads of Department below have to state one.
         </Note>
       ) : null}
-      <Panel title="Every programme the University runs" right={`${withRule.length} of ${policy.programmes.length} carry a requirement`}>
+      <Panel title="Every programme the University runs" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${withRule.length} of ${policy.programmes.length} carry a requirement${closedThisSession.length ? ` · ${closedThisSession.length} closed this session` : ""}`}<Btn kind="primary" disabled={locked || !withoutRule.length} onClick={() => { setChoosing(true); setChosen(""); }}>New rule</Btn></span>}>
         <DTable
           cols={["Programme", "Faculty|mid", "Cut-off|num", "O’Level requirement", "UTME subjects", "Direct Entry", "|num"]}
           rows={progRows.map((p) => {
@@ -408,16 +415,36 @@ export function AdmissionSettings({
             return [
               <span key="n"><strong>{p.name}</strong><div className="sub2 tnum">{p.code}</div></span>,
               <span className="sub2" key="f">{p.facultyName}</span>,
-              cut ? <span key="c"><b className="tnum">{cut}</b><div className="sub2">{p.cutoff ? "its own" : "faculty"}</div></span> : <Pil kind="bad" key="c">none</Pil>,
-              p.stated ? <span className="sub2" key="o">{p.olevelText}</span> : <Pil kind="bad" key="o">not stated</Pil>,
-              <span className="sub2" key="u">{p.stated ? p.utmeText : ""}</span>,
-              <span className="sub2" key="d">{p.stated ? p.deText : ""}</span>,
-              <Btn kind={p.stated ? "ghost" : "urgent"} key="e" disabled={locked} onClick={() => { setEditing(p.code); setEdits({}); }}>
-                {p.stated ? "Edit" : "State"}
-              </Btn>,
+              p.closed ? <Pil kind="grey" key="c">closed</Pil> : cut ? <span key="c"><b className="tnum">{cut}</b><div className="sub2">{p.cutoff ? "its own" : "faculty"}</div></span> : <Pil kind="bad" key="c">none</Pil>,
+              p.closed ? <span className="sub2" key="o">Not admitting this session: {p.closedReason}</span> : p.stated ? <span className="sub2" key="o">{p.olevelText}</span> : <Pil kind="bad" key="o">not stated</Pil>,
+              <span className="sub2" key="u">{p.stated && !p.closed ? p.utmeText : ""}</span>,
+              <span className="sub2" key="d">{p.stated && !p.closed ? p.deText : ""}</span>,
+              <span key="e" style={{ display: "inline-flex", gap: 6 }}>
+                {p.closed ? (
+                  <Btn kind="ghost" disabled={locked || busy !== null} onClick={() => void send("POST", `${base}/programmes/${p.code}/reopen`, {}, `${p.name} reopened for ${session}`, `re-${p.code}`)}>{busy === `re-${p.code}` ? "Reopening…" : "Reopen"}</Btn>
+                ) : (
+                  <>
+                    <Btn kind={p.stated ? "ghost" : "urgent"} disabled={locked} onClick={() => { setEditing(p.code); setEdits({}); }}>{p.stated ? "Edit" : "State"}</Btn>
+                    {!p.stated ? (
+                      <Btn kind="ghost" disabled={locked || busy !== null} title="Close this programme for the session: it needs no rule and admits nobody" onClick={() => { const reason = window.prompt(`Why is ${p.name} not admitting in ${session}? This goes on the record.`); if (!reason) return; void send("POST", `${base}/programmes/${p.code}/close`, { reason }, `${p.name} closed for ${session}: ${reason}`, `cl-${p.code}`); }}>{busy === `cl-${p.code}` ? "Closing…" : "Disable"}</Btn>
+                    ) : null}
+                  </>
+                )}
+              </span>,
             ];
           })}
         />
+        {choosing ? (
+          <Modal title="A new rule" sub={`${withoutRule.length} programme${withoutRule.length === 1 ? "" : "s"} without one for ${session}`} onClose={() => setChoosing(false)}
+            foot={<><Btn kind="ghost" onClick={() => setChoosing(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!chosen} onClick={() => { setChoosing(false); setEditing(chosen); setEdits({}); }}>State the rule</Btn></>}>
+            <Field id="new-rule-programme" label="Programme" hint="Those with no rule this session and not closed">
+              <select id="new-rule-programme" className="ctl" value={chosen} onChange={(e) => setChosen(e.target.value)}>
+                <option value="">Choose the programme…</option>
+                {withoutRule.map((p) => <option key={p.code} value={p.code}>{p.code} · {p.name} · {p.facultyName}</option>)}
+              </select>
+            </Field>
+          </Modal>
+        ) : null}
       </Panel>
       {editingProgramme && (
         <Modal

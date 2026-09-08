@@ -34,7 +34,7 @@ export function phoneRead(v: string): { digits: string; how: string; ok: boolean
   return { digits: d, how, ok: d.length === 11 && d[0] === "0" };
 }
 
-type Found = { state: "idle" | "nolist" | "none" | "found" | "registered"; name?: string; programme?: string; list?: string };
+type Found = { state: "idle" | "nolist" | "none" | "found" | "registered" | "closed"; name?: string; programme?: string; list?: string };
 
 export function Register({ session }: { session: string }) {
   const router = useRouter();
@@ -146,6 +146,11 @@ export function Register({ session }: { session: string }) {
           {found.state === "none" ? (
             <Note kind="bad" title="That number is not on the list JAMB sent the University">
               This is not a decision about you, and it is usually one of three things. <b>One:</b> a digit is wrong &mdash; the number is twelve digits and then two or three letters, and it is on your JAMB slip. <b>Two:</b> you did not choose this University on CAPS, in which case change your institution with JAMB first. <b>Three:</b> JAMB sends the list in tranches and yours has not reached us yet, in which case try again after forty-eight hours. <b>Do not travel to the campus to resolve this</b> &mdash; nobody at the gate can add you to a list that comes from JAMB.
+            </Note>
+          ) : null}
+          {found.state === "closed" ? (
+            <Note kind="bad" title={`The University is not admitting into ${found.programme ?? "that programme"} this session`}>
+              Your number is on the list JAMB sent, and the name it carries is <b>{found.name}</b>. But the programme you chose is closed for this session, so no application can be opened into it. Change your programme with JAMB to one the University admits into this session, and this screen will find you again.
             </Note>
           ) : null}
           {found.state === "registered" ? (

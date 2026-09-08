@@ -79,7 +79,7 @@ public class ApplicantService {
         Map<String, Object> row = repo.lookup(session, key);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("state", row.get("state"));
-        if ("found".equals(row.get("state")) || "registered".equals(row.get("state"))) {
+        if ("found".equals(row.get("state")) || "registered".equals(row.get("state")) || "closed".equals(row.get("state"))) {
             out.put("name", row.get("surname") + ", " + row.get("other_names"));
             out.put("programme", row.get("programme") == null ? row.get("programme_code") : row.get("programme"));
             out.put("list", "DIRECT_ENTRY".equals(row.get("list_kind")) ? "de" : "utme");

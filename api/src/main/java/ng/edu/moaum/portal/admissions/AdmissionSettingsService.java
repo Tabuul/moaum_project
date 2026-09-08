@@ -135,6 +135,29 @@ public class AdmissionSettingsService {
         return policy(session);
     }
 
+    /** A programme closed for the session (V023): not admitted into, needs no rule; the reason is on the record. */
+    @Transactional
+    public AdmissionPolicy closeProgramme(String session, String programmeCode, String reason) {
+        UUID id = draftId(session);
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new DomainRuleViolation("ADM_CLOSE_REASON", "A programme is closed for a session for a reason.",
+                    new DomainRuleViolation.Remedy("Say why it does not admit this session — no accreditation, no intake, suspended by Senate.", "Academic Office"));
+        }
+        settings.closeProgramme(id, code, reason.trim());
+        return policy(session);
+    }
+
+    @Transactional
+    public AdmissionPolicy reopenProgramme(String session, String programmeCode) {
+        UUID id = draftId(session);
+        settings.reopenProgramme(id, programmeCode.trim().toUpperCase());
+        return policy(session);
+    }
+
     /** The Committee's minute. The database refuses, by name, until every finding is answered. */
     @Transactional
     public AdmissionPolicy putInForce(String session, String instrument) {

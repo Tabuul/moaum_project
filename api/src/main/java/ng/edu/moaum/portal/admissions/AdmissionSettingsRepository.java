@@ -64,12 +64,16 @@ class AdmissionSettingsRepository {
                        (SELECT string_agg(DISTINCT rs.subject, E'\n' ORDER BY rs.subject)
                           FROM admissions.rule_subject rs
                           JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
-                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'OLEVEL') AS olevel_subjects
+                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'OLEVEL') AS olevel_subjects,
+                       (cl.programme_code IS NOT NULL) AS closed, cl.reason AS closed_reason
                   FROM ref.programme g
                   JOIN ref.faculty f ON f.code = g.faculty_code
                   LEFT JOIN (SELECT r.* FROM admissions.programme_rule r
                                JOIN admissions.session_policy p ON p.id = r.policy_id
                               WHERE p.session = :session) r ON r.programme_code = g.code
+                  LEFT JOIN (SELECT c.* FROM admissions.programme_closed c
+                               JOIN admissions.session_policy p ON p.id = c.policy_id
+                              WHERE p.session = :session) cl ON cl.programme_code = g.code
                  ORDER BY f.name, g.name
                 """)
                 .param("session", session)
@@ -77,7 +81,8 @@ class AdmissionSettingsRepository {
                         rs.getString("faculty_code"), rs.getString("faculty_name"), rs.getObject("cutoff", Integer.class),
                         rs.getString("olevel_text"), rs.getString("utme_text"), rs.getString("de_text"),
                         rs.getObject("olevel_credits", Integer.class), rs.getObject("olevel_sittings", Integer.class),
-                        rs.getBoolean("stated"), lines(rs.getString("olevel_subjects"))))
+                        rs.getBoolean("stated"), lines(rs.getString("olevel_subjects")),
+                        rs.getBoolean("closed"), rs.getString("closed_reason")))
                 .list();
     }
 
@@ -179,6 +184,19 @@ class AdmissionSettingsRepository {
                 }
             }
         }
+    }
+
+    /** closed for the session (V023): not admitted into, needs no rule; the reason goes on the record */
+    void closeProgramme(UUID policyId, String code, String reason) {
+        jdbc.sql("""
+                INSERT INTO admissions.programme_closed (policy_id, programme_code, reason) VALUES (:id, :code, :reason)
+                ON CONFLICT (policy_id, programme_code) DO UPDATE SET reason = EXCLUDED.reason, closed_at = now()
+                """).param("id", policyId).param("code", code).param("reason", reason).update();
+    }
+
+    int reopenProgramme(UUID policyId, String code) {
+        return jdbc.sql("DELETE FROM admissions.programme_closed WHERE policy_id = :id AND programme_code = :code")
+                .param("id", policyId).param("code", code).update();
     }
 
     boolean facultyExists(String code) {

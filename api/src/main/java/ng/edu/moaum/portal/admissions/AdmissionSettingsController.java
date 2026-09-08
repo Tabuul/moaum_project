@@ -69,6 +69,23 @@ class AdmissionSettingsController {
         return service.saveProgrammeRule(session + "/" + year, code, body);
     }
 
+    public record Closure(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 400) String reason) {
+    }
+
+    /** closed for the session: not admitted into, needs no rule (V023) */
+    @PostMapping("/sessions/{session}/{year}/policy/programmes/{code}/close")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy close(@PathVariable String session, @PathVariable String year, @PathVariable String code,
+                          @Valid @RequestBody Closure body) {
+        return service.closeProgramme(session + "/" + year, code, body.reason());
+    }
+
+    @PostMapping("/sessions/{session}/{year}/policy/programmes/{code}/reopen")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy reopen(@PathVariable String session, @PathVariable String year, @PathVariable String code) {
+        return service.reopenProgramme(session + "/" + year, code);
+    }
+
     @PostMapping("/sessions/{session}/{year}/policy/put-in-force")
     @PreAuthorize(SECRETARIAT)
     AdmissionPolicy putInForce(@PathVariable String session, @PathVariable String year,
