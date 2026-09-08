@@ -64,6 +64,8 @@ export const ROUTES: Record<string, string> = {
   "s/graduation": "/student/graduation",
   "s/hostel": "/student/hostel",
   "t/hostel": "/hostel",
+  "s/library": "/student/library",
+  "t/circulation": "/library/circulation",
   "t/feesetup": "/finance/fees",
   "t/scores": "/results/sheets",
   "t/sheet": "/results/sheets",

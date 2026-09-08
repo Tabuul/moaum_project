@@ -46,6 +46,11 @@ BEGIN
     DELETE FROM credentials.transcript_request;
     DELETE FROM records.graduand;
     DELETE FROM clearance.item;
+    -- library (V031): loans and reservations before copies and items, before the students they name
+    DELETE FROM library.reservation;
+    DELETE FROM library.loan;
+    DELETE FROM library.copy WHERE accession LIKE 'CHK/%';
+    DELETE FROM library.item WHERE title LIKE 'CHECK %';
     -- hostel (V030): allocations before applications, before the students and rooms they hang on
     DELETE FROM hostel.maintenance_request;
     DELETE FROM hostel.allocation;
@@ -175,7 +180,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 105
+\set EXPECTED 106
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1842,6 +1847,42 @@ BEGIN
         AND (SELECT count(*) FROM hostel.allocation al WHERE al.session = '9999/0000' AND al.lapsed_at IS NULL AND al.ended_at IS NULL) = 2,
         format('drawn=%s/%s/%s dup_refused=%s order=%s lapsed=%s ref=%s states=%s', d.allocated, d.unsuccessful, d.priority, ok, before_pos = after_pos, v_lapsed, v_ref,
                (SELECT string_agg(ap.state || '@' || coalesce(ap.draw_position::text, '-'), ',' ORDER BY ap.draw_position) FROM hostel.application ap WHERE ap.session = '9999/0000')));
+END $$;
+
+-- ── 106. a loan has a due date; a late return posts the fine at the rate in force; an overdue patron is issued nothing; the fine settles on its reference (V031) ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); it uuid := gen_random_uuid(); l1 uuid; ret record; stg record; ok1 boolean := false; ok2 boolean := false; v_ref text; v_due date;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990108', 'MOAUM/CHK/99/0108', 'CHECKREADER', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'library', true);
+    UPDATE library.setting SET loan_days = 14, fine_per_day = 50, max_loans = 3, max_renewals = 1 WHERE id = 1;
+    INSERT INTO library.item (id, title, author) VALUES (it, 'CHECK Introduction to Algorithms', 'Invented');
+    INSERT INTO library.copy (accession, item_id) VALUES ('CHK/000001', it), ('CHK/000002', it);
+    l1 := library.issue('CHK/000001', st, NULL);
+    v_due := (SELECT due_on FROM library.loan WHERE id = l1);
+    -- the same copy cannot be issued twice
+    BEGIN PERFORM library.issue('CHK/000001', st, NULL); EXCEPTION WHEN OTHERS THEN ok1 := true; END;
+    -- time passes: the loan is three days overdue, so nothing else is issued and a renewal is refused
+    UPDATE library.loan SET due_on = current_date - 3 WHERE id = l1;
+    BEGIN PERFORM library.issue('CHK/000002', st, NULL); EXCEPTION WHEN OTHERS THEN ok2 := true; END;
+    SELECT * INTO ret FROM library.give_back('CHK/000001');
+    SELECT * INTO stg FROM library.standing(st);
+    -- the fine is a reference like every other; confirming it settles the fine and clears the patron
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    v_ref := library.fine_reference(l1);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(v_ref, 'Card', 'check');
+    PERFORM pg_temp.assert('A loan has a due date, a late return posts the fine at the rate in force, an overdue patron is issued nothing, and the fine settles on its reference',
+        v_due = current_date + 14 AND ok1 AND ok2 AND ret.days_overdue = 3 AND ret.fine = 150
+        AND stg.on_loan = 0 AND stg.fines_unpaid = 150 AND NOT stg.clear
+        AND v_ref LIKE 'MOAUM-FEE-%'
+        AND (SELECT fine_settled_at IS NOT NULL FROM library.loan WHERE id = l1)
+        AND (SELECT clear FROM library.standing(st))
+        AND (SELECT state FROM library.copy WHERE accession = 'CHK/000001') = 'AVAILABLE',
+        format('due=%s twice_refused=%s overdue_refused=%s days=%s fine=%s standing=%s/%s/%s ref=%s', v_due, ok1, ok2, ret.days_overdue, ret.fine, stg.on_loan, stg.fines_unpaid, stg.clear, v_ref));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
