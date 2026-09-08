@@ -15,8 +15,8 @@ RUN apt-get update \
 WORKDIR /app
 
 # the migrations, the read-only verification, and the runner
-COPY db/V*.sql db/verify.sql db/migrate.sh ./db/
-RUN chmod +x ./db/migrate.sh
+COPY db/V*.sql db/verify.sql db/migrate.sh db/demo.sql db/demo.sh ./db/
+RUN chmod +x ./db/migrate.sh ./db/demo.sh
 
 # the service and the page it serves
 COPY web/ ./web/

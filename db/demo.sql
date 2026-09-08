@@ -1,0 +1,237 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- demo.sql — invented accounts to walk the portal with
+--
+--   Every person here is invented. The surname is DEMO, the staff numbers
+--   are MOAUM/DEMO/nnn, the matriculation numbers sit at the top of their
+--   year (9901–9906) so a real matriculation run never meets them, and the
+--   courses carry the DMO prefix. Nothing here is a real student, a real
+--   member of staff, or a real JAMB candidate.
+--
+--   It is NOT a migration. migrate.sh does not run it; CI runs it twice to
+--   prove it is idempotent, and an operator runs `bash db/demo.sh` against a
+--   database they mean to demonstrate on. Running it on the University's
+--   live database would put invented people on the register, so the runner
+--   says so before it starts.
+--
+--   Every write is attributed, as every write must be (V002): the actor is
+--   the fixed demo actor below, acting at the door the Directorate of ICT
+--   operates, and the functions that read the acting office are called
+--   under the office that would call them.
+--
+--   The password for every account is: Demo password 2026
+-- ═══════════════════════════════════════════════════════════════════════════
+
+\set ON_ERROR_STOP on
+
+BEGIN;
+
+SELECT set_config('moaum.actor_id', '00000000-0000-0000-0000-00000000de30', true);
+SELECT set_config('moaum.actor_office', 'ict', true);
+
+DO $$
+DECLARE
+    v_actor     uuid := '00000000-0000-0000-0000-00000000de30';
+    v_pw        text := 'Demo password 2026';
+    v_session   text;
+    v_yy        text;
+    v_person    uuid;
+    v_lecturer  uuid;
+    v_exams     uuid;
+    v_hod       uuid;
+    v_student   uuid;
+    v_reg       uuid;
+    v_exam      uuid;
+    v_batch     uuid;
+    v_made      int;
+    v_none      int;
+    o           record;
+    s           record;
+    c           record;
+BEGIN
+    -- ── the session everything hangs in: the current one, else 2026/2027 ──
+    SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
+    IF v_session IS NULL THEN
+        v_session := '2026/2027';
+    END IF;
+    v_yy := substr(v_session, 3, 2);
+
+    -- ── the staff: one person per office, signing in as demo.<office> ──
+    FOR o IN
+        SELECT * FROM (VALUES
+            ('lecturer',         '001', 'Lecturer',                 'department',  'MTC'),
+            ('hod',              '002', 'Head Of Department',       'department',  'MTC'),
+            ('exams',            '003', 'Examinations Officer',     'department',  'MTC'),
+            ('facultyexams',     '004', 'Faculty Examinations',     'faculty',     'SC'),
+            ('facultyofficer',   '005', 'Faculty Officer',          'faculty',     'SC'),
+            ('dean',             '006', 'Dean',                     'faculty',     'SC'),
+            ('records',          '007', 'Exams And Records',        'institution', NULL),
+            ('academic',         '008', 'Academic Office',          'institution', NULL),
+            ('dregistrar',       '009', 'Deputy Registrar',         'institution', NULL),
+            ('registrar',        '010', 'Registrar',                'institution', NULL),
+            ('dvc',              '011', 'Deputy Vice Chancellor',   'institution', NULL),
+            ('vc',               '012', 'Vice Chancellor',          'institution', NULL),
+            ('bursar',           '013', 'Bursar',                   'institution', NULL),
+            ('audit',            '014', 'Internal Audit',           'institution', NULL),
+            ('deputyaudit',      '015', 'Deputy Audit',             'institution', NULL),
+            ('hrm',              '016', 'Human Resources',          'institution', NULL),
+            ('housing',          '017', 'Housing',                  'institution', NULL),
+            ('provost',          '018', 'Provost',                  'institution', NULL),
+            ('collegesecretary', '019', 'College Secretary',        'institution', NULL),
+            ('library',          '020', 'Librarian',                'institution', NULL),
+            ('security',         '021', 'Security',                 'institution', NULL),
+            ('services',         '022', 'Student Services',         'institution', NULL),
+            ('ict',              '023', 'ICT Directorate',          'platform',    NULL),
+            ('admin',            '024', 'University Administrator', 'platform',    NULL),
+            ('super',            '025', 'Super Administrator',      'platform',    NULL)
+        ) AS t(office, n, given, scope_kind, scope_id)
+    LOOP
+        SELECT id INTO v_person FROM iam.person WHERE staff_number = 'MOAUM/DEMO/' || o.n;
+        IF v_person IS NULL THEN
+            v_person := gen_random_uuid();
+            INSERT INTO iam.person (id, staff_number, surname, given_names)
+            VALUES (v_person, 'MOAUM/DEMO/' || o.n, 'DEMO', o.given);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM iam.office_assignment a
+                        WHERE a.person_id = v_person AND a.office_code = o.office
+                          AND (a.valid_to IS NULL OR a.valid_to >= current_date)) THEN
+            INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+            VALUES (gen_random_uuid(), v_person, o.office, o.scope_kind, o.scope_id,
+                    'Demo account (db/demo.sql) — invented person, no instrument exists', v_actor, current_date);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM iam.credential WHERE person_id = v_person) THEN
+            INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by)
+            VALUES (v_person, 'demo.' || o.office, crypt(v_pw, gen_salt('bf', 12)), false, v_actor);
+            INSERT INTO iam.credential_event (id, person_id, kind, by_person, note)
+            VALUES (gen_random_uuid(), v_person, 'SET', v_actor, 'demo account (db/demo.sql)');
+        END IF;
+        IF o.office = 'lecturer' THEN v_lecturer := v_person; END IF;
+        IF o.office = 'exams'    THEN v_exams    := v_person; END IF;
+        IF o.office = 'hod'      THEN v_hod      := v_person; END IF;
+    END LOOP;
+
+    -- ── the students: one at every level, ACTIVE, enrolled in the session ──
+    FOR s IN
+        SELECT * FROM (VALUES
+            (100, 'MTC', 'C00023', 'Ayima',   '9901', '08030009901', 0),
+            (200, 'ACC', 'C00019', 'Terhide', '9902', '08030009902', 1),
+            (300, 'MTC', 'C00023', 'Mwuese',  '9903', '08030009903', 2),
+            (400, 'ECO', 'C00024', 'Sesugh',  '9904', '08030009904', 3),
+            (500, 'LAW', 'C00033', 'Doosuur', '9905', '08030009905', 4),
+            (600, 'MED', 'C00061', 'Aondona', '9906', '08030009906', 5)
+        ) AS t(level, dept, programme, given, n, phone, years_in)
+    LOOP
+        DECLARE v_entry_year int := (substr(v_session, 1, 4))::int - s.years_in;
+                v_matric text := 'MOAUM/' || s.dept || '/' || substr(v_entry_year::text, 3, 2) || '/' || s.n;
+        BEGIN
+            SELECT id INTO v_student FROM people.student WHERE matric_no = v_matric;
+            IF v_student IS NULL THEN
+                v_student := gen_random_uuid();
+                INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode,
+                                            entry_session, entry_level, current_level, status, matriculated_at)
+                VALUES (v_student, 'MOAUM/ADM/' || substr(v_entry_year::text, 3, 2) || '/99' || s.n, v_matric,
+                        'DEMO', s.given || ' (' || s.level || ' Level)', s.programme, 'UTME',
+                        v_entry_year || '/' || (v_entry_year + 1), 100, s.level, 'ACTIVE', now());
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM people.enrolment WHERE student_id = v_student AND session = v_session) THEN
+                INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), v_student, v_session, s.level);
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM people.student_contact WHERE student_id = v_student) THEN
+                INSERT INTO people.student_contact (student_id, email, phone)
+                VALUES (v_student, 'demo.student' || s.level || '@example.com', s.phone);
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM iam.student_account WHERE student_id = v_student) THEN
+                INSERT INTO iam.student_account (id, student_id, password_hash, must_change)
+                VALUES (gen_random_uuid(), v_student, crypt(v_pw, gen_salt('bf', 12)), false);
+            END IF;
+        END;
+    END LOOP;
+
+    -- ── the lecturer's results path: five demo courses at 300 level, offered
+    --    this session, the 300-level student registered and approved, and
+    --    the examination session opened so the score sheets exist ──
+    FOR c IN
+        SELECT * FROM (VALUES
+            ('DMO 311', 'Algorithms and Complexity (demo)', 3),
+            ('DMO 321', 'Database Systems (demo)',          3),
+            ('DMO 331', 'Operating Systems (demo)',         3),
+            ('DMO 341', 'Software Engineering (demo)',      3),
+            ('DMO 351', 'Computer Networks (demo)',         3)
+        ) AS t(code, title, units)
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = c.code) THEN
+            INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+            VALUES (c.code, c.title, c.units, 1, 300, 'MTC', 'Compulsory', 'LIVE');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = c.code AND programme_code = 'C00023' AND level = 300) THEN
+            INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (c.code, 'C00023', 300, 'Core');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM catalogue.offering WHERE course_code = c.code AND session = v_session AND semester = 1) THEN
+            INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id, second_examiner_id, allocated_on)
+            VALUES (gen_random_uuid(), c.code, v_session, 1, v_lecturer, v_exams, current_date);
+        END IF;
+    END LOOP;
+
+    SELECT id INTO v_student FROM people.student WHERE matric_no LIKE 'MOAUM/MTC/%/9903';
+    SELECT id INTO v_reg FROM registration.course_registration WHERE student_id = v_student AND session = v_session AND semester = 1;
+    IF v_reg IS NULL THEN
+        v_reg := gen_random_uuid();
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by)
+        VALUES (v_reg, v_student, v_session, 1, 300, 'APPROVED', now(), now(), v_hod);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT v_reg, o2.id, c2.units, 'CURRENT', 'APPROVED'
+          FROM catalogue.offering o2 JOIN catalogue.course c2 ON c2.code = o2.course_code
+         WHERE o2.session = v_session AND o2.semester = 1 AND o2.course_code LIKE 'DMO %';
+    END IF;
+
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT id INTO v_exam FROM assessment.exam_session WHERE session = v_session AND semester = 1 AND kind = 'MAIN';
+    IF v_exam IS NULL THEN
+        v_exam := gen_random_uuid();
+        INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due)
+        VALUES (v_exam, v_session, 1, 'MAIN', current_date, current_date + 14, current_date + 42);
+    END IF;
+    IF (SELECT state FROM assessment.exam_session WHERE id = v_exam) = 'DRAFT' THEN
+        SELECT * INTO v_made, v_none FROM assessment.open_exam_session(v_exam);
+    END IF;
+    -- an offering allocated after the session opened gets its sheet here, the way the Registry would
+    INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, due_on)
+    SELECT gen_random_uuid(), o2.id, v_exam, (SELECT sheets_due FROM assessment.exam_session WHERE id = v_exam)
+      FROM catalogue.offering o2
+     WHERE o2.session = v_session AND o2.semester = 1 AND o2.course_code LIKE 'DMO %'
+       AND NOT EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.offering_id = o2.id);
+
+    -- ── the Bursary: a schedule for the session, and a clearance scheme in force ──
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    IF NOT EXISTS (SELECT 1 FROM finance.fee_schedule WHERE session = v_session AND ended_at IS NULL) THEN
+        INSERT INTO finance.fee_schedule (session, item, amount, ord) VALUES
+            (v_session, 'School fees (demo schedule)', 100000, 1),
+            (v_session, 'Portal and ICT charge (demo schedule)', 10000, 2);
+    END IF;
+    IF policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL THEN
+        PERFORM finance.put_scheme_in_force('DEMO — BUR/DEMO/1, the recommended scheme, for demonstration', current_date);
+    END IF;
+
+    -- ── the applicant: a demo row on a demo CAPS list, registered under the number ──
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    IF NOT EXISTS (SELECT 1 FROM admissions.applicant_fee WHERE session = v_session) THEN
+        INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee)
+        VALUES (v_session, 2000, 300, 30000);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM admissions.caps_row WHERE session = v_session AND jamb_reg_no = '20269999DM') THEN
+        v_batch := gen_random_uuid();
+        INSERT INTO admissions.caps_batch (id, session, source, filename, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (v_batch, v_session, 'CAPS_DOWNLOAD', 'demo — not a CAPS file', 'UTME', digest('demo.sql ' || v_session, 'sha256'), 1,
+                current_date, v_actor, 'academic');
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+        VALUES (gen_random_uuid(), v_batch, v_session, '20269999DM', '{"demo": true}'::jsonb, 'DEMO', 'Applicant (invented)', 'C00023', 250, 'UTME', 'F', 'Benue', 'Makurdi');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM admissions.applicant_account a
+                    WHERE a.candidate_id IN (SELECT id FROM admissions.candidate WHERE session = v_session AND jamb_reg_no = '20269999DM')) THEN
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.register_applicant(v_session, '20269999DM', 'demo.applicant@example.com', '08030009910', crypt(v_pw, gen_salt('bf', 12)));
+    END IF;
+
+    RAISE NOTICE 'demo accounts ready for session % — password for every one: %', v_session, v_pw;
+END $$;
+
+COMMIT;

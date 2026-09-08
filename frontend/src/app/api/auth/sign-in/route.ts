@@ -3,27 +3,85 @@ import { API_URL } from "@/lib/api";
 import { OFFICE_COOKIE } from "@/lib/offices";
 import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
 
-/** the browser posts the form here; the token goes into a cookie it cannot read */
-export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null);
-  const upstream = await fetch(`${API_URL}/api/v1/auth/sign-in`, {
+/**
+ * One door for everybody. The number typed says who is signing in:
+ *   MOAUM/XXX/YY/NNNN                 a student, on the matriculation number
+ *   12 digits + 2–3 letters, APP/…    an applicant, on the JAMB or application number
+ *   anything else                     a member of staff, on the staff number or email —
+ *                                     and, failing that, an applicant on an email address
+ * The token goes into a cookie the browser cannot read; the office cookie says
+ * which side of the portal opens.
+ */
+const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
+const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
+const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
+
+type Kind = "staff" | "student" | "applicant";
+
+async function upstream(path: string, body: unknown, request: NextRequest): Promise<Response | null> {
+  return fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-forwarded-for": request.headers.get("x-forwarded-for") ?? "" },
     body: JSON.stringify(body ?? {}),
     cache: "no-store",
   }).catch(() => null);
-  if (!upstream) {
-    return NextResponse.json({ status: 503, title: "The portal API is not reachable" }, { status: 503 });
+}
+
+function problem(text: string, status: number, contentType: string | null) {
+  return new NextResponse(text, { status, headers: { "content-type": contentType ?? "application/problem+json" } });
+}
+
+export async function POST(request: NextRequest) {
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const identifier = String(body?.identifier ?? body?.username ?? body?.matricNo ?? "").trim();
+  const password = typeof body?.password === "string" ? body.password : "";
+  const preferredOffice = typeof body?.office === "string" ? body.office : undefined;
+
+  let kind: Kind = MATRIC.test(identifier) ? "student" : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
+  let r: Response | null;
+  if (kind === "student") {
+    r = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
+  } else if (kind === "applicant") {
+    r = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
+  } else {
+    r = await upstream("/api/v1/auth/sign-in", { username: identifier, password, office: preferredOffice }, request);
+    /* an email address is also how an applicant signs in: the same wrong answer either way, so try the other door */
+    if (r && r.status === 422 && identifier.includes("@")) {
+      const again = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
+      if (again && again.ok) {
+        r = again;
+        kind = "applicant";
+      }
+    }
   }
-  const text = await upstream.text();
-  if (!upstream.ok) {
-    return new NextResponse(text, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") ?? "application/problem+json" } });
+  if (!r) return NextResponse.json({ status: 503, title: "The portal API is not reachable" }, { status: 503 });
+  const text = await r.text();
+  if (!r.ok) return problem(text, r.status, r.headers.get("content-type"));
+
+  const signed = JSON.parse(text) as Record<string, unknown>;
+  const seconds = Math.max(60, Math.floor((new Date(String(signed.expiresAt)).getTime() - Date.now()) / 1000));
+  let office: string;
+  let name: string;
+  let home: string;
+  let mustChange = false;
+  if (kind === "student") {
+    office = "student";
+    name = `${signed.surname}, ${signed.otherNames}`;
+    mustChange = signed.mustChange === true;
+    home = mustChange ? "/student/profile?change=1" : "/student";
+  } else if (kind === "applicant") {
+    office = "applicant";
+    name = `${signed.surname}, ${signed.otherNames}`;
+    home = "/applicant";
+  } else {
+    const offices = (signed.offices as { code: string }[] | undefined) ?? [];
+    office = preferredOffice && offices.some((o) => o.code === preferredOffice) ? preferredOffice : offices[0]?.code ?? "";
+    name = `${signed.surname}, ${signed.givenNames}`;
+    mustChange = signed.mustChange === true;
+    home = mustChange ? "/account/password" : "/";
   }
-  const signed = JSON.parse(text) as { token: string; expiresAt: string; offices: { code: string }[]; mustChange: boolean; surname: string; givenNames: string };
-  const seconds = Math.max(60, Math.floor((new Date(signed.expiresAt).getTime() - Date.now()) / 1000));
-  const response = NextResponse.json({ mustChange: signed.mustChange, name: `${signed.surname}, ${signed.givenNames}`, offices: signed.offices });
-  response.cookies.set(SESSION_COOKIE, signed.token, cookieOptions(seconds));
-  const office = typeof body?.office === "string" && signed.offices.some((o) => o.code === body.office) ? body.office : signed.offices[0]?.code;
+  const response = NextResponse.json({ kind, home, mustChange, name, office, offices: signed.offices ?? [] });
+  response.cookies.set(SESSION_COOKIE, String(signed.token), cookieOptions(seconds));
   if (office) response.cookies.set(OFFICE_COOKIE, office, { ...cookieOptions(seconds), httpOnly: false });
   return response;
 }

@@ -138,6 +138,14 @@ jobs:
       - name: The read-only deployment verification
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f db/verify.sql
 
+      # The invented demo accounts (db/demo.sql) apply on a migrated database,
+      # apply again without changing anything, and leave verify.sql green.
+      - name: The demo accounts apply, twice, and verification still passes
+        run: |
+          bash db/demo.sh
+          bash db/demo.sh
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f db/verify.sql
+
   # ── the API: compiles, module boundaries hold, request path proven ────
   api:
     name: "API — compiles, module boundaries hold, integration tests green"

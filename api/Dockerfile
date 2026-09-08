@@ -32,8 +32,8 @@ RUN apt-get update \
 WORKDIR /app
 
 # the migrations, the read-only verification, and the runner (pre-deploy)
-COPY db/V*.sql db/verify.sql db/migrate.sh ./db/
-RUN chmod +x ./db/migrate.sh
+COPY db/V*.sql db/verify.sql db/migrate.sh db/demo.sql db/demo.sh ./db/
+RUN chmod +x ./db/migrate.sh ./db/demo.sh
 
 COPY --from=build /build/target/app.jar ./app.jar
 
