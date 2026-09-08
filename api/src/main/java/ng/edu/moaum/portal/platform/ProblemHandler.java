@@ -28,7 +28,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * policy not in force — arrive as SQLSTATE 23514 with a message and a HINT
  * written for a person. They are passed through as 422 with the hint as the
  * remedy, because the database is where those rules live and its wording is
- * the wording that was reviewed.
+ * the wording that was reviewed. An exclusion constraint (23P01) is the same
+ * kind of refusal wearing a different SQLSTATE — two academic sessions
+ * overlapping, two policy versions in force at once — and is answered the
+ * same way: it is a rule a person can do something about, not a fault.
  */
 @RestControllerAdvice
 class ProblemHandler {
@@ -85,7 +88,8 @@ class ProblemHandler {
                     "Send X-Active-Office with one of the offices your token carries.", "office", "Directorate of ICT"));
             return problem;
         }
-        if ("23514".equals(state) || "23502".equals(state) || "22P02".equals(state) || "P0002".equals(state)) {
+        if ("23514".equals(state) || "23502".equals(state) || "22P02".equals(state) || "P0002".equals(state)
+                || "23P01".equals(state)) {
             ProblemDetail problem = problem(HttpStatus.UNPROCESSABLE_CONTENT, message, request);
             problem.setProperty("code", "DATABASE_RULE_REFUSED");
             if (hint != null) {

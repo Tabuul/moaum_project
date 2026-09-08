@@ -39,6 +39,35 @@ BEGIN
     DELETE FROM audit.entries;
     DELETE FROM audit.chain_head;
 
+    -- V013: the student record the checks build, and nothing the migrations seeded
+    DELETE FROM credentials.certificate;
+    DELETE FROM credentials.stationery_batch;
+    DELETE FROM credentials.transcript_request;
+    DELETE FROM records.graduand;
+    DELETE FROM clearance.item;
+    DELETE FROM assessment.score;
+    DELETE FROM assessment.decision;
+    DELETE FROM assessment.score_sheet;
+    DELETE FROM assessment.exam_session;
+    DELETE FROM registration.entry;
+    DELETE FROM registration.course_registration;
+    DELETE FROM catalogue.offering;
+    DELETE FROM catalogue.course_offer;
+    DELETE FROM catalogue.course;
+    DELETE FROM people.faculty_list_query;
+    DELETE FROM people.faculty_list;
+    DELETE FROM people.biodata_change;
+    DELETE FROM people.biodata;
+    DELETE FROM people.document;
+    DELETE FROM people.status_change;
+    DELETE FROM people.enrolment;
+    DELETE FROM people.search_log;
+    DELETE FROM people.student;
+    DELETE FROM people.matriculation_run;
+    DELETE FROM policy.semester WHERE session IN ('9999/0000', '9998/9999');
+    DELETE FROM policy.academic_session WHERE name IN ('9999/0000', '9998/9999');
+    DELETE FROM platform.number_series WHERE session = '9999/0000';
+
     DELETE FROM credentials.revocation;
     DELETE FROM credentials.issued;
     DELETE FROM credentials.signing_key;
@@ -80,7 +109,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 63
+\set EXPECTED 81
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -998,6 +1027,222 @@ BEGIN
     PERFORM pg_temp.assert('A weighting that does not total 100 is refused', ok,
         '70 + 40 is not a weighting, it is a typing error nobody would ever see');
 END $$;
+
+-- ══ V013 · THE STUDENT RECORD SPINE ═════════════════════════════════════
+-- Eighteen screens stand on one chain: faculty, department, programme,
+-- student, registration, sheet, decision, clearance, credential. These are
+-- the properties the chain refuses to lose.
+
+-- ── 64-65. the structure holds together, and every table is on the spine ─
+DO $
+DECLARE n int;
+BEGIN
+    SELECT count(*) INTO n FROM ref.programme p
+     WHERE NOT EXISTS (SELECT 1 FROM ref.department d WHERE d.code = p.dept_code);
+    PERFORM pg_temp.assert('Every programme''s department is on the register',
+        n = 0, n || ' programmes name a department the register does not have');
+
+    SELECT count(*) INTO n
+      FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+     WHERE c.relkind = 'r'
+       AND ns.nspname IN ('people','catalogue','registration','assessment','clearance','records')
+       AND NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = c.oid AND t.tgname LIKE 'trg_audit_%')
+       AND NOT EXISTS (SELECT 1 FROM audit.exemption e WHERE e.relid = c.oid);
+    PERFORM pg_temp.assert('Every table of the student record is on the audit spine',
+        n = 0, n || ' tables hold state and are neither attached nor exempted');
+END $;
+
+-- ── 66-68. the calendar: no overlap, one current, on a minute ───────────
+DO $
+DECLARE ok boolean := false; msg text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+    VALUES (gen_random_uuid(), '9999/0000', date '9999-01-01', date '9999-12-31');
+
+    BEGIN
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+        VALUES (gen_random_uuid(), '9998/9999', date '9998-09-01', date '9999-03-31');
+    EXCEPTION WHEN exclusion_violation THEN ok := true; msg := SQLERRM;
+    END;
+    PERFORM pg_temp.assert('Two academic sessions cannot overlap', ok,
+        'an exclusion constraint, not a check on a form');
+
+    ok := false;
+    BEGIN
+        UPDATE policy.academic_session SET state = 'CURRENT' WHERE name = '9999/0000';
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    PERFORM pg_temp.assert('A session is not current without its Senate minute', ok,
+        'opening one early would let students register into a session the University has not resolved to run');
+
+    UPDATE policy.academic_session SET state = 'CURRENT', senate_minute = 'SEN/9999/01' WHERE name = '9999/0000';
+    ok := false;
+    BEGIN
+        UPDATE policy.academic_session SET state = 'CURRENT', senate_minute = 'SEN/2026/02' WHERE name = '2026/2027';
+    EXCEPTION WHEN unique_violation THEN ok := true;
+    END;
+    PERFORM pg_temp.assert('Exactly one session is current at a time', ok,
+        '9999/0000 is current; 2026/2027 cannot also be');
+    UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = '9999/0000';
+END $;
+
+-- ── 69-73. the register, the list and the run ───────────────────────────
+DO $
+DECLARE ok boolean := false; msg text; n int; l uuid; v_ref text; m1 text; m2 text;
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
+        o uuid := gen_random_uuid();
+        r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid(); r3 uuid := gen_random_uuid();
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode,
+                                entry_session, entry_level, current_level)
+    VALUES (s1, 'MOAUM/ADM/99/000001', 'CHECKSURNAME', 'Invented One',   'C00023', 'UTME', '9999/0000', 100, 100),
+           (s2, 'MOAUM/ADM/99/000002', 'CHECKSURNAME', 'Invented Two',   'C00023', 'UTME', '9999/0000', 100, 100),
+           (s3, 'MOAUM/ADM/99/000003', 'CHECKSURNAME', 'Invented Three', 'C00023', 'UTME', '9999/0000', 100, 100);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state)
+    VALUES ('ZZC 101', 'A course for the check', 3, 1, 100, 'MTC', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'ZZC 101', '9999/0000', 1);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at)
+    VALUES (r1, s1, '9999/0000', 1, 100, 'APPROVED', now()),
+           (r2, s2, '9999/0000', 1, 100, 'APPROVED', now()),
+           (r3, s3, '9999/0000', 1, 100, 'DRAFT', NULL);
+    INSERT INTO registration.entry (registration_id, offering_id, units, status)
+    VALUES (r1, o, 3, 'APPROVED'), (r2, o, 3, 'APPROVED'), (r3, o, 3, 'REGISTERED');
+
+    SELECT count(*) INTO n FROM people.faculty_list_rows('9999/0000', 'SC');
+    PERFORM pg_temp.assert('The faculty list is generated from approved registrations, not typed',
+        n = 2, 'two approved and one draft registration; the draft is not on the list');
+
+    BEGIN
+        PERFORM people.matriculate('9999/0000');
+    EXCEPTION WHEN check_violation THEN ok := true; msg := SQLERRM;
+    END;
+    PERFORM pg_temp.assert('The run cannot start while a faculty list is unconfirmed', ok, left(msg, 78));
+
+    INSERT INTO people.faculty_list (id, session, faculty_code, state, confirmed_at, confirmed_by)
+    VALUES (gen_random_uuid(), '9999/0000', 'SC', 'CONFIRMED', now(), gen_random_uuid())
+    RETURNING id INTO l;
+    INSERT INTO people.faculty_list_query (list_id, student_id, reason, office)
+    VALUES (l, s2, 'Registered 3 units; the minimum at 100 level is 15', 'Faculty Officer');
+
+    SELECT run_ref, issued INTO v_ref, n FROM people.matriculate('9999/0000');
+    PERFORM pg_temp.assert('Numbers are issued in one run over the confirmed list',
+        n = 1 AND v_ref = 'MAT/9999/001', v_ref || ' issued ' || n);
+
+    SELECT matric_no INTO m1 FROM people.student WHERE id = s1;
+    SELECT matric_no INTO m2 FROM people.student WHERE id = s2;
+    PERFORM pg_temp.assert('A queried student keeps the admission number and is not matriculated',
+        m2 IS NULL AND m1 = 'MOAUM/MTC/99/0001', coalesce(m1, '—') || ' issued; the queried one waits for the next run');
+
+    ok := false;
+    BEGIN
+        UPDATE people.student SET matric_no = 'MOAUM/MTC/99/0009' WHERE id = s1;
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    PERFORM pg_temp.assert('A matriculation number, once issued, is never changed', ok, 'BR-007');
+END $;
+
+-- ── 74-78. the chain a sheet passes ─────────────────────────────────────
+DO $
+DECLARE ok boolean := false; msg text; n int; st text; g text; o uuid; s1 uuid; s2 uuid;
+        sh uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
+BEGIN
+    PERFORM set_config('moaum.actor_id', a1::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    SELECT id INTO o FROM catalogue.offering WHERE course_code = 'ZZC 101';
+    SELECT id INTO s1 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000001';
+    SELECT id INTO s2 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000002';
+    INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh, o);
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh, s1, 30, 45);
+
+    BEGIN
+        PERFORM assessment.advance(sh, NULL);
+    EXCEPTION WHEN check_violation THEN ok := true; msg := SQLERRM;
+    END;
+    PERFORM pg_temp.assert('A sheet does not leave the lecturer while a candidate has no outcome',
+        ok, left(msg, 78));
+
+    INSERT INTO assessment.score (sheet_id, student_id, outcome) VALUES (sh, s2, 'ABSENT');
+    st := assessment.advance(sh, NULL);
+    ok := false;
+    BEGIN
+        PERFORM assessment.advance(sh, 'and again');
+    EXCEPTION WHEN check_violation THEN ok := true; msg := SQLERRM;
+    END;
+    PERFORM pg_temp.assert('No two consecutive stages of a sheet by one person', ok, left(msg, 78));
+
+    PERFORM set_config('moaum.actor_id', a2::text, true);
+    PERFORM set_config('moaum.actor_office', 'exams', true);
+    st := assessment.advance(sh, NULL);
+    PERFORM assessment.return_sheet(sh, 'two candidates recorded as absent had in fact sat the paper');
+    SELECT stage, returned_times INTO st, n FROM assessment.score_sheet WHERE id = sh;
+    PERFORM pg_temp.assert('A returned sheet goes back to entry, and the return is on the record',
+        st = 'ENTRY' AND n = 1, 'returned once, with the reason');
+
+    FOR i IN 1..7 LOOP
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        st := assessment.advance(sh, NULL);
+    END LOOP;
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    ok := false;
+    BEGIN
+        PERFORM assessment.advance(sh, NULL);
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    st := assessment.advance(sh, NULL, 'SEN/9999/02');
+    PERFORM pg_temp.assert('A result is published on the Senate minute and not before',
+        ok AND st = 'PUBLISHED', 'eight desks, then the minute');
+
+    SELECT grade INTO g FROM assessment.latest_scores(sh) WHERE student_id = s1;
+    PERFORM pg_temp.assert('The grade is computed from the marks under the scheme in force, never typed',
+        g = 'A' AND policy.class_of(4.62) = 'First Class Honours',
+        '30 + 45 = 75 is an A under SEN/2015/44; 4.62 is a First');
+END $;
+
+-- ── 79-81. clearance holds, and the transcript it releases ──────────────
+DO $
+DECLARE ok boolean := false; msg text; st text; s1 uuid; t uuid := gen_random_uuid();
+        a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
+BEGIN
+    PERFORM set_config('moaum.actor_id', a1::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    SELECT id INTO s1 FROM people.student WHERE admission_no = 'MOAUM/ADM/99/000001';
+
+    BEGIN
+        INSERT INTO clearance.item (id, student_id, purpose, unit, state)
+        VALUES (gen_random_uuid(), s1, 'TRANSCRIPT', 'LIBRARY', 'HELD');
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    PERFORM pg_temp.assert('A hold names the item outstanding, or it is not a hold', ok,
+        'a hold with no item against it is leverage, not clearance');
+
+    INSERT INTO credentials.transcript_request (id, ref, student_id, destination, paid_at, stage)
+    VALUES (t, 'TRN-9999-00001', s1, 'EMPLOYER', now(), 'READY');
+    ok := false;
+    BEGIN
+        PERFORM credentials.produce_transcript(t);
+    EXCEPTION WHEN check_violation THEN ok := true; msg := SQLERRM;
+    END;
+    PERFORM pg_temp.assert('A transcript is not produced while any unit holds the candidate', ok, left(msg, 78));
+
+    INSERT INTO clearance.item (id, student_id, purpose, unit, state, officer_id)
+    SELECT gen_random_uuid(), s1, 'TRANSCRIPT', code, 'CLEARED', a1 FROM clearance.unit;
+    PERFORM credentials.produce_transcript(t);
+    ok := false;
+    BEGIN
+        PERFORM credentials.release_transcript(t);
+    EXCEPTION WHEN check_violation THEN ok := true;
+    END;
+    PERFORM set_config('moaum.actor_id', a2::text, true);
+    PERFORM credentials.release_transcript(t);
+    SELECT stage INTO st FROM credentials.transcript_request WHERE id = t;
+    PERFORM pg_temp.assert('The officer who produced a transcript does not sign it',
+        ok AND st = 'RELEASED', 'produced by one officer, released by another');
+END $;
 
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

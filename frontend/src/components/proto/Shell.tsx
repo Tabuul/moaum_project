@@ -59,18 +59,56 @@ const GROUPS: NavGroup[] = [
   { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] },
 ];
 
-/* the screens the portal serves so far; every other item is still the prototype's */
-const ROUTES: Record<string, string> = {
+/* every screen of the Academic Office's menu, and where the portal serves it */
+export const ROUTES: Record<string, string> = {
+  "t/search": "/search",
   "r/academic": "/",
-  "t/capsintake": "/admissions/caps",
+  "t/records": "/records",
+  "t/students": "/students",
+  "t/student": "/students",
+  "t/biochange": "/students/biodata-changes",
+  "r/classlist": "/registration/class-list",
+  "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
+  "t/capsintake": "/admissions/caps",
+  "t/candidatedata": "/admissions/candidate-data",
+  "t/matriculation": "/matriculation",
+  "t/college": "/college",
+  "t/session": "/calendar",
+  "t/examsession": "/examinations/sessions",
+  "t/clearance": "/clearance",
+  "t/transcripts": "/credentials/transcripts",
+  "t/certificates": "/credentials/certificates",
+  "t/graduation": "/graduation",
+  "t/approvals": "/results/approvals",
+  "t/chain": "/results/chain",
+  "r/self": "/me",
 };
 
 /* the topbar titles (proto/part2.html TITLES) */
 export const TITLES: Record<string, [string, string]> = {
+  "t/search": ["Search", "Find one record"],
   "r/academic": ["Academic Affairs", "Registration, credentials and Senate business"],
-  "t/capsintake": ["JAMB admission lists", "UTME and Direct Entry · downloaded from CAPS, reconciled both ways"],
+  "t/records": ["Records & queries", "One scope across every list"],
+  "t/students": ["Students", "Registry search"],
+  "t/student": ["Student record", "Assembled live from the modules that own it"],
+  "t/biochange": ["Biodata changes", "Requests that need evidence"],
+  "r/classlist": ["Registered students", "Generated now, from approved registrations — all of them"],
+  "t/admissions": ["Admissions", "The admission cycle"],
   "t/admissionsetup": ["Admission settings", "The Central Admissions Committee’s guidelines, made into settings the portal applies"],
+  "t/capsintake": ["JAMB admission lists", "UTME and Direct Entry · downloaded from CAPS, reconciled both ways"],
+  "t/candidatedata": ["Passports, dates of birth and O’Level", "The three other JAMB downloads · matched on the registration number"],
+  "t/matriculation": ["Matriculation", "Numbers issued over the confirmed register"],
+  "t/college": ["College of Health Sciences", "A separate system, and the seam between the two"],
+  "t/session": ["Session & semester setup", "The calendar everything else hangs on"],
+  "t/examsession": ["Examination sessions", "Every sheet, and whose it is"],
+  "t/clearance": ["Clearance", "Graduation and registration sign-off"],
+  "t/transcripts": ["Transcript requests", "Exams & Records · production queue"],
+  "t/certificates": ["Certificates", "The register, and the stock it is printed on"],
+  "t/graduation": ["Graduation", "Degree audit and Senate list"],
+  "t/approvals": ["Results to Senate", "Where every result set has reached"],
+  "t/chain": ["Approval chain", "One sheet, every desk it passes"],
+  "r/self": ["Leave & payslip", "You as an employee of the University"],
 };
 
 export interface Me {
@@ -225,7 +263,7 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
               <h1>{t0}</h1>
               <div className="sub">{t1}</div>
             </div>
-            <button className="topsrch" aria-label="Search" onClick={() => setSaid("Search")}>
+            <button className="topsrch" aria-label="Search" onClick={() => router.push("/search")}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <circle cx="11" cy="11" r="7" />
                 <path d="M20 20l-3.5-3.5" />
