@@ -6,10 +6,15 @@ import { NextRequest, NextResponse } from "next/server";
  * open; everything else sends a visitor to sign in and back again after.
  */
 const SESSION_COOKIE = "moaum_session";
-const OPEN = ["/login", "/api/auth/", "/verify", "/crest.png", "/favicon.ico"];
+const OPEN = ["/login", "/api/auth/", "/verify", "/healthz", "/crest.png", "/favicon.ico"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  /* the platform asking whether the portal is up is not a visitor to send to sign in */
+  const agent = request.headers.get("user-agent") ?? "";
+  if (agent.includes("RailwayHealthCheck") || request.headers.get("host") === "healthcheck.railway.app") {
+    return NextResponse.next();
+  }
   if (OPEN.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p))) {
     return NextResponse.next();
   }
