@@ -168,7 +168,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 102
+\set EXPECTED 103
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1741,6 +1741,20 @@ BEGIN
         AND (SELECT count(*) FROM credentials.identity_card WHERE student_id = st AND state = 'ISSUED') = 1,
         'nothing typed against the student: the lecturer marks the roll, the department gives the slot, the Library issues the card the scheme released');
 END $$;
+
+-- ── 103. a course with no sheet is unpublished, not unknown (V028) ──
+DO $
+DECLARE st uuid; total int; unknown int; leaked int;
+BEGIN
+    SELECT id INTO st FROM people.student WHERE surname = 'CHECKSTUDENT';
+    SELECT count(*), count(*) FILTER (WHERE published IS NULL),
+           count(*) FILTER (WHERE NOT published AND (ca IS NOT NULL OR exam IS NOT NULL OR total IS NOT NULL OR grade IS NOT NULL))
+      INTO total, unknown, leaked
+      FROM assessment.student_results(st);
+    PERFORM pg_temp.assert('A registered course with no published sheet reads as unpublished, never as unknown, and carries no mark',
+        total >= 1 AND unknown = 0 AND leaked = 0,
+        format('%s rows, %s with published NULL, %s unpublished rows carrying a mark', total, unknown, leaked));
+END $;
 
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
