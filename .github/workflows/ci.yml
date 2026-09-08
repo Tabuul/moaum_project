@@ -296,7 +296,7 @@ jobs:
       - name: Build the frontend image
         run: docker build -f frontend/Dockerfile -t moaum-portal:ci .
 
-      - name: Start the frontend and load the status page against the API
+      - name: Start the frontend, sign in, and load the status page against the API
         run: |
           docker run -d --name portal-web --network host \
             -e PORT=3000 -e PORTAL_API_URL=http://localhost:8081 \
@@ -305,8 +305,20 @@ jobs:
             if curl -fsS http://localhost:3000/ >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          code=$(curl -s -o /tmp/portal.html -w '%{http_code}' http://localhost:3000/)
-          [ "$code" = "200" ] || { echo "::error::GET / on the frontend returned $code"; docker logs portal-web; exit 1; }
+          # nobody reaches a screen without signing in: the door sends a visitor to /login
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/)
+          [ "$code" = "307" ] || [ "$code" = "302" ] || { echo "::error::GET / without a session returned $code, not a redirect to sign in"; docker logs portal-web; exit 1; }
+          curl -fsS http://localhost:3000/login | grep -q "Sign in" || { echo "::error::The sign-in page did not render."; docker logs portal-web; exit 1; }
+          # the first account, made once with the secret the API trusts, then a sign-in through the portal's own handler
+          curl -fsS -X POST http://localhost:8081/api/v1/auth/bootstrap \
+            -H 'Content-Type: application/json' -H 'X-Bootstrap-Secret: ci-only-secret-of-at-least-thirty-two-bytes-long' \
+            -d '{"surname":"CIBOOT","givenNames":"Invented","username":"ci-boot","password":"a ci password 2026"}' >/dev/null \
+            || { echo "::error::The first account could not be made."; docker logs api; exit 1; }
+          curl -fsS -c /tmp/jar -X POST http://localhost:3000/api/auth/sign-in -H 'Content-Type: application/json' \
+            -d '{"username":"ci-boot","password":"a ci password 2026"}' >/dev/null \
+            || { echo "::error::Signing in through the portal failed."; docker logs portal-web; exit 1; }
+          code=$(curl -s -b /tmp/jar -o /tmp/portal.html -w '%{http_code}' http://localhost:3000/)
+          [ "$code" = "200" ] || { echo "::error::GET / with a session returned $code"; docker logs portal-web; exit 1; }
           grep -q "What is actually true" /tmp/portal.html || { echo "::error::The page served is not the portal."; exit 1; }
           latest=$(ls db/V*.sql | sort | tail -1 | xargs basename)
           grep -q "$latest" /tmp/portal.html || { echo "::error::The frontend did not render the API's status (the latest migration, $latest, should be named on the dashboard)."; docker logs portal-web; exit 1; }

@@ -38,14 +38,15 @@ class SecurityConfig {
     static final String OFFICE_AUTHORITY_PREFIX = "OFFICE_";
 
     @Bean
-    SecurityFilterChain api(HttpSecurity http) throws Exception {
+    SecurityFilterChain api(HttpSecurity http, SessionGuard sessions) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers("/actuator/health", "/actuator/health/**", "/api/v1/platform/status").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/api/v1/platform/status",
+                                "/api/v1/auth/sign-in", "/api/v1/auth/bootstrap", "/api/v1/auth/offices").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
-                .addFilterAfter(new AuditContextFilter(), BearerTokenAuthenticationFilter.class);
+                .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 

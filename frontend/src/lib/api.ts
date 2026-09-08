@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { OFFICE_COOKIE } from "./offices";
+import { sessionToken } from "./session";
 
 /**
  * The server side of the BFF (ARC §8): pages and route handlers call the API
@@ -41,7 +42,7 @@ export interface ApiOptions {
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<ApiResult<T>> {
   const headers: Record<string, string> = { Accept: "application/json" };
-  const token = process.env.PORTAL_API_TOKEN;
+  const token = await sessionToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   let office = options.office ?? null;
   if (!office) {
@@ -89,7 +90,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
       : { status: response.status, title: response.statusText, detail: text.slice(0, 500) };
   if (response.status === 401 && !token) {
     problem.remedy = problem.remedy ?? {
-      message: "Set PORTAL_API_TOKEN on the frontend (a token minted with the API's development secret).",
+      message: "Sign in again.",
       office: "Directorate of ICT",
     };
   }

@@ -34,6 +34,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 public class AuditContextFilter extends OncePerRequestFilter {
 
+    public static final String SESSION_CLAIM = "sid";
+
+    private final SessionGuard sessions;
+
+    public AuditContextFilter(SessionGuard sessions) {
+        this.sessions = sessions;
+    }
+
     public static final String ACTIVE_OFFICE_HEADER = "X-Active-Office";
     public static final String REASON_HEADER = "X-Reason";
     public static final String OFFICES_CLAIM = "offices";
@@ -50,6 +58,14 @@ public class AuditContextFilter extends OncePerRequestFilter {
             } catch (IllegalArgumentException | NullPointerException notAUuid) {
                 refuse(response, HttpStatus.UNAUTHORIZED, "The token's subject is not a person id.");
                 return;
+            }
+            String sid = jwt.getClaimAsString(SESSION_CLAIM);
+            if (sid != null && sessions != null) {
+                java.util.Optional<String> refused = sessions.refuse(sid);
+                if (refused.isPresent()) {
+                    refuse(response, HttpStatus.UNAUTHORIZED, refused.get());
+                    return;
+                }
             }
             List<String> offices = offices(jwt);
             String active = request.getHeader(ACTIVE_OFFICE_HEADER);

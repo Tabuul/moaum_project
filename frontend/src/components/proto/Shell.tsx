@@ -5,61 +5,19 @@
  * navigation with the crest, the "Signed in as" select, the folded groups
  * with their counts, the collapse control and the foot; the topbar with the
  * menu button, the screen's title and the search; and the content area.
- * Same classes, same structure. The Academic Office's menu is the
- * prototype's (proto/part17.html); items the portal does not yet serve are
- * the same buttons, and say so when pressed.
+ * Same classes, same structure. The menu is the acting office's, exactly as
+ * the prototype lays it out for each of the offices (lib/menus); items the
+ * portal does not yet serve are the same buttons, and say so when pressed.
  */
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Ico } from "./ui";
 import { OFFICE_COOKIE, roleLabel, roleUnit } from "@/lib/offices";
+import { MENUS, type Menu, type MenuGroup } from "@/lib/menus";
+import { TITLES as PROTOTYPE_TITLES } from "@/lib/titles";
 
-interface NavItem {
-  id: string;
-  icon: string;
-  label: string;
-  badge?: string;
-}
-interface NavGroup {
-  name: string;
-  items: NavItem[];
-}
-
-/* the Academic Office, as the prototype lays it out */
-const GROUPS: NavGroup[] = [
-  { name: "Records", items: [
-    { id: "t/search", icon: "user", label: "Search" },
-    { id: "r/academic", icon: "home", label: "Dashboard" },
-    { id: "t/records", icon: "chart", label: "Records & queries" },
-    { id: "t/students", icon: "cap", label: "Student records" },
-    { id: "t/biochange", icon: "user", label: "Biodata changes", badge: "4" },
-    { id: "r/classlist", icon: "user", label: "Registered students" },
-    { id: "t/admissions", icon: "doc", label: "Admissions" },
-    { id: "t/admissionsetup", icon: "doc", label: "Admission settings", badge: "!" },
-    { id: "t/capsintake", icon: "box", label: "JAMB admission lists", badge: "6" },
-    { id: "t/candidatedata", icon: "user", label: "Passports, DOB & O’Level" },
-    { id: "t/matriculation", icon: "cap", label: "Matriculation", badge: "!" },
-    { id: "t/college", icon: "swap", label: "College of Health Sciences" },
-  ]},
-  { name: "Calendar", items: [
-    { id: "t/session", icon: "cal", label: "Session & semester setup" },
-    { id: "t/examsession", icon: "cal", label: "Examination sessions" },
-  ]},
-  { name: "Credentials", items: [
-    { id: "t/clearance", icon: "check", label: "Clearance", badge: "54" },
-    { id: "t/transcripts", icon: "doc", label: "Transcripts", badge: "9" },
-    { id: "t/certificates", icon: "cap", label: "Certificates" },
-    { id: "t/graduation", icon: "cap", label: "Graduation" },
-  ]},
-  { name: "Senate business", items: [
-    { id: "t/approvals", icon: "check", label: "Results to Senate" },
-    { id: "t/chain", icon: "doc", label: "Approval chain" },
-  ]},
-  { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] },
-];
-
-/* every screen of the Academic Office's menu, and where the portal serves it */
+/* where the portal serves each screen; every other item is still the prototype's */
 export const ROUTES: Record<string, string> = {
   "t/search": "/search",
   "r/academic": "/",
@@ -83,41 +41,45 @@ export const ROUTES: Record<string, string> = {
   "t/approvals": "/results/approvals",
   "t/chain": "/results/chain",
   "r/self": "/me",
+  "t/users": "/people",
+  "a/password": "/account/password",
 };
 
-/* the topbar titles (proto/part2.html TITLES) */
-export const TITLES: Record<string, [string, string]> = {
-  "t/search": ["Search", "Find one record"],
-  "r/academic": ["Academic Affairs", "Registration, credentials and Senate business"],
-  "t/records": ["Records & queries", "One scope across every list"],
-  "t/students": ["Students", "Registry search"],
+/* the portal's own subtitles where the prototype's named an invented figure */
+const OVERRIDES: Record<string, [string, string]> = {
   "t/student": ["Student record", "Assembled live from the modules that own it"],
-  "t/biochange": ["Biodata changes", "Requests that need evidence"],
-  "r/classlist": ["Registered students", "Generated now, from approved registrations — all of them"],
   "t/admissions": ["Admissions", "The admission cycle"],
   "t/admissionsetup": ["Admission settings", "The Central Admissions Committee’s guidelines, made into settings the portal applies"],
-  "t/capsintake": ["JAMB admission lists", "UTME and Direct Entry · downloaded from CAPS, reconciled both ways"],
-  "t/candidatedata": ["Passports, dates of birth and O’Level", "The three other JAMB downloads · matched on the registration number"],
   "t/matriculation": ["Matriculation", "Numbers issued over the confirmed register"],
-  "t/college": ["College of Health Sciences", "A separate system, and the seam between the two"],
-  "t/session": ["Session & semester setup", "The calendar everything else hangs on"],
   "t/examsession": ["Examination sessions", "Every sheet, and whose it is"],
-  "t/clearance": ["Clearance", "Graduation and registration sign-off"],
-  "t/transcripts": ["Transcript requests", "Exams & Records · production queue"],
   "t/certificates": ["Certificates", "The register, and the stock it is printed on"],
-  "t/graduation": ["Graduation", "Degree audit and Senate list"],
   "t/approvals": ["Results to Senate", "Where every result set has reached"],
   "t/chain": ["Approval chain", "One sheet, every desk it passes"],
-  "r/self": ["Leave & payslip", "You as an employee of the University"],
+  "a/password": ["Your password", "Chosen by you, known to nobody else"],
+};
+
+export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };
+
+/* an office the prototype drew no menu for still signs in */
+const FALLBACK: Menu = {
+  label: "Office",
+  home: "r/academic",
+  groups: [
+    { name: "Records", items: [{ id: "t/search", icon: "user", label: "Search" }, { id: "r/academic", icon: "home", label: "Dashboard" }] },
+    { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] },
+  ],
 };
 
 export interface Me {
   actorId: string;
   activeOffice: string | null;
   offices: string[];
+  name?: string | null;
+  staffNumber?: string | null;
+  sessionId?: string | null;
 }
 
-function navWaiting(g: NavGroup): number {
+function navWaiting(g: MenuGroup): number {
   let n = 0;
   for (const it of g.items) {
     if (!it.badge) continue;
@@ -127,7 +89,7 @@ function navWaiting(g: NavGroup): number {
 }
 
 function initials(label: string): string {
-  const w = label.replace(/[()]/g, "").split(/\s+/).filter(Boolean);
+  const w = label.replace(/[()]/g, "").split(/[\s,]+/).filter(Boolean);
   return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? "")).toUpperCase() || "MP";
 }
 
@@ -137,19 +99,30 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
   const [navSlim, setNavSlim] = useState(false);
   const [navg, setNavg] = useState<Record<string, boolean>>({});
   const [said, setSaid] = useState<string | null>(null);
-  const [t0, t1] = TITLES[route] ?? ["", ""];
   const office = me?.activeOffice ?? null;
+  const menu = (office && MENUS[office]) || FALLBACK;
+  const current = route === "r/academic" ? menu.home : route;
+  const [t0, t1] = TITLES[current] ?? TITLES[route] ?? ["", ""];
   const label = roleLabel(office);
+  const who = me?.name ?? label;
 
-  const isOpen = (g: NavGroup) => {
+  const isOpen = (g: MenuGroup) => {
     if (Object.prototype.hasOwnProperty.call(navg, g.name)) return !!navg[g.name];
-    return g.items.some((it) => it.id === route);
+    return g.items.some((it) => it.id === current);
   };
 
   function chooseOffice(code: string) {
     document.cookie = `${OFFICE_COOKIE}=${encodeURIComponent(code)}; path=/; max-age=31536000; samesite=lax`;
     router.refresh();
   }
+
+  async function signOut() {
+    await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => null);
+    router.push("/login");
+    router.refresh();
+  }
+
+  const href = (id: string) => (id === menu.home ? "/" : ROUTES[id]);
 
   const slimBtn = (
     <div style={{ padding: "6px 10px 0" }}>
@@ -196,7 +169,7 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
           </div>
 
           <div style={{ overflowY: "auto", flexGrow: 1, paddingBottom: 8 }}>
-            {GROUPS.map((g) => {
+            {menu.groups.map((g) => {
               const open = isOpen(g);
               const waiting = navWaiting(g);
               return (
@@ -218,13 +191,14 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
                             {it.badge ? <span className="nav__badge">{it.badge}</span> : null}
                           </>
                         );
-                        const current = route === it.id ? "page" : undefined;
-                        return ROUTES[it.id] ? (
-                          <Link key={it.id} href={ROUTES[it.id]} className="nav__item" aria-current={current}>
+                        const isCurrent = current === it.id ? "page" : undefined;
+                        const to = href(it.id);
+                        return to ? (
+                          <Link key={it.id} href={to} className="nav__item" aria-current={isCurrent}>
                             {inner}
                           </Link>
                         ) : (
-                          <button key={it.id} className="nav__item" aria-current={current} onClick={() => setSaid(it.label)} title="Still the prototype's screen">
+                          <button key={it.id} className="nav__item" aria-current={isCurrent} onClick={() => setSaid(it.label)} title="Still the prototype's screen">
                             {inner}
                           </button>
                         );
@@ -237,14 +211,13 @@ export function Shell({ route, me, children }: { route: string; me: Me | null; c
           </div>
 
           {slimBtn}
-          {slimBtn}
           <div className="nav__foot">
-            <div className="avatar">{initials(label)}</div>
+            <div className="avatar">{initials(who)}</div>
             <div style={{ minWidth: 0, flexGrow: 1 }}>
-              <div className="nav__who">{label}</div>
-              <div className="nav__sub">{me ? roleUnit(office) || `${me.offices.length} office${me.offices.length === 1 ? "" : "s"} held` : "Not signed in"}</div>
+              <div className="nav__who">{who}</div>
+              <div className="nav__sub">{me ? (me.name ? label : roleUnit(office) || `${me.offices.length} office${me.offices.length === 1 ? "" : "s"} held`) : "Not signed in"}</div>
             </div>
-            <button title="Sign out" aria-label="Sign out" style={{ color: "var(--chrome-ink)", padding: 6 }}>
+            <button title="Sign out" aria-label="Sign out" style={{ color: "var(--chrome-ink)", padding: 6 }} onClick={() => void signOut()}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9" />
               </svg>

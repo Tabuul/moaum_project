@@ -47,6 +47,17 @@ class IamController {
                 .map(a -> a.substring("OFFICE_".length()))
                 .toList());
         me.put("correlationId", AuditContextHolder.current().map(c -> c.correlationId().toString()).orElse(null));
+        try {
+            Person person = people.get(UUID.fromString(authentication.getName()));
+            me.put("name", person.surname() + ", " + person.givenNames());
+            me.put("staffNumber", person.staffNumber());
+        } catch (RuntimeException noPerson) {
+            me.put("name", null);
+            me.put("staffNumber", null);
+        }
+        if (authentication instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken t) {
+            me.put("sessionId", t.getToken().getClaimAsString("sid"));
+        }
         return me;
     }
 

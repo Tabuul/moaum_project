@@ -95,6 +95,10 @@ BEGIN
     DELETE FROM admissions.caps_row;
     DELETE FROM admissions.caps_batch;
 
+    DELETE FROM iam.credential_event;
+    DELETE FROM iam.credential;
+    DELETE FROM iam.sign_in_event;
+    DELETE FROM platform.session;
     DELETE FROM iam.office_assignment;
     DELETE FROM iam.person;
 
@@ -109,7 +113,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 81
+\set EXPECTED 83
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1242,6 +1246,29 @@ BEGIN
     SELECT stage INTO st FROM credentials.transcript_request WHERE id = t;
     PERFORM pg_temp.assert('The officer who produced a transcript does not sign it',
         ok AND st = 'RELEASED', 'produced by one officer, released by another');
+END $$;
+
+-- ══ V017 · SIGNING IN ═══════════════════════════════════════════════════
+
+-- ── 82-83. the hash stays out of the trail; the offices in a token are live ─
+DO $$
+DECLARE n int; v_p uuid := gen_random_uuid(); v_g uuid := gen_random_uuid();
+BEGIN
+    SELECT count(*) INTO n FROM audit.exemption e WHERE e.relid = 'iam.credential'::regclass;
+    PERFORM pg_temp.assert('The credential is off the spine with a reason, and the act of setting it is on it',
+        n = 1 AND EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = 'iam.credential_event'::regclass AND t.tgname LIKE 'trg_audit_%'),
+        'a hash copied into a longer-lived trail is a second place to steal it from');
+
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (v_p, 'CHECK/V017', 'CHECKSIGNIN', 'Invented');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from, valid_to)
+    VALUES (v_g, v_p, 'dean', 'faculty', 'check', gen_random_uuid(), current_date - 30, current_date - 1),
+           (gen_random_uuid(), v_p, 'hod', 'department', 'check', gen_random_uuid(), current_date, NULL);
+    SELECT count(*) INTO n FROM iam.live_offices(v_p);
+    PERFORM pg_temp.assert('A token carries only the offices held today',
+        n = 1 AND (SELECT office_code FROM iam.live_offices(v_p)) = 'hod',
+        'the deanship that ended yesterday is not an office today, whoever forgot to say so');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
