@@ -16,6 +16,7 @@ import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { OlevelGrading } from "./OlevelGrading";
 
 export interface PolicySummary {
   session: string;
@@ -55,6 +56,8 @@ export interface AdmissionPolicy {
     deText: string | null;
     olevelCredits: number | null;
     olevelSittings: number | null;
+  /** the O'Level subjects relevant to the programme — the ones the screening counts (V020) */
+  olevelSubjects?: string[];
     stated: boolean;
   }[];
   findings: { finding: string; detail: string; owner: string }[];
@@ -305,6 +308,8 @@ export function AdmissionSettings({
         </PBody>
       </Panel>
 
+      <OlevelGrading session={session} may={may} />
+
       <Panel title="The four selection criteria" right="Paragraph 2.4 · total must be 100%">
         <DTable
           cols={["Criterion", "What it means", "Share|mid"]}
@@ -432,6 +437,7 @@ export function AdmissionSettings({
                   olevelText: "pr-ol" in edits ? edits["pr-ol"] : editingProgramme.olevelText ?? "",
                   utmeText: "pr-ut" in edits ? edits["pr-ut"] : editingProgramme.utmeText ?? "",
                   deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
+                  olevelSubjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                 }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
                 if (ok) { setEditing(null); setEdits({}); }
               }}
@@ -452,6 +458,9 @@ export function AdmissionSettings({
                 <textarea id={k} className="ctl" rows={3} value={k in edits ? edits[k] : current ?? ""} onChange={(e) => setEdits({ ...edits, [k]: e.target.value })} />
               </Field>
             ))}
+            <Field id="pr-subj" label="Relevant O’Level subjects" hint="Comma-separated, as JAMB names them · the screening counts the best of these" full>
+              <textarea id="pr-subj" className="ctl" rows={2} value={"pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-subj": e.target.value })} placeholder="English Language, Mathematics, Physics, Chemistry, Biology" />
+            </Field>
           </div>
         </Modal>
       )}

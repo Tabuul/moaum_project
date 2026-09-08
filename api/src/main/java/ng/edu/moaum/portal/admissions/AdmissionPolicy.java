@@ -30,7 +30,7 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
     /** A programme the University runs and what this session's settings say about it — nothing, until stated. */
     public record ProgrammeRule(String code, String name, String facultyCode, String facultyName, Integer cutoff,
                                 String olevelText, String utmeText, String deText, Integer olevelCredits,
-                                Integer olevelSittings, boolean stated) {
+                                Integer olevelSittings, boolean stated, List<String> olevelSubjects) {
     }
 
     /** One line of the register of sessions that have settings at all. */

@@ -87,9 +87,24 @@ export function olSubject(s: unknown): string {
   return String(s ?? "").trim();
 }
 
+/** one sitting as JAMB sent it: the body and year, the exam number it is verified against, the subjects */
+export interface OlSitting {
+  type: string;
+  series: string;
+  year: string;
+  exnum: string;
+  subjects: { raw: string; subject: string; grade: string }[];
+}
+
+/** the grades in order of worth, best first */
+export const GRADES = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
+
 export interface OlRow {
   num: string;
+  /** the best grade per subject across the sittings — what the credit check reads */
   subjects: { raw: string; subject: string; grade: string }[];
+  /** every sitting apart: WAEC, NECO, NABTEB, one or two of them */
+  sittings: OlSitting[];
   type: string;
   series: string;
   year: string;
@@ -122,12 +137,30 @@ export function olParse(rows: string[][]): { rows: OlRow[]; lines: number } | { 
     const k = jkey(r[ix.num]);
     let c = by.get(k);
     if (!c) {
-      c = { num: k, subjects: [], type: r[ix.type] ?? "", series: r[ix.series] ?? "", year: r[ix.year] ?? "", exnum: r[ix.exnum] ?? "", credits: 0, eng: null, maths: null, meets: false };
+      c = { num: k, subjects: [], sittings: [], type: r[ix.type] ?? "", series: r[ix.series] ?? "", year: r[ix.year] ?? "", exnum: r[ix.exnum] ?? "", credits: 0, eng: null, maths: null, meets: false };
       by.set(k, c);
     }
-    c.subjects.push({ raw: r[ix.subject], subject: olSubject(r[ix.subject]), grade: String(r[ix.grade] ?? "").trim().toUpperCase() });
+    /* a sitting is one body, one year, one exam number; the file is one row per subject */
+    const type = String(r[ix.type] ?? "").trim();
+    const year = String(r[ix.year] ?? "").trim();
+    const exnum = String(r[ix.exnum] ?? "").trim();
+    let sitting = c.sittings.find((s) => s.type === type && s.year === year && s.exnum === exnum);
+    if (!sitting) {
+      sitting = { type, series: String(r[ix.series] ?? "").trim(), year, exnum, subjects: [] };
+      c.sittings.push(sitting);
+    }
+    const subject = { raw: r[ix.subject], subject: olSubject(r[ix.subject]), grade: String(r[ix.grade] ?? "").trim().toUpperCase() };
+    sitting.subjects.push(subject);
   }
+  const rank = (g: string) => { const i = GRADES.indexOf(g); return i < 0 ? GRADES.length : i; };
   for (const c of by.values()) {
+    /* the best grade per subject across the sittings */
+    const best = new Map<string, { raw: string; subject: string; grade: string }>();
+    for (const s of c.sittings) for (const g of s.subjects) {
+      const have = best.get(g.subject);
+      if (!have || rank(g.grade) < rank(have.grade)) best.set(g.subject, g);
+    }
+    c.subjects = [...best.values()];
     let credits = 0;
     for (const s of c.subjects) {
       if (CRED[s.grade]) credits++;

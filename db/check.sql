@@ -90,6 +90,21 @@ BEGIN
         (SELECT id FROM admissions.session_policy WHERE session = '9999/0000');
     DELETE FROM admissions.session_policy WHERE session = '9999/0000';
 
+    -- the property session of V020, and the sittings derived from attachments
+    DELETE FROM admissions.rule_subject WHERE group_id IN (
+        SELECT g.id FROM admissions.rule_subject_group g
+          JOIN admissions.session_policy p ON p.id = g.policy_id
+         WHERE p.session = '9998/9999');
+    DELETE FROM admissions.rule_subject_group WHERE policy_id IN
+        (SELECT id FROM admissions.session_policy WHERE session = '9998/9999');
+    DELETE FROM admissions.programme_rule WHERE policy_id IN
+        (SELECT id FROM admissions.session_policy WHERE session = '9998/9999');
+    DELETE FROM admissions.session_policy WHERE session = '9998/9999';
+    DELETE FROM admissions.olevel_grade_point WHERE session IN ('9998/9999', '9999/0000');
+    DELETE FROM admissions.olevel_grading WHERE session IN ('9998/9999', '9999/0000');
+    DELETE FROM admissions.olevel_grade;
+    DELETE FROM admissions.olevel_sitting;
+
     DELETE FROM admissions.candidate_photo;
     DELETE FROM admissions.attachment;
     DELETE FROM admissions.candidate;
@@ -114,7 +129,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 87
+\set EXPECTED 90
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1349,6 +1364,64 @@ BEGIN
     END;
     PERFORM pg_temp.assert('The numbers on a withdrawn list are free for the list that replaces it', ok,
         'a candidate is on one standing list, and the withdrawn rows are evidence, not a cohort');
+END $$;
+
+-- ══ V020 · THE O'LEVEL RESULTS JAMB SENDS, AND THE SCREENING SCORE ═══════
+
+-- ── 88–90. two sittings read apart; the score under the defaults; the rule as the session states it ──
+DO $$
+DECLARE att uuid := gen_random_uuid(); pid uuid := gen_random_uuid(); gid uuid := gen_random_uuid();
+        r record; n int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- one candidate, two sittings: WAEC 2024 and NECO 2025, as the screen records them
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+    VALUES (att, '9998/9999', 'OLEVEL', 'check-two-sittings', '20269999OL', 'COLUMN',
+      '{"sittings":[
+         {"type":"WAEC Only","year":"2024","examNumber":"4110001","subjects":[
+            {"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"B3"},
+            {"subject":"Physics","grade":"D7"},{"subject":"Chemistry","grade":"C5"},
+            {"subject":"Biology","grade":"A1"},{"subject":"Geography","grade":"C4"}]},
+         {"type":"NECO","year":"2025","examNumber":"9920002","subjects":[
+            {"subject":"English Language","grade":"B2"},{"subject":"Physics","grade":"C4"},
+            {"subject":"Agricultural Science","grade":"B3"}]}]}'::jsonb);
+    n := admissions.olevel_from_attachment(att);
+
+    -- 88. read apart, each under its examining body
+    PERFORM pg_temp.assert('Two sittings are kept apart, each under its examining body',
+        n = 2
+        AND (SELECT string_agg(exam_body, ',' ORDER BY ord) FROM admissions.olevel_sitting WHERE attachment_id = att) = 'WAEC,NECO'
+        AND (SELECT count(*) FROM admissions.olevel_grade g JOIN admissions.olevel_sitting s ON s.id = g.sitting_id
+              WHERE s.attachment_id = att) = 9,
+        'a WAEC result and a NECO result are two results, shown as JAMB sent them');
+
+    -- 89. under the defaults: the best grade per subject across the sittings, the top five, the two-sitting bonus
+    -- best: English B2 5 · Mathematics B3 4 · Physics C4 3 · Chemistry C5 2 · Biology A1 6 · Geography C4 3 · Agric B3 4
+    -- top five: 6 + 5 + 4 + 4 + 3 = 22, and 6 for two sittings = 28
+    SELECT * INTO r FROM admissions.olevel_score('9998/9999', '20269999OL', 'C00061');
+    PERFORM pg_temp.assert('The score takes the best grade per subject across two sittings, the top five, and the two-sitting bonus',
+        r.sittings = 2 AND r.points = 22 AND r.bonus = 6 AND r.total = 28 AND r.relevant_known = false,
+        'B2 beats C6 in English and C4 beats D7 in Physics; five subjects count; two sittings earn 6');
+
+    -- 90. the rule is the session's to state, and the programme's relevant subjects are the ones that count
+    INSERT INTO admissions.olevel_grading (session, subjects_counted, bonus_one_sitting, bonus_two_sittings)
+    VALUES ('9998/9999', 4, 12, 3);
+    INSERT INTO admissions.olevel_grade_point (session, grade, points)
+    SELECT '9998/9999', v.g, v.p FROM (VALUES ('A1',10),('B2',8),('B3',6),('C4',4),('C5',2),('C6',1),('D7',0),('E8',0),('F9',0)) v(g, p);
+    INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme) VALUES (pid, '9998/9999', 100, 70, 30);
+    INSERT INTO admissions.programme_rule (policy_id, programme_code, olevel_text, utme_text, de_text)
+    VALUES (pid, 'C00061', 'check', 'check', 'check');
+    INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (gid, pid, 'C00061', 'OLEVEL', 4);
+    INSERT INTO admissions.rule_subject (group_id, subject)
+    VALUES (gid, 'English Language'), (gid, 'Mathematics'), (gid, 'Physics'), (gid, 'Chemistry'), (gid, 'Biology');
+    -- relevant, best: English B2 8 · Mathematics B3 6 · Physics C4 4 · Chemistry C5 2 · Biology A1 10 → top four 10 + 8 + 6 + 4 = 28, and 3 = 31
+    SELECT * INTO r FROM admissions.olevel_score('9998/9999', '20269999OL', 'C00061');
+    PERFORM pg_temp.assert('The grading is the session''s to state, and the programme''s relevant subjects are the ones that count',
+        r.relevant_known AND r.points = 28 AND r.bonus = 3 AND r.total = 31
+        AND admissions.olevel_points('9998/9999', 'A1') = 10 AND admissions.olevel_points('2026/2027', 'A1') = 6,
+        'Agricultural Science is not relevant to MBBS and is not counted; the stated points and bonus replace the defaults');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

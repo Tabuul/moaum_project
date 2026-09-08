@@ -103,12 +103,17 @@ class CandidateDataController {
             if (already > 0) {
                 continue;
             }
+            UUID id = UUID.randomUUID();
             jdbc.sql("""
                     INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload, bytes, width_px, height_px)
-                    VALUES (gen_random_uuid(), :s, :k, :n, :key, :r, CAST(:p AS jsonb), :b, :w, :h)
-                    """).param("s", s).param("k", batch.kind()).param("n", it.sourceName()).param("key", key, Types.VARCHAR)
+                    VALUES (:id, :s, :k, :n, :key, :r, CAST(:p AS jsonb), :b, :w, :h)
+                    """).param("id", id).param("s", s).param("k", batch.kind()).param("n", it.sourceName()).param("key", key, Types.VARCHAR)
                     .param("r", readAs).param("p", Json.text(it.payload())).param("b", it.bytes(), Types.BIGINT)
                     .param("w", it.widthPx(), Types.INTEGER).param("h", it.heightPx(), Types.INTEGER).update();
+            if ("OLEVEL".equals(batch.kind())) {
+                /* the sittings, read out of what arrived (V020) */
+                jdbc.sql("SELECT admissions.olevel_from_attachment(:id)").param("id", id).query(Integer.class).single();
+            }
             recorded++;
         }
         List<Map<String, Object>> attached = new ArrayList<>(jdbc.sql("SELECT kind, newly_attached FROM admissions.attach_pending(:s)")
@@ -125,6 +130,13 @@ class CandidateDataController {
                 return Map.of();
             }
             return MAPPER.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        }
+
+        static List<Map<String, Object>> list(String text) {
+            if (text == null || text.isBlank()) {
+                return List.of();
+            }
+            return MAPPER.readValue(text, new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { });
         }
 
         static String text(Map<String, Object> m) {

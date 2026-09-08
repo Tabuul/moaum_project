@@ -60,7 +60,11 @@ class AdmissionSettingsRepository {
     List<AdmissionPolicy.ProgrammeRule> programmeRules(String session) {
         return jdbc.sql("""
                 SELECT g.code, g.name, g.faculty_code, f.name AS faculty_name, r.cutoff, r.olevel_text, r.utme_text,
-                       r.de_text, r.olevel_credits, r.olevel_sittings, (r.programme_code IS NOT NULL) AS stated
+                       r.de_text, r.olevel_credits, r.olevel_sittings, (r.programme_code IS NOT NULL) AS stated,
+                       (SELECT string_agg(DISTINCT rs.subject, E'\n' ORDER BY rs.subject)
+                          FROM admissions.rule_subject rs
+                          JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
+                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'OLEVEL') AS olevel_subjects
                   FROM ref.programme g
                   JOIN ref.faculty f ON f.code = g.faculty_code
                   LEFT JOIN (SELECT r.* FROM admissions.programme_rule r
@@ -69,8 +73,19 @@ class AdmissionSettingsRepository {
                  ORDER BY f.name, g.name
                 """)
                 .param("session", session)
-                .query(AdmissionPolicy.ProgrammeRule.class)
+                .query((rs, i) -> new AdmissionPolicy.ProgrammeRule(rs.getString("code"), rs.getString("name"),
+                        rs.getString("faculty_code"), rs.getString("faculty_name"), rs.getObject("cutoff", Integer.class),
+                        rs.getString("olevel_text"), rs.getString("utme_text"), rs.getString("de_text"),
+                        rs.getObject("olevel_credits", Integer.class), rs.getObject("olevel_sittings", Integer.class),
+                        rs.getBoolean("stated"), lines(rs.getString("olevel_subjects"))))
                 .list();
+    }
+
+    private static List<String> lines(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(text.split("\\R")).map(String::trim).filter(s -> !s.isEmpty()).toList();
     }
 
     /** Creates the session's draft, or changes it while it is still one. */
@@ -143,6 +158,27 @@ class AdmissionSettingsRepository {
                 .param("utme", r.utmeText().trim())
                 .param("de", r.deText().trim())
                 .update();
+        if (r.olevelSubjects() != null) {
+            /* the relevant O'Level subjects, structured (V008 groups, V020 counts them): one group, replaced whole */
+            jdbc.sql("""
+                    DELETE FROM admissions.rule_subject WHERE group_id IN (
+                        SELECT id FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'OLEVEL')
+                    """).param("id", policyId).param("code", code).update();
+            jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'OLEVEL'")
+                    .param("id", policyId).param("code", code).update();
+            List<String> subjects = r.olevelSubjects().stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+            if (!subjects.isEmpty()) {
+                UUID group = UUID.randomUUID();
+                jdbc.sql("""
+                        INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose, min_grade)
+                        VALUES (:g, :id, :code, 'OLEVEL', :choose, 'C6')
+                        """).param("g", group).param("id", policyId).param("code", code)
+                        .param("choose", Math.min(subjects.size(), r.olevelCredits() == null ? 5 : r.olevelCredits())).update();
+                for (String subject : subjects) {
+                    jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
+                }
+            }
+        }
     }
 
     boolean facultyExists(String code) {
@@ -185,6 +221,18 @@ class AdmissionSettingsRepository {
                 SELECT :id, r.programme_code, r.cutoff, r.olevel_credits, r.olevel_sittings, r.olevel_text, r.utme_text, r.de_text
                   FROM admissions.programme_rule r
                   JOIN admissions.session_policy p ON p.id = r.policy_id WHERE p.session = :from
+                """).param("id", id).param("from", from).update();
+        /* the subject groups come with the rules (V008), so the screening keeps its relevant subjects (V020) */
+        jdbc.sql("""
+                WITH src AS (
+                    SELECT g.id AS old_id, gen_random_uuid() AS new_id, g.programme_code, g.scope, g.choose, g.min_grade
+                      FROM admissions.rule_subject_group g
+                      JOIN admissions.session_policy p ON p.id = g.policy_id WHERE p.session = :from),
+                made AS (
+                    INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose, min_grade)
+                    SELECT new_id, :id, programme_code, scope, choose, min_grade FROM src RETURNING id)
+                INSERT INTO admissions.rule_subject (group_id, subject)
+                SELECT s.new_id, rs.subject FROM src s JOIN admissions.rule_subject rs ON rs.group_id = s.old_id
                 """).param("id", id).param("from", from).update();
     }
 }

@@ -56,3 +56,22 @@ test("matching counts both ways", () => {
   assert.equal(m.orphan[0].num, "Z");
   assert.equal(m.missing[0].num, "B");
 });
+
+test("two sittings are kept apart, and the best grade per subject is the one the credit check reads", () => {
+  const head = ["RegNum", "SubjectName", "Grade", "ExamSeries", "ExamYear", "ExamType", "ExamNumber"];
+  const w = (s: string, g: string) => ["202660881440FP", s, g, "School Exam", "2024", "WAEC Only", "4110229931"];
+  const nc = (s: string, g: string) => ["202660881440FP", s, g, "School Exam", "2025", "NECO", "9920002"];
+  const r = olParse([head, w("English Lang.", "D7"), w("Mathematics", "C6"), w("Physics", "C4"), w("Chemistry", "C5"), w("Biology", "A1"),
+    nc("English Lang.", "B2"), nc("Physics", "D7"), nc("Agricultural Science", "B3")]);
+  assert.ok("rows" in r);
+  if (!("rows" in r)) return;
+  assert.equal(r.rows.length, 1);
+  const c = r.rows[0];
+  assert.equal(c.sittings.length, 2);
+  assert.deepEqual(c.sittings.map((s) => s.type), ["WAEC Only", "NECO"]);
+  assert.equal(c.sittings[1].subjects.length, 3);
+  assert.equal(c.eng, "B2");
+  assert.equal(c.subjects.find((s) => s.subject === "Physics")?.grade, "C4");
+  assert.equal(c.credits, 6);
+  assert.equal(c.meets, true);
+});

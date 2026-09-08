@@ -12,6 +12,7 @@ import { CRED, capsMatch, dobParse, jambNumFromName, olParse, type DobRow, type 
 import { Btn, Ico, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { OlevelView } from "./OlevelView";
 
 interface Pas { num: string; file: string; how: string; size: number; w: number; h: number; url: string }
 
@@ -23,6 +24,7 @@ const CD_TABS: [string, string, string][] = [
 
 export function CandidateData({ state, actingOffice }: { state: AttachmentState; actingOffice: string | null }) {
   const router = useRouter();
+  const [viewing, setViewing] = useState<{ key: string; name: string } | null>(null);
   const [tab, setTab] = useState("pas");
   const [pas, setPas] = useState<Pas[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -270,8 +272,30 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
                 ])}
                 texts={m.matched.map((r) => `${r.num} ${m.byNum[r.num]?.name ?? ""}`)}
               />
-              <PBody><Btn kind="primary" disabled={busy || !may} onClick={() => void record("OLEVEL", ol.rows.map((r) => ({ sourceName: `${r.num} ${r.type} ${r.year}`.trim(), jambKey: r.num || null, readAs: "COLUMN", payload: { subjects: r.subjects, credits: r.credits, meets: r.meets, examNumber: r.exnum, year: r.year, type: r.type } })))}>Record what was read</Btn></PBody>
+              <PBody><Btn kind="primary" disabled={busy || !may} onClick={() => void record("OLEVEL", ol.rows.map((r) => ({ sourceName: `${r.num} ${r.type} ${r.year}`.trim(), jambKey: r.num || null, readAs: "COLUMN", payload: { subjects: r.subjects, credits: r.credits, meets: r.meets, examNumber: r.exnum, year: r.year, type: r.type, sittings: r.sittings.map((s) => ({ type: s.type, year: s.year, examNumber: s.exnum, subjects: s.subjects })) } })))}>Record what was read</Btn></PBody>
             </Panel>
+            <Panel title="Results recorded, and the screening score they carry" right={`${state.candidates.filter((c) => c.hasOlevel).length} of ${state.candidates.length} candidates`}>
+              {state.candidates.some((c) => c.hasOlevel) ? (
+                <DTable
+                  cols={["Candidate", "Number|mid", "Programme", "|num"]}
+                  texts={state.candidates.filter((c) => c.hasOlevel).map((c) => `${c.surname} ${c.otherNames} ${c.jambKey} ${c.programme}`)}
+                  rows={state.candidates.filter((c) => c.hasOlevel).map((c) => [
+                    <strong key="n">{c.surname}, {c.otherNames}</strong>,
+                    <span className="tnum" key="k">{c.jambKey}</span>,
+                    <span className="sub2" key="p">{c.programme}</span>,
+                    <Btn kind="ghost" key="v" onClick={() => setViewing({ key: c.jambKey, name: `${c.surname}, ${c.otherNames}` })}>View</Btn>,
+                  ])}
+                />
+              ) : (
+                <div className="card__body"><div className="sub2">No result has attached to a candidate yet. They attach on the registration number once the admission list carries it.</div></div>
+              )}
+              <div className="card__body">
+                <div className="sub2">
+                  Each result is shown as JAMB sent it, sitting by sitting &mdash; WAEC, NECO and NABTEB apart. The screening score under the session&rsquo;s O&rsquo;Level grading is computed for the Academic Office and shown to nobody else, the applicant included.
+                </div>
+              </div>
+            </Panel>
+            {viewing ? <OlevelView session={state.session} jambKey={viewing.key} name={viewing.name} onClose={() => setViewing(null)} /> : null}
             <Note kind="info" title="The exam number is here so the result can be verified with WAEC, and it must be">
               JAMB passes on what the candidate declared and what the examination board returned; it is not itself the awarding body. The University verifies the result directly with WAEC or NECO before clearance, and a result that does not verify voids the admission — which is exactly why the exam number travels with the grades rather than being asked for again later.
             </Note>

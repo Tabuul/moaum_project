@@ -54,7 +54,9 @@ public class AdmissionSettingsService {
                                   @NotBlank @Size(max = 2000) String olevelText,
                                   @NotBlank @Size(max = 2000) String utmeText,
                                   @NotBlank @Size(max = 2000) String deText,
-                                  @Min(1) @Max(9) Integer olevelCredits, @Min(1) @Max(4) Integer olevelSittings) {
+                                  @Min(1) @Max(9) Integer olevelCredits, @Min(1) @Max(4) Integer olevelSittings,
+                                  /** the O'Level subjects relevant to the programme — the ones the screening counts (V020); null leaves them as they are */
+                                  List<String> olevelSubjects) {
     }
 
     public record Instrument(@NotBlank @Size(max = 200) String instrument) {
