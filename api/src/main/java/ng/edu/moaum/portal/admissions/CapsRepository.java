@@ -188,25 +188,50 @@ class CapsRepository {
     List<Programme> programmes() {
         return jdbc.sql("""
                 SELECT p.code, p.name, p.dept_code, p.faculty_code, f.name AS faculty_name,
-                       a.jamb_name, p.category, p.archived
+                       a.jamb_name, p.category, p.archived,
+                       coalesce((SELECT string_agg(n.jamb_name, E'\n' ORDER BY n.added_at) FROM ref.jamb_alias_name n WHERE n.code = p.code), '') AS more
                   FROM ref.programme p
                   JOIN ref.faculty f ON f.code = p.faculty_code
                   LEFT JOIN ref.jamb_alias a ON a.code = p.code
                  ORDER BY p.code
                 """)
-                .query(Programme.class)
+                .query((rs, i) -> new Programme(rs.getString("code"), rs.getString("name"), rs.getString("dept_code"),
+                        rs.getString("faculty_code"), rs.getString("faculty_name"), rs.getString("jamb_name"),
+                        rs.getString("more").isEmpty() ? List.of() : List.of(rs.getString("more").split("\n")),
+                        rs.getString("category"), rs.getBoolean("archived")))
                 .list();
     }
 
     /** The code, if any, whose JAMB alias normalises to the same letters and digits. */
+    /** the programme a JAMB name means, whether it is the primary alias or a further name */
     Optional<String> codeWithAlias(String normalisedName) {
         return jdbc.sql("""
                 SELECT code FROM ref.jamb_alias
                  WHERE lower(regexp_replace(jamb_name, '[^A-Za-z0-9]', '', 'g')) = :name
+                UNION
+                SELECT code FROM ref.jamb_alias_name WHERE jamb_key = :name
+                LIMIT 1
                 """)
                 .param("name", normalisedName)
                 .query(String.class)
                 .optional();
+    }
+
+    /** whether the primary alias is still the University's own name — the seed's fallback, not a name JAMB gave */
+    boolean aliasIsOwnName(String code) {
+        return jdbc.sql("""
+                SELECT count(*) FROM ref.programme p LEFT JOIN ref.jamb_alias a ON a.code = p.code
+                 WHERE p.code = :code AND (a.jamb_name IS NULL
+                    OR lower(regexp_replace(a.jamb_name, '[^A-Za-z0-9]', '', 'g')) = lower(regexp_replace(p.name, '[^A-Za-z0-9]', '', 'g')))
+                """).param("code", code).query(Long.class).single() > 0;
+    }
+
+    /** a further name JAMB uses for the programme, kept beside the primary */
+    void addAliasName(String code, String jambName, String normalisedName) {
+        jdbc.sql("""
+                INSERT INTO ref.jamb_alias_name (jamb_key, jamb_name, code) VALUES (:key, :name, :code)
+                ON CONFLICT (jamb_key) DO UPDATE SET jamb_name = EXCLUDED.jamb_name, code = EXCLUDED.code
+                """).param("key", normalisedName).param("name", jambName).param("code", code).update();
     }
 
     void upsertAlias(String code, String jambName) {

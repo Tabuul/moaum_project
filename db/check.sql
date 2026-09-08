@@ -38,6 +38,7 @@ BEGIN
 
     DELETE FROM audit.entries;
     DELETE FROM audit.chain_head;
+    DELETE FROM ref.jamb_alias_name;
 
     -- V013: the student record the checks build, and nothing the migrations seeded
     DELETE FROM credentials.certificate;
@@ -113,7 +114,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 83
+\set EXPECTED 84
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1269,6 +1270,24 @@ BEGIN
     PERFORM pg_temp.assert('A token carries only the offices held today',
         n = 1 AND (SELECT office_code FROM iam.live_offices(v_p)) = 'hod',
         'the deanship that ended yesterday is not an office today, whoever forgot to say so');
+END $$;
+
+-- ══ V018 · JAMB NAMES A PROGRAMME MORE THAN ONE WAY ═════════════════════
+
+-- ── 84. a further name is kept beside the first ─────────────────────────
+DO $$
+DECLARE n int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO ref.jamb_alias_name (jamb_key, jamb_name, code) VALUES ('medicineandsurgerymbbs', 'Medicine and Surgery (MBBS)', 'C00061');
+    SELECT count(DISTINCT code) INTO n FROM (
+        SELECT code FROM ref.jamb_alias WHERE lower(regexp_replace(jamb_name, '[^A-Za-z0-9]', '', 'g')) = 'medicinesurgery'
+        UNION ALL
+        SELECT code FROM ref.jamb_alias_name WHERE jamb_key = 'medicineandsurgerymbbs') x;
+    PERFORM pg_temp.assert('A second JAMB name for a programme is kept beside the first',
+        n = 1 AND (SELECT jamb_name FROM ref.jamb_alias WHERE code = 'C00061') = 'Medicine & Surgery',
+        'both names resolve to MBBS; neither replaced the other');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

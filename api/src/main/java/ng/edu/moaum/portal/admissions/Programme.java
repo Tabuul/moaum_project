@@ -1,10 +1,11 @@
 package ng.edu.moaum.portal.admissions;
 
+import java.util.List;
+
 /**
- * A programme the University runs ({@code ref.programme}) with the name
- * JAMB uses for it ({@code ref.jamb_alias}), which is how a CAPS download —
- * which names the course and gives no code — is resolved to a code.
+ * A programme with what JAMB calls it: the primary alias, and every further
+ * name JAMB has used for it (V018). A CAPS download is matched on all of them.
  */
 public record Programme(String code, String name, String deptCode, String facultyCode, String facultyName,
-                        String jambName, String category, boolean archived) {
+                        String jambName, List<String> jambNames, String category, boolean archived) {
 }

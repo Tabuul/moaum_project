@@ -20,6 +20,8 @@ export interface Programme {
   facultyCode: string;
   facultyName?: string;
   jambName: string | null;
+  /** every further name JAMB has used for it (V018) */
+  jambNames?: string[];
   category: string;
   archived: boolean;
 }
@@ -132,6 +134,7 @@ export function parseCaps(rows: string[][], kind: ListKind, programmes: Programm
   for (const p of programmes) {
     byCode.set(p.code, p);
     if (p.jambName) byJambName.set(norm(p.jambName), p);
+    for (const n of p.jambNames ?? []) byJambName.set(norm(n), p);
   }
 
   const layout = ix.coursename !== undefined ? "CAPS download" : "built by this office";

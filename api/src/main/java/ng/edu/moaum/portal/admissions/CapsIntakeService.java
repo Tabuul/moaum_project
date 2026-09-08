@@ -167,7 +167,14 @@ public class CapsIntakeService {
                     new DomainRuleViolation.Remedy("Check the CAPS download: JAMB names each programme once. If " + holder.get()
                             + " no longer carries this name, change its alias first.", "Academic Office"));
         }
-        caps.upsertAlias(upper, name);
+        if (holder.isPresent()) {
+            return caps.programme(upper).orElseThrow();       // already what JAMB calls it
+        }
+        if (caps.aliasIsOwnName(upper)) {
+            caps.upsertAlias(upper, name);                      // the first real JAMB name replaces the seed's fallback
+        } else {
+            caps.addAliasName(upper, name, normalised);         // a further name, kept beside the first
+        }
         return caps.programme(upper).orElseThrow();
     }
 
