@@ -110,13 +110,10 @@ public class StudentPortalService {
         out.put("instalmentsPaid", pos.get("instalments_paid"));
         out.put("paidInFull", pos.get("paid_in_full"));
         out.put("hasArrears", pos.get("has_arrears"));
-        Boolean registration = null;
-        String schemeProblem = null;
-        try {
-            registration = repo.clears(id, session, "REGISTRATION");
-        } catch (RuntimeException noScheme) {
-            schemeProblem = "No clearance scheme is in force, so nothing is released against a payment yet; the Bursar states the scheme.";
-        }
+        /* asked first: policy.clears refuses when no scheme is in force, and a refused statement aborts the whole transaction */
+        boolean inForce = repo.schemeInForce();
+        Boolean registration = inForce ? repo.clears(id, session, "REGISTRATION") : null;
+        String schemeProblem = inForce ? null : "No clearance scheme is in force, so nothing is released against a payment yet; the Bursar states the scheme.";
         out.put("clearsRegistration", registration);
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
@@ -202,12 +199,7 @@ public class StudentPortalService {
         out.put("cgpa", cgpa);
         out.put("standing", repo.classOf(cgpa));
         out.put("carryovers", repo.carryovers(id));
-        Boolean resultsCleared = null;
-        try {
-            resultsCleared = repo.clears(id, session(), "RESULTS");
-        } catch (RuntimeException noScheme) {
-            resultsCleared = null;
-        }
+        Boolean resultsCleared = repo.schemeInForce() ? repo.clears(id, session(), "RESULTS") : null;
         out.put("clearsResults", resultsCleared);
         return out;
     }
@@ -243,13 +235,9 @@ public class StudentPortalService {
         String session = session();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
-        Boolean cleared = null;
-        String schemeProblem = null;
-        try {
-            cleared = repo.clears(id, session, "EXAMINATION");
-        } catch (RuntimeException noScheme) {
-            schemeProblem = "No clearance scheme is in force, so nothing is released against a payment yet; the Bursar states the scheme.";
-        }
+        boolean inForce = repo.schemeInForce();
+        Boolean cleared = inForce ? repo.clears(id, session, "EXAMINATION") : null;
+        String schemeProblem = inForce ? null : "No clearance scheme is in force, so nothing is released against a payment yet; the Bursar states the scheme.";
         out.put("clearsExamination", cleared);
         out.put("schemeProblem", schemeProblem);
         List<Map<String, Object>> sessions = new ArrayList<>();
@@ -274,12 +262,7 @@ public class StudentPortalService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("matricNo", s.matricNo());
         out.put("cards", repo.cards(id));
-        Boolean cleared = null;
-        try {
-            cleared = repo.clears(id, session(), "ID_CARD");
-        } catch (RuntimeException noScheme) {
-            cleared = null;
-        }
+        Boolean cleared = repo.schemeInForce() ? repo.clears(id, session(), "ID_CARD") : null;
         out.put("clearsIdCard", cleared);
         return out;
     }

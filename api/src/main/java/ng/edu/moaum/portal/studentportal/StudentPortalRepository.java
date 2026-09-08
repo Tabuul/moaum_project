@@ -136,6 +136,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM finance.position(:s, :ses)").param("s", student).param("ses", session).query().singleRow();
     }
 
+    /** whether a clearance scheme is in force today: asked first, because clears() refuses — and aborts the transaction — when none is */
+    boolean schemeInForce() {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT policy.in_force('clearance', 'UNIVERSITY', current_date) IS NOT NULL").query(Boolean.class).single());
+    }
+
     boolean clears(UUID student, String session, String purpose) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.clears(:s, :ses, :p)").param("s", student).param("ses", session).param("p", purpose)
                 .query(Boolean.class).single());

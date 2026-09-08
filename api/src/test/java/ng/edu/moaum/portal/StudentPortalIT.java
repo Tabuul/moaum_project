@@ -83,7 +83,9 @@ class StudentPortalIT {
         assertThat(post("/api/v1/student-auth/sign-in", Map.of("matricNo", matric, "password", "first password 2090")).getStatusCode().value()).isEqualTo(422);
 
         // me: the record as the register holds it, no charge yet
-        Map<String, Object> me = it.get(token, "/api/v1/me").getBody();
+        ResponseEntity<Map> meResponse = it.get(token, "/api/v1/me");
+        assertThat(meResponse.getStatusCode().value()).as(String.valueOf(meResponse.getBody())).isEqualTo(200);
+        Map<String, Object> me = meResponse.getBody();
         assertThat(me.get("matricNo")).isEqualTo(matric);
         Map<String, Object> fees = (Map<String, Object>) me.get("fees");
         assertThat(((Number) fees.get("due")).doubleValue()).isEqualTo(0.0);
