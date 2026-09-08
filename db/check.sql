@@ -46,6 +46,13 @@ BEGIN
     DELETE FROM credentials.transcript_request;
     DELETE FROM records.graduand;
     DELETE FROM clearance.item;
+    -- hostel (V030): allocations before applications, before the students and rooms they hang on
+    DELETE FROM hostel.maintenance_request;
+    DELETE FROM hostel.allocation;
+    DELETE FROM hostel.application;
+    DELETE FROM hostel.session_setting WHERE session LIKE '99%';
+    DELETE FROM hostel.room WHERE hall_code LIKE 'CHK%';
+    DELETE FROM hostel.hall WHERE code LIKE 'CHK%';
     -- the student's services (V027), before the students, sheets and offerings they hang on
     DELETE FROM assessment.result_query;
     DELETE FROM assessment.exam_timetable;
@@ -168,7 +175,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 104
+\set EXPECTED 105
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1781,6 +1788,60 @@ BEGIN
         AND g.class_of_degree = 'Second Class Honours (Upper)' AND NOT g.cleared AND g.units_holding = 8 AND g.certificate_no IS NULL
         AND EXISTS (SELECT 1 FROM people.status_change WHERE student_id = st AND to_status = 'GRADUATED' AND instrument = 'CHECK SEN/9999/7'),
         format('approved=%s status=%s notices=%s state=%s class=%s cleared=%s holding=%s', n, v_status, v_notices, g.senate_state, g.class_of_degree, g.cleared, g.units_holding));
+END $$;
+
+-- ── 105. the hostel draw is a function of the seed; a hold lapses to the next name; the fee confirms the bed (V030) ──
+DO $$
+DECLARE s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); r record; d record; v1 record; v2 record; v3 record;
+        v_ref text; v_lapsed int; ok boolean; before_pos int[]; after_pos int[];
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, sex) VALUES
+        (s1, 'MOAUM/ADM/99/990105', 'MOAUM/CHK/99/0105', 'CHECKHOSTEL', 'Invented One', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now(), 'F'),
+        (s2, 'MOAUM/ADM/99/990106', 'MOAUM/CHK/99/0106', 'CHECKHOSTEL', 'Invented Two', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now(), 'F'),
+        (s3, 'MOAUM/ADM/99/990107', 'MOAUM/CHK/99/0107', 'CHECKHOSTEL', 'Invented Three', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now(), 'F');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    INSERT INTO people.student_contact (student_id, email, phone) VALUES (s1, 'check.hostel1@example.com', '08030000105');
+    PERFORM set_config('moaum.actor_office', 'services', true);
+    INSERT INTO hostel.hall (code, name, sex) VALUES ('CHKH', 'Check Hall', 'F');
+    INSERT INTO hostel.room (hall_code, block, room_no, beds) VALUES ('CHKH', 'A', '1', 2);   -- two beds for three applicants
+    INSERT INTO hostel.session_setting (session, fee, hold_hours) VALUES ('9999/0000', 40000, 72);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM hostel.apply(s1, '9999/0000', 'CHKH', 'NONE', NULL);
+    PERFORM hostel.apply(s2, '9999/0000', NULL, 'NONE', NULL);
+    PERFORM hostel.apply(s3, '9999/0000', 'CHKH', 'NONE', NULL);
+    ok := false;
+    BEGIN PERFORM hostel.apply(s1, '9999/0000', NULL, 'NONE', NULL); EXCEPTION WHEN OTHERS THEN ok := true; END;   -- one application per session
+    PERFORM set_config('moaum.actor_office', 'services', true);
+    SELECT * INTO d FROM hostel.draw('9999/0000', 'CHECK-SEED-9999');
+    SELECT array_agg(ap.draw_position ORDER BY ap.student_id) INTO before_pos FROM hostel.application ap WHERE ap.session = '9999/0000';
+    -- the order is the seed's: the same seed over the same applicants gives the same positions
+    SELECT array_agg(rank ORDER BY sid) INTO after_pos FROM (
+        SELECT ap.student_id AS sid, row_number() OVER (ORDER BY md5('CHECK-SEED-9999' || ap.student_id::text))::int AS rank
+          FROM hostel.application ap WHERE ap.session = '9999/0000') q;
+    SELECT * INTO v1 FROM hostel.student_view(s1, '9999/0000');
+    SELECT * INTO v2 FROM hostel.student_view(s2, '9999/0000');
+    SELECT * INTO v3 FROM hostel.student_view(s3, '9999/0000');
+    -- the third position has no bed and is the reserve; a hold that expires goes to it
+    UPDATE hostel.allocation SET held_until = now() - interval '1 hour' WHERE session = '9999/0000' AND draw_position = 1;
+    v_lapsed := hostel.lapse_holds('9999/0000');
+    -- the fee: a reference for a held bed, confirmed by the Bursary, makes it CONFIRMED
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    SELECT ap.id INTO r FROM hostel.application ap WHERE ap.session = '9999/0000' AND ap.state = 'ALLOCATED' AND ap.draw_position = 2;
+    v_ref := hostel.new_fee_reference(r.id);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(v_ref, 'Bank transfer', 'check');
+    PERFORM pg_temp.assert('The hostel draw is a function of the published seed, a lapsed hold passes to the next name, and the confirmed fee makes the bed a room',
+        d.allocated = 2 AND d.unsuccessful = 1 AND d.priority = 0 AND ok AND before_pos = after_pos
+        AND v_lapsed = 1
+        AND (SELECT count(*) FROM hostel.application ap WHERE ap.session = '9999/0000' AND ap.state = 'LAPSED') = 1
+        AND (SELECT count(*) FROM hostel.allocation al WHERE al.session = '9999/0000' AND al.basis = 'RESERVE' AND al.lapsed_at IS NULL) = 1
+        AND v_ref LIKE 'MOAUM-FEE-%'
+        AND (SELECT ap.state FROM hostel.application ap WHERE ap.id = r.id) = 'CONFIRMED'
+        AND (SELECT count(*) FROM hostel.allocation al WHERE al.session = '9999/0000' AND al.lapsed_at IS NULL AND al.ended_at IS NULL) = 2,
+        format('drawn=%s/%s/%s dup_refused=%s order=%s lapsed=%s ref=%s states=%s', d.allocated, d.unsuccessful, d.priority, ok, before_pos = after_pos, v_lapsed, v_ref,
+               (SELECT string_agg(ap.state || '@' || coalesce(ap.draw_position::text, '-'), ',' ORDER BY ap.draw_position) FROM hostel.application ap WHERE ap.session = '9999/0000')));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

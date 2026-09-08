@@ -1,0 +1,232 @@
+%PDF-1.4
+%âãÏÓ
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject <<  >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 9285 >>
+stream
+BT /F1 7.5 Tf 0.400 0.400 0.400 rg 48.00 28.00 Td (MOAUM Unified University Portal \267 demo accounts \267 invented people, for walking the portal) Tj ET
+BT /F2 18 Tf 0.000 0.000 0.000 rg 48.00 785.89 Td (MOAUMPP demo accounts) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 759.89 Td (Rev. Fr. Moses Orshio Adasu University, Makurdi - Unified University Portal. Invented people, for walking) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 746.59 Td (the portal. Nobody here is real: every surname is DEMO, every staff number is MOAUM/DEMO/nnn, the) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 733.29 Td (matriculation numbers sit at 9901-9906 so a real matriculation run never meets them, and the demo courses) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 719.99 Td (carry the DMO prefix.) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 702.69 Td (Put them on a database from the Railway shell of the moaum-api service, once: bash db/demo.sh \(a second) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 689.39 Td (run changes nothing\).) Tj ET
+0.92 g 48.00 664.09 499.28 24.00 re f 0 g
+BT /F2 11 Tf 0.000 0.000 0.000 rg 56.00 672.09 Td (Password for every account:  Demo password 2026) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 642.09 Td (Everybody signs in at the one door, /login, with the number below. The portal reads the number, signs the) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 628.79 Td (person in on their own side, and opens their dashboard. Portal:) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 615.49 Td (https://moaum-portal-production.up.railway.app/login) Tj ET
+BT /F2 12.5 Tf 0.000 0.000 0.000 rg 48.00 592.19 Td (Students - one at every level) Tj ET
+0.6 G 0.8 w 48.00 584.19 m 547.28 584.19 l S
+0.94 g 48.00 566.19 499.28 15.00 re f 0 g
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 52.00 570.19 Td (Level) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 98.00 570.19 Td (Sign in with) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 230.00 570.19 Td (Programme) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 390.00 570.19 Td (Name) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 555.19 Td (100) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 98.00 555.19 Td (MOAUM/MTC/26/9901) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 230.00 555.19 Td (B.Sc. Computer Science) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 390.00 555.19 Td (DEMO, Ayima \(100 Level\)) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 540.19 Td (200) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 98.00 540.19 Td (MOAUM/ACC/25/9902) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 230.00 540.19 Td (B.Sc. Accounting) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 390.00 540.19 Td (DEMO, Terhide \(200 Level\)) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 525.19 Td (300) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 98.00 525.19 Td (MOAUM/MTC/24/9903) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 230.00 525.19 Td (B.Sc. Computer Science) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 390.00 525.19 Td (DEMO, Mwuese \(300 Level\)) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 510.19 Td (400) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 98.00 510.19 Td (MOAUM/ECO/23/9904) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 230.00 510.19 Td (B.Sc. Economics) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 390.00 510.19 Td (DEMO, Sesugh \(400 Level\)) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 495.19 Td (500) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 98.00 495.19 Td (MOAUM/LAW/22/9905) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 230.00 495.19 Td (LL.B \(Law\)) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 390.00 495.19 Td (DEMO, Doosuur \(500 Level\)) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 480.19 Td (600) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 98.00 480.19 Td (MOAUM/MED/21/9906) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 230.00 480.19 Td (MBBS) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 390.00 480.19 Td (DEMO, Aondona \(600 Level\)) Tj ET
+0.7 G 0.5 w 48.00 476.19 m 547.28 476.19 l S
+BT /F1 8.8 Tf 0.000 0.000 0.000 rg 48.00 457.19 Td (The year in the matriculation number is the entry year, counted back from the current session \(for 2026/2027 the) Tj ET
+BT /F1 8.8 Tf 0.000 0.000 0.000 rg 48.00 444.87 Td (numbers are as shown\). Sign in as the 300-level student to see the results path from the student's end.) Tj ET
+BT /F2 12.5 Tf 0.000 0.000 0.000 rg 48.00 422.55 Td (Staff - one per office) Tj ET
+0.6 G 0.8 w 48.00 414.55 m 547.28 414.55 l S
+0.94 g 48.00 396.55 499.28 15.00 re f 0 g
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 52.00 400.55 Td (Office) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 400.55 Td (Sign in with) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 392.00 400.55 Td (Scope) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 385.55 Td (Lecturer) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 385.55 Td (demo.lecturer) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 385.55 Td (Mathematics and Computer Science \(MTC\)) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 370.55 Td (Head of Department) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 370.55 Td (demo.hod) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 370.55 Td (MTC) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 355.55 Td (Examinations Officer) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 355.55 Td (demo.exams) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 355.55 Td (MTC) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 340.55 Td (Faculty Examinations) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 340.55 Td (demo.facultyexams) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 340.55 Td (Faculty of Science) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 325.55 Td (Faculty Officer) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 325.55 Td (demo.facultyofficer) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 325.55 Td (Faculty of Science) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 310.55 Td (Dean) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 310.55 Td (demo.dean) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 310.55 Td (Faculty of Science) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 295.55 Td (Exams and Records) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 295.55 Td (demo.records) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 295.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 280.55 Td (Academic Office) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 280.55 Td (demo.academic) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 280.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 265.55 Td (Deputy Registrar) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 265.55 Td (demo.dregistrar) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 265.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 250.55 Td (Registrar) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 250.55 Td (demo.registrar) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 250.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 235.55 Td (Deputy Vice-Chancellor) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 235.55 Td (demo.dvc) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 235.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 220.55 Td (Vice-Chancellor) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 220.55 Td (demo.vc) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 220.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 205.55 Td (Bursar) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 205.55 Td (demo.bursar) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 205.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 190.55 Td (Internal Audit) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 190.55 Td (demo.audit) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 190.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 175.55 Td (Deputy Audit) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 175.55 Td (demo.deputyaudit) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 175.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 160.55 Td (Human Resources) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 160.55 Td (demo.hrm) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 160.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 145.55 Td (Housing) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 145.55 Td (demo.housing) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 145.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 130.55 Td (Provost) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 130.55 Td (demo.provost) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 130.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 115.55 Td (College Secretary) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 115.55 Td (demo.collegesecretary) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 115.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 100.55 Td (Librarian) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 100.55 Td (demo.library) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 100.55 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 85.55 Td (Security) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 85.55 Td (demo.security) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 85.55 Td (The University) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject <<  >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 5497 >>
+stream
+BT /F1 7.5 Tf 0.400 0.400 0.400 rg 48.00 28.00 Td (MOAUM Unified University Portal \267 demo accounts \267 invented people, for walking the portal) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 785.89 Td (Student Services) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 785.89 Td (demo.services) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 785.89 Td (The University) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 770.89 Td (ICT Directorate) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 770.89 Td (demo.ict) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 770.89 Td (The platform) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 755.89 Td (University Administrator) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 755.89 Td (demo.admin) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 755.89 Td (The platform) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 740.89 Td (Super Administrator) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 242.00 740.89 Td (demo.super) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 392.00 740.89 Td (The platform) Tj ET
+0.7 G 0.5 w 48.00 736.89 m 547.28 736.89 l S
+BT /F2 12.5 Tf 0.000 0.000 0.000 rg 48.00 711.89 Td (Applicant) Tj ET
+0.6 G 0.8 w 48.00 703.89 m 547.28 703.89 l S
+0.94 g 48.00 685.89 499.28 15.00 re f 0 g
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 52.00 689.89 Td (Sign in with) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 202.00 689.89 Td (Also accepted) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 382.00 689.89 Td (Where it stands) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 52.00 674.89 Td (20269999DM \(JAMB number\)) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 202.00 674.89 Td (demo.applicant@example.com) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 382.00 674.89 Td (Registered; application fee not yet confirmed) Tj ET
+0.7 G 0.5 w 48.00 670.89 m 547.28 670.89 l S
+BT /F1 8.8 Tf 0.000 0.000 0.000 rg 48.00 651.89 Td (The applicant is on a demo CAPS list for B.Sc. Computer Science with a UTME aggregate of 250.) Tj ET
+BT /F2 12.5 Tf 0.000 0.000 0.000 rg 48.00 629.57 Td (What is already set up for the walk) Tj ET
+0.6 G 0.8 w 48.00 621.57 m 547.28 621.57 l S
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 607.57 Td (\267 Five demo courses at 300 level \(DMO 311 to DMO 351\), offered this session in the first semester, taught) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 594.27 Td (by demo.lecturer with demo.exams as second examiner.) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 576.97 Td (\267 The 300-level student is registered and approved on all five.) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 559.67 Td (\267 The examination session is open, so five score sheets sit at entry with the lecturer.) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 542.37 Td (\267 A fee schedule for the session and the recommended clearance scheme are in force, so the student) Tj ET
+BT /F1 9.5 Tf 0.000 0.000 0.000 rg 48.00 529.07 Td (screens have something to say.) Tj ET
+BT /F2 12.5 Tf 0.000 0.000 0.000 rg 48.00 505.77 Td (The lecturer's results path, desk by desk) Tj ET
+0.6 G 0.8 w 48.00 497.77 m 547.28 497.77 l S
+0.94 g 48.00 479.77 499.28 15.00 re f 0 g
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 52.00 483.77 Td (Step) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 483.77 Td (Sign in as) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 222.00 483.77 Td (What to do) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 468.77 Td (1) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 468.77 Td (demo.lecturer) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 468.77 Td (Score sheets ? open DMO 311 ? enter CA and exam marks ? Submit and attest) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 453.77 Td (2) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 453.77 Td (demo.exams) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 453.77 Td (Result desk ? verify the sheet) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 438.77 Td (3) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 438.77 Td (demo.hod) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 438.77 Td (Result desk ? approve at the Departmental Board) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 423.77 Td (4) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 423.77 Td (demo.facultyexams) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 423.77 Td (Result desk ? scrutiny; then demo.facultyofficer ? compilation) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 408.77 Td (5) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 408.77 Td (demo.dean) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 408.77 Td (Result desk ? Faculty Board) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 393.77 Td (6) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 393.77 Td (demo.records) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 393.77 Td (Result desk ? Exams and Records) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 378.77 Td (7) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 378.77 Td (demo.registrar) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 378.77 Td (Senate ? record the minute and release) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 52.00 363.77 Td (8) Tj ET
+BT /F2 8.6 Tf 0.000 0.000 0.000 rg 92.00 363.77 Td (MOAUM/MTC/24/9903) Tj ET
+BT /F1 8.6 Tf 0.000 0.000 0.000 rg 222.00 363.77 Td (Results: the published sheet, and the query window) Tj ET
+0.7 G 0.5 w 48.00 359.77 m 547.28 359.77 l S
+BT /F1 8.8 Tf 0.000 0.000 0.000 rg 48.00 340.77 Td (No two consecutive desks may be taken by one person, so the walk needs the accounts above, not one account) Tj ET
+BT /F1 8.8 Tf 0.000 0.000 0.000 rg 48.00 328.45 Td (holding every office.) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Title (MOAUMPP demo accounts) /Producer (MOAUM Portal) >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000019 00000 n 
+0000000068 00000 n 
+0000000131 00000 n 
+0000000228 00000 n 
+0000000330 00000 n 
+0000000488 00000 n 
+0000009825 00000 n 
+0000009983 00000 n 
+0000015532 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R /Info 9 0 R >>
+startxref
+15609
+%%EOF
