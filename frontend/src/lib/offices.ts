@@ -59,6 +59,7 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   admin: ["System Administrator", "Directorate of ICT · administration"],
   vc: ["Vice-Chancellor", "Office of the Vice-Chancellor"],
   applicant: ["Applicant", "Admissions"],
+  student: ["Student", "The register"],
 };
 
 /** What the shell calls an office: the prototype's label where it has one, the database's otherwise. */

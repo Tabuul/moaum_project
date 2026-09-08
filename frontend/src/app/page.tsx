@@ -19,6 +19,7 @@ export default async function DashboardPage() {
   const office = me.ok ? me.data.activeOffice : null;
   /* an applicant's home is their application, not an office's dashboard */
   if (office === "applicant") redirect("/applicant");
+  if (office === "student") redirect("/student");
   const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
   return (
     <Shell route="r/academic" me={me.ok ? me.data : null}>

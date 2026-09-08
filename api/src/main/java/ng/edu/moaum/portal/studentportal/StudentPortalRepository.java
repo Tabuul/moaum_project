@@ -1,0 +1,234 @@
+package ng.edu.moaum.portal.studentportal;
+
+import java.math.BigDecimal;
+import java.sql.Types;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Repository;
+
+/** The student's rows (V026), read and written through the database's own functions. */
+@Repository
+class StudentPortalRepository {
+
+    private final JdbcClient jdbc;
+
+    StudentPortalRepository(JdbcClient jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    /* ── the account ── */
+
+    record Student(UUID id, String matricNo, String admissionNo, String surname, String otherNames, String programmeCode,
+                   String programme, String facultyCode, String facultyName, String deptCode, String deptName, String entryMode,
+                   String entrySession, int entryLevel, int currentLevel, String status, UUID candidateId, String curriculumVersion) {
+    }
+
+    private static final String STUDENT = """
+            SELECT s.id, s.matric_no, s.admission_no, s.surname, s.other_names, s.programme_code, p.name AS programme,
+                   p.faculty_code, f.name AS faculty_name, p.dept_code, d.name AS dept_name, s.entry_mode, s.entry_session,
+                   s.entry_level, s.current_level, s.status, s.candidate_id, s.curriculum_version
+              FROM people.student s
+              JOIN ref.programme p ON p.code = s.programme_code
+              JOIN ref.faculty f ON f.code = p.faculty_code
+              JOIN ref.department d ON d.code = p.dept_code
+            """;
+
+    Optional<Student> byMatric(String matricNo) {
+        return jdbc.sql(STUDENT + " WHERE upper(s.matric_no) = upper(:m) OR upper(s.admission_no) = upper(:m)")
+                .param("m", matricNo == null ? "" : matricNo.trim()).query(Student.class).optional();
+    }
+
+    Optional<Student> byId(UUID id) {
+        return jdbc.sql(STUDENT + " WHERE s.id = :id").param("id", id).query(Student.class).optional();
+    }
+
+    record Account(UUID id, UUID studentId, String passwordHash, boolean mustChange, int failedAttempts, OffsetDateTime lockedUntil) {
+    }
+
+    Optional<Account> account(UUID student) {
+        return jdbc.sql("SELECT id, student_id, password_hash, must_change, failed_attempts, locked_until FROM iam.student_account WHERE student_id = :s")
+                .param("s", student).query(Account.class).optional();
+    }
+
+    /** the applicant's hash, when the student came in through the portal: the one account, carried over */
+    Optional<String> applicantHash(UUID candidateId) {
+        if (candidateId == null) {
+            return Optional.empty();
+        }
+        return jdbc.sql("SELECT password_hash FROM admissions.applicant_account WHERE candidate_id = :c").param("c", candidateId)
+                .query(String.class).optional();
+    }
+
+    UUID openAccount(UUID student, String hash, boolean mustChange) {
+        UUID id = UUID.randomUUID();
+        jdbc.sql("INSERT INTO iam.student_account (id, student_id, password_hash, must_change) VALUES (:id, :s, :h, :m) ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = EXCLUDED.must_change, failed_attempts = 0, locked_until = NULL")
+                .param("id", id).param("s", student).param("h", hash).param("m", mustChange).update();
+        return id;
+    }
+
+    void failed(UUID student, int attempts, OffsetDateTime lockedUntil) {
+        jdbc.sql("UPDATE iam.student_account SET failed_attempts = :n, locked_until = :until WHERE student_id = :s")
+                .param("n", attempts).param("until", lockedUntil, Types.TIMESTAMP_WITH_TIMEZONE).param("s", student).update();
+    }
+
+    void signedIn(UUID student) {
+        jdbc.sql("UPDATE iam.student_account SET failed_attempts = 0, locked_until = NULL, last_signed_in_at = now() WHERE student_id = :s")
+                .param("s", student).update();
+    }
+
+    void changePassword(UUID student, String hash) {
+        jdbc.sql("UPDATE iam.student_account SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL WHERE student_id = :s")
+                .param("h", hash).param("s", student).update();
+    }
+
+    void event(String identifier, UUID student, String outcome, String ip) {
+        jdbc.sql("INSERT INTO iam.student_event (student_id, identifier, outcome, ip) VALUES (:s, :i, :o, :ip)")
+                .param("s", student, Types.OTHER).param("i", identifier == null ? "" : identifier).param("o", outcome).param("ip", ip, Types.VARCHAR).update();
+    }
+
+    void openSession(byte[] id, UUID student, Instant absoluteEnd) {
+        jdbc.sql("INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (:id, :p, 'student', :end)")
+                .param("id", id).param("p", student).param("end", absoluteEnd.atOffset(java.time.ZoneOffset.UTC)).update();
+    }
+
+    void endSession(byte[] id, UUID student) {
+        jdbc.sql("UPDATE platform.session SET ended_at = now(), ended_reason = 'signed out' WHERE id = :id AND person_id = :p AND ended_at IS NULL")
+                .param("id", id).param("p", student).update();
+    }
+
+    /* ── the profile ── */
+
+    Map<String, Object> contact(UUID student) {
+        return jdbc.sql("SELECT c.phone, c.email, c.address, r.email AS reach_email, r.phone AS reach_phone FROM people.student_reach(:s) r LEFT JOIN people.student_contact c ON c.student_id = :s")
+                .param("s", student).query().singleRow();
+    }
+
+    void saveContact(UUID student, String phone, String email, String address) {
+        jdbc.sql("""
+                INSERT INTO people.student_contact (student_id, phone, email, address, updated_at) VALUES (:s, :p, :e, :a, now())
+                ON CONFLICT (student_id) DO UPDATE SET phone = EXCLUDED.phone, email = EXCLUDED.email, address = EXCLUDED.address, updated_at = now()
+                """).param("s", student).param("p", phone, Types.VARCHAR).param("e", email, Types.VARCHAR).param("a", address, Types.VARCHAR).update();
+    }
+
+    Optional<UUID> passportDocument(UUID candidateId) {
+        if (candidateId == null) {
+            return Optional.empty();
+        }
+        return jdbc.sql("""
+                SELECT d.id FROM admissions.application_document d JOIN admissions.application a ON a.id = d.application_id
+                 WHERE a.candidate_id = :c AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                """).param("c", candidateId).query(UUID.class).optional();
+    }
+
+    /* ── the fees ── */
+
+    List<Map<String, Object>> charges(UUID student, String session) {
+        return jdbc.sql("SELECT id, item, amount, ord FROM finance.charges(:s, :ses)").param("s", student).param("ses", session).query().listOfRows();
+    }
+
+    Map<String, Object> position(UUID student, String session) {
+        return jdbc.sql("SELECT * FROM finance.position(:s, :ses)").param("s", student).param("ses", session).query().singleRow();
+    }
+
+    boolean clears(UUID student, String session, String purpose) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.clears(:s, :ses, :p)").param("s", student).param("ses", session).param("p", purpose)
+                .query(Boolean.class).single());
+    }
+
+    List<Map<String, Object>> references(UUID student) {
+        return jdbc.sql("""
+                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no
+                  FROM finance.payment_reference WHERE student_id = :s ORDER BY generated_at DESC
+                """).param("s", student).query().listOfRows();
+    }
+
+    Optional<Map<String, Object>> reference(UUID student, String reference) {
+        return jdbc.sql("""
+                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no
+                  FROM finance.payment_reference WHERE student_id = :s AND reference = upper(btrim(:r))
+                """).param("s", student).param("r", reference).query().listOfRows().stream().findFirst();
+    }
+
+    String newReference(UUID student, String session, BigDecimal amount, String purpose) {
+        return jdbc.sql("SELECT finance.new_reference(:s, :ses, :a, :p)").param("s", student).param("ses", session).param("a", amount)
+                .param("p", purpose, Types.VARCHAR).query(String.class).single();
+    }
+
+    List<String> sessionsWithCharges() {
+        return jdbc.sql("SELECT DISTINCT session FROM finance.fee_schedule WHERE ended_at IS NULL ORDER BY session DESC").query(String.class).list();
+    }
+
+    /* ── registration ── */
+
+    List<Map<String, Object>> menu(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT * FROM registration.student_menu(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
+    }
+
+    Optional<Map<String, Object>> registration(UUID student, String session, int semester) {
+        return jdbc.sql("""
+                SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
+                       (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', c.title, 'units', e.units,
+                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
+                          FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                         WHERE e.registration_id = r.id) AS entries
+                  FROM registration.course_registration r WHERE r.student_id = :s AND r.session = :ses AND r.semester = :sem
+                """).param("s", student).param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst();
+    }
+
+    UUID draft(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT registration.student_draft(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query(UUID.class).single();
+    }
+
+    int choose(UUID registration, List<UUID> offerings) {
+        return jdbc.sql("SELECT registration.student_choose(:r, :o)").param("r", registration).param("o", offerings.toArray(UUID[]::new)).query(Integer.class).single();
+    }
+
+    String submit(UUID registration) {
+        return jdbc.sql("SELECT registration.student_submit(:r)").param("r", registration).query(String.class).single();
+    }
+
+    Map<String, Object> limit(int level) {
+        return jdbc.sql("SELECT min_units, max_units FROM policy.level_limit WHERE level = :l").param("l", level).query().listOfRows().stream().findFirst()
+                .orElse(Map.of("min_units", 0, "max_units", 99));
+    }
+
+    /* ── results ── */
+
+    List<Map<String, Object>> results(UUID student) {
+        return jdbc.sql("SELECT * FROM assessment.student_results(:s)").param("s", student).query().listOfRows();
+    }
+
+    List<Map<String, Object>> gpa(UUID student) {
+        return jdbc.sql("SELECT * FROM assessment.student_gpa(:s)").param("s", student).query().listOfRows();
+    }
+
+    List<Map<String, Object>> carryovers(UUID student) {
+        return jdbc.sql("SELECT * FROM registration.carryovers(:s)").param("s", student).query().listOfRows();
+    }
+
+    String classOf(BigDecimal cgpa) {
+        if (cgpa == null) {
+            return null;
+        }
+        return jdbc.sql("SELECT policy.class_of(:c)").param("c", cgpa).query(String.class).optional().orElse(null);
+    }
+
+    /* ── the calendar ── */
+
+    Optional<String> currentSession() {
+        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional();
+    }
+
+    List<Map<String, Object>> notices(UUID student) {
+        return jdbc.sql("""
+                SELECT id, channel, recipient, subject, body, created_at, state, sent_at
+                  FROM platform.notice WHERE about_kind = 'student' AND about_id = :s ORDER BY created_at DESC LIMIT 30
+                """).param("s", student).query().listOfRows();
+    }
+}

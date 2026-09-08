@@ -43,6 +43,18 @@ export const ROUTES: Record<string, string> = {
   "r/self": "/me",
   "t/users": "/people",
   "a/password": "/account/password",
+  /* the student's side (proto/part3, part4, part29) */
+  "s/dashboard": "/student",
+  "s/register": "/student/register",
+  "s/form": "/student/form",
+  "s/results": "/student/results",
+  "s/slip": "/student/results",
+  "s/fees": "/student/fees",
+  "s/pay": "/student/fees",
+  "s/receipt": "/student/fees",
+  "s/profile": "/student/profile",
+  "s/notifications": "/student",
+  "t/feesetup": "/finance/fees",
   /* the applicant's journey (proto/part13.html) */
   "a/dashboard": "/applicant",
   "a/apply": "/applicant/apply",

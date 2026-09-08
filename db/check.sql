@@ -46,6 +46,17 @@ BEGIN
     DELETE FROM credentials.transcript_request;
     DELETE FROM records.graduand;
     DELETE FROM clearance.item;
+    -- the student's side (V026): accounts, contact, fees and references, before the students they hang on
+    DELETE FROM finance.payment_reference;
+    DELETE FROM finance.fee_schedule WHERE session LIKE '99%';
+    DELETE FROM iam.student_account;
+    DELETE FROM iam.student_event;
+    DELETE FROM people.student_contact;
+    DELETE FROM platform.session WHERE active_office = 'student';
+    DELETE FROM policy.clearance_rule WHERE version_id IN (SELECT id FROM policy.version WHERE instrument LIKE 'CHECK%');
+    DELETE FROM policy.clearance_scheme WHERE version_id IN (SELECT id FROM policy.version WHERE instrument LIKE 'CHECK%');
+    DELETE FROM policy.version WHERE instrument LIKE 'CHECK%';
+
     DELETE FROM assessment.score;
     DELETE FROM assessment.decision;
     DELETE FROM assessment.score_sheet;
@@ -150,7 +161,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 99
+\set EXPECTED 101
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1618,6 +1629,65 @@ BEGIN
         AND (SELECT decision_basis FROM admissions.application WHERE id = app) = 'SM'
         AND (SELECT count(*) FROM platform.notice WHERE about_id = app AND state = 'QUEUED' AND channel = 'SMS') >= 5,
         'the applicant is told the moment the record changes, by email and by SMS, and the outbox says whether it went');
+END $$;
+
+-- ══ V026 · THE STUDENT'S SIDE ═══════════════════════════════════════════
+
+-- ── 100–101. the charge is computed, the payment is a reference, the receipt is issued, and the scheme decides what it releases ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); dept text; o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); reg uuid;
+        v uuid := gen_random_uuid(); until date; pos record; ok boolean; ref text; rcpt text; reach record; units int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session,
+                                entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990001', 'MOAUM/CHK/99/0001', 'CHECKSTUDENT', 'Invented', 'C00061', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('CHK 101', 'Check Course One', 12, 1, 100, dept, 'Compulsory', 'LIVE'),
+        ('CHK 102', 'Check Course Two', 6, 1, 100, dept, 'Elective', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('CHK 101', 'C00061', 100, 'Core'), ('CHK 102', 'C00061', 100, 'Elective');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'CHK 101', '9999/0000', 1), (o2, 'CHK 102', '9999/0000', 1);
+
+    -- 100. the fees: a charge from the schedule, a reference, a receipt on confirmation, and the position that follows
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES ('9999/0000', 'School fees', 100000, 100);
+    INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES ('9999/0000', 'Not for 100 level', 999999, 400);
+    SELECT * INTO pos FROM finance.position(st, '9999/0000');
+    ok := pos.due = 100000 AND pos.balance = 100000 AND pos.instalments_paid = 0;
+    ref := finance.new_reference(st, '9999/0000', 50000, NULL);
+    PERFORM finance.confirm_payment(ref, 'Bank transfer', 'check');
+    SELECT receipt_no INTO rcpt FROM finance.payment_reference WHERE reference = ref;
+    SELECT * INTO pos FROM finance.position(st, '9999/0000');
+    PERFORM pg_temp.assert('The charge is computed from the schedule, the payment is a reference, and the receipt is issued on confirmation',
+        ok AND ref LIKE 'MOAUM-FEE-%' AND rcpt LIKE 'RCT-9999-%' AND pos.paid = 50000 AND pos.balance = 50000 AND pos.instalments_paid = 1
+        AND NOT pos.paid_in_full
+        AND EXISTS (SELECT 1 FROM platform.notice WHERE about_kind = 'student' AND about_id = st),
+        'nothing typed: the item applies by level, half the charge is one instalment, and the student is told');
+
+    -- 101. registration: the draft, the choice, and a submission the scheme decides — refused with no scheme, allowed on instalment 1
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    reg := registration.student_draft(st, '9999/0000', 1);
+    units := registration.student_choose(reg, ARRAY[o1, o2]);
+    ok := false;
+    BEGIN
+        PERFORM registration.student_submit(reg);
+    EXCEPTION WHEN OTHERS THEN ok := true;   -- no scheme in force today: refuses rather than assumes (D-Q4)
+    END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT min(lower(validity)) INTO until FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date;
+    INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+    VALUES (v, 'clearance', 'UNIVERSITY', daterange(current_date, until), 'CHECK BUR/9999/1', 'bursar');
+    INSERT INTO policy.clearance_scheme VALUES (v, true);
+    INSERT INTO policy.clearance_rule VALUES (v, 'REGISTRATION', 'INSTALMENT_1'), (v, 'ID_CARD', 'INSTALMENT_1'), (v, 'LIBRARY', 'INSTALMENT_1'),
+        (v, 'HOSTEL', 'NEVER_GATED'), (v, 'EXAMINATION', 'PAID_IN_FULL'), (v, 'RESULTS', 'PAID_IN_FULL'), (v, 'TRANSCRIPT', 'PAID_IN_FULL'), (v, 'CONVOCATION', 'PAID_IN_FULL');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM pg_temp.assert('The student''s registration is submitted only when the scheme in force says the payment releases it',
+        units = 18 AND ok AND finance.clears(st, '9999/0000', 'REGISTRATION') AND NOT finance.clears(st, '9999/0000', 'EXAMINATION')
+        AND registration.student_submit(reg) = 'submitted'
+        AND (SELECT status FROM registration.course_registration WHERE id = reg) = 'SUBMITTED',
+        'one instalment opens registration and not the examination; the approval stays with the adviser and the Head');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

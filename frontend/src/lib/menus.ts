@@ -2064,6 +2064,52 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "student": {
+    "label": "Student",
+    "home": "s/dashboard",
+    "groups": [
+      {
+        "name": "Academic",
+        "items": [
+          { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "s/register", "icon": "book", "label": "Course registration" },
+          { "id": "s/results", "icon": "cap", "label": "Results" },
+          { "id": "s/query", "icon": "alert", "label": "Result query" },
+          { "id": "s/carryover", "icon": "swap", "label": "Carryover" },
+          { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
+        ]
+      },
+      {
+        "name": "Learning",
+        "items": [
+          { "id": "s/courses", "icon": "book", "label": "My courses" },
+          { "id": "s/timetable", "icon": "cal", "label": "Timetable" },
+          { "id": "s/attendance", "icon": "check", "label": "Attendance" },
+          { "id": "s/exams", "icon": "cap", "label": "Examinations" }
+        ]
+      },
+      {
+        "name": "Services",
+        "items": [
+          { "id": "s/fees", "icon": "card", "label": "Fees & payments" },
+          { "id": "s/wallet", "icon": "swap", "label": "NELFUND wallet" },
+          { "id": "s/hostel", "icon": "bed", "label": "Hostel" },
+          { "id": "s/library", "icon": "book", "label": "Library" },
+          { "id": "s/idcard", "icon": "user", "label": "Identity card" },
+          { "id": "s/health", "icon": "heart", "label": "Health" },
+          { "id": "s/support", "icon": "life", "label": "Help & requests" }
+        ]
+      },
+      {
+        "name": "Account",
+        "items": [
+          { "id": "s/profile", "icon": "user", "label": "Profile" },
+          { "id": "s/biodata", "icon": "doc", "label": "Biodata" },
+          { "id": "s/notifications", "icon": "bell", "label": "Notifications" }
+        ]
+      }
+    ]
+  },
   "applicant": {
     "label": "Applicant",
     "home": "a/dashboard",

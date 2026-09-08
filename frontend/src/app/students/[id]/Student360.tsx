@@ -126,6 +126,17 @@ export function Student360({
             <Btn kind="ghost" disabled={!may} onClick={() => setChanging(true)}>
               Change status
             </Btn>
+            <Btn kind="ghost" disabled={!may || !s.matricNo} title={s.matricNo ? "Open or reset the student's portal account with a first password they must change" : "A portal account is opened on the matriculation number"}
+              onClick={async () => {
+                const pw = window.prompt(`A first password for ${fullName(s)} — eight characters at least. They change it at sign-in.`);
+                if (!pw) return;
+                const r = await fetch(`/api/bff/api/v1/student-auth/accounts/${s.id}`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Portal account opened for ${s.matricNo}`) }, body: JSON.stringify({ password: pw }) });
+                const j = await r.json().catch(() => null);
+                if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+                window.alert(`Portal account opened for ${s.matricNo}. The student signs in with the matriculation number and this password, and changes it at once.`);
+              }}>
+              Portal account
+            </Btn>
           </div>
         </div>
       </div>

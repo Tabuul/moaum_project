@@ -89,7 +89,10 @@ public class PaymentsService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> checkout(UUID account, String reference, String gateway) {
-        PaymentsRepository.Reference r = repo.byReference(reference).orElseThrow(() -> new NotFound("fee reference", reference));
+        /* an applicant's fee reference, or a student's (V026): the account is the applicant's account or the student's own id */
+        PaymentsRepository.Reference r = repo.byReference(reference)
+                .or(() -> repo.studentReference(reference))
+                .orElseThrow(() -> new NotFound("fee reference", reference));
         if (!r.accountId().equals(account)) {
             throw new NotFound("fee reference", reference);
         }
@@ -102,7 +105,7 @@ public class PaymentsService {
                     new DomainRuleViolation.Remedy("Generate a new one; it is free of charge.", "You"));
         }
         String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : "") : gateway.trim().toLowerCase();
-        String back = portalUrl + ("ACCEPTANCE".equals(r.kind()) ? "/applicant/accept" : "/applicant/fee") + "?paid=" + r.reference();
+        String back = portalUrl + ("FEES".equals(r.kind()) ? "/student/fees" : "ACCEPTANCE".equals(r.kind()) ? "/applicant/accept" : "/applicant/fee") + "?paid=" + r.reference();
         String url;
         if ("paystack".equals(g) && paystackOn()) {
             url = paystackInitialize(r, back);
@@ -204,11 +207,12 @@ public class PaymentsService {
 
     /** the gateway's confirmation is the Bursary's act at the door, with the gateway's reference on the record */
     Map<String, Object> settle(String gateway, String reference, BigDecimal paid, boolean success, String providerRef) {
-        PaymentsRepository.Reference r = repo.byReference(reference).orElse(null);
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElse(null);
         if (r == null) {
             LOG.warn("payments: {} webhook names a reference this portal did not generate: {}", gateway, reference);
             return Map.of("outcome", "unknown reference");
         }
+        final boolean student = "FEES".equals(r.kind());
         if (!success) {
             return Map.of("outcome", "not successful");
         }
@@ -218,7 +222,9 @@ public class PaymentsService {
         }
         String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : "Flutterwave");
         String outcome = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " webhook " + providerRef, null, null),
-                () -> tx.execute(status -> repo.confirm(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())));
+                () -> tx.execute(status -> student
+                        ? repo.confirmStudent(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())
+                        : repo.confirm(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())));
         return Map.of("outcome", outcome, "reference", reference);
     }
 }

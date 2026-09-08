@@ -25,7 +25,7 @@ export function Login({ next, offices }: { next: string; offices: { code: string
   const [problem, setProblem] = useState<Problem | null>(null);
   const f = LOGIN_ID[role];
 
-  const live = role === "staff" || role === "applicant";
+  const live = role === "staff" || role === "applicant" || role === "student";
 
   async function signIn() {
     setBusy(true);
@@ -33,7 +33,9 @@ export function Login({ next, offices }: { next: string; offices: { code: string
     try {
       const r = role === "applicant"
         ? await fetch("/api/auth/applicant/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: uid, password: pw }) })
-        : await fetch("/api/auth/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: uid, password: pw, office: office || undefined }) });
+        : role === "student"
+          ? await fetch("/api/auth/student/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matricNo: uid, password: pw }) })
+          : await fetch("/api/auth/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: uid, password: pw, office: office || undefined }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(j ?? { status: r.status, title: r.statusText });
@@ -41,6 +43,11 @@ export function Login({ next, offices }: { next: string; offices: { code: string
       }
       if (role === "applicant") {
         router.push("/applicant");
+        router.refresh();
+        return;
+      }
+      if (role === "student") {
+        router.push(j.mustChange ? "/student/profile?change=1" : "/student");
         router.refresh();
         return;
       }
@@ -74,7 +81,7 @@ export function Login({ next, offices }: { next: string; offices: { code: string
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (live) void signIn(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Sign in</div>
-            <div className="hint" style={{ marginTop: 4 }}>{role === "staff" ? "Each office sees only its own work." : role === "applicant" ? "The account you made at Post-UTME registration." : "Student sign-in arrives with the student module."}</div>
+            <div className="hint" style={{ marginTop: 4 }}>{role === "staff" ? "Each office sees only its own work." : role === "applicant" ? "The account you made at Post-UTME registration." : "Your matriculation number and the password you chose at application, or the one the Registry gave you."}</div>
           </div>
           <div className="role-tabs" role="tablist">
             {["student", "staff", "applicant"].map((r) => (

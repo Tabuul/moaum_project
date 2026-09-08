@@ -43,7 +43,7 @@ class PaymentsController {
     }
 
     @PostMapping("/checkout")
-    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_applicant','OFFICE_student')")
     Map<String, Object> checkout(Authentication authentication, @Valid @RequestBody Checkout body) {
         return payments.checkout(UUID.fromString(authentication.getName()), body.reference(), body.gateway());
     }
