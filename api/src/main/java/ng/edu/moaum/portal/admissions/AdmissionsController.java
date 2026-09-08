@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -87,6 +88,16 @@ class AdmissionsController {
     @PreAuthorize(READERS)
     List<Programme> programmes() {
         return intake.programmes();
+    }
+
+    record NewAlias(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 200) String jambName) {
+    }
+
+    /** What JAMB calls this programme — the name a CAPS download is matched on. */
+    @PutMapping("/programmes/{code}/jamb-alias")
+    @PreAuthorize(LOADERS)
+    Programme jambAlias(@PathVariable String code, @Valid @RequestBody NewAlias request) {
+        return intake.setJambAlias(code, request.jambName());
     }
 
     /** {@code ?in=202699168863AH_Face.jpg} → the number the database reads out of it, or none. */

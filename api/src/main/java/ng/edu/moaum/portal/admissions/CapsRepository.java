@@ -208,6 +208,31 @@ class CapsRepository {
                 .list();
     }
 
+    /** The code, if any, whose JAMB alias normalises to the same letters and digits. */
+    Optional<String> codeWithAlias(String normalisedName) {
+        return jdbc.sql("""
+                SELECT code FROM ref.jamb_alias
+                 WHERE lower(regexp_replace(jamb_name, '[^A-Za-z0-9]', '', 'g')) = :name
+                """)
+                .param("name", normalisedName)
+                .query(String.class)
+                .optional();
+    }
+
+    void upsertAlias(String code, String jambName) {
+        jdbc.sql("""
+                INSERT INTO ref.jamb_alias (code, jamb_name) VALUES (:code, :name)
+                ON CONFLICT (code) DO UPDATE SET jamb_name = EXCLUDED.jamb_name
+                """)
+                .param("code", code)
+                .param("name", jambName)
+                .update();
+    }
+
+    Optional<Programme> programme(String code) {
+        return programmes().stream().filter(p -> p.code().equals(code)).findFirst();
+    }
+
     Optional<String> regNoIn(String text) {
         return jdbc.sql("SELECT admissions.reg_no_in(:text)").param("text", text).query(String.class).optional();
     }

@@ -237,6 +237,39 @@ class ApiIT {
         assertThat(mbbs.get("facultyName")).isEqualTo("Basic and Applied Medical Sciences");
     }
 
+    @Test
+    void whatJambCallsAProgrammeIsRecordedOncePerCodeAndNeverTwice() {
+        // JAMB's own words for Broadcasting, as the 2026 download had them (V012)
+        ResponseEntity<Map> set = client.put().uri("/api/v1/admissions/programmes/C60514/jamb-alias")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("jambName", "Broadcasting"))
+                .retrieve().toEntity(Map.class);
+        assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
+        assertThat(set.getBody().get("jambName")).isEqualTo("Broadcasting");
+        assertThat(set.getBody().get("name")).isEqualTo("B.Sc. BROADCASTING");
+
+        // the same name cannot mean a second programme
+        ResponseEntity<Map> twice = client.put().uri("/api/v1/admissions/programmes/C62073/jamb-alias")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("jambName", "broadcasting"))
+                .retrieve().toEntity(Map.class);
+        assertThat(twice.getStatusCode().value()).isEqualTo(422);
+        assertThat(twice.getBody().get("code")).isEqualTo("ADM_ALIAS_TAKEN");
+
+        // a Dean may not rename JAMB's courses
+        String dean = TestTokens.token(UUID.randomUUID(), List.of("dean"));
+        ResponseEntity<Map> refused = client.put().uri("/api/v1/admissions/programmes/C60514/jamb-alias")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + dean)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("jambName", "Broadcasting"))
+                .retrieve().toEntity(Map.class);
+        assertThat(refused.getStatusCode().value()).isEqualTo(403);
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     static final java.security.SecureRandom RANDOM = new SecureRandom();

@@ -11,7 +11,7 @@
  *     when the database says it reconciles
  *   · one code, two names — the University's programmes and JAMB's aliases
  */
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { xlsxRows } from "@/lib/xlsx";
 import { CAPS_DEMO } from "@/lib/caps-demo";
@@ -31,6 +31,7 @@ import { officeLabel } from "@/lib/offices";
 import { Btn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { AliasMapper } from "./AliasMapper";
 
 export interface CapsBatch {
   id: string;
@@ -123,7 +124,7 @@ export function CapsIntake({
   const router = useRouter();
   const [kind, setKind] = useState<ListKind>("UTME");
   const [file, setFile] = useState<Partial<Record<ListKind, FileInfo>>>({});
-  const [data, setData] = useState<Partial<Record<ListKind, CapsParse>>>({});
+  const [rowsRead, setRowsRead] = useState<Partial<Record<ListKind, string[][]>>>({});
   const [busy, setBusy] = useState<ListKind | null>(null);
   const [loaded, setLoaded] = useState<Partial<Record<ListKind, Loaded>>>({});
   const [working, setWorking] = useState<"load" | "commit" | null>(null);
@@ -133,12 +134,28 @@ export function CapsIntake({
 
   const mayLoad = actingOffice !== null && LOADING_OFFICES.includes(actingOffice);
   const inForce = !!policy?.inForce;
-  const cutoffs: Cutoffs | undefined = policy?.inForce
-    ? {
-        faculty: Object.fromEntries(policy.facultyCutoffs.filter((f) => f.cutoff !== null).map((f) => [f.facultyCode, f.cutoff as number])),
-        programme: Object.fromEntries(policy.programmeCutoffs.map((p) => [p.code, p.cutoff])),
-      }
-    : undefined;
+  const cutoffs: Cutoffs | undefined = useMemo(
+    () =>
+      policy?.inForce
+        ? {
+            faculty: Object.fromEntries(policy.facultyCutoffs.filter((f) => f.cutoff !== null).map((f) => [f.facultyCode, f.cutoff as number])),
+            programme: Object.fromEntries(policy.programmeCutoffs.map((p) => [p.code, p.cutoff])),
+          }
+        : undefined,
+    [policy],
+  );
+  /* read against the programmes as they are now — so a newly mapped alias resolves without re-uploading */
+  const parsed = useMemo(() => {
+    const out: Partial<Record<ListKind, ReturnType<typeof parseCaps>>> = {};
+    for (const k of KINDS) {
+      const rows = rowsRead[k];
+      if (rows) out[k] = parseCaps(rows, k, programmes, cutoffs);
+    }
+    return out;
+  }, [rowsRead, programmes, cutoffs]);
+  const data: Partial<Record<ListKind, CapsParse>> = Object.fromEntries(
+    KINDS.filter((k) => parsed[k] && !isError(parsed[k]!)).map((k) => [k, parsed[k] as CapsParse]),
+  );
   const list = LISTS[kind];
   const f = file[kind];
   const d = data[kind];
@@ -147,13 +164,12 @@ export function CapsIntake({
   const unresolved = d ? d.rows.filter((r) => !r.programme) : [];
   const done = loaded[kind];
 
-  function take(k: ListKind, result: ReturnType<typeof parseCaps>, info: FileInfo) {
+  function take(k: ListKind, result: ReturnType<typeof parseCaps>, info: FileInfo, rows?: string[][]) {
+    setRowsRead({ ...rowsRead, [k]: rows });
     if (isError(result)) {
       setFile({ ...file, [k]: { ...info, err: result.error } });
-      setData({ ...data, [k]: undefined });
     } else {
       setFile({ ...file, [k]: { ...info, layout: result.layout, cols: result.columns } });
-      setData({ ...data, [k]: result });
     }
     setLoaded({ ...loaded, [k]: undefined });
     setProblem(null);
@@ -165,7 +181,7 @@ export function CapsIntake({
     try {
       const buf = await chosen.arrayBuffer();
       const [rows, sha256] = await Promise.all([xlsxRows(buf), sha256Hex(buf)]);
-      take(k, parseCaps(rows, k, programmes, cutoffs), { name: chosen.name, size: chosen.size, sha256 });
+      take(k, parseCaps(rows, k, programmes, cutoffs), { name: chosen.name, size: chosen.size, sha256 }, rows);
     } catch (e) {
       take(
         k,
@@ -184,7 +200,7 @@ export function CapsIntake({
   function demo(k: ListKind) {
     const rows = CAPS_DEMO[k];
     const text = rows.map((r) => r.join("\t")).join("\n");
-    take(k, parseCaps(rows, k, programmes, cutoffs), { name: k === "UTME" ? "CAPS-UTME-sample.xlsx" : "CAPS-DE-sample.xlsx", size: text.length, sha256: "", sample: true });
+    take(k, parseCaps(rows, k, programmes, cutoffs), { name: k === "UTME" ? "CAPS-UTME-sample.xlsx" : "CAPS-DE-sample.xlsx", size: text.length, sha256: "", sample: true }, rows);
   }
 
   async function post(path: string, reason: string, body?: unknown): Promise<{ ok: boolean; body: unknown; status: number }> {
@@ -430,7 +446,7 @@ export function CapsIntake({
                 wrong with it. Correct them and upload again &mdash; or, where the finding is a course the
                 University has not mapped, map it first.
               </Note>
-              <Panel title="What the importer refuses" right="By line, as the file numbers them">
+              <Panel title="What the importer refuses" right={bad.length > 12 ? `The first 12 of ${bad.length}, by line, as the file numbers them` : "By line, as the file numbers them"}>
                 <DTable
                   cols={["Row|mid", "JAMB number|mid", "Why it is refused"]}
                   rows={bad.slice(0, 12).map((x) => [
@@ -503,6 +519,14 @@ export function CapsIntake({
           )}
 
           {problem ? <ProblemNotice problem={problem} /> : null}
+
+          {d.unresolved.length > 0 && (
+            <AliasMapper
+              unresolved={d.unresolved}
+              counts={Object.fromEntries(d.unresolved.map((n) => [n, d.rows.filter((r) => r.courseName === n).length]))}
+              programmes={programmes}
+            />
+          )}
 
           {d.belowCutoff > 0 && (
             <Panel title="Under the cut-off — read, not loaded" right={`${d.belowCutoff} of ${d.rows.length} · kept on record with the batch`}>
@@ -586,7 +610,7 @@ export function CapsIntake({
               kind="ghost"
               onClick={() => {
                 setFile({ ...file, [kind]: undefined });
-                setData({ ...data, [kind]: undefined });
+                setRowsRead({ ...rowsRead, [kind]: undefined });
                 setLoaded({ ...loaded, [kind]: undefined });
                 setProblem(null);
               }}

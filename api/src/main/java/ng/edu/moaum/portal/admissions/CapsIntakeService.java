@@ -153,6 +153,33 @@ public class CapsIntakeService {
         return caps.programmes();
     }
 
+    /**
+     * Records what JAMB calls a programme. The alias is the JOIN a CAPS
+     * download is matched on, so it is held per code, one name each, and a
+     * name already held by another code is refused: two programmes with the
+     * same JAMB name would make every candidate on it ambiguous.
+     */
+    @Transactional
+    public Programme setJambAlias(String code, String jambName) {
+        String upper = code.trim().toUpperCase();
+        caps.programme(upper).orElseThrow(() -> new NotFound("programme", upper));
+        if (jambName == null || jambName.isBlank()) {
+            throw new DomainRuleViolation("ADM_ALIAS_BLANK", "JAMB's name for the programme was not given.",
+                    new DomainRuleViolation.Remedy("Type the course name exactly as it appears in the CAPS download.", "Academic Office"));
+        }
+        String name = jambName.trim();
+        String normalised = name.toLowerCase().replaceAll("[^a-z0-9]", "");
+        Optional<String> holder = caps.codeWithAlias(normalised);
+        if (holder.isPresent() && !holder.get().equals(upper)) {
+            throw new DomainRuleViolation("ADM_ALIAS_TAKEN",
+                    "\"" + name + "\" is already what JAMB calls " + holder.get() + "; one JAMB name cannot mean two programmes.",
+                    new DomainRuleViolation.Remedy("Check the CAPS download: JAMB names each programme once. If " + holder.get()
+                            + " no longer carries this name, change its alias first.", "Academic Office"));
+        }
+        caps.upsertAlias(upper, name);
+        return caps.programme(upper).orElseThrow();
+    }
+
     /** The registration number inside a filename, by shape — {@code admissions.reg_no_in}. */
     @Transactional(readOnly = true)
     public Optional<String> regNoIn(String text) {
