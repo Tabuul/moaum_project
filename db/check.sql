@@ -1658,6 +1658,8 @@ BEGIN
     INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'CHK 101', '9999/0000', 1), (o2, 'CHK 102', '9999/0000', 1);
 
     -- 100. the fees: a charge from the schedule, a reference, a receipt on confirmation, and the position that follows
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    INSERT INTO people.student_contact (student_id, email, phone) VALUES (st, 'check.student@example.com', '08030000001');
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES ('9999/0000', 'School fees', 100000, 100);
     INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES ('9999/0000', 'Not for 100 level', 999999, 400);
@@ -1671,7 +1673,9 @@ BEGIN
         ok AND ref LIKE 'MOAUM-FEE-%' AND rcpt LIKE 'RCT-9999-%' AND pos.paid = 50000 AND pos.balance = 50000 AND pos.instalments_paid = 1
         AND NOT pos.paid_in_full
         AND EXISTS (SELECT 1 FROM platform.notice WHERE about_kind = 'student' AND about_id = st),
-        'nothing typed: the item applies by level, half the charge is one instalment, and the student is told');
+        format('before ok=%s ref=%s receipt=%s due=%s paid=%s balance=%s instalments=%s full=%s notices=%s',
+               ok, ref, rcpt, pos.due, pos.paid, pos.balance, pos.instalments_paid, pos.paid_in_full,
+               (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = st)));
 
     -- 101. registration: the draft, the choice, and a submission the scheme decides — refused with no scheme, allowed on instalment 1
     PERFORM set_config('moaum.actor_office', 'student', true);
@@ -1690,11 +1694,17 @@ BEGIN
     INSERT INTO policy.clearance_rule VALUES (v, 'REGISTRATION', 'INSTALMENT_1'), (v, 'ID_CARD', 'INSTALMENT_1'), (v, 'LIBRARY', 'INSTALMENT_1'),
         (v, 'HOSTEL', 'NEVER_GATED'), (v, 'EXAMINATION', 'PAID_IN_FULL'), (v, 'RESULTS', 'PAID_IN_FULL'), (v, 'TRANSCRIPT', 'PAID_IN_FULL'), (v, 'CONVOCATION', 'PAID_IN_FULL');
     PERFORM set_config('moaum.actor_office', 'student', true);
-    PERFORM pg_temp.assert('The student''s registration is submitted only when the scheme in force says the payment releases it',
-        units = 18 AND ok AND finance.clears(st, '9999/0000', 'REGISTRATION') AND NOT finance.clears(st, '9999/0000', 'EXAMINATION')
-        AND registration.student_submit(reg) = 'submitted'
-        AND (SELECT status FROM registration.course_registration WHERE id = reg) = 'SUBMITTED',
-        'one instalment opens registration and not the examination; the approval stays with the adviser and the Head');
+    DECLARE reg_ok boolean; exam_ok boolean; sub text; st_after text;
+    BEGIN
+        reg_ok := finance.clears(st, '9999/0000', 'REGISTRATION');
+        exam_ok := finance.clears(st, '9999/0000', 'EXAMINATION');
+        sub := registration.student_submit(reg);
+        SELECT status INTO st_after FROM registration.course_registration WHERE id = reg;
+        PERFORM pg_temp.assert('The student''s registration is submitted only when the scheme in force says the payment releases it',
+            units = 18 AND ok AND reg_ok AND NOT exam_ok AND sub = 'submitted' AND st_after = 'SUBMITTED',
+            format('units=%s refused_without_scheme=%s clears_registration=%s clears_examination=%s submit=%s status=%s until=%s',
+                   units, ok, reg_ok, exam_ok, sub, st_after, until));
+    END;
 END $$;
 
 -- ══ V027 · THE LOOPS THE STUDENT SEES CLOSED ═══════════════════════════
