@@ -27,6 +27,7 @@ export default async function AdmissionSettingsPage({
     api<AdmissionPolicy>(`/api/v1/admissions/sessions/${prev}/policy`),
     api<PolicySummary[]>("/api/v1/admissions/policies"),
   ]);
+  const loadCutoff = await api<{ cutoff: number | null }>(`/api/v1/admissions/sessions/${session}/load-cutoff`);
 
   return (
     <Shell route="t/admissionsetup" me={me.ok ? me.data : null}>
@@ -38,6 +39,7 @@ export default async function AdmissionSettingsPage({
         previousSession={prev}
         sessions={policies.ok ? policies.data : []}
         actingOffice={me.ok ? me.data.activeOffice : null}
+        loadCutoff={loadCutoff.ok ? loadCutoff.data.cutoff : null}
       />
     </Shell>
   );

@@ -30,6 +30,8 @@ export interface Programme {
 export interface Cutoffs {
   faculty: Record<string, number>;
   programme: Record<string, number>;
+  /** the one cut-off the list loads under (V024); when stated, the faculty's and programme's are the screening's, not the loading's */
+  general?: number;
 }
 
 export interface ParsedRow {
@@ -195,7 +197,7 @@ export function parseCaps(rows: string[][], kind: ListKind, programmes: Programm
 
     let belowCutoff: number | null = null;
     if (kind === "UTME" && cutoffs && programme && agg) {
-      const cutoff = cutoffs.programme[programme.code] ?? cutoffs.faculty[programme.facultyCode];
+      const cutoff = cutoffs.general ?? cutoffs.programme[programme.code] ?? cutoffs.faculty[programme.facultyCode];
       if (cutoff === undefined) {
         flag(`no UTME cut-off is set for ${programme.name} or its faculty in the admission settings`);
       } else if (agg < cutoff) {

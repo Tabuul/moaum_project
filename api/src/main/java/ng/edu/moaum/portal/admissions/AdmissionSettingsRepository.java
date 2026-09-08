@@ -186,6 +186,18 @@ class AdmissionSettingsRepository {
         }
     }
 
+    /** the general UTME cut-off the session loads its JAMB lists under (V024) */
+    Optional<Integer> loadCutoff(String session) {
+        return jdbc.sql("SELECT admissions.load_cutoff_for(:s)").param("s", session).query(Integer.class).optional();
+    }
+
+    void stateLoadCutoff(String session, int cutoff) {
+        jdbc.sql("""
+                INSERT INTO admissions.load_cutoff (session, cutoff, stated_at) VALUES (:s, :c, now())
+                ON CONFLICT (session) DO UPDATE SET cutoff = EXCLUDED.cutoff, stated_at = now()
+                """).param("s", session).param("c", cutoff).update();
+    }
+
     /** closed for the session (V023): not admitted into, needs no rule; the reason goes on the record */
     void closeProgramme(UUID policyId, String code, String reason) {
         jdbc.sql("""

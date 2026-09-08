@@ -139,7 +139,7 @@ class ApiIT {
     }
 
     @Test
-    void aUtmeListIsRefusedWhileNoSettingsAreInForce() {
+    void aUtmeListIsRefusedWhileNoLoadCutOffIsStated() {
         ResponseEntity<Map> r = client.post().uri("/api/v1/admissions/caps-batches")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
                 .header("X-Active-Office", "academic")
@@ -147,7 +147,7 @@ class ApiIT {
                 .body(batch("UTME", List.of(row("UTME", 312, "C00061"))))
                 .retrieve().toEntity(Map.class);
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(422);
-        assertThat(r.getBody().get("code")).isEqualTo("ADM_SETTINGS_NOT_IN_FORCE");
+        assertThat(r.getBody().get("code")).isEqualTo("ADM_LOAD_CUTOFF_NOT_STATED");
         assertThat(String.valueOf(r.getBody().get("detail"))).contains(SESSION);
     }
 

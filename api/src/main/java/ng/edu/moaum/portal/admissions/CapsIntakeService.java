@@ -55,21 +55,18 @@ public class CapsIntakeService {
                             "Academic Office"));
         }
 
-        Map<String, Integer> cutoffs = Map.of();
+        /* the one general cut-off a UTME list loads under (V024); faculty and programme cut-offs are the screening's */
+        Integer general = null;
         if ("UTME".equals(request.listKind())) {
-            if (!caps.policyInForce(request.session())) {
-                throw new DomainRuleViolation("ADM_SETTINGS_NOT_IN_FORCE",
-                        "No admission settings are in force for " + request.session()
-                                + ", so no cut-off can be applied and nothing may be loaded.",
-                        new DomainRuleViolation.Remedy(
-                                "Complete the session's admission settings and put them in force, citing the Central Admissions Committee minute that approved them.",
-                                "Academic Office"));
-            }
+            general = caps.loadCutoff(request.session()).orElseThrow(() -> new DomainRuleViolation("ADM_LOAD_CUTOFF_NOT_STATED",
+                    "No general UTME cut-off is stated for loading the " + request.session() + " lists, so nothing may be loaded.",
+                    new DomainRuleViolation.Remedy(
+                            "State the general cut-off for loading — the UTME score under which a candidate is not loaded, whatever the programme — on the admission settings, before the file is uploaded.",
+                            "Academic Office")));
             Set<String> codes = request.rows().stream()
                     .map(r -> r.jambCode().trim().toUpperCase())
                     .collect(Collectors.toCollection(LinkedHashSet::new));
-            cutoffs = caps.cutoffsFor(request.session(), codes);
-            Map<String, Integer> known = cutoffs;
+            Map<String, String> known = programmeNames();
             List<String> unknown = codes.stream().filter(c -> !known.containsKey(c)).toList();
             if (!unknown.isEmpty()) {
                 throw new DomainRuleViolation("ADM_UNKNOWN_PROGRAMME",
@@ -78,6 +75,7 @@ public class CapsIntakeService {
                                 "Academic Office"));
             }
         }
+        final Integer loadCutoff = general;
 
         UUID id = UUID.randomUUID();
         caps.insertBatch(id, request.session(), request.source(), blankToNull(request.filename()), request.fileSha256(),
@@ -89,11 +87,10 @@ public class CapsIntakeService {
             Map<String, Object> raw = row.raw() == null ? Map.of() : row.raw();
             String rawJson = json.writeValueAsString(raw);
             String code = row.jambCode().trim().toUpperCase();
-            Integer cutoff = cutoffs.get(code);
-            if (cutoff != null && row.aggregate() != null && row.aggregate() < cutoff) {
-                caps.insertExcluded(id, request.session(), row, cutoff, "BELOW_CUTOFF", rawJson);
+            if (loadCutoff != null && row.aggregate() != null && row.aggregate() < loadCutoff) {
+                caps.insertExcluded(id, request.session(), row, loadCutoff, "BELOW_CUTOFF", rawJson);
                 excluded.add(new CapsLoadResult.ExcludedRow(row.jambRegNo().trim().toUpperCase(), row.surname(),
-                        row.otherNames(), code, names.getOrDefault(code, code), row.aggregate(), cutoff, "BELOW_CUTOFF"));
+                        row.otherNames(), code, names.getOrDefault(code, code), row.aggregate(), loadCutoff, "BELOW_CUTOFF"));
                 continue;
             }
             caps.insertRow(id, request.session(), row, rawJson);

@@ -84,6 +84,9 @@ class CutoffIT {
                     INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, state)
                     VALUES (:id, :s, 1200, 70, 30, 'DRAFT') ON CONFLICT DO NOTHING
                     """).param("id", POLICY).param("s", SESSION).update();
+            /* the one cut-off the lists load under (V024); the faculty and programme cut-offs below are the screening's */
+            jdbc.sql("INSERT INTO admissions.load_cutoff (session, cutoff) VALUES (:s, 150) ON CONFLICT (session) DO UPDATE SET cutoff = 150")
+                    .param("s", SESSION).update();
             for (String[] c : new String[][] {{"NATIONAL_MERIT", "10"}, {"STATE_MERIT", "35"}, {"ELG", "30"}, {"LOCALITY", "25"}}) {
                 jdbc.sql("INSERT INTO admissions.selection_criterion (policy_id, criterion, percent) VALUES (:id, :c, :p) ON CONFLICT DO NOTHING")
                         .param("id", POLICY).param("c", c[0]).param("p", Integer.parseInt(c[1])).update();
@@ -120,39 +123,40 @@ class CutoffIT {
     }
 
     @Test
-    void aSessionWithNoSettingsInForceLoadsNothing() {
+    void aSessionWithNoLoadCutOffStatedLoadsNothing() {
         ResponseEntity<Map> r = load("2098/2099", row("UTME", 350, "C00061"));
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(422);
-        assertThat(r.getBody().get("code")).isEqualTo("ADM_SETTINGS_NOT_IN_FORCE");
+        assertThat(r.getBody().get("code")).isEqualTo("ADM_LOAD_CUTOFF_NOT_STATED");
         assertThat(((Map<?, ?>) r.getBody().get("remedy")).get("office")).isEqualTo("Academic Office");
     }
 
     @Test
-    void theCutOffThatAppliesIsTheProgrammesElseTheFacultys() {
+    void theListLoadsUnderTheOneGeneralCutOffWhateverTheProgramme() {
         ResponseEntity<Map> r = load(SESSION,
-                row("UTME", 312, "C00061"),   // MBBS: cut-off 200, loaded
-                row("UTME", 190, "C00061"),   // MBBS: under 200, held back
-                row("UTME", 160, "C00019"),   // Accounting: faculty cut-off 150, loaded
-                row("UTME", 140, "C00019"));  // Accounting: under 150, held back
+                row("UTME", 312, "C00061"),   // MBBS: loaded
+                row("UTME", 190, "C00061"),   // MBBS: under its own 200, but at or above the general 150 — loaded; the 200 is the screening's
+                row("UTME", 160, "C00019"),   // Accounting: loaded
+                row("UTME", 140, "C00019"));  // under the general 150: read, held back, not loaded
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(201);
-        assertThat(r.getBody().get("rowsLoaded")).isEqualTo(2);
+        assertThat(r.getBody().get("rowsLoaded")).isEqualTo(3);
         List<?> excluded = (List<?>) r.getBody().get("excluded");
-        assertThat(excluded).hasSize(2);
-        Map<?, ?> mbbs = (Map<?, ?>) excluded.get(0);
-        assertThat(mbbs.get("aggregate")).isEqualTo(190);
-        assertThat(mbbs.get("cutoff")).isEqualTo(200);
-        assertThat(mbbs.get("programme")).isEqualTo("MBBS");
-        assertThat(mbbs.get("reason")).isEqualTo("BELOW_CUTOFF");
-        Map<?, ?> acc = (Map<?, ?>) excluded.get(1);
+        assertThat(excluded).hasSize(1);
+        Map<?, ?> acc = (Map<?, ?>) excluded.get(0);
         assertThat(acc.get("aggregate")).isEqualTo(140);
         assertThat(acc.get("cutoff")).isEqualTo(150);
+        assertThat(acc.get("reason")).isEqualTo("BELOW_CUTOFF");
         Map<?, ?> batch = (Map<?, ?>) r.getBody().get("batch");
         assertThat(batch.get("rowsRead")).isEqualTo(4);
 
-        // the held-back rows are on record, beside the batch
+        // the held-back row is on record, beside the batch
         long kept = jdbc.sql("SELECT count(*) FROM admissions.caps_row_excluded WHERE batch_id = CAST(:id AS uuid)")
                 .param("id", String.valueOf(batch.get("id"))).query(Long.class).single();
-        assertThat(kept).isEqualTo(2);
+        assertThat(kept).isEqualTo(1);
+
+        // the programme's own cut-off is still read back for the screening
+        ResponseEntity<Map> cutoff = client.get().uri("/api/v1/admissions/sessions/2099/2100/load-cutoff")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(Map.class);
+        assertThat(cutoff.getBody().get("cutoff")).isEqualTo(150);
     }
 
     @Test

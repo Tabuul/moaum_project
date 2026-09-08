@@ -135,6 +135,25 @@ public class AdmissionSettingsService {
         return policy(session);
     }
 
+    /** The general UTME cut-off a session loads its JAMB lists under (V024): stated before the file is uploaded, whatever the programme. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> loadCutoff(String session) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("cutoff", settings.loadCutoff(session).orElse(null));
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> stateLoadCutoff(String session, Integer cutoff) {
+        if (cutoff == null || cutoff < 0 || cutoff > 400) {
+            throw new DomainRuleViolation("ADM_LOAD_CUTOFF", "A UTME cut-off is a score between 0 and 400.",
+                    new DomainRuleViolation.Remedy("State the score under which a candidate on the JAMB list is not loaded.", "Academic Office"));
+        }
+        settings.stateLoadCutoff(session, cutoff);
+        return loadCutoff(session);
+    }
+
     /** A programme closed for the session (V023): not admitted into, needs no rule; the reason is on the record. */
     @Transactional
     public AdmissionPolicy closeProgramme(String session, String programmeCode, String reason) {

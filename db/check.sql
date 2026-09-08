@@ -102,6 +102,7 @@ BEGIN
     DELETE FROM admissions.screening_batch;
     DELETE FROM admissions.applicant_fee WHERE session IN ('9998/9999', '9999/0000');
     DELETE FROM admissions.screening_exam_programme WHERE session IN ('9997/9998', '9998/9999', '9999/0000');
+    DELETE FROM admissions.load_cutoff WHERE session IN ('9996/9997', '9997/9998', '9998/9999', '9999/0000');
     DELETE FROM admissions.programme_closed WHERE policy_id IN
         (SELECT id FROM admissions.session_policy WHERE session IN ('9997/9998', '9998/9999', '9999/0000'));
     DELETE FROM admissions.programme_rule WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9997/9998');
@@ -147,7 +148,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 97
+\set EXPECTED 98
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1573,6 +1574,19 @@ BEGIN
         AND NOT admissions.programme_is_closed('9998/9999', 'C00023')
         AND NOT EXISTS (SELECT 1 FROM admissions.policy_findings('9997/9998') x WHERE x.finding LIKE 'Programmes with no%'),
         'closed is a decision on the record, not an omission; the applicant is sent back to JAMB, not let through to nowhere');
+END $$;
+
+-- ══ V024 · THE GENERAL CUT-OFF FOR LOADING ══════════════════════════════
+
+-- ── 98. one cut-off for loading, stated per session; none while it is not ──
+DO $$
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO admissions.load_cutoff (session, cutoff) VALUES ('9996/9997', 150);
+    PERFORM pg_temp.assert('The JAMB lists load under one general cut-off, stated per session before the upload',
+        admissions.load_cutoff_for('9996/9997') = 150 AND admissions.load_cutoff_for('9995/9996') IS NULL,
+        'a candidate under it is read and held back, whatever the programme; the faculty and programme cut-offs are the screening''s');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

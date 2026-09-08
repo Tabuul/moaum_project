@@ -72,6 +72,22 @@ class AdmissionSettingsController {
     public record Closure(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 400) String reason) {
     }
 
+    public record LoadCutoff(@jakarta.validation.constraints.NotNull Integer cutoff) {
+    }
+
+    /** the general UTME cut-off the session loads its JAMB lists under (V024) */
+    @GetMapping("/sessions/{session}/{year}/load-cutoff")
+    @PreAuthorize(READERS)
+    Map<String, Object> loadCutoff(@PathVariable String session, @PathVariable String year) {
+        return service.loadCutoff(session + "/" + year);
+    }
+
+    @PutMapping("/sessions/{session}/{year}/load-cutoff")
+    @PreAuthorize(SECRETARIAT)
+    Map<String, Object> stateLoadCutoff(@PathVariable String session, @PathVariable String year, @Valid @RequestBody LoadCutoff body) {
+        return service.stateLoadCutoff(session + "/" + year, body.cutoff());
+    }
+
     /** closed for the session: not admitted into, needs no rule (V023) */
     @PostMapping("/sessions/{session}/{year}/policy/programmes/{code}/close")
     @PreAuthorize(SECRETARIAT)

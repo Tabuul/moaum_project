@@ -17,6 +17,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { OlevelGrading } from "./OlevelGrading";
+import { LoadCutoff } from "../LoadCutoff";
 
 export interface PolicySummary {
   session: string;
@@ -127,6 +128,7 @@ export function AdmissionSettings({
   previousSession,
   sessions,
   actingOffice,
+  loadCutoff,
 }: {
   session: string;
   policy: AdmissionPolicy | null;
@@ -135,6 +137,8 @@ export function AdmissionSettings({
   previousSession: string;
   sessions: PolicySummary[];
   actingOffice: string | null;
+  /** the one UTME cut-off the JAMB lists load under (V024), or null while it is not stated */
+  loadCutoff: number | null;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<string>("session");
@@ -314,6 +318,8 @@ export function AdmissionSettings({
           />
         </PBody>
       </Panel>
+
+      <LoadCutoff session={session} cutoff={loadCutoff} may={may} />
 
       <OlevelGrading session={session} may={may} />
 

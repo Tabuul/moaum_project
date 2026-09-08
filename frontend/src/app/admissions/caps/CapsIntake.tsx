@@ -36,6 +36,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AliasMapper } from "./AliasMapper";
 import { ProgrammeEditor, type Department } from "./ProgrammeEditor";
+import { LoadCutoff } from "../LoadCutoff";
 import { Field, Modal } from "@/components/proto/blocks";
 
 export interface CapsBatch {
@@ -119,11 +120,14 @@ export function CapsIntake({
   actingOffice,
   today,
   departments,
+  loadCutoff,
 }: {
   session: string;
   programmes: Programme[];
   /** the live departments, for the programme editor */
   departments: Department[];
+  /** the one UTME cut-off the lists load under (V024), or null while it is not stated */
+  loadCutoff: number | null;
   batches: CapsBatch[];
   batchesProblem: Problem | null;
   reconciliation: Finding[];
@@ -149,15 +153,10 @@ export function CapsIntake({
 
   const mayLoad = actingOffice !== null && LOADING_OFFICES.includes(actingOffice);
   const inForce = !!policy?.inForce;
+  /* the list loads under the one general cut-off (V024); the faculty's and programme's are the screening's */
   const cutoffs: Cutoffs | undefined = useMemo(
-    () =>
-      policy?.inForce
-        ? {
-            faculty: Object.fromEntries(policy.facultyCutoffs.filter((f) => f.cutoff !== null).map((f) => [f.facultyCode, f.cutoff as number])),
-            programme: Object.fromEntries(policy.programmeCutoffs.map((p) => [p.code, p.cutoff])),
-          }
-        : undefined,
-    [policy],
+    () => (loadCutoff === null ? undefined : { faculty: {}, programme: {}, general: loadCutoff }),
+    [loadCutoff],
   );
   /* read against the programmes as they are now — so a newly mapped alias resolves without re-uploading */
   const parsed = useMemo(() => {
@@ -391,45 +390,35 @@ export function CapsIntake({
         </div>
       </div>
 
-      {/* ── the cut-off, from the admission settings ── */}
+      {/* ── the cut-off the list loads under: one general one, stated before the upload (V024) ── */}
+      <LoadCutoff session={session} cutoff={loadCutoff} may={mayLoad} />
       {policy === null ? (
         <Note
-          kind="bad"
-          title={`No admission settings exist for ${session}`}
+          kind="info"
+          title={`No admission settings exist for ${session} yet`}
           action={
             <Link href={`/admissions/settings?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
               Go to the admission settings
             </Link>
           }
         >
-          The cut-off is read from the session&rsquo;s admission settings — a faculty&rsquo;s, and a programme&rsquo;s
-          own where the Central Admissions Committee set one — and nothing is loaded while none are in force.
+          The list loads under the general cut-off above. The faculty&rsquo;s and the programme&rsquo;s own cut-offs, the quotas and the rules
+          come from the session&rsquo;s admission settings and apply at screening; nobody is ranked or admitted until those are in force.
           {policyProblem?.detail ? <> <span className="sub2">{policyProblem.detail}</span></> : null}
         </Note>
       ) : !policy.inForce ? (
-        <>
-          <Note
-            kind="bad"
-            title={`The admission settings for ${session} are a draft — nothing may be loaded until they are in force`}
-            action={
-              <Link href={`/admissions/settings?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
-                Go to the admission settings
-              </Link>
-            }
-          >
-            {policy.findings.length} finding{policy.findings.length === 1 ? "" : "s"} keep{policy.findings.length === 1 ? "s" : ""} them
-            from being put in force. Each names the rule and the office that answers it. The cut-offs below are what
-            the draft states and would apply.
-          </Note>
-          {policy.findings.length > 0 && (
-            <Panel title="What keeps the settings a draft" right="By rule, with the office that answers it">
-              <DTable
-                cols={["Finding", "Detail", "Owner|mid"]}
-                rows={policy.findings.map((x) => [<strong key="f">{x.finding}</strong>, <span className="sub2" key="d">{x.detail}</span>, <span className="sub2" key="o">{x.owner}</span>])}
-              />
-            </Panel>
-          )}
-        </>
+        <Note
+          kind="info"
+          title={`The admission settings for ${session} are a draft — the list still loads, nobody is screened until they are in force`}
+          action={
+            <Link href={`/admissions/settings?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
+              Go to the admission settings
+            </Link>
+          }
+        >
+          {policy.findings.length} finding{policy.findings.length === 1 ? "" : "s"} keep{policy.findings.length === 1 ? "s" : ""} them
+          from being put in force. Each names the rule and the office that answers it. The cut-offs below are the screening&rsquo;s.
+        </Note>
       ) : null}
       {policy !== null && (
         <Panel

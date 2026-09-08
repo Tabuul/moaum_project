@@ -26,6 +26,7 @@ export default async function CapsIntakePage({
     api<Finding[]>(`/api/v1/admissions/sessions/${session}/reconciliation`),
     api<AdmissionPolicy>(`/api/v1/admissions/sessions/${session}/policy`),
   ]);
+  const loadCutoff = await api<{ cutoff: number | null }>(`/api/v1/admissions/sessions/${session}/load-cutoff`);
 
   return (
     <Shell route="t/capsintake" me={me.ok ? me.data : null}>
@@ -42,6 +43,7 @@ export default async function CapsIntakePage({
           policyProblem={policy.ok ? null : policy.problem}
           actingOffice={me.ok ? me.data.activeOffice : null}
           today={new Date().toISOString().slice(0, 10)}
+          loadCutoff={loadCutoff.ok ? loadCutoff.data.cutoff : null}
           departments={structure.ok ? structure.data.faculties.flatMap((f) => f.departments.map((d) => ({ code: d.code, name: d.name, facultyName: f.name }))) : []}
         />
       )}

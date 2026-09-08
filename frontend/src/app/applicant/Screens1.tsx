@@ -114,7 +114,7 @@ export function Apply({ a }: { a: Application }) {
   const rejected = a.documents.filter((d) => d.status === "REJECTED" && d.kind !== "PASSPORT");
   const gates: [string, string][] = [];
   if (!nok.trim()) gates.push(["Next of kin is missing", "Name and phone number, under Biodata."]);
-  for (const [k, label] of missing) gates.push([`${label} not uploaded`, "PDF or JPEG, 2 MB at most."]);
+  for (const [, label] of missing) gates.push([`${label} not uploaded`, "PDF or JPEG, 2 MB at most."]);
   for (const d of rejected) gates.push([`${DOC_LABEL[d.kind]} rejected`, d.reviewNote ?? "Upload a replacement that meets the stated requirements."]);
   const ready = gates.length === 0 && declared;
 

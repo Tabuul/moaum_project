@@ -107,6 +107,11 @@ class CapsRepository {
 
     /* ── the session's admission settings ───────────────────────────── */
 
+    /** the one UTME cut-off the session loads its lists under (V024), or none while it is not stated */
+    Optional<Integer> loadCutoff(String session) {
+        return jdbc.sql("SELECT admissions.load_cutoff_for(:s)").param("s", session).query(Integer.class).optional();
+    }
+
     boolean policyInForce(String session) {
         return jdbc.sql("SELECT count(*) FROM admissions.session_policy WHERE session = :session AND state = 'IN_FORCE'")
                 .param("session", session)
