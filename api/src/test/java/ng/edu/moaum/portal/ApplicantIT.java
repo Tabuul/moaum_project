@@ -162,7 +162,9 @@ class ApplicantIT {
         assertThat(result.get("screeningSource")).isEqualTo("CBT");
 
         // the Board offers; released, the candidate is ADMITTED — the same candidate the register is built from
-        ResponseEntity<Map> decided = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + appId + "/decision", Map.of("decision", "OFFERED", "note", "NM"));
+        // an offer names its basis (V025): what goes back to JAMB as the general remark
+        assertThat(it.call(academic, HttpMethod.PUT, PATH + "/applications/" + appId + "/decision", Map.of("decision", "OFFERED")).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> decided = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + appId + "/decision", Map.of("decision", "OFFERED", "basis", "NM"));
         assertThat(decided.getStatusCode().value()).as(String.valueOf(decided.getBody())).isEqualTo(200);
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("decision")).isNull();
         it.call(academic, HttpMethod.POST, PATH + "/decisions/release", Map.of());
