@@ -1472,7 +1472,7 @@ BEGIN
     PERFORM pg_temp.assert('Registering creates the candidate from the CAPS row and opens the application under a number',
         EXISTS (SELECT 1 FROM admissions.candidate c JOIN admissions.applicant_account a ON a.candidate_id = c.id
                  WHERE a.id = acct AND c.offer_state = 'PROPOSED' AND c.admitted_from IS NOT NULL AND c.programme = 'MBBS')
-        AND (SELECT application_no FROM admissions.application WHERE id = app) ~ '^APP/99/[0-9]{6}$'
+        AND (SELECT application_no FROM admissions.application WHERE id = app) ~ '^APP/97/[0-9]{6}$'
         AND admissions.application_stage(app) = 0
         AND (SELECT x.state FROM admissions.applicant_lookup('9997/9998', '20269999AP') x) = 'registered',
         'the reconciliation has a candidate record to find, and the applicant has one account');
