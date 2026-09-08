@@ -217,3 +217,24 @@ export function statusPill(status: string): "ok" | "bad" | "grey" | "info" {
   if (status === "WITHDRAWN" || status === "TRANSFERRED_OUT" || status === "DORMANT" || status === "DEFERRED") return "grey";
   return "bad";
 }
+
+/** the kinds a search covers (proto/part22 SEARCH_KINDS) — plain data, so a server page can read it too */
+export const KINDS: [string, string][] = [
+  ["all", "Everything"],
+  ["students", "Students"],
+  ["staff", "Staff"],
+  ["courses", "Courses"],
+  ["credentials", "Credentials"],
+];
+
+/** the eight views of Records & queries (proto/part21 RECORD_VIEWS) */
+export const RECORD_VIEWS: [string, string, string][] = [
+  ["students", "Students", "Who is on the register"],
+  ["registration", "Course registration", "Who has registered, and for what"],
+  ["fees", "School fees", "Who owes what, and who has paid"],
+  ["results", "Results", "Where each result set has reached"],
+  ["exams", "Examinations", "Who sits what, where and when"],
+  ["allocation", "Course assignment", "Who teaches what"],
+  ["clearance", "Clearance", "Who is held, and by which unit"],
+  ["attendance", "Attendance", "Who is eligible to sit"],
+];

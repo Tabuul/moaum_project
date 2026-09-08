@@ -1,11 +1,11 @@
 import { cookies } from "next/headers";
 import { api } from "@/lib/api";
 import { readScope, scopeQuery, SCOPE_COOKIE } from "@/lib/scope";
-import type { RecordsResult, RefCourse, RefSession } from "@/lib/student";
+import { RECORD_VIEWS, type RecordsResult, type RefCourse, type RefSession } from "@/lib/student";
 import { Shell, type Me } from "@/components/proto/Shell";
 import type { ScopeStructure } from "@/components/proto/ScopeBar";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Records, RECORD_VIEWS } from "./Records";
+import { Records } from "./Records";
 
 export const dynamic = "force-dynamic";
 

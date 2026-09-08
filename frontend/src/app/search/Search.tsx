@@ -10,6 +10,7 @@
  * kind that can find nothing is worse than one that is not offered.
  */
 import { useEffect, useState, type FormEvent } from "react";
+import { KINDS } from "@/lib/student";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { SearchHit, SearchResult } from "@/lib/student";
@@ -19,13 +20,6 @@ import { Btn, Ico, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { TwoCol } from "@/components/proto/blocks";
 
-export const KINDS: [string, string][] = [
-  ["all", "Everything"],
-  ["students", "Students"],
-  ["staff", "Staff"],
-  ["courses", "Courses"],
-  ["credentials", "Credentials"],
-];
 
 const KIND_LABEL: Record<string, string> = {
   students: "Students",

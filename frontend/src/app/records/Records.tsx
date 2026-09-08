@@ -6,22 +6,13 @@
  * says what it is a list of; the view is too.
  */
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { RECORD_VIEWS } from "@/lib/student";
 import type { RecordsResult, RefCourse } from "@/lib/student";
 import type { Scope } from "@/lib/scope";
 import { Note } from "@/components/proto/ui";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { RecordBody } from "./RecordViews";
 
-export const RECORD_VIEWS: [string, string, string][] = [
-  ["students", "Students", "Who is on the register"],
-  ["registration", "Course registration", "Who has registered, and for what"],
-  ["fees", "School fees", "Who owes what, and who has paid"],
-  ["results", "Results", "Where each result set has reached"],
-  ["exams", "Examinations", "Who sits what, where and when"],
-  ["allocation", "Course assignment", "Who teaches what"],
-  ["clearance", "Clearance", "Who is held, and by which unit"],
-  ["attendance", "Attendance", "Who is eligible to sit"],
-];
 
 export function Records({
   view,

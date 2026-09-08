@@ -1,8 +1,8 @@
 import { api } from "@/lib/api";
-import type { SearchResult } from "@/lib/student";
+import { KINDS, type SearchResult } from "@/lib/student";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Search, KINDS } from "./Search";
+import { Search } from "./Search";
 
 export const dynamic = "force-dynamic";
 
