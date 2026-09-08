@@ -31,7 +31,7 @@ export function Screening({ a }: { a: Application }) {
   return (
     <>
       <Note kind={at(a, 4) ? "ok" : "info"} title={at(a, 4) ? `You were screened on ${onDay(slip.heldOn)}` : "Bring this slip and a valid identification document"}
-        action={at(a, 4) ? <Link href="/applicant/score" className="btn btn--primary btn--sm">See your screening result</Link> : null}>
+        action={<span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>{at(a, 4) ? <Link href="/applicant/score" className="btn btn--primary btn--sm">See your screening result</Link> : null}<a href="/applicant/screening/slip" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Download slip (PDF)</a></span>}>
         {at(a, 4) ? "This slip is kept for your records. Your score is on the screening result page." : "You will not be admitted into the hall without both. Arrive thirty minutes before your session; the doors close when it begins."}
       </Note>
       <Panel title="Post-UTME screening slip" right={a.applicationNo}>
@@ -193,6 +193,9 @@ export function Status({ a }: { a: Application }) {
       <Note kind="info" title="Provisional means exactly that">
         This offer stands on the results JAMB sent. The Registry verifies every one of them with WAEC, NECO and JAMB before clearance. A result that does not verify voids the admission at any point afterwards &mdash; including after you have graduated.
       </Note>
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+        <a href="/applicant/status/letter" target="_blank" rel="noopener" className="btn btn--ghost">Download admission letter (PDF)</a>
+      </div>
     </>
   );
 }

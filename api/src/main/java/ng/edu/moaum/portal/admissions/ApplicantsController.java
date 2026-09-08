@@ -420,6 +420,23 @@ class ApplicantsController {
         return null;
     }
 
+    /** the hall list of one batch: every seat in order, with the photograph on file, for the invigilator at the door */
+    @GetMapping("/screening-batches/{id}/hall-list")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> hallList(@PathVariable String session, @PathVariable String year, @PathVariable UUID id) {
+        String s = session + "/" + year;
+        Map<String, Object> batch = jdbc.sql("SELECT id, label, held_on, starts_at, ends_at, venue, capacity FROM admissions.screening_batch WHERE id = :id AND session = :s")
+                .param("id", id).param("s", s).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("screening batch", id));
+        List<Map<String, Object>> seats = jdbc.sql("""
+                SELECT a.id, a.seat, a.application_no, c.surname, c.other_names, c.jamb_reg_no AS jamb_key, c.programme, c.entry_mode,
+                       (SELECT d.id FROM admissions.application_document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL) AS passport_id
+                  FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                 WHERE a.screening_batch_id = :id ORDER BY a.seat
+                """).param("id", id).query().listOfRows();
+        return Map.of("session", s, "batch", batch, "seats", seats);
+    }
+
     /* ── clearance ── */
 
     @PutMapping("/applications/{id}/clearance/{item}")

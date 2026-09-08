@@ -41,15 +41,47 @@ public class NoticeDispatcher {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private boolean saidNoProvider;
 
+    private final String smsFormat;
+    private final String smsFrom;
+    private final String emailFormat;
+    private final String emailFrom;
+
     public NoticeDispatcher(NoticeRepository notices, PlatformTransactionManager transactions,
                             @Value("${moaum.notices.email-url:}") String emailUrl,
                             @Value("${moaum.notices.sms-url:}") String smsUrl,
-                            @Value("${moaum.notices.token:}") String token) {
+                            @Value("${moaum.notices.token:}") String token,
+                            @Value("${moaum.notices.sms-format:generic}") String smsFormat,
+                            @Value("${moaum.notices.sms-from:MOAUM}") String smsFrom,
+                            @Value("${moaum.notices.email-format:generic}") String emailFormat,
+                            @Value("${moaum.notices.email-from:MOAUM Portal <portal@moaum.edu.ng>}") String emailFrom) {
         this.notices = notices;
         this.tx = new TransactionTemplate(transactions);
         this.emailUrl = emailUrl == null ? "" : emailUrl.trim();
         this.smsUrl = smsUrl == null ? "" : smsUrl.trim();
         this.token = token == null ? "" : token.trim();
+        this.smsFormat = smsFormat == null ? "generic" : smsFormat.trim().toLowerCase();
+        this.smsFrom = smsFrom == null ? "MOAUM" : smsFrom.trim();
+        this.emailFormat = emailFormat == null ? "generic" : emailFormat.trim().toLowerCase();
+        this.emailFrom = emailFrom == null ? "" : emailFrom.trim();
+    }
+
+    /** a Nigerian number in the international form Termii and its kind expect: 0803… → 234803… */
+    static String international(String phone) {
+        String d = phone == null ? "" : phone.replaceAll("[^0-9]", "");
+        return d.length() == 11 && d.startsWith("0") ? "234" + d.substring(1) : d;
+    }
+
+    /** the body the provider expects, by format */
+    String payload(NoticeRepository.Queued n) {
+        boolean sms = "SMS".equals(n.channel());
+        String format = sms ? smsFormat : emailFormat;
+        return switch (format) {
+            case "termii" -> "{\"api_key\":" + quote(token) + ",\"to\":" + quote(international(n.recipient())) + ",\"from\":" + quote(smsFrom)
+                    + ",\"sms\":" + quote(n.body()) + ",\"type\":\"plain\",\"channel\":\"generic\"}";
+            case "resend" -> "{\"from\":" + quote(emailFrom) + ",\"to\":[" + quote(n.recipient()) + "],\"subject\":" + quote(n.subject())
+                    + ",\"text\":" + quote(n.body()) + "}";
+            default -> json(n);
+        };
     }
 
     public boolean emailConfigured() {
@@ -81,7 +113,7 @@ public class NoticeDispatcher {
                 HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
                         .timeout(Duration.ofSeconds(20))
                         .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(json(n)));
+                        .POST(HttpRequest.BodyPublishers.ofString(payload(n)));
                 if (!token.isEmpty()) {
                     req.header("Authorization", "Bearer " + token);
                 }

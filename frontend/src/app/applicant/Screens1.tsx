@@ -13,7 +13,7 @@ import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/p
 import { DTable } from "@/components/proto/DTable";
 import { Gate, Gates, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Rail, TwoCol, useAct, when } from "./common";
+import { PayByCard, Rail, TwoCol, useAct, when } from "./common";
 
 /* ── 1. overview ── */
 
@@ -296,6 +296,7 @@ export function Fee({ a }: { a: Application }) {
           {problem ? <ProblemNotice problem={problem} /> : null}
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}>
             <Btn kind="primary" disabled={busy !== null} onClick={() => void act("ref", "POST", "/me/fee-references", { kind: "APPLICATION" }, "Application fee reference generated for the applicant")}>{busy === "ref" ? "Generating…" : open ? "Generate a new reference" : `Generate a reference for ${money(total)}`}</Btn>
+            {open ? <PayByCard reference={open.reference} amount={total} /> : null}
           </div>
         </PBody>
       </Panel>

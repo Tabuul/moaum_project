@@ -9,6 +9,7 @@
  * own template. Every act is the office's, on the record.
  */
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -185,7 +186,10 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
             <span key="w">{new Date(b.held_on).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} · {String(b.starts_at).slice(0, 5)}–{String(b.ends_at).slice(0, 5)}</span>,
             <span className="sub2" key="v">{b.venue}</span>,
             <span className="tnum" key="s">{b.seated} / {b.capacity}</span>,
-            <Btn kind="ghost" key="a" disabled={!office || busy !== null || Number(b.seated) >= b.capacity} onClick={() => void send(`seat-${b.id}`, "POST", `/screening-batches/${b.id}/assign`, {}, `Seats assigned in batch ${b.label}`)}>{busy === `seat-${b.id}` ? "Seating…" : "Seat the submitted"}</Btn>,
+            <span key="a" style={{ display: "inline-flex", gap: 6 }}>
+              <Link href={`/admissions/screening/${b.id}?session=${encodeURIComponent(desk.session)}`} className="btn btn--ghost btn--sm">Hall list</Link>
+              <Btn kind="ghost" disabled={!office || busy !== null || Number(b.seated) >= b.capacity} onClick={() => void send(`seat-${b.id}`, "POST", `/screening-batches/${b.id}/assign`, {}, `Seats assigned in batch ${b.label}`)}>{busy === `seat-${b.id}` ? "Seating…" : "Seat the submitted"}</Btn>
+            </span>,
           ])} />
         ) : <div className="card__body"><div className="sub2">No batch yet. Make one, then seat the submitted applications over it; the slip appears on each applicant&rsquo;s screen the moment they are seated.</div></div>}
       </Panel>

@@ -14,7 +14,7 @@ import { Btn, Note, Panel, PBody, Pil, Tick, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Rail, StepList, useAct, when } from "./common";
+import { PayByCard, Rail, StepList, useAct, when } from "./common";
 
 /* ── 7. accept the offer ── */
 
@@ -94,6 +94,7 @@ export function Accept({ a }: { a: Application }) {
             <div className="eyebrow">Reference</div>
             <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
             <div className="sub2" style={{ marginTop: 6 }}>Quote this reference and nothing else. The Bursary confirms the payment against it; your place is held the moment it does, provided the undertaking is signed.</div>
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}><PayByCard reference={open.reference} amount={fee} /></div>
           </PBody>
         </Panel>
       ) : null}
