@@ -308,6 +308,7 @@ jobs:
           code=$(curl -s -o /tmp/portal.html -w '%{http_code}' http://localhost:3000/)
           [ "$code" = "200" ] || { echo "::error::GET / on the frontend returned $code"; docker logs portal-web; exit 1; }
           grep -q "What is actually true" /tmp/portal.html || { echo "::error::The page served is not the portal."; exit 1; }
-          grep -q "migration_ledger" /tmp/portal.html || { echo "::error::The frontend did not render the API's status (the latest migration should be named on the dashboard)."; docker logs portal-web; exit 1; }
+          latest=$(ls db/V*.sql | sort | tail -1 | xargs basename)
+          grep -q "$latest" /tmp/portal.html || { echo "::error::The frontend did not render the API's status (the latest migration, $latest, should be named on the dashboard)."; docker logs portal-web; exit 1; }
           echo "the frontend rendered the API's status"
           docker rm -f portal-web api >/dev/null
