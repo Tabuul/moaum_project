@@ -61,12 +61,13 @@ END $$;
 CREATE OR REPLACE FUNCTION admissions.notify_applicant(p_app uuid, p_subject text, p_body text, p_sms text)
 RETURNS void
 LANGUAGE plpgsql AS $$
-DECLARE acc admissions.applicant_account;
+DECLARE v_email text; v_phone text;
 BEGIN
-    SELECT acc.* INTO acc FROM admissions.applicant_account acc JOIN admissions.application a ON a.account_id = acc.id WHERE a.id = p_app;
+    SELECT x.email, x.phone INTO v_email, v_phone
+      FROM admissions.applicant_account x JOIN admissions.application a ON a.account_id = x.id WHERE a.id = p_app;
     IF NOT FOUND THEN RETURN; END IF;
-    PERFORM platform.queue_notice('EMAIL', acc.email, p_subject, p_body, 'application', p_app);
-    PERFORM platform.queue_notice('SMS', acc.phone, p_subject, coalesce(p_sms, p_body), 'application', p_app);
+    PERFORM platform.queue_notice('EMAIL', v_email, p_subject, p_body, 'application', p_app);
+    PERFORM platform.queue_notice('SMS', v_phone, p_subject, coalesce(p_sms, p_body), 'application', p_app);
 END $$;
 
 -- ── the password reset ──────────────────────────────────────────────────
