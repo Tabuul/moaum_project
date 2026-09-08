@@ -13,6 +13,7 @@ import type { Problem } from "@/lib/api";
 import { officeLabel } from "@/lib/offices";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface PolicySummary {
@@ -413,40 +414,45 @@ export function AdmissionSettings({
         />
       </Panel>
       {editingProgramme && (
-        <div className="card">
-          <div className="card__body">
-            <div className="eyebrow">{editingProgramme.stated ? "The rule for" : "State the rule for"} {editingProgramme.name}</div>
-            <div className="sub2" style={{ marginBottom: 10 }}>{editingProgramme.facultyName} · {editingProgramme.code} · faculty cut-off {facultyCutoff(editingProgramme.facultyCode) ?? "none"}</div>
-            <div className="field" style={{ marginBottom: 10 }}>
-              <label htmlFor="pr-cut">Cut-off of its own (leave blank for the faculty&rsquo;s)</label>
-              <input id="pr-cut" className="tnum ws__in" style={{ width: 90 }} value={"pr-cut" in edits ? edits["pr-cut"] : editingProgramme.cutoff ?? ""} onChange={(e) => setEdits({ ...edits, "pr-cut": e.target.value })} />
-            </div>
+        <Modal
+          title={`${editingProgramme.stated ? "The rule for" : "State the rule for"} ${editingProgramme.name}`}
+          sub={`${editingProgramme.facultyName} · ${editingProgramme.code} · faculty cut-off ${facultyCutoff(editingProgramme.facultyCode) ?? "none"}`}
+          wide
+          onClose={() => { setEditing(null); setEdits({}); }}
+          foot={<>
+            <Btn kind="ghost" onClick={() => { setEditing(null); setEdits({}); }}>Cancel</Btn>
+            <span style={{ flexGrow: 1 }} />
+            <Btn
+              kind="primary"
+              disabled={busy !== null}
+              onClick={async () => {
+                const ok = await send("PUT", `${base}/programmes/${editingProgramme.code}`, {
+                  cutoff: num("pr-cut" in edits ? edits["pr-cut"] : String(editingProgramme.cutoff ?? "")),
+                  olevelText: "pr-ol" in edits ? edits["pr-ol"] : editingProgramme.olevelText ?? "",
+                  utmeText: "pr-ut" in edits ? edits["pr-ut"] : editingProgramme.utmeText ?? "",
+                  deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
+                }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
+                if (ok) { setEditing(null); setEdits({}); }
+              }}
+            >
+              {busy === "pr" ? "Saving…" : "Save the rule"}
+            </Btn>
+          </>}
+        >
+          <Note kind="info" title="A rule is what a candidate is admitted against">
+            The O&rsquo;Level requirement, the UTME subject combination and the Direct Entry rule are Senate&rsquo;s to state; a programme with none cannot admit anybody, and that is the correct behaviour.
+          </Note>
+          <div className="grid grid--2 rfgrid">
+            <Field id="pr-cut" label="Cut-off of its own" hint="Leave blank for the faculty’s">
+              <input id="pr-cut" className="ctl tnum" value={"pr-cut" in edits ? edits["pr-cut"] : editingProgramme.cutoff ?? ""} onChange={(e) => setEdits({ ...edits, "pr-cut": e.target.value })} autoComplete="off" />
+            </Field>
             {([["pr-ol", "O’Level requirement", editingProgramme.olevelText], ["pr-ut", "UTME subjects", editingProgramme.utmeText], ["pr-de", "Direct Entry", editingProgramme.deText]] as [string, string, string | null][]).map(([k, label, current]) => (
-              <div className="field" style={{ marginBottom: 10 }} key={k}>
-                <label htmlFor={k}>{label}</label>
-                <textarea id={k} rows={3} value={k in edits ? edits[k] : current ?? ""} onChange={(e) => setEdits({ ...edits, [k]: e.target.value })} />
-              </div>
+              <Field id={k} label={label} full key={k}>
+                <textarea id={k} className="ctl" rows={3} value={k in edits ? edits[k] : current ?? ""} onChange={(e) => setEdits({ ...edits, [k]: e.target.value })} />
+              </Field>
             ))}
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn
-                kind="primary"
-                disabled={busy !== null}
-                onClick={async () => {
-                  const ok = await send("PUT", `${base}/programmes/${editingProgramme.code}`, {
-                    cutoff: num("pr-cut" in edits ? edits["pr-cut"] : String(editingProgramme.cutoff ?? "")),
-                    olevelText: "pr-ol" in edits ? edits["pr-ol"] : editingProgramme.olevelText ?? "",
-                    utmeText: "pr-ut" in edits ? edits["pr-ut"] : editingProgramme.utmeText ?? "",
-                    deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
-                  }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
-                  if (ok) { setEditing(null); setEdits({}); }
-                }}
-              >
-                {busy === "pr" ? "Saving…" : "Save the rule"}
-              </Btn>
-              <Btn kind="ghost" onClick={() => { setEditing(null); setEdits({}); }}>Cancel</Btn>
-            </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   );
