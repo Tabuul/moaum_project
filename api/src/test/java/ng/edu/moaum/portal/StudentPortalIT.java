@@ -169,5 +169,50 @@ class StudentPortalIT {
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0).get("published")).isEqualTo(false);
         assertThat(results.get("cgpa")).isNull();
+
+        // the services (V027): the department gives a slot and marks the register, and the student sees both
+        UUID offering = offerings.get(0);
+        assertThat(it.call(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/slots",
+                Map.of("weekday", 3, "startsAt", "08:00", "endsAt", "10:00", "venue", "LT 2")).getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<Map> marked = it.call(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/attendance",
+                Map.of("heldOn", "2090-10-01", "present", List.of(student)));
+        assertThat(marked.getStatusCode().value()).as(String.valueOf(marked.getBody())).isEqualTo(200);
+        it.call(hod, HttpMethod.POST, "/api/v1/registration/offerings/" + offering + "/attendance", Map.of("heldOn", "2090-10-08", "present", List.of()));
+        Map<String, Object> tt = it.get(token, "/api/v1/me/timetable").getBody();
+        assertThat((List<?>) tt.get("slots")).hasSize(1);
+        Map<String, Object> att = ((List<Map<String, Object>>) tt.get("attendance")).stream().filter(a -> "ITP 101".equals(a.get("course_code"))).findFirst().orElseThrow();
+        assertThat(att.get("held")).isEqualTo(2);
+        assertThat(att.get("rate")).isEqualTo(50);
+
+        // the query window is closed: nothing is published
+        Map<String, Object> queries = it.get(token, "/api/v1/me/queries").getBody();
+        assertThat((List<?>) queries.get("queryable")).isEmpty();
+
+        // the docket: no examination session open yet, and the scheme says the examination waits on payment in full
+        Map<String, Object> docket = it.get(token, "/api/v1/me/docket").getBody();
+        assertThat(docket.get("clearsExamination")).isEqualTo(false);
+
+        // the identity card: the Library issues it on the matriculation number, released at instalment 1
+        String library = ItSupport.token("library");
+        ResponseEntity<Map> card = it.call(library, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + student + "/issue", Map.of());
+        assertThat(card.getStatusCode().value()).as(String.valueOf(card.getBody())).isEqualTo(200);
+        assertThat(String.valueOf(card.getBody().get("cardNo"))).startsWith("MOAUM/ID/");
+        Map<String, Object> myCard = it.get(token, "/api/v1/me/id-card").getBody();
+        assertThat(((List<Map<String, Object>>) myCard.get("cards")).get(0).get("state")).isEqualTo("ISSUED");
+
+        // the transcript: requested by the student, paid against a reference, staged as the Registry stages it
+        ResponseEntity<Map> trn = it.call(token, HttpMethod.POST, "/api/v1/me/transcripts", Map.of("destination", "INSTITUTION", "destinationName", "An invented university", "copies", 1));
+        assertThat(trn.getStatusCode().value()).as(String.valueOf(trn.getBody())).isEqualTo(200);
+        String trnRef = String.valueOf(trn.getBody().get("ref"));
+        String trnPay = String.valueOf(trn.getBody().get("reference"));
+        assertThat(trnRef).startsWith("TRN-");
+        it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + trnPay + "/confirm", Map.of("channel", "Card"));
+        Map<String, Object> mine = it.get(token, "/api/v1/me/transcripts").getBody();
+        Map<String, Object> req = ((List<Map<String, Object>>) mine.get("requests")).get(0);
+        assertThat(req.get("paid_at")).isNotNull();
+        assertThat(String.valueOf(req.get("stage"))).isIn("READY", "HELD_AT_CLEARANCE");
+        // a transcript paid is not fees paid
+        Map<String, Object> fees5 = it.get(token, "/api/v1/me/fees?session=2090/2091").getBody();
+        assertThat(((Number) fees5.get("paid")).doubleValue()).isEqualTo(50000.0);
     }
 }

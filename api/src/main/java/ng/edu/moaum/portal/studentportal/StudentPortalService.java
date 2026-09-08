@@ -212,6 +212,111 @@ public class StudentPortalService {
         return out;
     }
 
+    /* ── the services (V027) ── */
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> queries(UUID id) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("queryable", repo.queryable(id));
+        out.put("queries", repo.queries(id));
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> raiseQuery(UUID id, UUID sheet, String part, String said) {
+        String p = part == null ? "" : part.trim().toUpperCase();
+        if (!List.of("EXAM", "CA", "ABSENT").contains(p)) {
+            throw new DomainRuleViolation("RES_QUERY_PART", "A query names the mark it is about.",
+                    new DomainRuleViolation.Remedy("The examination mark, the continuous assessment mark, or an absence recorded for a paper you sat.", "You"));
+        }
+        if (said == null || said.isBlank()) {
+            throw new DomainRuleViolation("RES_QUERY_SAID", "Say what you say is wrong.",
+                    new DomainRuleViolation.Remedy("What you expected and why. 'I expected a better grade' is not a query.", "You"));
+        }
+        Map<String, Object> out = new LinkedHashMap<>(Map.of("ref", repo.raiseQuery(id, sheet, p, said)));
+        out.putAll(queries(id));
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> docket(UUID id) {
+        String session = session();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        Boolean cleared = null;
+        String schemeProblem = null;
+        try {
+            cleared = repo.clears(id, session, "EXAMINATION");
+        } catch (RuntimeException noScheme) {
+            schemeProblem = "No clearance scheme is in force, so nothing is released against a payment yet; the Bursar states the scheme.";
+        }
+        out.put("clearsExamination", cleared);
+        out.put("schemeProblem", schemeProblem);
+        List<Map<String, Object>> sessions = new ArrayList<>();
+        for (Map<String, Object> x : repo.examSessions(session)) {
+            Map<String, Object> e = new LinkedHashMap<>(x);
+            e.put("papers", repo.docket(id, (UUID) x.get("id")));
+            sessions.add(e);
+        }
+        out.put("examSessions", sessions);
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> timetable(UUID id, int semester) {
+        String session = session();
+        return Map.of("session", session, "semester", semester, "slots", repo.timetable(id, session, semester), "attendance", repo.attendance(id, session, semester));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> card(UUID id) {
+        StudentPortalRepository.Student s = student(id);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("matricNo", s.matricNo());
+        out.put("cards", repo.cards(id));
+        Boolean cleared = null;
+        try {
+            cleared = repo.clears(id, session(), "ID_CARD");
+        } catch (RuntimeException noScheme) {
+            cleared = null;
+        }
+        out.put("clearsIdCard", cleared);
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> reportLost(UUID id, String reason) {
+        repo.reportLost(id, reason);
+        return card(id);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> transcripts(UUID id) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("fee", repo.transcriptFee(session()));
+        out.put("requests", repo.transcripts(id));
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> requestTranscript(UUID id, String destination, String destinationName, String mode, Integer copies) {
+        String d = destination == null ? "" : destination.trim().toUpperCase();
+        if (!List.of("SELF", "INSTITUTION", "EMPLOYER", "EMBASSY").contains(d)) {
+            throw new DomainRuleViolation("CTP_DESTINATION", "A transcript goes to you, an institution, an employer or an embassy.",
+                    new DomainRuleViolation.Remedy("Choose one.", "You"));
+        }
+        String m = mode == null || mode.isBlank() ? "DIGITAL" : mode.trim().toUpperCase();
+        int c = copies == null ? 1 : Math.max(1, Math.min(10, copies));
+        String ref = repo.requestTranscript(id, d, destinationName, m, c);
+        String session = session();
+        BigDecimal fee = repo.transcriptFee(session).multiply(BigDecimal.valueOf(c));
+        String reference = repo.purposeReference(id, session, fee, "Transcript " + ref);
+        Map<String, Object> out = new LinkedHashMap<>(transcripts(id));
+        out.put("ref", ref);
+        out.put("reference", reference);
+        return out;
+    }
+
     /* ── helpers ── */
 
     static Map<String, Object> withEntries(Map<String, Object> r) {

@@ -91,6 +91,57 @@ class MeController {
         return portal.results(id(auth));
     }
 
+    /* ── the services (V027) ── */
+
+    public record Query(@NotBlank String sheetId, @NotBlank String part, @NotBlank @Size(max = 2000) String said) {
+    }
+
+    public record Lost(@Size(max = 200) String reason) {
+    }
+
+    public record TranscriptRequest(@NotBlank String destination, @Size(max = 200) String destinationName, String mode, @Min(1) @Max(10) Integer copies) {
+    }
+
+    @GetMapping("/queries")
+    Map<String, Object> queries(Authentication auth) {
+        return portal.queries(id(auth));
+    }
+
+    @PostMapping("/queries")
+    Map<String, Object> raise(Authentication auth, @Valid @RequestBody Query body) {
+        return portal.raiseQuery(id(auth), UUID.fromString(body.sheetId()), body.part(), body.said());
+    }
+
+    @GetMapping("/docket")
+    Map<String, Object> docket(Authentication auth) {
+        return portal.docket(id(auth));
+    }
+
+    @GetMapping("/timetable")
+    Map<String, Object> timetable(Authentication auth, @RequestParam(defaultValue = "1") int semester) {
+        return portal.timetable(id(auth), semester);
+    }
+
+    @GetMapping("/id-card")
+    Map<String, Object> card(Authentication auth) {
+        return portal.card(id(auth));
+    }
+
+    @PostMapping("/id-card/lost")
+    Map<String, Object> lost(Authentication auth, @RequestBody(required = false) @Valid Lost body) {
+        return portal.reportLost(id(auth), body == null ? null : body.reason());
+    }
+
+    @GetMapping("/transcripts")
+    Map<String, Object> transcripts(Authentication auth) {
+        return portal.transcripts(id(auth));
+    }
+
+    @PostMapping("/transcripts")
+    Map<String, Object> requestTranscript(Authentication auth, @Valid @RequestBody TranscriptRequest body) {
+        return portal.requestTranscript(id(auth), body.destination(), body.destinationName(), body.mode(), body.copies());
+    }
+
     private static UUID id(Authentication auth) {
         return UUID.fromString(auth.getName());
     }

@@ -225,6 +225,84 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional();
     }
 
+    /* ── the services (V027) ── */
+
+    List<Map<String, Object>> queries(UUID student) {
+        return jdbc.sql("""
+                SELECT q.id, q.ref, q.part, q.said, q.routed_dept, d.name AS dept_name, q.raised_at, q.state, q.answer, q.answered_at,
+                       c.code AS course_code, c.title
+                  FROM assessment.result_query q
+                  JOIN assessment.score_sheet sh ON sh.id = q.sheet_id JOIN catalogue.offering o ON o.id = sh.offering_id
+                  JOIN catalogue.course c ON c.code = o.course_code JOIN ref.department d ON d.code = q.routed_dept
+                 WHERE q.student_id = :s ORDER BY q.raised_at DESC
+                """).param("s", student).query().listOfRows();
+    }
+
+    /** the published sheets whose query window is open, with the student's mark on them */
+    List<Map<String, Object>> queryable(UUID student) {
+        return jdbc.sql("""
+                SELECT sh.id AS sheet_id, c.code AS course_code, c.title, o.session, o.semester, sh.published_at,
+                       (sh.published_at + interval '7 days')::date AS window_until, ls.ca, ls.exam, ls.total, ls.grade, ls.outcome
+                  FROM assessment.score s JOIN assessment.score_sheet sh ON sh.id = s.sheet_id
+                  JOIN catalogue.offering o ON o.id = sh.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                  LEFT JOIN LATERAL (SELECT * FROM assessment.latest_scores(sh.id) x WHERE x.student_id = :s) ls ON true
+                 WHERE s.student_id = :s AND assessment.query_window_open(sh.id)
+                 GROUP BY sh.id, c.code, c.title, o.session, o.semester, sh.published_at, ls.ca, ls.exam, ls.total, ls.grade, ls.outcome
+                 ORDER BY c.code
+                """).param("s", student).query().listOfRows();
+    }
+
+    String raiseQuery(UUID student, UUID sheet, String part, String said) {
+        return jdbc.sql("SELECT assessment.raise_query(:s, :sh, :p, :t)").param("s", student).param("sh", sheet).param("p", part).param("t", said).query(String.class).single();
+    }
+
+    List<Map<String, Object>> examSessions(String session) {
+        return jdbc.sql("SELECT id, session, semester, kind, exams_from, exams_to, state FROM assessment.exam_session WHERE session = :s AND state <> 'DRAFT' ORDER BY semester, kind")
+                .param("s", session).query().listOfRows();
+    }
+
+    List<Map<String, Object>> docket(UUID student, UUID examSession) {
+        return jdbc.sql("SELECT * FROM assessment.student_docket(:s, :x)").param("s", student).param("x", examSession).query().listOfRows();
+    }
+
+    List<Map<String, Object>> timetable(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT * FROM registration.student_timetable(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
+    }
+
+    List<Map<String, Object>> attendance(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT * FROM registration.attendance_rate(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
+    }
+
+    List<Map<String, Object>> cards(UUID student) {
+        return jdbc.sql("SELECT id, card_no, issued_at, valid_to, state, ended_at, ended_reason FROM credentials.identity_card WHERE student_id = :s ORDER BY issued_at DESC")
+                .param("s", student).query().listOfRows();
+    }
+
+    int reportLost(UUID student, String reason) {
+        return jdbc.sql("SELECT credentials.report_card_lost(:s, :r)").param("s", student).param("r", reason, Types.VARCHAR).query(Integer.class).single();
+    }
+
+    List<Map<String, Object>> transcripts(UUID student) {
+        return jdbc.sql("""
+                SELECT t.id, t.ref, t.destination, t.destination_name, t.mode, t.copies, t.requested_at, t.paid_at, t.stage, t.produced_at, t.released_at,
+                       (SELECT r.reference FROM finance.payment_reference r WHERE r.student_id = :s AND r.purpose = 'Transcript ' || t.ref AND r.confirmed_at IS NULL AND r.expires_at > now() ORDER BY r.generated_at DESC LIMIT 1) AS open_reference
+                  FROM credentials.transcript_request t WHERE t.student_id = :s ORDER BY t.requested_at DESC
+                """).param("s", student).query().listOfRows();
+    }
+
+    String requestTranscript(UUID student, String destination, String destinationName, String mode, int copies) {
+        return jdbc.sql("SELECT credentials.student_transcript_request(:s, :d, :dn, :m, :c)").param("s", student).param("d", destination)
+                .param("dn", destinationName, Types.VARCHAR).param("m", mode).param("c", copies).query(String.class).single();
+    }
+
+    BigDecimal transcriptFee(String session) {
+        return jdbc.sql("SELECT finance.transcript_fee(:s)").param("s", session).query(BigDecimal.class).single();
+    }
+
+    String purposeReference(UUID student, String session, BigDecimal amount, String purpose) {
+        return jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, :a, :p)").param("s", student).param("ses", session).param("a", amount).param("p", purpose).query(String.class).single();
+    }
+
     List<Map<String, Object>> notices(UUID student) {
         return jdbc.sql("""
                 SELECT id, channel, recipient, subject, body, created_at, state, sent_at

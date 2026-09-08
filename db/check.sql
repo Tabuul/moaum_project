@@ -46,6 +46,13 @@ BEGIN
     DELETE FROM credentials.transcript_request;
     DELETE FROM records.graduand;
     DELETE FROM clearance.item;
+    -- the student's services (V027), before the students, sheets and offerings they hang on
+    DELETE FROM assessment.result_query;
+    DELETE FROM assessment.exam_timetable;
+    DELETE FROM registration.attendance;
+    DELETE FROM catalogue.class_slot;
+    DELETE FROM credentials.identity_card;
+
     -- the student's side (V026): accounts, contact, fees and references, before the students they hang on
     DELETE FROM finance.payment_reference;
     DELETE FROM finance.fee_schedule WHERE session LIKE '99%';
@@ -161,7 +168,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 101
+\set EXPECTED 102
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -193,7 +200,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries all twenty-five offices',
-                           n = 26, n || ' offices (25 staff offices and the applicant, V021)');
+                           n = 27, n || ' offices (25 staff offices, the applicant V021 and the student V026)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -1688,6 +1695,41 @@ BEGIN
         AND registration.student_submit(reg) = 'submitted'
         AND (SELECT status FROM registration.course_registration WHERE id = reg) = 'SUBMITTED',
         'one instalment opens registration and not the examination; the approval stays with the adviser and the Head');
+END $$;
+
+-- ══ V027 · THE LOOPS THE STUDENT SEES CLOSED ═══════════════════════════
+
+-- ── 102. attendance over the class list, the timetable from the slots, the card on the matriculation number ──
+DO $$
+DECLARE st uuid; o1 uuid; n int; rate record; card text; tt int; ok boolean;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    SELECT id INTO st FROM people.student WHERE surname = 'CHECKSTUDENT';
+    SELECT o.id INTO o1 FROM catalogue.offering o WHERE o.course_code = 'CHK 101' AND o.session = '9999/0000';
+    -- the registration of 101 approved, so the class list carries the student
+    UPDATE registration.course_registration SET status = 'APPROVED', approved_at = now(), approved_by = gen_random_uuid()
+     WHERE student_id = st AND session = '9999/0000';
+    INSERT INTO catalogue.class_slot (offering_id, weekday, starts_at, ends_at, venue) VALUES (o1, 3, '08:00', '10:00', 'LT 2');
+    SELECT count(*) INTO tt FROM registration.student_timetable(st, '9999/0000', 1);
+    -- attendance: two lectures, present at one
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    n := registration.mark_attendance(o1, current_date - 7, ARRAY[st]);
+    n := n + registration.mark_attendance(o1, current_date, ARRAY[]::uuid[]);
+    SELECT * INTO rate FROM registration.attendance_rate(st, '9999/0000', 1) WHERE course_code = 'CHK 101';
+    -- the card: refused before a scheme releases ID_CARD? the scheme of 101 is in force today and releases it at instalment 1, which is paid
+    PERFORM set_config('moaum.actor_office', 'library', true);
+    card := credentials.issue_identity_card(st, NULL);
+    ok := false;
+    BEGIN
+        PERFORM credentials.issue_identity_card(gen_random_uuid(), NULL);
+    EXCEPTION WHEN OTHERS THEN ok := true;
+    END;
+    PERFORM pg_temp.assert('The register is marked over the class list, the timetable comes from the slots, and the card is issued on the matriculation number',
+        tt = 1 AND n = 2 AND rate.attended = 1 AND rate.held = 2 AND rate.rate = 50
+        AND card ~ '^MOAUM/ID/[0-9]{2}/[0-9]{5}$' AND ok
+        AND (SELECT count(*) FROM credentials.identity_card WHERE student_id = st AND state = 'ISSUED') = 1,
+        'nothing typed against the student: the lecturer marks the roll, the department gives the slot, the Library issues the card the scheme released');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
