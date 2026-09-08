@@ -123,9 +123,11 @@ class ApplicantIT {
         ResponseEntity<Map> submitted = it.call(token, HttpMethod.POST, "/api/v1/applicant/me/submit", Map.of("declaration", true));
         assertThat(submitted.getStatusCode().value()).as(String.valueOf(submitted.getBody())).isEqualTo(200);
         assertThat(submitted.getBody().get("stage")).isEqualTo(2);
-        // and not edited afterwards
+        // and not edited afterwards — except the passport photograph, which comes whenever the applicant has one (V022)
         assertThat(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/documents",
-                Map.of("kind", "PASSPORT", "filename", "p.pdf", "contentType", "application/pdf", "contentBase64", pdf)).getStatusCode().value()).isEqualTo(422);
+                Map.of("kind", "JAMB_SLIP", "filename", "slip2.pdf", "contentType", "application/pdf", "contentBase64", pdf)).getStatusCode().value()).isEqualTo(422);
+        assertThat(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/documents",
+                Map.of("kind", "PASSPORT", "filename", "passport2.pdf", "contentType", "application/pdf", "contentBase64", pdf)).getStatusCode().value()).isEqualTo(200);
 
         // the Academic Office sees the application on its desk, with the document to review
         Map<String, Object> desk = it.get(academic, PATH + "/applicants").getBody();
