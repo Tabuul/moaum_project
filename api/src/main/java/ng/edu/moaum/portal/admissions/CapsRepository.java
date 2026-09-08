@@ -248,6 +248,24 @@ class CapsRepository {
         return programmes().stream().filter(p -> p.code().equals(code)).findFirst();
     }
 
+    /** The faculty a live department belongs to, or none when the code is unknown or the department has ended. */
+    Optional<String> facultyOfDepartment(String deptCode) {
+        return jdbc.sql("SELECT faculty_code FROM ref.department WHERE code = :d AND ended_on IS NULL")
+                .param("d", deptCode).query(String.class).optional();
+    }
+
+    /** The University's own words for a programme: the name, its department (and so its faculty), its category, and whether it still admits. */
+    void updateProgramme(String code, String name, String deptCode, String facultyCode, String category, boolean archived) {
+        jdbc.sql("""
+                UPDATE ref.programme
+                   SET name = :name, dept_code = :dept, faculty_code = :fac, category = :cat, archived = :archived
+                 WHERE code = :code
+                """)
+                .param("code", code).param("name", name).param("dept", deptCode).param("fac", facultyCode)
+                .param("cat", category).param("archived", archived)
+                .update();
+    }
+
     Optional<String> regNoIn(String text) {
         return jdbc.sql("SELECT admissions.reg_no_in(:text)").param("text", text).query(String.class).optional();
     }

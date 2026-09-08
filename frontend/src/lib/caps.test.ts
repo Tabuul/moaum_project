@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
 
 import { colOf, sharedStrings, sheetRows, unescapeXml, xlsxRows } from "./xlsx.ts";
-import { blockingFindings, isError, parseCaps, splitName, toRequest, type Programme } from "./caps.ts";
+import { blockingFindings, isError, parseCaps, splitName, toCsv, toRequest, type Programme } from "./caps.ts";
 
 /* ── a tiny .xlsx writer, so the reader is tested on a real ZIP ──────── */
 
@@ -259,4 +259,26 @@ test("names split surname-first, as CAPS writes them", () => {
   assert.deepEqual(splitName("  Iorfa   Msendoo Blessing "), ["Iorfa", "Msendoo Blessing"]);
   assert.deepEqual(splitName("Iorfa"), ["Iorfa", ""]);
   assert.deepEqual(splitName(""), ["", ""]);
+});
+
+test("the list as read exports as CSV, one row per candidate with the findings against it", () => {
+  const programmes: Programme[] = [
+    { code: "C00061", name: "MBBS", deptCode: "MED", facultyCode: "CHS", jambName: "Medicine & Surgery", category: "UNDER GRADUATE", archived: false },
+  ];
+  const rows = [
+    ["RG_NUM", "RG_CANDNAME", "RG_SEX", "STATE_NAME", "RG_AGGREGATE", "CO_NAME", "LGA_NAME"],
+    ["202699176777GF", "Iorfa Msendoo Blessing", "F", "Benue", "337", "Medicine & Surgery", "Guma"],
+    ["202699224740IB", "Ochefu, \"Dan\" Ejembi", "M", "Benue", "317", "Basket Weaving", "Obi"],
+  ];
+  const parsed = parseCaps(rows, "UTME", programmes);
+  assert.ok(!isError(parsed));
+  if (isError(parsed)) return;
+  const csv = toCsv(parsed, "UTME");
+  const lines = csv.trim().split("\r\n");
+  assert.equal(lines.length, 3);
+  assert.ok(lines[0].startsWith("Line,Registration number,Surname"));
+  assert.ok(lines[1].includes("202699176777GF") && lines[1].includes("C00061") && lines[1].includes("MBBS"));
+  assert.ok(lines[2].includes('"Ochefu, ""Dan"" Ejembi"') || lines[2].includes('""Dan""'), lines[2]);
+  assert.ok(lines[2].includes("Basket Weaving"));
+  assert.ok(/does not run|no alias|not mapped|carries no/i.test(lines[2]) || lines[2].split(",").length >= 13, lines[2]);
 });

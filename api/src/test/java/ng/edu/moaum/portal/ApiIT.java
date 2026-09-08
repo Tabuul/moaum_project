@@ -279,6 +279,55 @@ class ApiIT {
         assertThat(refused.getStatusCode().value()).isEqualTo(403);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void aProgrammeIsRenamedInTheUniversitysOwnWordsAndKeepsItsCode() {
+        ResponseEntity<List> all = client.get().uri("/api/v1/admissions/programmes")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .retrieve().toEntity(List.class);
+        Map<?, ?> before = ((List<Map<?, ?>>) all.getBody()).stream()
+                .filter(p -> "C62073".equals(p.get("code"))).findFirst().orElseThrow();
+        Map<String, Object> words = new java.util.HashMap<>();
+        words.put("name", before.get("name") + " (renamed)");
+        words.put("deptCode", before.get("deptCode"));
+        words.put("category", before.get("category"));
+        words.put("archived", false);
+
+        ResponseEntity<Map> renamed = client.put().uri("/api/v1/admissions/programmes/C62073")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(words)
+                .retrieve().toEntity(Map.class);
+        assertThat(renamed.getStatusCode().value()).as(String.valueOf(renamed.getBody())).isEqualTo(200);
+        assertThat(renamed.getBody().get("name")).isEqualTo(before.get("name") + " (renamed)");
+        assertThat(renamed.getBody().get("code")).isEqualTo("C62073");
+        assertThat(renamed.getBody().get("facultyCode")).isEqualTo(before.get("facultyCode"));
+
+        // a department the structure does not carry is refused with the remedy
+        words.put("deptCode", "NOSUCH");
+        ResponseEntity<Map> refused = client.put().uri("/api/v1/admissions/programmes/C62073")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(words)
+                .retrieve().toEntity(Map.class);
+        assertThat(refused.getStatusCode().value()).isEqualTo(422);
+        assertThat(refused.getBody().get("code")).isEqualTo("ADM_DEPARTMENT_UNKNOWN");
+
+        // put the words back, so the seed reads as the seed for every other test
+        words.put("deptCode", before.get("deptCode"));
+        words.put("name", before.get("name"));
+        ResponseEntity<Map> restored = client.put().uri("/api/v1/admissions/programmes/C62073")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(words)
+                .retrieve().toEntity(Map.class);
+        assertThat(restored.getBody().get("name")).isEqualTo(before.get("name"));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     static final java.security.SecureRandom RANDOM = new SecureRandom();

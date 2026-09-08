@@ -93,6 +93,19 @@ class AdmissionsController {
         return intake.setJambAlias(code, request.jambName());
     }
 
+    record ProgrammeEdit(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 200) String name,
+                         @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 10) String deptCode,
+                         @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 20) String category,
+                         boolean archived) {
+    }
+
+    /** The University's own words for a programme; the code is for ever, and JAMB's name is set separately. */
+    @PutMapping("/programmes/{code}")
+    @PreAuthorize(LOADERS)
+    Programme editProgramme(@PathVariable String code, @Valid @RequestBody ProgrammeEdit request) {
+        return intake.editProgramme(code, request.name(), request.deptCode(), request.category(), request.archived());
+    }
+
     /** {@code ?in=202699168863AH_Face.jpg} → the number the database reads out of it, or none. */
     @GetMapping("/reg-no")
     @PreAuthorize(READERS)

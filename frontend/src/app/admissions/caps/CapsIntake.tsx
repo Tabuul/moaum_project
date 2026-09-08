@@ -22,6 +22,7 @@ import {
   isError,
   parseCaps,
   sha256Hex,
+  toCsv,
   toRequest,
   type CapsParse,
   type Cutoffs,
@@ -34,6 +35,7 @@ import { Btn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AliasMapper } from "./AliasMapper";
+import { ProgrammeEditor, type Department } from "./ProgrammeEditor";
 
 export interface CapsBatch {
   id: string;
@@ -112,9 +114,12 @@ export function CapsIntake({
   policyProblem,
   actingOffice,
   today,
+  departments,
 }: {
   session: string;
   programmes: Programme[];
+  /** the live departments, for the programme editor */
+  departments: Department[];
   batches: CapsBatch[];
   batchesProblem: Problem | null;
   reconciliation: Finding[];
@@ -125,6 +130,7 @@ export function CapsIntake({
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<ListKind>("UTME");
+  const [editing, setEditing] = useState<Programme | null>(null);
   const [file, setFile] = useState<Partial<Record<ListKind, FileInfo>>>({});
   const [rowsRead, setRowsRead] = useState<Partial<Record<ListKind, string[][]>>>({});
   const [busy, setBusy] = useState<ListKind | null>(null);
@@ -602,9 +608,9 @@ export function CapsIntake({
             kind="info"
             title="Upload the passports to see them beside the names"
             action={
-              <Btn kind="ghost" disabled title="Still the prototype's screen">
+              <Link href={`/admissions/candidate-data?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
                 Go to the passports
-              </Btn>
+              </Link>
             }
           >
             JAMB sends the photographs as a separate folder, each file named with the candidate&rsquo;s registration
@@ -613,7 +619,19 @@ export function CapsIntake({
           </Note>
 
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
-            <Btn kind="ghost" disabled title="Export arrives with the table tools">
+            <Btn
+              kind="ghost"
+              title="The list as read here, with its findings, as a CSV file"
+              onClick={() => {
+                const blob = new Blob([toCsv(d, kind)], { type: "text/csv;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `CAPS-${kind === "UTME" ? "UTME" : "DE"}-${session.replace("/", "-")}-as-read.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
               Export this list
             </Btn>
             <Btn
@@ -695,13 +713,14 @@ export function CapsIntake({
               same ? <span className="sub2" key="u">{p.name}</span> : <strong key="u">{p.name}</strong>,
               <span className="tnum" key="d">{p.deptCode}</span>,
               <span className="sub2" key="f">{p.facultyName ?? "—"}</span>,
-              <Btn kind="ghost" key="e" disabled title="Editing a programme arrives with the Base module">
+              <Btn kind="ghost" key="e" onClick={() => setEditing(p)} title="The University's own words for this programme">
                 Edit
               </Btn>,
             ];
           })}
         />
       </Panel>
+      {editing ? <ProgrammeEditor programme={editing} departments={departments} onClose={() => setEditing(null)} /> : null}
 
       <Note kind="info" title="JAMB’s name is the JOIN, not a footnote">
         The download names the course and gives no code, so <b>JAMB&rsquo;s name is what the row is matched on</b>{" "}

@@ -251,6 +251,32 @@ export function isError(r: CapsResult): r is { error: string } {
   return "error" in r;
 }
 
+/**
+ * The list as this browser read it, as CSV: every row with the programme it
+ * resolved to and every finding against it, so the office can keep what the
+ * screen showed and work the file in Excel. Nothing here is loaded.
+ */
+export function toCsv(p: CapsParse, kind: ListKind): string {
+  const cell = (v: unknown): string => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const byLine = new Map<number, string[]>();
+  for (const f of p.findings) byLine.set(f.line, [...(byLine.get(f.line) ?? []), f.message]);
+  const head = ["Line", "Registration number", "Surname", "Other names", "Sex", "State", "LGA", kind === "UTME" ? "Aggregate" : "Entry", "JAMB course", "Code", "Programme", "Below cut-off", "Findings"];
+  const lines = [head.map(cell).join(",")];
+  for (const r of p.rows) {
+    lines.push([
+      r.line, r.jambRegNo, r.surname, r.otherNames, r.sex, r.stateOfOrigin, r.lga,
+      kind === "UTME" ? r.aggregate ?? "" : "Direct Entry",
+      r.courseName ?? "", r.programme?.code ?? r.jambCode ?? "", r.programme?.name ?? "",
+      r.belowCutoff !== null ? r.belowCutoff : "",
+      (byLine.get(r.line) ?? []).join("; "),
+    ].map(cell).join(","));
+  }
+  return lines.join("\r\n") + "\r\n";
+}
+
 export function blockingFindings(p: CapsParse): Finding[] {
   return p.findings.filter((f) => f.blocking);
 }

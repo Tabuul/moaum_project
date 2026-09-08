@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import type { Programme } from "@/lib/caps";
 import { Shell, type Me } from "@/components/proto/Shell";
+import type { ScopeStructure } from "@/components/proto/ScopeBar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { CapsIntake, type AdmissionPolicy, type CapsBatch, type Finding } from "./CapsIntake";
 
@@ -17,8 +18,9 @@ export default async function CapsIntakePage({
   const requested = typeof params.session === "string" ? params.session : "2026/2027";
   const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
 
-  const [me, programmes, batches, reconciliation, policy] = await Promise.all([
+  const [me, structure, programmes, batches, reconciliation, policy] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
+    api<ScopeStructure>("/api/v1/ref/structure"),
     api<Programme[]>("/api/v1/admissions/programmes"),
     api<CapsBatch[]>(`/api/v1/admissions/caps-batches?session=${encodeURIComponent(session)}`),
     api<Finding[]>(`/api/v1/admissions/sessions/${session}/reconciliation`),
@@ -40,6 +42,7 @@ export default async function CapsIntakePage({
           policyProblem={policy.ok ? null : policy.problem}
           actingOffice={me.ok ? me.data.activeOffice : null}
           today={new Date().toISOString().slice(0, 10)}
+          departments={structure.ok ? structure.data.faculties.flatMap((f) => f.departments.map((d) => ({ code: d.code, name: d.name, facultyName: f.name }))) : []}
         />
       )}
     </Shell>

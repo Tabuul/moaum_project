@@ -178,6 +178,35 @@ public class CapsIntakeService {
         return caps.programme(upper).orElseThrow();
     }
 
+    private static final Set<String> CATEGORIES = Set.of("UNDER GRADUATE", "POST GRADUATE");
+
+    /**
+     * The University's own words for a programme. The code never changes
+     * (BR-007: a retired programme keeps it for every graduate who holds it),
+     * the faculty follows the department, and the name JAMB uses is a
+     * separate matter, set by {@link #setJambAlias}.
+     */
+    @Transactional
+    public Programme editProgramme(String code, String name, String deptCode, String category, boolean archived) {
+        String upper = code.trim().toUpperCase();
+        caps.programme(upper).orElseThrow(() -> new NotFound("programme", upper));
+        if (name == null || name.isBlank()) {
+            throw new DomainRuleViolation("ADM_PROGRAMME_NAME_BLANK", "The programme was given no name.",
+                    new DomainRuleViolation.Remedy("Type the name the University awards the degree under.", "Academic Office"));
+        }
+        String dept = deptCode == null ? "" : deptCode.trim().toUpperCase();
+        String faculty = caps.facultyOfDepartment(dept).orElseThrow(() -> new DomainRuleViolation("ADM_DEPARTMENT_UNKNOWN",
+                "No department carries the code \"" + dept + "\", or it has ended.",
+                new DomainRuleViolation.Remedy("Choose the department from the University's structure.", "Academic Office")));
+        String cat = category == null ? "" : category.trim().toUpperCase();
+        if (!CATEGORIES.contains(cat)) {
+            throw new DomainRuleViolation("ADM_PROGRAMME_CATEGORY", "\"" + category + "\" is not a programme category.",
+                    new DomainRuleViolation.Remedy("A programme is UNDER GRADUATE or POST GRADUATE.", "Academic Office"));
+        }
+        caps.updateProgramme(upper, name.trim(), dept, faculty, cat, archived);
+        return caps.programme(upper).orElseThrow();
+    }
+
     /** The registration number inside a filename, by shape — {@code admissions.reg_no_in}. */
     @Transactional(readOnly = true)
     public Optional<String> regNoIn(String text) {
