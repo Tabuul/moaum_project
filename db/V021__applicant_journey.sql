@@ -32,7 +32,15 @@
 
 BEGIN;
 
--- the applicant is an office the audit spine knows, so every act is attributed
+-- the applicant is an office the audit spine knows, so every act is attributed;
+-- the spine refuses an unattributed write, including this one
+DO $seed$
+BEGIN
+    PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'The applicant as an office the audit spine knows (V021), Directorate of ICT', true);
+END $seed$;
+
 INSERT INTO ref.office (code, label, scope_kind) VALUES ('applicant', 'Applicant', 'institution')
 ON CONFLICT (code) DO NOTHING;
 
