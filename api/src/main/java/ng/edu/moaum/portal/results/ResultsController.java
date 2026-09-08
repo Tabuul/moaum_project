@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -106,5 +108,41 @@ class ResultsController {
 
     private static String blank(String s) {
         return s == null || s.isBlank() ? null : s;
+    }
+
+    /* ── the lecturer's own sheets, the roll, the broadsheet and Senate ── */
+
+    @GetMapping("/mine")
+    @PreAuthorize(READERS)
+    List<Sheets.MySheet> mine(@RequestParam(required = false) String session, @RequestParam(required = false) Integer sem,
+                              @RequestParam(required = false, defaultValue = "false") boolean all) {
+        return service.mine(blank(session), sem, all);
+    }
+
+    @GetMapping("/sheets/{id}/roll")
+    @PreAuthorize(READERS)
+    List<Sheets.RollRow> roll(@PathVariable UUID id) {
+        return service.roll(id);
+    }
+
+    @GetMapping("/broadsheet")
+    @PreAuthorize(READERS)
+    Sheets.Broadsheet broadsheet(@RequestParam String prog, @RequestParam int level, @RequestParam String session, @RequestParam int sem) {
+        return service.broadsheet(prog, level, session, sem);
+    }
+
+    @GetMapping("/senate")
+    @PreAuthorize(READERS)
+    Sheets.Senate senate(@RequestParam String session, @RequestParam int sem) {
+        return service.senate(session, sem);
+    }
+
+    public record MinuteIn(@NotBlank String session, @NotNull Integer sem, String fac, @NotBlank String minute) {
+    }
+
+    @PostMapping("/senate/minute")
+    @PreAuthorize("hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar')")
+    Map<String, Object> minute(@Valid @RequestBody MinuteIn body) {
+        return service.recordMinute(body.session(), body.sem(), blank(body.fac()), body.minute());
     }
 }

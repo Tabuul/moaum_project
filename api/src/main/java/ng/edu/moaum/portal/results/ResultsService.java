@@ -1,5 +1,11 @@
 package ng.edu.moaum.portal.results;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.LinkedHashMap;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -35,9 +41,12 @@ public class ResultsService {
     }
 
     private final ResultsRepository repo;
+    private final TransactionTemplate eachInItsOwn;
 
-    ResultsService(ResultsRepository repo) {
+    ResultsService(ResultsRepository repo, PlatformTransactionManager transactions) {
         this.repo = repo;
+        this.eachInItsOwn = new TransactionTemplate(transactions);
+        this.eachInItsOwn.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     private Sheets.Listed listed(Sheets.Row r, AuditContext ctx) {
@@ -168,5 +177,135 @@ public class ResultsService {
                     r.candidates(), late, late == null ? "—" : late < 6 ? "Head of Department" : "Dean"));
         }
         return new Sheets.Monitor(e, repo.progress(id), outstanding);
+    }
+
+    /* ── the lecturer's own sheets, and the roll under one (proto/part5, part28 scoreEntry) ── */
+
+    @Transactional(readOnly = true)
+    public List<Sheets.MySheet> mine(String session, Integer sem, boolean all) {
+        AuditContext ctx = AuditContextHolder.current().orElse(null);
+        UUID me = ctx == null ? null : ctx.actorId();
+        List<Sheets.MySheet> out = new ArrayList<>();
+        for (ResultsRepository.MineRow r : repo.mine(me, session, sem, all)) {
+            Integer daysLate = null;
+            if ("ENTRY".equals(r.stage()) && r.dueOn() != null && r.dueOn().isBefore(LocalDate.now())) {
+                daysLate = (int) ChronoUnit.DAYS.between(r.dueOn(), LocalDate.now());
+            }
+            out.add(new Sheets.MySheet(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.session(), r.semester(), r.stage(),
+                    Sheets.spine(r.stage()), r.dueOn(), daysLate, r.returnedTimes(), r.candidates(), r.entered(), r.graded(),
+                    r.secondExaminer(), me != null && me.equals(r.lecturerId())));
+        }
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Sheets.RollRow> roll(UUID id) {
+        repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        return repo.roll(id);
+    }
+
+    /* ── the broadsheet: computed from the sheets, never typed (proto/part26 tBroadsheet) ── */
+
+    private static final List<String> COUNTED = List.of("RECORDS", "SENATE", "PUBLISHED");
+
+    @Transactional(readOnly = true)
+    public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem) {
+        List<Sheets.BroadsheetCell> cells = repo.broadsheet(prog, level, session, sem);
+        Map<String, Integer> courses = new LinkedHashMap<>();
+        Map<UUID, List<Sheets.BroadsheetCell>> byStudent = new LinkedHashMap<>();
+        for (Sheets.BroadsheetCell c : cells) {
+            courses.putIfAbsent(c.courseCode(), c.units());
+            byStudent.computeIfAbsent(c.studentId(), k -> new ArrayList<>()).add(c);
+        }
+        List<Sheets.ClassBand> classes = repo.classBands();
+        List<Sheets.BroadsheetRow> rows = new ArrayList<>();
+        BigDecimal gpaSum = BigDecimal.ZERO;
+        long withGpa = 0;
+        long passed = 0;
+        long carrying = 0;
+        long pendingSets = cells.stream().filter(c -> !COUNTED.contains(c.stage())).map(Sheets.BroadsheetCell::courseCode).distinct().count();
+        for (Map.Entry<UUID, List<Sheets.BroadsheetCell>> e : byStudent.entrySet()) {
+            List<Sheets.BroadsheetMark> marks = new ArrayList<>();
+            int units = 0;
+            BigDecimal points = BigDecimal.ZERO;
+            int pending = 0;
+            boolean failed = false;
+            Sheets.BroadsheetCell first = e.getValue().getFirst();
+            for (String code : courses.keySet()) {
+                Sheets.BroadsheetCell c = e.getValue().stream().filter(x -> x.courseCode().equals(code)).findFirst().orElse(null);
+                if (c == null) {
+                    marks.add(new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false));
+                    continue;
+                }
+                boolean counted = COUNTED.contains(c.stage()) && "GRADED".equals(c.outcome()) && c.points() != null;
+                if (counted) {
+                    units += c.units();
+                    points = points.add(c.points().multiply(BigDecimal.valueOf(c.units())));
+                    if (c.points().signum() == 0) {
+                        failed = true;
+                    }
+                } else {
+                    pending++;
+                }
+                marks.add(new Sheets.BroadsheetMark(code, c.stage(), counted ? c.total() : null, counted ? c.grade() : null,
+                        counted ? c.points() : null, c.outcome(), counted));
+            }
+            BigDecimal gpa = units == 0 ? null : points.divide(BigDecimal.valueOf(units), 2, RoundingMode.HALF_UP);
+            String standing = gpa == null ? "Pending" : failed ? "Carryover" : "Pass";
+            if (gpa != null) {
+                gpaSum = gpaSum.add(gpa);
+                withGpa++;
+                if (failed) {
+                    carrying++;
+                } else {
+                    passed++;
+                }
+            }
+            rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
+                    points, gpa, pending, standing));
+        }
+        BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
+        List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), x.getValue())).toList();
+        return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,
+                repo.gradeBands(), classes, repo.gradingInstrument());
+    }
+
+    /* ── Senate: the schedule, and the minute that publishes (proto/part26 tSenate, tPublish) ── */
+
+    @Transactional(readOnly = true)
+    public Sheets.Senate senate(String session, int sem) {
+        List<Sheets.SenateFaculty> f = repo.senateFaculties(session, sem);
+        long sets = f.stream().mapToLong(Sheets.SenateFaculty::sets).sum();
+        long at = f.stream().mapToLong(Sheets.SenateFaculty::atSenate).sum();
+        long pub = f.stream().mapToLong(Sheets.SenateFaculty::published).sum();
+        long out = f.stream().mapToLong(Sheets.SenateFaculty::outstanding).sum();
+        List<Sheets.SenateMinute> minutes = repo.senateMinutes(session, sem);
+        long cands = minutes.stream().mapToLong(Sheets.SenateMinute::candidates).sum();
+        return new Sheets.Senate(session, sem, f, minutes, sets, at, pub, out, cands);
+    }
+
+    /**
+     * The minute publishes every set waiting at Senate in the scope. Each set is
+     * its own transaction: one the rules refuse (the same person took the
+     * previous stage) is reported by name and does not hold the others.
+     */
+    public Map<String, Object> recordMinute(String session, int sem, String fac, String minute) {
+        if (minute == null || minute.isBlank()) {
+            throw new DomainRuleViolation("RES_MINUTE_REQUIRED", "A result reaches a student on the Senate minute that approved it, and none was cited.",
+                    new DomainRuleViolation.Remedy("Cite the minute of the sitting that approved the results.", "Registrar"));
+        }
+        List<UUID> waiting = eachInItsOwn.execute(status -> repo.sheetsAtSenate(session, sem, fac));
+        List<Map<String, Object>> published = new ArrayList<>();
+        List<Map<String, Object>> refused = new ArrayList<>();
+        for (UUID id : waiting == null ? List.<UUID>of() : waiting) {
+            try {
+                String stage = eachInItsOwn.execute(status -> repo.advance(id, null, minute.trim()));
+                published.add(Map.of("id", id, "stage", stage == null ? "" : stage));
+            } catch (RuntimeException refusedByTheRules) {
+                String why = refusedByTheRules.getMessage() == null ? refusedByTheRules.getClass().getSimpleName() : refusedByTheRules.getMessage();
+                refused.add(Map.of("id", id, "why", why.length() > 300 ? why.substring(0, 300) : why));
+            }
+        }
+        return Map.of("session", session, "semester", sem, "minute", minute.trim(), "published", published, "refused", refused);
     }
 }

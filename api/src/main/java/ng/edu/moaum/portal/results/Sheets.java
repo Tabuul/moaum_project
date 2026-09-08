@@ -82,4 +82,54 @@ public final class Sheets {
 
     public record Monitor(ExamSession examSession, List<FacultyProgress> faculties, List<Outstanding> outstanding) {
     }
+
+    /* ── the lecturer's own sheets, the roll under one, the broadsheet and Senate (proto/part5, 28, 26) ── */
+
+    public record MySheet(UUID id, String courseCode, String courseTitle, int units, String session, int semester, String stage,
+                          int spineStage, LocalDate dueOn, Integer daysLate, int returnedTimes, long candidates, long entered,
+                          long graded, String secondExaminer, boolean mine) {
+    }
+
+    /** every approved registration on the sheet, with the latest mark where one exists */
+    public record RollRow(UUID studentId, String number, String surname, String otherNames, String programmeCode,
+                          String programmeName, int level, Integer ca, Integer exam, Integer total, String grade,
+                          BigDecimal points, String outcome, Integer version) {
+    }
+
+    public record GradeBand(String grade, int low, int high, BigDecimal points) {
+    }
+
+    public record ClassBand(String clazz, BigDecimal low, BigDecimal high, int ord) {
+    }
+
+    /** one candidate, one course, on the broadsheet */
+    public record BroadsheetCell(UUID studentId, String number, String surname, String otherNames, String courseCode,
+                                 int units, String stage, Integer total, String grade, BigDecimal points, String outcome) {
+    }
+
+    public record BroadsheetCourse(String courseCode, int units) {
+    }
+
+    public record BroadsheetMark(String courseCode, String stage, Integer total, String grade, BigDecimal points, String outcome, boolean counted) {
+    }
+
+    public record BroadsheetRow(UUID studentId, String number, String name, List<BroadsheetMark> marks, int units,
+                                BigDecimal points, BigDecimal gpa, int pending, String standing) {
+    }
+
+    public record Broadsheet(String programme, int level, String session, int semester, List<BroadsheetCourse> courses,
+                             List<BroadsheetRow> rows, BigDecimal meanGpa, long passed, long carrying, long pendingSets,
+                             List<GradeBand> bands, List<ClassBand> classes, String gradingInstrument) {
+    }
+
+    public record SenateFaculty(String facultyCode, String facultyName, long sets, long atSenate, long published,
+                                long outstanding, long candidates) {
+    }
+
+    public record SenateMinute(String minute, OffsetDateTime firstPublishedAt, OffsetDateTime lastPublishedAt, long sets, long candidates) {
+    }
+
+    public record Senate(String session, int semester, List<SenateFaculty> faculties, List<SenateMinute> minutes,
+                         long sets, long atSenate, long published, long outstanding, long candidatesPublished) {
+    }
 }

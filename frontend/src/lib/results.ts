@@ -135,3 +135,28 @@ export function download(name: string, text: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+/* ── the lecturer's own sheets, the roll, the broadsheet and Senate (V013 results module, second cut) ── */
+export interface MySheet {
+  id: string; courseCode: string; courseTitle: string; units: number; session: string; semester: number; stage: string;
+  spineStage: number; dueOn: string | null; daysLate: number | null; returnedTimes: number; candidates: number; entered: number;
+  graded: number; secondExaminer: string | null; mine: boolean;
+}
+export interface RollRow {
+  studentId: string; number: string; surname: string; otherNames: string; programmeCode: string; programmeName: string; level: number;
+  ca: number | null; exam: number | null; total: number | null; grade: string | null; points: number | null; outcome: string | null; version: number | null;
+}
+export interface GradeBand { grade: string; low: number; high: number; points: number }
+export interface ClassBand { clazz: string; low: number; high: number; ord: number }
+export interface BroadsheetMark { courseCode: string; stage: string; total: number | null; grade: string | null; points: number | null; outcome: string | null; counted: boolean }
+export interface BroadsheetRow { studentId: string; number: string; name: string; marks: BroadsheetMark[]; units: number; points: number; gpa: number | null; pending: number; standing: string }
+export interface Broadsheet {
+  programme: string; level: number; session: string; semester: number; courses: { courseCode: string; units: number }[]; rows: BroadsheetRow[];
+  meanGpa: number | null; passed: number; carrying: number; pendingSets: number; bands: GradeBand[]; classes: ClassBand[]; gradingInstrument: string | null;
+}
+export interface SenateFaculty { facultyCode: string; facultyName: string; sets: number; atSenate: number; published: number; outstanding: number; candidates: number }
+export interface SenateMinute { minute: string; firstPublishedAt: string; lastPublishedAt: string; sets: number; candidates: number }
+export interface Senate { session: string; semester: number; faculties: SenateFaculty[]; minutes: SenateMinute[]; sets: number; atSenate: number; published: number; outstanding: number; candidatesPublished: number }
+
+/** the outcomes a mark can carry besides a grade (assessment.score) */
+export const OUTCOMES = ["GRADED", "ABSENT", "WITHHELD", "INCOMPLETE", "MALPRACTICE", "EXEMPTED"] as const;

@@ -6,6 +6,8 @@ import { PlatformDashboard } from "./dashboards/Platform";
 import { AcademicDashboard } from "./dashboards/Academic";
 import { RegistrarDashboard } from "./dashboards/Registrar";
 import { OfficeDashboard } from "./dashboards/Office";
+import { LecturerDashboard } from "./dashboards/Lecturer";
+import type { MySheet } from "@/lib/results";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,8 @@ export default async function DashboardPage() {
   if (office === "applicant") redirect("/applicant");
   if (office === "student") redirect("/student");
   const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
+  /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
+  const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;
   return (
     <Shell route="r/academic" me={me.ok ? me.data : null}>
       {!me.ok ? <ProblemNotice problem={me.problem} /> : null}
@@ -30,6 +34,8 @@ export default async function DashboardPage() {
         <AcademicDashboard session={session} />
       ) : office === "registrar" ? (
         <RegistrarDashboard session={session} />
+      ) : office === "lecturer" ? (
+        <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} />
       ) : (
         <OfficeDashboard me={me.ok ? me.data : null} />
       )}
