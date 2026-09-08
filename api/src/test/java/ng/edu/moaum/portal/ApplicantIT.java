@@ -90,9 +90,9 @@ class ApplicantIT {
         assertThat(appNo).matches("APP/93/\\d{6}");
         assertThat(post("/api/v1/applicant/lookup", Map.of("session", SESSION, "jambKey", jamb)).getBody().get("state")).isEqualTo("registered");
 
-        // a second account for the same number is refused
+        // a second account for the same number is refused as a conflict: one already exists
         assertThat(post("/api/v1/applicant/register", Map.of("session", SESSION, "jambKey", jamb, "email", "other" + jamb + "@example.com",
-                "phone", "08034117725", "password", "a long enough password")).getStatusCode().value()).isEqualTo(422);
+                "phone", "08034117725", "password", "a long enough password")).getStatusCode().value()).isEqualTo(409);
 
         // the applicant's own view: stage 0, biodata from JAMB, no result, no decision
         Map<String, Object> me = it.get(token, "/api/v1/applicant/me").getBody();
