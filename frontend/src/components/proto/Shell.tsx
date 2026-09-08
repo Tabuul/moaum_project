@@ -63,12 +63,14 @@ const GROUPS: NavGroup[] = [
 const ROUTES: Record<string, string> = {
   "r/academic": "/",
   "t/capsintake": "/admissions/caps",
+  "t/admissionsetup": "/admissions/settings",
 };
 
 /* the topbar titles (proto/part2.html TITLES) */
 export const TITLES: Record<string, [string, string]> = {
   "r/academic": ["Academic Affairs", "Registration, credentials and Senate business"],
   "t/capsintake": ["JAMB admission lists", "UTME and Direct Entry · downloaded from CAPS, reconciled both ways"],
+  "t/admissionsetup": ["Admission settings", "The Central Admissions Committee’s guidelines, made into settings the portal applies"],
 };
 
 export interface Me {

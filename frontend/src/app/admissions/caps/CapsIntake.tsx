@@ -12,6 +12,7 @@
  *   · one code, two names — the University's programmes and JAMB's aliases
  */
 import { useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { xlsxRows } from "@/lib/xlsx";
 import { CAPS_DEMO } from "@/lib/caps-demo";
@@ -364,9 +365,9 @@ export function CapsIntake({
           kind="bad"
           title={`No admission settings exist for ${session}`}
           action={
-            <Btn kind="ghost" disabled title="Still the prototype's screen">
+            <Link href={`/admissions/settings?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
               Go to the admission settings
-            </Btn>
+            </Link>
           }
         >
           The cut-off is read from the session&rsquo;s admission settings — a faculty&rsquo;s, and a programme&rsquo;s
@@ -375,7 +376,15 @@ export function CapsIntake({
         </Note>
       ) : !policy.inForce ? (
         <>
-          <Note kind="bad" title={`The admission settings for ${session} are a draft — nothing may be loaded until they are in force`}>
+          <Note
+            kind="bad"
+            title={`The admission settings for ${session} are a draft — nothing may be loaded until they are in force`}
+            action={
+              <Link href={`/admissions/settings?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
+                Go to the admission settings
+              </Link>
+            }
+          >
             {policy.findings.length} finding{policy.findings.length === 1 ? "" : "s"} keep{policy.findings.length === 1 ? "s" : ""} them
             from being put in force. Each names the rule and the office that answers it. The cut-offs below are what
             the draft states and would apply.

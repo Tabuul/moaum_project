@@ -106,15 +106,6 @@ public class CapsIntakeService {
         return caps.programmes().stream().collect(Collectors.toMap(Programme::code, Programme::name, (a, b) -> a));
     }
 
-    /** The session's admission settings, with the cut-offs and whatever keeps them a draft. */
-    @Transactional(readOnly = true)
-    public AdmissionPolicy policy(String session) {
-        AdmissionPolicy.Row row = caps.policy(session).orElseThrow(() -> new NotFound("admission settings for", session));
-        return new AdmissionPolicy(row.session(), row.state(), "IN_FORCE".equals(row.state()), row.instrument(),
-                row.nucQuota(), row.weightUtme(), row.weightPutme(), row.ratioUtme(), row.ratioDe(),
-                caps.facultyCutoffs(session), caps.programmeCutoffs(session), caps.policyFindings(session));
-    }
-
     @Transactional(readOnly = true)
     public CapsBatch get(UUID id) {
         return caps.find(id).orElseThrow(() -> new NotFound("CAPS batch", id));

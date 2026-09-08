@@ -76,13 +76,6 @@ class AdmissionsController {
         return intake.policyFindings(session + "/" + year);
     }
 
-    /** The session's admission settings: the cut-offs that apply, and whether they are in force. */
-    @GetMapping("/sessions/{session}/{year}/policy")
-    @PreAuthorize(READERS)
-    AdmissionPolicy settings(@PathVariable String session, @PathVariable String year) {
-        return intake.policy(session + "/" + year);
-    }
-
     /** The programmes and their JAMB names, so a list can be resolved before it is loaded. */
     @GetMapping("/programmes")
     @PreAuthorize(READERS)

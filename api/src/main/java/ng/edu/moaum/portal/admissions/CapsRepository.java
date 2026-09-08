@@ -107,16 +107,6 @@ class CapsRepository {
 
     /* ── the session's admission settings ───────────────────────────── */
 
-    Optional<AdmissionPolicy.Row> policy(String session) {
-        return jdbc.sql("""
-                SELECT session, state, instrument, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de
-                  FROM admissions.session_policy WHERE session = :session
-                """)
-                .param("session", session)
-                .query(AdmissionPolicy.Row.class)
-                .optional();
-    }
-
     boolean policyInForce(String session) {
         return jdbc.sql("SELECT count(*) FROM admissions.session_policy WHERE session = :session AND state = 'IN_FORCE'")
                 .param("session", session)
