@@ -743,7 +743,7 @@ BEGIN
       FROM ref.programme p JOIN ref.jamb_alias a ON a.code = p.code
      WHERE upper(btrim(p.name)) <> upper(btrim(a.jamb_name));
     PERFORM pg_temp.assert('The two names differ for most programmes',
-        n = 56, n || ' of 92 differ — a name cannot be used as the join');
+        n = 60, n || ' of 92 differ (56 named by the 2025/2026 guidelines, four more by the first 2026/2027 CAPS download, V012) — a name cannot be used as the join');
 END $$;
 
 -- ══ V007 · what arrives ATTACHED to a candidate ═════════════════════════
