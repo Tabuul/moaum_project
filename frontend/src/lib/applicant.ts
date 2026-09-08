@@ -14,7 +14,8 @@ export interface ScreeningResult {
   utme: number | null;
   utmeScaled: number | null;
   screening: number | null;
-  screeningSource: "CBT" | "OLEVEL" | "NONE";
+  /** EXAM: the programme is screened by the post-UTME examination alone (V022); the score appears when it is entered and released */
+  screeningSource: "CBT" | "OLEVEL" | "EXAM" | "NONE";
   weightUtme: number;
   weightPutme: number;
   aggregate: number | null;

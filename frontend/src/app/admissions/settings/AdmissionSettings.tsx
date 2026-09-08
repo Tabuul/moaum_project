@@ -352,7 +352,7 @@ export function AdmissionSettings({
     <>
       <Note kind="info" title={`The ${session} distribution is the Deans' to submit`}>
         Paragraph 2.3 asks each Dean to distribute the faculty quota across the courses in the faculty and submit it to the
-        Academic Office; this is where it is submitted. The NUC approved quota is <b>{policy.nucQuota.toLocaleString()}</b>
+        Academic Office; this is where it is submitted. The NUC approved quota is {field("nucQuota", policy.nucQuota, 96, (v) => void send("PUT", base, settingsBody({ nucQuota: v ?? policy.nucQuota }), `NUC approved quota stated as ${v ?? policy.nucQuota} for ${session}`, "q"))} <span className="sub2">(a setting: change it here, and the distribution below is checked against it)</span>
         {previous ? <>; the {previousSession} distribution beside it totals <b>{prevTotal.toLocaleString()}</b>.</> : "."}
       </Note>
       <Panel title="Faculty quotas and cut-off marks" right="Paragraphs 2.3 and 2.13">

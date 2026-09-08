@@ -76,6 +76,24 @@ export function Apply({ a }: { a: Application }) {
             [<Two key="s" a="Declaration" b="Signed electronically" />, `Accepted ${when(a.submittedAt)}`],
           ]} />
         </Panel>
+        {(() => {
+          const p = a.documents.find((d) => d.kind === "PASSPORT");
+          return (
+            <Panel title="Your passport photograph" right="Can be uploaded or replaced at any time">
+              <input ref={file} type="file" accept="image/jpeg,image/png,application/pdf" style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload("PASSPORT", f); e.target.value = ""; }} />
+              <PBody>
+                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  {p ? <span className="sub2 tnum">{p.filename} · {Math.round(p.bytes / 1024)} KB</span> : <span className="sub2">Not uploaded yet. It goes on your screening slip and, later, your identity card.</span>}
+                  {p ? p.status === "ACCEPTED" ? <Pil kind="ok">Accepted</Pil> : p.status === "REJECTED" ? <Pil kind="bad">Rejected &mdash; reupload</Pil> : <Pil kind="info">Uploaded</Pil> : null}
+                  <Btn kind={p && p.status !== "REJECTED" ? "ghost" : "primary"} disabled={busy !== null} onClick={() => file.current?.click()}>{busy === "doc-PASSPORT" ? "Uploading…" : p ? "Replace" : "Upload"}</Btn>
+                </div>
+                {p?.status === "REJECTED" && p.reviewNote ? <div className="sub2" style={{ marginTop: 6, color: "var(--red-ink)" }}>{p.reviewNote}</div> : null}
+                {problem ? <ProblemNotice problem={problem} /> : null}
+              </PBody>
+            </Panel>
+          );
+        })()}
       </>
     );
   }
@@ -91,8 +109,9 @@ export function Apply({ a }: { a: Application }) {
     );
   }
 
-  const missing = DOCUMENT_KINDS.filter(([k]) => !a.documents.some((d) => d.kind === k));
-  const rejected = a.documents.filter((d) => d.status === "REJECTED");
+  /* the passport photograph comes whenever the applicant has one (V022): shown, never a gate */
+  const missing = DOCUMENT_KINDS.filter(([k]) => k !== "PASSPORT" && !a.documents.some((d) => d.kind === k));
+  const rejected = a.documents.filter((d) => d.status === "REJECTED" && d.kind !== "PASSPORT");
   const gates: [string, string][] = [];
   if (!nok.trim()) gates.push(["Next of kin is missing", "Name and phone number, under Biodata."]);
   for (const [k, label] of missing) gates.push([`${label} not uploaded`, "PDF or JPEG, 2 MB at most."]);

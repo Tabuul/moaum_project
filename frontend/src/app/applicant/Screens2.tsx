@@ -89,7 +89,7 @@ export function Score({ a }: { a: Application }) {
     <>
       <Tiles items={[
         ["UTME", String(r.utme ?? "—"), null, r.utmeScaled !== null ? `of 400 · scaled to ${r.utmeScaled}` : "Direct Entry · no UTME"],
-        ["Post-UTME screening", r.screening === null ? "—" : String(r.screening), null, r.screeningSource === "CBT" ? "of 100 · computer-based test" : r.screeningSource === "OLEVEL" ? "of 100 · your O’Level results, under the session’s grading" : "no screening component yet"],
+        ["Post-UTME screening", r.screening === null ? "—" : String(r.screening), null, r.screeningSource === "CBT" ? "of 100 · computer-based test" : r.screeningSource === "EXAM" ? (r.screening === null ? "your programme is screened by examination · score not yet entered" : "of 100 · the post-UTME examination") : r.screeningSource === "OLEVEL" ? "of 100 · your O’Level results, under the session’s grading" : "no screening component yet"],
         ["Aggregate", agg === null ? "—" : String(agg), above === null ? null : above ? "var(--green-ink)" : "var(--red-ink)", `Weighted ${r.weightUtme} / ${r.weightPutme}`],
         ["Departmental cut-off", r.cutoff === null ? "—" : String(r.cutoff), null, r.cutoff === null ? "Not stated in the settings yet" : `${a.programme ?? ""} · this session`],
       ]} />

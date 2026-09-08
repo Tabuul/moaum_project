@@ -325,9 +325,10 @@ public class ApplicantService {
     public Map<String, Object> document(UUID account, String kind, String filename, String contentType, String base64) {
         UUID app = applicationOf(account);
         Map<String, Object> a = repo.application(app).orElseThrow();
-        if (a.get("submitted_at") != null) {
+        /* the passport photograph comes whenever the applicant has one (V022); everything else is part of the declaration */
+        if (a.get("submitted_at") != null && !"PASSPORT".equals(kind)) {
             throw new DomainRuleViolation("APP_SUBMITTED", "The application was submitted and can no longer be edited.",
-                    new DomainRuleViolation.Remedy("Write to the Registry quoting your application number.", "Registry"));
+                    new DomainRuleViolation.Remedy("Write to the Registry quoting your application number. The passport photograph can still be replaced.", "Registry"));
         }
         if (kind == null || !DOCUMENT_KINDS.contains(kind)) {
             throw new DomainRuleViolation("APP_DOCUMENT_KIND", "'" + kind + "' is not one of the five documents.",

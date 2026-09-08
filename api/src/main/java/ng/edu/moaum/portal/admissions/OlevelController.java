@@ -41,12 +41,15 @@ class OlevelController {
     /** the office the score belongs to */
     static final String SCORE_OFFICE = "academic";
 
+    /** {@code examProgrammes}: the programmes screened by the post-UTME examination alone, to which this grading does not apply (V022) */
     public record Grading(String session, boolean stated, int subjectsCounted, int bonusOneSitting, int bonusTwoSittings,
-                          Map<String, Integer> points) {
+                          Map<String, Integer> points, List<String> examProgrammes) {
     }
 
     public record GradingIn(@Min(1) @Max(9) int subjectsCounted, @Min(0) @Max(100) int bonusOneSitting,
-                            @Min(0) @Max(100) int bonusTwoSittings, @NotNull Map<String, Integer> points) {
+                            @Min(0) @Max(100) int bonusTwoSittings, @NotNull Map<String, Integer> points,
+                            /** null leaves the examination programmes as they are; a list replaces them whole */
+                            List<String> examProgrammes) {
     }
 
     public record Grade(String subject, String grade, int points) {
@@ -105,6 +108,23 @@ class OlevelController {
                     ON CONFLICT (session, grade) DO UPDATE SET points = EXCLUDED.points
                     """).param("s", s).param("g", grade).param("p", points).update();
         }
+        if (in.examProgrammes() != null) {
+            /* the programmes screened by examination, replaced whole: named ones added, the rest ended */
+            List<String> codes = in.examProgrammes().stream().map(c -> c.trim().toUpperCase()).filter(c -> !c.isEmpty()).distinct().toList();
+            for (String code : codes) {
+                long known = jdbc.sql("SELECT count(*) FROM ref.programme WHERE code = :c").param("c", code).query(Long.class).single();
+                if (known == 0) {
+                    throw new DomainRuleViolation("OLEVEL_EXAM_PROGRAMME", "\"" + code + "\" is not a programme the University runs.",
+                            new DomainRuleViolation.Remedy("Choose the programmes from the University's list.", "Academic Office"));
+                }
+            }
+            jdbc.sql("DELETE FROM admissions.screening_exam_programme WHERE session = :s AND NOT (programme_code = ANY(:codes))")
+                    .param("s", s).param("codes", codes.toArray(String[]::new)).update();
+            for (String code : codes) {
+                jdbc.sql("INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (:s, :c) ON CONFLICT DO NOTHING")
+                        .param("s", s).param("c", code).update();
+            }
+        }
         return read(s);
     }
 
@@ -156,7 +176,9 @@ class OlevelController {
         for (String grade : GRADES) {
             points.put(grade, jdbc.sql("SELECT admissions.olevel_points(:s, :g)").param("s", session).param("g", grade).query(Integer.class).single());
         }
+        List<String> exam = jdbc.sql("SELECT programme_code FROM admissions.screening_exam_programme WHERE session = :s ORDER BY programme_code")
+                .param("s", session).query(String.class).list();
         return new Grading(session, Boolean.TRUE.equals(rule.get("stated")), ((Number) rule.get("subjects_counted")).intValue(),
-                ((Number) rule.get("bonus_one_sitting")).intValue(), ((Number) rule.get("bonus_two_sittings")).intValue(), points);
+                ((Number) rule.get("bonus_one_sitting")).intValue(), ((Number) rule.get("bonus_two_sittings")).intValue(), points, exam);
     }
 }

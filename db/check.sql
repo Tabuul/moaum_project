@@ -101,6 +101,7 @@ BEGIN
     DELETE FROM admissions.applicant_event;
     DELETE FROM admissions.screening_batch;
     DELETE FROM admissions.applicant_fee WHERE session IN ('9998/9999', '9999/0000');
+    DELETE FROM admissions.screening_exam_programme WHERE session IN ('9997/9998', '9998/9999', '9999/0000');
 
     -- the property session of V020, and the sittings derived from attachments
     DELETE FROM admissions.rule_subject WHERE group_id IN (
@@ -141,7 +142,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 94
+\set EXPECTED 96
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -935,8 +936,8 @@ BEGIN
 
     SELECT count(*) INTO v_n FROM admissions.policy_findings('2025/2026');
     PERFORM pg_temp.assert('The settings as issued do not yet pass their own checks',
-        v_n = 2, v_n || ' findings: no faculty quota distribution, and 28 of 92 '
-        'programmes with no stated requirement');
+        v_n = 1, v_n || ' findings: no faculty quota distribution (a programme with no rule '
+        'is skipped, not a finding, since V022)');
 END $$;
 
 -- ── 54-55. it cannot be put in force ────────────────────────────────────
@@ -1508,6 +1509,39 @@ BEGIN
         AND (SELECT offer_state FROM admissions.candidate c JOIN admissions.application a ON a.candidate_id = c.id WHERE a.id = app) = 'ACCEPTED'
         AND admissions.application_stage(app) = 6,
         'the same candidate the Academic Office brings onto the register with people.intake, and the same aggregate rule as its settings');
+END $$;
+
+-- ══ V022 · SCREENED BY EXAMINATION, AND THE PASSPORT AT ANY TIME ═════════
+
+-- ── 95–96. an examination programme is scored on the examination alone; the passport is no gate ──
+DO $$
+DECLARE app uuid; f record; g record; ok boolean;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    -- the application of 91–94 (MBBS, session 9997/9998) has a CBT score of 68.5 and an O'Level result would not change it;
+    -- name MBBS as screened by examination and the source says so; take the score away and there is no O'Level fallback
+    SELECT a.id INTO app FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+     WHERE a.session = '9997/9998' AND c.jamb_reg_no = '20269999AP';
+    INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES ('9997/9998', 'C00061');
+    SELECT * INTO f FROM admissions.screening_component(app);
+    UPDATE admissions.application SET screening_score = NULL WHERE id = app;
+    SELECT * INTO g FROM admissions.screening_component(app);
+    UPDATE admissions.application SET screening_score = 68.5 WHERE id = app;
+    PERFORM pg_temp.assert('A programme screened by examination is scored on the examination alone, never on O''Level grading',
+        f.source = 'EXAM' AND f.screening = 68.5 AND f.olevel_total IS NULL AND g.source = 'EXAM' AND g.screening IS NULL,
+        'the departments that sit the post-UTME examination are not included in the O''Level screening');
+
+    -- 96. the passport photograph is not a gate on submitting
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    UPDATE admissions.application SET submitted_at = NULL WHERE id = app;
+    INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes)
+    SELECT gen_random_uuid(), app, k, lower(k) || '.pdf', 'application/pdf', 10
+      FROM unnest(ARRAY['OLEVEL_STATEMENT','BIRTH_CERT','LGA_ID','JAMB_SLIP']) k;
+    ok := admissions.submit_application(app, '127.0.0.1') = 'submitted';
+    PERFORM pg_temp.assert('The four documents are needed to submit; the passport photograph can come at any time',
+        ok AND (SELECT submitted_at FROM admissions.application WHERE id = app) IS NOT NULL,
+        'a photograph arrives whenever the applicant has one, and is the one document outside the declaration');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
