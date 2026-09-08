@@ -63,17 +63,22 @@ public class AuthService {
                 () -> tx.execute(status -> work.get()));
     }
 
+    /**
+     * The failure is written before the refusal is raised: a refusal thrown
+     * inside the transaction would roll the failed-attempt count back with it,
+     * and five wrong passwords would never lock anything.
+     */
     public SignedIn signIn(String usernameIn, String password, String ip, String preferredOffice) {
         String username = usernameIn == null ? "" : usernameIn.trim().toLowerCase();
         AuthRepository.Credential c = repo.byUsername(username).orElse(null);
-        return atTheDoor(c == null ? null : c.personId(), "sign-in", () -> {
+        Object outcome = atTheDoor(c == null ? null : c.personId(), "sign-in", () -> {
             if (c == null || c.endedOn() != null) {
                 repo.event(username, c == null ? null : c.personId(), "UNKNOWN", ip, null);
-                throw badCredentials();
+                return badCredentials();
             }
             if (c.lockedUntil() != null && c.lockedUntil().isAfter(OffsetDateTime.now())) {
                 repo.event(username, c.personId(), "LOCKED", ip, null);
-                throw new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
+                return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                         + c.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes, or ask the Registry to reset the password.", "Registrar"));
             }
@@ -81,7 +86,7 @@ public class AuthService {
                 int attempts = c.failedAttempts() + 1;
                 repo.failed(c.personId(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
                 repo.event(username, c.personId(), "BAD_PASSWORD", ip, null);
-                throw badCredentials();
+                return badCredentials();
             }
             List<AuthRepository.Office> offices = repo.liveOffices(c.personId());
             List<String> codes = offices.stream().map(AuthRepository.Office::officeCode).distinct().toList();
@@ -98,6 +103,10 @@ public class AuthService {
                             "scopeKind", o.scopeKind(), "scopeId", o.scopeId() == null ? "" : o.scopeId(),
                             "validTo", o.validTo() == null ? "" : o.validTo().toString())).toList(), c.mustChange());
         });
+        if (outcome instanceof DomainRuleViolation refused) {
+            throw refused;
+        }
+        return (SignedIn) outcome;
     }
 
     private static DomainRuleViolation badCredentials() {
