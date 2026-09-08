@@ -315,11 +315,17 @@ jobs:
             -d '{"surname":"CIBOOT","givenNames":"Invented","username":"ci-boot","password":"a ci password 2026"}' >/dev/null \
             || { echo "::error::The first account could not be made."; docker logs api; exit 1; }
           curl -fsS -c /tmp/jar -X POST http://localhost:3000/api/auth/sign-in -H 'Content-Type: application/json' \
-            -d '{"username":"ci-boot","password":"a ci password 2026"}' >/dev/null \
+            -d '{"username":"ci-boot","password":"a ci password 2026","office":"ict"}' >/dev/null \
             || { echo "::error::Signing in through the portal failed."; docker logs portal-web; exit 1; }
           code=$(curl -s -b /tmp/jar -o /tmp/portal.html -w '%{http_code}' http://localhost:3000/)
           [ "$code" = "200" ] || { echo "::error::GET / with a session returned $code"; docker logs portal-web; exit 1; }
-          grep -q "What is actually true" /tmp/portal.html || { echo "::error::The page served is not the portal."; exit 1; }
+          # acting as the Director of ICT, the dashboard is the platform's own: the service, the database, the latest migration
+          grep -q "What is actually true" /tmp/portal.html || { echo "::error::The page served is not the platform dashboard."; exit 1; }
+          # the same session acting as the Registrar gets the Registrar's dashboard, drawn from the register
+          token=$(awk '$6 == "moaum_session" { print $7 }' /tmp/jar)
+          code=$(curl -s -b "moaum_session=$token; moaum_office=registrar" -o /tmp/registrar.html -w '%{http_code}' http://localhost:3000/)
+          [ "$code" = "200" ] || { echo "::error::GET / as the Registrar returned $code"; docker logs portal-web; exit 1; }
+          grep -q "Registry business" /tmp/registrar.html || { echo "::error::The Registrar did not get the Registrar's dashboard."; exit 1; }
           latest=$(ls db/V*.sql | sort | tail -1 | xargs basename)
           grep -q "$latest" /tmp/portal.html || { echo "::error::The frontend did not render the API's status (the latest migration, $latest, should be named on the dashboard)."; docker logs portal-web; exit 1; }
           echo "the frontend rendered the API's status"
