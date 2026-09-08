@@ -85,7 +85,7 @@ class ProblemHandler {
                     "Send X-Active-Office with one of the offices your token carries.", "office", "Directorate of ICT"));
             return problem;
         }
-        if ("23514".equals(state) || "23502".equals(state) || "22P02".equals(state)) {
+        if ("23514".equals(state) || "23502".equals(state) || "22P02".equals(state) || "P0002".equals(state)) {
             ProblemDetail problem = problem(HttpStatus.UNPROCESSABLE_CONTENT, message, request);
             problem.setProperty("code", "DATABASE_RULE_REFUSED");
             if (hint != null) {

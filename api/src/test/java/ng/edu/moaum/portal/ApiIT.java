@@ -130,9 +130,22 @@ class ApiIT {
     }
 
     @Test
+    void aUtmeListIsRefusedWhileNoSettingsAreInForce() {
+        ResponseEntity<Map> r = client.post().uri("/api/v1/admissions/caps-batches")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
+                .header("X-Active-Office", "academic")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(batch("UTME", List.of(row("UTME", 312, "C00061"))))
+                .retrieve().toEntity(Map.class);
+        assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(422);
+        assertThat(r.getBody().get("code")).isEqualTo("ADM_SETTINGS_NOT_IN_FORCE");
+        assertThat(String.valueOf(r.getBody().get("detail"))).contains(SESSION);
+    }
+
+    @Test
     void aCapsListLoadsWholeAndReconciles() {
-        Map<String, Object> batch = batch("UTME", List.of(
-                row("UTME", 312, "C00061"), row("UTME", 287, "C00061")));
+        Map<String, Object> batch = batch("DIRECT_ENTRY", List.of(
+                row("DIRECT_ENTRY", null, "C00061"), row("DIRECT_ENTRY", null, "C00061")));
         ResponseEntity<Map> loaded = client.post().uri("/api/v1/admissions/caps-batches")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
                 .header("X-Active-Office", "academic")
@@ -140,10 +153,12 @@ class ApiIT {
                 .body(batch)
                 .retrieve().toEntity(Map.class);
         assertThat(loaded.getStatusCode().value()).as(String.valueOf(loaded.getBody())).isEqualTo(201);
-        assertThat(loaded.getBody().get("rowsRead")).isEqualTo(2);
-        assertThat(loaded.getBody().get("uploadedOffice")).isEqualTo("academic");
-        assertThat(loaded.getBody().get("uploadedBy")).isEqualTo(registrar.toString());
-        String id = String.valueOf(loaded.getBody().get("id"));
+        assertThat(loaded.getBody().get("rowsLoaded")).isEqualTo(2);
+        Map<?, ?> created = (Map<?, ?>) loaded.getBody().get("batch");
+        assertThat(created.get("rowsRead")).isEqualTo(2);
+        assertThat(created.get("uploadedOffice")).isEqualTo("academic");
+        assertThat(created.get("uploadedBy")).isEqualTo(registrar.toString());
+        String id = String.valueOf(created.get("id"));
 
         ResponseEntity<List> findings = client.get().uri("/api/v1/admissions/sessions/2026/2027/reconciliation")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
@@ -167,8 +182,8 @@ class ApiIT {
 
     @Test
     void aRowThatContradictsTheDeclaredListKindIsRefusedWholeByTheDatabase() {
-        Map<String, Object> batch = batch("UTME", List.of(
-                row("UTME", 301, "C00061"), row("DIRECT_ENTRY", null, "C00061")));
+        Map<String, Object> batch = batch("DIRECT_ENTRY", List.of(
+                row("DIRECT_ENTRY", null, "C00061"), row("UTME", 301, "C00061")));
         ResponseEntity<Map> r = client.post().uri("/api/v1/admissions/caps-batches")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + registrarToken)
                 .header("X-Active-Office", "academic")
@@ -177,7 +192,7 @@ class ApiIT {
                 .retrieve().toEntity(Map.class);
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(422);
         assertThat(r.getBody().get("code")).isEqualTo("DATABASE_RULE_REFUSED");
-        assertThat(String.valueOf(r.getBody().get("detail"))).contains("DIRECT_ENTRY row in a batch declared UTME");
+        assertThat(String.valueOf(r.getBody().get("detail"))).contains("UTME row in a batch declared DIRECT_ENTRY");
         assertThat(((Map<?, ?>) r.getBody().get("remedy")).get("message").toString()).contains("declared before the file is read");
 
         // and nothing of it was kept: the batch is not there to be listed
@@ -194,7 +209,7 @@ class ApiIT {
         ResponseEntity<Map> r = client.post().uri("/api/v1/admissions/caps-batches")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + dean)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(batch("UTME", List.of(row("UTME", 300, "C00061"))))
+                .body(batch("DIRECT_ENTRY", List.of(row("DIRECT_ENTRY", null, "C00061"))))
                 .retrieve().toEntity(Map.class);
         assertThat(r.getStatusCode().value()).isEqualTo(403);
     }
@@ -224,7 +239,7 @@ class ApiIT {
 
     // ── helpers ─────────────────────────────────────────────────────────
 
-    static final SecureRandom RANDOM = new SecureRandom();
+    static final java.security.SecureRandom RANDOM = new SecureRandom();
 
     static String regNo() {
         StringBuilder sb = new StringBuilder("2026");

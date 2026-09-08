@@ -1,10 +1,13 @@
 package ng.edu.moaum.portal.admissions;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
@@ -35,8 +38,15 @@ public class CapsIntakeService {
         this.json = json;
     }
 
+    /**
+     * Loads a list. For a UTME list the cut-off is read from the session's
+     * admission settings — the programme's own, else its faculty's — and a
+     * candidate under it is held back, on record, rather than loaded. No
+     * settings in force means nothing is loaded: the database fails closed
+     * on that, and so does this.
+     */
     @Transactional
-    public CapsBatch load(NewCapsBatch request) {
+    public CapsLoadResult load(NewCapsBatch request) {
         AuditContext actor = AuditContextHolder.required();
         if (!UPLOADING_OFFICES.contains(actor.actorOffice())) {
             throw new DomainRuleViolation("ADM_LIST_OFFICE",
@@ -44,14 +54,65 @@ public class CapsIntakeService {
                     new DomainRuleViolation.Remedy("Ask the Academic Office to load the list, or act as that office if you hold it.",
                             "Academic Office"));
         }
+
+        Map<String, Integer> cutoffs = Map.of();
+        if ("UTME".equals(request.listKind())) {
+            if (!caps.policyInForce(request.session())) {
+                throw new DomainRuleViolation("ADM_SETTINGS_NOT_IN_FORCE",
+                        "No admission settings are in force for " + request.session()
+                                + ", so no cut-off can be applied and nothing may be loaded.",
+                        new DomainRuleViolation.Remedy(
+                                "Complete the session's admission settings and put them in force, citing the Central Admissions Committee minute that approved them.",
+                                "Academic Office"));
+            }
+            Set<String> codes = request.rows().stream()
+                    .map(r -> r.jambCode().trim().toUpperCase())
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            cutoffs = caps.cutoffsFor(request.session(), codes);
+            Map<String, Integer> known = cutoffs;
+            List<String> unknown = codes.stream().filter(c -> !known.containsKey(c)).toList();
+            if (!unknown.isEmpty()) {
+                throw new DomainRuleViolation("ADM_UNKNOWN_PROGRAMME",
+                        "Not a programme the University runs: " + String.join(", ", unknown) + ".",
+                        new DomainRuleViolation.Remedy("Resolve each JAMB course to a University programme before the list is loaded.",
+                                "Academic Office"));
+            }
+        }
+
         UUID id = UUID.randomUUID();
         caps.insertBatch(id, request.session(), request.source(), blankToNull(request.filename()), request.fileSha256(),
                 request.rows().size(), request.listKind(), request.downloadedOn(), actor.actorId(), actor.actorOffice());
+        int loaded = 0;
+        List<CapsLoadResult.ExcludedRow> excluded = new ArrayList<>();
+        Map<String, String> names = "UTME".equals(request.listKind()) ? programmeNames() : Map.of();
         for (CapsRowIn row : request.rows()) {
             Map<String, Object> raw = row.raw() == null ? Map.of() : row.raw();
-            caps.insertRow(id, request.session(), row, json.writeValueAsString(raw));
+            String rawJson = json.writeValueAsString(raw);
+            String code = row.jambCode().trim().toUpperCase();
+            Integer cutoff = cutoffs.get(code);
+            if (cutoff != null && row.aggregate() != null && row.aggregate() < cutoff) {
+                caps.insertExcluded(id, request.session(), row, cutoff, "BELOW_CUTOFF", rawJson);
+                excluded.add(new CapsLoadResult.ExcludedRow(row.jambRegNo().trim().toUpperCase(), row.surname(),
+                        row.otherNames(), code, names.getOrDefault(code, code), row.aggregate(), cutoff, "BELOW_CUTOFF"));
+                continue;
+            }
+            caps.insertRow(id, request.session(), row, rawJson);
+            loaded++;
         }
-        return caps.find(id).orElseThrow();
+        return new CapsLoadResult(caps.find(id).orElseThrow(), loaded, excluded);
+    }
+
+    private Map<String, String> programmeNames() {
+        return caps.programmes().stream().collect(Collectors.toMap(Programme::code, Programme::name, (a, b) -> a));
+    }
+
+    /** The session's admission settings, with the cut-offs and whatever keeps them a draft. */
+    @Transactional(readOnly = true)
+    public AdmissionPolicy policy(String session) {
+        AdmissionPolicy.Row row = caps.policy(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        return new AdmissionPolicy(row.session(), row.state(), "IN_FORCE".equals(row.state()), row.instrument(),
+                row.nucQuota(), row.weightUtme(), row.weightPutme(), row.ratioUtme(), row.ratioDe(),
+                caps.facultyCutoffs(session), caps.programmeCutoffs(session), caps.policyFindings(session));
     }
 
     @Transactional(readOnly = true)

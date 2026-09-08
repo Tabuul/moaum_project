@@ -224,6 +224,37 @@ test("the request the API loads carries the declared kind on every row", () => {
   assert.equal(req.source, "CAPS_DOWNLOAD");
 });
 
+test("the cut-off comes from the settings: the programme's own, else the faculty's, and a row under it is read but not loaded", () => {
+  const cutoffs = { faculty: { BAMS: 180, MS: 150 }, programme: { C00061: 200 } };
+  const rows = [HEAD,
+    ["202699000001AA", "A B", "F", "Benue", "312", "Medicine & Surgery", "Guma"],   // over MBBS's own 200
+    ["202699000002AA", "C D", "F", "Benue", "190", "Medicine & Surgery", "Guma"],   // under 200, though over BAMS's 180
+    ["202699000003AA", "E F", "F", "Benue", "160", "Accounting", "Guma"],           // over MS's 150
+    ["202699000004AA", "G H", "F", "Benue", "140", "Accounting", "Guma"]];          // under 150
+  const p = parseCaps(rows, "UTME", PROGRAMMES, cutoffs);
+  if (isError(p)) throw new Error(p.error);
+  assert.equal(p.belowCutoff, 2);
+  assert.deepEqual(p.rows.map((r) => r.belowCutoff), [null, 200, null, 150]);
+  const held = p.findings.filter((f) => f.excluded);
+  assert.equal(held.length, 2);
+  assert.ok(held.every((f) => !f.blocking));
+  assert.match(held[0].message, /190 is under the cut-off of 200 for MBBS/);
+  assert.deepEqual(blockingFindings(p), []);
+  const req = toRequest(p, { session: "2026/2027", filename: "l.xlsx", fileSha256: "ab".repeat(32), listKind: "UTME", downloadedOn: "2026-08-27" });
+  assert.deepEqual(req.rows.map((r) => r.jambRegNo), ["202699000001AA", "202699000003AA"]);
+});
+
+test("a programme with no cut-off in the settings is a blocking finding, and a Direct Entry list has no cut-off", () => {
+  const p = parseCaps([HEAD, ["202699000001AA", "A B", "F", "Benue", "300", "Computer Science", "Guma"]], "UTME", PROGRAMMES, { faculty: {}, programme: {} });
+  if (isError(p)) throw new Error(p.error);
+  assert.equal(blockingFindings(p).length, 1);
+  assert.match(blockingFindings(p)[0].message, /no UTME cut-off is set/);
+  const de = parseCaps([HEAD, ["202699000001AA", "A B", "F", "Benue", "0", "Accounting", "Guma"]], "DIRECT_ENTRY", PROGRAMMES, { faculty: {}, programme: {} });
+  if (isError(de)) throw new Error(de.error);
+  assert.equal(de.belowCutoff, 0);
+  assert.deepEqual(de.findings, []);
+});
+
 test("names split surname-first, as CAPS writes them", () => {
   assert.deepEqual(splitName("  Iorfa   Msendoo Blessing "), ["Iorfa", "Msendoo Blessing"]);
   assert.deepEqual(splitName("Iorfa"), ["Iorfa", ""]);

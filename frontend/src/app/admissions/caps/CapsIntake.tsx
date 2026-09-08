@@ -22,6 +22,7 @@ import {
   sha256Hex,
   toRequest,
   type CapsParse,
+  type Cutoffs,
   type ListKind,
   type Programme,
 } from "@/lib/caps";
@@ -44,6 +45,19 @@ export interface CapsBatch {
   uploadedBy: string;
   uploadedOffice: string;
   committedAt: string | null;
+}
+
+export interface AdmissionPolicy {
+  session: string;
+  state: string;
+  inForce: boolean;
+  instrument: string | null;
+  nucQuota: number;
+  weightUtme: number;
+  weightPutme: number;
+  facultyCutoffs: { facultyCode: string; facultyName: string; quota: number | null; cutoff: number | null }[];
+  programmeCutoffs: { code: string; name: string; cutoff: number }[];
+  findings: { finding: string; detail: string; owner: string }[];
 }
 
 export interface Finding {
@@ -75,8 +89,9 @@ interface FileInfo {
 }
 
 interface Loaded {
-  id: string;
-  rowsRead: number;
+  batch: { id: string; rowsRead: number };
+  rowsLoaded: number;
+  excluded: { jambRegNo: string; surname: string; otherNames: string; programme: string; aggregate: number | null; cutoff: number }[];
   outcome?: string;
 }
 
@@ -90,6 +105,8 @@ export function CapsIntake({
   batches,
   batchesProblem,
   reconciliation,
+  policy,
+  policyProblem,
   actingOffice,
   today,
 }: {
@@ -98,6 +115,8 @@ export function CapsIntake({
   batches: CapsBatch[];
   batchesProblem: Problem | null;
   reconciliation: Finding[];
+  policy: AdmissionPolicy | null;
+  policyProblem: Problem | null;
   actingOffice: string | null;
   today: string;
 }) {
@@ -113,6 +132,13 @@ export function CapsIntake({
   const [committed, setCommitted] = useState<Record<string, string>>({});
 
   const mayLoad = actingOffice !== null && LOADING_OFFICES.includes(actingOffice);
+  const inForce = !!policy?.inForce;
+  const cutoffs: Cutoffs | undefined = policy?.inForce
+    ? {
+        faculty: Object.fromEntries(policy.facultyCutoffs.filter((f) => f.cutoff !== null).map((f) => [f.facultyCode, f.cutoff as number])),
+        programme: Object.fromEntries(policy.programmeCutoffs.map((p) => [p.code, p.cutoff])),
+      }
+    : undefined;
   const list = LISTS[kind];
   const f = file[kind];
   const d = data[kind];
@@ -139,7 +165,7 @@ export function CapsIntake({
     try {
       const buf = await chosen.arrayBuffer();
       const [rows, sha256] = await Promise.all([xlsxRows(buf), sha256Hex(buf)]);
-      take(k, parseCaps(rows, k, programmes), { name: chosen.name, size: chosen.size, sha256 });
+      take(k, parseCaps(rows, k, programmes, cutoffs), { name: chosen.name, size: chosen.size, sha256 });
     } catch (e) {
       take(
         k,
@@ -158,7 +184,7 @@ export function CapsIntake({
   function demo(k: ListKind) {
     const rows = CAPS_DEMO[k];
     const text = rows.map((r) => r.join("\t")).join("\n");
-    take(k, parseCaps(rows, k, programmes), { name: k === "UTME" ? "CAPS-UTME-sample.xlsx" : "CAPS-DE-sample.xlsx", size: text.length, sha256: "", sample: true });
+    take(k, parseCaps(rows, k, programmes, cutoffs), { name: k === "UTME" ? "CAPS-UTME-sample.xlsx" : "CAPS-DE-sample.xlsx", size: text.length, sha256: "", sample: true });
   }
 
   async function post(path: string, reason: string, body?: unknown): Promise<{ ok: boolean; body: unknown; status: number }> {
@@ -316,6 +342,63 @@ export function CapsIntake({
         </div>
       </div>
 
+      {/* ── the cut-off, from the admission settings ── */}
+      {policy === null ? (
+        <Note
+          kind="bad"
+          title={`No admission settings exist for ${session}`}
+          action={
+            <Btn kind="ghost" disabled title="Still the prototype's screen">
+              Go to the admission settings
+            </Btn>
+          }
+        >
+          The cut-off is read from the session&rsquo;s admission settings — a faculty&rsquo;s, and a programme&rsquo;s
+          own where the Central Admissions Committee set one — and nothing is loaded while none are in force.
+          {policyProblem?.detail ? <> <span className="sub2">{policyProblem.detail}</span></> : null}
+        </Note>
+      ) : !policy.inForce ? (
+        <>
+          <Note kind="bad" title={`The admission settings for ${session} are a draft — nothing may be loaded until they are in force`}>
+            {policy.findings.length} finding{policy.findings.length === 1 ? "" : "s"} keep{policy.findings.length === 1 ? "s" : ""} them
+            from being put in force. Each names the rule and the office that answers it. The cut-offs below are what
+            the draft states and would apply.
+          </Note>
+          {policy.findings.length > 0 && (
+            <Panel title="What keeps the settings a draft" right="By rule, with the office that answers it">
+              <DTable
+                cols={["Finding", "Detail", "Owner|mid"]}
+                rows={policy.findings.map((x) => [<strong key="f">{x.finding}</strong>, <span className="sub2" key="d">{x.detail}</span>, <span className="sub2" key="o">{x.owner}</span>])}
+              />
+            </Panel>
+          )}
+        </>
+      ) : null}
+      {policy !== null && (
+        <Panel
+          title="The cut-off, from the admission settings"
+          right={policy.inForce ? `${session} · in force · ${policy.instrument ?? ""}` : `${session} · draft`}
+        >
+          <DTable
+            cols={["Faculty", "Code|mid", "Quota|num", "UTME cut-off|num"]}
+            rows={policy.facultyCutoffs.map((fc) => [
+              <strong key="n">{fc.facultyName}</strong>,
+              <span className="tnum" key="c">{fc.facultyCode}</span>,
+              <span className="tnum" key="q">{fc.quota ?? <span className="sub2">not distributed</span>}</span>,
+              <b className="tnum" key="k">{fc.cutoff ?? <span className="sub2" style={{ fontWeight: 400 }}>none</span>}</b>,
+            ])}
+          />
+          {policy.programmeCutoffs.length > 0 && (
+            <div className="card__body">
+              <div className="eyebrow">Programmes with a cut-off of their own</div>
+              <div className="sub2">
+                {policy.programmeCutoffs.map((p) => `${p.name} ${p.cutoff}`).join(" · ")}
+              </div>
+            </div>
+          )}
+        </Panel>
+      )}
+
       {f && f.err ? (
         <Note kind="bad" title="That file could not be read">
           {f.err}
@@ -336,7 +419,7 @@ export function CapsIntake({
               [`${list.label} candidates`, String(d.rows.length), null, `Read from ${esc(f?.name)}`],
               ["Entry level", String(list.level), null, kind === "DIRECT_ENTRY" ? "On the prior qualification" : "On the UTME aggregate"],
               ["Programmes", String(distinct), null, "Distinct courses on this list"],
-              ["Findings", String(bad.length), bad.length ? "var(--red-ink)" : "var(--green-ink)", bad.length ? "Named below" : noted.length ? `${noted.length} noted, none blocking` : "Nothing to answer"],
+              ["Findings", String(bad.length), bad.length ? "var(--red-ink)" : "var(--green-ink)", bad.length ? "Named below" : d.belowCutoff ? `${d.belowCutoff} under the cut-off, not loaded` : noted.length ? `${noted.length} noted, none blocking` : "Nothing to answer"],
             ]}
           />
 
@@ -366,11 +449,11 @@ export function CapsIntake({
           ) : done ? (
             <Note
               kind="ok"
-              title={done.outcome ? `The ${list.label} list is ${done.outcome}` : `${done.rowsRead} candidates loaded as the ${list.label} list for ${session} — held, not yet committed`}
+              title={done.outcome ? `The ${list.label} list is ${done.outcome}` : `${done.rowsLoaded} candidates loaded as the ${list.label} list for ${session} — held, not yet committed${done.excluded.length ? ` · ${done.excluded.length} under the cut-off, on record` : ""}`}
               action={
                 done.outcome ? undefined : (
-                  <Btn kind="go" onClick={() => void commit(done.id, true)} disabled={committing !== null || !mayLoad}>
-                    {committing === done.id ? "Committing…" : `Commit the ${list.label} list`}
+                  <Btn kind="go" onClick={() => void commit(done.batch.id, true)} disabled={committing !== null || !mayLoad}>
+                    {committing === done.batch.id ? "Committing…" : `Commit the ${list.label} list`}
                   </Btn>
                 )
               }
@@ -387,10 +470,10 @@ export function CapsIntake({
                 <Btn
                   kind="go"
                   onClick={() => void load()}
-                  disabled={working !== null || !mayLoad || !!f?.sample}
-                  title={f?.sample ? "A sample is shown, never loaded" : !mayLoad ? "The admission list is loaded by the Academic Office or the Registrar" : undefined}
+                  disabled={working !== null || !mayLoad || !!f?.sample || (kind === "UTME" && !inForce)}
+                  title={f?.sample ? "A sample is shown, never loaded" : !mayLoad ? "The admission list is loaded by the Academic Office or the Registrar" : kind === "UTME" && !inForce ? `No admission settings are in force for ${session}` : undefined}
                 >
-                  {working === "load" ? "Loading…" : `Load the ${list.label} list`}
+                  {working === "load" ? "Loading…" : `Load the ${list.label} list${d.belowCutoff ? ` — ${d.rows.length - d.belowCutoff} of ${d.rows.length}` : ""}`}
                 </Btn>
               }
             >
@@ -404,10 +487,38 @@ export function CapsIntake({
                   Office or the Registrar.
                 </>
               ) : null}
+              {kind === "UTME" && !inForce ? (
+                <>
+                  {" "}
+                  <b>No admission settings are in force for {session}</b>, so no cut-off can be applied and nothing
+                  may be loaded until they are.
+                </>
+              ) : d.belowCutoff ? (
+                <>
+                  {" "}
+                  <b>{d.belowCutoff}</b> under the cut-off will be held back, on record.
+                </>
+              ) : null}
             </Note>
           )}
 
           {problem ? <ProblemNotice problem={problem} /> : null}
+
+          {d.belowCutoff > 0 && (
+            <Panel title="Under the cut-off — read, not loaded" right={`${d.belowCutoff} of ${d.rows.length} · kept on record with the batch`}>
+              <DTable
+                cols={["Row|mid", "JAMB number|mid", "Candidate", "Aggregate|num", "Cut-off|num", "Programme"]}
+                rows={d.rows.filter((r) => r.belowCutoff !== null).map((r) => [
+                  <span className="tnum" key="l">{r.line}</span>,
+                  <span className="tnum" key="n">{r.jambRegNo}</span>,
+                  <strong key="c">{r.name}</strong>,
+                  <b className="tnum" style={{ color: "var(--red-ink)" }} key="a">{r.aggregate}</b>,
+                  <span className="tnum" key="k">{r.belowCutoff}</span>,
+                  <span className="sub2" key="p">{r.programme?.name ?? ""}</span>,
+                ])}
+              />
+            </Panel>
+          )}
 
           <Panel title={`${list.label} — the list as uploaded`} right={`${esc(f?.name)} · ${f?.layout ?? ""} · ${d.rows.length} candidates`}>
             <DTable
@@ -423,7 +534,8 @@ export function CapsIntake({
                 <span className="sub2" key="st">{r.stateOfOrigin}</span>,
                 r.aggregate ? (
                   <span key="a">
-                    <b className="tnum">{r.aggregate}</b>
+                    <b className="tnum" style={r.belowCutoff !== null ? { color: "var(--red-ink)" } : undefined}>{r.aggregate}</b>
+                    {r.belowCutoff !== null ? <div className="sub2" style={{ color: "var(--red-ink)" }}>under the cut-off of {r.belowCutoff}</div> : null}
                     <div className="sub2">
                       {r.subjects.filter((s) => s[0]).map((s) => `${s[0]} ${s[1] ?? ""}`).join(" · ")}
                       {r.eng ? ` · Eng ${r.eng}` : ""}

@@ -24,8 +24,16 @@ export interface Programme {
   archived: boolean;
 }
 
+/** The cut-offs a session's admission settings state: a faculty's, and a programme's own where set. */
+export interface Cutoffs {
+  faculty: Record<string, number>;
+  programme: Record<string, number>;
+}
+
 export interface ParsedRow {
   line: number;
+  /** The cut-off this candidate fell under, when the settings say so: read, shown, not loaded. */
+  belowCutoff: number | null;
   jambRegNo: string;
   name: string;
   surname: string;
@@ -48,6 +56,8 @@ export interface Finding {
   message: string;
   /** A blocking finding keeps the list from being loaded at all. */
   blocking: boolean;
+  /** A row held back by the cut-off: the rest of the list still loads. */
+  excluded?: boolean;
 }
 
 export interface CapsParse {
@@ -57,6 +67,8 @@ export interface CapsParse {
   columns: number;
   /** Course names JAMB used that are on no alias — each needs a person before the list can load. */
   unresolved: string[];
+  /** Rows under the cut-off the settings state: read, shown, not loaded. */
+  belowCutoff: number;
 }
 
 export type CapsResult = CapsParse | { error: string };
@@ -91,7 +103,7 @@ export function splitName(name: string): [string, string] {
   return [parts[0], parts.slice(1).join(" ")];
 }
 
-export function parseCaps(rows: string[][], kind: ListKind, programmes: Programme[]): CapsResult {
+export function parseCaps(rows: string[][], kind: ListKind, programmes: Programme[], cutoffs?: Cutoffs): CapsResult {
   if (!rows.length) return { error: "The file has no rows in it." };
   const head = rows[0];
   const ix: Record<string, number> = {};
@@ -135,7 +147,8 @@ export function parseCaps(rows: string[][], kind: ListKind, programmes: Programm
     const regRaw = g("regno");
     if (!regRaw) continue;
     const regNo = regRaw.trim().toUpperCase();
-    const flag = (message: string, blocking = true) => findings.push({ line, regNo, message, blocking });
+    const flag = (message: string, blocking = true, excluded = false) =>
+      findings.push({ line, regNo, message, blocking, ...(excluded ? { excluded } : {}) });
 
     if (!REG_NO.test(regNo)) {
       flag(`"${regRaw}" is not the shape of a JAMB registration number (twelve digits then two or three letters)`);
@@ -177,6 +190,17 @@ export function parseCaps(rows: string[][], kind: ListKind, programmes: Programm
       flag(`a Direct Entry row carrying an aggregate of ${agg} — the two lists have been mixed`);
     }
 
+    let belowCutoff: number | null = null;
+    if (kind === "UTME" && cutoffs && programme && agg) {
+      const cutoff = cutoffs.programme[programme.code] ?? cutoffs.faculty[programme.facultyCode];
+      if (cutoff === undefined) {
+        flag(`no UTME cut-off is set for ${programme.name} or its faculty in the admission settings`);
+      } else if (agg < cutoff) {
+        belowCutoff = cutoff;
+        flag(`aggregate ${agg} is under the cut-off of ${cutoff} for ${programme.name} — read, not loaded`, false, true);
+      }
+    }
+
     if (seen.has(regNo)) flag("the same candidate appears twice in this file");
     seen.add(regNo);
 
@@ -192,6 +216,7 @@ export function parseCaps(rows: string[][], kind: ListKind, programmes: Programm
 
     out.push({
       line,
+      belowCutoff,
       jambRegNo: regNo,
       name,
       surname,
@@ -209,7 +234,14 @@ export function parseCaps(rows: string[][], kind: ListKind, programmes: Programm
     });
   }
   if (!out.length) return { error: "The file has a heading row and no rows under it." };
-  return { rows: out, findings, layout, columns: head.filter(Boolean).length, unresolved: [...unresolved] };
+  return {
+    rows: out,
+    findings,
+    layout,
+    columns: head.filter(Boolean).length,
+    unresolved: [...unresolved],
+    belowCutoff: out.filter((r) => r.belowCutoff !== null).length,
+  };
 }
 
 export function isError(r: CapsResult): r is { error: string } {
@@ -253,7 +285,7 @@ export function toRequest(
     fileSha256: meta.fileSha256,
     listKind: meta.listKind,
     downloadedOn: meta.downloadedOn,
-    rows: p.rows.map((r) => ({
+    rows: p.rows.filter((r) => r.belowCutoff === null).map((r) => ({
       jambRegNo: r.jambRegNo,
       surname: r.surname || "(no name)",
       otherNames: r.otherNames,

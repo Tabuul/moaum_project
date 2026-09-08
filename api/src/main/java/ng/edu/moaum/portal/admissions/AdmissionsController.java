@@ -33,9 +33,9 @@ class AdmissionsController {
 
     @PostMapping("/caps-batches")
     @PreAuthorize(LOADERS)
-    ResponseEntity<CapsBatch> load(@Valid @RequestBody NewCapsBatch request) {
-        CapsBatch batch = intake.load(request);
-        return ResponseEntity.created(URI.create("/api/v1/admissions/caps-batches/" + batch.id())).body(batch);
+    ResponseEntity<CapsLoadResult> load(@Valid @RequestBody NewCapsBatch request) {
+        CapsLoadResult result = intake.load(request);
+        return ResponseEntity.created(URI.create("/api/v1/admissions/caps-batches/" + result.batch().id())).body(result);
     }
 
     @GetMapping("/caps-batches")
@@ -73,6 +73,13 @@ class AdmissionsController {
     @PreAuthorize(READERS)
     List<PolicyFinding> policy(@PathVariable String session, @PathVariable String year) {
         return intake.policyFindings(session + "/" + year);
+    }
+
+    /** The session's admission settings: the cut-offs that apply, and whether they are in force. */
+    @GetMapping("/sessions/{session}/{year}/policy")
+    @PreAuthorize(READERS)
+    AdmissionPolicy settings(@PathVariable String session, @PathVariable String year) {
+        return intake.policy(session + "/" + year);
     }
 
     /** The programmes and their JAMB names, so a list can be resolved before it is loaded. */

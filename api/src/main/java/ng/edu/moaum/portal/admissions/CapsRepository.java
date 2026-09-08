@@ -2,10 +2,13 @@ package ng.edu.moaum.portal.admissions;
 
 import java.sql.Types;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -80,6 +83,91 @@ class CapsRepository {
                 .param("lga", row.lga(), Types.VARCHAR)
                 .param("mode", row.entryMode())
                 .update();
+    }
+
+    void insertExcluded(UUID batchId, String session, CapsRowIn row, int cutoff, String reason, String rawJson) {
+        jdbc.sql("""
+                INSERT INTO admissions.caps_row_excluded
+                       (id, batch_id, session, jamb_reg_no, jamb_code, surname, other_names, aggregate, cutoff, reason, raw)
+                VALUES (:id, :batch, :session, :reg, :code, :surname, :others, :aggregate, :cutoff, :reason, CAST(:raw AS jsonb))
+                """)
+                .param("id", UUID.randomUUID())
+                .param("batch", batchId)
+                .param("session", session)
+                .param("reg", row.jambRegNo().trim().toUpperCase())
+                .param("code", row.jambCode().trim().toUpperCase())
+                .param("surname", row.surname().trim())
+                .param("others", row.otherNames() == null ? "" : row.otherNames().trim())
+                .param("aggregate", row.aggregate(), Types.INTEGER)
+                .param("cutoff", cutoff)
+                .param("reason", reason)
+                .param("raw", rawJson)
+                .update();
+    }
+
+    /* ── the session's admission settings ───────────────────────────── */
+
+    Optional<AdmissionPolicy.Row> policy(String session) {
+        return jdbc.sql("""
+                SELECT session, state, instrument, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de
+                  FROM admissions.session_policy WHERE session = :session
+                """)
+                .param("session", session)
+                .query(AdmissionPolicy.Row.class)
+                .optional();
+    }
+
+    boolean policyInForce(String session) {
+        return jdbc.sql("SELECT count(*) FROM admissions.session_policy WHERE session = :session AND state = 'IN_FORCE'")
+                .param("session", session)
+                .query(Long.class)
+                .single() > 0;
+    }
+
+    List<AdmissionPolicy.FacultyCutoff> facultyCutoffs(String session) {
+        return jdbc.sql("""
+                SELECT f.faculty_code, fa.name AS faculty_name, f.quota, f.cutoff
+                  FROM admissions.faculty_quota f
+                  JOIN admissions.session_policy p ON p.id = f.policy_id
+                  JOIN ref.faculty fa ON fa.code = f.faculty_code
+                 WHERE p.session = :session
+                 ORDER BY f.faculty_code
+                """)
+                .param("session", session)
+                .query(AdmissionPolicy.FacultyCutoff.class)
+                .list();
+    }
+
+    List<AdmissionPolicy.ProgrammeCutoff> programmeCutoffs(String session) {
+        return jdbc.sql("""
+                SELECT r.programme_code AS code, g.name, r.cutoff
+                  FROM admissions.programme_rule r
+                  JOIN admissions.session_policy p ON p.id = r.policy_id
+                  JOIN ref.programme g ON g.code = r.programme_code
+                 WHERE p.session = :session AND r.cutoff IS NOT NULL
+                 ORDER BY r.programme_code
+                """)
+                .param("session", session)
+                .query(AdmissionPolicy.ProgrammeCutoff.class)
+                .list();
+    }
+
+    /**
+     * The cut-off that applies to each programme — the database's own answer
+     * ({@code admissions.cutoff_for}): the programme's, else its faculty's,
+     * and an error if neither is set or no settings are in force.
+     */
+    Map<String, Integer> cutoffsFor(String session, Collection<String> codes) {
+        if (codes.isEmpty()) {
+            return Map.of();
+        }
+        return jdbc.sql("SELECT code, admissions.cutoff_for(:session, code) AS cutoff FROM ref.programme WHERE code IN (:codes)")
+                .param("session", session)
+                .param("codes", List.copyOf(codes))
+                .query((rs, i) -> Map.entry(rs.getString("code"), rs.getInt("cutoff")))
+                .list()
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     String commit(UUID batchId) {
