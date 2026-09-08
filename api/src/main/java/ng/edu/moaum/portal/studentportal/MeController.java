@@ -145,4 +145,9 @@ class MeController {
     private static UUID id(Authentication auth) {
         return UUID.fromString(auth.getName());
     }
+
+    @GetMapping("/graduation")
+    Map<String, Object> graduation(Authentication auth) {
+        return portal.graduation(id(auth));
+    }
 }

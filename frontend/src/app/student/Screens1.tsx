@@ -93,7 +93,11 @@ export function Dashboard({ s }: { s: Me }) {
       <div className="grid grid--4">
         <Quick icon="cap" title="My results" sub={published ? `${published} semester${published === 1 ? "" : "s"} published` : "Nothing published yet"} href="/student/results" />
         <Quick icon="card" title="Fees & payments" sub={f.balance > 0 ? `${naira(f.balance)} outstanding` : f.due > 0 ? "Fully paid" : "No charge stated yet"} href="/student/fees" />
-        <Quick icon="doc" title="Transcript" sub="Arrives with the credentials module" href={null} />
+        {s.graduation && (s.graduation.finalist || s.graduation.audited) ? (
+          <Quick icon="cap" title="Graduation" sub={s.graduation.senate_state === "APPROVED" ? `${s.graduation.class_of_degree ?? "Approved"} · ${s.graduation.certificate_no ? "certificate printed" : s.graduation.cleared ? "cleared for convocation" : `${s.graduation.units_holding} unit${s.graduation.units_holding === 1 ? "" : "s"} holding`}` : s.graduation.audited ? (s.graduation.unmet ? "A requirement is unmet" : "Awaiting Senate") : "Final year — the audit runs at the end"} href="/student/graduation" />
+        ) : (
+          <Quick icon="doc" title="Transcript" sub="Request an official copy" href="/student/transcript" />
+        )}
         <Quick icon="book" title="Course form" sub={reg && (reg.status === "APPROVED" || reg.status === "LOCKED") ? "Ready to print" : "After approval"} href={reg && (reg.status === "APPROVED" || reg.status === "LOCKED") ? "/student/form" : null} />
       </div>
 

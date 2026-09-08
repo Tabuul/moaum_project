@@ -106,16 +106,8 @@ class GraduationRepository {
                 """).query(Band.class).list();
     }
 
+    /** V029: one act — the graduands marked, each status changed on the minute, each graduand told */
     int approve(String session, String minute) {
-        int n = jdbc.sql("""
-                UPDATE records.graduand SET senate_state = 'APPROVED', senate_minute = :m
-                 WHERE session = :s AND senate_state = 'AWAITING' AND unmet IS NULL AND cgpa IS NOT NULL
-                """).param("m", minute).param("s", session).update();
-        jdbc.sql("""
-                SELECT people.change_status(g.student_id, 'GRADUATED', :m, current_date, 'Award approved by Senate')
-                  FROM records.graduand g JOIN people.student s ON s.id = g.student_id
-                 WHERE g.session = :s AND g.senate_state = 'APPROVED' AND g.senate_minute = :m AND s.status <> 'GRADUATED'
-                """).param("m", minute).param("s", session).query().listOfRows();
-        return n;
+        return jdbc.sql("SELECT records.approve_awards(:s, :m)").param("s", session).param("m", minute).query(Integer.class).single();
     }
 }

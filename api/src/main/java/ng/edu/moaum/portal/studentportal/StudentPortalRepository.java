@@ -314,4 +314,17 @@ class StudentPortalRepository {
                   FROM platform.notice WHERE about_kind = 'student' AND about_id = :s ORDER BY created_at DESC LIMIT 30
                 """).param("s", student).query().listOfRows();
     }
+
+    /** the student's own graduation, computed by the record (V029) */
+    Map<String, Object> graduation(UUID student) {
+        return jdbc.sql("SELECT * FROM records.student_graduation(:s)").param("s", student).query().singleRow();
+    }
+
+    /** the convocation clearance, unit by unit, as clearance.position states it */
+    List<Map<String, Object>> clearancePosition(UUID student) {
+        return jdbc.sql("""
+                SELECT p.unit, p.label, p.state, p.item, p.decided_at, u.clears_against, u.holds_for, u.office_code
+                  FROM clearance.position(:s, 'CONVOCATION') p JOIN clearance.unit u ON u.code = p.unit ORDER BY p.ord
+                """).param("s", student).query().listOfRows();
+    }
 }

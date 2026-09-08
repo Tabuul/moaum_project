@@ -72,6 +72,7 @@ public class StudentPortalService {
         v.put("carryovers", repo.carryovers(id));
         v.put("registration", repo.registration(id, session, 1).map(StudentPortalService::withEntries).orElse(null));
         v.put("notices", repo.notices(id));
+        v.put("graduation", repo.graduation(id));
         return v;
     }
 
@@ -318,5 +319,19 @@ public class StudentPortalService {
             }
             return MAPPER.readValue(text, new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { });
         }
+    }
+
+    /* ── graduation, the student's end (V029) ── */
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> graduation(UUID id) {
+        StudentPortalRepository.Student s = student(id);
+        Map<String, Object> out = new LinkedHashMap<>(repo.graduation(id));
+        out.put("name", s.surname() + ", " + s.otherNames());
+        out.put("matricNo", s.matricNo());
+        out.put("programme", s.programme());
+        out.put("level", s.currentLevel());
+        out.put("clearance", repo.clearancePosition(id));
+        return out;
     }
 }

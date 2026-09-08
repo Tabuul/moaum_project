@@ -53,7 +53,15 @@ export interface Me {
   contact: { phone: string | null; email: string | null; address: string | null; reach_email: string | null; reach_phone: string | null };
   passportDocumentId: string | null;
   fees: Fees; gpa: Semester[]; cgpa: number | null; standing: string | null; carryovers: Carryover[];
-  registration: Registration | null; notices: Notice[];
+  registration: Registration | null; notices: Notice[]; graduation?: Graduation | null;
+}
+export interface ClearanceUnit { unit: string; label: string; state: string; item: string | null; decided_at: string | null; clears_against: string; holds_for: string; office_code: string | null }
+export interface Graduation {
+  finalist: boolean; final_level: number; session: string | null; audited: boolean; cgpa: number | null; award: string | null; unmet: string | null;
+  senate_state: string | null; senate_minute: string | null; class_of_degree: string | null; status: string; cleared: boolean; units_holding: number;
+  certificate_no: string | null; certificate_status: string | null; convocation: string | null; printed_on: string | null; collected_on: string | null;
+  held_reason: string | null; verification_code: string | null; issued_on: string | null;
+  name?: string; matricNo?: string | null; programme?: string; level?: number; clearance?: ClearanceUnit[];
 }
 export interface Receipt extends PaymentRef { name: string; matricNo: string; programme: string; level: number }
 

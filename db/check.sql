@@ -168,7 +168,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 103
+\set EXPECTED 104
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1754,6 +1754,33 @@ BEGIN
     PERFORM pg_temp.assert('A registered course with no published sheet reads as unpublished, never as unknown, and carries no mark',
         v_total >= 1 AND v_unknown = 0 AND v_leaked = 0,
         format('%s rows, %s with published NULL, %s unpublished rows carrying a mark', v_total, v_unknown, v_leaked));
+END $$;
+
+-- ── 104. Senate's approval of the list changes the status on the minute, tells the graduand, and the student sees it (V029) ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); n int; v_status text; v_notices int; g record;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session,
+                                entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990104', 'MOAUM/CHK/99/0104', 'CHECKGRADUAND', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 400, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    INSERT INTO people.student_contact (student_id, email, phone) VALUES (st, 'check.graduand@example.com', '08030000104');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet) VALUES (gen_random_uuid(), st, '9999/0000', 3.61, 'B.Sc. COMPUTER SCIENCE', NULL);
+    SELECT * INTO g FROM records.student_graduation(st);
+    IF g.senate_state <> 'AWAITING' OR g.status <> 'ACTIVE' THEN RAISE EXCEPTION 'before approval: % %', g.senate_state, g.status; END IF;
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    n := records.approve_awards('9999/0000', 'CHECK SEN/9999/7');
+    SELECT status INTO v_status FROM people.student WHERE id = st;
+    SELECT count(*) INTO v_notices FROM platform.notice WHERE about_kind = 'student' AND about_id = st;
+    SELECT * INTO g FROM records.student_graduation(st);
+    PERFORM pg_temp.assert('Senate''s approval of the list changes the status on the minute, tells the graduand, and the student sees the class and the units still holding',
+        n >= 1 AND v_status = 'GRADUATED' AND v_notices = 2 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
+        AND g.class_of_degree = 'Second Class Honours (Upper)' AND NOT g.cleared AND g.units_holding = 8 AND g.certificate_no IS NULL
+        AND EXISTS (SELECT 1 FROM people.status_change WHERE student_id = st AND to_status = 'GRADUATED' AND instrument = 'CHECK SEN/9999/7'),
+        format('approved=%s status=%s notices=%s state=%s class=%s cleared=%s holding=%s', n, v_status, v_notices, g.senate_state, g.class_of_degree, g.cleared, g.units_holding));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
