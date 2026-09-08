@@ -1034,7 +1034,7 @@ END $$;
 -- the properties the chain refuses to lose.
 
 -- ── 64-65. the structure holds together, and every table is on the spine ─
-DO $
+DO $$
 DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.programme p
@@ -1050,10 +1050,10 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM audit.exemption e WHERE e.relid = c.oid);
     PERFORM pg_temp.assert('Every table of the student record is on the audit spine',
         n = 0, n || ' tables hold state and are neither attached nor exempted');
-END $;
+END $$;
 
 -- ── 66-68. the calendar: no overlap, one current, on a minute ───────────
-DO $
+DO $$
 DECLARE ok boolean := false; msg text;
 BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
@@ -1086,10 +1086,10 @@ BEGIN
     PERFORM pg_temp.assert('Exactly one session is current at a time', ok,
         '9999/0000 is current; 2026/2027 cannot also be');
     UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = '9999/0000';
-END $;
+END $$;
 
 -- ── 69-73. the register, the list and the run ───────────────────────────
-DO $
+DO $$
 DECLARE ok boolean := false; msg text; n int; l uuid; v_ref text; m1 text; m2 text;
         s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
         o uuid := gen_random_uuid();
@@ -1144,10 +1144,10 @@ BEGIN
     EXCEPTION WHEN check_violation THEN ok := true;
     END;
     PERFORM pg_temp.assert('A matriculation number, once issued, is never changed', ok, 'BR-007');
-END $;
+END $$;
 
 -- ── 74-78. the chain a sheet passes ─────────────────────────────────────
-DO $
+DO $$
 DECLARE ok boolean := false; msg text; n int; st text; g text; o uuid; s1 uuid; s2 uuid;
         sh uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
 BEGIN
@@ -1201,10 +1201,10 @@ BEGIN
     PERFORM pg_temp.assert('The grade is computed from the marks under the scheme in force, never typed',
         g = 'A' AND policy.class_of(4.62) = 'First Class Honours',
         '30 + 45 = 75 is an A under SEN/2015/44; 4.62 is a First');
-END $;
+END $$;
 
 -- ── 79-81. clearance holds, and the transcript it releases ──────────────
-DO $
+DO $$
 DECLARE ok boolean := false; msg text; st text; s1 uuid; t uuid := gen_random_uuid();
         a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
 BEGIN
@@ -1242,7 +1242,7 @@ BEGIN
     SELECT stage INTO st FROM credentials.transcript_request WHERE id = t;
     PERFORM pg_temp.assert('The officer who produced a transcript does not sign it',
         ok AND st = 'RELEASED', 'produced by one officer, released by another');
-END $;
+END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
