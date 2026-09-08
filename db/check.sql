@@ -1743,7 +1743,7 @@ BEGIN
 END $$;
 
 -- ── 103. a course with no sheet is unpublished, not unknown (V028) ──
-DO $
+DO $$
 DECLARE st uuid; total int; unknown int; leaked int;
 BEGIN
     SELECT id INTO st FROM people.student WHERE surname = 'CHECKSTUDENT';
@@ -1754,7 +1754,7 @@ BEGIN
     PERFORM pg_temp.assert('A registered course with no published sheet reads as unpublished, never as unknown, and carries no mark',
         total >= 1 AND unknown = 0 AND leaked = 0,
         format('%s rows, %s with published NULL, %s unpublished rows carrying a mark', total, unknown, leaked));
-END $;
+END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
