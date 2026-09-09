@@ -17,6 +17,7 @@ import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/p
 import { DTable } from "@/components/proto/DTable";
 import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
 
 /* ── result query ── */
@@ -192,6 +193,23 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
 export function IdCard({ c, s }: { c: Card; s: Me }) {
   const { act, busy, problem } = useAct();
   const live = c.cards.find((x) => x.state === "ISSUED") ?? null;
+  const card: IdCardData | null = live ? {
+    name: s.name,
+    matric: s.matricNo ?? "",
+    barcode: (s.matricNo ?? "").replace(/[^A-Za-z0-9]/g, ""),
+    serial: live.card_no,
+    faculty: s.faculty,
+    prog: s.programme,
+    level: String(s.level),
+    session: s.session,
+    admitted: (s.entrySession ?? "").slice(0, 4) || "—",
+    graduates: "—",
+    blood: "—",
+    expiresShort: onDay(live.valid_to),
+    kinPhone: "—",
+    photoSrc: s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null,
+    state: new Date(live.valid_to).getTime() < Date.now() ? "expired" : "issued",
+  } : null;
   return (
     <>
       {live ? (
@@ -203,6 +221,14 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
       ) : (
         <Note kind="info" title="No live card">The Library prints it and Security hands it over. Bring your fee receipt to the Library; your photograph and signature are checked at the counter.</Note>
       )}
+      {card ? (
+        <Panel title="Your identity card" right="This is a picture of the card, not the card">
+          <PBody>
+            <IdCardPair c={card} big />
+            <div className="sub2" style={{ marginTop: 4 }}>The barcode on the back is your borrower number at the Library and the number the gate reads; it does not change when a card is replaced &mdash; the serial does. A field shown as &ldquo;&mdash;&rdquo; is one the University has not recorded against you.</div>
+          </PBody>
+        </Panel>
+      ) : null}
       <div className="card"><div className="card__body" style={{ flexDirection: "row", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         <Passport w={112} h={139} radius={5} src={s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null} />
         <div style={{ flexGrow: 1, minWidth: 220 }}>

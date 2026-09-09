@@ -211,6 +211,28 @@ BEGIN
         PERFORM finance.put_scheme_in_force('DEMO — BUR/DEMO/1, the recommended scheme, for demonstration', current_date);
     END IF;
 
+    -- ── one demo student paid in full and carded, so fees, clearance and the
+    --    identity card are all demonstrable end to end (best-effort; skipped if a
+    --    precondition is not met, never breaking the rest of the demo) ──
+    SELECT id INTO v_student FROM people.student WHERE matric_no LIKE 'MOAUM/MTC/%/9903';
+    IF v_student IS NOT NULL AND NOT EXISTS (SELECT 1 FROM credentials.identity_card WHERE student_id = v_student AND state = 'ISSUED') THEN
+        DECLARE v_due numeric; v_ref text;
+        BEGIN
+            SELECT due INTO v_due FROM finance.position(v_student, v_session);
+            IF coalesce(v_due, 0) > 0 AND NOT finance.clears(v_student, v_session, 'ID_CARD') THEN
+                v_ref := finance.new_reference(v_student, v_session, v_due, 'School fees ' || v_session || ' (demo)');
+                PERFORM finance.confirm_payment(v_ref, 'Demo — bank transfer', 'Seeded so fees, clearance and the identity card are demonstrable');
+            END IF;
+            IF finance.clears(v_student, v_session, 'ID_CARD') THEN
+                PERFORM set_config('moaum.actor_office', 'library', true);
+                PERFORM credentials.issue_identity_card(v_student, 'Demo — first card');
+                PERFORM set_config('moaum.actor_office', 'bursar', true);
+            END IF;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'demo: could not clear and card the 300-level student (%): %', v_student, SQLERRM;
+        END;
+    END IF;
+
     -- ── the applicant: a demo row on a demo CAPS list, registered under the number ──
     PERFORM set_config('moaum.actor_office', 'academic', true);
     IF NOT EXISTS (SELECT 1 FROM admissions.applicant_fee WHERE session = v_session) THEN
