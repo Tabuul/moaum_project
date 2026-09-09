@@ -37,11 +37,14 @@ COMMENT ON COLUMN finance.fee_schedule.fee_group IS
 CREATE OR REPLACE FUNCTION finance.charges(p_student uuid, p_session text)
 RETURNS TABLE (id uuid, item text, amount numeric, ord int)
 LANGUAGE sql STABLE AS $$
+    -- one JOIN tree, so the fee_group join can see f: the student is joined by
+    -- the parameter, then the programme, then the group the schedule row names
     SELECT f.id, f.item, f.amount, f.ord
-      FROM finance.fee_schedule f, people.student s
+      FROM finance.fee_schedule f
+      JOIN people.student s ON s.id = p_student
       JOIN ref.programme p ON p.code = s.programme_code
       LEFT JOIN ref.fee_group g ON g.code = f.fee_group
-     WHERE s.id = p_student AND f.session = p_session AND f.ended_at IS NULL
+     WHERE f.session = p_session AND f.ended_at IS NULL
        AND (f.level IS NULL OR f.level = s.current_level)
        AND (f.entry_mode IS NULL OR f.entry_mode = s.entry_mode)
        AND (f.faculty_code IS NULL OR f.faculty_code = p.faculty_code)
