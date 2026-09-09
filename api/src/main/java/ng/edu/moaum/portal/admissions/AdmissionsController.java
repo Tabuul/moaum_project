@@ -74,6 +74,16 @@ class AdmissionsController {
         return intake.meritList(session, programme);
     }
 
+    public record MeritRecord(@jakarta.validation.constraints.NotBlank String session, @jakarta.validation.constraints.NotBlank String programme) {
+    }
+
+    /** the Board records the proposed merit list: an offer per proposed candidate, waiting list for the rest eligible */
+    @PostMapping("/merit/record")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> recordMerit(@jakarta.validation.Valid @RequestBody MeritRecord body) {
+        return intake.recordMerit(body.session(), body.programme());
+    }
+
     @PostMapping("/caps-batches/{id}/commit")
     @PreAuthorize(LOADERS)
     Map<String, Object> commit(@PathVariable UUID id) {

@@ -193,6 +193,35 @@ public class CapsIntakeService {
         return out;
     }
 
+    /** the Board records the proposed merit list in a batch: an offer (with its basis) for each proposed
+     *  candidate, the waiting list for the eligible below the line; a released decision is left untouched */
+    @Transactional
+    public Map<String, Object> recordMerit(String session, String programme) {
+        List<Map<String, Object>> rows = caps.meritList(session, programme);
+        int offered = 0;
+        int waited = 0;
+        int skipped = 0;
+        for (Map<String, Object> r : rows) {
+            if (!Boolean.TRUE.equals(r.get("eligible"))) {
+                skipped++;
+                continue;
+            }
+            java.util.UUID app = (java.util.UUID) r.get("app_id");
+            if (caps.decisionReleased(app)) {
+                skipped++;
+                continue;
+            }
+            if (Boolean.TRUE.equals(r.get("proposed_offer"))) {
+                caps.decide(app, "OFFERED", "Recorded from the merit list", (String) r.get("basis"));
+                offered++;
+            } else {
+                caps.decide(app, "WAITING", "Eligible, below the quota line on the merit list", null);
+                waited++;
+            }
+        }
+        return Map.of("programme", programme, "offered", offered, "waited", waited, "skipped", skipped, "pool", rows.size());
+    }
+
     @Transactional(readOnly = true)
     public List<Finding> reconcile(String session) {
         return caps.reconcile(session);

@@ -199,6 +199,19 @@ class CapsRepository {
                 .param("s", session).param("p", programme).query().listOfRows();
     }
 
+    /** whether an application's decision is already released and stands (not to be overwritten) */
+    boolean decisionReleased(java.util.UUID app) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT decision_released_at IS NOT NULL FROM admissions.application WHERE id = :id")
+                .param("id", app).query(Boolean.class).optional().orElse(false));
+    }
+
+    /** record the Board's decision on one application (admissions.decide_application) */
+    void decide(java.util.UUID app, String decision, String note, String basis) {
+        jdbc.sql("SELECT admissions.decide_application(:a, :d, :n, :b)")
+                .param("a", app).param("d", decision).param("n", note, java.sql.Types.VARCHAR).param("b", basis, java.sql.Types.VARCHAR)
+                .query().listOfRows();
+    }
+
     java.util.Map<String, Object> applicantCounts(String session) {
         return jdbc.sql("""
                 SELECT count(*) AS total,

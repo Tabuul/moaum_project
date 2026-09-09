@@ -25,6 +25,7 @@ export default async function MeritPage({ searchParams }: { searchParams: Promis
         programmes={programmes.ok ? programmes.data : []}
         view={view && view.ok ? view.data : null}
         problem={view && !view.ok ? view.problem : null}
+        actingOffice={me.ok ? me.data.activeOffice : null}
       />
     </Shell>
   );

@@ -3,9 +3,11 @@
 /** The merit list for a programme: the eligible pool ranked by the session aggregate, with the
  *  proposed offer that fills the quota UTME:DE by the faculty ratio and spills flexibly. It
  *  proposes; the Board still enters and releases the decision. */
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { reasonHeader } from "@/lib/reason";
+import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -21,12 +23,31 @@ export interface MeritView { session: string; programme: string; counts: { pool:
 const BASIS: Record<string, string> = { NM: "National Merit", SM: "State Merit", ELG: "Equality of LG", LOCALITY: "Locality" };
 const mode = (m: string) => (m === "UTME" ? "UTME" : m.charAt(0) + m.slice(1).toLowerCase().replace("_", " "));
 
-export function Merit({ session, programme, programmes, view, problem }: {
-  session: string; programme: string; programmes: ProgrammeOption[]; view: MeritView | null; problem: Problem | null;
+export function Merit({ session, programme, programmes, view, problem, actingOffice }: {
+  session: string; programme: string; programmes: ProgrammeOption[]; view: MeritView | null; problem: Problem | null; actingOffice: string | null;
 }) {
   const router = useRouter();
   const pick = (code: string) => router.push(`/admissions/merit?session=${encodeURIComponent(session)}${code ? `&programme=${encodeURIComponent(code)}` : ""}`);
   const chosen = programmes.find((p) => p.code === programme);
+  const mayRecord = ["academic", "registrar"].includes(actingOffice ?? "");
+  const [busy, setBusy] = useState(false);
+  const [recorded, setRecorded] = useState<{ offered: number; waited: number; skipped: number } | null>(null);
+  const [recProblem, setRecProblem] = useState<Problem | null>(null);
+
+  async function record() {
+    if (!window.confirm(`Record the merit list for this programme? An offer is entered for each proposed candidate and the waiting list for the rest eligible. Decisions are not released yet.`)) return;
+    setBusy(true);
+    setRecProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/admissions/merit/record", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Merit list recorded for ${programme}`) }, body: JSON.stringify({ session, programme }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setRecProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setRecorded(j as { offered: number; waited: number; skipped: number });
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
@@ -56,7 +77,9 @@ export function Merit({ session, programme, programmes, view, problem }: {
             ["Proposed offers", String(view.counts.proposed), Number(view.counts.proposed) ? "var(--green-ink)" : null, "Filling the quota, by merit"],
             ["Not eligible", String(view.counts.pool - view.counts.eligible), view.counts.pool - view.counts.eligible ? "var(--chrome)" : null, "Below cut-off, missing a credit, or unscored"],
           ]} />
-          <Panel title="The merit list" right={`${view.counts.pool} in the pool · ranked by aggregate`}>
+          {recProblem ? <ProblemNotice problem={recProblem} /> : null}
+          {recorded ? <Note kind="ok" title="The merit list has been recorded">{recorded.offered} offer{recorded.offered === 1 ? "" : "s"} entered, {recorded.waited} on the waiting list, {recorded.skipped} skipped (ineligible or already released). Release the decisions from the Applicants desk when the Board is ready.</Note> : null}
+          <Panel title="The merit list" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><span className="sub2">{view.counts.pool} in the pool</span>{mayRecord && view.counts.proposed > 0 ? <Btn kind="primary" disabled={busy} onClick={() => void record()}>{busy ? "Recording…" : `Record ${view.counts.proposed} offer${view.counts.proposed === 1 ? "" : "s"}`}</Btn> : null}</span>}>
             {view.rows.length ? (
               <DTable
                 cols={["#|mid", "Candidate", "JAMB|mid", "Entry|mid", "UTME|mid", "Post-UTME|mid", "Aggregate|mid", "Basis|mid", "Eligible|mid", "Proposed|num"]}
