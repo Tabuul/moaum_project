@@ -114,21 +114,26 @@ class ApplicantRepository {
     }
 
     List<Map<String, Object>> feeReferences(UUID applicationId) {
+        // aliased to camelCase: the applicant screens read the API response as-is (no snake→camel
+        // mapping), so expiresAt/confirmedAt must arrive named as the FeeReference type has them —
+        // otherwise a just-generated reference is never shown (its expiresAt reads as undefined).
         return jdbc.sql("""
-                SELECT id, kind, reference, amount, generated_at, expires_at, confirmed_at, channel
+                SELECT id, kind, reference, amount,
+                       generated_at AS "generatedAt", expires_at AS "expiresAt", confirmed_at AS "confirmedAt", channel
                   FROM admissions.fee_reference WHERE application_id = :id ORDER BY generated_at DESC
                 """).param("id", applicationId).query().listOfRows();
     }
 
     List<Map<String, Object>> documents(UUID applicationId) {
         return jdbc.sql("""
-                SELECT id, kind, filename, content_type, bytes, uploaded_at, status, reviewed_at, review_note
+                SELECT id, kind, filename, content_type AS "contentType", bytes,
+                       uploaded_at AS "uploadedAt", status, reviewed_at AS "reviewedAt", review_note AS "reviewNote"
                   FROM admissions.application_document WHERE application_id = :id AND superseded_at IS NULL ORDER BY kind
                 """).param("id", applicationId).query().listOfRows();
     }
 
     List<Map<String, Object>> clearance(UUID applicationId) {
-        return jdbc.sql("SELECT item, state, note, decided_at FROM admissions.clearance_document WHERE application_id = :id")
+        return jdbc.sql("SELECT item, state, note, decided_at AS \"decidedAt\" FROM admissions.clearance_document WHERE application_id = :id")
                 .param("id", applicationId).query().listOfRows();
     }
 
