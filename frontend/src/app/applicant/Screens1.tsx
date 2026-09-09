@@ -255,7 +255,7 @@ export function Fee({ a }: { a: Application }) {
     return (
       <>
         <Note kind="ok" title={`Payment confirmed — ${money(Number(paid.amount))} received`} action={<Link href="/applicant/apply" className="btn btn--primary btn--sm">Open the application form</Link>}>
-          The Bursary confirmed this payment against the bank&rsquo;s record. Your application form is now open.
+          This payment is confirmed and the Bursary can see it. Your application form is now open.
         </Note>
         <Panel title="Receipt" right={paid.reference}>
           <DTable cols={["Field", "Value"]} rows={[
@@ -291,7 +291,7 @@ export function Fee({ a }: { a: Application }) {
               </div>
             </div>
           ) : (
-            <div className="sub2">No reference is open. Generate one below; it is yours alone, and the Bursary confirms the payment against it.</div>
+            <div className="sub2">No reference is open. Generate one below; it is yours alone. Pay it on the gateway and it confirms at once, or pay it at a bank and the Bursary confirms it against the reference.</div>
           )}
           {problem ? <ProblemNotice problem={problem} /> : null}
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}>
@@ -302,13 +302,13 @@ export function Fee({ a }: { a: Application }) {
       </Panel>
       <Panel title="How you can pay" right="Any of these">
         <DTable cols={["Channel", "What to do", "Confirmed in|num"]} rows={[
+          [<Two key="c" a="Card and USSD" b="On the payment gateway" />, "Generate a reference, then Pay with card — you are taken to the gateway", <span className="sub2" key="t">At once, on return</span>],
           [<Two key="c" a="Bank transfer" b="From any Nigerian bank" />, "Transfer to the University’s account, quoting the reference", <span className="sub2" key="t">When the Bursary sees it</span>],
           [<Two key="c" a="Bank branch" b="Over the counter" />, "Present the reference at any approved bank", <span className="sub2" key="t">Same day</span>],
-          [<Two key="c" a="Card and USSD" b="On the portal" />, "Arrive with the payment gateway", <span className="sub2" key="t">Not yet on the portal</span>],
         ]} />
       </Panel>
-      <Note kind="info" title="A payment is confirmed by the Bursary against the bank’s record, never by this page">
-        If your network drops after you pay, do not pay again. Every payment carries the reference this portal generated, and the Bursary confirms it against that reference, so a successful payment always reaches your account.
+      <Note kind="info" title="A payment always carries your reference">
+        If your network drops after you pay, do not pay again. Every payment carries the reference this portal generated: a gateway payment confirms itself the moment you return, and a bank payment is confirmed against the same reference — so a successful payment always reaches your account, and the Bursary sees it.
       </Note>
       <Note kind="bad" title="Pay only against a reference this portal generated">
         Money sent to a personal account, an agent or a &ldquo;consultant&rdquo; does not reach the University and cannot be recovered by it. There is no fee that is paid anywhere but here.

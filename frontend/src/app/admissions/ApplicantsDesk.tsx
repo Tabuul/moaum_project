@@ -17,7 +17,7 @@ import { BASES, CLEARANCE_ITEMS, DOCUMENT_KINDS, STAGES, type Application } from
 import { xlsx, type Cell } from "@/lib/xlsx-write";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Field, Modal, money } from "@/components/proto/blocks";
+import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface DeskRow {
@@ -46,12 +46,10 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [problem, setProblem] = useState<Problem | null>(null);
   const [open, setOpen] = useState<Application | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
-  const [confirming, setConfirming] = useState<DeskReference | null>(null);
   const [newBatch, setNewBatch] = useState(false);
   const [exporting, setExporting] = useState(false);
   const base = `/api/bff/api/v1/admissions/sessions/${desk.session}`;
   const office = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
-  const confirmer = office || actingOffice === "bursar";
   const registry = office || actingOffice === "records";
 
   async function send(key: string, method: "PUT" | "POST", path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
@@ -142,42 +140,15 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     <>
       <Tiles items={[
         ["Application accounts", String(rows.length), null, `${rows.filter((r) => r.submitted_at).length} submitted`],
-        ["Payments to confirm", String(desk.openReferences.length), desk.openReferences.length ? "var(--chrome)" : null, "References generated, not yet confirmed"],
+        ["References open", String(desk.openReferences.length), null, "Paid on the gateway; the Bursary sees each payment"],
         ["Documents to review", String(rows.reduce((n, r) => n + Number(r.documents_pending), 0)), null, "Uploaded, not yet accepted"],
         ["Decisions entered", `${rows.filter((r) => r.decision).length} / ${rows.filter((r) => r.score_released_at).length}`, null, `${rows.filter((r) => r.decision_released_at).length} released`],
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      <Panel title="Fees this session" right={desk.fees.stated ? <Pil kind="ok">Stated</Pil> : <Pil kind="info">Standing amounts · not yet stated</Pil>}>
-        <PBody>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-            {([["applicationFee", "Post-UTME screening fee", desk.fees.applicationFee], ["portalCharge", "Portal and payment charge", desk.fees.portalCharge], ["acceptanceFee", "Acceptance fee", desk.fees.acceptanceFee]] as [string, string, number][]).map(([k, label, v]) => (
-              <div className="field" key={k} style={{ minWidth: 180 }}>
-                <label htmlFor={`fee-${k}`}>{label}</label>
-                <input id={`fee-${k}`} className="ctl tnum" value={val(`fee-${k}`, String(v))} disabled={!office} onChange={(e) => setEdits({ ...edits, [`fee-${k}`]: e.target.value })} />
-              </div>
-            ))}
-            <Btn kind="primary" disabled={!office || busy !== null} onClick={() => void send("fees", "PUT", "/applicant-fees", {
-              applicationFee: Number(val("fee-applicationFee", String(desk.fees.applicationFee))), portalCharge: Number(val("fee-portalCharge", String(desk.fees.portalCharge))), acceptanceFee: Number(val("fee-acceptanceFee", String(desk.fees.acceptanceFee))),
-            }, `Applicant fees stated for ${desk.session}`)}>{busy === "fees" ? "Saving…" : "State the fees"}</Btn>
-          </div>
-          <div className="sub2" style={{ marginTop: 6 }}>The amounts the references are generated for. There is no payment gateway on the portal yet: an applicant pays against the reference, and the Bursary confirms it here against the bank&rsquo;s record.</div>
-        </PBody>
-      </Panel>
-
-      <Panel title="Payments to confirm" right={`${desk.openReferences.length} reference${desk.openReferences.length === 1 ? "" : "s"} open`}>
-        {desk.openReferences.length ? (
-          <DTable cols={["Reference", "Applicant", "Kind|mid", "Amount|num", "Expires|mid", "|num"]} texts={desk.openReferences.map((r) => `${r.reference} ${r.surname} ${r.other_names} ${r.application_no}`)}
-            rows={desk.openReferences.map((r) => [
-              <b className="tnum" key="r">{r.reference}</b>,
-              <Two key="a" a={`${r.surname}, ${r.other_names}`} b={r.application_no} />,
-              <Pil kind={r.kind === "ACCEPTANCE" ? "info" : "grey"} key="k">{r.kind === "ACCEPTANCE" ? "Acceptance" : "Application"}</Pil>,
-              <span className="tnum" key="m">{money(Number(r.amount))}</span>,
-              <span className="tnum sub2" key="e">{new Date(r.expires_at).toLocaleString("en-GB")}</span>,
-              <Btn kind="go" key="c" disabled={!confirmer || busy !== null} onClick={() => { setConfirming(r); setEdits({}); }}>Confirm</Btn>,
-            ])} />
-        ) : <div className="card__body"><div className="sub2">Nothing is waiting to be confirmed.</div></div>}
-      </Panel>
+      <Note kind="info" title="Applicant fees are set by the Bursary and paid on the gateway">
+        The Post-UTME screening fee and the acceptance fee are stated on the Bursary&rsquo;s fee-setup screen, under &ldquo;Applicant · Post-UTME fees&rdquo;. An applicant generates a reference and pays it on the payment gateway; the payment confirms itself and the Bursary sees it &mdash; there is no confirmation step here.
+      </Note>
 
       <Panel title="Screening batches" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${desk.batches.length} batch${desk.batches.length === 1 ? "" : "es"}`}<Btn kind="ghost" disabled={!office} onClick={() => { setNewBatch(true); setEdits({}); }}>New batch</Btn><Btn kind="primary" disabled={!office || busy !== null} onClick={() => void send("release-scores", "POST", "/screening-scores/release", {}, `Screening results released for ${desk.session}`)}>{busy === "release-scores" ? "Releasing…" : "Release results"}</Btn></span>}>
         {desk.batches.length ? (
@@ -222,17 +193,6 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         </PBody>
       </Panel>
 
-      {confirming ? (
-        <Modal title={`Confirm ${confirming.reference}`} sub={`${confirming.surname}, ${confirming.other_names} · ${money(Number(confirming.amount))}`} onClose={() => setConfirming(null)}
-          foot={<><Btn kind="ghost" onClick={() => setConfirming(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
-            <Btn kind="go" disabled={!val("channel") || busy !== null} onClick={async () => { const ok = await send("confirm", "POST", `/fee-references/${confirming.reference}/confirm`, { channel: val("channel"), note: val("note") || undefined }, `Payment ${confirming.reference} confirmed against the bank's record`); if (ok) setConfirming(null); }}>{busy === "confirm" ? "Confirming…" : "Confirm the payment"}</Btn></>}>
-          <Note kind="info" title="Confirmed against the bank’s record, by you">The confirmation is recorded against your office. The applicant&rsquo;s form opens, or their place is held, the moment it is.</Note>
-          <div className="grid grid--2 rfgrid">
-            <Field id="channel" label="Channel" hint="As the bank’s record has it"><input id="channel" className="ctl" value={val("channel")} onChange={(e) => setEdits({ ...edits, channel: e.target.value })} placeholder="Bank transfer, bank branch, card…" /></Field>
-            <Field id="note" label="Note" hint="Teller number, transaction reference"><input id="note" className="ctl" value={val("note")} onChange={(e) => setEdits({ ...edits, note: e.target.value })} /></Field>
-          </div>
-        </Modal>
-      ) : null}
 
       {newBatch ? (
         <Modal title="A screening batch" sub={desk.session} onClose={() => setNewBatch(false)}
