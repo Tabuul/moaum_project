@@ -25,7 +25,7 @@ function whoIs(id: string): string {
   return "A member of staff, on the staff number";
 }
 
-export function Login({ next, sso }: { next: string; sso: { enabled: boolean; label: string } | null }) {
+export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null }) {
   const router = useRouter();
   const [uid, setUid] = useState("");
   const [pw, setPw] = useState("");
@@ -88,6 +88,7 @@ export function Login({ next, sso }: { next: string; sso: { enabled: boolean; la
             <input id="pw" type="password" value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} />
           </div>
           {problem ? <ProblemNotice problem={problem} /> : null}
+          {ssoProblem ? <div className="notice notice--bad"><div><div className="notice__t" style={{ color: "var(--red-deep)" }}>Single sign-on did not complete</div><p style={{ color: "var(--red-deep)" }}>{ssoProblem}</p></div></div> : null}
           <button className="btn btn--primary" type="submit" disabled={busy || !uid || !pw}>{busy ? "Signing in…" : "Sign in"}</button>
           {sso?.enabled ? (
             <a className="btn btn--ghost" href="/api/auth/sso/start" style={{ width: "100%", textDecoration: "none" }}>{sso.label}</a>

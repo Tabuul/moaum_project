@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,12 +36,34 @@ class AuthController {
     public record ChangePassword(@NotBlank String current, @NotBlank String next) {
     }
 
+    public record SsoCallback(@NotBlank String code, @NotBlank String state, @NotBlank String redirectUri) {
+    }
+
     private final AuthService auth;
+    private final SsoService sso;
     private final String bootstrapSecret;
 
-    AuthController(AuthService auth, @Value("${moaum.auth.hmac-secret:}") String bootstrapSecret) {
+    AuthController(AuthService auth, SsoService sso, @Value("${moaum.auth.hmac-secret:}") String bootstrapSecret) {
         this.auth = auth;
+        this.sso = sso;
         this.bootstrapSecret = bootstrapSecret;
+    }
+
+    /* ── single sign-on through the University's identity provider (Keycloak), for staff ── */
+
+    @GetMapping("/sso")
+    Map<String, Object> ssoDescribe() {
+        return sso.describe();
+    }
+
+    @GetMapping("/sso/start")
+    Map<String, Object> ssoStart(@RequestParam String redirectUri) {
+        return sso.start(redirectUri);
+    }
+
+    @PostMapping("/sso/callback")
+    AuthService.SignedIn ssoCallback(@Valid @RequestBody SsoCallback body, HttpServletRequest request) {
+        return sso.callback(body.code(), body.state(), body.redirectUri(), request.getRemoteAddr());
     }
 
     @PostMapping("/sign-in")

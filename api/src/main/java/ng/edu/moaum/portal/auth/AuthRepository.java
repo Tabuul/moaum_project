@@ -131,4 +131,13 @@ class AuthRepository {
     List<OfficeRow> offices() {
         return jdbc.sql("SELECT code, label, scope_kind FROM ref.office ORDER BY label").query(OfficeRow.class).list();
     }
+
+    record Person(UUID id, String surname, String givenNames, String staffNumber, LocalDate endedOn) {
+    }
+
+    /** the person the University's sign-on names by staff number (V037: single sign-on) */
+    Optional<Person> personByStaffNumber(String staffNumber) {
+        return jdbc.sql("SELECT id, surname, given_names, staff_number, ended_on FROM iam.person WHERE upper(staff_number) = upper(:n)")
+                .param("n", staffNumber).query(Person.class).optional();
+    }
 }

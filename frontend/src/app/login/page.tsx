@@ -14,5 +14,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   } catch {
     sso = null;
   }
-  return <Login next={next} sso={sso} />;
+  const ssoProblem = typeof params.sso === "string" && params.sso ? params.sso : null;
+  return <Login next={next} sso={sso} ssoProblem={ssoProblem} />;
 }
