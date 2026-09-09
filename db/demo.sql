@@ -358,6 +358,28 @@ BEGIN
         PERFORM admissions.confirm_fee(v_ref, 'Card', 'Demo acceptance (invented)');
     END IF;
 
+    -- ── polish: the eligible cohort reads the true stage on its own screen ──
+    -- application_stage is a strict sequence — fee confirmed, submitted, seated
+    -- for screening, scored, decided, accepted — so an applicant with a released
+    -- score but no confirmed application fee or screening seat still shows "pay
+    -- the application fee". Confirm the fee and seat them in a screening batch.
+    -- This runs OUTSIDE the seed guard so it also repairs a cohort already
+    -- seeded, and every step is idempotent.
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    UPDATE admissions.application a SET fee_confirmed_at = now()
+      FROM admissions.candidate c
+     WHERE a.candidate_id = c.id AND a.session = v_session
+       AND c.jamb_reg_no LIKE '202699%DA' AND a.fee_confirmed_at IS NULL;
+    IF EXISTS (SELECT 1 FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                WHERE a.session = v_session AND c.jamb_reg_no LIKE '202699%DA'
+                  AND a.submitted_at IS NOT NULL AND a.screening_batch_id IS NULL) THEN
+        IF NOT EXISTS (SELECT 1 FROM admissions.screening_batch WHERE session = v_session AND label = 'DEMO') THEN
+            INSERT INTO admissions.screening_batch (id, session, label, held_on, starts_at, ends_at, venue, capacity)
+            VALUES (gen_random_uuid(), v_session, 'DEMO', current_date, '09:00', '12:00', 'Demo CBT Hall (invented)', 200);
+        END IF;
+        PERFORM admissions.assign_screening((SELECT id FROM admissions.screening_batch WHERE session = v_session AND label = 'DEMO'));
+    END IF;
+
     RAISE NOTICE 'demo accounts ready for session % — password for every one: %', v_session, v_pw;
 END $$;
 
