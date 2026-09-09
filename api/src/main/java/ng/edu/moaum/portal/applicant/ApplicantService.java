@@ -184,6 +184,20 @@ public class ApplicantService {
         }
         String hash = encoder.encode(password);
         UUID account = atTheDoor(null, "Post-UTME registration", () -> repo.register(session, key, mail, phone, hash));
+        // the account details go to the email (and phone) the applicant registered with
+        repo.byId(account).ifPresent(a -> {
+            String link = portalUrl + "/login";
+            repo.queueNotice("EMAIL", a.email(), "Your MOAUM applicant account",
+                    "Welcome to the Rev. Fr. Moses Orshio Adasu University applicant portal.\n\n"
+                            + "Your application account has been created:\n"
+                            + "  Application number: " + a.applicationNo() + "\n"
+                            + "  Sign-in email: " + a.email() + "\n"
+                            + "  JAMB registration number: " + a.jambKey() + "\n\n"
+                            + "Sign in at " + link + " to pay the Post-UTME screening fee and complete your application. "
+                            + "Keep these details safe, and do not create a second account — it invalidates both.", a.applicationId());
+            repo.queueNotice("SMS", a.phone(), "MOAUM applicant account",
+                    "MOAUM: your applicant account is created. Application no " + a.applicationNo() + ". Sign in at " + link, a.applicationId());
+        });
         return signIn(key, password, ip);
     }
 

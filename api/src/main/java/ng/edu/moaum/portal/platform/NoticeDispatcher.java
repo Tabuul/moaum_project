@@ -46,7 +46,11 @@ public class NoticeDispatcher {
     private final String emailFormat;
     private final String emailFrom;
 
+    private final MailService mailService;
+    private final SmtpMailer smtpMailer;
+
     public NoticeDispatcher(NoticeRepository notices, PlatformTransactionManager transactions,
+                            MailService mailService, SmtpMailer smtpMailer,
                             @Value("${moaum.notices.email-url:}") String emailUrl,
                             @Value("${moaum.notices.sms-url:}") String smsUrl,
                             @Value("${moaum.notices.token:}") String token,
@@ -56,6 +60,8 @@ public class NoticeDispatcher {
                             @Value("${moaum.notices.email-from:MOAUM Portal <portal@moaum.edu.ng>}") String emailFrom) {
         this.notices = notices;
         this.tx = new TransactionTemplate(transactions);
+        this.mailService = mailService;
+        this.smtpMailer = smtpMailer;
         this.emailUrl = emailUrl == null ? "" : emailUrl.trim();
         this.smsUrl = smsUrl == null ? "" : smsUrl.trim();
         this.token = token == null ? "" : token.trim();
@@ -94,39 +100,52 @@ public class NoticeDispatcher {
 
     @Scheduled(fixedDelayString = "${moaum.notices.every-ms:60000}", initialDelayString = "${moaum.notices.initial-ms:15000}")
     public void dispatch() {
-        if (!emailConfigured() && !smsConfigured()) {
+        // the mail account set on the Mail server screen (V057) sends email over SMTP; an HTTP
+        // relay (MOAUM_NOTICES_EMAIL_URL) is the fallback, and SMS still goes by the relay
+        java.util.Optional<MailService.Smtp> smtp = mailService.smtp();
+        boolean emailReady = smtp.isPresent() || emailConfigured();
+        if (!emailReady && !smsConfigured()) {
             if (!saidNoProvider) {
-                LOG.info("notices: no provider configured (MOAUM_NOTICES_EMAIL_URL / MOAUM_NOTICES_SMS_URL); the outbox holds them");
+                LOG.info("notices: no email account (Mail server screen) or provider configured; the outbox holds them");
                 saidNoProvider = true;
             }
             return;
         }
+        saidNoProvider = false;
         List<NoticeRepository.Queued> batch = notices.queued(50);
         for (NoticeRepository.Queued n : batch) {
-            String url = "EMAIL".equals(n.channel()) ? emailUrl : smsUrl;
-            if (url.isEmpty()) {
-                continue;
-            }
-            String outcome;
+            boolean email = "EMAIL".equals(n.channel());
+            String outcome = null;
             String error = null;
-            try {
-                HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
-                        .timeout(Duration.ofSeconds(20))
-                        .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(payload(n)));
-                if (!token.isEmpty()) {
-                    req.header("Authorization", "Bearer " + token);
+            if (email && smtp.isPresent()) {
+                try {
+                    smtpMailer.send(smtp.get(), n.recipient(), n.subject(), n.body());
+                    outcome = "smtp " + smtp.get().host();
+                } catch (Exception e) {
+                    error = e.getClass().getSimpleName() + ": " + e.getMessage();
                 }
-                HttpResponse<String> r = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
-                if (r.statusCode() >= 200 && r.statusCode() < 300) {
-                    outcome = r.body() == null ? "" : r.body().substring(0, Math.min(r.body().length(), 200));
-                } else {
-                    outcome = null;
-                    error = "provider answered " + r.statusCode() + ": " + (r.body() == null ? "" : r.body().substring(0, Math.min(r.body().length(), 300)));
+            } else {
+                String url = email ? emailUrl : smsUrl;
+                if (url.isEmpty()) {
+                    continue;
                 }
-            } catch (Exception e) {
-                outcome = null;
-                error = e.getClass().getSimpleName() + ": " + e.getMessage();
+                try {
+                    HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
+                            .timeout(Duration.ofSeconds(20))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(payload(n)));
+                    if (!token.isEmpty()) {
+                        req.header("Authorization", "Bearer " + token);
+                    }
+                    HttpResponse<String> r = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
+                    if (r.statusCode() >= 200 && r.statusCode() < 300) {
+                        outcome = r.body() == null ? "" : r.body().substring(0, Math.min(r.body().length(), 200));
+                    } else {
+                        error = "provider answered " + r.statusCode() + ": " + (r.body() == null ? "" : r.body().substring(0, Math.min(r.body().length(), 300)));
+                    }
+                } catch (Exception e) {
+                    error = e.getClass().getSimpleName() + ": " + e.getMessage();
+                }
             }
             final String ref = outcome;
             final String err = error;

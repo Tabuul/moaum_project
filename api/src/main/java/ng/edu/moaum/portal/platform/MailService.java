@@ -69,6 +69,36 @@ public class MailService {
         return config();
     }
 
+    /** the SMTP parameters and the decrypted password, for the sender's own use — present only when fully set */
+    public record Smtp(String host, int port, String encryption, String username, String from, String password) {
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<Smtp> smtp() {
+        Map<String, Object> m = jdbc.sql("SELECT smtp_host, smtp_port, smtp_encryption, username, from_address FROM platform.mail_settings WHERE id = true")
+                .query().listOfRows().stream().findFirst().orElse(null);
+        if (m == null || configKey.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        String host = str(m.get("smtp_host"));
+        String username = str(m.get("username"));
+        if (host.isEmpty() || username.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        String password = jdbc.sql("SELECT platform.mail_password(:k)").param("k", configKey).query(String.class).optional().orElse(null);
+        if (password == null || password.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        int port = m.get("smtp_port") == null ? 587 : ((Number) m.get("smtp_port")).intValue();
+        String enc = str(m.get("smtp_encryption")).isEmpty() ? "STARTTLS" : str(m.get("smtp_encryption"));
+        String from = str(m.get("from_address")).isEmpty() ? username : str(m.get("from_address"));
+        return java.util.Optional.of(new Smtp(host, port, enc, username, from, password));
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o).trim();
+    }
+
     private static void enc(String which, String value) {
         if (value != null && !value.isBlank() && !ENC.contains(value.trim().toUpperCase())) {
             throw new DomainRuleViolation("MAIL_ENCRYPTION", which + " encryption is STARTTLS, SSL or NONE.",
