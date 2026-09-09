@@ -125,12 +125,24 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         const facultyName = faculties.find((f) => f.code === facultyPick)?.name;
         const facProgrammes = facultyPick ? programmes.filter((pr) => pr.faculty_code === facultyPick) : programmes;
         const itemName = val("item") === "__other__" ? val("itemOther").trim() : val("item");
+        const selectedProgs = (val("progs") ? val("progs").split(",") : []).filter(Boolean);
+        const toggleProg = (code: string) => { const s = new Set(selectedProgs); if (s.has(code)) s.delete(code); else s.add(code); setEdits({ ...edits, progs: [...s].join(",") }); };
         return (
         <Modal title="An item of the charge" sub={`${addSession} · applies where every filter it carries matches, or is blank`} onClose={() => setAdding(false)}
           foot={<><Btn kind="ghost" onClick={() => setAdding(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
-            const ok = await send("add", "POST", `/sessions/${addSession}/schedule`, { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, facultyCode: val("faculty") || null, programmeCode: val("programme") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0") }, `Fee item stated for ${addSession}: ${itemName} ${val("amount")}`);
+            const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null };
+            let ok = true;
+            if (selectedProgs.length) {
+              // one row per chosen programme; the fee applies to exactly those
+              for (const code of selectedProgs) {
+                ok = (await send(`add-${code}`, "POST", `/sessions/${addSession}/schedule`, { ...shared, programmeCode: code }, `Fee item stated for ${addSession}: ${itemName} · ${code}`)) && ok;
+              }
+            } else {
+              // none chosen: the whole faculty (if one is set), else every programme
+              ok = await send("add", "POST", `/sessions/${addSession}/schedule`, { ...shared, programmeCode: null }, `Fee item stated for ${addSession}: ${itemName}`);
+            }
             if (ok) { setAdding(false); if (addSession !== session) router.push(`/finance/fees?session=${encodeURIComponent(addSession)}`); }
-          }}>{busy === "add" ? "Stating…" : "State the item"}</Btn></>}>
+          }}>{busy === "add" || (busy ?? "").startsWith("add-") ? "Stating…" : "State the item"}</Btn></>}>
           <div className="grid grid--2">
             <Field id="fi" label="Payment item" hint="A payment category; choose Other to name a one-off">
               <select id="fi" className="ctl" value={val("item")} onChange={(e) => setEdits({ ...edits, item: e.target.value })}>
@@ -155,9 +167,26 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div className="grid grid--2">
             <Field id="fl" label="Level" hint="Blank for every level"><select id="fl" className="ctl" value={val("level")} onChange={(e) => setEdits({ ...edits, level: e.target.value })}><option value="">Every level</option>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={l}>{l}</option>)}</select></Field>
             <Field id="fm" label="Entry mode" hint="Blank for every mode"><select id="fm" className="ctl" value={val("mode")} onChange={(e) => setEdits({ ...edits, mode: e.target.value })}><option value="">Every mode</option><option>UTME</option><option>DIRECT_ENTRY</option><option>TRANSFER</option></select></Field>
-            <Field id="ff" label="Faculty" hint="Choose a faculty to list its programmes"><select id="ff" className="ctl" value={val("faculty")} onChange={(e) => setEdits({ ...edits, faculty: e.target.value, programme: "" })}><option value="">Every faculty</option>{faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select></Field>
-            <Field id="fp" label="Programme" hint={facultyPick ? "A single programme, or all in the faculty" : "Choose a faculty first, or leave for every programme"}><select id="fp" className="ctl" value={val("programme")} onChange={(e) => setEdits({ ...edits, programme: e.target.value })}><option value="">{facultyPick ? `All programmes in ${facultyName ?? "the faculty"}` : "Every programme"}</option>{facProgrammes.map((pr) => <option key={pr.code} value={pr.code}>{pr.name}</option>)}</select></Field>
           </div>
+          <Field id="ff" label="Faculty" hint="Choose a faculty to list its programmes"><select id="ff" className="ctl" value={val("faculty")} onChange={(e) => setEdits({ ...edits, faculty: e.target.value, progs: "" })}><option value="">Every faculty</option>{faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select></Field>
+          <Field id="fp" label="Programmes" hint={facultyPick ? `Tick a single programme, two or more, or none for all programmes in ${facultyName ?? "the faculty"}` : "Choose a faculty above to target specific programmes; otherwise the charge applies to every programme"}>
+            {facultyPick ? (
+              <>
+                <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEdits({ ...edits, progs: facProgrammes.map((pr) => pr.code).join(",") })}>Select all</button>
+                  {selectedProgs.length ? <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEdits({ ...edits, progs: "" })}>Clear (all in faculty)</button> : null}
+                  <span className="sub2" style={{ alignSelf: "center" }}>{selectedProgs.length ? `${selectedProgs.length} selected` : `All programmes in ${facultyName ?? "the faculty"}`}</span>
+                </div>
+                <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line-2)", borderRadius: 8, padding: 8, display: "grid", gap: 4 }}>
+                  {facProgrammes.length ? facProgrammes.map((pr) => (
+                    <label key={pr.code} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                      <input type="checkbox" checked={selectedProgs.includes(pr.code)} onChange={() => toggleProg(pr.code)} /> {pr.name}
+                    </label>
+                  )) : <span className="sub2">No programme in this faculty.</span>}
+                </div>
+              </>
+            ) : <div className="sub2">Applies to every programme. Choose a faculty above to target one, two or more.</div>}
+          </Field>
         </Modal>
         );
       })() : null}
