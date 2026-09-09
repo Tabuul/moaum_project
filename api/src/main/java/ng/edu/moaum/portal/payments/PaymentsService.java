@@ -328,7 +328,7 @@ public class PaymentsService {
                 out = settle("paystack", source, "verify", reference, paid, status, "success".equals(status),
                         d.get("id") == null ? reference : String.valueOf(d.get("id")), mapper.writeValueAsString(a));
                 if ("success".equals(status)) {
-                    repo.checked(reference);
+                    AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "reconciler checked " + reference, null, null), () -> tx.execute(st -> { repo.checked(reference); return null; }));
                     return out;
                 }
             } else {
@@ -419,7 +419,10 @@ public class PaymentsService {
     }
 
     public Map<String, Object> resolveEvent(UUID id, String resolution) {
-        repo.resolve(id, resolution);
+        // resolving stamps gateway_event (on the spine) with resolved_by; it must run
+        // inside an attributed transaction, or the write is refused as unattributed.
+        AuditContextHolder.with(AuditContextHolder.required(),
+                () -> tx.execute(st -> { repo.resolve(id, resolution); return null; }));
         return Map.of("id", id, "resolved", true);
     }
 
