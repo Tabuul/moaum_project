@@ -17,7 +17,7 @@ export function Forgot() {
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch("/api/auth/applicant/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: identifier.trim() }) });
+      const r = await fetch("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: identifier.trim() }) });
       if (!r.ok) {
         const j = await r.json().catch(() => null);
         setProblem(j ?? { status: r.status, title: r.statusText });
@@ -40,24 +40,24 @@ export function Forgot() {
           </div>
           <div style={{ height: 26 }} />
           <h1>Forgotten your password?</h1>
-          <p>A reset link is sent to the email and the phone on your application account. It is good for an hour and works once.</p>
+          <p>A reset link is sent to the email (and phone) on your account &mdash; staff, student or applicant. It is good for an hour and works once.</p>
         </div>
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!sent) void ask(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Reset your password</div>
-            <div className="hint" style={{ marginTop: 4 }}>For application accounts. Staff ask the Registry.</div>
+            <div className="hint" style={{ marginTop: 4 }}>Staff, students and applicants.</div>
           </div>
           {sent ? (
             <Note kind="ok" title="If that names an account, a reset link is on its way">
-              Check the email and the phone on your application. The link is good for an hour. If nothing arrives, the address or number on your account may differ from the one you expect &mdash; write to the Registry quoting your application number.
+              Check the email (and phone) on your account. The link is good for an hour. If nothing arrives, the address on your account may differ from the one you expect &mdash; ask the Registry to check it. (A staff account can only be emailed when its username is an email address.)
             </Note>
           ) : (
             <>
               <div className="field">
-                <label htmlFor="ident">Application number, email or JAMB number</label>
-                <input id="ident" value={identifier} placeholder="APP/26/000123" autoComplete="username" onChange={(e) => setIdentifier(e.target.value)} />
+                <label htmlFor="ident">Staff number, matriculation number, application number, email or JAMB number</label>
+                <input id="ident" value={identifier} placeholder="e.g. MOAUM/STAFF/1234, MOAUM/SCI/24/0001, APP/26/000123 or you@example.com" autoComplete="username" onChange={(e) => setIdentifier(e.target.value)} />
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
               <button className="btn btn--primary" type="submit" disabled={busy || !identifier.trim()}>{busy ? "Sending…" : "Send the reset link"}</button>

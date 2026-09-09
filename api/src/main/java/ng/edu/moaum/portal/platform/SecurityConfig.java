@@ -44,6 +44,7 @@ class SecurityConfig {
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/api/v1/platform/status",
                                 "/api/v1/auth/sign-in", "/api/v1/auth/bootstrap", "/api/v1/auth/offices",
+                                "/api/v1/auth/forgot", "/api/v1/auth/reset",
                                 "/api/v1/auth/sso", "/api/v1/auth/sso/start", "/api/v1/auth/sso/callback",
                                 "/api/v1/applicant/lookup", "/api/v1/applicant/register", "/api/v1/applicant/sign-in",
                                 "/api/v1/applicant/forgot", "/api/v1/applicant/reset",

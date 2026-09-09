@@ -41,12 +41,33 @@ class AuthController {
 
     private final AuthService auth;
     private final SsoService sso;
+    private final PasswordResetService resets;
     private final String bootstrapSecret;
 
-    AuthController(AuthService auth, SsoService sso, @Value("${moaum.auth.hmac-secret:}") String bootstrapSecret) {
+    AuthController(AuthService auth, SsoService sso, PasswordResetService resets, @Value("${moaum.auth.hmac-secret:}") String bootstrapSecret) {
         this.auth = auth;
         this.sso = sso;
+        this.resets = resets;
         this.bootstrapSecret = bootstrapSecret;
+    }
+
+    public record Forgot(@NotBlank @Size(max = 200) String identifier) {
+    }
+
+    public record Reset(@NotBlank @Size(max = 200) String token, @NotBlank @Size(max = 200) String password) {
+    }
+
+    /** a staff member or student asks to reset a forgotten password; the answer is the same whether or not it names an account */
+    @PostMapping("/forgot")
+    org.springframework.http.ResponseEntity<Map<String, Object>> forgot(@Valid @RequestBody Forgot body, HttpServletRequest request) {
+        resets.forgot(body.identifier(), request.getRemoteAddr());
+        return org.springframework.http.ResponseEntity.accepted().body(Map.of("sent", true));
+    }
+
+    @PostMapping("/reset")
+    Map<String, Object> reset(@Valid @RequestBody Reset body, HttpServletRequest request) {
+        resets.reset(body.token(), body.password(), request.getRemoteAddr());
+        return Map.of("reset", true);
     }
 
     /* ── single sign-on through the University's identity provider (Keycloak), for staff ── */

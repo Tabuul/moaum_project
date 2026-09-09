@@ -3,17 +3,16 @@
 /** A new password against the reset token: eight characters at least, typed twice, and the applicant is signed in. */
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export function Reset({ token }: { token: string }) {
-  const router = useRouter();
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const mismatch = pw2.length > 0 && pw !== pw2;
 
@@ -21,14 +20,13 @@ export function Reset({ token }: { token: string }) {
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch("/api/auth/applicant/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password: pw }) });
+      const r = await fetch("/api/auth/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password: pw }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
-      router.push("/applicant");
-      router.refresh();
+      setDone(true);
     } finally {
       setBusy(false);
     }
@@ -54,7 +52,9 @@ export function Reset({ token }: { token: string }) {
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>New password</div>
             <div className="hint" style={{ marginTop: 4 }}>Eight characters at the very least. This one account carries you to graduation.</div>
           </div>
-          {!token ? (
+          {done ? (
+            <Note kind="ok" title="Your password has been changed">Sign in with your new password. <Link href="/login">Go to sign in</Link>.</Note>
+          ) : !token ? (
             <Note kind="bad" title="This link is incomplete">Open it exactly as it was sent, or <Link href="/login/forgot">ask for a new one</Link>.</Note>
           ) : (
             <>
@@ -71,7 +71,7 @@ export function Reset({ token }: { token: string }) {
                 {mismatch ? <div className="ferr">The two do not match.</div> : null}
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <button className="btn btn--primary" type="submit" disabled={busy || pw.length < 8 || mismatch}>{busy ? "Saving…" : "Save and sign in"}</button>
+              <button className="btn btn--primary" type="submit" disabled={busy || pw.length < 8 || mismatch}>{busy ? "Saving…" : "Save the new password"}</button>
             </>
           )}
           <div className="login-help">
