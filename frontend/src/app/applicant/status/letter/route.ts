@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Application } from "@/lib/applicant";
 import { A4, Page, pdf } from "@/lib/pdf-write";
+import { brandHeader } from "@/lib/pdf-crest";
 
 export const dynamic = "force-dynamic";
 
@@ -15,15 +16,12 @@ export async function GET() {
   if (!a.decisionReleasedAt || a.decision !== "OFFERED") {
     return NextResponse.json({ status: 409, title: "No offer to print", detail: "The letter is issued when the Admissions Board's offer is released." }, { status: 409 });
   }
+  if (!a.acceptedAt) {
+    return NextResponse.json({ status: 409, title: "Accept your offer first", detail: "The admission letter is issued once you have accepted the offer and the acceptance fee is confirmed. Sign the undertaking and pay the acceptance fee, then print the letter." }, { status: 409 });
+  }
   const p = new Page();
   const L = 64;
-  let y = A4.h - 70;
-  p.text(L, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
-  y -= 15;
-  p.text(L, y, "Office of the Registrar · Academic Affairs", 9.5, false, [0.35, 0.35, 0.35]);
-  y -= 10;
-  p.rule(L, y, A4.w - L, y, 1, 0.2);
-  y -= 26;
+  let y = brandHeader(p, L, "Office of the Registrar · Academic Affairs");
   p.text(L, y, `Our ref: ${a.applicationNo}`, 9.5);
   p.text(A4.w - L - 150, y, when(a.decisionReleasedAt), 9.5);
   y -= 26;
@@ -37,7 +35,7 @@ export async function GET() {
   y -= 8;
   y = p.paragraph(L, y, "This offer is provisional. It stands on the results JAMB sent and the documents you declared, every one of which the Registry verifies with the examination bodies before clearance. A result that does not verify voids the admission at any point afterwards, including after the award of a degree.", A4.w - 2 * L, 10.5, 1.45);
   y -= 8;
-  y = p.paragraph(L, y, "To accept, sign in to the portal, sign the undertaking, and pay the acceptance fee against the reference the portal generates. An offer that lapses cannot be reinstated, and the place is released to the waiting list. Nothing is paid to any person; every naira you owe is paid on the portal, to a reference the portal generates.", A4.w - 2 * L, 10.5, 1.45);
+  y = p.paragraph(L, y, `You accepted this offer on ${when(a.acceptedAt)} and the acceptance fee is confirmed${a.admissionNo ? `; your admission number is ${a.admissionNo}` : ""}. Nothing is paid to any person; every naira you owe is paid on the portal, to a reference the portal generates.`, A4.w - 2 * L, 10.5, 1.45);
   y -= 8;
   y = p.paragraph(L, y, "After acceptance, present your original documents at the Registry for clearance. You then pay your fees and register your courses under your admission number; your matriculation number is issued afterwards, over the confirmed register.", A4.w - 2 * L, 10.5, 1.45);
   y -= 30;

@@ -44,9 +44,14 @@ DECLARE
     v_batch     uuid;
     v_made      int;
     v_none      int;
+    v_app       uuid;
+    v_att       uuid;
+    v_ref       text;
+    v_elig      uuid;
     o           record;
     s           record;
     c           record;
+    elig        record;
 BEGIN
     -- ── the session everything hangs in: the current one, else 2026/2027 ──
     SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
@@ -283,6 +288,74 @@ BEGIN
                     WHERE a.candidate_id IN (SELECT id FROM admissions.candidate WHERE session = v_session AND jamb_reg_no = '20269999DM')) THEN
         PERFORM set_config('moaum.actor_office', 'applicant', true);
         PERFORM admissions.register_applicant(v_session, '20269999DM', 'demo.applicant@example.com', '08030009910', crypt(v_pw, gen_salt('bf', 12)));
+    END IF;
+
+    -- ── ten fully-eligible applicants across four programmes ──────────────
+    -- On the CAPS list with a UTME aggregate above any cut-off, registered and
+    -- submitted, five O'Level credits (English and Mathematics among them), and
+    -- a released screening score — so the merit engine proposes them and the
+    -- Board can Record offers, decide and release. Every person is invented.
+    IF NOT EXISTS (SELECT 1 FROM admissions.caps_row WHERE session = v_session AND jamb_reg_no = '20269901DA') THEN
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        v_elig := gen_random_uuid();
+        INSERT INTO admissions.caps_batch (id, session, source, filename, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (v_elig, v_session, 'CAPS_DOWNLOAD', 'demo — eligible cohort (invented)', 'UTME',
+                digest('demo.sql eligible ' || v_session, 'sha256'), 10, current_date, v_actor, 'academic');
+
+        FOR elig IN SELECT * FROM (VALUES
+                ('20269901DA', 'Ada Merit (invented)',     'C00023', 290, 'F', 'Benue',    'Makurdi',   78.0),
+                ('20269902DA', 'Bem Merit (invented)',     'C00023', 276, 'M', 'Benue',    'Gboko',     71.0),
+                ('20269903DA', 'Chidi Merit (invented)',   'C00023', 268, 'M', 'Enugu',    'Nsukka',    69.0),
+                ('20269904DA', 'Doofan Merit (invented)',  'C00033', 285, 'F', 'Benue',    'Konshisha', 80.0),
+                ('20269905DA', 'Emeka Merit (invented)',   'C00033', 272, 'M', 'Anambra',  'Awka',      74.0),
+                ('20269906DA', 'Fatima Merit (invented)',  'C00033', 261, 'F', 'Benue',    'Otukpo',    66.0),
+                ('20269907DA', 'Grace Merit (invented)',   'C00019', 279, 'F', 'Benue',    'Gwer West', 76.0),
+                ('20269908DA', 'Hassan Merit (invented)',  'C00019', 254, 'M', 'Nasarawa', 'Lafia',     63.0),
+                ('20269909DA', 'Iveren Merit (invented)',  'C64548', 283, 'F', 'Benue',    'Vandeikya', 77.0),
+                ('20269910DA', 'John Merit (invented)',    'C64548', 259, 'M', 'Kogi',     'Lokoja',    64.0)
+            ) AS t(jamb, names, prog, agg, sex, st, lga, putme)
+        LOOP
+            INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+            VALUES (gen_random_uuid(), v_elig, v_session, elig.jamb, '{"demo": true}'::jsonb, 'DEMO', elig.names, elig.prog, elig.agg, 'UTME', elig.sex, elig.st, elig.lga);
+
+            PERFORM set_config('moaum.actor_office', 'applicant', true);
+            PERFORM admissions.register_applicant(v_session, elig.jamb, 'demo.' || lower(elig.jamb) || '@example.com', '0803 000 0000', crypt(v_pw, gen_salt('bf', 12)));
+
+            PERFORM set_config('moaum.actor_office', 'academic', true);
+            SELECT ap.id INTO v_app FROM admissions.application ap
+              JOIN admissions.candidate cc ON cc.id = ap.candidate_id
+             WHERE cc.session = v_session AND cc.jamb_key = elig.jamb;
+            UPDATE admissions.application SET next_of_kin = 'DEMO Next of Kin · 0803 000 0000', submitted_at = now() WHERE id = v_app;
+
+            v_att := gen_random_uuid();
+            INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+            VALUES (v_att, v_session, 'OLEVEL', 'demo-eligible', elig.jamb, 'COLUMN',
+                '{"sittings":[{"type":"WAEC","year":"2025","examNumber":"4100000","subjects":[' ||
+                '{"subject":"English Language","grade":"B2"},{"subject":"Mathematics","grade":"B3"},' ||
+                '{"subject":"Physics","grade":"C4"},{"subject":"Chemistry","grade":"C5"},' ||
+                '{"subject":"Biology","grade":"B2"}]}]}');
+            PERFORM admissions.olevel_from_attachment(v_att);
+
+            UPDATE admissions.application SET screening_score = elig.putme, score_entered_at = now() WHERE id = v_app;
+        END LOOP;
+
+        -- release every entered score for the session, so the pool is eligible
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM admissions.release_scores(v_session);
+
+        -- take the first candidate all the way to ACCEPTED, so the admission
+        -- letter is printable end to end; the rest wait for the Board to Record
+        -- offers, decide and release in the portal.
+        SELECT ap.id INTO v_app FROM admissions.application ap
+          JOIN admissions.candidate cc ON cc.id = ap.candidate_id
+         WHERE cc.session = v_session AND cc.jamb_key = '20269901DA';
+        PERFORM admissions.decide_application(v_app, 'OFFERED', 'Demo merit offer (invented)');
+        PERFORM admissions.release_decisions(v_session);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.sign_undertaking(v_app);
+        v_ref := admissions.new_fee_reference(v_app, 'ACCEPTANCE');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.confirm_fee(v_ref, 'Card', 'Demo acceptance (invented)');
     END IF;
 
     RAISE NOTICE 'demo accounts ready for session % — password for every one: %', v_session, v_pw;

@@ -193,9 +193,11 @@ export function Status({ a }: { a: Application }) {
       <Note kind="info" title="Provisional means exactly that">
         This offer stands on the results JAMB sent. The Registry verifies every one of them with WAEC, NECO and JAMB before clearance. A result that does not verify voids the admission at any point afterwards &mdash; including after you have graduated.
       </Note>
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-        <a href="/applicant/status/letter" target="_blank" rel="noopener" className="btn btn--ghost">Download admission letter (PDF)</a>
-      </div>
+      {at(a, 6) ? (
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <a href="/applicant/status/letter" target="_blank" rel="noopener" className="btn btn--primary">Print admission letter (PDF)</a>
+        </div>
+      ) : null}
     </>
   );
 }
