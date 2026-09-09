@@ -55,11 +55,19 @@ public class PasswordResetService {
         String lower = id.toLowerCase();
         String upper = id.toUpperCase();
 
-        // staff: the username is the staff number or an email; a staff email exists only when the username is one
-        var staff = jdbc.sql("SELECT person_id FROM iam.credential WHERE username = :u").param("u", lower).query().listOfRows();
+        // staff: matched on the username (staff number or email); the reset goes to the person's
+        // email on record (V060), or the username when it is itself an email
+        var staff = jdbc.sql("""
+                SELECT c.person_id, p.email, p.phone FROM iam.credential c JOIN iam.person p ON p.id = c.person_id
+                 WHERE c.username = :u
+                """).param("u", lower).query().listOfRows();
         if (!staff.isEmpty()) {
-            UUID person = (UUID) staff.get(0).get("person_id");
-            return new Subject("STAFF", person, EMAIL.matcher(lower).matches() ? lower : null, null, "staff account");
+            Map<String, Object> c = staff.get(0);
+            String email = (String) c.get("email");
+            if (email == null || email.isBlank()) {
+                email = EMAIL.matcher(lower).matches() ? lower : null;
+            }
+            return new Subject("STAFF", (UUID) c.get("person_id"), email, (String) c.get("phone"), "staff account");
         }
         // student: by matriculation or admission number, or by the email on file
         var student = jdbc.sql("""

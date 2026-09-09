@@ -21,6 +21,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,14 +79,25 @@ class IamController {
 
     record NewPerson(@Size(max = 40) String staffNumber,
                      @NotBlank @Size(max = 120) String surname,
-                     @NotBlank @Size(max = 200) String givenNames) {
+                     @NotBlank @Size(max = 200) String givenNames,
+                     @Size(max = 320) String email, @Size(max = 40) String phone) {
     }
 
     @PostMapping("/persons")
     @PreAuthorize("hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super')")
     ResponseEntity<Person> create(@Valid @RequestBody NewPerson request) {
-        Person person = people.create(request.staffNumber(), request.surname(), request.givenNames());
+        Person person = people.create(request.staffNumber(), request.surname(), request.givenNames(), request.email(), request.phone());
         return ResponseEntity.created(URI.create("/api/v1/iam/persons/" + person.id())).body(person);
+    }
+
+    record Contact(@Size(max = 320) String email, @Size(max = 40) String phone) {
+    }
+
+    /** the Registry sets a staff member's email and phone — where a reset and any notice are sent */
+    @PutMapping("/persons/{id}/contact")
+    @PreAuthorize("hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super')")
+    Person contact(@PathVariable UUID id, @Valid @RequestBody Contact request) {
+        return people.setContact(id, request.email(), request.phone());
     }
 
     record NewGrant(@NotBlank String officeCode,

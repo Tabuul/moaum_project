@@ -19,6 +19,8 @@ export interface PersonRow {
   staffNumber: string | null;
   surname: string;
   givenNames: string;
+  email: string | null;
+  phone: string | null;
   endedOn: string | null;
   username: string | null;
   mustChange: boolean;
@@ -62,9 +64,9 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
   const openPerson = open === "person" && canCredential;
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
-  const [modal, setModal] = useState<"person" | "grant" | "credential" | "end" | null>(openGrant ? "grant" : openPerson ? "person" : null);
+  const [modal, setModal] = useState<"person" | "grant" | "credential" | "end" | "contact" | null>(openGrant ? "grant" : openPerson ? "person" : null);
   const [target, setTarget] = useState<PersonRow | GrantRow | null>(openGrant ? persons[0] : null);
-  const [f, setF] = useState({ staffNumber: "", surname: "", givenNames: "", office: openGrant ? (offices[0]?.code ?? "") : "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "", username: "", password: "", reason: "", on: "" });
+  const [f, setF] = useState({ staffNumber: "", surname: "", givenNames: "", email: "", phone: "", office: openGrant ? (offices[0]?.code ?? "") : "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "", username: "", password: "", reason: "", on: "" });
   const [search, setSearch] = useState(q);
   const [now] = useState(() => Date.now());
   const soon = grants.filter((g) => g.validTo && new Date(g.validTo).getTime() - now < 30 * 86400000).length;
@@ -121,6 +123,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
             p.endedOn ? <Pil kind="grey" key="st">Ended</Pil> : p.lockedUntil && new Date(p.lockedUntil).getTime() > now ? <Pil kind="bad" key="st">Locked</Pil> : p.mustChange ? <Pil kind="info" key="st">Password to change</Pil> : p.username ? <Pil kind="ok" key="st">Active</Pil> : <Pil kind="grey" key="st">No account</Pil>,
             <span key="a">
               <Btn kind="ghost" disabled={!canCredential} onClick={() => { setTarget(p); setF({ ...f, username: p.username ?? p.staffNumber?.toLowerCase() ?? "", password: "" }); setModal("credential"); }}>{p.username ? "Reset password" : "Create account"}</Btn>{" "}
+              <Btn kind="ghost" disabled={!canCredential} onClick={() => { setTarget(p); setF({ ...f, email: p.email ?? "", phone: p.phone ?? "" }); setModal("contact"); }}>Contact</Btn>{" "}
               <Btn kind="ghost" disabled={!canGrant} onClick={() => { setTarget(p); setF({ ...f, office: offices[0]?.code ?? "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" }); setModal("grant"); }}>Grant an office</Btn>
             </span>,
           ])}
@@ -155,11 +158,23 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       {modal === "person" ? (
         <Modal title="New person" sub="Created once, however many offices they hold" onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.surname || !f.givenNames} onClick={() => void send("POST", "/api/bff/api/v1/iam/persons", { staffNumber: f.staffNumber || null, surname: f.surname, givenNames: f.givenNames }, "Person created")}>Create</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.surname || !f.givenNames} onClick={() => void send("POST", "/api/bff/api/v1/iam/persons", { staffNumber: f.staffNumber || null, surname: f.surname, givenNames: f.givenNames, email: f.email || null, phone: f.phone || null }, "Person created")}>Create</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="np-s" label="Surname"><input id="np-s" className="ctl" value={f.surname} onChange={(e) => setF({ ...f, surname: e.target.value })} autoComplete="off" /></Field>
             <Field id="np-g" label="Given names"><input id="np-g" className="ctl" value={f.givenNames} onChange={(e) => setF({ ...f, givenNames: e.target.value })} autoComplete="off" /></Field>
             <Field id="np-n" label="Staff number" hint="Optional; the number the University issued"><input id="np-n" className="ctl tnum" value={f.staffNumber} placeholder="MOAUM/STF/" onChange={(e) => setF({ ...f, staffNumber: e.target.value })} autoComplete="off" /></Field>
+            <Field id="np-e" label="Email" hint="Where a password reset and notices are sent"><input id="np-e" className="ctl tnum" value={f.email} placeholder="name@moaum.edu.ng" onChange={(e) => setF({ ...f, email: e.target.value })} autoComplete="off" /></Field>
+            <Field id="np-p" label="Phone" hint="Optional; for SMS notices"><input id="np-p" className="ctl tnum" value={f.phone} placeholder="0803…" onChange={(e) => setF({ ...f, phone: e.target.value })} autoComplete="off" /></Field>
+          </div>
+        </Modal>
+      ) : null}
+
+      {modal === "contact" && person ? (
+        <Modal title={`Contact for ${person.surname}, ${person.givenNames}`} sub="Where a password reset and notices are sent" onClose={() => setModal(null)}
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy} onClick={() => void send("PUT", `/api/bff/api/v1/iam/persons/${person.id}/contact`, { email: f.email || null, phone: f.phone || null }, "Staff contact set")}>Save</Btn></>}>
+          <div className="grid grid--2 rfgrid">
+            <Field id="ct-e" label="Email" hint="Where a password reset and notices are sent"><input id="ct-e" className="ctl tnum" value={f.email} placeholder="name@moaum.edu.ng" onChange={(e) => setF({ ...f, email: e.target.value })} autoComplete="off" /></Field>
+            <Field id="ct-p" label="Phone" hint="Optional; for SMS notices"><input id="ct-p" className="ctl tnum" value={f.phone} placeholder="0803…" onChange={(e) => setF({ ...f, phone: e.target.value })} autoComplete="off" /></Field>
           </div>
         </Modal>
       ) : null}

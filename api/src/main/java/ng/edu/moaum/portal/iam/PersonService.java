@@ -37,10 +37,19 @@ public class PersonService {
     }
 
     @Transactional
-    public Person create(String staffNumber, String surname, String givenNames) {
-        Person person = new Person(UUID.randomUUID(), blankToNull(staffNumber), surname.trim(), givenNames.trim(), null, null);
+    public Person create(String staffNumber, String surname, String givenNames, String email, String phone) {
+        Person person = new Person(UUID.randomUUID(), blankToNull(staffNumber), surname.trim(), givenNames.trim(),
+                blankToNull(email), blankToNull(phone), null, null);
         persons.insert(person);
         return person;
+    }
+
+    /** the Registry sets a staff member's email and phone — where a reset and any notice are sent */
+    @Transactional
+    public Person setContact(UUID id, String email, String phone) {
+        Person person = persons.find(id).orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("person", id));
+        persons.setContact(id, blankToNull(email), blankToNull(phone));
+        return persons.find(id).orElse(person);
     }
 
     /**

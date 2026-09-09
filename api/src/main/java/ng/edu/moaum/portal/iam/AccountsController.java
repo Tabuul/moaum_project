@@ -31,7 +31,7 @@ class AccountsController {
     private static final String CREDENTIALS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String GRANTORS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_super','OFFICE_ict','OFFICE_admin')";
 
-    public record PersonRow(UUID id, String staffNumber, String surname, String givenNames, LocalDate endedOn, String username,
+    public record PersonRow(UUID id, String staffNumber, String surname, String givenNames, String email, String phone, LocalDate endedOn, String username,
                             boolean mustChange, java.time.OffsetDateTime lastSignInAt, java.time.OffsetDateTime lockedUntil, long liveOffices) {
     }
 
@@ -58,7 +58,7 @@ class AccountsController {
     @Transactional(readOnly = true)
     List<PersonRow> persons(@RequestParam(required = false) String q) {
         return jdbc.sql("""
-                SELECT p.id, p.staff_number, p.surname, p.given_names, p.ended_on, c.username, coalesce(c.must_change, false) AS must_change,
+                SELECT p.id, p.staff_number, p.surname, p.given_names, p.email, p.phone, p.ended_on, c.username, coalesce(c.must_change, false) AS must_change,
                        c.last_sign_in_at, c.locked_until, (SELECT count(*) FROM iam.live_offices(p.id)) AS live_offices
                   FROM iam.person p LEFT JOIN iam.credential c ON c.person_id = p.id
                  WHERE :q::text IS NULL OR p.surname ILIKE '%' || :q || '%' OR p.given_names ILIKE '%' || :q || '%'

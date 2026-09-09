@@ -18,19 +18,26 @@ class PersonRepository {
     }
 
     Optional<Person> find(UUID id) {
-        return jdbc.sql("SELECT id, staff_number, surname, given_names, ended_on, ended_reason FROM iam.person WHERE id = :id")
+        return jdbc.sql("SELECT id, staff_number, surname, given_names, email, phone, ended_on, ended_reason FROM iam.person WHERE id = :id")
                 .param("id", id)
                 .query(Person.class)
                 .optional();
     }
 
     void insert(Person person) {
-        jdbc.sql("INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (:id, :staff, :surname, :given)")
+        jdbc.sql("INSERT INTO iam.person (id, staff_number, surname, given_names, email, phone) VALUES (:id, :staff, :surname, :given, :email, :phone)")
                 .param("id", person.id())
                 .param("staff", person.staffNumber(), Types.VARCHAR)
                 .param("surname", person.surname())
                 .param("given", person.givenNames())
+                .param("email", person.email(), Types.VARCHAR)
+                .param("phone", person.phone(), Types.VARCHAR)
                 .update();
+    }
+
+    void setContact(UUID id, String email, String phone) {
+        jdbc.sql("UPDATE iam.person SET email = :email, phone = :phone WHERE id = :id")
+                .param("id", id).param("email", email, Types.VARCHAR).param("phone", phone, Types.VARCHAR).update();
     }
 
     List<OfficeAssignment> assignments(UUID personId) {
