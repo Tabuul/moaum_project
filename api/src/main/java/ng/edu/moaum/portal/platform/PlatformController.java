@@ -6,7 +6,10 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
+import java.util.List;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,6 +42,22 @@ class PlatformController {
         body.put("startedAt", STARTED.toString());
         body.put("database", database());
         return body;
+    }
+
+    /** the migration ledger: what has been applied to this database, in order */
+    @GetMapping("/migrations")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
+    Map<String, Object> migrations() {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT filename, sha256, applied_at, applied_by FROM public.schema_migration ORDER BY filename
+                """).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("count", rows.size());
+        out.put("latest", rows.isEmpty() ? null : rows.get(rows.size() - 1).get("filename"));
+        out.put("commit", commit == null || commit.isBlank() ? null : commit);
+        out.put("startedAt", STARTED.toString());
+        out.put("migrations", rows);
+        return out;
     }
 
     private Map<String, Object> database() {
