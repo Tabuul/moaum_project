@@ -31,13 +31,14 @@ SELECT set_config('moaum.actor_office', 'academic', true);
 SELECT set_config('moaum.reason', 'Admission-policy rules made dynamic and enforced (V053)', true);
 
 -- ── 1. ELG never exceeds its ceiling ──────────────────────────────────────
+-- built on the V022 body (a programme with no rule is skipped, not a finding —
+-- a closed programme needs none), with the ELG ceiling added
 CREATE OR REPLACE FUNCTION admissions.policy_findings(p_session text)
 RETURNS TABLE (finding text, detail text, owner text)
 LANGUAGE sql
 STABLE
 AS $$
     WITH pol AS (SELECT * FROM admissions.session_policy WHERE session = p_session)
-    -- the four criteria
     SELECT 'The selection criteria do not total 100%'::text,
            'National Merit, State Merit, Equality of Local Government and '
            'Locality total ' || coalesce(sum(c.percent), 0) || '%. The guidelines '
@@ -47,7 +48,6 @@ AS $$
      GROUP BY p.id
     HAVING coalesce(sum(c.percent), 0) <> 100
   UNION ALL
-    -- the quota distribution, to the unit
     SELECT 'The faculty quotas do not total the NUC approved quota'::text,
            'Distributed ' || coalesce(sum(f.quota), 0) || ' of ' || p.nuc_quota ||
            '. ' || abs(p.nuc_quota - coalesce(sum(f.quota), 0))::text ||
@@ -58,7 +58,6 @@ AS $$
      GROUP BY p.id, p.nuc_quota
     HAVING coalesce(sum(f.quota), 0) <> p.nuc_quota
   UNION ALL
-    -- a faculty with no cut-off admits on no rule at all
     SELECT 'A faculty has no UTME cut-off'::text,
            string_agg(f.faculty_code, ', ' ORDER BY f.faculty_code) ||
            ' — a faculty with no cut-off admits on no rule at all.',
@@ -67,21 +66,6 @@ AS $$
      WHERE f.cutoff IS NULL
      GROUP BY p.id
   UNION ALL
-    -- a programme the University runs with nothing said about it
-    SELECT 'Programmes with no admission rule for this session'::text,
-           count(*)::text || ' of ' ||
-           (SELECT count(*) FROM ref.programme)::text ||
-           ' programmes have no O''Level requirement, no UTME subject '
-           'combination and no Direct Entry rule. Nobody may be admitted '
-           'into them until Senate states one.',
-           'Deans and Heads of Department'::text
-      FROM pol p, ref.programme g
-     WHERE NOT EXISTS (SELECT 1 FROM admissions.programme_rule r
-                        WHERE r.policy_id = p.id AND r.programme_code = g.code)
-     GROUP BY p.id
-    HAVING count(*) > 0
-  UNION ALL
-    -- a programme cut-off below its own faculty's is not a cut-off
     SELECT 'A programme cut-off is below its faculty''s'::text,
            string_agg(r.programme_code || ' at ' || r.cutoff || ' under ' ||
                       g.faculty_code || ' at ' || f.cutoff, '; '),

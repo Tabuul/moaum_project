@@ -86,14 +86,14 @@ const FAC_GUIDE: Record<string, string> = {
 /* The questions the document itself raises — quoted, both readings given, unanswered, because the
    Directorate of ICT does not get to choose which reading of an admission rule is correct. */
 const ADM_QUESTIONS: [string, string, ReactNode, string][] = [
-  ["blocking", "English and Mathematics: compulsory everywhere, or not?",
-    <>The closing note says <i>&ldquo;Credit passes in English and Mathematics are compulsory for all programmes of the University&rdquo;</i>. At least four programme rows say otherwise: B.A. Linguistics asks for five credits <i>including English Language</i> and does not mention Mathematics; B.Sc. Political Science and B.Sc. Sociology ask for <b>a pass</b> in Mathematics, which is not a credit; B.Ed. Guidance and Counselling likewise says <i>&ldquo;with an &lsquo;O&rsquo; Level pass in Mathematics&rdquo;</i>. Under the note those candidates are ineligible; under their own rows they qualify. Every Sociology and Political Science applicant in the state turns on this one sentence.</>,
+  ["decided", "English and Mathematics: compulsory everywhere, or not?",
+    <>Decided by the Academic Office: a <b>credit</b> in English and Mathematics is compulsory for every programme, and a pass (D7/E8) is not a credit &mdash; it is ignored. The few programmes whose own rows differ (B.Sc. Political Science and Sociology accept a pass in Mathematics; B.A. Linguistics does not require Mathematics; B.Ed. Guidance and Counselling accepts a pass) are handled as <b>per-programme exceptions</b> set on the Programme requirements tab. The portal refuses an offer to a candidate whose recorded O&rsquo;Level lacks a compulsory credit, naming the subject.</>,
     "Central Admissions Committee"],
-  ["blocking", "Equality of Local Government: 30% or not more than 50%?",
-    <>Paragraph 2.4 sets ELG at <b>30%</b> of admissions. Paragraph 2.11 says recommendations on the basis of ELG <i>&ldquo;must not exceed 50%&rdquo;</i>. Thirty is a share to be filled; fifty is a ceiling not to be crossed. They are different instructions and they produce different lists.</>,
+  ["decided", "Equality of Local Government: 30% or not more than 50%?",
+    <>Decided: ELG is a <b>share the Committee sets</b> (30% at 2.4) up to the <b>ceiling of 50%</b> (2.11), never above it. Set the share in &ldquo;The four selection criteria&rdquo; and the ceiling in &ldquo;The ratios and the caps&rdquo;; a policy whose ELG share exceeds its ceiling now shows a finding and cannot be put in force.</>,
     "Central Admissions Committee"],
-  ["blocking", "The Education exception: which ratio does 60:40 belong to?",
-    <>Paragraph 1.0 reads <i>&ldquo;UTME/DE Ratio 80:20 (for all programmes except Education which is to maintain 60:40)&rdquo;</i>, and the next line sets the Science&ndash;Arts ratio at 60:40 for everybody. So the parenthesis reads either as <b>Education admits 40% by Direct Entry</b> &mdash; twice any other faculty &mdash; or as a restatement of the Science&ndash;Arts split that is already the rule. The Faculty&rsquo;s own 2024/2025 quota was 950 Science to 200 others, which is 83:17 and neither of them.</>,
+  ["decided", "The Education exception: which ratio does 60:40 belong to?",
+    <>Decided: 60:40 is the <b>UTME:Direct-Entry</b> ratio, held per faculty. Every faculty is 80:20 except <b>Education</b>, which is 60:40. It is a per-faculty override on the faculty quota (Faculty quotas tab), and the merit engine splits UTME and Direct-Entry places by the ratio in force for each faculty. The Science&ndash;Arts 60:40 is a separate rule and stays as it is.</>,
     "Central Admissions Committee"],
   ["answer", "Two names for four faculties",
     <>The quota table names <i>Administration and Management</i>, <i>College of Health Sciences</i>, <i>Pharmacy</i> and <i>Technology education</i>. The University&rsquo;s programme table names <i>Management Sciences</i>, <i>Basic and Applied Medical Sciences</i>, <i>Pharmaceutical Sciences</i> and <i>Technology and Industrial Studies</i> &mdash; and the guidelines themselves use <i>Faculty of Pharmaceutical Sciences</i> four pages later. A quota is distributed against one name while the programmes hang off the other, which is exactly how a faculty ends up counted twice or not at all.</>,
@@ -344,10 +344,10 @@ export function AdmissionSettings({
         <DTable
           cols={["Rule", "As issued|mid", "Where it comes from"]}
           rows={[
-            ["UTME to Direct Entry", <span className="tnum" key="v">{policy.ratioUtme}:{policy.ratioDe}</span>, <span className="sub2" key="s">1.0(v) &mdash; with an exception for Education that reads two ways. See the questions.</span>],
-            ["Science to Arts", <span className="tnum" key="v">{policy.ratioScience}:{policy.ratioArts}</span>, <span className="sub2" key="s">1.0(vi)</span>],
+            ["UTME to Direct Entry", <span className="tnum" key="v">{policy.ratioUtme}:{policy.ratioDe}</span>, <span className="sub2" key="s">1.0(v) &mdash; the session default. Education carries a per-faculty 60:40 override on the Faculty quotas tab.</span>],
+            ["Science to Arts", <span className="tnum" key="v">{policy.ratioScience}:{policy.ratioArts}</span>, <span className="sub2" key="s">1.0(vi) &mdash; separate from the UTME:DE Education exception</span>],
             ["Departmental recommendations", <span className="tnum" key="v">{policy.deptSharePct}%</span>, <span className="sub2" key="s">2.5 &mdash; departments make {policy.deptSharePct}% of the UTME merit recommendations</span>],
-            ["Equality of Local Government ceiling", <span className="tnum" key="v">{policy.elgCapPct}%</span>, <span className="sub2" key="s">2.11 &mdash; and {critMap.ELG ?? 30}% as a share at 2.4. See the questions.</span>],
+            ["Equality of Local Government ceiling", <span className="tnum" key="v">{policy.elgCapPct}%</span>, <span className="sub2" key="s" style={{ color: (critMap.ELG ?? 30) > policy.elgCapPct ? "var(--red-ink)" : undefined }}>2.11 &mdash; the share ({critMap.ELG ?? 30}% at 2.4) may go up to this, never above it{(critMap.ELG ?? 30) > policy.elgCapPct ? " — the share is over the ceiling" : ""}</span>],
             ["Index programmes, Preliminary placement", <span className="tnum" key="v">{policy.indexPrelimPlaces}</span>, <span className="sub2" key="s">2.5 &mdash; under State Merit, {policy.indexPerZone} from each Senatorial Zone</span>],
             ["Most Preferred First only", policy.mpfOnly ? <Pil kind="ok" key="v">Required</Pil> : <Pil kind="bad" key="v">Relaxed</Pil>, <span className="sub2" key="s">2.8 &mdash; every recommended name must be on the MPF list</span>],
             ["University screening passed", policy.screeningRequired ? <Pil kind="ok" key="v">Required</Pil> : <Pil kind="bad" key="v">Relaxed</Pil>, <span className="sub2" key="s">2.7 &mdash; only candidates who passed the University&rsquo;s own standard screening may be recommended</span>],
@@ -522,7 +522,7 @@ export function AdmissionSettings({
         <DTable
           cols={["", "Question", "Whose|mid"]}
           rows={ADM_QUESTIONS.map((qq) => [
-            qq[0] === "blocking" ? <Pil kind="bad" key="p">Blocking</Pil> : <Pil kind="grey" key="p">Answer</Pil>,
+            qq[0] === "blocking" ? <Pil kind="bad" key="p">Blocking</Pil> : qq[0] === "decided" ? <Pil kind="ok" key="p">Decided</Pil> : <Pil kind="grey" key="p">Answer</Pil>,
             <span key="q"><strong>{qq[1]}</strong><div className="sub2">{qq[2]}</div></span>,
             <span className="sub2" key="w">{qq[3]}</span>,
           ])}
