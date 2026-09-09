@@ -28,6 +28,7 @@ export const ROUTES: Record<string, string> = {
   "r/classlist": "/registration/class-list",
   "r/allocate": "/allocate",
   "t/deptcourses": "/catalogue",
+  "t/eligibility": "/eligibility",
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
   "t/capsintake": "/admissions/caps",

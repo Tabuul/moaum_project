@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 class CatalogueController {
 
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc')";
 
     private final JdbcClient jdbc;
 
@@ -40,7 +41,7 @@ class CatalogueController {
 
     /** every course a department owns, with the lecturer of its offering in the current session, if any */
     @GetMapping("/courses")
-    @PreAuthorize(OWNERS)
+    @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@RequestParam String dept) {
         return jdbc.sql("""
@@ -55,6 +56,38 @@ class CatalogueController {
                  WHERE c.dept_code = :dept
                  ORDER BY c.level, c.semester, c.code
                 """).param("dept", dept).query().listOfRows();
+    }
+
+    /** who may register a course: the eligible programme-and-level set, assigned at creation, with how many are registered */
+    @GetMapping("/courses/{code}/eligibility")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> eligibility(@PathVariable String code) {
+        List<Map<String, Object>> head = jdbc.sql("""
+                SELECT c.code, c.title, c.dept_code, d.name AS dept_name, c.units, c.level, c.semester
+                  FROM catalogue.course c JOIN ref.department d ON d.code = c.dept_code WHERE c.code = :code
+                """).param("code", code).query().listOfRows();
+        if (head.isEmpty()) {
+            throw new ng.edu.moaum.portal.shared.NotFound("course", code);
+        }
+        List<Map<String, Object>> offers = jdbc.sql("""
+                SELECT co.programme_code, pr.name AS programme, pr.dept_code, d.name AS dept, f.name AS faculty, co.level, co.basis,
+                       coalesce((SELECT count(*) FROM registration.entry e
+                                   JOIN registration.course_registration r ON r.id = e.registration_id
+                                   JOIN catalogue.offering o ON o.id = e.offering_id
+                                   JOIN people.student st ON st.id = r.student_id
+                                  WHERE o.course_code = co.course_code AND r.status = 'APPROVED'
+                                    AND st.programme_code = co.programme_code AND st.current_level = co.level), 0) AS registered
+                  FROM catalogue.course_offer co
+                  JOIN ref.programme pr ON pr.code = co.programme_code
+                  JOIN ref.department d ON d.code = pr.dept_code
+                  JOIN ref.faculty f ON f.code = pr.faculty_code
+                 WHERE co.course_code = :code
+                 ORDER BY co.level, pr.name
+                """).param("code", code).query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>(head.get(0));
+        out.put("offers", offers);
+        return out;
     }
 
     @PostMapping("/courses")

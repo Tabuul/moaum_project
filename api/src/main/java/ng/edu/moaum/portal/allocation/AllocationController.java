@@ -34,9 +34,9 @@ class AllocationController {
     public record Assign(@NotNull UUID lecturer, UUID secondExaminer, Boolean overload) {
     }
 
-    /** the departments a lecturer can be allocated in */
+    /** the departments a lecturer can be allocated in (reference data, any signed-in staff) */
     @GetMapping("/departments")
-    @PreAuthorize(ALLOCATORS)
+    @PreAuthorize("isAuthenticated()")
     @Transactional(readOnly = true)
     List<Map<String, Object>> departments() {
         return jdbc.sql("SELECT code, name, faculty_code FROM ref.department WHERE ended_on IS NULL ORDER BY name").query().listOfRows();
