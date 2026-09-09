@@ -3,7 +3,6 @@ package ng.edu.moaum.portal.auth;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.UUID;
@@ -130,15 +129,13 @@ public class PasswordResetService {
                     new DomainRuleViolation.Remedy("Choose one of eight characters or more.", "You"));
         }
         String hash = sha256(token.trim());
-        var found = jdbc.sql("SELECT id, subject_kind, subject_id, expires_at, used_at FROM iam.password_reset WHERE token_hash = :h ORDER BY created_at DESC LIMIT 1")
+        // the expiry and single-use are checked in SQL, so no timestamp type has to cross into Java
+        var found = jdbc.sql("SELECT id, subject_kind, subject_id FROM iam.password_reset WHERE token_hash = :h AND used_at IS NULL AND expires_at > now() ORDER BY created_at DESC LIMIT 1")
                 .param("h", hash).query().listOfRows();
         if (found.isEmpty()) {
             throw badToken();
         }
         Map<String, Object> r = found.get(0);
-        if (r.get("used_at") != null || ((OffsetDateTime) r.get("expires_at")).isBefore(OffsetDateTime.now())) {
-            throw badToken();
-        }
         UUID resetId = (UUID) r.get("id");
         UUID subject = (UUID) r.get("subject_id");
         String kind = (String) r.get("subject_kind");
