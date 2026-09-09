@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { FeeSchedule, type Schedule, type OpenReference, type FeeGroup, type ProgrammeOption, type ApplicantFees } from "./FeeSchedule";
+import { FeeSchedule, type Schedule, type OpenReference, type FeeGroup, type ProgrammeOption, type ApplicantFees, type FeeItem } from "./FeeSchedule";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
   const params = await searchParams;
   const requested = typeof params.session === "string" ? params.session : "2026/2027";
   const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
-  const [me, schedule, open, faculties, feeGroups, programmes, applicantFees] = await Promise.all([
+  const [me, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Schedule>(`/api/v1/finance/sessions/${session}/schedule`),
     api<OpenReference[]>(`/api/v1/finance/references?session=${encodeURIComponent(session)}&state=open`),
@@ -20,11 +20,24 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
     api<FeeGroup[]>("/api/v1/finance/fee-groups"),
     api<ProgrammeOption[]>("/api/v1/finance/programmes"),
     api<ApplicantFees>(`/api/v1/admissions/sessions/${session}/applicant-fees`),
+    api<FeeItem[]>("/api/v1/finance/fee-items"),
+    api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
   return (
     <Shell route="t/feesetup" me={me.ok ? me.data : null}>
       {schedule.ok ? (
-        <FeeSchedule session={session} schedule={schedule.data} open={open.ok ? open.data : []} faculties={faculties.ok ? faculties.data.faculties : []} feeGroups={feeGroups.ok ? feeGroups.data : []} programmes={programmes.ok ? programmes.data : []} applicantFees={applicantFees.ok ? applicantFees.data : null} actingOffice={me.ok ? me.data.activeOffice : null} />
+        <FeeSchedule
+          session={session}
+          schedule={schedule.data}
+          open={open.ok ? open.data : []}
+          faculties={faculties.ok ? faculties.data.faculties : []}
+          feeGroups={feeGroups.ok ? feeGroups.data : []}
+          programmes={programmes.ok ? programmes.data : []}
+          applicantFees={applicantFees.ok ? applicantFees.data : null}
+          feeItems={feeItems.ok ? feeItems.data : []}
+          sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]}
+          actingOffice={me.ok ? me.data.activeOffice : null}
+        />
       ) : <ProblemNotice problem={schedule.problem} />}
     </Shell>
   );

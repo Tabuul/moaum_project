@@ -36,7 +36,7 @@ class FinanceController {
 
     public record Item(@NotBlank @Size(max = 120) String item, @NotNull @DecimalMin("0") BigDecimal amount, Integer level,
                        @Size(max = 20) String entryMode, @Size(max = 12) String facultyCode, @Size(max = 12) String programmeCode,
-                       @Size(max = 12) String feeGroup, Integer ord) {
+                       @Size(max = 12) String feeGroup, Integer semester, Integer ord) {
     }
 
     public record Scheme(@NotBlank @Size(max = 200) String instrument, LocalDate from) {
@@ -60,7 +60,7 @@ class FinanceController {
         String s = session + "/" + year;
         List<Map<String, Object>> items = jdbc.sql("""
                 SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
-                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.ord
+                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.ord
                   FROM finance.fee_schedule f
                   LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code
                   LEFT JOIN ref.programme p ON p.code = f.programme_code
@@ -88,6 +88,14 @@ class FinanceController {
         return jdbc.sql("SELECT code, name, applies_category FROM ref.fee_group ORDER BY ord, name").query().listOfRows();
     }
 
+    /** the payment categories a charge can be named from — data, so the set can grow */
+    @GetMapping("/fee-items")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> feeItems() {
+        return jdbc.sql("SELECT code, name FROM ref.fee_item ORDER BY ord, name").query().listOfRows();
+    }
+
     /** every programme, for the fee-setup programme select */
     @GetMapping("/programmes")
     @PreAuthorize(READERS)
@@ -104,12 +112,16 @@ class FinanceController {
         if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600).contains(body.level())) {
             throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 600.", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
         }
+        if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
+            throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
+        }
         jdbc.sql("""
-                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, ord)
-                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :o)
+                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord)
+                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o)
                 """).param("s", s).param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
                 .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)
+                .param("sem", body.semester(), Types.INTEGER)
                 .param("o", body.ord() == null ? 0 : body.ord()).update();
         return schedule(session, year);
     }

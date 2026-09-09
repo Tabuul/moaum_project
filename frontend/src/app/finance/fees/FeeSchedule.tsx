@@ -16,8 +16,9 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; ord: number }
+export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
+export interface FeeItem { code: string; name: string }
 export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string }
 export interface Schedule {
   session: string;
@@ -31,7 +32,7 @@ export interface ApplicantFees { session: string; stated: boolean; applicationFe
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 
-export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; actingOffice: string | null }) {
+export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const may = actingOffice === "bursar" || actingOffice === "super";
   const [busy, setBusy] = useState<string | null>(null);
@@ -102,7 +103,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <Panel title={`The charges for ${session}`} right={<Btn kind="primary" disabled={!may} onClick={() => { setAdding(true); setEdits({}); }}>Add an item</Btn>}>
         <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={schedule.items.map((i) => [
           <strong key="i">{i.item}</strong>,
-          <span className="sub2" key="a">{[i.fee_group_name, i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name].filter(Boolean).join(" · ") || "Every student"}</span>,
+          <span className="sub2" key="a">{[i.fee_group_name, i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, i.semester ? `Semester ${i.semester}` : null].filter(Boolean).join(" · ") || "Every student"}</span>,
           <span className="tnum" key="m">{naira(i.amount)}</span>,
           <Btn kind="ghost" key="e" disabled={!may || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>,
         ])} />
@@ -118,11 +119,33 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         ])} texts={open.map((r) => `${r.reference} ${r.surname} ${r.other_names} ${r.matric_no} ${r.admission_no}`)} />
         {!open.length ? <PBody><div className="sub2">Nothing waits. A reference a student generates appears here until the bank&rsquo;s record is matched to it, by the Bursary or by a gateway&rsquo;s webhook.</div></PBody> : null}
       </Panel>
-      {adding ? (
-        <Modal title="An item of the charge" sub={`${session} · applies where every filter it carries matches, or is blank`} onClose={() => setAdding(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdding(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!val("item") || !val("amount") || busy !== null} onClick={async () => { const ok = await send("add", "POST", `/sessions/${session}/schedule`, { item: val("item"), amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, facultyCode: val("faculty") || null, programmeCode: val("programme") || null, feeGroup: val("group") || null, ord: Number(val("ord") || "0") }, `Fee item stated for ${session}: ${val("item")} ${val("amount")}`); if (ok) setAdding(false); }}>{busy === "add" ? "Stating…" : "State the item"}</Btn></>}>
-          <Field id="fi" label="Item"><input id="fi" className="ctl" value={val("item")} onChange={(e) => setEdits({ ...edits, item: e.target.value })} placeholder="School fees" /></Field>
-          <Field id="fa" label="Amount" hint="In naira"><input id="fa" className="ctl tnum" value={val("amount")} inputMode="numeric" onChange={(e) => setEdits({ ...edits, amount: e.target.value })} /></Field>
+      {adding ? (() => {
+        const addSession = val("addSession", session);
+        const facultyPick = val("faculty");
+        const facultyName = faculties.find((f) => f.code === facultyPick)?.name;
+        const facProgrammes = facultyPick ? programmes.filter((pr) => pr.faculty_code === facultyPick) : programmes;
+        const itemName = val("item") === "__other__" ? val("itemOther").trim() : val("item");
+        return (
+        <Modal title="An item of the charge" sub={`${addSession} · applies where every filter it carries matches, or is blank`} onClose={() => setAdding(false)}
+          foot={<><Btn kind="ghost" onClick={() => setAdding(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
+            const ok = await send("add", "POST", `/sessions/${addSession}/schedule`, { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, facultyCode: val("faculty") || null, programmeCode: val("programme") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0") }, `Fee item stated for ${addSession}: ${itemName} ${val("amount")}`);
+            if (ok) { setAdding(false); if (addSession !== session) router.push(`/finance/fees?session=${encodeURIComponent(addSession)}`); }
+          }}>{busy === "add" ? "Stating…" : "State the item"}</Btn></>}>
+          <div className="grid grid--2">
+            <Field id="fi" label="Payment item" hint="A payment category; choose Other to name a one-off">
+              <select id="fi" className="ctl" value={val("item")} onChange={(e) => setEdits({ ...edits, item: e.target.value })}>
+                <option value="">— choose an item —</option>
+                {feeItems.map((it) => <option key={it.code} value={it.name}>{it.name}</option>)}
+                <option value="__other__">Other (type a name)…</option>
+              </select>
+            </Field>
+            <Field id="fa" label="Amount" hint="In naira"><input id="fa" className="ctl tnum" value={val("amount")} inputMode="numeric" onChange={(e) => setEdits({ ...edits, amount: e.target.value })} /></Field>
+          </div>
+          {val("item") === "__other__" ? <Field id="fio" label="Item name" hint="The name this charge appears under"><input id="fio" className="ctl" value={val("itemOther")} onChange={(e) => setEdits({ ...edits, itemOther: e.target.value })} placeholder="e.g. Faculty dues" /></Field> : null}
+          <div className="grid grid--2">
+            <Field id="fs" label="Session" hint="Which session this charge is for"><select id="fs" className="ctl" value={addSession} onChange={(e) => setEdits({ ...edits, addSession: e.target.value })}>{(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
+            <Field id="fsem" label="Semester" hint="Blank for the whole session"><select id="fsem" className="ctl" value={val("semester")} onChange={(e) => setEdits({ ...edits, semester: e.target.value })}><option value="">Whole session</option><option value="1">First semester</option><option value="2">Second semester</option></select></Field>
+          </div>
           <Field id="fg" label="Programme group" hint="Undergraduate, Postgraduate, GST, EPS — blank for every group">
             <select id="fg" className="ctl" value={val("group")} onChange={(e) => setEdits({ ...edits, group: e.target.value })}>
               <option value="">Every group</option>
@@ -132,11 +155,12 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div className="grid grid--2">
             <Field id="fl" label="Level" hint="Blank for every level"><select id="fl" className="ctl" value={val("level")} onChange={(e) => setEdits({ ...edits, level: e.target.value })}><option value="">Every level</option>{[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={l}>{l}</option>)}</select></Field>
             <Field id="fm" label="Entry mode" hint="Blank for every mode"><select id="fm" className="ctl" value={val("mode")} onChange={(e) => setEdits({ ...edits, mode: e.target.value })}><option value="">Every mode</option><option>UTME</option><option>DIRECT_ENTRY</option><option>TRANSFER</option></select></Field>
-            <Field id="ff" label="Faculty" hint="Blank for every faculty"><select id="ff" className="ctl" value={val("faculty")} onChange={(e) => setEdits({ ...edits, faculty: e.target.value })}><option value="">Every faculty</option>{faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select></Field>
-            <Field id="fp" label="Programme" hint="A single programme; blank for every programme"><select id="fp" className="ctl" value={val("programme")} onChange={(e) => setEdits({ ...edits, programme: e.target.value })}><option value="">Every programme</option>{programmes.map((pr) => <option key={pr.code} value={pr.code}>{pr.name}</option>)}</select></Field>
+            <Field id="ff" label="Faculty" hint="Choose a faculty to list its programmes"><select id="ff" className="ctl" value={val("faculty")} onChange={(e) => setEdits({ ...edits, faculty: e.target.value, programme: "" })}><option value="">Every faculty</option>{faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select></Field>
+            <Field id="fp" label="Programme" hint={facultyPick ? "A single programme, or all in the faculty" : "Choose a faculty first, or leave for every programme"}><select id="fp" className="ctl" value={val("programme")} onChange={(e) => setEdits({ ...edits, programme: e.target.value })}><option value="">{facultyPick ? `All programmes in ${facultyName ?? "the faculty"}` : "Every programme"}</option>{facProgrammes.map((pr) => <option key={pr.code} value={pr.code}>{pr.name}</option>)}</select></Field>
           </div>
         </Modal>
-      ) : null}
+        );
+      })() : null}
       {confirming ? (
         <Modal title={`Confirm ${confirming.reference}`} sub={`${confirming.surname}, ${confirming.other_names} · ${naira(confirming.amount)}`} onClose={() => setConfirming(null)}
           foot={<><Btn kind="ghost" onClick={() => setConfirming(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="go" disabled={!val("channel") || busy !== null} onClick={async () => { const ok = await send("confirm", "POST", `/references/${confirming.reference}/confirm`, { channel: val("channel"), note: val("note") || undefined }, `Payment ${confirming.reference} confirmed against the bank's record`); if (ok) setConfirming(null); }}>{busy === "confirm" ? "Confirming…" : "Confirm the payment"}</Btn></>}>
