@@ -25,8 +25,9 @@ CREATE TABLE library.setting (
     CONSTRAINT ck_ls_one CHECK (id = 1),
     CONSTRAINT ck_ls_values CHECK (loan_days BETWEEN 1 AND 120 AND fine_per_day >= 0 AND max_loans BETWEEN 1 AND 20 AND max_renewals BETWEEN 0 AND 5)
 );
-SELECT audit.attach('library.setting');
+-- the one row is seeded by the migration itself, before the table goes on the spine; every change after is attributed
 INSERT INTO library.setting (id) VALUES (1);
+SELECT audit.attach('library.setting');
 
 CREATE TABLE library.item (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
