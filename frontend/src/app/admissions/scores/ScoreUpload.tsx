@@ -44,6 +44,19 @@ export function ScoreUpload({ session, sessions }: { session: string; sessions: 
     setText((prev) => (prev.trim() ? prev + "\n" : "") + t);
   }
 
+  function downloadTemplate() {
+    const csv = "JAMB number or Application number,Score (0-100)\r\n20261234AB,68.5\r\nAPP/26/000002,72\r\n";
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `post-utme-score-template-${session.replace("/", "-")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function upload() {
     setBusy(true);
     setProblem(null);
@@ -78,6 +91,7 @@ export function ScoreUpload({ session, sessions }: { session: string; sessions: 
           <input ref={file} type="file" accept=".csv,text/csv,text/plain" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadFile(f); e.target.value = ""; }} />
           {problem ? <ProblemNotice problem={problem} /> : null}
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+            <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
             <Btn kind="ghost" onClick={() => file.current?.click()}>Load a CSV</Btn>
             <Btn kind="primary" disabled={busy || !rows.length} onClick={() => void upload()}>{busy ? "Uploading…" : `Upload ${rows.length} score${rows.length === 1 ? "" : "s"}`}</Btn>
             {text.trim() ? <Btn kind="ghost" onClick={() => { setText(""); setReport(null); }}>Clear</Btn> : null}
