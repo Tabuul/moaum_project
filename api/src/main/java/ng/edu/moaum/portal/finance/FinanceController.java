@@ -35,7 +35,8 @@ class FinanceController {
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
 
     public record Item(@NotBlank @Size(max = 120) String item, @NotNull @DecimalMin("0") BigDecimal amount, Integer level,
-                       @Size(max = 20) String entryMode, @Size(max = 12) String facultyCode, @Size(max = 12) String programmeCode, Integer ord) {
+                       @Size(max = 20) String entryMode, @Size(max = 12) String facultyCode, @Size(max = 12) String programmeCode,
+                       @Size(max = 12) String feeGroup, Integer ord) {
     }
 
     public record Scheme(@NotBlank @Size(max = 200) String instrument, LocalDate from) {
@@ -58,8 +59,12 @@ class FinanceController {
     Map<String, Object> schedule(@PathVariable String session, @PathVariable String year) {
         String s = session + "/" + year;
         List<Map<String, Object>> items = jdbc.sql("""
-                SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name, f.programme_code, p.name AS programme_name, f.ord
-                  FROM finance.fee_schedule f LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code LEFT JOIN ref.programme p ON p.code = f.programme_code
+                SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
+                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.ord
+                  FROM finance.fee_schedule f
+                  LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code
+                  LEFT JOIN ref.programme p ON p.code = f.programme_code
+                  LEFT JOIN ref.fee_group g ON g.code = f.fee_group
                  WHERE f.session = :s AND f.ended_at IS NULL ORDER BY f.ord, f.item
                 """).param("s", s).query().listOfRows();
         Map<String, Object> scheme = jdbc.sql("""
@@ -75,6 +80,22 @@ class FinanceController {
         return Map.of("session", s, "items", items, "scheme", scheme == null ? Map.of() : scheme, "schemeInForce", scheme != null, "position", position);
     }
 
+    /** the fee groups a charge can be scoped to — data, not code, so the set can grow */
+    @GetMapping("/fee-groups")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> feeGroups() {
+        return jdbc.sql("SELECT code, name, applies_category FROM ref.fee_group ORDER BY ord, name").query().listOfRows();
+    }
+
+    /** every programme, for the fee-setup programme select */
+    @GetMapping("/programmes")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> programmes() {
+        return jdbc.sql("SELECT code, name, category, faculty_code FROM ref.programme WHERE NOT archived ORDER BY name").query().listOfRows();
+    }
+
     @PostMapping("/sessions/{session}/{year}/schedule")
     @PreAuthorize(BURSARY)
     @Transactional
@@ -84,11 +105,12 @@ class FinanceController {
             throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 600.", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
         }
         jdbc.sql("""
-                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, ord)
-                VALUES (:s, :i, :a, :l, :m, :f, :p, :o)
+                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, ord)
+                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :o)
                 """).param("s", s).param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
                 .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
-                .param("p", blank(body.programmeCode()), Types.VARCHAR).param("o", body.ord() == null ? 0 : body.ord()).update();
+                .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)
+                .param("o", body.ord() == null ? 0 : body.ord()).update();
         return schedule(session, year);
     }
 
