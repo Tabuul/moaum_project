@@ -48,52 +48,90 @@ public class CapsIntakeService {
     @Transactional
     public CapsLoadResult load(NewCapsBatch request) {
         AuditContext actor = AuditContextHolder.required();
+        requireUploadingOffice(actor);
+        Integer loadCutoff = cutoffFor(request.session(), request.listKind());
+        refuseUnknownProgrammes(request.listKind(), request.rows());
+        UUID id = UUID.randomUUID();
+        int expected = request.rowsExpected() == null || request.rowsExpected() < request.rows().size() ? request.rows().size() : request.rowsExpected();
+        caps.insertBatch(id, request.session(), request.source(), blankToNull(request.filename()), request.fileSha256(),
+                expected, request.listKind(), request.downloadedOn(), actor.actorId(), actor.actorOffice());
+        return insertRows(id, request.session(), request.listKind(), loadCutoff, request.rows());
+    }
+
+    /**
+     * A large download arrives in several requests. The rows appended join the
+     * batch the first request opened, under the same rules, while it is neither
+     * committed nor withdrawn.
+     */
+    @Transactional
+    public CapsLoadResult appendRows(UUID batchId, List<CapsRowIn> rows) {
+        AuditContext actor = AuditContextHolder.required();
+        requireUploadingOffice(actor);
+        CapsBatch b = get(batchId);
+        if (b.committedAt() != null) {
+            throw new DomainRuleViolation("ADM_BATCH_COMMITTED", "The list is committed; nothing is added to it.",
+                    new DomainRuleViolation.Remedy("Load the further rows as a new list.", "Academic Office"));
+        }
+        if (b.withdrawnAt() != null) {
+            throw new DomainRuleViolation("ADM_BATCH_WITHDRAWN", "The list was withdrawn; nothing is added to it.",
+                    new DomainRuleViolation.Remedy("Load the file again as a new list.", "Academic Office"));
+        }
+        Integer loadCutoff = cutoffFor(b.session(), b.listKind());
+        refuseUnknownProgrammes(b.listKind(), rows);
+        return insertRows(batchId, b.session(), b.listKind(), loadCutoff, rows);
+    }
+
+    private static void requireUploadingOffice(AuditContext actor) {
         if (!UPLOADING_OFFICES.contains(actor.actorOffice())) {
             throw new DomainRuleViolation("ADM_LIST_OFFICE",
                     "The admission list is loaded by the Academic Office or the Registrar, not by '" + actor.actorOffice() + "'.",
                     new DomainRuleViolation.Remedy("Ask the Academic Office to load the list, or act as that office if you hold it.",
                             "Academic Office"));
         }
+    }
 
-        /* the one general cut-off a UTME list loads under (V024); faculty and programme cut-offs are the screening's */
-        Integer general = null;
-        if ("UTME".equals(request.listKind())) {
-            general = caps.loadCutoff(request.session()).orElseThrow(() -> new DomainRuleViolation("ADM_LOAD_CUTOFF_NOT_STATED",
-                    "No general UTME cut-off is stated for loading the " + request.session() + " lists, so nothing may be loaded.",
-                    new DomainRuleViolation.Remedy(
-                            "State the general cut-off for loading — the UTME score under which a candidate is not loaded, whatever the programme — on the admission settings, before the file is uploaded.",
-                            "Academic Office")));
-            Set<String> codes = request.rows().stream()
-                    .map(r -> r.jambCode().trim().toUpperCase())
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-            Map<String, String> known = programmeNames();
-            List<String> unknown = codes.stream().filter(c -> !known.containsKey(c)).toList();
-            if (!unknown.isEmpty()) {
-                throw new DomainRuleViolation("ADM_UNKNOWN_PROGRAMME",
-                        "Not a programme the University runs: " + String.join(", ", unknown) + ".",
-                        new DomainRuleViolation.Remedy("Resolve each JAMB course to a University programme before the list is loaded.",
-                                "Academic Office"));
-            }
+    /** the one general cut-off a UTME list loads under (V024); faculty and programme cut-offs are the screening's */
+    private Integer cutoffFor(String session, String listKind) {
+        if (!"UTME".equals(listKind)) {
+            return null;
         }
-        final Integer loadCutoff = general;
+        return caps.loadCutoff(session).orElseThrow(() -> new DomainRuleViolation("ADM_LOAD_CUTOFF_NOT_STATED",
+                "No general UTME cut-off is stated for loading the " + session + " lists, so nothing may be loaded.",
+                new DomainRuleViolation.Remedy(
+                        "State the general cut-off for loading — the UTME score under which a candidate is not loaded, whatever the programme — on the admission settings, before the file is uploaded.",
+                        "Academic Office")));
+    }
 
-        UUID id = UUID.randomUUID();
-        caps.insertBatch(id, request.session(), request.source(), blankToNull(request.filename()), request.fileSha256(),
-                request.rows().size(), request.listKind(), request.downloadedOn(), actor.actorId(), actor.actorOffice());
+    private void refuseUnknownProgrammes(String listKind, List<CapsRowIn> rows) {
+        if (!"UTME".equals(listKind)) {
+            return;
+        }
+        Set<String> codes = rows.stream().map(r -> r.jambCode().trim().toUpperCase()).collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, String> known = programmeNames();
+        List<String> unknown = codes.stream().filter(c -> !known.containsKey(c)).toList();
+        if (!unknown.isEmpty()) {
+            throw new DomainRuleViolation("ADM_UNKNOWN_PROGRAMME",
+                    "Not a programme the University runs: " + String.join(", ", unknown) + ".",
+                    new DomainRuleViolation.Remedy("Resolve each JAMB course to a University programme before the list is loaded.",
+                            "Academic Office"));
+        }
+    }
+
+    private CapsLoadResult insertRows(UUID id, String session, String listKind, Integer loadCutoff, List<CapsRowIn> rows) {
         int loaded = 0;
         List<CapsLoadResult.ExcludedRow> excluded = new ArrayList<>();
-        Map<String, String> names = "UTME".equals(request.listKind()) ? programmeNames() : Map.of();
-        for (CapsRowIn row : request.rows()) {
+        Map<String, String> names = "UTME".equals(listKind) ? programmeNames() : Map.of();
+        for (CapsRowIn row : rows) {
             Map<String, Object> raw = row.raw() == null ? Map.of() : row.raw();
             String rawJson = json.writeValueAsString(raw);
             String code = row.jambCode().trim().toUpperCase();
             if (loadCutoff != null && row.aggregate() != null && row.aggregate() < loadCutoff) {
-                caps.insertExcluded(id, request.session(), row, loadCutoff, "BELOW_CUTOFF", rawJson);
+                caps.insertExcluded(id, session, row, loadCutoff, "BELOW_CUTOFF", rawJson);
                 excluded.add(new CapsLoadResult.ExcludedRow(row.jambRegNo().trim().toUpperCase(), row.surname(),
                         row.otherNames(), code, names.getOrDefault(code, code), row.aggregate(), loadCutoff, "BELOW_CUTOFF"));
                 continue;
             }
-            caps.insertRow(id, request.session(), row, rawJson);
+            caps.insertRow(id, session, row, rawJson);
             loaded++;
         }
         return new CapsLoadResult(caps.find(id).orElseThrow(), loaded, excluded);

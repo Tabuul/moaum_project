@@ -1,0 +1,106 @@
+package ng.edu.moaum.portal.wallet;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import tools.jackson.databind.json.JsonMapper;
+
+@Service
+public class WalletService {
+
+    private final WalletRepository repo;
+    private final JsonMapper json = JsonMapper.builder().build();
+
+    WalletService(WalletRepository repo) {
+        this.repo = repo;
+    }
+
+    private String session(String asked) {
+        return asked == null || asked.isBlank() ? repo.currentSession() : asked;
+    }
+
+    /* ── the student ── */
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> mine(UUID student, String sessionAsked) {
+        String session = session(sessionAsked);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("balance", repo.balance(student));
+        out.put("statement", repo.statement(student));
+        out.put("position", repo.position(student, session));
+        out.put("status", repo.status(student).orElse(null));
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> apply(UUID student, String sessionAsked, BigDecimal amount) {
+        String session = session(sessionAsked);
+        String ref = repo.apply(student, session, amount);
+        return Map.of("reference", ref, "session", session, "balance", repo.balance(student));
+    }
+
+    @Transactional
+    public Map<String, Object> topup(UUID student, String sessionAsked, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new DomainRuleViolation("WAL_AMOUNT", "A top-up is for an amount.", new DomainRuleViolation.Remedy("In naira, above zero.", "You"));
+        }
+        return Map.of("reference", repo.topup(student, session(sessionAsked), amount), "amount", amount);
+    }
+
+    /* ── the Bursary ── */
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> desk(String sessionAsked) {
+        String session = session(sessionAsked);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("tiles", repo.tiles(session));
+        out.put("batches", repo.batches(session));
+        out.put("unmatched", repo.unmatched(session));
+        out.put("status", repo.statusTiles(session));
+        out.put("refusals", repo.refusals(session));
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> load(String ref, String sessionAsked, LocalDate received, String note, List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new DomainRuleViolation("WAL_ROWS", "A remittance is rows: matriculation number, name, amount.",
+                    new DomainRuleViolation.Remedy("Read the Fund's file and send its rows.", "Bursary"));
+        }
+        return repo.load(ref, session(sessionAsked), received, note, json.writeValueAsString(rows));
+    }
+
+    @Transactional
+    public Map<String, Object> match(UUID row, String number, String note) {
+        UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
+                "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("The number as the register holds it.", "Registry")));
+        repo.match(row, student, note);
+        return Map.of("row", row, "student", student, "state", "MATCHED");
+    }
+
+    @Transactional
+    public Map<String, Object> reverse(UUID row, String why) {
+        repo.reverse(row, why);
+        return Map.of("row", row, "state", "REVERSED");
+    }
+
+    @Transactional
+    public Map<String, Object> loadStatus(String sessionAsked, List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new DomainRuleViolation("WAL_ROWS", "The Fund's list is rows: number, name, decision, reason.",
+                    new DomainRuleViolation.Remedy("Read the Fund's file and send its rows.", "Bursary"));
+        }
+        return repo.loadStatus(session(sessionAsked), json.writeValueAsString(rows));
+    }
+}

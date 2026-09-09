@@ -39,6 +39,13 @@ class AdmissionsController {
         return ResponseEntity.created(URI.create("/api/v1/admissions/caps-batches/" + result.batch().id())).body(result);
     }
 
+    /** a large download arrives in several requests: the rows join the batch the first request opened */
+    @PostMapping("/caps-batches/{id}/rows")
+    @PreAuthorize(LOADERS)
+    CapsLoadResult append(@PathVariable UUID id, @Valid @RequestBody CapsRowsIn request) {
+        return intake.appendRows(id, request.rows());
+    }
+
     @GetMapping("/caps-batches")
     @PreAuthorize(READERS)
     List<CapsBatch> list(@RequestParam String session) {

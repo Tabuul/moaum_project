@@ -20,5 +20,6 @@ public record NewCapsBatch(@NotBlank @Pattern(regexp = "\\d{4}/\\d{4}") String s
                            @NotBlank @Pattern(regexp = "[0-9a-fA-F]{64}") String fileSha256,
                            @NotBlank @Pattern(regexp = "UTME|DIRECT_ENTRY") String listKind,
                            @NotNull LocalDate downloadedOn,
-                           @NotEmpty List<@Valid CapsRowIn> rows) {
+                           @NotEmpty List<@Valid CapsRowIn> rows,
+                           Integer rowsExpected) {
 }

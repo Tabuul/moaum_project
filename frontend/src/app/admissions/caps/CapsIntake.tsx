@@ -147,6 +147,7 @@ export function CapsIntake({
   const [busy, setBusy] = useState<ListKind | null>(null);
   const [loaded, setLoaded] = useState<Partial<Record<ListKind, Loaded>>>({});
   const [working, setWorking] = useState<"load" | "commit" | null>(null);
+  const [progress, setProgress] = useState<{ sent: number; of: number } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [committing, setCommitting] = useState<string | null>(null);
   const [committed, setCommitted] = useState<Record<string, string>>({});
@@ -233,24 +234,50 @@ export function CapsIntake({
       : { status, title: "The API answered without a problem body" };
   }
 
+  /* a large download goes up in chunks: one request opens the batch, the rest append to it, and the batch is one */
+  const CHUNK = 1500;
   async function load() {
     if (!d || !f || f.sample) return;
     setWorking("load");
     setProblem(null);
     try {
-      const r = await post(
+      const whole = toRequest(d, { session, filename: f.name, fileSha256: f.sha256, listKind: kind, downloadedOn: today });
+      const rows = whole.rows;
+      const chunks: typeof rows[] = [];
+      for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
+      if (chunks.length === 0) chunks.push([]);
+      setProgress({ sent: 0, of: rows.length });
+      const first = await post(
         "/api/v1/admissions/caps-batches",
         `CAPS ${list.label} list ${f.name} loaded through the portal`,
-        toRequest(d, { session, filename: f.name, fileSha256: f.sha256, listKind: kind, downloadedOn: today }),
+        { ...whole, rows: chunks[0], rowsExpected: rows.length },
       );
-      if (r.ok) {
-        setLoaded({ ...loaded, [kind]: r.body as Loaded });
-        router.refresh();
-      } else {
-        setProblem(asProblem(r.status, r.body));
+      if (!first.ok) {
+        setProblem(asProblem(first.status, first.body));
+        return;
       }
+      const result = first.body as Loaded;
+      let sent = chunks[0].length;
+      setProgress({ sent, of: rows.length });
+      for (const chunk of chunks.slice(1)) {
+        const r = await post(`/api/v1/admissions/caps-batches/${result.batch.id}/rows`, `CAPS ${list.label} list ${f.name}: rows ${sent + 1} to ${sent + chunk.length}`, { rows: chunk });
+        if (!r.ok) {
+          setProblem(asProblem(r.status, r.body));
+          setLoaded({ ...loaded, [kind]: { ...result, outcome: `${sent} of ${rows.length} rows reached the register before the refusal; the batch stands uncommitted — withdraw it and load the file again.` } });
+          return;
+        }
+        const part = r.body as Loaded;
+        result.rowsLoaded += part.rowsLoaded;
+        result.excluded = [...result.excluded, ...part.excluded];
+        result.batch = part.batch;
+        sent += chunk.length;
+        setProgress({ sent, of: rows.length });
+      }
+      setLoaded({ ...loaded, [kind]: result });
+      router.refresh();
     } finally {
       setWorking(null);
+      setProgress(null);
     }
   }
 
@@ -519,7 +546,7 @@ export function CapsIntake({
                   disabled={working !== null || !mayLoad || !!f?.sample || (kind === "UTME" && !inForce)}
                   title={f?.sample ? "A sample is shown, never loaded" : !mayLoad ? "The admission list is loaded by the Academic Office or the Registrar" : kind === "UTME" && !inForce ? `No admission settings are in force for ${session}` : undefined}
                 >
-                  {working === "load" ? "Loading…" : `Load the ${list.label} list${d.belowCutoff ? ` — ${d.rows.length - d.belowCutoff} of ${d.rows.length}` : ""}`}
+                  {working === "load" ? (progress && progress.of > CHUNK ? `Loading — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()} rows…` : "Loading…") : `Load the ${list.label} list${d.belowCutoff ? ` — ${d.rows.length - d.belowCutoff} of ${d.rows.length}` : ""}`}
                 </Btn>
               }
             >
