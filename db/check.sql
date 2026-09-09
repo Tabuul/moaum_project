@@ -97,6 +97,8 @@ BEGIN
     DELETE FROM expenditure.voucher_act;
     DELETE FROM expenditure.voucher;
     DELETE FROM expenditure.budget;
+    DELETE FROM expenditure.bid;
+    DELETE FROM expenditure.tender;
     -- the student's side (V026): accounts, contact, fees and references, before the students they hang on
     DELETE FROM finance.payment_reference;
     DELETE FROM finance.fee_schedule WHERE session LIKE '99%';

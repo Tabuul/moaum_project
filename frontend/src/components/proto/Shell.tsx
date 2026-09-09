@@ -34,6 +34,7 @@ export const ROUTES: Record<string, string> = {
   "t/pv": "/vouchers",
   "t/prepayment": "/vouchers",
   "t/budget": "/finance/budget",
+  "t/tenders": "/finance/tenders",
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
   "t/capsintake": "/admissions/caps",
