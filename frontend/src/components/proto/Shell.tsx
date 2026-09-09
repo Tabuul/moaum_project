@@ -26,6 +26,7 @@ export const ROUTES: Record<string, string> = {
   "t/student": "/students",
   "t/biochange": "/students/biodata-changes",
   "r/classlist": "/registration/class-list",
+  "r/allocate": "/allocate",
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
   "t/capsintake": "/admissions/caps",
