@@ -47,6 +47,8 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
   const canManagePeople = ["ict", "admin", "super", "registrar", "dregistrar"].includes(office ?? "");
   const people = persons.ok ? persons.data : [];
   const gr = grants.ok ? grants.data : [];
+  // this is an async server component rendered once per request; reading the clock here is correct
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
   const withAccount = people.filter((p) => p.username && !p.endedOn).length;
   const soon = gr.filter((g) => g.validTo && new Date(g.validTo).getTime() - now < 30 * 86400000).length;

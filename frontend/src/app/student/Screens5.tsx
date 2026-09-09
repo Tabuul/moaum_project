@@ -192,6 +192,7 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
 
 export function IdCard({ c, s }: { c: Card; s: Me }) {
   const { act, busy, problem } = useAct();
+  const [now] = useState(() => Date.now());
   const live = c.cards.find((x) => x.state === "ISSUED") ?? null;
   const card: IdCardData | null = live ? {
     name: s.name,
@@ -208,7 +209,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
     expiresShort: onDay(live.valid_to),
     kinPhone: "—",
     photoSrc: s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null,
-    state: new Date(live.valid_to).getTime() < Date.now() ? "expired" : "issued",
+    state: new Date(live.valid_to).getTime() < now ? "expired" : "issued",
   } : null;
   return (
     <>
