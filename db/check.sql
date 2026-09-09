@@ -46,6 +46,16 @@ BEGIN
     DELETE FROM credentials.transcript_request;
     DELETE FROM records.graduand;
     DELETE FROM clearance.item;
+    -- health (V032) and the wallet (V033), before the students they name
+    DELETE FROM health.note;
+    DELETE FROM health.record_access;
+    DELETE FROM health.visit;
+    DELETE FROM health.appointment;
+    DELETE FROM health.profile;
+    DELETE FROM finance.wallet_entry;
+    DELETE FROM finance.nelfund_row;
+    DELETE FROM finance.nelfund_batch;
+    DELETE FROM finance.nelfund_status;
     -- library (V031): loans and reservations before copies and items, before the students they name
     DELETE FROM library.reservation;
     DELETE FROM library.loan;
@@ -180,7 +190,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 106
+\set EXPECTED 108
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1858,7 +1868,7 @@ BEGIN
     INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
     VALUES (st, 'MOAUM/ADM/99/990108', 'MOAUM/CHK/99/0108', 'CHECKREADER', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now());
     PERFORM set_config('moaum.actor_office', 'library', true);
-    UPDATE library.setting SET loan_days = 14, fine_per_day = 50, max_loans = 3, max_renewals = 1 WHERE id = 1;
+    UPDATE library.setting SET loan_days = 14, fine_per_day = 50, max_loans = 3, max_renewals = 1 WHERE row_no = 1;
     INSERT INTO library.item (id, title, author) VALUES (it, 'CHECK Introduction to Algorithms', 'Invented');
     INSERT INTO library.copy (accession, item_id) VALUES ('CHK/000001', it), ('CHK/000002', it);
     l1 := library.issue('CHK/000001', st, NULL);
@@ -1883,6 +1893,67 @@ BEGIN
         AND (SELECT clear FROM library.standing(st))
         AND (SELECT state FROM library.copy WHERE accession = 'CHK/000001') = 'AVAILABLE',
         format('due=%s twice_refused=%s overdue_refused=%s days=%s fine=%s standing=%s/%s/%s ref=%s', v_due, ok1, ok2, ret.days_overdue, ret.fine, stg.on_loan, stg.fines_unpaid, stg.clear, v_ref));
+END $$;
+
+-- ── 107. the clinic: the student sees the outcome and never the note; the record's opening is logged; the Registry sees the fitness and nothing else (V032) ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); cl uuid := gen_random_uuid(); ap uuid; vi uuid; sv record; ft record; n_notes int; n_access int; ok boolean := false;
+BEGIN
+    PERFORM set_config('moaum.actor_id', cl::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990109', 'MOAUM/CHK/99/0109', 'CHECKPATIENT', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (cl, 'CHK-CLIN', 'CHECKCLINICIAN', 'Invented');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    ap := health.book(st, 'Persistent headache, 4 days', now() + interval '1 day');
+    BEGIN PERFORM health.book(st, 'Again', now() + interval '2 days'); EXCEPTION WHEN OTHERS THEN ok := true; END;   -- one appointment stands
+    PERFORM health.consent(st, 'O+', 'AA', 'Penicillin');
+    PERFORM set_config('moaum.actor_office', 'services', true);
+    vi := health.arrive(st, 'Persistent headache, 4 days', 'STANDARD', ap);
+    PERFORM health.see(vi, cl);
+    PERFORM health.conclude(vi, cl, 'Treated, analgesic dispensed', NULL, 'BP 120/80, no photophobia; review in a week if it persists', 'FIT');
+    SELECT * INTO sv FROM health.student_visits(st) LIMIT 1;
+    SELECT * INTO ft FROM health.fitness_of(st);
+    SELECT count(*) INTO n_notes FROM health.note WHERE visit_id = vi;
+    SELECT count(*) INTO n_access FROM health.record_access WHERE student_id = st AND person_id = cl;
+    PERFORM pg_temp.assert('The student sees the outcome of a visit and never the note, the opening of the record is logged against the clinician, and the Registry sees the fitness and nothing else',
+        ok AND sv.state = 'DONE' AND sv.outcome = 'Treated, analgesic dispensed' AND sv.clinician = 'CHECKCLINICIAN, Invented'
+        AND n_notes = 1 AND n_access >= 1 AND ft.fitness = 'FIT' AND ft.fitness_on = current_date
+        AND (SELECT state FROM health.appointment WHERE id = ap) = 'SEEN'
+        AND (SELECT blood_group FROM health.profile WHERE student_id = st) = 'O+',
+        format('dup_refused=%s state=%s outcome=%s notes=%s access=%s fitness=%s', ok, sv.state, sv.outcome, n_notes, n_access, ft.fitness));
+END $$;
+
+-- ── 108. a remittance is split against the register; suspense is owned; the wallet is append-only and applies through the same confirmation (V033) ──
+DO $$
+DECLARE s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); r record; v_row uuid; v_ref text; pos record; bal numeric; ok boolean := false;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/99/990110', 'MOAUM/CHK/99/0110', 'CHECKWALLET', 'Invented One', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/99/990111', 'MOAUM/CHK/99/0111', 'CHECKWALLET', 'Invented Two', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    -- the schedule of 100 charges 100,000 at 100 level in 9999/0000; the Fund remits 60,000 for one student on the register and one number that is not
+    SELECT * INTO r FROM finance.load_nelfund_batch('CHECK NLF/9999/1', '9999/0000', current_date, NULL,
+        '[{"matricNo":"MOAUM/CHK/99/0110","name":"CHECKWALLET, Invented One","amount":"60000"},{"matricNo":"MOAUM/CHK/99/9999","name":"NOBODY, Invented","amount":"60000"}]'::jsonb);
+    bal := finance.wallet_balance(s1);
+    -- suspense is owned: the Registry matches the unmatched row to the second student, on evidence
+    SELECT id INTO v_row FROM finance.nelfund_row WHERE batch_id = r.batch_id AND state = 'UNMATCHED';
+    BEGIN PERFORM finance.match_nelfund_row(v_row, s2, NULL); EXCEPTION WHEN OTHERS THEN ok := true; END;   -- not on a guess
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM finance.match_nelfund_row(v_row, s2, 'Number in the prior format; identity confirmed in person');
+    -- the student applies the wallet: the invoice settles through the same confirmation as every payment, with the wallet as the channel
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    v_ref := finance.apply_wallet(s1, '9999/0000', NULL);
+    SELECT * INTO pos FROM finance.position(s1, '9999/0000');
+    PERFORM pg_temp.assert('A remittance is split against the register, suspense is owned and matched on evidence, and the wallet applies to the invoice through the same confirmation as every payment',
+        r.matched = 1 AND r.unmatched = 1 AND r.amount = 120000 AND bal = 60000 AND ok
+        AND finance.wallet_balance(s2) = 60000
+        AND v_ref LIKE 'MOAUM-FEE-%' AND finance.wallet_balance(s1) = 0 AND pos.paid = 60000 AND pos.instalments_paid = 1
+        AND (SELECT channel FROM finance.payment_reference WHERE reference = v_ref) = 'NELFUND wallet'
+        AND (SELECT count(*) FROM finance.wallet_statement(s1)) = 2,
+        format('matched=%s unmatched=%s amount=%s bal=%s guess_refused=%s ref=%s paid=%s inst=%s', r.matched, r.unmatched, r.amount, bal, ok, v_ref, pos.paid, pos.instalments_paid));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

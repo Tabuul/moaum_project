@@ -34,11 +34,11 @@ class LibraryRepository {
     }
 
     Map<String, Object> setting() {
-        return jdbc.sql("SELECT loan_days, fine_per_day, max_loans, max_renewals FROM library.setting WHERE id = 1").query().singleRow();
+        return jdbc.sql("SELECT loan_days, fine_per_day, max_loans, max_renewals FROM library.setting WHERE row_no = 1").query().singleRow();
     }
 
     void putSetting(int loanDays, java.math.BigDecimal finePerDay, int maxLoans, int maxRenewals) {
-        jdbc.sql("UPDATE library.setting SET loan_days = :d, fine_per_day = :f, max_loans = :l, max_renewals = :r WHERE id = 1")
+        jdbc.sql("UPDATE library.setting SET loan_days = :d, fine_per_day = :f, max_loans = :l, max_renewals = :r WHERE row_no = 1")
                 .param("d", loanDays).param("f", finePerDay).param("l", maxLoans).param("r", maxRenewals).update();
     }
 
