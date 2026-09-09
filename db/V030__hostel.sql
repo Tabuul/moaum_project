@@ -124,7 +124,7 @@ BEGIN
             HINT = 'Student Services states the accommodation fee and the hold window for the session before applications open.';
     END IF;
     IF s.drawn_at IS NOT NULL THEN
-        RAISE EXCEPTION 'the draw for % has been run; applications are closed', p_session USING ERRCODE = '23514',
+        RAISE EXCEPTION 'the draw for % has been run; applications are closed' USING ERRCODE = '23514',
             HINT = 'A late application joins no list. Ask Student Services whether a lapsed bed is available.';
     END IF;
     IF s.applications_close IS NOT NULL AND s.applications_close < current_date THEN
