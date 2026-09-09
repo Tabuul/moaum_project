@@ -3,7 +3,8 @@ import { api } from "@/lib/api";
 import type { BursaryView, PaymentsDesk } from "@/lib/bursary";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Bar, money } from "@/components/proto/blocks";
+import { Bar } from "@/components/proto/blocks";
+import { money } from "@/lib/format";
 import { when } from "@/lib/bursary";
 
 /** rBursar — proto/part17.html, with the ledger's own figures (V037). */

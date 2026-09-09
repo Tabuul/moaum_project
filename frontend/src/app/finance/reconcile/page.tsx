@@ -6,7 +6,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { money } from "@/components/proto/blocks";
+import { money } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 

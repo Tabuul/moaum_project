@@ -7,7 +7,7 @@ import type { AdmissionCycle, MatriculationOverview } from "@/lib/matriculation"
 import type { PersonRow } from "@/app/people/People";
 import { Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { day } from "@/components/proto/blocks";
+import { day } from "@/lib/format";
 
 /** rRegistrar — proto/part17.html, with the register's own figures. */
 export async function RegistrarDashboard({ session }: { session: string }) {

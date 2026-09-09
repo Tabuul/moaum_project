@@ -181,15 +181,6 @@ export function Num({ children, sub }: { children: ReactNode; sub?: boolean }) {
   return <span className={`tnum${sub ? " sub2" : ""}`}>{children}</span>;
 }
 
-/** the money helper: ₦ and thousands */
-export function money(n: number): string {
-  return "₦" + n.toLocaleString("en-NG");
-}
-
-/** a date as the prototype prints one: "12 Oct 2026" */
-export function day(iso: string | null | undefined, withYear = true): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: withYear ? "numeric" : undefined });
-}
+/** money() and day() are pure formatters; they live in @/lib/format so a server
+ *  component can call them, and are re-exported here for existing client imports. */
+export { money, day } from "@/lib/format";
