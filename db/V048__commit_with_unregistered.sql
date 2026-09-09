@@ -70,6 +70,8 @@ BEGIN
                      'registered do not block the commit.';
     END IF;
 
+    -- the count of admitted-but-not-registered is recorded on the batch (committed_pending),
+    -- not in the return value, which stays 'committed' as every caller and test expects
     UPDATE admissions.caps_batch SET committed_at = now(), committed_pending = pending WHERE id = p_batch;
-    RETURN CASE WHEN pending > 0 THEN 'committed with ' || pending || ' not yet registered' ELSE 'committed' END;
+    RETURN 'committed';
 END $$;
