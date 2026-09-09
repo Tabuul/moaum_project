@@ -367,11 +367,11 @@ BEGIN
     -- seeded, and every step is idempotent.
     PERFORM set_config('moaum.actor_office', 'academic', true);
     UPDATE admissions.application a SET fee_confirmed_at = now()
-      FROM admissions.candidate c
-     WHERE a.candidate_id = c.id AND a.session = v_session
-       AND c.jamb_reg_no LIKE '202699%DA' AND a.fee_confirmed_at IS NULL;
-    IF EXISTS (SELECT 1 FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
-                WHERE a.session = v_session AND c.jamb_reg_no LIKE '202699%DA'
+      FROM admissions.candidate cc
+     WHERE a.candidate_id = cc.id AND a.session = v_session
+       AND cc.jamb_reg_no LIKE '202699%DA' AND a.fee_confirmed_at IS NULL;
+    IF EXISTS (SELECT 1 FROM admissions.application a JOIN admissions.candidate cc ON cc.id = a.candidate_id
+                WHERE a.session = v_session AND cc.jamb_reg_no LIKE '202699%DA'
                   AND a.submitted_at IS NOT NULL AND a.screening_batch_id IS NULL) THEN
         IF NOT EXISTS (SELECT 1 FROM admissions.screening_batch WHERE session = v_session AND label = 'DEMO') THEN
             INSERT INTO admissions.screening_batch (id, session, label, held_on, starts_at, ends_at, venue, capacity)
