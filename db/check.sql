@@ -53,6 +53,8 @@ BEGIN
     DELETE FROM lms.material_blob;
     DELETE FROM lms.material;
     DELETE FROM lms.assignment;
+    DELETE FROM platform.request_document_blob;
+    DELETE FROM platform.request_document;
     DELETE FROM platform.service_request;
     -- health (V032) and the wallet (V033), before the students they name
     DELETE FROM health.note;
