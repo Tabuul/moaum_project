@@ -60,12 +60,15 @@ export interface AdmissionPolicy {
     olevelSittings: number | null;
   /** the O'Level subjects relevant to the programme — the ones the screening counts (V020) */
   olevelSubjects?: string[];
+  /** compulsory O'Level subjects this programme accepts a pass in / waives (V053) */
+  olevelAllowances?: string[];
   /** closed for the session (V023): not admitted into, needs no rule */
   closed?: boolean;
   closedReason?: string | null;
     stated: boolean;
   }[];
   findings: { finding: string; detail: string; owner: string }[];
+  catchmentLgas?: string[];
 }
 
 const CRIT_LABEL: Record<string, [string, string]> = {
@@ -355,6 +358,15 @@ export function AdmissionSettings({
           ]}
         />
       </Panel>
+      <Panel title="Catchment local governments" right="For the Locality basis">
+        <PBody>
+          <div className="sub2" style={{ marginBottom: 8 }}>The local governments in the University&rsquo;s immediate catchment. A candidate from one of these carries the <b>Locality</b> basis when the merit engine proposes offers. One per line, or comma-separated.</div>
+          <textarea id="catchment" className="ctl" rows={4} value={"catchment" in edits ? edits["catchment"] : (policy.catchmentLgas ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, catchment: e.target.value })} placeholder="Makurdi, Guma, Gwer East, Gwer West, Tarka" disabled={!may} />
+          <div style={{ marginTop: 8 }}>
+            <Btn kind="primary" disabled={!may || busy !== null} onClick={() => void send("PUT", `${base}/catchment`, { lgas: ("catchment" in edits ? edits["catchment"] : (policy.catchmentLgas ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean) }, `Catchment local governments stated for ${session}`, "catch")}>{busy === "catch" ? "Saving…" : "Save the catchment"}</Btn>
+          </div>
+        </PBody>
+      </Panel>
     </>
   );
 
@@ -475,6 +487,7 @@ export function AdmissionSettings({
                   utmeText: "pr-ut" in edits ? edits["pr-ut"] : editingProgramme.utmeText ?? "",
                   deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
                   olevelSubjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+                  olevelAllowances: ("pr-allow" in edits ? edits["pr-allow"] : (editingProgramme.olevelAllowances ?? []).join(",")).split(",").map((s) => s.trim()).filter(Boolean),
                 }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
                 if (ok) { setEditing(null); setEdits({}); }
               }}
@@ -500,6 +513,21 @@ export function AdmissionSettings({
             ))}
             <Field id="pr-subj" label="Relevant O’Level subjects" hint="Comma-separated, as JAMB names them · the screening counts the best of these" full>
               <textarea id="pr-subj" className="ctl" rows={2} value={"pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-subj": e.target.value })} placeholder="English Language, Mathematics, Physics, Chemistry, Biology" />
+            </Field>
+            <Field id="pr-allow" label="Compulsory-credit exceptions" hint="A credit in English and Mathematics is compulsory for all programmes; tick where this programme accepts a pass instead" full>
+              {(() => {
+                const allow = ("pr-allow" in edits ? edits["pr-allow"] : (editingProgramme.olevelAllowances ?? []).join(",")).split(",").map((s) => s.trim()).filter(Boolean);
+                const toggle = (subject: string) => { const s = new Set(allow); if (s.has(subject)) s.delete(subject); else s.add(subject); setEdits({ ...edits, "pr-allow": [...s].join(",") }); };
+                return (
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    {["English Language", "Mathematics"].map((subject) => (
+                      <label key={subject} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input type="checkbox" checked={allow.includes(subject)} onChange={() => toggle(subject)} /> Accept a pass in {subject}
+                      </label>
+                    ))}
+                  </div>
+                );
+              })()}
             </Field>
           </div>
         </Modal>

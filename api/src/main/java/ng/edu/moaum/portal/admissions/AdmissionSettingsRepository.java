@@ -65,6 +65,9 @@ class AdmissionSettingsRepository {
                           FROM admissions.rule_subject rs
                           JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
                          WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'OLEVEL') AS olevel_subjects,
+                       (SELECT string_agg(a.subject, E'\n' ORDER BY a.subject)
+                          FROM admissions.programme_olevel_allowance a
+                         WHERE a.policy_id = r.policy_id AND a.programme_code = r.programme_code) AS olevel_allowances,
                        (cl.programme_code IS NOT NULL) AS closed, cl.reason AS closed_reason
                   FROM ref.programme g
                   JOIN ref.faculty f ON f.code = g.faculty_code
@@ -83,6 +86,7 @@ class AdmissionSettingsRepository {
                         rs.getString("olevel_text"), rs.getString("utme_text"), rs.getString("de_text"),
                         rs.getObject("olevel_credits", Integer.class), rs.getObject("olevel_sittings", Integer.class),
                         rs.getBoolean("stated"), lines(rs.getString("olevel_subjects")),
+                        lines(rs.getString("olevel_allowances")),
                         rs.getBoolean("closed"), rs.getString("closed_reason")))
                 .list();
     }
@@ -187,6 +191,33 @@ class AdmissionSettingsRepository {
                     jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
                 }
             }
+        }
+        if (r.olevelAllowances() != null) {
+            /* the compulsory subjects this programme accepts a pass in (V053): replaced whole */
+            jdbc.sql("DELETE FROM admissions.programme_olevel_allowance WHERE policy_id = :id AND programme_code = :code")
+                    .param("id", policyId).param("code", code).update();
+            for (String subject : r.olevelAllowances().stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList()) {
+                jdbc.sql("INSERT INTO admissions.programme_olevel_allowance (policy_id, programme_code, subject) VALUES (:id, :code, :s)")
+                        .param("id", policyId).param("code", code).param("s", subject).update();
+            }
+        }
+    }
+
+    /** the catchment local governments stated on the policy, for the Locality basis (V054) */
+    List<String> catchmentLgas(String session) {
+        return jdbc.sql("""
+                SELECT cl.lga FROM admissions.catchment_lga cl
+                  JOIN admissions.session_policy p ON p.id = cl.policy_id
+                 WHERE p.session = :session ORDER BY cl.lga
+                """).param("session", session).query(String.class).list();
+    }
+
+    /** replaces the catchment set for the policy */
+    void saveCatchment(UUID policyId, List<String> lgas) {
+        jdbc.sql("DELETE FROM admissions.catchment_lga WHERE policy_id = :id").param("id", policyId).update();
+        for (String lga : lgas) {
+            jdbc.sql("INSERT INTO admissions.catchment_lga (policy_id, lga) VALUES (:id, :l) ON CONFLICT DO NOTHING")
+                    .param("id", policyId).param("l", lga).update();
         }
     }
 

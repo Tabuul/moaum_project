@@ -69,6 +69,16 @@ class AdmissionSettingsController {
         return service.saveProgrammeRule(session + "/" + year, code, body);
     }
 
+    public record Catchment(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> lgas) {
+    }
+
+    /** the catchment local governments, for the Locality basis (V054) — replaces the set */
+    @PutMapping("/sessions/{session}/{year}/policy/catchment")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy catchment(@PathVariable String session, @PathVariable String year, @RequestBody Catchment body) {
+        return service.saveCatchment(session + "/" + year, body.lgas());
+    }
+
     public record Closure(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 400) String reason) {
     }
 

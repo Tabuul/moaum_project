@@ -59,7 +59,9 @@ public class AdmissionSettingsService {
                                   /** the O'Level subjects relevant to the programme — the ones the screening counts (V020); null leaves them as they are */
                                   List<String> olevelSubjects,
                                   /** the programme's own carrying capacity (V054); null leaves it unset */
-                                  @Min(0) Integer quota) {
+                                  @Min(0) Integer quota,
+                                  /** compulsory O'Level subjects this programme accepts a pass in (V053); null leaves them as they are */
+                                  List<String> olevelAllowances) {
     }
 
     public record Instrument(@NotBlank @Size(max = 200) String instrument) {
@@ -77,7 +79,17 @@ public class AdmissionSettingsService {
                 r.nucQuota(), r.weightUtme(), r.weightPutme(), r.ratioUtme(), r.ratioDe(), r.ratioScience(), r.ratioArts(),
                 r.elgCapPct(), r.deptSharePct(), r.indexPrelimPlaces(), r.indexPerZone(), r.mpfOnly(), r.screeningRequired(),
                 settings.criteria(session), caps.facultyCutoffs(session), caps.programmeCutoffs(session),
-                settings.programmeRules(session), caps.policyFindings(session));
+                settings.programmeRules(session), caps.policyFindings(session), settings.catchmentLgas(session));
+    }
+
+    /** The catchment local governments, stated for the Locality basis; replaces the set. */
+    @Transactional
+    public AdmissionPolicy saveCatchment(String session, List<String> lgas) {
+        UUID id = draftId(session);
+        List<String> clean = (lgas == null ? List.<String>of() : lgas).stream()
+                .map(s -> s == null ? "" : s.trim()).filter(s -> !s.isEmpty()).distinct().toList();
+        settings.saveCatchment(id, clean);
+        return policy(session);
     }
 
     /** Creates the session's draft, or changes it while it is one. */

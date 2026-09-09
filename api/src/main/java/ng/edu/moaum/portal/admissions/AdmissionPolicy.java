@@ -16,7 +16,9 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
                               int indexPrelimPlaces, int indexPerZone, boolean mpfOnly, boolean screeningRequired,
                               List<Criterion> criteria, List<FacultyCutoff> facultyCutoffs,
                               List<ProgrammeCutoff> programmeCutoffs, List<ProgrammeRule> programmes,
-                              List<PolicyFinding> findings) {
+                              List<PolicyFinding> findings,
+                              /** the local governments in the University's catchment, for the Locality basis (V054) */
+                              List<String> catchmentLgas) {
 
     public record Criterion(String criterion, int percent) {
     }
@@ -35,6 +37,8 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
                                 Integer quota,
                                 String olevelText, String utmeText, String deText, Integer olevelCredits,
                                 Integer olevelSittings, boolean stated, List<String> olevelSubjects,
+                                /** compulsory O'Level subjects this programme accepts a pass in / waives (V053) */
+                                List<String> olevelAllowances,
                                 /** closed for the session (V023): not admitted into, needs no rule */
                                 boolean closed, String closedReason) {
     }
