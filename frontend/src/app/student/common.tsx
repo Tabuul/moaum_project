@@ -48,15 +48,18 @@ export function naira(n: number | string | null | undefined): string {
   return `₦${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
-/** Card and USSD through whichever gateway is wired, against a reference this portal generated. */
+const GATEWAY_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller" };
+
+/** Card and USSD through whichever gateway is wired; when more than one is on, the payer picks. */
 export function PayByCard({ reference, amount }: { reference: string; amount: number }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  async function go() {
+  const [choices, setChoices] = useState<string[] | null>(null);
+  async function go(gateway?: string) {
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch("/api/bff/api/v1/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checkout opened for ${reference}`) }, body: JSON.stringify({ reference }) });
+      const r = await fetch("/api/bff/api/v1/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checkout opened for ${reference}`) }, body: JSON.stringify(gateway ? { reference, gateway } : { reference }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
@@ -67,9 +70,31 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       setBusy(false);
     }
   }
+  async function start() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/payments/gateways");
+      const j = (await r.json().catch(() => null)) as Record<string, boolean> | null;
+      const on = j ? Object.keys(j).filter((k) => j[k]) : [];
+      if (on.length > 1) { setChoices(on); setBusy(false); return; }
+      await go(on[0]);
+    } catch {
+      setBusy(false);
+      await go();
+    }
+  }
   return (
     <>
-      <button type="button" className="btn btn--go" disabled={busy} onClick={() => void go()}>{busy ? "Opening the checkout…" : `Pay ${naira(amount)} by card or USSD`}</button>
+      {choices ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span className="sub2">Pay {naira(amount)} with</span>
+          {choices.map((g) => <button key={g} type="button" className="btn btn--go" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</button>)}
+          <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setChoices(null)}>Cancel</button>
+        </div>
+      ) : (
+        <button type="button" className="btn btn--go" disabled={busy} onClick={() => void start()}>{busy ? "Opening the checkout…" : `Pay ${naira(amount)} by card or USSD`}</button>
+      )}
       {problem ? (
         <div style={{ flexBasis: "100%" }}>
           <div className="notice notice--info" style={{ marginTop: 6 }}>
