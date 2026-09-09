@@ -319,7 +319,7 @@ BEGIN
             VALUES (gen_random_uuid(), v_elig, v_session, elig.jamb, '{"demo": true}'::jsonb, 'DEMO', elig.names, elig.prog, elig.agg, 'UTME', elig.sex, elig.st, elig.lga);
 
             PERFORM set_config('moaum.actor_office', 'applicant', true);
-            PERFORM admissions.register_applicant(v_session, elig.jamb, 'demo.' || lower(elig.jamb) || '@example.com', '0803 000 0000', crypt(v_pw, gen_salt('bf', 12)));
+            PERFORM admissions.register_applicant(v_session, elig.jamb, 'demo.' || lower(elig.jamb) || '@example.com', '08030000000', crypt(v_pw, gen_salt('bf', 12)));
 
             PERFORM set_config('moaum.actor_office', 'academic', true);
             SELECT ap.id INTO v_app FROM admissions.application ap
