@@ -175,6 +175,36 @@ class CapsRepository {
         return jdbc.sql("SELECT admissions.commit_batch(:id)").param("id", batchId).query(String.class).single();
     }
 
+    /** the applicants on committed admission lists for a session, and whether each has registered */
+    java.util.List<java.util.Map<String, Object>> applicants(String session, String q, int limit) {
+        return jdbc.sql("""
+                SELECT r.jamb_reg_no, r.surname, r.other_names, r.jamb_code, r.entry_mode, r.aggregate,
+                       p.name AS programme, (a.id IS NOT NULL) AS registered, c.offer_state
+                  FROM admissions.caps_row_live r
+                  JOIN admissions.caps_batch b ON b.id = r.batch_id AND b.committed_at IS NOT NULL
+                  LEFT JOIN ref.programme p ON p.code = r.jamb_code
+                  LEFT JOIN admissions.candidate c ON c.session = r.session AND c.jamb_reg_no = r.jamb_reg_no
+                  LEFT JOIN admissions.applicant_account a ON a.candidate_id = c.id
+                 WHERE r.session = :s
+                   AND (:q::text IS NULL OR r.surname ILIKE '%' || :q || '%' OR r.other_names ILIKE '%' || :q || '%'
+                        OR r.jamb_reg_no ILIKE '%' || :q || '%')
+                 ORDER BY r.surname, r.other_names
+                 LIMIT :lim
+                """).param("s", session).param("q", q, java.sql.Types.VARCHAR).param("lim", limit).query().listOfRows();
+    }
+
+    java.util.Map<String, Object> applicantCounts(String session) {
+        return jdbc.sql("""
+                SELECT count(*) AS total,
+                       count(*) FILTER (WHERE a.id IS NOT NULL) AS registered
+                  FROM admissions.caps_row_live r
+                  JOIN admissions.caps_batch b ON b.id = r.batch_id AND b.committed_at IS NOT NULL
+                  LEFT JOIN admissions.candidate c ON c.session = r.session AND c.jamb_reg_no = r.jamb_reg_no
+                  LEFT JOIN admissions.applicant_account a ON a.candidate_id = c.id
+                 WHERE r.session = :s
+                """).param("s", session).query().singleRow();
+    }
+
     List<Finding> reconcile(String session) {
         return jdbc.sql("SELECT finding, n, owner, what_it_means FROM admissions.reconcile(:session)")
                 .param("session", session)

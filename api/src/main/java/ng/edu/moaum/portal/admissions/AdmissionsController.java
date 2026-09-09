@@ -58,6 +58,15 @@ class AdmissionsController {
         return intake.get(id);
     }
 
+    /** the applicants on committed admission lists — the admitted pool, and who has registered for post-UTME */
+    @GetMapping("/applicants")
+    @PreAuthorize(READERS)
+    Map<String, Object> applicants(@RequestParam String session,
+                                   @RequestParam(required = false) String q,
+                                   @RequestParam(defaultValue = "200") int limit) {
+        return intake.applicants(session, q, limit);
+    }
+
     @PostMapping("/caps-batches/{id}/commit")
     @PreAuthorize(LOADERS)
     Map<String, Object> commit(@PathVariable UUID id) {

@@ -7,17 +7,23 @@ import { Note, Panel, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 
+interface ApplicantsPreview { counts: { total: number; registered: number }; applicants: { jamb_reg_no: string; surname: string; other_names: string; programme: string | null; registered: boolean }[] }
+
 /** rAcademic — proto/part17.html, with the register's own figures. */
 export async function AcademicDashboard({ session }: { session: string }) {
   const now = new Date().getTime();
-  const [students, registration, transcripts, sheets, changes, certificates] = await Promise.all([
+  const [students, registration, transcripts, sheets, changes, certificates, applicants] = await Promise.all([
     api<Register>(`/api/v1/student/students?session=${encodeURIComponent(session)}`),
     api<RecordsResult>(`/api/v1/student/records/registration?session=${encodeURIComponent(session)}`),
     api<TranscriptQueue>("/api/v1/credentials/transcript-requests"),
     api<SheetListing>(`/api/v1/results/sheets?session=${encodeURIComponent(session)}`),
     api<ChangeQueue>("/api/v1/student/biodata-changes?state=PENDING"),
     api<CertificateRegister>("/api/v1/credentials/certificates"),
+    api<ApplicantsPreview>(`/api/v1/admissions/applicants?session=${encodeURIComponent(session)}&limit=6`),
   ]);
+  const pool = applicants.ok ? applicants.data : null;
+  const poolTotal = pool ? Number(pool.counts.total) : 0;
+  const poolRegistered = pool ? Number(pool.counts.registered) : 0;
   const rows = students.ok ? students.data.rows : [];
   const total = students.ok ? students.data.total : 0;
   const registered = new Set(
@@ -64,6 +70,21 @@ export async function AcademicDashboard({ session }: { session: string }) {
         ["Transcript requests", String(openTranscripts.length), "var(--chrome)", tq ? `${tq.tiles.heldAtClearance} held` : "—"],
         ["Results to Senate", String(inWorkflow), null, "In the workflow"],
       ]} />
+      {poolTotal ? (
+        <Panel title="Committed admission list" right={<Link href="/admissions/applicants" className="btn btn--primary btn--sm">Open the applicants</Link>}>
+          <div className="card__body" style={{ borderBottom: "1px solid var(--line-2)" }}>
+            <div className="sub2">{poolTotal.toLocaleString()} applicant{poolTotal === 1 ? "" : "s"} JAMB admitted for {session}. {poolRegistered.toLocaleString()} {poolRegistered === 1 ? "has" : "have"} registered for post-UTME; {(poolTotal - poolRegistered).toLocaleString()} {poolTotal - poolRegistered === 1 ? "has" : "have"} not yet opened their application.</div>
+          </div>
+          {pool && pool.applicants.length ? (
+            <DTable cols={["Applicant", "JAMB number|mid", "Programme", "Post-UTME|num"]} rows={pool.applicants.map((a) => [
+              <span key="n">{a.surname}, {a.other_names}</span>,
+              <span className="tnum" key="j">{a.jamb_reg_no}</span>,
+              <span className="sub2" key="p">{a.programme ?? "—"}</span>,
+              a.registered ? <span className="sub2" key="s" style={{ color: "var(--green-ink)" }}>Registered</span> : <span className="sub2" key="s">Not yet</span>,
+            ])} />
+          ) : null}
+        </Panel>
+      ) : null}
       <Panel title="Registration, by faculty" right={session}>
         <DTable
           cols={["Faculty", "Expected|mid", "Registered|mid", "Blocked at the Bursary|mid", "Progress|num"]}

@@ -169,6 +169,16 @@ public class CapsIntakeService {
         return caps.withdraw(id, reason);
     }
 
+    /** the applicants on committed admission lists for a session, with a count of how many have registered */
+    @Transactional(readOnly = true)
+    public Map<String, Object> applicants(String session, String q, int limit) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("counts", caps.applicantCounts(session));
+        out.put("applicants", caps.applicants(session, q == null || q.isBlank() ? null : q.trim(), Math.min(Math.max(limit, 1), 500)));
+        return out;
+    }
+
     @Transactional(readOnly = true)
     public List<Finding> reconcile(String session) {
         return caps.reconcile(session);
