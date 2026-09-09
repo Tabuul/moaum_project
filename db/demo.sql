@@ -233,6 +233,38 @@ BEGIN
         END;
     END IF;
 
+    -- ── some biodata for the 300-level demo student, so the biodata wizard shows real
+    --    values (open-tier fields only; idempotent, never overwriting a later student edit) ──
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT id INTO v_student FROM people.student WHERE matric_no LIKE 'MOAUM/MTC/%/9903';
+    IF v_student IS NOT NULL THEN
+        INSERT INTO people.biodata (student_id, field, value) VALUES
+            (v_student, 'preferred_name', 'Mwuese'),
+            (v_student, 'marital_status', 'Single'),
+            (v_student, 'religion', 'Christianity'),
+            (v_student, 'place_of_birth', 'Makurdi, Benue State'),
+            (v_student, 'mobile', '0803 000 9903'),
+            (v_student, 'personal_email', 'demo.student300@example.com'),
+            (v_student, 'term_address', 'Room B14, Akpehe Hall, MOAUM campus'),
+            (v_student, 'home_address', '12 Ikpayongo Street, Wurukum, Makurdi, Benue State'),
+            (v_student, 'city', 'Makurdi'),
+            (v_student, 'state_of_residence', 'Benue'),
+            (v_student, 'town', 'Naka'),
+            (v_student, 'ethnic_group', 'Tiv'),
+            (v_student, 'sponsorship', 'Parent or guardian'),
+            (v_student, 'father_name', 'DEMO, Terhemba John'),
+            (v_student, 'father_mobile', '0806 000 0001'),
+            (v_student, 'mother_name', 'DEMO, Rebecca'),
+            (v_student, 'kin_name', 'DEMO, Terhemba John'),
+            (v_student, 'kin_relationship', 'Father'),
+            (v_student, 'kin_mobile', '0806 000 0001'),
+            (v_student, 'blood_group', 'O+'),
+            (v_student, 'genotype', 'AA'),
+            (v_student, 'bank_name', 'Demo Bank'),
+            (v_student, 'bank_account_type', 'Savings')
+        ON CONFLICT (student_id, field) DO NOTHING;
+    END IF;
+
     -- ── the applicant: a demo row on a demo CAPS list, registered under the number ──
     PERFORM set_config('moaum.actor_office', 'academic', true);
     IF NOT EXISTS (SELECT 1 FROM admissions.applicant_fee WHERE session = v_session) THEN

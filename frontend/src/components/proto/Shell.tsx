@@ -76,7 +76,7 @@ export const ROUTES: Record<string, string> = {
   "t/lms": "/lms",
   "r/upload": "/lms?tab=upload",
   "s/support": "/student/support",
-  "s/biodata": "/student/profile",
+  "s/biodata": "/student/biodata",
   "t/support": "/support",
   "t/gateways": "/finance/gateways",
   "t/ledger": "/finance/ledger",

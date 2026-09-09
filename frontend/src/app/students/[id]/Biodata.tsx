@@ -111,17 +111,19 @@ function Fld({
   );
 }
 
-export function Biodata({ record, may }: { record: StudentRecord; may: boolean }) {
+export function Biodata({ record, may, base }: { record: StudentRecord; may: boolean; base?: string }) {
   const router = useRouter();
   const [section, setSection] = useState("identity");
   const [asked, setAsked] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const s = record.student;
   const pending = new Map(record.pendingChanges.map((c) => [c.field, c.toValue]));
+  // the Registry writes at /student/students/{id}; the student writes their own at /me
+  const writeBase = base ?? `/api/bff/api/v1/student/students/${s.id}`;
 
   async function write(field: BiodataField, value: string) {
     setProblem(null);
-    const response = await fetch(`/api/bff/api/v1/student/students/${s.id}/biodata/${field.field}`, {
+    const response = await fetch(`${writeBase}/biodata/${field.field}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Biodata: ${field.label}`) },
       body: JSON.stringify({ value }),
