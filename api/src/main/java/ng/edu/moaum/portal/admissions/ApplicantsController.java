@@ -264,6 +264,68 @@ class ApplicantsController {
         return applicants.view(id, true);
     }
 
+    // Post-UTME scores are uploaded in bulk and reconciled against the applicant records;
+    // the Directorate of ICT and the Super Administrator do it, as well as the Academic Office
+    private static final String SCORE_UPLOADERS =
+            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+
+    public record ScoreRow(String key, java.math.BigDecimal score) {
+    }
+
+    public record ScoreUpload(@jakarta.validation.constraints.NotNull List<ScoreRow> rows) {
+    }
+
+    /**
+     * A batch of Post-UTME scores, each keyed by JAMB registration number or
+     * application number, reconciled against the session's applicants: a matched
+     * candidate whose score is not yet released has it entered; the rest are
+     * reported (not found, already released, out of range) and nothing is invented.
+     */
+    @PostMapping("/screening-scores/upload")
+    @PreAuthorize(SCORE_UPLOADERS)
+    @Transactional
+    Map<String, Object> uploadScores(@PathVariable String session, @PathVariable String year, @Valid @RequestBody ScoreUpload body) {
+        String s = session + "/" + year;
+        int applied = 0;
+        List<String> notFound = new java.util.ArrayList<>();
+        List<String> alreadyReleased = new java.util.ArrayList<>();
+        List<String> outOfRange = new java.util.ArrayList<>();
+        for (ScoreRow row : body.rows()) {
+            String key = row.key() == null ? "" : row.key().trim().toUpperCase();
+            if (key.isEmpty()) {
+                continue;
+            }
+            if (row.score() == null || row.score().signum() < 0 || row.score().compareTo(new java.math.BigDecimal("100")) > 0) {
+                outOfRange.add(key);
+                continue;
+            }
+            Map<String, Object> app = jdbc.sql("""
+                    SELECT a.id, a.score_released_at FROM admissions.application a
+                      JOIN admissions.candidate c ON c.id = a.candidate_id
+                     WHERE a.session = :s AND (upper(c.jamb_reg_no) = :k OR upper(c.jamb_key) = :k OR upper(a.application_no) = :k)
+                     LIMIT 1
+                    """).param("s", s).param("k", key).query().listOfRows().stream().findFirst().orElse(null);
+            if (app == null) {
+                notFound.add(key);
+                continue;
+            }
+            if (app.get("score_released_at") != null) {
+                alreadyReleased.add(key);
+                continue;
+            }
+            jdbc.sql("UPDATE admissions.application SET screening_score = :v, score_entered_at = now() WHERE id = :id AND score_released_at IS NULL")
+                    .param("v", row.score()).param("id", app.get("id")).update();
+            applied++;
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("received", body.rows().size());
+        out.put("applied", applied);
+        out.put("notFound", notFound);
+        out.put("alreadyReleased", alreadyReleased);
+        out.put("outOfRange", outOfRange);
+        return out;
+    }
+
     @PostMapping("/screening-scores/release")
     @PreAuthorize(OFFICE)
     @Transactional

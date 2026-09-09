@@ -777,6 +777,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Merit list"
           },
           {
+            "id": "t/putme",
+            "icon": "doc",
+            "label": "Post-UTME scores"
+          },
+          {
             "id": "t/candidatedata",
             "icon": "user",
             "label": "Passports, DOB & O’Level"
@@ -1743,6 +1748,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Mail server"
           },
           {
+            "id": "t/putme",
+            "icon": "doc",
+            "label": "Post-UTME scores"
+          },
+          {
             "id": "t/notify",
             "icon": "bell",
             "label": "Notifications",
@@ -1923,6 +1933,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/mail",
             "icon": "server",
             "label": "Mail server"
+          },
+          {
+            "id": "t/putme",
+            "icon": "doc",
+            "label": "Post-UTME scores"
           },
           {
             "id": "t/ledger",
