@@ -692,6 +692,11 @@ export function CapsIntake({
 
       {/* ── what the register holds for this session ── */}
       <Panel title={`Lists loaded for ${session}`} right={batches.length ? `${batches.length} upload${batches.length === 1 ? "" : "s"}` : "nothing yet"}>
+        {problem ? (
+          <div className="card__body">
+            <ProblemNotice problem={problem} />
+          </div>
+        ) : null}
         {batchesProblem ? (
           <div className="card__body">
             <ProblemNotice problem={batchesProblem} />
