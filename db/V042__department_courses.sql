@@ -40,7 +40,7 @@ BEGIN
     END IF;
     UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code = p_code AND state <> 'ENDED';
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'no course % to end' USING ERRCODE = '23503',
+        RAISE EXCEPTION 'no course % to end', p_code USING ERRCODE = '23503',
             HINT = 'It may already be ended; an ended course stays on the records it belongs to.';
     END IF;
 END $$;
