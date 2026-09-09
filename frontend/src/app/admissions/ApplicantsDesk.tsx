@@ -13,9 +13,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { BASES, CLEARANCE_ITEMS, DOCUMENT_KINDS, STAGES, type Application } from "@/lib/applicant";
+import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -37,9 +37,6 @@ export interface Desk {
   fees: { stated: boolean; applicationFee: number; portalCharge: number; acceptanceFee: number };
 }
 
-const DOC_LABEL = Object.fromEntries(DOCUMENT_KINDS.map(([k, l]) => [k, l]));
-const CL_LABEL = Object.fromEntries(CLEARANCE_ITEMS.map(([k, l]) => [k, l]));
-
 export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffice: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,9 +45,18 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newBatch, setNewBatch] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [nowMs] = useState(() => Date.now());
   const base = `/api/bff/api/v1/admissions/sessions/${desk.session}`;
   const office = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
-  const registry = office || actingOffice === "records";
+  const ageOf = (iso: string | null): number | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    const n = new Date(nowMs);
+    let a = n.getFullYear() - d.getFullYear();
+    if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--;
+    return a >= 0 && a < 130 ? a : null;
+  };
 
   async function send(key: string, method: "PUT" | "POST", path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
     setBusy(key);
@@ -175,7 +181,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <span className="tnum" key="t">{r.seat ?? "—"}</span>,
               <span className="tnum" key="c">{r.screening_score ?? "—"}{r.score_released_at ? "" : r.screening_score !== null ? " ·held" : ""}</span>,
               r.decision ? <Pil kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"} key="d">{r.decision}{r.decision_released_at ? "" : " · held"}</Pil> : <span className="sub2" key="d">—</span>,
-              <Btn kind="ghost" key="v" onClick={() => void view(r.id)}>Open</Btn>,
+              <Btn kind="primary" key="v" onClick={() => void view(r.id)}>View details</Btn>,
             ])} />
         ) : <div className="card__body"><div className="sub2">No applicant has registered for {desk.session} yet. Registration starts from the JAMB number on the CAPS list loaded on the JAMB admission lists screen.</div></div>}
       </Panel>
@@ -213,18 +219,48 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         <Modal title={`${open.name} · ${open.applicationNo}`} sub={`${open.programme ?? ""} · stage ${open.stage + 1} of 10 · ${stageOf(open.stage)}`} wide onClose={() => setOpen(null)}
           foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn></>}>
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <Panel title="Documents" right={`${open.documents.filter((d) => d.status === "ACCEPTED").length} of ${open.documents.length} accepted`}>
-            {open.documents.length ? (
-              <DTable cols={["Document", "File", "Status|mid", "|num"]} rows={open.documents.map((d) => [
-                <span key="k">{DOC_LABEL[d.kind] ?? d.kind}</span>,
-                <a key="f" className="sub2 tnum" href={`${base}/applications/${open.id}/documents/${d.id}/content`} target="_blank" rel="noreferrer">{d.filename} · {Math.round(d.bytes / 1024)} KB</a>,
-                d.status === "ACCEPTED" ? <Pil kind="ok" key="s">Accepted</Pil> : d.status === "REJECTED" ? <Pil kind="bad" key="s">Rejected</Pil> : <Pil kind="info" key="s">Pending</Pil>,
-                <span key="a" style={{ display: "inline-flex", gap: 6 }}>
-                  <Btn kind="go" disabled={!office || busy !== null || d.status === "ACCEPTED"} onClick={async () => { await send(`acc-${d.id}`, "POST", `/applications/${open.id}/documents/${d.id}/review`, { status: "ACCEPTED" }, `${DOC_LABEL[d.kind]} accepted`); await refreshOpen(open.id); }}>Accept</Btn>
-                  <Btn kind="ghost" disabled={!office || busy !== null} onClick={async () => { const note = window.prompt("What is wrong with it? The applicant reads this."); if (!note) return; await send(`rej-${d.id}`, "POST", `/applications/${open.id}/documents/${d.id}/review`, { status: "REJECTED", note }, `${DOC_LABEL[d.kind]} rejected: ${note}`); await refreshOpen(open.id); }}>Reject</Btn>
-                </span>,
-              ])} />
-            ) : <div className="card__body"><div className="sub2">Nothing uploaded yet.</div></div>}
+          <Panel title="Applicant — read from JAMB" right={open.jambKey}>
+            <PBody>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {(() => {
+                  const p = open.documents.find((d) => d.kind === "PASSPORT");
+                  return p ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`${base}/applications/${open.id}/documents/${p.id}/content`} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+                  ) : (
+                    <div className="sub2" style={{ width: 96, height: 120, borderRadius: 8, border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: 6 }}>No passport yet</div>
+                  );
+                })()}
+                <div style={{ flex: "1 1 320px" }}>
+                  <KvGrid cls="grid--2" pairs={[
+                    ["Name", open.name],
+                    ["JAMB registration", open.jambKey],
+                    ["Date of birth", `${dob(open.biodata.dateOfBirth)}${ageOf(open.biodata.dateOfBirth) !== null ? ` · ${ageOf(open.biodata.dateOfBirth)} years` : ""}`],
+                    ["Sex", open.biodata.sex === "F" ? "Female" : open.biodata.sex === "M" ? "Male" : "—"],
+                    ["State / LGA of origin", `${open.biodata.stateOfOrigin ?? "—"} · ${open.biodata.lga ?? "—"}`],
+                    ["Programme (JAMB)", `${open.programme ?? "—"}${open.faculty ? ` · Faculty of ${open.faculty}` : ""}`],
+                    ["Entry", open.entryMode === "UTME" ? "UTME" : open.entryMode.charAt(0) + open.entryMode.slice(1).toLowerCase().replace("_", " ")],
+                    ["UTME score", open.biodata.utme ?? "—"],
+                    ["Email / phone", `${open.email ?? "—"} · ${open.phone ?? "—"}`],
+                    ["Next of kin", open.biodata.nextOfKin ?? "—"],
+                  ]} />
+                </div>
+              </div>
+            </PBody>
+          </Panel>
+          <Panel title="O’Level results" right="As JAMB sent them · up to two sittings">
+            <PBody>
+              {open.olevel.length ? open.olevel.map((s, i) => (
+                <div key={i}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 6px" }}>
+                    <Pil kind="grey">{BODY[s.body] ?? s.body}</Pil>
+                    <b>Sitting {i + 1}{s.type ? ` — ${s.type}` : ""}{s.year ? ` ${s.year}` : ""}</b>
+                    {s.examNumber ? <span className="sub2 tnum">exam no. {s.examNumber}</span> : null}
+                  </div>
+                  <DTable cols={["Subject", "Grade|mid"]} rows={s.subjects.map((g) => [<span key="s">{g.subject}</span>, <b className="tnum" key="g">{g.grade}</b>])} />
+                </div>
+              )) : <div className="sub2">No O&rsquo;Level result has reached the University from JAMB yet.</div>}
+            </PBody>
           </Panel>
           <Panel title="Screening" right={open.screeningSlip ? `Batch ${open.screeningSlip.batch} · seat ${open.screeningSlip.seat}` : "Not seated"}>
             <PBody>
@@ -260,19 +296,6 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               </div>
               <div className="sub2" style={{ marginTop: 6 }}>Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
             </PBody>
-          </Panel>
-          <Panel title="Clearance at the Registry" right={open.acceptedAt ? `${open.clearance.filter((c) => c.state === "VERIFIED").length} of 6 verified` : "Opens when the offer is accepted"}>
-            <DTable cols={["Document", "State|mid", "|num"]} rows={CLEARANCE_ITEMS.map(([k, label]) => {
-              const c = open.clearance.find((x) => x.item === k);
-              return [
-                <Two key="d" a={label} b={c?.note ?? ""} />,
-                c?.state === "VERIFIED" ? <Pil kind="ok" key="s">Verified</Pil> : c?.state === "QUERY" ? <Pil kind="bad" key="s">Query</Pil> : <Pil kind="info" key="s">Not presented</Pil>,
-                <span key="a" style={{ display: "inline-flex", gap: 6 }}>
-                  <Btn kind="go" disabled={!registry || busy !== null || !open.acceptedAt || c?.state === "VERIFIED"} onClick={async () => { await send(`cl-${k}`, "PUT", `/applications/${open.id}/clearance/${k}`, { state: "VERIFIED" }, `${CL_LABEL[k]} verified at clearance`); await refreshOpen(open.id); }}>Verified</Btn>
-                  <Btn kind="ghost" disabled={!registry || busy !== null || !open.acceptedAt} onClick={async () => { const note = window.prompt("What is the query? The applicant reads this."); if (!note) return; await send(`cq-${k}`, "PUT", `/applications/${open.id}/clearance/${k}`, { state: "QUERY", note }, `${CL_LABEL[k]} queried: ${note}`); await refreshOpen(open.id); }}>Query</Btn>
-                </span>,
-              ];
-            })} />
           </Panel>
         </Modal>
       ) : null}
