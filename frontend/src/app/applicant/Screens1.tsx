@@ -287,7 +287,7 @@ export function Fee({ a }: { a: Application }) {
               <div style={{ minWidth: 200 }}>
                 <div className="eyebrow">Reference</div>
                 <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
-                <div className="sub2" style={{ marginTop: 6 }}>Quote this reference and nothing else. It is tied to your application number and expires {when(open.expiresAt)}; a new one is generated free of charge.</div>
+                <div className="sub2" style={{ marginTop: 6 }}>Quote this reference and nothing else. It is tied to your application number and expires {when(open.expiresAt)}. You do not need a new one &mdash; pay this one now.</div>
               </div>
             </div>
           ) : (
@@ -295,8 +295,15 @@ export function Fee({ a }: { a: Application }) {
           )}
           {problem ? <ProblemNotice problem={problem} /> : null}
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}>
-            <Btn kind="primary" disabled={busy !== null} onClick={() => void act("ref", "POST", "/me/fee-references", { kind: "APPLICATION" }, "Application fee reference generated for the applicant")}>{busy === "ref" ? "Generating…" : open ? "Generate a new reference" : `Generate a reference for ${money(total)}`}</Btn>
-            {open ? <PayByCard reference={open.reference} amount={total} /> : null}
+            {open ? (
+              <>
+                {/* an already-generated, unpaid reference proceeds straight to the gateway */}
+                <PayByCard reference={open.reference} amount={total} />
+                <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("ref", "POST", "/me/fee-references", { kind: "APPLICATION" }, "Application fee reference generated for the applicant")}>{busy === "ref" ? "Generating…" : "Generate a new reference"}</Btn>
+              </>
+            ) : (
+              <Btn kind="primary" disabled={busy !== null} onClick={() => void act("ref", "POST", "/me/fee-references", { kind: "APPLICATION" }, "Application fee reference generated for the applicant")}>{busy === "ref" ? "Generating…" : `Generate a reference for ${money(total)}`}</Btn>
+            )}
           </div>
         </PBody>
       </Panel>

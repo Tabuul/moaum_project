@@ -84,7 +84,7 @@ export function Accept({ a }: { a: Application }) {
           <Btn kind="urgent" disabled={!agreed || busy !== null} onClick={() => void act("sign", "POST", "/me/accept", { undertaking: true }, "Undertaking signed by the applicant")}>{busy === "sign" ? "Signing…" : "Sign the undertaking"}</Btn>
         ) : null}
         {!paid ? (
-          <Btn kind={a.undertakingAt ? "urgent" : "primary"} disabled={busy !== null} onClick={() => void act("ref", "POST", "/me/fee-references", { kind: "ACCEPTANCE" }, "Acceptance fee reference generated for the applicant")}>{busy === "ref" ? "Generating…" : open ? "Generate a new reference" : `Generate a reference for ${money(fee)}`}</Btn>
+          <Btn kind={open ? "ghost" : (a.undertakingAt ? "urgent" : "primary")} disabled={busy !== null} onClick={() => void act("ref", "POST", "/me/fee-references", { kind: "ACCEPTANCE" }, "Acceptance fee reference generated for the applicant")}>{busy === "ref" ? "Generating…" : open ? "Generate a new reference" : `Generate a reference for ${money(fee)}`}</Btn>
         ) : null}
         <Btn kind="ghost" disabled={busy !== null} onClick={() => { if (window.confirm("Decline this offer? A declined offer is not reinstated.")) void act("decline", "POST", "/me/decline", {}, "Offer declined by the applicant"); }}>Decline this offer</Btn>
       </div>
@@ -93,7 +93,7 @@ export function Accept({ a }: { a: Application }) {
           <PBody>
             <div className="eyebrow">Reference</div>
             <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
-            <div className="sub2" style={{ marginTop: 6 }}>Quote this reference and nothing else. The Bursary confirms the payment against it; your place is held the moment it does, provided the undertaking is signed.</div>
+            <div className="sub2" style={{ marginTop: 6 }}>Quote this reference and nothing else. You do not need a new one &mdash; pay this one now: on the gateway it confirms at once and your place is held (the undertaking signed), or pay it at a bank and the Bursary confirms it against the reference.</div>
             <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}><PayByCard reference={open.reference} amount={fee} /></div>
           </PBody>
         </Panel>
