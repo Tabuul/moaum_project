@@ -1,16 +1,18 @@
 "use client";
 
 /**
- * The biodata — proto/part23.html: BIO_SECTIONS in the nav, fld() in the
- * grid, and the three tiers the whole screen exists to hold apart. A field
- * read from JAMB is read-only and says so; a field of the student's own is
- * written where it stands, on leaving it; a field that changes only on
- * evidence raises a request the Registry decides, and says that too.
+ * The biodata — proto/part23.html: BIO_SECTIONS in the nav, the three tiers the
+ * screen exists to hold apart, and a Save-and-continue bar at the foot of each
+ * section. A field read from JAMB is read-only; a field of the student's own is
+ * written when the section is saved; a field that changes only on evidence
+ * raises a request the Registry decides. State of origin, its local government
+ * and nationality are chosen from lists, not typed.
  */
 import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import type { BiodataField, StudentRecord, Tier } from "@/lib/student";
 import { statusLabel } from "@/lib/student";
+import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import type { Problem } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { Btn, Ico, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
@@ -30,6 +32,7 @@ const BIO_SECTIONS: [string, string, string][] = [
   ["docs", "Documents", "What the Registry holds"],
   ["history", "Change history", "Every edit, with its author"],
 ];
+const EDITABLE = ["personal", "contact", "origin", "family", "kin", "health", "bank"];
 
 const SECTION_NOTE: Record<string, [("info" | "bad"), string, string]> = {
   contact: ["info", "This is where every notice with a consequence is sent",
@@ -44,66 +47,46 @@ const SECTION_NOTE: Record<string, [("info" | "bad"), string, string]> = {
     "The account is used for refunds — an overpayment, a duplicate payment, a withdrawal, a scholarship credit. No fee is ever collected by direct debit, and the portal does not hold a card."],
 };
 
-/** fld(label, value, tier, hint, wide) */
-function Fld({
-  field,
-  pending,
-  may,
-  onWrite,
-}: {
-  field: BiodataField;
-  pending: string | null;
-  may: boolean;
-  onWrite: (field: BiodataField, value: string) => void;
+/** the fields chosen from a list rather than typed */
+function optionsFor(field: string, values: Record<string, string>): string[] | null {
+  if (field === "nationality") return NATIONALITIES;
+  if (field === "state_of_origin" || field === "state_of_residence") return STATES;
+  if (field === "lga") return lgasOf(values.state_of_origin ?? "");
+  if (field === "marital_status") return ["Single", "Married", "Divorced", "Widowed"];
+  if (field === "father_status" || field === "mother_status") return ["Living", "Deceased"];
+  return null;
+}
+
+/** one field — read-only for a JAMB field, a select where there is a list, otherwise a box.
+ *  Defined at module scope so a keystroke does not remount the input and steal focus. */
+function Fld({ field, value, options, may, pending, onChange }: {
+  field: BiodataField; value: string; options: string[] | null; may: boolean; pending: string | undefined; onChange: (v: string) => void;
 }) {
-  const value = field.value ?? "";
   const badge =
     field.tier === "locked" ? (
-      <span className="bio__t bio__t--locked">
-        <Ico name="shield" size={11} w={2.2} />
-        From JAMB
-      </span>
+      <span className="bio__t bio__t--locked"><Ico name="shield" size={11} w={2.2} />From JAMB</span>
     ) : field.tier === "approval" ? (
-      <span className="bio__t bio__t--appr">
-        <Ico name="scale" size={11} w={2.2} />
-        Needs approval
-      </span>
+      <span className="bio__t bio__t--appr"><Ico name="scale" size={11} w={2.2} />Needs approval</span>
     ) : null;
-
-  const control =
-    field.tier === "locked" ? (
-      <div className="ctl ctl--ro">
-        {value || "—"}
-        <Ico name="shield" size={14} stroke="var(--faint)" w={2} />
-      </div>
-    ) : field.wide ? (
-      <textarea
-        className="ctl"
-        rows={2}
-        defaultValue={value}
-        disabled={!may}
-        onBlur={(e) => e.target.value !== value && onWrite(field, e.target.value)}
-      />
-    ) : (
-      <input
-        className="ctl"
-        defaultValue={value}
-        disabled={!may}
-        autoComplete="off"
-        onBlur={(e) => e.target.value !== value && onWrite(field, e.target.value)}
-      />
+  let control: React.ReactNode;
+  if (field.tier === "locked") {
+    control = <div className="ctl ctl--ro">{value || "—"}<Ico name="shield" size={14} stroke="var(--faint)" w={2} /></div>;
+  } else if (options) {
+    const list = value && !options.includes(value) ? [value, ...options] : options;
+    control = (
+      <select className="ctl" value={value} disabled={!may} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select…</option>
+        {list.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
     );
-
+  } else if (field.wide) {
+    control = <textarea className="ctl" rows={2} value={value} disabled={!may} onChange={(e) => onChange(e.target.value)} />;
+  } else {
+    control = <input className="ctl" value={value} disabled={!may} autoComplete="off" onChange={(e) => onChange(e.target.value)} />;
+  }
   return (
-    <div
-      className={`bio__f${field.wide ? " bio__f--wide" : ""}${field.tier === "approval" ? " is-appr" : ""}${
-        field.tier === "locked" ? " is-locked" : ""
-      }`}
-    >
-      <label>
-        {field.label}
-        {badge}
-      </label>
+    <div className={`bio__f${field.wide ? " bio__f--wide" : ""}${field.tier === "approval" ? " is-appr" : ""}${field.tier === "locked" ? " is-locked" : ""}`}>
+      <label>{field.label}{badge}</label>
       {control}
       {pending ? <div className="hint">Waiting on the Registry: &rarr; {pending}</div> : null}
       {field.hint ? <div className="hint">{field.hint}</div> : null}
@@ -114,32 +97,66 @@ function Fld({
 export function Biodata({ record, may, base }: { record: StudentRecord; may: boolean; base?: string }) {
   const router = useRouter();
   const [section, setSection] = useState("identity");
-  const [asked, setAsked] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [asked, setAsked] = useState(false);
   const s = record.student;
-  const pending = new Map(record.pendingChanges.map((c) => [c.field, c.toValue]));
-  // the Registry writes at /student/students/{id}; the student writes their own at /me
   const writeBase = base ?? `/api/bff/api/v1/student/students/${s.id}`;
+  const pending = new Map(record.pendingChanges.map((c) => [c.field, c.toValue]));
 
-  async function write(field: BiodataField, value: string) {
-    setProblem(null);
-    const response = await fetch(`${writeBase}/biodata/${field.field}`, {
+  // the current value of every editable field, from the record, overlaid with what has been typed
+  const original: Record<string, string> = {};
+  for (const bf of record.biodata) original[bf.field] = bf.value ?? "";
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const val = (field: string) => (field in edits ? edits[field] : (original[field] ?? ""));
+  const values: Record<string, string> = {};
+  for (const bf of record.biodata) values[bf.field] = val(bf.field);
+
+  function set(field: string, value: string) {
+    setEdits((e) => ({ ...e, [field]: value }));
+  }
+
+  async function putField(field: string, value: string): Promise<"saved" | "asked" | "error"> {
+    const r = await fetch(`${writeBase}/biodata/${field}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Biodata: ${field.label}`) },
+      headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Biodata: ${field}`) },
       body: JSON.stringify({ value }),
     });
-    if (response.ok) {
-      const body = (await response.json().catch(() => null)) as { pending?: boolean } | null;
-      if (body?.pending) setAsked(true);
-      router.refresh();
-      return;
+    if (r.ok) {
+      const b = (await r.json().catch(() => null)) as { pending?: boolean } | null;
+      return b?.pending ? "asked" : "saved";
     }
-    const json = await response.json().catch(() => null);
-    setProblem(
-      json && typeof json === "object" && "status" in json
-        ? (json as Problem)
-        : { status: response.status, title: response.statusText },
-    );
+    const j = await r.json().catch(() => null);
+    setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
+    return "error";
+  }
+
+  /** save every changed field in the section; open fields are written, approval fields raise a request */
+  async function saveSection(advance: boolean) {
+    const fields = record.biodata.filter((f) => f.section === section && f.tier !== "locked");
+    const changed = fields.filter((f) => (f.field in edits) && edits[f.field] !== (original[f.field] ?? ""));
+    setBusy(true);
+    setProblem(null);
+    setSaved(null);
+    setAsked(false);
+    let n = 0;
+    let raised = false;
+    for (const f of changed) {
+      const outcome = await putField(f.field, edits[f.field].trim());
+      if (outcome === "error") { setBusy(false); return; }
+      if (outcome === "asked") raised = true;
+      n += 1;
+    }
+    setBusy(false);
+    if (raised) setAsked(true);
+    setSaved(n ? `${n} change${n === 1 ? "" : "s"} saved` : "Nothing to save on this section");
+    if (n) router.refresh();
+    if (advance) {
+      const i = BIO_SECTIONS.findIndex((x) => x[0] === section);
+      const next = BIO_SECTIONS.slice(i + 1).find((x) => EDITABLE.includes(x[0]) || x[0] === "docs" || x[0] === "history");
+      if (next) setSection(next[0]);
+    }
   }
 
   const identity: BiodataField[] = [
@@ -157,26 +174,20 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
     ["Entry mode", statusLabel(s.entryMode)],
     ["Session of entry", s.entrySession],
     ["Status", statusLabel(s.status)],
-  ].map(([label, value], i) => ({
-    field: `identity-${i}`,
-    section: "identity",
-    label,
-    tier: "locked" as Tier,
-    hint: label === "Matriculation number" ? "Never changes, for the rest of their life" : null,
-    wide: false,
-    ord: i,
-    value,
-  }));
+  ].map(([label, value], i) => ({ field: `identity-${i}`, section: "identity", label, tier: "locked" as Tier, hint: null, wide: false, ord: i, value }));
 
   const fields = section === "identity" ? identity : record.biodata.filter((f) => f.section === section);
   const note = SECTION_NOTE[section];
   const meta = BIO_SECTIONS.find((x) => x[0] === section) ?? BIO_SECTIONS[0];
+  const sectionChanged = record.biodata.some((f) => f.section === section && f.tier !== "locked" && (f.field in edits) && edits[f.field] !== (original[f.field] ?? ""));
+  const idx = BIO_SECTIONS.findIndex((x) => x[0] === section);
+  const isLast = idx === BIO_SECTIONS.length - 1;
 
   return (
     <div className="bio">
       <div className="bio__nav">
         {BIO_SECTIONS.map((x) => (
-          <button className={`bio__s${section === x[0] ? " is-on" : ""}`} key={x[0]} onClick={() => setSection(x[0])}>
+          <button className={`bio__s${section === x[0] ? " is-on" : ""}`} key={x[0]} onClick={() => { setSection(x[0]); setSaved(null); setAsked(false); }}>
             <span className="t">{x[1]}</span>
             <span className="d">{x[2]}</span>
           </button>
@@ -185,114 +196,60 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
 
       <div className="bio__body">
         {problem ? <ProblemNotice problem={problem} /> : null}
-
+        {saved ? <Note kind="ok" title={saved}>{may ? "Your changes are on the record." : ""}</Note> : null}
         {asked ? (
-          <Note
-            kind="info"
-            title="That change has been sent to the Registry"
-            action={
-              <Btn kind="ghost" onClick={() => setAsked(false)}>
-                Dismiss
-              </Btn>
-            }
-          >
-            A field of this kind is not changed by the person it describes. The Registry will ask for the evidence,
-            compare it with the record, and either make the change with the evidence attached or refuse it with a reason
-            &mdash; both of which appear in the change history.
+          <Note kind="info" title="A change of an evidence field has been sent to the Registry">
+            A field of this kind is not changed by the person it describes. The Registry will ask for the evidence, compare it with the record, and either make the change with the evidence attached or refuse it with a reason &mdash; both appear in the change history.
           </Note>
         ) : null}
 
         {section === "identity" ? (
           <Note kind="info" title="Three kinds of field, and the difference matters">
-            Most of this record is the student&rsquo;s own &mdash; contact details, next of kin, health, sponsorship
-            &mdash; and changes here whenever it changes. A few fields are read from JAMB and are corrected with JAMB,
-            not here. A few more change only on evidence the Registry has seen, because they decide fee status, quota or
-            who a person is on a certificate.
+            Most of this record is the student&rsquo;s own &mdash; contact details, next of kin, health, sponsorship &mdash; and changes here whenever it changes. A few fields are read from JAMB and are corrected with JAMB, not here. A few more change only on evidence the Registry has seen, because they decide fee status, quota or who a person is on a certificate.
           </Note>
         ) : null}
-
-        {note ? (
-          <Note kind={note[0]} title={note[1]}>
-            {note[2]}
-          </Note>
-        ) : null}
+        {note ? <Note kind={note[0]} title={note[1]}>{note[2]}</Note> : null}
 
         {section === "docs" ? (
           <Panel title="Documents the Registry holds" right="Uploaded at application and clearance">
             {record.documents.length === 0 ? (
-              <PBody>
-                <Note kind="bad" title="The Registry holds no document for this student">
-                  A document appears here when it is received at application or at clearance. Nothing is listed as held
-                  until it is.
-                </Note>
-              </PBody>
+              <PBody><Note kind="bad" title="The Registry holds no document for this student">A document appears here when it is received at application or at clearance.</Note></PBody>
             ) : (
-              <DTable
-                cols={["Document", "Source", "Received|mid", "Status|num"]}
-                rows={record.documents.map((d) => [
-                  <Two a={d.kind} b={d.detail ?? ""} key="k" />,
-                  <span className="sub2" key="s">
-                    {d.source}
-                  </span>,
-                  <span className="sub2 tnum" key="r">
-                    {day(d.receivedOn)}
-                  </span>,
-                  <Pil kind={d.status === "NOT_SUPPLIED" || d.status === "REFUSED" ? "bad" : "ok"} key="st">
-                    {statusLabel(d.status)}
-                  </Pil>,
-                ])}
-                texts={record.documents.map((d) => `${d.kind} ${d.source} ${d.status}`)}
-                title="Documents"
-              />
+              <DTable cols={["Document", "Source", "Received|mid", "Status|num"]} rows={record.documents.map((d) => [
+                <Two a={d.kind} b={d.detail ?? ""} key="k" />,
+                <span className="sub2" key="s">{d.source}</span>,
+                <span className="sub2 tnum" key="r">{day(d.receivedOn)}</span>,
+                <Pil kind={d.status === "NOT_SUPPLIED" || d.status === "REFUSED" ? "bad" : "ok"} key="st">{statusLabel(d.status)}</Pil>,
+              ])} texts={record.documents.map((d) => `${d.kind} ${d.source} ${d.status}`)} title="Documents" />
             )}
           </Panel>
         ) : section === "history" ? (
-          <>
-            <Note kind="info" title="Every change to this record is kept, with who made it and when">
-              Nothing is overwritten silently, which is what lets a question about this record years from now be answered
-              rather than argued.
-            </Note>
-            <Panel title="Change history" right={`${record.decidedChanges.length + record.pendingChanges.length} entries`}>
-              {record.decidedChanges.length + record.pendingChanges.length === 0 ? (
-                <PBody>
-                  <span className="sub2">
-                    No field of this record has been asked to change. Self-service changes to open fields are kept on the
-                    audit spine, and requests on evidence appear here.
-                  </span>
-                </PBody>
-              ) : (
-                <DTable
-                  cols={["When|mid", "Field", "From", "To", "Basis|num"]}
-                  rows={[...record.decidedChanges, ...record.pendingChanges].map((c) => [
-                    <span className="sub2 tnum" key="w">
-                      {day("decidedAt" in c && c.decidedAt ? (c.decidedAt as string) : c.requestedAt)}
-                    </span>,
-                    c.label,
-                    <span className="sub2" key="f">
-                      {c.fromValue ?? "—"}
-                    </span>,
-                    <span className="sub2" key="t">
-                      {c.toValue}
-                    </span>,
-                    <Pil kind={c.state === "APPROVED" ? "ok" : c.state === "REFUSED" ? "bad" : "warn"} key="b">
-                      {statusLabel(c.state)}
-                    </Pil>,
-                  ])}
-                  texts={[...record.decidedChanges, ...record.pendingChanges].map((c) => `${c.label} ${c.toValue} ${c.state}`)}
-                  title="Change history"
-                />
-              )}
-            </Panel>
-          </>
+          <Panel title="Change history" right={`${record.decidedChanges.length + record.pendingChanges.length} entries`}>
+            {record.decidedChanges.length + record.pendingChanges.length === 0 ? (
+              <PBody><span className="sub2">No field of this record has been asked to change on evidence. Self-service changes to open fields are kept on the audit spine; requests on evidence appear here.</span></PBody>
+            ) : (
+              <DTable cols={["When|mid", "Field", "From", "To", "Basis|num"]} rows={[...record.decidedChanges, ...record.pendingChanges].map((c) => [
+                <span className="sub2 tnum" key="w">{day("decidedAt" in c && c.decidedAt ? (c.decidedAt as string) : c.requestedAt)}</span>,
+                c.label,
+                <span className="sub2" key="f">{c.fromValue ?? "—"}</span>,
+                <span className="sub2" key="t">{c.toValue}</span>,
+                <Pil kind={c.state === "APPROVED" ? "ok" : c.state === "REFUSED" ? "bad" : "warn"} key="b">{statusLabel(c.state)}</Pil>,
+              ])} texts={[...record.decidedChanges, ...record.pendingChanges].map((c) => `${c.label} ${c.toValue} ${c.state}`)} title="Change history" />
+            )}
+          </Panel>
         ) : (
           <Panel title={meta[1]} right={meta[2]}>
             <PBody>
-              <div className="bio__grid">
-                {fields.map((f) => (
-                  <Fld key={f.field} field={f} pending={pending.get(f.field) ?? null} may={may} onWrite={write} />
-                ))}
-              </div>
+              <div className="bio__grid">{fields.map((f) => <Fld key={f.field} field={f} value={f.section === "identity" ? (f.value ?? "") : val(f.field)} options={f.section === "identity" ? null : optionsFor(f.field, values)} may={may} pending={pending.get(f.field)} onChange={(v) => set(f.field, v)} />)}</div>
             </PBody>
+            {may && EDITABLE.includes(section) ? (
+              <div className="card__body" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--line-2)" }}>
+                <span className="sub2">{sectionChanged ? "Unsaved changes on this section" : "No unsaved changes"}</span>
+                <span style={{ flexGrow: 1 }} />
+                <Btn kind="ghost" disabled={busy || !sectionChanged} onClick={() => void saveSection(false)}>{busy ? "Saving…" : "Save"}</Btn>
+                <Btn kind="primary" disabled={busy} onClick={() => void saveSection(true)}>{busy ? "Saving…" : "Save and continue →"}</Btn>
+              </div>
+            ) : null}
           </Panel>
         )}
 
@@ -302,22 +259,15 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
               <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
                 <Passport w={104} h={128} />
                 <div style={{ flexGrow: 1, minWidth: 220 }}>
-                  <div className="sub2" style={{ lineHeight: 1.65 }}>
-                    This photograph is checked at the door of every examination hall and again at the seat, it is printed
-                    on the identity card, and it is the image on the certificate. Replacing it is therefore a Registry
-                    decision, not a self-service change. No photograph is held for this student yet.
-                  </div>
+                  <div className="sub2" style={{ lineHeight: 1.65 }}>This photograph is checked at the door of every examination hall, printed on the identity card, and the image on the certificate. Replacing it is a Registry decision, not a self-service change.</div>
                 </div>
               </div>
             </PBody>
           </Panel>
         ) : null}
 
-        {!may && section !== "identity" ? (
-          <Note kind="info" title="You are reading this record, not editing it">
-            The biodata is written by the Academic Office or the Registry. Your office may read it so that it knows what
-            the University holds.
-          </Note>
+        {!may && section !== "identity" && section !== "docs" && section !== "history" ? (
+          <Note kind="info" title="You are reading this record, not editing it">The biodata is the student&rsquo;s own or the Registry&rsquo;s to write. Your office may read it so it knows what the University holds.</Note>
         ) : null}
       </div>
     </div>
