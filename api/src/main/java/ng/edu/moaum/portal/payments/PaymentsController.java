@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.payments;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -112,5 +113,28 @@ class PaymentsController {
     @PreAuthorize(BURSARY)
     Map<String, Object> resolve(@PathVariable UUID id, @Valid @RequestBody Resolution body) {
         return payments.resolveEvent(id, body.resolution());
+    }
+
+    /* ── V039: keys set from the dashboard, encrypted, never read back ── */
+
+    public record Key(@NotBlank String secret, String hash) {
+    }
+
+    @GetMapping("/gateway-config")
+    @PreAuthorize(READERS)
+    List<Map<String, Object>> gatewayConfig() {
+        return payments.gatewayConfig();
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/gateways/{gateway}/key")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_super')")
+    Map<String, Object> setKey(@PathVariable String gateway, @Valid @RequestBody Key body) {
+        return payments.setKey(gateway, body.secret(), body.hash());
+    }
+
+    @PostMapping("/gateways/{gateway}/clear-key")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_super')")
+    Map<String, Object> clearKey(@PathVariable String gateway) {
+        return payments.clearKey(gateway);
     }
 }

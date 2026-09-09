@@ -45,9 +45,10 @@ public class PaymentsService {
 
     private final PaymentsRepository repo;
     private final TransactionTemplate tx;
-    private final String paystackSecret;
-    private final String flutterwaveSecret;
-    private final String flutterwaveHash;
+    private final String envPaystack;
+    private final String envFlutterwave;
+    private final String envFlutterwaveHash;
+    private final String configKey;
     private final String portalUrl;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
@@ -56,12 +57,14 @@ public class PaymentsService {
                     @Value("${moaum.payments.paystack-secret:}") String paystackSecret,
                     @Value("${moaum.payments.flutterwave-secret:}") String flutterwaveSecret,
                     @Value("${moaum.payments.flutterwave-hash:}") String flutterwaveHash,
+                    @Value("${moaum.config.key:${moaum.auth.hmac-secret:}}") String configKey,
                     @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.repo = repo;
         this.tx = new TransactionTemplate(transactions);
-        this.paystackSecret = blank(paystackSecret) ? "" : paystackSecret.trim();
-        this.flutterwaveSecret = blank(flutterwaveSecret) ? "" : flutterwaveSecret.trim();
-        this.flutterwaveHash = blank(flutterwaveHash) ? "" : flutterwaveHash.trim();
+        this.envPaystack = blank(paystackSecret) ? "" : paystackSecret.trim();
+        this.envFlutterwave = blank(flutterwaveSecret) ? "" : flutterwaveSecret.trim();
+        this.envFlutterwaveHash = blank(flutterwaveHash) ? "" : flutterwaveHash.trim();
+        this.configKey = configKey == null ? "" : configKey.trim();
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
@@ -69,12 +72,43 @@ public class PaymentsService {
         return s == null || s.isBlank();
     }
 
+    /* ── the secret in force: the dashboard value (V039, encrypted at rest) if set, else the service variable ── */
+    private String paystackSecret() {
+        if (!configKey.isEmpty()) {
+            String db = repo.gatewaySecret("paystack", configKey);
+            if (db != null && !db.isBlank()) {
+                return db.trim();
+            }
+        }
+        return envPaystack;
+    }
+
+    private String flutterwaveSecret() {
+        if (!configKey.isEmpty()) {
+            String db = repo.gatewaySecret("flutterwave", configKey);
+            if (db != null && !db.isBlank()) {
+                return db.trim();
+            }
+        }
+        return envFlutterwave;
+    }
+
+    private String flutterwaveHash() {
+        if (!configKey.isEmpty()) {
+            String db = repo.gatewayHash("flutterwave", configKey);
+            if (db != null && !db.isBlank()) {
+                return db.trim();
+            }
+        }
+        return envFlutterwaveHash;
+    }
+
     public boolean paystackOn() {
-        return !paystackSecret.isEmpty();
+        return !paystackSecret().isEmpty();
     }
 
     public boolean flutterwaveOn() {
-        return !flutterwaveSecret.isEmpty();
+        return !flutterwaveSecret().isEmpty();
     }
 
     /** which gateways are wired, for the button to say so */
@@ -124,7 +158,7 @@ public class PaymentsService {
         long kobo = r.amount().movePointRight(2).longValueExact();
         String body = mapper.writeValueAsString(Map.of("email", r.email(), "amount", kobo, "reference", r.reference(), "callback_url", back,
                 "metadata", Map.of("application", r.applicationNo(), "kind", r.kind())));
-        Map<String, Object> answer = post("https://api.paystack.co/transaction/initialize", body, "Bearer " + paystackSecret);
+        Map<String, Object> answer = post("https://api.paystack.co/transaction/initialize", body, "Bearer " + paystackSecret());
         Object data = answer.get("data");
         if (!(data instanceof Map<?, ?> d) || d.get("authorization_url") == null) {
             throw new DomainRuleViolation("PAY_GATEWAY_REFUSED", "The payment gateway did not open a checkout: " + answer.getOrDefault("message", "no answer"),
@@ -137,7 +171,7 @@ public class PaymentsService {
         String body = mapper.writeValueAsString(Map.of("tx_ref", r.reference(), "amount", r.amount().toPlainString(), "currency", "NGN",
                 "redirect_url", back, "customer", Map.of("email", r.email()),
                 "customizations", Map.of("title", "MOAUM " + ("ACCEPTANCE".equals(r.kind()) ? "acceptance fee" : "application fee"))));
-        Map<String, Object> answer = post("https://api.flutterwave.com/v3/payments", body, "Bearer " + flutterwaveSecret);
+        Map<String, Object> answer = post("https://api.flutterwave.com/v3/payments", body, "Bearer " + flutterwaveSecret());
         Object data = answer.get("data");
         if (!(data instanceof Map<?, ?> d) || d.get("link") == null) {
             throw new DomainRuleViolation("PAY_GATEWAY_REFUSED", "The payment gateway did not open a checkout: " + answer.getOrDefault("message", "no answer"),
@@ -174,13 +208,14 @@ public class PaymentsService {
     /** Paystack: the body signed with the secret key, HMAC-SHA512, in x-paystack-signature */
     public boolean paystackSignatureValid(String body, String signature) {
         return paystackOn() && signature != null && java.security.MessageDigest.isEqual(
-                hmacSha512Hex(paystackSecret, body).getBytes(StandardCharsets.UTF_8), signature.trim().toLowerCase().getBytes(StandardCharsets.UTF_8));
+                hmacSha512Hex(paystackSecret(), body).getBytes(StandardCharsets.UTF_8), signature.trim().toLowerCase().getBytes(StandardCharsets.UTF_8));
     }
 
     /** Flutterwave: the verif-hash header equals the secret hash set on the dashboard */
     public boolean flutterwaveHashValid(String header) {
-        return !flutterwaveHash.isEmpty() && header != null && java.security.MessageDigest.isEqual(
-                flutterwaveHash.getBytes(StandardCharsets.UTF_8), header.trim().getBytes(StandardCharsets.UTF_8));
+        String hash = flutterwaveHash();
+        return !hash.isEmpty() && header != null && java.security.MessageDigest.isEqual(
+                hash.getBytes(StandardCharsets.UTF_8), header.trim().getBytes(StandardCharsets.UTF_8));
     }
 
     public Map<String, Object> paystackEvent(String body) {
@@ -286,7 +321,7 @@ public class PaymentsService {
         }
         Map<String, Object> out = Map.of("outcome", "no gateway", "reference", reference);
         if (paystackOn()) {
-            Map<String, Object> a = get("https://api.paystack.co/transaction/verify/" + reference, "Bearer " + paystackSecret);
+            Map<String, Object> a = get("https://api.paystack.co/transaction/verify/" + reference, "Bearer " + paystackSecret());
             if (a.get("data") instanceof Map<?, ?> d && d.get("status") != null) {
                 BigDecimal paid = d.get("amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(d.get("amount"))).movePointLeft(2);
                 String status = String.valueOf(d.get("status"));
@@ -302,7 +337,7 @@ public class PaymentsService {
             }
         }
         if (flutterwaveOn()) {
-            Map<String, Object> a = get("https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=" + reference, "Bearer " + flutterwaveSecret);
+            Map<String, Object> a = get("https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=" + reference, "Bearer " + flutterwaveSecret());
             if (a.get("data") instanceof Map<?, ?> d && d.get("status") != null) {
                 BigDecimal paid = d.get("amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(d.get("amount")));
                 String status = String.valueOf(d.get("status"));
@@ -355,10 +390,10 @@ public class PaymentsService {
     public Map<String, Object> bursary() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("gateways", java.util.List.of(
-                Map.of("gateway", "paystack", "on", paystackOn(), "mode", paystackOn() ? (paystackSecret.startsWith("sk_test") ? "TEST" : "LIVE") : "OFF",
+                Map.of("gateway", "paystack", "on", paystackOn(), "mode", paystackOn() ? (paystackSecret().startsWith("sk_test") ? "TEST" : "LIVE") : "OFF",
                         "webhook", "/api/v1/payments/webhook/paystack", "channels", "Card · bank transfer · USSD"),
-                Map.of("gateway", "flutterwave", "on", flutterwaveOn(), "mode", flutterwaveOn() ? (flutterwaveSecret.startsWith("FLWSECK_TEST") ? "TEST" : "LIVE") : "OFF",
-                        "webhook", "/api/v1/payments/webhook/flutterwave", "hash", !flutterwaveHash.isEmpty(), "channels", "Card · bank transfer · USSD")));
+                Map.of("gateway", "flutterwave", "on", flutterwaveOn(), "mode", flutterwaveOn() ? (flutterwaveSecret().toUpperCase().contains("_TEST") ? "TEST" : "LIVE") : "OFF",
+                        "webhook", "/api/v1/payments/webhook/flutterwave", "hash", !flutterwaveHash().isEmpty(), "channels", "Card · bank transfer · USSD")));
         out.put("tiles", repo.eventTiles());
         out.put("events", repo.events(200));
         out.put("hanging", repo.hanging());
@@ -388,4 +423,35 @@ public class PaymentsService {
         return Map.of("id", id, "resolved", true);
     }
 
+
+    /* ── the dashboard's key management (V039): set encrypted, shown never ── */
+
+    public java.util.List<java.util.Map<String, Object>> gatewayConfig() {
+        return repo.gatewayConfig();
+    }
+
+    public java.util.Map<String, Object> setKey(String gatewayIn, String secret, String hash) {
+        String gateway = gatewayIn == null ? "" : gatewayIn.trim().toLowerCase();
+        if (!gateway.equals("paystack") && !gateway.equals("flutterwave")) {
+            throw new DomainRuleViolation("PAY_GATEWAY", "The gateway is Paystack or Flutterwave.", new DomainRuleViolation.Remedy("One of the two.", "Bursary"));
+        }
+        if (configKey.isEmpty()) {
+            throw new DomainRuleViolation("PAY_NO_CONFIG_KEY", "The portal has no passphrase to encrypt a gateway key with.",
+                    new DomainRuleViolation.Remedy("Set MOAUM_CONFIG_KEY (or MOAUM_AUTH_HMAC_SECRET) on the API service; a key is never stored in the clear.", "Directorate of ICT"));
+        }
+        if (secret == null || secret.isBlank()) {
+            throw new DomainRuleViolation("PAY_SECRET_BLANK", "The secret key is blank.", new DomainRuleViolation.Remedy("Paste the key from the gateway's dashboard.", "Bursary"));
+        }
+        String s = secret.trim();
+        String mode = gateway.equals("paystack") ? (s.startsWith("sk_test") ? "TEST" : "LIVE") : (s.toUpperCase().contains("_TEST") ? "TEST" : "LIVE");
+        String last4 = s.length() > 4 ? s.substring(s.length() - 4) : "****";
+        repo.setGatewaySecret(gateway, s, hash == null || hash.isBlank() ? null : hash.trim(), mode, last4, configKey);
+        return java.util.Map.of("gateway", gateway, "configured", true, "mode", mode, "last4", last4);
+    }
+
+    public java.util.Map<String, Object> clearKey(String gatewayIn) {
+        String gateway = gatewayIn == null ? "" : gatewayIn.trim().toLowerCase();
+        repo.clearGatewaySecret(gateway);
+        return java.util.Map.of("gateway", gateway, "configured", false);
+    }
 }

@@ -1,4 +1,5 @@
 /** The Bursary's desk, as the API states it (V037). */
+export interface GatewayConfig { gateway: string; configured: boolean; has_hash: boolean; mode: string | null; last4: string | null; set_at: string | null; set_by_name: string | null }
 export interface GatewayRow { gateway: string; on: boolean; mode: string; webhook: string; hash?: boolean; channels: string }
 export interface GatewayEvent {
   id: string; gateway: string; source: string; event: string | null; reference: string | null; gateway_ref: string | null; amount: number | null; status: string | null;

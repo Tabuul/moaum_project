@@ -83,7 +83,9 @@ BEGIN
     DELETE FROM catalogue.class_slot;
     DELETE FROM credentials.identity_card;
 
-    -- the Bursary's desk (V037): events, attempts and bank credits, before the references they name
+    -- the Bursary's desk (V037/V039): events, attempts, bank credits and gateway keys, before the references and persons they name
+    DELETE FROM finance.gateway_credential_event;
+    DELETE FROM finance.gateway_credential;
     DELETE FROM finance.gateway_event;
     DELETE FROM finance.gateway_attempt;
     DELETE FROM finance.bank_credit;
@@ -202,7 +204,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 112
+\set EXPECTED 113
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2081,6 +2083,24 @@ BEGIN
         AND (SELECT count(*) FROM admissions.attachment WHERE session = '9995/9996' AND candidate_id = c_id) = 3
         AND admissions.candidate_is_committed('9995/9996', c_key),
         format('before_commit=%s held_finding=%s after_commit=%s', before_attach, held, after_attach));
+END $$;
+
+-- ── 113. a gateway key set from the dashboard is encrypted at rest, decrypts only with the passphrase, is never carried by the config, and the act is on the spine (V039) ──
+DO $$
+DECLARE key text := 'a check config passphrase'; enc bytea; back text; cfg record; ev int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.set_gateway_secret('paystack', 'sk_test_check_secret_key_1234', NULL, 'TEST', '1234', key);
+    SELECT secret_enc INTO enc FROM finance.gateway_credential WHERE gateway = 'paystack';
+    SELECT finance.gateway_secret('paystack', key) INTO back;
+    SELECT * INTO cfg FROM finance.gateway_config() WHERE gateway = 'paystack';
+    SELECT count(*) INTO ev FROM finance.gateway_credential_event WHERE gateway = 'paystack' AND kind = 'SET';
+    PERFORM pg_temp.assert('A dashboard gateway key is encrypted at rest, decrypts only with the passphrase, is never carried by the config, and the act is on the spine',
+        enc IS NOT NULL AND enc::text <> 'sk_test_check_secret_key_1234' AND back = 'sk_test_check_secret_key_1234'
+        AND finance.gateway_secret('paystack', 'the wrong passphrase') IS NULL
+        AND cfg.configured AND cfg.mode = 'TEST' AND cfg.last4 = '1234' AND ev = 1,
+        format('encrypted=%s decrypts=%s config_last4=%s events=%s', enc IS NOT NULL, back IS NOT NULL, cfg.last4, ev));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

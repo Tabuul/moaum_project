@@ -134,4 +134,27 @@ class PaymentsRepository {
     String currentSession() {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
     }
+
+    /* ── gateway credentials (V039): set encrypted, read only into the process, config never carries the secret ── */
+
+    String gatewaySecret(String gateway, String key) {
+        return jdbc.sql("SELECT finance.gateway_secret(:g, :k)").param("g", gateway).param("k", key).query(String.class).optional().orElse(null);
+    }
+
+    String gatewayHash(String gateway, String key) {
+        return jdbc.sql("SELECT finance.gateway_hash(:g, :k)").param("g", gateway).param("k", key).query(String.class).optional().orElse(null);
+    }
+
+    List<Map<String, Object>> gatewayConfig() {
+        return jdbc.sql("SELECT * FROM finance.gateway_config()").query().listOfRows();
+    }
+
+    void setGatewaySecret(String gateway, String secret, String hash, String mode, String last4, String key) {
+        jdbc.sql("SELECT finance.set_gateway_secret(:g, :s, :h, :m, :l, :k)")
+                .param("g", gateway).param("s", secret).param("h", hash, Types.VARCHAR).param("m", mode).param("l", last4).param("k", key).query().singleRow();
+    }
+
+    void clearGatewaySecret(String gateway) {
+        jdbc.sql("SELECT finance.clear_gateway_secret(:g)").param("g", gateway).query().singleRow();
+    }
 }
