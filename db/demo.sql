@@ -330,10 +330,10 @@ BEGIN
             v_att := gen_random_uuid();
             INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
             VALUES (v_att, v_session, 'OLEVEL', 'demo-eligible', elig.jamb, 'COLUMN',
-                '{"sittings":[{"type":"WAEC","year":"2025","examNumber":"4100000","subjects":[' ||
+                ('{"sittings":[{"type":"WAEC","year":"2025","examNumber":"4100000","subjects":[' ||
                 '{"subject":"English Language","grade":"B2"},{"subject":"Mathematics","grade":"B3"},' ||
                 '{"subject":"Physics","grade":"C4"},{"subject":"Chemistry","grade":"C5"},' ||
-                '{"subject":"Biology","grade":"B2"}]}]}');
+                '{"subject":"Biology","grade":"B2"}]}]}')::jsonb);
             PERFORM admissions.olevel_from_attachment(v_att);
 
             UPDATE admissions.application SET screening_score = elig.putme, score_entered_at = now() WHERE id = v_app;
