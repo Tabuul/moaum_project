@@ -1,10 +1,9 @@
 /** rLecturer — proto/part17.html: what the lecturer owes, two ways in, the courses this semester. */
 import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import type { MySheet } from "@/lib/results";
+import { stageOf, type MySheet } from "@/lib/results";
 import { Ico, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { stageOf } from "@/app/results/sheets/SheetsList";
 
 export function LecturerDashboard({ me, sheets, session }: { me: Me | null; sheets: MySheet[]; session: string }) {
   const owed = sheets.filter((s) => s.stage === "ENTRY" && s.entered === 0);

@@ -160,3 +160,16 @@ export interface Senate { session: string; semester: number; faculties: SenateFa
 
 /** the outcomes a mark can carry besides a grade (assessment.score) */
 export const OUTCOMES = ["GRADED", "ABSENT", "WITHHELD", "INCOMPLETE", "MALPRACTICE", "EXEMPTED"] as const;
+
+/** The stage of a lecturer's sheet as a pill, its label and the action it offers.
+ *  Pure — lives here (not in the "use client" SheetsList) so a server component
+ *  (the lecturer dashboard) can call it without the RSC "called on the server" error. */
+export function stageOf(s: MySheet): { pill: "ok" | "info" | "bad" | "grey"; text: string; act: string; kind: "primary" | "urgent" | "ghost" } {
+  if (s.stage === "ENTRY") {
+    if (s.entered === 0) return { pill: "bad", text: "Not started", act: "Type them in", kind: "urgent" };
+    if (s.entered < s.candidates) return { pill: "bad", text: `Draft — ${s.candidates - s.entered} to enter`, act: "Continue", kind: "primary" };
+    return { pill: "info", text: "Complete — not yet submitted", act: "Submit and attest", kind: "primary" };
+  }
+  if (s.stage === "PUBLISHED") return { pill: "ok", text: "Senate approved — published", act: "View", kind: "ghost" };
+  return { pill: "info", text: STAGE_LABEL[s.stage]?.[0] ?? s.stage, act: "View", kind: "ghost" };
+}

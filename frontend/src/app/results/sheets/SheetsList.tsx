@@ -3,19 +3,11 @@
 /** staffScores — proto/part5.html: the sheets assigned to you, counted from the rolls, never typed beside them. */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { STAGE_LABEL, type MySheet } from "@/lib/results";
+import { stageOf, type MySheet } from "@/lib/results";
 import { Note, Panel, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
-export function stageOf(s: MySheet): { pill: "ok" | "info" | "bad" | "grey"; text: string; act: string; kind: "primary" | "urgent" | "ghost" } {
-  if (s.stage === "ENTRY") {
-    if (s.entered === 0) return { pill: "bad", text: "Not started", act: "Type them in", kind: "urgent" };
-    if (s.entered < s.candidates) return { pill: "bad", text: `Draft — ${s.candidates - s.entered} to enter`, act: "Continue", kind: "primary" };
-    return { pill: "info", text: "Complete — not yet submitted", act: "Submit and attest", kind: "primary" };
-  }
-  if (s.stage === "PUBLISHED") return { pill: "ok", text: "Senate approved — published", act: "View", kind: "ghost" };
-  return { pill: "info", text: STAGE_LABEL[s.stage]?.[0] ?? s.stage, act: "View", kind: "ghost" };
-}
+export { stageOf };
 
 export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: MySheet[]; session: string; sessions: string[]; sem: string; all: boolean }) {
   const router = useRouter();
