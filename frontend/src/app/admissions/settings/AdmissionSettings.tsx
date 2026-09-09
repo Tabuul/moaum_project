@@ -522,7 +522,7 @@ export function AdmissionSettings({
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     {["English Language", "Mathematics"].map((subject) => (
                       <label key={subject} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                        <input type="checkbox" checked={allow.includes(subject)} onChange={() => toggle(subject)} /> Accept a pass in {subject}
+                        <input type="checkbox" className="pchk" checked={allow.includes(subject)} onChange={() => toggle(subject)} /> Accept a pass in {subject}
                       </label>
                     ))}
                   </div>

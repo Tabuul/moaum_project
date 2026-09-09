@@ -180,7 +180,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
                 <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line-2)", borderRadius: 8, padding: 8, display: "grid", gap: 4 }}>
                   {facProgrammes.length ? facProgrammes.map((pr) => (
                     <label key={pr.code} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                      <input type="checkbox" checked={selectedProgs.includes(pr.code)} onChange={() => toggleProg(pr.code)} /> {pr.name}
+                      <input type="checkbox" className="pchk" checked={selectedProgs.includes(pr.code)} onChange={() => toggleProg(pr.code)} /> {pr.name}
                     </label>
                   )) : <span className="sub2">No programme in this faculty.</span>}
                 </div>
