@@ -68,7 +68,6 @@ export function Apply({ a }: { a: Application }) {
   const { act, busy, problem } = useAct();
   const [nok, setNok] = useState(a.biodata.nextOfKin ?? "");
   const [declared, setDeclared] = useState(false);
-  const [picking, setPicking] = useState<string | null>(null);
   const file = useRef<HTMLInputElement | null>(null);
 
   if (at(a, 2)) {
@@ -83,7 +82,6 @@ export function Apply({ a }: { a: Application }) {
             [<Two key="s" a="Biodata" b="From your JAMB record" />, `${a.name} · ${a.biodata.sex === "F" ? "Female" : a.biodata.sex === "M" ? "Male" : "—"} · ${a.biodata.lga ?? "—"} LGA, ${a.biodata.stateOfOrigin ?? "—"} State`],
             [<Two key="s" a="O’Level" b={sittings.length === 1 ? "One sitting" : `${sittings.length} sittings`} />, sittings.length ? sittings.map((s) => `${BODY[s.body] ?? s.body} ${s.year ?? ""} · ${s.subjects.map((g) => `${g.subject} ${g.grade}`).join(", ")}`).join(" | ") : "No result has reached the University from JAMB yet"],
             [<Two key="s" a="Programme" b="As JAMB recorded it" />, `${a.programme ?? "—"}${a.faculty ? ` · Faculty of ${a.faculty}` : ""}`],
-            [<Two key="s" a="Documents" b={`${a.documents.filter((d) => d.status === "ACCEPTED").length} of ${a.documents.length} accepted`} />, a.documents.map((d) => DOC_LABEL[d.kind] ?? d.kind).join(", ")],
             [<Two key="s" a="Next of kin" b="Given by you" />, a.biodata.nextOfKin ?? "—"],
             [<Two key="s" a="Declaration" b="Signed electronically" />, `Accepted ${when(a.submittedAt)}`],
           ]} />
@@ -121,13 +119,9 @@ export function Apply({ a }: { a: Application }) {
     );
   }
 
-  /* the passport photograph comes whenever the applicant has one (V022): shown, never a gate */
-  const missing = DOCUMENT_KINDS.filter(([k]) => k !== "PASSPORT" && !a.documents.some((d) => d.kind === k));
-  const rejected = a.documents.filter((d) => d.status === "REJECTED" && d.kind !== "PASSPORT");
+  /* documents are no longer uploaded at application (V056): originals are seen at clearance */
   const gates: [string, string][] = [];
   if (!nok.trim()) gates.push(["Next of kin is missing", "Name and phone number, under Biodata."]);
-  for (const [, label] of missing) gates.push([`${label} not uploaded`, "PDF or JPEG, 2 MB at most."]);
-  for (const d of rejected) gates.push([`${DOC_LABEL[d.kind]} rejected`, d.reviewNote ?? "Upload a replacement that meets the stated requirements."]);
   const ready = gates.length === 0 && declared;
 
   async function upload(kind: string, f: File) {
@@ -146,8 +140,7 @@ export function Apply({ a }: { a: Application }) {
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <Pil kind="ok">1 Biodata</Pil>
             <Pil kind={a.olevel.length ? "ok" : "info"}>2 O&rsquo;Level</Pil>
-            <Pil kind={missing.length || rejected.length ? "info" : "ok"}>3 Documents</Pil>
-            <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>4 Review</span>
+            <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>3 Review</span>
           </div>
           <div style={{ marginTop: 6 }}>
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-.3px" }}>{a.programme ?? "Programme as JAMB recorded it"}</div>
@@ -195,28 +188,7 @@ export function Apply({ a }: { a: Application }) {
         </PBody>
       </Panel>
 
-      <Panel title={<>3 &nbsp;Documents</>} right="5 files · 2 MB each, PDF or JPEG">
-        <input ref={file} type="file" accept="application/pdf,image/jpeg,image/png" style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f && picking) void upload(picking, f); e.target.value = ""; }} />
-        <DTable cols={["Document", "File", "Status|num"]} rows={DOCUMENT_KINDS.map(([k, label, sub]) => {
-          const d = a.documents.find((x) => x.kind === k);
-          return [
-            <Two key="d" a={label} b={sub} />,
-            <span className="sub2 tnum" key="f">{d ? `${d.filename} · ${Math.round(d.bytes / 1024)} KB` : "—"}</span>,
-            <span key="s" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-              {d ? d.status === "ACCEPTED" ? <Pil kind="ok">Accepted</Pil> : d.status === "REJECTED" ? <Pil kind="bad">Rejected &mdash; reupload</Pil> : <Pil kind="info">Uploaded</Pil> : <Pil kind="grey">Not uploaded</Pil>}
-              <Btn kind={d ? "ghost" : "primary"} disabled={busy !== null} onClick={() => { setPicking(k); file.current?.click(); }}>{busy === `doc-${k}` ? "Uploading…" : d ? "Replace" : "Upload"}</Btn>
-            </span>,
-          ];
-        })} />
-      </Panel>
-      {rejected.map((d) => (
-        <Note kind="bad" key={d.id} title={`Your ${DOC_LABEL[d.kind].toLowerCase()} was rejected`}>
-          {d.reviewNote ?? "It did not meet the stated requirements."} This document becomes part of your record, so it is checked before it is accepted.
-        </Note>
-      ))}
-
-      <Panel title={<>4 &nbsp;Review and submit</>}>
+      <Panel title={<>3 &nbsp;Review and submit</>}>
         <PBody>
           {gates.length ? (
             <>
