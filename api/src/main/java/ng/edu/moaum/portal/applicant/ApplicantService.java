@@ -184,8 +184,9 @@ public class ApplicantService {
         }
         String hash = encoder.encode(password);
         UUID account = atTheDoor(null, "Post-UTME registration", () -> repo.register(session, key, mail, phone, hash));
-        // the account details go to the email (and phone) the applicant registered with
-        repo.byId(account).ifPresent(a -> {
+        // the account details go to the email (and phone) the applicant registered with;
+        // queued inside an attributed transaction, or the write to platform.notice is refused
+        repo.byId(account).ifPresent(a -> atTheDoor(a.id(), "applicant account created", () -> {
             String link = portalUrl + "/login";
             repo.queueNotice("EMAIL", a.email(), "Your MOAUM applicant account",
                     "Welcome to the Rev. Fr. Moses Orshio Adasu University applicant portal.\n\n"
@@ -197,7 +198,8 @@ public class ApplicantService {
                             + "Keep these details safe, and do not create a second account — it invalidates both.", a.applicationId());
             repo.queueNotice("SMS", a.phone(), "MOAUM applicant account",
                     "MOAUM: your applicant account is created. Application no " + a.applicationNo() + ". Sign in at " + link, a.applicationId());
-        });
+            return null;
+        }));
         return signIn(key, password, ip);
     }
 
