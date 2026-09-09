@@ -95,6 +95,7 @@ export const ROUTES: Record<string, string> = {
   "s/biodata": "/student/biodata",
   "t/support": "/support",
   "t/gateways": "/finance/gateways",
+  "t/mail": "/platform/mail",
   "t/ledger": "/finance/ledger",
   "t/hanging": "/finance/hanging",
   "t/reconcile": "/finance/reconcile",

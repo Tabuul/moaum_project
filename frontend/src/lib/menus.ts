@@ -1738,6 +1738,11 @@ export const MENUS: Record<string, Menu> = {
             "badge": "!"
           },
           {
+            "id": "t/mail",
+            "icon": "server",
+            "label": "Mail server"
+          },
+          {
             "id": "t/notify",
             "icon": "bell",
             "label": "Notifications",
@@ -1913,6 +1918,11 @@ export const MENUS: Record<string, Menu> = {
             "icon": "card",
             "label": "Payment gateways",
             "badge": "!"
+          },
+          {
+            "id": "t/mail",
+            "icon": "server",
+            "label": "Mail server"
           },
           {
             "id": "t/ledger",
