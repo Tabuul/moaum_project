@@ -47,7 +47,8 @@ public class AdmissionSettingsService {
                                  @NotNull Boolean mpfOnly, @NotNull Boolean screeningRequired) {
     }
 
-    public record FacultyQuotaIn(@Min(0) Integer quota, @Min(1) @Max(400) Integer cutoff) {
+    public record FacultyQuotaIn(@Min(0) Integer quota, @Min(1) @Max(400) Integer cutoff,
+                                 @Min(0) @Max(100) Integer ratioUtme, @Min(0) @Max(100) Integer ratioDe) {
     }
 
     public record ProgrammeRuleIn(@Min(1) @Max(400) Integer cutoff,
@@ -56,7 +57,9 @@ public class AdmissionSettingsService {
                                   @NotBlank @Size(max = 2000) String deText,
                                   @Min(1) @Max(9) Integer olevelCredits, @Min(1) @Max(4) Integer olevelSittings,
                                   /** the O'Level subjects relevant to the programme — the ones the screening counts (V020); null leaves them as they are */
-                                  List<String> olevelSubjects) {
+                                  List<String> olevelSubjects,
+                                  /** the programme's own carrying capacity (V054); null leaves it unset */
+                                  @Min(0) Integer quota) {
     }
 
     public record Instrument(@NotBlank @Size(max = 200) String instrument) {
@@ -120,7 +123,17 @@ public class AdmissionSettingsService {
         if (!settings.facultyExists(code)) {
             throw new NotFound("faculty", code);
         }
-        settings.upsertFacultyQuota(id, code, in.quota(), in.cutoff());
+        Integer ru = in.ratioUtme();
+        Integer rd = in.ratioDe();
+        if ((ru == null) != (rd == null)) {
+            throw new DomainRuleViolation("ADM_RATIO_PAIR", "A faculty's UTME:Direct-Entry split is stated as both shares or neither.",
+                    new DomainRuleViolation.Remedy("Leave both blank to inherit the session default (e.g. 80:20).", "Central Admissions Committee"));
+        }
+        if (ru != null && ru + rd != 100) {
+            throw new DomainRuleViolation("ADM_RATIO_SUM", "A UTME:Direct-Entry split totals 100.",
+                    new DomainRuleViolation.Remedy("Education is 60:40; every other faculty is the session's 80:20.", "Central Admissions Committee"));
+        }
+        settings.upsertFacultyQuota(id, code, in.quota(), in.cutoff(), ru, rd);
         return policy(session);
     }
 

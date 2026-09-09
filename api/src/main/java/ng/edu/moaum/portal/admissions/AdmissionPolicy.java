@@ -21,7 +21,9 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
     public record Criterion(String criterion, int percent) {
     }
 
-    public record FacultyCutoff(String facultyCode, String facultyName, Integer quota, Integer cutoff) {
+    public record FacultyCutoff(String facultyCode, String facultyName, Integer quota, Integer cutoff,
+                                /** the faculty's own UTME:DE split (V053); null on both means the session default */
+                                Integer ratioUtme, Integer ratioDe) {
     }
 
     public record ProgrammeCutoff(String code, String name, int cutoff) {
@@ -29,6 +31,8 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
 
     /** A programme the University runs and what this session's settings say about it — nothing, until stated. */
     public record ProgrammeRule(String code, String name, String facultyCode, String facultyName, Integer cutoff,
+                                /** the programme's own carrying capacity (V054); null means none is set */
+                                Integer quota,
                                 String olevelText, String utmeText, String deText, Integer olevelCredits,
                                 Integer olevelSittings, boolean stated, List<String> olevelSubjects,
                                 /** closed for the session (V023): not admitted into, needs no rule */

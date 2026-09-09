@@ -121,7 +121,7 @@ class CapsRepository {
 
     List<AdmissionPolicy.FacultyCutoff> facultyCutoffs(String session) {
         return jdbc.sql("""
-                SELECT f.faculty_code, fa.name AS faculty_name, f.quota, f.cutoff
+                SELECT f.faculty_code, fa.name AS faculty_name, f.quota, f.cutoff, f.ratio_utme, f.ratio_de
                   FROM admissions.faculty_quota f
                   JOIN admissions.session_policy p ON p.id = f.policy_id
                   JOIN ref.faculty fa ON fa.code = f.faculty_code

@@ -44,7 +44,7 @@ export interface AdmissionPolicy {
   mpfOnly: boolean;
   screeningRequired: boolean;
   criteria: { criterion: string; percent: number }[];
-  facultyCutoffs: { facultyCode: string; facultyName: string; quota: number | null; cutoff: number | null }[];
+  facultyCutoffs: { facultyCode: string; facultyName: string; quota: number | null; cutoff: number | null; ratioUtme: number | null; ratioDe: number | null }[];
   programmeCutoffs: { code: string; name: string; cutoff: number }[];
   programmes: {
     code: string;
@@ -52,6 +52,7 @@ export interface AdmissionPolicy {
     facultyCode: string;
     facultyName: string;
     cutoff: number | null;
+    quota?: number | null;
     olevelText: string | null;
     utmeText: string | null;
     deText: string | null;
@@ -370,19 +371,21 @@ export function AdmissionSettings({
       </Note>
       <Panel title="Faculty quotas and cut-off marks" right="Paragraphs 2.3 and 2.13">
         <DTable
-          cols={["Faculty", "As the guidelines name it", `${previousSession}|num`, `${session}|num`, "UTME cut-off|num"]}
+          cols={["Faculty", "As the guidelines name it", `${previousSession}|num`, `${session}|num`, "UTME cut-off|num", "UTME:DE|num"]}
           rows={[
             ...facultiesSorted.map((fc) => [
               <span key="n"><strong>{fc.facultyName}</strong><div className="sub2 tnum">{fc.facultyCode}</div></span>,
               FAC_GUIDE[fc.facultyCode] ? <span className="sub2" style={{ color: "var(--red-ink)" }} key="g">{FAC_GUIDE[fc.facultyCode]}</span> : <span className="sub2" key="g">the same</span>,
               <span className="tnum sub2" key="p">{prevQuota(fc.facultyCode)?.toLocaleString() ?? "—"}</span>,
-              <span key="q">{field(`q:${fc.facultyCode}`, fc.quota, 88, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: v, cutoff: fc.cutoff }, `${fc.facultyName} quota changed`, "q"), "—")}</span>,
-              <span key="k">{field(`k:${fc.facultyCode}`, fc.cutoff, 74, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: v }, `${fc.facultyName} cut-off changed`, "k"))}</span>,
+              <span key="q">{field(`q:${fc.facultyCode}`, fc.quota, 88, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: v, cutoff: fc.cutoff, ratioUtme: fc.ratioUtme, ratioDe: fc.ratioDe }, `${fc.facultyName} quota changed`, "q"), "—")}</span>,
+              <span key="k">{field(`k:${fc.facultyCode}`, fc.cutoff, 74, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: v, ratioUtme: fc.ratioUtme, ratioDe: fc.ratioDe }, `${fc.facultyName} cut-off changed`, "k"))}</span>,
+              <span key="r">{field(`ru:${fc.facultyCode}`, fc.ratioUtme, 52, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: fc.cutoff, ratioUtme: v, ratioDe: v == null ? null : 100 - v }, `${fc.facultyName} UTME:DE split changed`, "r"), String(policy.ratioUtme))}<span className="sub2">:{fc.ratioUtme == null ? `${policy.ratioDe} (default)` : (100 - fc.ratioUtme)}</span></span>,
             ]),
             [<strong key="t">Total</strong>, "", <b className="tnum" key="p">{prevTotal.toLocaleString()}</b>,
-              <span key="q"><b className="tnum" style={{ fontSize: 15, color: quotaTotal === policy.nucQuota ? "var(--green-ink)" : "var(--red-ink)" }}>{quotaTotal.toLocaleString()}</b><div className="sub2">of {policy.nucQuota.toLocaleString()}</div></span>, ""],
+              <span key="q"><b className="tnum" style={{ fontSize: 15, color: quotaTotal === policy.nucQuota ? "var(--green-ink)" : "var(--red-ink)" }}>{quotaTotal.toLocaleString()}</b><div className="sub2">of {policy.nucQuota.toLocaleString()}</div></span>, "", ""],
           ]}
         />
+        <PBody><div className="sub2">The UTME:Direct-Entry split is the faculty&rsquo;s own; type the UTME share and Direct Entry is the rest. Blank inherits the session default of {policy.ratioUtme}:{policy.ratioDe}. Education is 60:40. The merit engine fills each faculty&rsquo;s places by the split in force here.</div></PBody>
       </Panel>
       <Panel title="Programme cut-offs above their faculty’s" right="Paragraph 2.13">
         <DTable
@@ -467,6 +470,7 @@ export function AdmissionSettings({
               onClick={async () => {
                 const ok = await send("PUT", `${base}/programmes/${editingProgramme.code}`, {
                   cutoff: num("pr-cut" in edits ? edits["pr-cut"] : String(editingProgramme.cutoff ?? "")),
+                  quota: num("pr-quota" in edits ? edits["pr-quota"] : String(editingProgramme.quota ?? "")),
                   olevelText: "pr-ol" in edits ? edits["pr-ol"] : editingProgramme.olevelText ?? "",
                   utmeText: "pr-ut" in edits ? edits["pr-ut"] : editingProgramme.utmeText ?? "",
                   deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
@@ -485,6 +489,9 @@ export function AdmissionSettings({
           <div className="grid grid--2 rfgrid">
             <Field id="pr-cut" label="Cut-off of its own" hint="Leave blank for the faculty’s">
               <input id="pr-cut" className="ctl tnum" value={"pr-cut" in edits ? edits["pr-cut"] : editingProgramme.cutoff ?? ""} onChange={(e) => setEdits({ ...edits, "pr-cut": e.target.value })} autoComplete="off" />
+            </Field>
+            <Field id="pr-quota" label="Programme quota" hint="Places it carries; blank means none — the merit engine then offers everyone eligible">
+              <input id="pr-quota" className="ctl tnum" value={"pr-quota" in edits ? edits["pr-quota"] : editingProgramme.quota ?? ""} onChange={(e) => setEdits({ ...edits, "pr-quota": e.target.value })} autoComplete="off" />
             </Field>
             {([["pr-ol", "O’Level requirement", editingProgramme.olevelText], ["pr-ut", "UTME subjects", editingProgramme.utmeText], ["pr-de", "Direct Entry", editingProgramme.deText]] as [string, string, string | null][]).map(([k, label, current]) => (
               <Field id={k} label={label} full key={k}>

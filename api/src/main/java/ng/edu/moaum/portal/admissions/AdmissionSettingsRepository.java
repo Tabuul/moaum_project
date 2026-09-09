@@ -59,7 +59,7 @@ class AdmissionSettingsRepository {
     /** Every programme the University runs, with this session's rule where one is stated. */
     List<AdmissionPolicy.ProgrammeRule> programmeRules(String session) {
         return jdbc.sql("""
-                SELECT g.code, g.name, g.faculty_code, f.name AS faculty_name, r.cutoff, r.olevel_text, r.utme_text,
+                SELECT g.code, g.name, g.faculty_code, f.name AS faculty_name, r.cutoff, r.quota, r.olevel_text, r.utme_text,
                        r.de_text, r.olevel_credits, r.olevel_sittings, (r.programme_code IS NOT NULL) AS stated,
                        (SELECT string_agg(DISTINCT rs.subject, E'\n' ORDER BY rs.subject)
                           FROM admissions.rule_subject rs
@@ -79,6 +79,7 @@ class AdmissionSettingsRepository {
                 .param("session", session)
                 .query((rs, i) -> new AdmissionPolicy.ProgrammeRule(rs.getString("code"), rs.getString("name"),
                         rs.getString("faculty_code"), rs.getString("faculty_name"), rs.getObject("cutoff", Integer.class),
+                        rs.getObject("quota", Integer.class),
                         rs.getString("olevel_text"), rs.getString("utme_text"), rs.getString("de_text"),
                         rs.getObject("olevel_credits", Integer.class), rs.getObject("olevel_sittings", Integer.class),
                         rs.getBoolean("stated"), lines(rs.getString("olevel_subjects")),
@@ -135,28 +136,31 @@ class AdmissionSettingsRepository {
                 .update();
     }
 
-    void upsertFacultyQuota(UUID policyId, String facultyCode, Integer quota, Integer cutoff) {
+    void upsertFacultyQuota(UUID policyId, String facultyCode, Integer quota, Integer cutoff, Integer ratioUtme, Integer ratioDe) {
         jdbc.sql("""
-                INSERT INTO admissions.faculty_quota (policy_id, faculty_code, quota, cutoff) VALUES (:id, :f, :q, :k)
-                ON CONFLICT (policy_id, faculty_code) DO UPDATE SET quota = EXCLUDED.quota, cutoff = EXCLUDED.cutoff
+                INSERT INTO admissions.faculty_quota (policy_id, faculty_code, quota, cutoff, ratio_utme, ratio_de) VALUES (:id, :f, :q, :k, :ru, :rd)
+                ON CONFLICT (policy_id, faculty_code) DO UPDATE SET quota = EXCLUDED.quota, cutoff = EXCLUDED.cutoff,
+                        ratio_utme = EXCLUDED.ratio_utme, ratio_de = EXCLUDED.ratio_de
                 """)
                 .param("id", policyId).param("f", facultyCode)
                 .param("q", quota, Types.INTEGER).param("k", cutoff, Types.INTEGER)
+                .param("ru", ratioUtme, Types.INTEGER).param("rd", ratioDe, Types.INTEGER)
                 .update();
     }
 
     void upsertProgrammeRule(UUID policyId, String code, AdmissionSettingsService.ProgrammeRuleIn r) {
         jdbc.sql("""
                 INSERT INTO admissions.programme_rule
-                       (policy_id, programme_code, cutoff, olevel_credits, olevel_sittings, olevel_text, utme_text, de_text)
-                VALUES (:id, :code, :cutoff, :credits, :sittings, :olevel, :utme, :de)
+                       (policy_id, programme_code, cutoff, quota, olevel_credits, olevel_sittings, olevel_text, utme_text, de_text)
+                VALUES (:id, :code, :cutoff, :quota, :credits, :sittings, :olevel, :utme, :de)
                 ON CONFLICT (policy_id, programme_code) DO UPDATE SET
-                        cutoff = EXCLUDED.cutoff, olevel_credits = EXCLUDED.olevel_credits,
+                        cutoff = EXCLUDED.cutoff, quota = EXCLUDED.quota, olevel_credits = EXCLUDED.olevel_credits,
                         olevel_sittings = EXCLUDED.olevel_sittings, olevel_text = EXCLUDED.olevel_text,
                         utme_text = EXCLUDED.utme_text, de_text = EXCLUDED.de_text
                 """)
                 .param("id", policyId).param("code", code)
                 .param("cutoff", r.cutoff(), Types.INTEGER)
+                .param("quota", r.quota(), Types.INTEGER)
                 .param("credits", r.olevelCredits() == null ? 5 : r.olevelCredits())
                 .param("sittings", r.olevelSittings() == null ? 2 : r.olevelSittings())
                 .param("olevel", r.olevelText().trim())
