@@ -68,6 +68,29 @@ class PaymentsController {
         return ResponseEntity.ok(payments.flutterwaveEvent(body));
     }
 
+    /**
+     * Quickteller's notification is only a hint: whatever it says, the portal
+     * asks Interswitch's requery API what the reference actually settled for
+     * and settles on that answer alone. So the notification is answered 200
+     * and the reference it names is re-verified — nothing is credited on the
+     * notification's word.
+     */
+    @PostMapping("/webhook/quickteller")
+    ResponseEntity<Map<String, Object>> quickteller(@RequestBody(required = false) String body) {
+        return ResponseEntity.ok(payments.quicktellerNotified(body));
+    }
+
+    /**
+     * The Quickteller hosted page is reached by a form POST, not a link, so the
+     * checkout hands the browser this endpoint; it renders the self-submitting
+     * form that posts the payment to Interswitch. It reveals only what a payer
+     * needs to pay a reference they already hold, so it is open like a webhook.
+     */
+    @GetMapping(value = "/quickteller/start", produces = "text/html;charset=UTF-8")
+    ResponseEntity<String> quicktellerStart(@org.springframework.web.bind.annotation.RequestParam String reference) {
+        return ResponseEntity.ok().body(payments.quicktellerStartPage(reference));
+    }
+
     /* ── V037: the Bursary's side of the gateways ── */
 
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
@@ -127,13 +150,13 @@ class PaymentsController {
     }
 
     @org.springframework.web.bind.annotation.PutMapping("/gateways/{gateway}/key")
-    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
     Map<String, Object> setKey(@PathVariable String gateway, @Valid @RequestBody Key body) {
         return payments.setKey(gateway, body.secret(), body.hash());
     }
 
     @PostMapping("/gateways/{gateway}/clear-key")
-    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
     Map<String, Object> clearKey(@PathVariable String gateway) {
         return payments.clearKey(gateway);
     }

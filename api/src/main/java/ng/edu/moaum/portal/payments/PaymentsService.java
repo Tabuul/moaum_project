@@ -48,8 +48,10 @@ public class PaymentsService {
     private final String envPaystack;
     private final String envFlutterwave;
     private final String envFlutterwaveHash;
+    private final String envQuickteller;
     private final String configKey;
     private final String portalUrl;
+    private final String apiUrl;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
@@ -57,15 +59,19 @@ public class PaymentsService {
                     @Value("${moaum.payments.paystack-secret:}") String paystackSecret,
                     @Value("${moaum.payments.flutterwave-secret:}") String flutterwaveSecret,
                     @Value("${moaum.payments.flutterwave-hash:}") String flutterwaveHash,
+                    @Value("${moaum.payments.quickteller-config:}") String quicktellerConfig,
                     @Value("${moaum.config.key:${moaum.auth.hmac-secret:}}") String configKey,
-                    @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
+                    @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
+                    @Value("${moaum.api-url:}") String apiUrl) {
         this.repo = repo;
         this.tx = new TransactionTemplate(transactions);
         this.envPaystack = blank(paystackSecret) ? "" : paystackSecret.trim();
         this.envFlutterwave = blank(flutterwaveSecret) ? "" : flutterwaveSecret.trim();
         this.envFlutterwaveHash = blank(flutterwaveHash) ? "" : flutterwaveHash.trim();
+        this.envQuickteller = blank(quicktellerConfig) ? "" : quicktellerConfig.trim();
         this.configKey = configKey == null ? "" : configKey.trim();
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
+        this.apiUrl = apiUrl == null ? "" : apiUrl.replaceAll("/+$", "");
     }
 
     private static boolean blank(String s) {
@@ -111,11 +117,63 @@ public class PaymentsService {
         return !flutterwaveSecret().isEmpty();
     }
 
+    /* ── Quickteller Business (Interswitch): a set of credentials, not one string ── */
+
+    /**
+     * The Quickteller merchant's four things: a client id and secret for the
+     * requery API, and a merchant code and pay-item id for the hosted page,
+     * with a sandbox flag. Kept as one JSON document in the encrypted secret
+     * slot (V052), so it is stored and read exactly as any other gateway key.
+     */
+    record Quickteller(String clientId, String clientSecret, String merchantCode, String payItemId, boolean sandbox) {
+    }
+
+    private String quicktellerConfigJson() {
+        if (!configKey.isEmpty()) {
+            String db = repo.gatewaySecret("quickteller", configKey);
+            if (db != null && !db.isBlank()) {
+                return db.trim();
+            }
+        }
+        return envQuickteller;
+    }
+
+    Quickteller quickteller() {
+        String json = quicktellerConfigJson();
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> m = mapper.readValue(json, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+            String clientId = str(m.get("clientId"));
+            String clientSecret = str(m.get("clientSecret"));
+            String merchantCode = str(m.get("merchantCode"));
+            String payItemId = str(m.get("payItemId"));
+            boolean sandbox = Boolean.parseBoolean(str(m.getOrDefault("sandbox", "false")));
+            if (clientId.isEmpty() || clientSecret.isEmpty() || merchantCode.isEmpty() || payItemId.isEmpty()) {
+                return null;
+            }
+            return new Quickteller(clientId, clientSecret, merchantCode, payItemId, sandbox);
+        } catch (RuntimeException notJson) {
+            LOG.warn("payments: the Quickteller configuration is not the JSON it should be: {}", notJson.getMessage());
+            return null;
+        }
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o).trim();
+    }
+
+    public boolean quicktellerOn() {
+        return quickteller() != null;
+    }
+
     /** which gateways are wired, for the button to say so */
     public Map<String, Object> gateways() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("paystack", paystackOn());
         m.put("flutterwave", flutterwaveOn());
+        m.put("quickteller", quicktellerOn());
         return m;
     }
 
@@ -137,13 +195,17 @@ public class PaymentsService {
             throw new DomainRuleViolation("PAY_REFERENCE_EXPIRED", "This reference has expired.",
                     new DomainRuleViolation.Remedy("Generate a new one; it is free of charge.", "You"));
         }
-        String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : "") : gateway.trim().toLowerCase();
+        String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller" : "") : gateway.trim().toLowerCase();
         String back = portalUrl + ("FEES".equals(r.kind()) ? "/student/fees" : "ACCEPTANCE".equals(r.kind()) ? "/applicant/accept" : "/applicant/fee") + "?paid=" + r.reference();
         String url;
         if ("paystack".equals(g) && paystackOn()) {
             url = paystackInitialize(r, back);
         } else if ("flutterwave".equals(g) && flutterwaveOn()) {
             url = flutterwaveInitialize(r, back);
+        } else if ("quickteller".equals(g) && quicktellerOn()) {
+            // Quickteller's page is reached by a form POST, so the browser is sent to
+            // this portal's own /quickteller/start, which renders the self-posting form.
+            url = quicktellerStartUrl(r.reference());
         } else {
             throw new DomainRuleViolation("PAY_GATEWAY_NOT_WIRED", "Card and USSD payment arrive when a payment gateway is wired to the portal.",
                     new DomainRuleViolation.Remedy("Pay by bank transfer or at a bank branch against the reference; the Bursary confirms it against the bank's record.", "Bursary"));
@@ -178,6 +240,116 @@ public class PaymentsService {
                     new DomainRuleViolation.Remedy("Try again in a moment, or pay by transfer against the reference.", "Bursary"));
         }
         return String.valueOf(d.get("link"));
+    }
+
+    /* ── Quickteller Business (Interswitch): hosted page reached by a self-posting form ── */
+
+    private String quicktellerStartUrl(String reference) {
+        // the browser navigates here on this portal's origin; the API's own public
+        // URL if it is set, else the portal's BFF, which forwards /api to the API
+        String base = apiUrl.isEmpty() ? portalUrl + "/api/bff" : apiUrl;
+        return base + "/api/v1/payments/quickteller/start?reference=" + reference;
+    }
+
+    private static String quicktellerPayEndpoint(boolean sandbox) {
+        return sandbox ? "https://newwebpay.qa.interswitchng.com/collections/w/pay"
+                : "https://newwebpay.interswitchng.com/collections/w/pay";
+    }
+
+    private static String quicktellerRequeryEndpoint(boolean sandbox) {
+        return sandbox ? "https://qa.interswitchng.com/collections/api/v1/gettransaction.json"
+                : "https://webpay.interswitchng.com/collections/api/v1/gettransaction.json";
+    }
+
+    private String backUrl(String kind, String reference) {
+        return portalUrl + ("FEES".equals(kind) ? "/student/fees" : "ACCEPTANCE".equals(kind) ? "/applicant/accept" : "/applicant/fee") + "?paid=" + reference;
+    }
+
+    /** the self-submitting form that carries the payment to Interswitch's hosted page */
+    public String quicktellerStartPage(String referenceIn) {
+        String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
+        Quickteller q = quickteller();
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElse(null);
+        if (q == null || r == null) {
+            return notice("This payment could not be started", "The reference is not one this portal is waiting on, or Quickteller is not configured.");
+        }
+        if (r.confirmedAt() != null) {
+            return notice("Already paid", "This reference is already confirmed as paid; nothing more is owed against it.");
+        }
+        long kobo = r.amount().movePointRight(2).longValueExact();
+        String action = quicktellerPayEndpoint(q.sandbox());
+        String back = backUrl(r.kind(), r.reference());
+        StringBuilder f = new StringBuilder();
+        f.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
+                .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
+                .append("<title>Opening Quickteller…</title></head>")
+                .append("<body style=\"font:15px/1.5 system-ui,Segoe UI,Arial,sans-serif;color:#1c1c1c;margin:0;padding:48px 20px;text-align:center\">")
+                .append("<p>Opening the secure Quickteller payment page for <strong>").append(esc(r.reference())).append("</strong>…</p>")
+                .append("<p style=\"color:#666\">If it does not open in a moment, press the button.</p>")
+                .append("<form id=\"qt\" method=\"POST\" action=\"").append(esc(action)).append("\">");
+        field(f, "merchant_code", q.merchantCode());
+        field(f, "pay_item_id", q.payItemId());
+        field(f, "pay_item_name", "MOAUM " + ("ACCEPTANCE".equals(r.kind()) ? "acceptance fee" : "FEES".equals(r.kind()) ? "school fees" : "application fee"));
+        field(f, "txn_ref", r.reference());
+        field(f, "site_redirect_url", back);
+        field(f, "amount", Long.toString(kobo));
+        field(f, "currency", "566");
+        field(f, "cust_id", r.email() == null ? r.applicationNo() : r.email());
+        field(f, "cust_name", r.applicationNo());
+        field(f, "cust_email", r.email() == null ? "" : r.email());
+        field(f, "mode", q.sandbox() ? "TEST" : "LIVE");
+        f.append("<button type=\"submit\" style=\"font:inherit;padding:10px 18px;border:0;border-radius:8px;background:#0a7d3f;color:#fff;cursor:pointer\">Pay with Quickteller</button>")
+                .append("</form><script>document.getElementById('qt').submit();</script></body></html>");
+        return f.toString();
+    }
+
+    private static void field(StringBuilder f, String name, String value) {
+        f.append("<input type=\"hidden\" name=\"").append(esc(name)).append("\" value=\"").append(esc(value == null ? "" : value)).append("\">");
+    }
+
+    private static String notice(String title, String body) {
+        return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>"
+                + esc(title) + "</title></head><body style=\"font:15px/1.5 system-ui,Segoe UI,Arial,sans-serif;color:#1c1c1c;margin:0;padding:48px 20px;text-align:center\"><h1 style=\"font-size:18px\">"
+                + esc(title) + "</h1><p style=\"color:#555\">" + esc(body) + "</p></body></html>";
+    }
+
+    private static String esc(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;");
+    }
+
+    static String sha512Hex(String s) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-512");
+            return HexFormat.of().formatHex(md.digest(s.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Quickteller's notification is a hint only: find the reference in it and requery Interswitch. */
+    public Map<String, Object> quicktellerNotified(String body) {
+        String reference = null;
+        try {
+            Map<String, Object> m = mapper.readValue(body == null || body.isBlank() ? "{}" : body, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+            for (String k : new String[] { "merchantreference", "transactionreference", "txnref", "txn_ref", "paymentReference", "MerchantReference", "TransactionReference" }) {
+                if (m.get(k) != null && !String.valueOf(m.get(k)).isBlank()) {
+                    reference = String.valueOf(m.get(k));
+                    break;
+                }
+            }
+        } catch (RuntimeException notJson) {
+            LOG.warn("payments: the Quickteller notification was not JSON: {}", notJson.getMessage());
+        }
+        if (reference == null || reference.isBlank()) {
+            log("quickteller", "WEBHOOK", null, null, null, null, null, true, "NO_REFERENCE", body != null && body.length() < 20000 ? body : null);
+            return Map.of("outcome", "ignored");
+        }
+        try {
+            return verify(reference, "WEBHOOK");
+        } catch (RuntimeException e) {
+            LOG.warn("payments: the Quickteller notification for {} could not be verified: {}", reference, e.getMessage());
+            return Map.of("outcome", "could not verify", "reference", reference);
+        }
     }
 
     private Map<String, Object> post(String url, String body, String authorization) {
@@ -266,7 +438,7 @@ public class PaymentsService {
             answer = Map.of("outcome", "short paid", "paid", paid, "owed", r.amount());
         } else {
             final boolean student = "FEES".equals(r.kind());
-            String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : "Flutterwave");
+            String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
             String settled = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " " + providerRef, null, null),
                     () -> tx.execute(st -> student
                             ? repo.confirmStudent(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())
@@ -305,6 +477,22 @@ public class PaymentsService {
             throw new DomainRuleViolation("PAY_GATEWAY_UNREACHABLE", "The payment gateway could not be reached: " + e.getMessage(),
                     new DomainRuleViolation.Remedy("Try again in a moment.", "Bursary"));
         }
+    }
+
+    private Map<String, Object> getWith(String url, Map<String, String> headers) {
+        try {
+            HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(20)).GET();
+            headers.forEach(b::header);
+            HttpResponse<String> res = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
+            return mapper.readValue(res.body() == null ? "{}" : res.body(), new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        } catch (Exception e) {
+            throw new DomainRuleViolation("PAY_GATEWAY_UNREACHABLE", "The payment gateway could not be reached: " + e.getMessage(),
+                    new DomainRuleViolation.Remedy("Try again in a moment.", "Bursary"));
+        }
+    }
+
+    private static String enc(String s) {
+        return java.net.URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
     }
 
     /**
@@ -347,6 +535,33 @@ public class PaymentsService {
                 log("flutterwave", source, "verify", reference, null, null, String.valueOf(a.getOrDefault("message", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(a));
                 if ("no gateway".equals(out.get("outcome"))) {
                     out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "flutterwave", "said", String.valueOf(a.getOrDefault("message", "")));
+                }
+            }
+        }
+        Quickteller q = quickteller();
+        if (q != null) {
+            long kobo = r.amount().movePointRight(2).longValueExact();
+            // Interswitch requery: the Hash header is SHA-512 of (clientId + reference + clientSecret).
+            // The exact inputs are per the merchant's Quickteller Business profile — confirm on onboarding.
+            String hash = sha512Hex(q.clientId() + reference + q.clientSecret());
+            String url = quicktellerRequeryEndpoint(q.sandbox()) + "?merchantcode=" + enc(q.merchantCode())
+                    + "&transactionreference=" + enc(reference) + "&amount=" + kobo;
+            Map<String, Object> a = getWith(url, Map.of("Hash", hash, "Accept", "application/json"));
+            Object rc = a.get("ResponseCode");
+            if (rc != null) {
+                boolean success = "00".equals(String.valueOf(rc));
+                BigDecimal paid = a.get("Amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(a.get("Amount"))).movePointLeft(2);
+                String providerRef = a.get("PaymentReference") != null ? String.valueOf(a.get("PaymentReference"))
+                        : a.get("RetrievalReferenceNumber") != null ? String.valueOf(a.get("RetrievalReferenceNumber")) : reference;
+                out = settle("quickteller", source, "verify", reference, paid, String.valueOf(rc), success, providerRef, mapper.writeValueAsString(a));
+                if (success) {
+                    AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "reconciler checked " + reference, null, null), () -> tx.execute(st -> { repo.checked(reference); return null; }));
+                    return out;
+                }
+            } else {
+                log("quickteller", source, "verify", reference, null, null, String.valueOf(a.getOrDefault("ResponseDescription", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(a));
+                if ("no gateway".equals(out.get("outcome"))) {
+                    out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "quickteller", "said", String.valueOf(a.getOrDefault("ResponseDescription", "")));
                 }
             }
         }
@@ -393,7 +608,9 @@ public class PaymentsService {
                 Map.of("gateway", "paystack", "on", paystackOn(), "mode", paystackOn() ? (paystackSecret().startsWith("sk_test") ? "TEST" : "LIVE") : "OFF",
                         "webhook", "/api/v1/payments/webhook/paystack", "channels", "Card · bank transfer · USSD"),
                 Map.of("gateway", "flutterwave", "on", flutterwaveOn(), "mode", flutterwaveOn() ? (flutterwaveSecret().toUpperCase().contains("_TEST") ? "TEST" : "LIVE") : "OFF",
-                        "webhook", "/api/v1/payments/webhook/flutterwave", "hash", !flutterwaveHash().isEmpty(), "channels", "Card · bank transfer · USSD")));
+                        "webhook", "/api/v1/payments/webhook/flutterwave", "hash", !flutterwaveHash().isEmpty(), "channels", "Card · bank transfer · USSD"),
+                Map.of("gateway", "quickteller", "on", quicktellerOn(), "mode", quicktellerOn() ? (quickteller().sandbox() ? "TEST" : "LIVE") : "OFF",
+                        "webhook", "/api/v1/payments/webhook/quickteller", "channels", "Card · bank transfer · USSD · Quickteller")));
         out.put("tiles", repo.eventTiles());
         out.put("events", repo.events(200));
         out.put("hanging", repo.hanging());
@@ -435,8 +652,8 @@ public class PaymentsService {
 
     public java.util.Map<String, Object> setKey(String gatewayIn, String secret, String hash) {
         String gateway = gatewayIn == null ? "" : gatewayIn.trim().toLowerCase();
-        if (!gateway.equals("paystack") && !gateway.equals("flutterwave")) {
-            throw new DomainRuleViolation("PAY_GATEWAY", "The gateway is Paystack or Flutterwave.", new DomainRuleViolation.Remedy("One of the two.", "Bursary"));
+        if (!gateway.equals("paystack") && !gateway.equals("flutterwave") && !gateway.equals("quickteller")) {
+            throw new DomainRuleViolation("PAY_GATEWAY", "The gateway is Paystack, Flutterwave or Quickteller.", new DomainRuleViolation.Remedy("One of the three.", "Directorate of ICT"));
         }
         if (configKey.isEmpty()) {
             throw new DomainRuleViolation("PAY_NO_CONFIG_KEY", "The portal has no passphrase to encrypt a gateway key with.",
@@ -446,8 +663,30 @@ public class PaymentsService {
             throw new DomainRuleViolation("PAY_SECRET_BLANK", "The secret key is blank.", new DomainRuleViolation.Remedy("Paste the key from the gateway's dashboard.", "Bursary"));
         }
         String s = secret.trim();
-        String mode = gateway.equals("paystack") ? (s.startsWith("sk_test") ? "TEST" : "LIVE") : (s.toUpperCase().contains("_TEST") ? "TEST" : "LIVE");
-        String last4 = s.length() > 4 ? s.substring(s.length() - 4) : "****";
+        String mode;
+        String last4;
+        if (gateway.equals("quickteller")) {
+            // Quickteller's "secret" is the whole JSON credential document; validate it and
+            // derive the mode from its sandbox flag and the last four from the merchant code
+            try {
+                Map<String, Object> m = mapper.readValue(s, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+                String mc = str(m.get("merchantCode"));
+                if (str(m.get("clientId")).isEmpty() || str(m.get("clientSecret")).isEmpty() || mc.isEmpty() || str(m.get("payItemId")).isEmpty()) {
+                    throw new DomainRuleViolation("PAY_QT_INCOMPLETE", "The Quickteller configuration needs clientId, clientSecret, merchantCode and payItemId.",
+                            new DomainRuleViolation.Remedy("Paste all four from your Quickteller Business profile, with sandbox true for test.", "Directorate of ICT"));
+                }
+                mode = Boolean.parseBoolean(str(m.getOrDefault("sandbox", "false"))) ? "TEST" : "LIVE";
+                last4 = mc.length() > 4 ? mc.substring(mc.length() - 4) : mc;
+            } catch (DomainRuleViolation d) {
+                throw d;
+            } catch (RuntimeException notJson) {
+                throw new DomainRuleViolation("PAY_QT_JSON", "The Quickteller configuration must be a JSON object with clientId, clientSecret, merchantCode, payItemId and sandbox.",
+                        new DomainRuleViolation.Remedy("The Gateways screen builds it for you from the four fields; paste them there.", "Directorate of ICT"));
+            }
+        } else {
+            mode = gateway.equals("paystack") ? (s.startsWith("sk_test") ? "TEST" : "LIVE") : (s.toUpperCase().contains("_TEST") ? "TEST" : "LIVE");
+            last4 = s.length() > 4 ? s.substring(s.length() - 4) : "****";
+        }
         String hashArg = hash == null || hash.isBlank() ? null : hash.trim();
         // the write must run inside an attributed transaction, or the V039 function
         // refuses ("a gateway key is set by a person") because moaum.actor_id is unset.

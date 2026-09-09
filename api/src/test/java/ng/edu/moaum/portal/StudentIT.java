@@ -149,60 +149,24 @@ class StudentIT {
     }
 
     @Test
-    void aFieldOnApprovalBecomesARequestTheRegistryDecides() {
+    void aFieldThatOnceNeededApprovalIsNowWrittenExpress() {
+        // biodata is express (V051): a field that used to raise a Registry request —
+        // nationality, state of origin — is now written straight away, like any open
+        // field. No queue, no wait; only JAMB-read fields stay locked.
         String wanted = "Testlandish " + System.currentTimeMillis() % 100000;
         ResponseEntity<Map> put = put("/api/v1/student/students/" + STUDENT + "/biodata/nationality",
                 Map.of("value", wanted, "evidence", "Passport sighted (StudentIT)"));
         assertThat(put.getStatusCode().value()).as(String.valueOf(put.getBody())).isEqualTo(200);
-        assertThat(put.getBody().get("tier")).isEqualTo("approval");
-        assertThat(put.getBody().get("pending")).isEqualTo(true);
-        String change = String.valueOf(put.getBody().get("changeId"));
-
-        ResponseEntity<Map> queue = get("/api/v1/student/biodata-changes?state=PENDING");
-        assertThat(queue.getStatusCode().value()).as(String.valueOf(queue.getBody())).isEqualTo(200);
-        List<?> rows = (List<?>) queue.getBody().get("rows");
-        assertThat(rows).anyMatch(r -> change.equals(((Map<?, ?>) r).get("id")));
-        Map<?, ?> mine = (Map<?, ?>) rows.stream()
-                .filter(r -> change.equals(((Map<?, ?>) r).get("id"))).findFirst().orElseThrow();
-        assertThat(mine.get("surname")).isEqualTo(SURNAME);
-        assertThat(mine.get("label")).isEqualTo("Nationality");
-        assertThat(mine.get("toValue")).isEqualTo(wanted);
-        assertThat((Integer) ((Map<?, ?>) queue.getBody().get("counts")).get("pending")).isGreaterThanOrEqualTo(1);
-
-        // approved, and only then is the value on the record
-        ResponseEntity<Map> approve = post("/api/v1/student/biodata-changes/" + change + "/approve",
-                Map.of("decision", "Evidence seen (StudentIT)"));
-        assertThat(approve.getStatusCode().value()).as(String.valueOf(approve.getBody())).isEqualTo(200);
-        assertThat(approve.getBody().get("state")).isEqualTo("APPROVED");
+        assertThat(put.getBody().get("tier")).isEqualTo("open");
+        assertThat(put.getBody().get("pending")).isEqualTo(false);
+        assertThat(put.getBody().get("changeId")).isNull();
         assertThat(field("nationality").get("value")).isEqualTo(wanted);
 
-        // and a decision is made once
-        ResponseEntity<Map> again = post("/api/v1/student/biodata-changes/" + change + "/approve",
-                Map.of("decision", "Again (StudentIT)"));
-        assertThat(again.getStatusCode().value()).isEqualTo(422);
-        assertThat(again.getBody().get("code")).isEqualTo("STU_CHANGE_DECIDED");
-    }
-
-    @Test
-    void aRefusalWithoutAReasonIsRefused() {
-        ResponseEntity<Map> put = put("/api/v1/student/students/" + STUDENT + "/biodata/state_of_origin",
+        ResponseEntity<Map> soo = put("/api/v1/student/students/" + STUDENT + "/biodata/state_of_origin",
                 Map.of("value", "Inventedstate"));
-        assertThat(put.getStatusCode().value()).as(String.valueOf(put.getBody())).isEqualTo(200);
-        String change = String.valueOf(put.getBody().get("changeId"));
-
-        ResponseEntity<Map> blank = post("/api/v1/student/biodata-changes/" + change + "/refuse",
-                Map.of("decision", "  "));
-        assertThat(blank.getStatusCode().value()).as(String.valueOf(blank.getBody())).isEqualTo(422);
-        assertThat(blank.getBody().get("code")).isEqualTo("STU_DECISION_REQUIRED");
-
-        ResponseEntity<Map> asked = post("/api/v1/student/biodata-changes/" + change + "/ask-evidence", Map.of());
-        assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
-        assertThat(asked.getBody().get("state")).isEqualTo("EVIDENCE_ASKED");
-
-        ResponseEntity<Map> refused = post("/api/v1/student/biodata-changes/" + change + "/refuse",
-                Map.of("decision", "No local government identification supplied (StudentIT)"));
-        assertThat(refused.getStatusCode().value()).as(String.valueOf(refused.getBody())).isEqualTo(200);
-        assertThat(refused.getBody().get("state")).isEqualTo("REFUSED");
+        assertThat(soo.getStatusCode().value()).as(String.valueOf(soo.getBody())).isEqualTo(200);
+        assertThat(soo.getBody().get("pending")).isEqualTo(false);
+        assertThat(field("state_of_origin").get("value")).isEqualTo("Inventedstate");
     }
 
     @Test

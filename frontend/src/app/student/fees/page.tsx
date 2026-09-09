@@ -13,6 +13,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const loaded = await loadStudent();
   if (!loaded.student) return <Shell route="s/fees" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   const session = typeof q.session === "string" && /^\d{4}\/\d{4}$/.test(q.session) ? q.session : loaded.student.session;
+  // on return from the gateway, verify with the gateway and confirm at once — no Bursary step, no wait for a webhook
+  if (typeof q.paid === "string" && q.paid) {
+    await api("/api/v1/payments/verify", { method: "POST", body: { reference: q.paid }, reason: `Verify payment ${q.paid}` });
+  }
   const fees = await api<Fees>(`/api/v1/me/fees?session=${encodeURIComponent(session)}`);
   return (
     <Shell route="s/fees" me={loaded.me}>

@@ -16,7 +16,7 @@ export default async function ApplicantsPage({ searchParams }: { searchParams: P
   const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? "2026/2027";
   const view = await api<ApplicantsView>(`/api/v1/admissions/applicants?session=${encodeURIComponent(session)}${q ? `&q=${encodeURIComponent(q)}` : ""}`);
   return (
-    <Shell route="t/admissions" me={me.ok ? me.data : null}>
+    <Shell route="t/applicants" me={me.ok ? me.data : null}>
       {view.ok ? <Applicants d={view.data} session={session} q={q} /> : <ProblemNotice problem={view.problem} />}
     </Shell>
   );

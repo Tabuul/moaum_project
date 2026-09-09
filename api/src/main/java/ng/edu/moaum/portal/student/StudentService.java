@@ -84,16 +84,11 @@ public class StudentService {
                             + "Correcting it here would put one name on the portal and another on the degree.",
                     new DomainRuleViolation.Remedy("Corrected with JAMB, not here", "Academic Office"));
         }
-        if ("approval".equals(tier)) {
-            if (value.isEmpty()) {
-                throw new DomainRuleViolation("STU_VALUE_REQUIRED",
-                        "A change request carries the value asked for, and none was given.",
-                        new DomainRuleViolation.Remedy("Type the new value before asking for the change.", "Academic Office"));
-            }
-            String from = students.valueOf(id, field).orElse(null);
-            UUID change = students.askForChange(id, field, from, value, blankToNull(in.evidence()));
-            return new BiodataWritten(field, tier, value, change, true);
-        }
+        // A student's own biodata is written straight away — express, no Registry
+        // approval step. What the student enters is their record, on the attributed
+        // spine like any other write. Only JAMB-read fields stay locked above,
+        // because those are not the student's to enter. (Evidence, if given, is
+        // kept as the reason on the write so the trail still says why it changed.)
         students.writeBiodata(id, field, value);
         return new BiodataWritten(field, tier, value, null, false);
     }

@@ -767,6 +767,11 @@ export const MENUS: Record<string, Menu> = {
             "badge": "6"
           },
           {
+            "id": "t/applicants",
+            "icon": "user",
+            "label": "Applicants (post-UTME)"
+          },
+          {
             "id": "t/candidatedata",
             "icon": "user",
             "label": "Passports, DOB & O’Level"

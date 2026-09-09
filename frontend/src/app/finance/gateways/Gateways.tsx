@@ -13,13 +13,18 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; config: GatewayConfig[]; paid: string | null; actingOffice: string | null }) {
   const router = useRouter();
+  // the Bursary monitors, tests and verifies; only the Directorate of ICT and the Super
+  // Administrator set or clear a gateway key — the key setup is off the Bursar's desk
   const may = ["bursar", "ict", "admin", "super"].includes(actingOffice ?? "");
+  const mayConfigure = ["ict", "admin", "super"].includes(actingOffice ?? "");
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const [test, setTest] = useState({ number: "MOAUM/MTC/24/9903", amount: "100", gateway: d.gateways.find((g) => g.on)?.gateway ?? "paystack" });
   const [ref, setRef] = useState("");
   const [keys, setKeys] = useState<Record<string, { secret: string; hash: string }>>({ paystack: { secret: "", hash: "" }, flutterwave: { secret: "", hash: "" } });
+  // Quickteller Business is not one string but a set: the whole set is stored as one JSON secret
+  const [qt, setQt] = useState({ clientId: "", clientSecret: "", merchantCode: "", payItemId: "", sandbox: true });
   const on = d.gateways.filter((g) => g.on);
   const t = d.tiles;
   const apiBase = d.portalUrl.replace("moaum-portal", "moaum-api");
@@ -69,8 +74,8 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
           ]} />
         </PBody>
       </Panel>
-      {may ? (
-        <Panel title="Configure the keys" right="Written here, encrypted, and never shown again">
+      {mayConfigure ? (
+        <Panel title="Configure the keys" right="Directorate of ICT and Super Administrator only">
           <PBody>
             <Note kind="info" title="A key set here is encrypted at rest and read back never">
               You can set a gateway secret here instead of as a service variable. It is encrypted with the portal&rsquo;s own passphrase, decrypted only inside the API to call the gateway, and no screen ever shows it again &mdash; the same rule as a password. A service variable still works and is used when no key is set here. Setting a key is recorded against your name.
@@ -84,6 +89,21 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
                     {c.configured ? <span className="sub2 tnum">ends {c.last4}</span> : null}
                   </div>
                   {c.configured ? <div className="sub2">Set {c.set_at ? when(c.set_at) : ""}{c.set_by_name ? " by " + c.set_by_name : ""}{c.gateway === "flutterwave" ? (c.has_hash ? " \u00b7 hash set" : " \u00b7 no hash yet") : ""}</div> : null}
+                  {c.gateway === "quickteller" ? (
+                    <>
+                      <div className="sub2">Quickteller Business (Interswitch): the four things from your merchant profile at business.quickteller.com. They are stored together, encrypted, and shown never.</div>
+                      <Field id="qt-cid" label="Client ID" hint="From your Interswitch/Quickteller developer profile."><input id="qt-cid" className="ctl tnum" autoComplete="off" value={qt.clientId} onChange={(e) => setQt({ ...qt, clientId: e.target.value })} placeholder="IKIA\u2026" /></Field>
+                      <Field id="qt-cs" label="Client secret" hint="Pasted once; it is never displayed after this."><input id="qt-cs" className="ctl tnum" type="password" autoComplete="off" value={qt.clientSecret} onChange={(e) => setQt({ ...qt, clientSecret: e.target.value })} /></Field>
+                      <Field id="qt-mc" label="Merchant code" hint="Your Quickteller merchant code."><input id="qt-mc" className="ctl tnum" autoComplete="off" value={qt.merchantCode} onChange={(e) => setQt({ ...qt, merchantCode: e.target.value })} placeholder="MX\u2026" /></Field>
+                      <Field id="qt-pi" label="Pay item ID" hint="The payable/pay-item configured on the merchant profile."><input id="qt-pi" className="ctl tnum" autoComplete="off" value={qt.payItemId} onChange={(e) => setQt({ ...qt, payItemId: e.target.value })} placeholder="Default_Payable_MX\u2026" /></Field>
+                      <label className="sub2" style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={qt.sandbox} onChange={(e) => setQt({ ...qt, sandbox: e.target.checked })} /> Sandbox (test) &mdash; uncheck for the live Interswitch endpoints</label>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Btn kind="primary" disabled={busy || !qt.clientId.trim() || !qt.clientSecret.trim() || !qt.merchantCode.trim() || !qt.payItemId.trim()} onClick={async () => { const j = await send("/gateways/quickteller/key", { secret: JSON.stringify({ clientId: qt.clientId.trim(), clientSecret: qt.clientSecret.trim(), merchantCode: qt.merchantCode.trim(), payItemId: qt.payItemId.trim(), sandbox: qt.sandbox }), hash: null }, "Quickteller configuration set from the dashboard", "PUT"); if (j) { setSaid("Quickteller configured \u2014 " + j.mode + " \u00b7 merchant ending " + j.last4); setQt({ clientId: "", clientSecret: "", merchantCode: "", payItemId: "", sandbox: true }); } }}>{c.configured ? "Replace the configuration" : "Set the configuration"}</Btn>
+                        {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the Quickteller configuration? The gateway turns off unless a service variable is set.") && await send("/gateways/quickteller/clear-key", {}, "Quickteller configuration cleared", "POST")) setSaid("Quickteller configuration cleared"); }}>Clear</Btn> : null}
+                      </div>
+                    </>
+                  ) : (
+                  <>
                   <Field id={"k-" + c.gateway} label="Secret key" hint="Pasted once; it is never displayed after this.">
                     <input id={"k-" + c.gateway} className="ctl tnum" type="password" autoComplete="off" value={keys[c.gateway]?.secret ?? ""} onChange={(e) => setKeys({ ...keys, [c.gateway]: { secret: e.target.value, hash: keys[c.gateway]?.hash ?? "" } })} placeholder={c.gateway === "paystack" ? "sk_test_\u2026 or sk_live_\u2026" : "FLWSECK_TEST-\u2026 or FLWSECK-\u2026"} />
                   </Field>
@@ -96,6 +116,8 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
                     <Btn kind="primary" disabled={busy || !keys[c.gateway]?.secret.trim()} onClick={async () => { const j = await send("/gateways/" + c.gateway + "/key", { secret: keys[c.gateway].secret, hash: keys[c.gateway]?.hash || null }, c.gateway + " key set from the dashboard", "PUT"); if (j) { setSaid(c.gateway + " key set \u2014 " + j.mode + " key ending " + j.last4); setKeys({ ...keys, [c.gateway]: { secret: "", hash: "" } }); } }}>{c.configured ? "Replace the key" : "Set the key"}</Btn>
                     {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the " + c.gateway + " key? The gateway turns off unless a service variable is set.") && await send("/gateways/" + c.gateway + "/clear-key", {}, c.gateway + " key cleared", "POST")) setSaid(c.gateway + " key cleared"); }}>Clear</Btn> : null}
                   </div>
+                  </>
+                  )}
                 </div></div>
               ))}
             </div>
