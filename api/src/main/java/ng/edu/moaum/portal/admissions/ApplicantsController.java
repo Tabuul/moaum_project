@@ -146,8 +146,22 @@ class ApplicantsController {
 
     /* ── the fees ── */
 
+    // the applicant fees are set on the Academic Office desk and, since they are a
+    // charge like any other, on the Bursary's fee-setup screen too
+    private static final String FEESETTERS =
+            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+
+    /** the applicant fees for a session — the Post-UTME screening fee, the portal charge and the acceptance fee */
+    @GetMapping("/applicant-fees")
+    @PreAuthorize(FEESETTERS)
+    Map<String, Object> applicantFees(@PathVariable String session, @PathVariable String year) {
+        Map<String, Object> f = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", session + "/" + year).query().singleRow();
+        return Map.of("session", session + "/" + year, "stated", f.get("stated"),
+                "applicationFee", f.get("application_fee"), "portalCharge", f.get("portal_charge"), "acceptanceFee", f.get("acceptance_fee"));
+    }
+
     @PutMapping("/applicant-fees")
-    @PreAuthorize(OFFICE)
+    @PreAuthorize(FEESETTERS)
     @Transactional
     Map<String, Object> fees(@PathVariable String session, @PathVariable String year, @Valid @RequestBody Fees body) {
         String s = session + "/" + year;

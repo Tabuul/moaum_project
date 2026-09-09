@@ -27,10 +27,11 @@ export interface Schedule {
   position: { students_paying: number; confirmed: number; references_open: number };
 }
 export interface OpenReference { id: string; reference: string; session: string; purpose: string; amount: number; generated_at: string; expires_at: string; matric_no: string | null; admission_no: string | null; surname: string; other_names: string; programme: string; current_level: number }
+export interface ApplicantFees { session: string; stated: boolean; applicationFee: number; portalCharge: number; acceptanceFee: number }
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 
-export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; actingOffice: string | null }) {
+export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; actingOffice: string | null }) {
   const router = useRouter();
   const may = actingOffice === "bursar" || actingOffice === "super";
   const [busy, setBusy] = useState<string | null>(null);
@@ -40,6 +41,28 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [scheming, setScheming] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const val = (k: string, d = "") => edits[k] ?? d;
+  const [af, setAf] = useState({
+    applicationFee: String(applicantFees?.applicationFee ?? ""),
+    portalCharge: String(applicantFees?.portalCharge ?? ""),
+    acceptanceFee: String(applicantFees?.acceptanceFee ?? ""),
+  });
+
+  // the applicant fees live under admissions, not finance, so they have their own save
+  async function saveApplicantFees(): Promise<void> {
+    setBusy("af");
+    setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/applicant-fees`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Applicant / Post-UTME fees stated for ${session}`) },
+        body: JSON.stringify({ applicationFee: Number(af.applicationFee) || 0, portalCharge: Number(af.portalCharge) || 0, acceptanceFee: Number(af.acceptanceFee) || 0 }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function send(key: string, method: "POST" | "PUT", path: string, body: unknown, reason: string): Promise<boolean> {
     setBusy(key);
@@ -130,6 +153,22 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div className="sub2">Registration, identity card and library release at the first instalment; the examination, results, transcript and convocation at payment in full; hostel is not gated; arrears block everything. Two schemes cannot overlap in time.</div>
         </Modal>
       ) : null}
+      <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : `Default (not yet stated for ${session})`}>
+        <PBody>
+          <div className="sub2" style={{ marginBottom: 10 }}>
+            The charges an applicant pays before they are a student &mdash; the Post-UTME screening fee (with the portal and payment charge) and the acceptance fee an offer carries. They are a payment item of their own, under <b>Applicant</b>, kept apart from the student charges above because an applicant is not yet on the register.
+          </div>
+          <div className="grid grid--3">
+            <Field id="af-app" label="Post-UTME screening fee" hint="What the applicant pays to apply and be screened"><input id="af-app" className="ctl tnum" inputMode="numeric" value={af.applicationFee} onChange={(e) => setAf({ ...af, applicationFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="2000" disabled={!may} /></Field>
+            <Field id="af-port" label="Portal and payment charge" hint="Added to the screening fee at checkout"><input id="af-port" className="ctl tnum" inputMode="numeric" value={af.portalCharge} onChange={(e) => setAf({ ...af, portalCharge: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="300" disabled={!may} /></Field>
+            <Field id="af-acc" label="Acceptance fee" hint="Paid on an offer; credited to first-session charges"><input id="af-acc" className="ctl tnum" inputMode="numeric" value={af.acceptanceFee} onChange={(e) => setAf({ ...af, acceptanceFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="30000" disabled={!may} /></Field>
+          </div>
+          <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+            <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim()} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : "State the applicant fees"}</Btn>
+            <span className="sub2">An applicant generating a reference is charged the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))} in all.</span>
+          </div>
+        </PBody>
+      </Panel>
       <Pil kind="grey">Every act here is the Bursar&rsquo;s, on the record</Pil>
     </>
   );
