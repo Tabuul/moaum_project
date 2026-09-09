@@ -279,8 +279,8 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           </Panel>
           <Panel title="The Board’s decision" right={open.decisionReleasedAt ? <Pil kind="ok">Released</Pil> : open.decision ? <Pil kind="info">Entered, not released</Pil> : <Pil kind="grey">None</Pil>}>
             <PBody>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-                <Field id="dec" label="Decision">
+              <div className="grid grid--3">
+                <Field id="dec" label="Decision" hint="Offered, waiting list or not offered">
                   <select id="dec" className="ctl" value={val("decision", open.decision ?? "")} disabled={!office || !!open.decisionReleasedAt} onChange={(e) => setEdits({ ...edits, decision: e.target.value })}>
                     <option value="">Choose…</option><option value="OFFERED">Offered</option><option value="WAITING">Waiting list</option><option value="NOT_OFFERED">Not offered</option>
                   </select>
@@ -292,6 +292,8 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                   </select>
                 </Field>
                 <Field id="dnote" label="Note" hint="Anything the Board minuted beyond the basis"><input id="dnote" className="ctl" value={val("dnote", open.decisionNote ?? "")} disabled={!office || !!open.decisionReleasedAt} onChange={(e) => setEdits({ ...edits, dnote: e.target.value })} /></Field>
+              </div>
+              <div style={{ marginTop: 4 }}>
                 <Btn kind="primary" disabled={!office || busy !== null || !!open.decisionReleasedAt || !val("decision", open.decision ?? "") || (val("decision", open.decision ?? "") === "OFFERED" && !val("dbasis", open.decisionBasis ?? ""))} onClick={async () => { await send("decide", "PUT", `/applications/${open.id}/decision`, { decision: val("decision", open.decision ?? ""), note: val("dnote", open.decisionNote ?? "") || undefined, basis: val("dbasis", open.decisionBasis ?? "") || undefined }, `Board decision entered for ${open.applicationNo}`); await refreshOpen(open.id); }}>{busy === "decide" ? "Saving…" : "Enter the decision"}</Btn>
               </div>
               <div className="sub2" style={{ marginTop: 6 }}>Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
