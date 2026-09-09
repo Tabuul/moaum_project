@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Me, RegistrationView } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
+import { brandHeader } from "@/lib/pdf-crest";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,7 @@ export async function GET(request: NextRequest) {
   }
   const p = new Page();
   const L = 64;
-  let y = A4.h - 70;
-  p.text(L, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
-  y -= 15;
-  p.text(L, y, "Course Registration Form", 9.5, false, [0.35, 0.35, 0.35]);
-  y -= 10;
-  p.rule(L, y, A4.w - L, y, 1, 0.2);
-  y -= 26;
+  let y = brandHeader(p, L, "Course Registration Form");
   for (const [k, val] of [["Name", s.name], ["Matriculation number", s.matricNo ?? s.admissionNo ?? ""], ["Programme", `${s.programme}`], ["Level", String(reg.level)], ["Session", `${session} · semester ${semester}`]]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 150, y, val, 10.5);

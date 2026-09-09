@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Receipt } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
+import { brandHeader } from "@/lib/pdf-crest";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +18,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ reference:
   if (!x.confirmed_at) return NextResponse.json({ status: 409, title: "Not confirmed", detail: "A receipt is issued when the payment is confirmed." }, { status: 409 });
   const p = new Page();
   const L = 64;
-  let y = A4.h - 70;
-  p.text(L, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
-  y -= 15;
-  p.text(L, y, "Official Payment Receipt · Bursary Department", 9.5, false, [0.35, 0.35, 0.35]);
-  y -= 10;
-  p.rule(L, y, A4.w - L, y, 1, 0.2);
-  y -= 26;
+  let y = brandHeader(p, L, "Official Payment Receipt · Bursary Department");
   p.text(L, y, "RECEIPT NUMBER", 7.5, false, [0.4, 0.4, 0.4]);
   p.text(L + 130, y, x.receipt_no ?? "", 12, true);
   p.text(A4.w - L - 170, y, "DATE", 7.5, false, [0.4, 0.4, 0.4]);

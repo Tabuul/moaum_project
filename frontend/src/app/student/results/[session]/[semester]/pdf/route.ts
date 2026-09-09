@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import type { Results } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
+import { brandHeader } from "@/lib/pdf-crest";
 
 export const dynamic = "force-dynamic";
 
@@ -22,13 +23,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ session: s
   const sem = x.semesters.find((s) => s.session === session && s.semester === semester);
   const p = new Page();
   const L = 64;
-  let y = A4.h - 70;
-  p.text(L, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
-  y -= 15;
-  p.text(L, y, "Statement of Results · Exams & Records", 9.5, false, [0.35, 0.35, 0.35]);
-  y -= 10;
-  p.rule(L, y, A4.w - L, y, 1, 0.2);
-  y -= 26;
+  let y = brandHeader(p, L, "Statement of Results · Exams & Records");
   for (const [k, v] of [["Name", x.name], ["Matriculation number", x.matricNo], ["Programme", `${x.programme} · ${x.level} Level`], ["Session", `${session} · ${semesterName(semester)} semester`]]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 150, y, v, 10.5);
