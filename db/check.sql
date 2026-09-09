@@ -92,6 +92,10 @@ BEGIN
     DELETE FROM finance.gateway_attempt;
     DELETE FROM finance.bank_credit;
     DELETE FROM finance.refund;
+    -- payment vouchers (V044): queries and acts before the vouchers they hang on
+    DELETE FROM expenditure.voucher_query;
+    DELETE FROM expenditure.voucher_act;
+    DELETE FROM expenditure.voucher;
     -- the student's side (V026): accounts, contact, fees and references, before the students they hang on
     DELETE FROM finance.payment_reference;
     DELETE FROM finance.fee_schedule WHERE session LIKE '99%';
