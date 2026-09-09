@@ -19,7 +19,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
       {!persons.ok ? (
         <ProblemNotice problem={persons.problem} />
       ) : (
-        <People q={q} persons={persons.data} grants={grants.ok ? grants.data : []} offices={offices.ok ? offices.data : []} actingOffice={me.ok ? me.data.activeOffice : null} />
+        <People q={q} persons={persons.data} grants={grants.ok ? grants.data : []} offices={offices.ok ? offices.data : []} actingOffice={me.ok ? me.data.activeOffice : null} open={typeof params.new === "string" ? params.new : null} />
       )}
     </Shell>
   );

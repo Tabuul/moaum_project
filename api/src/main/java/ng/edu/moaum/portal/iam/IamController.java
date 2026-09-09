@@ -97,7 +97,7 @@ class IamController {
     }
 
     @PostMapping("/persons/{id}/office-assignments")
-    @PreAuthorize("hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_super','OFFICE_ict','OFFICE_admin')")
     ResponseEntity<OfficeAssignment> grant(@PathVariable UUID id, @Valid @RequestBody NewGrant request) {
         OfficeAssignment grant = people.grant(id, request.officeCode(), request.scopeKind(), request.scopeId(),
                 request.instrument(), request.validFrom(), request.validTo());

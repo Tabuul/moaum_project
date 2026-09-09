@@ -29,7 +29,7 @@ class AccountsController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_audit')";
     private static final String CREDENTIALS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
-    private static final String GRANTORS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_super')";
+    private static final String GRANTORS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_super','OFFICE_ict','OFFICE_admin')";
 
     public record PersonRow(UUID id, String staffNumber, String surname, String givenNames, LocalDate endedOn, String username,
                             boolean mustChange, java.time.OffsetDateTime lastSignInAt, java.time.OffsetDateTime lockedUntil, long liveOffices) {

@@ -6,7 +6,7 @@
  * with a start and an end, and the credential that signs each one in.
  */
 import { reasonHeader } from "@/lib/reason";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -45,12 +45,13 @@ export interface GrantRow {
 
 const BOUND: Record<string, string> = { institution: "The University", college: "The College", faculty: "Faculty", department: "Department", programme: "Programme", course: "Own courses", unit: "Unit", platform: "The platform" };
 
-export function People({ q, persons, grants, offices, actingOffice }: {
+export function People({ q, persons, grants, offices, actingOffice, open }: {
   q: string;
   persons: PersonRow[];
   grants: GrantRow[];
   offices: { code: string; label: string; scope_kind: string }[];
   actingOffice: string | null;
+  open?: string | null;
 }) {
   const router = useRouter();
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -60,10 +61,17 @@ export function People({ q, persons, grants, offices, actingOffice }: {
   const [f, setF] = useState({ staffNumber: "", surname: "", givenNames: "", office: "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "", username: "", password: "", reason: "", on: "" });
   const [search, setSearch] = useState(q);
   const [now] = useState(() => Date.now());
-  const canGrant = ["registrar", "dregistrar", "vc", "super"].includes(actingOffice ?? "");
+  const canGrant = ["registrar", "dregistrar", "vc", "super", "ict", "admin"].includes(actingOffice ?? "");
   const canCredential = ["registrar", "dregistrar", "ict", "admin", "super"].includes(actingOffice ?? "");
   const soon = grants.filter((g) => g.validTo && new Date(g.validTo).getTime() - now < 30 * 86400000).length;
   const two = new Set(grants.map((g) => g.personId).filter((id, i, all) => all.indexOf(id) !== i)).size;
+
+  // a dashboard shortcut can ask this console to open straight into a task (?new=person|grant)
+  useEffect(() => {
+    if (open === "person" && canCredential) { setF((v) => ({ ...v, staffNumber: "", surname: "", givenNames: "" })); setModal("person"); }
+    else if (open === "grant" && canGrant && persons.length) { setTarget(persons[0]); setF((v) => ({ ...v, office: offices[0]?.code ?? "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" })); setModal("grant"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   async function send(method: "POST" | "PUT", path: string, body: unknown, reason: string): Promise<boolean> {
     setBusy(true);
