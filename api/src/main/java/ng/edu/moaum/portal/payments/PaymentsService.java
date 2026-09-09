@@ -445,13 +445,18 @@ public class PaymentsService {
         String s = secret.trim();
         String mode = gateway.equals("paystack") ? (s.startsWith("sk_test") ? "TEST" : "LIVE") : (s.toUpperCase().contains("_TEST") ? "TEST" : "LIVE");
         String last4 = s.length() > 4 ? s.substring(s.length() - 4) : "****";
-        repo.setGatewaySecret(gateway, s, hash == null || hash.isBlank() ? null : hash.trim(), mode, last4, configKey);
+        String hashArg = hash == null || hash.isBlank() ? null : hash.trim();
+        // the write must run inside an attributed transaction, or the V039 function
+        // refuses ("a gateway key is set by a person") because moaum.actor_id is unset.
+        AuditContextHolder.with(AuditContextHolder.required(),
+                () -> tx.execute(st -> { repo.setGatewaySecret(gateway, s, hashArg, mode, last4, configKey); return null; }));
         return java.util.Map.of("gateway", gateway, "configured", true, "mode", mode, "last4", last4);
     }
 
     public java.util.Map<String, Object> clearKey(String gatewayIn) {
         String gateway = gatewayIn == null ? "" : gatewayIn.trim().toLowerCase();
-        repo.clearGatewaySecret(gateway);
+        AuditContextHolder.with(AuditContextHolder.required(),
+                () -> tx.execute(st -> { repo.clearGatewaySecret(gateway); return null; }));
         return java.util.Map.of("gateway", gateway, "configured", false);
     }
 }
