@@ -46,6 +46,14 @@ BEGIN
     DELETE FROM credentials.transcript_request;
     DELETE FROM records.graduand;
     DELETE FROM clearance.item;
+    -- course spaces (V035) and requests (V036), before the offerings and students they hang on
+    DELETE FROM lms.submission_blob;
+    DELETE FROM lms.submission;
+    DELETE FROM lms.access;
+    DELETE FROM lms.material_blob;
+    DELETE FROM lms.material;
+    DELETE FROM lms.assignment;
+    DELETE FROM platform.service_request;
     -- health (V032) and the wallet (V033), before the students they name
     DELETE FROM health.note;
     DELETE FROM health.record_access;
@@ -190,7 +198,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 108
+\set EXPECTED 110
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1954,6 +1962,55 @@ BEGIN
         AND (SELECT channel FROM finance.payment_reference WHERE reference = v_ref) = 'NELFUND wallet'
         AND (SELECT count(*) FROM finance.wallet_statement(s1)) = 2,
         format('matched=%s unmatched=%s amount=%s bal=%s guess_refused=%s ref=%s paid=%s inst=%s', r.matched, r.unmatched, r.amount, bal, ok, v_ref, pos.paid, pos.instalments_paid));
+END $$;
+
+-- ── 109. a course space is the roll: material reaches the registered, a submission is theirs, the gradebook promotes into the sheet's CA as a version with its reason (V035) ──
+DO $$
+DECLARE st uuid; o1 uuid; sh uuid; lect uuid := gen_random_uuid(); m uuid; a uuid; sub uuid; ok boolean := false; gb record; n int; l record; other uuid := gen_random_uuid();
+BEGIN
+    PERFORM set_config('moaum.actor_id', lect::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    SELECT id INTO st FROM people.student WHERE surname = 'CHECKSTUDENT';
+    SELECT o.id INTO o1 FROM catalogue.offering o WHERE o.course_code = 'CHK 101' AND o.session = '9999/0000';
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (other, 'MOAUM/ADM/99/990112', 'MOAUM/CHK/99/0112', 'CHECKOUTSIDER', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    INSERT INTO lms.material (id, offering_id, week, title, kind, link, published_at, published_by) VALUES (gen_random_uuid(), o1, 1, 'CHECK week 1', 'READING', 'https://example.com/w1', now(), lect) RETURNING id INTO m;
+    INSERT INTO lms.assignment (id, offering_id, title, kind, closes_at, weight, out_of, created_by) VALUES (gen_random_uuid(), o1, 'CHECK problem set', 'INDIVIDUAL', now() + interval '7 days', 20, 100, lect) RETURNING id INTO a;
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    BEGIN PERFORM lms.submit(a, other, 'I am not on this roll', NULL, NULL, NULL); EXCEPTION WHEN OTHERS THEN ok := true; END;   -- the roll, nobody else
+    sub := lms.submit(a, st, 'My answer', NULL, NULL, NULL);
+    INSERT INTO lms.access (material_id, student_id) VALUES (m, st);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    UPDATE lms.submission SET mark = 80, marked_at = now(), marked_by = lect WHERE id = sub;
+    SELECT * INTO gb FROM lms.gradebook(o1) WHERE student_id = st;
+    -- the sheet of 102 stands at entry on this offering; promoting writes the CA as a version with its reason
+    SELECT id INTO sh FROM assessment.score_sheet WHERE offering_id = o1;
+    IF sh IS NULL THEN INSERT INTO assessment.score_sheet (id, offering_id) VALUES (gen_random_uuid(), o1) RETURNING id INTO sh; END IF;
+    n := lms.promote_ca(o1);
+    SELECT * INTO l FROM assessment.latest_scores(sh) x WHERE x.student_id = st;
+    PERFORM pg_temp.assert('A course space is the roll: an outsider cannot submit, the gradebook is weighted from the marks, and promoting it writes the CA into the score sheet as a version',
+        ok AND gb.submitted = 1 AND gb.marked = 1 AND gb.total = 16 AND gb.weight_marked = 20 AND n >= 1 AND l.ca = 16
+        AND (SELECT count(*) FROM lms.access WHERE material_id = m) = 1,
+        format('outsider_refused=%s submitted=%s marked=%s total=%s weight=%s promoted=%s ca=%s', ok, gb.submitted, gb.marked, gb.total, gb.weight_marked, n, l.ca));
+END $$;
+
+-- ── 110. a request carries a reference and an office; the answer is on the record and the student is told (V036) ──
+DO $$
+DECLARE st uuid; v_ref text; rq record; n_notices int; ok boolean := false;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    SELECT id INTO st FROM people.student WHERE surname = 'CHECKSTUDENT';
+    v_ref := platform.raise_request(st, 'bursar', 'Payment not reflecting after 3 days', 'Reference MOAUM-FEE-990001');
+    BEGIN PERFORM platform.raise_request(st, 'chancellor', 'Nobody', NULL); EXCEPTION WHEN OTHERS THEN ok := true; END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT count(*) INTO n_notices FROM platform.notice WHERE about_kind = 'student' AND about_id = st;
+    PERFORM platform.answer_request((SELECT id FROM platform.service_request WHERE ref = v_ref), 'The payment was matched this morning; your receipt is on the Fees page.', true);
+    SELECT * INTO rq FROM platform.service_request WHERE ref = v_ref;
+    PERFORM pg_temp.assert('A request carries a reference and an office, the answer is on the record in the officer''s name, and the student is told',
+        v_ref ~ '^SR-[0-9]{4}-[0-9]{5}$' AND ok AND rq.state = 'RESOLVED' AND rq.answered_by IS NOT NULL AND rq.office_code = 'bursar'
+        AND (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = st) = n_notices + 2,
+        format('ref=%s bad_office_refused=%s state=%s notices=+%s', v_ref, ok, rq.state, (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = st) - n_notices));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

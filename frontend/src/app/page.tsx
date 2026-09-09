@@ -25,6 +25,9 @@ export default async function DashboardPage() {
   const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;
+  /* the requests students put to this office (V036), for the offices that answer them */
+  const asks = office && ["registrar", "dregistrar", "bursar", "library", "services", "academic", "hod", "housing"].includes(office) ? await api<{ state: string }[]>("/api/v1/support/requests") : null;
+  const requestsOpen = asks && asks.ok ? asks.data.filter((r) => r.state === "OPEN" || r.state === "WITH_OFFICE").length : null;
   return (
     <Shell route="r/academic" me={me.ok ? me.data : null}>
       {!me.ok ? <ProblemNotice problem={me.problem} /> : null}
@@ -37,7 +40,7 @@ export default async function DashboardPage() {
       ) : office === "lecturer" ? (
         <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} />
       ) : (
-        <OfficeDashboard me={me.ok ? me.data : null} />
+        <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} />
       )}
     </Shell>
   );

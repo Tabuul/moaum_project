@@ -53,7 +53,7 @@ export const ROUTES: Record<string, string> = {
   "s/pay": "/student/fees",
   "s/receipt": "/student/fees",
   "s/profile": "/student/profile",
-  "s/notifications": "/student",
+  "s/notifications": "/student/notifications",
   "s/query": "/student/query",
   "s/carryover": "/student/carryover",
   "s/transcript": "/student/transcript",
@@ -72,6 +72,12 @@ export const ROUTES: Record<string, string> = {
   "t/nelfund": "/finance/nelfund",
   "t/nelmatch": "/finance/nelfund?tab=match",
   "t/nelstatus": "/finance/nelfund?tab=status",
+  "s/courses": "/student/courses",
+  "t/lms": "/lms",
+  "r/upload": "/lms?tab=upload",
+  "s/support": "/student/support",
+  "s/biodata": "/student/profile",
+  "t/support": "/support",
   "t/feesetup": "/finance/fees",
   "t/scores": "/results/sheets",
   "t/sheet": "/results/sheets",
@@ -108,6 +114,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/chain": ["Approval chain", "One sheet, every desk it passes"],
   "a/password": ["Your password", "Chosen by you, known to nobody else"],
   "s/graduation": ["Graduation", "The audit, Senate's word, clearance and the certificate"],
+  "t/support": ["Help & requests", "What students have put to this office, the oldest open first"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };
