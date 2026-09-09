@@ -83,6 +83,10 @@ BEGIN
     DELETE FROM catalogue.class_slot;
     DELETE FROM credentials.identity_card;
 
+    -- the Bursary's desk (V037): events, attempts and bank credits, before the references they name
+    DELETE FROM finance.gateway_event;
+    DELETE FROM finance.gateway_attempt;
+    DELETE FROM finance.bank_credit;
     -- the student's side (V026): accounts, contact, fees and references, before the students they hang on
     DELETE FROM finance.payment_reference;
     DELETE FROM finance.fee_schedule WHERE session LIKE '99%';
@@ -198,7 +202,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 110
+\set EXPECTED 111
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2011,6 +2015,35 @@ BEGIN
         v_ref ~ '^SR-[0-9]{4}-[0-9]{5}$' AND ok AND rq.state = 'RESOLVED' AND rq.answered_by IS NOT NULL AND rq.office_code = 'bursar'
         AND (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = st) = n_notices + 2,
         format('ref=%s bad_office_refused=%s state=%s notices=+%s', v_ref, ok, rq.state, (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = st) - n_notices));
+END $$;
+
+-- ── 111. a bank credit is posted only when two officers have agreed; the day book carries every confirmation; the gateway's words are kept (V037) ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); one uuid := gen_random_uuid(); two uuid := gen_random_uuid(); cr uuid; v_ref text; ok1 boolean := false; ok2 boolean := false; v_out text; n_book int; ev uuid;
+BEGIN
+    PERFORM set_config('moaum.actor_id', one::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990113', 'MOAUM/CHK/99/0113', 'CHECKPAYER', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    v_ref := finance.new_reference(st, '9999/0000', 40000, NULL);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    cr := finance.record_bank_credit(current_date, 'Zenith Bank', 'BR/44821', 40000, 'A GUARANTOR', 'teller slip, no reference quoted');
+    BEGIN PERFORM finance.propose_bank_credit(cr, v_ref, NULL); EXCEPTION WHEN OTHERS THEN ok1 := true; END;   -- a proposal says on what evidence
+    PERFORM finance.propose_bank_credit(cr, v_ref, 'Payer named on the slip is the guarantor of record on this student''s file');
+    BEGIN PERFORM finance.approve_bank_credit(cr); EXCEPTION WHEN OTHERS THEN ok2 := true; END;   -- not by the same officer
+    PERFORM set_config('moaum.actor_id', two::text, true);
+    v_out := finance.approve_bank_credit(cr);
+    SELECT count(*) INTO n_book FROM finance.day_book(current_date, current_date) b WHERE b.reference = v_ref AND b.channel = 'Bank branch';
+    ev := finance.log_gateway_event('paystack', 'WEBHOOK', 'charge.success', 'MOAUM-FEE-NOBODY-0000', '1', 100, 'success', true, 'UNKNOWN_REFERENCE', '{"forged": true}'::jsonb);
+    PERFORM finance.resolve_gateway_event(ev, 'A reference this portal never generated; discarded');
+    PERFORM pg_temp.assert('A bank credit is posted only when two officers have independently agreed, the day book carries the posting, and the gateway''s words are kept and resolved on the record',
+        ok1 AND ok2 AND v_out = 'confirmed' AND n_book = 1
+        AND (SELECT state FROM finance.bank_credit WHERE id = cr) = 'POSTED'
+        AND (SELECT approved_by <> proposed_by FROM finance.bank_credit WHERE id = cr)
+        AND (SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = v_ref)
+        AND (SELECT resolved_by = two AND resolution IS NOT NULL FROM finance.gateway_event WHERE id = ev),
+        format('why_required=%s same_officer_refused=%s posted=%s in_day_book=%s', ok1, ok2, v_out, n_book));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

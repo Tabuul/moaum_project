@@ -7,6 +7,7 @@ import { AcademicDashboard } from "./dashboards/Academic";
 import { RegistrarDashboard } from "./dashboards/Registrar";
 import { OfficeDashboard } from "./dashboards/Office";
 import { LecturerDashboard } from "./dashboards/Lecturer";
+import { BursarDashboard } from "./dashboards/Bursar";
 import type { MySheet } from "@/lib/results";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +38,8 @@ export default async function DashboardPage() {
         <AcademicDashboard session={session} />
       ) : office === "registrar" ? (
         <RegistrarDashboard session={session} />
+      ) : office === "bursar" ? (
+        <BursarDashboard session={session} />
       ) : office === "lecturer" ? (
         <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} />
       ) : (

@@ -140,4 +140,102 @@ class FinanceController {
     private static String blank(String s) {
         return s == null || s.isBlank() ? null : s.trim().toUpperCase();
     }
+
+    /* ── V037: the Bursar's dashboard, the day book, the bank credits ── */
+
+    public record Credit(LocalDate receivedOn, @NotBlank @Size(max = 80) String bank, @NotBlank @Size(max = 80) String instrument,
+                         @NotNull @DecimalMin("0.01") BigDecimal amount, @Size(max = 200) String payer, @Size(max = 400) String note) {
+    }
+
+    public record Proposal(@NotBlank @Size(max = 60) String reference, @NotBlank @Size(max = 600) String why) {
+    }
+
+    public record Why(@NotBlank @Size(max = 400) String why) {
+    }
+
+    @GetMapping("/bursary")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> bursary(@RequestParam(required = false) String session) {
+        String s = session == null || session.isBlank() ? jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027") : session;
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("tiles", jdbc.sql("""
+                SELECT (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE session = :s AND confirmed_at IS NOT NULL AND purpose LIKE 'School fees%') AS fees_collected,
+                       (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE confirmed_at::date = current_date) AS today,
+                       (SELECT count(*) FROM finance.payment_reference WHERE confirmed_at::date = current_date) AS today_count,
+                       (SELECT count(*) FROM finance.payment_reference WHERE confirmed_at IS NULL AND expires_at > now()) AS references_open,
+                       (SELECT count(*) FROM finance.bank_credit WHERE state IN ('UNMATCHED','PROPOSED')) AS credits_open,
+                       (SELECT coalesce(sum(amount), 0) FROM finance.bank_credit WHERE state IN ('UNMATCHED','PROPOSED')) AS credits_open_amount,
+                       (SELECT count(*) FROM finance.gateway_event WHERE outcome IN ('UNKNOWN_REFERENCE','SHORT_PAID','BAD_SIGNATURE','GATEWAY_ERROR') AND resolved_at IS NULL) AS gateway_exceptions,
+                       (SELECT count(*) FROM finance.gateway_attempt a LEFT JOIN LATERAL finance.reference_state(a.reference) st ON true
+                         WHERE a.opened_at > now() - interval '3 days' AND st.confirmed_at IS NULL) AS hanging,
+                       (SELECT policy.in_force('clearance', 'UNIVERSITY', current_date) IS NOT NULL) AS scheme_in_force,
+                       (SELECT count(*) FROM finance.fee_schedule WHERE session = :s AND ended_at IS NULL) AS schedule_items
+                """).param("s", s).query().singleRow());
+        out.put("byFaculty", jdbc.sql("SELECT * FROM finance.collection_by_faculty(:s)").param("s", s).query().listOfRows());
+        out.put("recent", jdbc.sql("SELECT * FROM finance.day_book(current_date - 7, current_date) LIMIT 12").query().listOfRows());
+        return out;
+    }
+
+    @GetMapping("/ledger")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> ledger(@RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to) {
+        LocalDate f = from == null ? LocalDate.now().minusDays(30) : from;
+        LocalDate t = to == null ? LocalDate.now() : to;
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM finance.day_book(:f, :t)").param("f", f).param("t", t).query().listOfRows();
+        return Map.of("from", f, "to", t, "rows", rows);
+    }
+
+    @GetMapping("/bank-credits")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> bankCredits(@RequestParam(defaultValue = "open") String state) {
+        return jdbc.sql("""
+                SELECT c.id, c.received_on, c.bank, c.instrument, c.amount, c.payer, c.note, c.recorded_at, c.state, c.proposed_reference, c.proposed_why, c.proposed_at,
+                       c.approved_at, c.posted_reference, c.rejected_why,
+                       pr.surname || ', ' || pr.given_names AS proposed_by_name, ap.surname || ', ' || ap.given_names AS approved_by_name, rc.surname || ', ' || rc.given_names AS recorded_by_name,
+                       c.proposed_by = nullif(current_setting('moaum.actor_id', true), '')::uuid AS proposed_by_me,
+                       st.amount AS reference_amount, st.confirmed_at AS reference_confirmed_at
+                  FROM finance.bank_credit c
+                  LEFT JOIN iam.person pr ON pr.id = c.proposed_by LEFT JOIN iam.person ap ON ap.id = c.approved_by LEFT JOIN iam.person rc ON rc.id = c.recorded_by
+                  LEFT JOIN LATERAL finance.reference_state(c.proposed_reference) st ON c.proposed_reference IS NOT NULL
+                 WHERE CASE :st WHEN 'open' THEN c.state IN ('UNMATCHED','PROPOSED') WHEN 'posted' THEN c.state = 'POSTED' ELSE true END
+                 ORDER BY (c.state = 'PROPOSED') DESC, c.received_on, c.recorded_at LIMIT 300
+                """).param("st", state).query().listOfRows();
+    }
+
+    @PostMapping("/bank-credits")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> recordCredit(@Valid @RequestBody Credit body) {
+        UUID id = jdbc.sql("SELECT finance.record_bank_credit(:d, :b, :i, :a, :p, :n)").param("d", body.receivedOn(), Types.DATE).param("b", body.bank())
+                .param("i", body.instrument()).param("a", body.amount()).param("p", body.payer(), Types.VARCHAR).param("n", body.note(), Types.VARCHAR).query(UUID.class).single();
+        return Map.of("id", id, "state", "UNMATCHED");
+    }
+
+    @PostMapping("/bank-credits/{id}/propose")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> propose(@PathVariable UUID id, @Valid @RequestBody Proposal body) {
+        jdbc.sql("SELECT finance.propose_bank_credit(:id, :r, :w)").param("id", id).param("r", body.reference()).param("w", body.why()).query().singleRow();
+        return Map.of("id", id, "state", "PROPOSED");
+    }
+
+    @PostMapping("/bank-credits/{id}/approve")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> approve(@PathVariable UUID id) {
+        String outcome = jdbc.sql("SELECT finance.approve_bank_credit(:id)").param("id", id).query(String.class).single();
+        return Map.of("id", id, "state", "POSTED", "outcome", outcome);
+    }
+
+    @PostMapping("/bank-credits/{id}/reject")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> reject(@PathVariable UUID id, @Valid @RequestBody Why body) {
+        jdbc.sql("SELECT finance.reject_bank_credit(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();
+        return Map.of("id", id, "state", "UNMATCHED");
+    }
 }

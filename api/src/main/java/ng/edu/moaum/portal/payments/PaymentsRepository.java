@@ -3,6 +3,8 @@ package ng.edu.moaum.portal.payments;
 import java.math.BigDecimal;
 import java.sql.Types;
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -54,5 +56,82 @@ class PaymentsRepository {
     String confirmStudent(String reference, String channel, String note) {
         return jdbc.sql("SELECT finance.confirm_payment(:r, :c, :n)")
                 .param("r", reference).param("c", channel).param("n", note, Types.VARCHAR).query(String.class).single();
+    }
+
+    /* ── V037: the gateway's words kept, the attempts, what stands for a reference ── */
+
+    UUID logEvent(String gateway, String source, String event, String reference, String gatewayRef, BigDecimal amount, String status,
+                  boolean signatureOk, String outcome, String payloadJson) {
+        return jdbc.sql("SELECT finance.log_gateway_event(:g, :s, :e, :r, :gr, :a, :st, :ok, :o, :p::jsonb)")
+                .param("g", gateway).param("s", source).param("e", event, Types.VARCHAR).param("r", reference, Types.VARCHAR).param("gr", gatewayRef, Types.VARCHAR)
+                .param("a", amount, Types.NUMERIC).param("st", status, Types.VARCHAR).param("ok", signatureOk).param("o", outcome).param("p", payloadJson, Types.VARCHAR)
+                .query(UUID.class).single();
+    }
+
+    void attempt(String reference, String gateway, String kind, UUID account) {
+        jdbc.sql("INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id) VALUES (:r, :g, :k, :a)")
+                .param("r", reference).param("g", gateway).param("k", kind).param("a", account).update();
+    }
+
+    void checked(String reference) {
+        jdbc.sql("UPDATE finance.gateway_attempt SET checked_at = now(), checks = checks + 1 WHERE reference = :r").param("r", reference).update();
+    }
+
+    /** attempts opened in the last day with nothing confirmed behind them: the hanging payments, oldest first */
+    List<Map<String, Object>> hanging() {
+        return jdbc.sql("""
+                SELECT a.id, a.reference, a.gateway, a.kind, a.opened_at, a.checked_at, a.checks, st.amount, st.expires_at,
+                       extract(epoch FROM now() - a.opened_at)::int / 60 AS minutes,
+                       coalesce(s.surname || ', ' || s.other_names, c.surname || ', ' || c.other_names) AS payer,
+                       coalesce(s.matric_no, s.admission_no, ap.application_no) AS number
+                  FROM finance.gateway_attempt a
+                  LEFT JOIN LATERAL finance.reference_state(a.reference) st ON true
+                  LEFT JOIN finance.payment_reference pr ON pr.reference = a.reference
+                  LEFT JOIN people.student s ON s.id = pr.student_id
+                  LEFT JOIN admissions.fee_reference fr ON fr.reference = a.reference
+                  LEFT JOIN admissions.application ap ON ap.id = fr.application_id
+                  LEFT JOIN admissions.candidate c ON c.id = ap.candidate_id
+                 WHERE a.opened_at > now() - interval '3 days' AND st.confirmed_at IS NULL
+                   AND a.id = (SELECT x.id FROM finance.gateway_attempt x WHERE x.reference = a.reference ORDER BY x.opened_at DESC LIMIT 1)
+                 ORDER BY a.opened_at
+                """).query().listOfRows();
+    }
+
+    List<Map<String, Object>> events(int limit) {
+        return jdbc.sql("""
+                SELECT e.id, e.gateway, e.source, e.event, e.reference, e.gateway_ref, e.amount, e.status, e.signature_ok, e.outcome, e.received_at,
+                       e.resolved_at, e.resolution, p.surname || ', ' || p.given_names AS resolved_by_name
+                  FROM finance.gateway_event e LEFT JOIN iam.person p ON p.id = e.resolved_by
+                 ORDER BY e.received_at DESC LIMIT :n
+                """).param("n", limit).query().listOfRows();
+    }
+
+    Map<String, Object> eventTiles() {
+        return jdbc.sql("""
+                SELECT count(*) FILTER (WHERE received_at::date = current_date) AS today,
+                       count(*) FILTER (WHERE outcome = 'SETTLED') AS settled,
+                       count(*) FILTER (WHERE outcome IN ('UNKNOWN_REFERENCE','SHORT_PAID','BAD_SIGNATURE','GATEWAY_ERROR') AND resolved_at IS NULL) AS exceptions,
+                       count(*) FILTER (WHERE NOT signature_ok) AS bad_signatures,
+                       coalesce(sum(amount) FILTER (WHERE outcome = 'SETTLED' AND received_at::date = current_date), 0) AS settled_today
+                  FROM finance.gateway_event
+                """).query().singleRow();
+    }
+
+    void resolve(UUID event, String resolution) {
+        jdbc.sql("SELECT finance.resolve_gateway_event(:e, :r)").param("e", event).param("r", resolution).query().singleRow();
+    }
+
+    Optional<UUID> studentByNumber(String number) {
+        return jdbc.sql("SELECT id FROM people.student WHERE upper(matric_no) = upper(:n) OR upper(admission_no) = upper(:n) LIMIT 1")
+                .param("n", number).query(UUID.class).optional();
+    }
+
+    String testReference(UUID student, String session, BigDecimal amount) {
+        return jdbc.sql("SELECT finance.new_purpose_reference(:s, :n, :a, 'Gateway test by the Bursary')").param("s", student).param("n", session).param("a", amount)
+                .query(String.class).single();
+    }
+
+    String currentSession() {
+        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
     }
 }

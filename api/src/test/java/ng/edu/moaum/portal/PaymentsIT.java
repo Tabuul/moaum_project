@@ -111,5 +111,17 @@ class PaymentsIT {
                 .header("verif-hash", "flw-hash-only-for-the-it").body(flw).retrieve().toEntity(Map.class);
         assertThat(unknown.getStatusCode().value()).isEqualTo(200);
         assertThat(unknown.getBody().get("outcome")).isEqualTo("unknown reference");
+
+        // V037: every event was kept — the unsigned one as a bad signature, the short one, the settlement, the unknown reference
+        String bursar = ItSupport.token("bursar");
+        ResponseEntity<Map> desk = it.get(bursar, "/api/v1/payments/bursary");
+        assertThat(desk.getStatusCode().value()).as(String.valueOf(desk.getBody())).isEqualTo(200);
+        List<Map<String, Object>> events = (List<Map<String, Object>>) desk.getBody().get("events");
+        assertThat(events.stream().map(e -> String.valueOf(e.get("outcome"))).toList()).contains("BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED", "UNKNOWN_REFERENCE");
+        assertThat(events.stream().filter(e -> reference.equals(e.get("reference")) && "SETTLED".equals(e.get("outcome"))).count()).isEqualTo(1);
+        // the verification path names the reference the same way; with no live gateway it says so rather than guessing
+        ResponseEntity<Map> verified = it.call(bursar, HttpMethod.POST, "/api/v1/payments/verify", Map.of("reference", reference));
+        assertThat(verified.getStatusCode().value()).isEqualTo(200);
+        assertThat(verified.getBody().get("outcome")).isEqualTo("already confirmed");
     }
 }

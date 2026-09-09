@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -51,6 +52,7 @@ class PaymentsController {
     @PostMapping("/webhook/paystack")
     ResponseEntity<Map<String, Object>> paystack(@RequestBody String body, @RequestHeader(value = "x-paystack-signature", required = false) String signature) {
         if (!payments.paystackSignatureValid(body, signature)) {
+            payments.refused("paystack", body);
             return ResponseEntity.status(401).body(Map.of("outcome", "signature does not verify"));
         }
         return ResponseEntity.ok(payments.paystackEvent(body));
@@ -59,8 +61,56 @@ class PaymentsController {
     @PostMapping("/webhook/flutterwave")
     ResponseEntity<Map<String, Object>> flutterwave(@RequestBody String body, @RequestHeader(value = "verif-hash", required = false) String hash) {
         if (!payments.flutterwaveHashValid(hash)) {
+            payments.refused("flutterwave", body);
             return ResponseEntity.status(401).body(Map.of("outcome", "hash does not verify"));
         }
         return ResponseEntity.ok(payments.flutterwaveEvent(body));
+    }
+
+    /* ── V037: the Bursary's side of the gateways ── */
+
+    private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_registrar','OFFICE_vc','OFFICE_dvc')";
+
+    public record Verify(@NotBlank String reference) {
+    }
+
+    public record TestCheckout(@NotBlank String number, java.math.BigDecimal amount, String gateway) {
+    }
+
+    public record Resolution(@NotBlank String resolution) {
+    }
+
+    /** the gateway is asked what the reference settled for: the student's own, or any for an office */
+    @PostMapping("/verify")
+    @PreAuthorize("isAuthenticated()")
+    Map<String, Object> verify(Authentication authentication, @Valid @RequestBody Verify body) {
+        boolean office = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().matches("OFFICE_(bursar|ict|admin|super|audit)"));
+        return payments.verifyFor(UUID.fromString(authentication.getName()), office, body.reference());
+    }
+
+    @GetMapping("/bursary")
+    @PreAuthorize(READERS)
+    Map<String, Object> bursary() {
+        return payments.bursary();
+    }
+
+    @PostMapping("/test-checkout")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> testCheckout(@Valid @RequestBody TestCheckout body) {
+        return payments.testCheckout(body.number(), body.amount(), body.gateway());
+    }
+
+    @PostMapping("/sweep")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> sweep() {
+        payments.sweep();
+        return Map.of("swept", true);
+    }
+
+    @PostMapping("/events/{id}/resolve")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> resolve(@PathVariable UUID id, @Valid @RequestBody Resolution body) {
+        return payments.resolveEvent(id, body.resolution());
     }
 }

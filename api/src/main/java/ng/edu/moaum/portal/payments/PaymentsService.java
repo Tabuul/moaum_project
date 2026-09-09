@@ -87,7 +87,6 @@ public class PaymentsService {
 
     /* ── checkout ── */
 
-    @Transactional(readOnly = true)
     public Map<String, Object> checkout(UUID account, String reference, String gateway) {
         /* an applicant's fee reference, or a student's (V026): the account is the applicant's account or the student's own id */
         PaymentsRepository.Reference r = repo.byReference(reference)
@@ -115,6 +114,9 @@ public class PaymentsService {
             throw new DomainRuleViolation("PAY_GATEWAY_NOT_WIRED", "Card and USSD payment arrive when a payment gateway is wired to the portal.",
                     new DomainRuleViolation.Remedy("Pay by bank transfer or at a bank branch against the reference; the Bursary confirms it against the bank's record.", "Bursary"));
         }
+        final String chosen = g;
+        AuditContextHolder.with(new AuditContext(account, "bursar", "checkout opened for " + r.reference(), null, null),
+                () -> tx.execute(st -> { repo.attempt(r.reference(), chosen, r.kind(), account); return null; }));
         return Map.of("url", url, "gateway", g, "reference", r.reference());
     }
 
@@ -207,24 +209,183 @@ public class PaymentsService {
 
     /** the gateway's confirmation is the Bursary's act at the door, with the gateway's reference on the record */
     Map<String, Object> settle(String gateway, String reference, BigDecimal paid, boolean success, String providerRef) {
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElse(null);
-        if (r == null) {
-            LOG.warn("payments: {} webhook names a reference this portal did not generate: {}", gateway, reference);
-            return Map.of("outcome", "unknown reference");
-        }
-        final boolean student = "FEES".equals(r.kind());
-        if (!success) {
-            return Map.of("outcome", "not successful");
-        }
-        if (paid.compareTo(r.amount()) < 0) {
-            LOG.warn("payments: {} paid {} against {} owing {}", gateway, paid, reference, r.amount());
-            return Map.of("outcome", "short paid", "paid", paid, "owed", r.amount());
-        }
-        String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : "Flutterwave");
-        String outcome = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " webhook " + providerRef, null, null),
-                () -> tx.execute(status -> student
-                        ? repo.confirmStudent(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())
-                        : repo.confirm(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())));
-        return Map.of("outcome", outcome, "reference", reference);
+        return settle(gateway, "WEBHOOK", null, reference, paid, success ? "success" : "failed", success, providerRef, null);
     }
+
+    /** the one settlement, whichever path reached it, with the gateway's own words kept beside what the portal did (V037) */
+    Map<String, Object> settle(String gateway, String source, String event, String reference, BigDecimal paid, String status, boolean success,
+                               String providerRef, String payload) {
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElse(null);
+        String outcome;
+        Map<String, Object> answer;
+        if (r == null) {
+            LOG.warn("payments: {} names a reference this portal did not generate: {}", gateway, reference);
+            outcome = "UNKNOWN_REFERENCE";
+            answer = Map.of("outcome", "unknown reference");
+        } else if (!success) {
+            outcome = "NOT_SUCCESSFUL";
+            answer = Map.of("outcome", "not successful");
+        } else if (paid.compareTo(r.amount()) < 0) {
+            LOG.warn("payments: {} paid {} against {} owing {}", gateway, paid, reference, r.amount());
+            outcome = "SHORT_PAID";
+            answer = Map.of("outcome", "short paid", "paid", paid, "owed", r.amount());
+        } else {
+            final boolean student = "FEES".equals(r.kind());
+            String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : "Flutterwave");
+            String settled = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " " + providerRef, null, null),
+                    () -> tx.execute(st -> student
+                            ? repo.confirmStudent(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())
+                            : repo.confirm(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())));
+            outcome = "already confirmed".equals(settled) ? "ALREADY_SETTLED" : "SETTLED";
+            answer = Map.of("outcome", settled, "reference", reference);
+        }
+        log(gateway, source, event, reference, providerRef, paid, status, true, outcome, payload);
+        return answer;
+    }
+
+    /** every event is written, signature good or bad, as an act at the Bursary's door */
+    void log(String gateway, String source, String event, String reference, String providerRef, BigDecimal amount, String status, boolean signatureOk,
+             String outcome, String payload) {
+        try {
+            AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " event", null, null),
+                    () -> tx.execute(st -> repo.logEvent(gateway, source, event, reference, providerRef, amount, status, signatureOk, outcome, payload)));
+        } catch (RuntimeException notLogged) {
+            LOG.warn("payments: the {} event was not written to the log: {}", gateway, notLogged.getMessage());
+        }
+    }
+
+    /** a webhook whose signature does not verify is discarded and logged; nothing in it is read as a fact */
+    public void refused(String gateway, String body) {
+        log(gateway, "WEBHOOK", null, null, null, null, null, false, "BAD_SIGNATURE", body != null && body.length() < 20000 ? body : null);
+    }
+
+    /* ── a callback is a hint: the gateway is asked what a reference actually settled for ── */
+
+    private Map<String, Object> get(String url, String authorization) {
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(20)).header("Authorization", authorization).GET().build();
+            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+            return mapper.readValue(res.body() == null ? "{}" : res.body(), new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        } catch (Exception e) {
+            throw new DomainRuleViolation("PAY_GATEWAY_UNREACHABLE", "The payment gateway could not be reached: " + e.getMessage(),
+                    new DomainRuleViolation.Remedy("Try again in a moment.", "Bursary"));
+        }
+    }
+
+    /**
+     * Asks the gateway about a reference and settles what it answers — the
+     * reconciler's act, and the student's "check again". Nothing is credited
+     * on the callback's word alone.
+     */
+    public Map<String, Object> verify(String referenceIn, String source) {
+        String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference))
+                .orElseThrow(() -> new NotFound("fee reference", reference));
+        if (r.confirmedAt() != null) {
+            return Map.of("outcome", "already confirmed", "reference", reference);
+        }
+        Map<String, Object> out = Map.of("outcome", "no gateway", "reference", reference);
+        if (paystackOn()) {
+            Map<String, Object> a = get("https://api.paystack.co/transaction/verify/" + reference, "Bearer " + paystackSecret);
+            if (a.get("data") instanceof Map<?, ?> d && d.get("status") != null) {
+                BigDecimal paid = d.get("amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(d.get("amount"))).movePointLeft(2);
+                String status = String.valueOf(d.get("status"));
+                out = settle("paystack", source, "verify", reference, paid, status, "success".equals(status),
+                        d.get("id") == null ? reference : String.valueOf(d.get("id")), mapper.writeValueAsString(a));
+                if ("success".equals(status)) {
+                    repo.checked(reference);
+                    return out;
+                }
+            } else {
+                log("paystack", source, "verify", reference, null, null, String.valueOf(a.getOrDefault("message", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(a));
+                out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "paystack", "said", String.valueOf(a.getOrDefault("message", "")));
+            }
+        }
+        if (flutterwaveOn()) {
+            Map<String, Object> a = get("https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=" + reference, "Bearer " + flutterwaveSecret);
+            if (a.get("data") instanceof Map<?, ?> d && d.get("status") != null) {
+                BigDecimal paid = d.get("amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(d.get("amount")));
+                String status = String.valueOf(d.get("status"));
+                out = settle("flutterwave", source, "verify", reference, paid, status, "successful".equals(status),
+                        d.get("flw_ref") == null ? String.valueOf(d.get("id")) : String.valueOf(d.get("flw_ref")), mapper.writeValueAsString(a));
+            } else {
+                log("flutterwave", source, "verify", reference, null, null, String.valueOf(a.getOrDefault("message", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(a));
+                if ("no gateway".equals(out.get("outcome"))) {
+                    out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "flutterwave", "said", String.valueOf(a.getOrDefault("message", "")));
+                }
+            }
+        }
+        AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "reconciler checked " + reference, null, null), () -> tx.execute(st -> { repo.checked(reference); return null; }));
+        return out;
+    }
+
+    /** the student's own reference, or an office's: who may ask */
+    public Map<String, Object> verifyFor(UUID account, boolean office, String reference) {
+        if (!office) {
+            PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElseThrow(() -> new NotFound("fee reference", reference));
+            if (!r.accountId().equals(account)) {
+                throw new NotFound("fee reference", reference);
+            }
+        }
+        return verify(reference, "VERIFY");
+    }
+
+    /** every ten minutes, and whether or not anybody is watching: the hanging payments are asked about */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${moaum.payments.sweep-every-ms:600000}", initialDelayString = "120000")
+    public void sweep() {
+        if (!paystackOn() && !flutterwaveOn()) {
+            return;
+        }
+        for (Map<String, Object> h : repo.hanging()) {
+            Number minutes = (Number) h.get("minutes");
+            Number checks = (Number) h.get("checks");
+            if (minutes.intValue() < 5 || checks.intValue() >= 12) {
+                continue;
+            }
+            try {
+                verify(String.valueOf(h.get("reference")), "SWEEP");
+            } catch (RuntimeException e) {
+                LOG.warn("payments: sweep could not verify {}: {}", h.get("reference"), e.getMessage());
+            }
+        }
+    }
+
+    /* ── the Bursary's desk ── */
+
+    public Map<String, Object> bursary() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("gateways", java.util.List.of(
+                Map.of("gateway", "paystack", "on", paystackOn(), "mode", paystackOn() ? (paystackSecret.startsWith("sk_test") ? "TEST" : "LIVE") : "OFF",
+                        "webhook", "/api/v1/payments/webhook/paystack", "channels", "Card · bank transfer · USSD"),
+                Map.of("gateway", "flutterwave", "on", flutterwaveOn(), "mode", flutterwaveOn() ? (flutterwaveSecret.startsWith("FLWSECK_TEST") ? "TEST" : "LIVE") : "OFF",
+                        "webhook", "/api/v1/payments/webhook/flutterwave", "hash", !flutterwaveHash.isEmpty(), "channels", "Card · bank transfer · USSD")));
+        out.put("tiles", repo.eventTiles());
+        out.put("events", repo.events(200));
+        out.put("hanging", repo.hanging());
+        out.put("portalUrl", portalUrl);
+        return out;
+    }
+
+    /** a test checkout: a small reference for a named student, opened on the gateway so the webhook can be watched arriving */
+    public Map<String, Object> testCheckout(String number, BigDecimal amount, String gateway) {
+        UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("PAY_NO_STUDENT",
+                "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("A demo student's matriculation number does.", "Bursary")));
+        BigDecimal amt = amount == null || amount.signum() <= 0 ? new BigDecimal("100") : amount;
+        String reference = AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.testReference(student, repo.currentSession(), amt)));
+        PaymentsRepository.Reference r = repo.studentReference(reference).orElseThrow();
+        String g = gateway == null || gateway.isBlank() ? (paystackOn() ? "paystack" : "flutterwave") : gateway.trim().toLowerCase();
+        String back = portalUrl + "/finance/gateways?paid=" + reference;
+        String url = "paystack".equals(g) && paystackOn() ? paystackInitialize(r, back) : "flutterwave".equals(g) && flutterwaveOn() ? flutterwaveInitialize(r, back) : null;
+        if (url == null) {
+            throw new DomainRuleViolation("PAY_GATEWAY_NOT_WIRED", "That gateway is not wired.", new DomainRuleViolation.Remedy("Set its secret on the API service.", "Directorate of ICT"));
+        }
+        AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> { repo.attempt(reference, g, "TEST", student); return null; }));
+        return Map.of("url", url, "gateway", g, "reference", reference, "amount", amt);
+    }
+
+    public Map<String, Object> resolveEvent(UUID id, String resolution) {
+        repo.resolve(id, resolution);
+        return Map.of("id", id, "resolved", true);
+    }
+
 }
