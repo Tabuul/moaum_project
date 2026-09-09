@@ -14,7 +14,7 @@ export default async function ScoresPage({ searchParams }: { searchParams: Promi
   const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? "2026/2027";
   return (
     <Shell route="t/putme" me={me.ok ? me.data : null}>
-      <ScoreUpload session={session} sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]} />
+      <ScoreUpload session={session} sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]} actingOffice={me.ok ? me.data.activeOffice : null} />
     </Shell>
   );
 }

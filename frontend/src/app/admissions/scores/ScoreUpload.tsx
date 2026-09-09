@@ -28,14 +28,32 @@ function parse(text: string): { key: string; score: number }[] {
   return out;
 }
 
-export function ScoreUpload({ session, sessions }: { session: string; sessions: string[] }) {
+export function ScoreUpload({ session, sessions, actingOffice }: { session: string; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [report, setReport] = useState<Report | null>(null);
+  const [released, setReleased] = useState<number | null>(null);
   const file = useRef<HTMLInputElement | null>(null);
   const rows = parse(text);
+  const mayRelease = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
+
+  async function release() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/release`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Screening scores released for ${session}`) }, body: "{}",
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setReleased(Number((j as { released: number }).released));
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function pick(s: string) { router.push(`/admissions/scores?session=${encodeURIComponent(s)}`); }
 
@@ -116,9 +134,18 @@ export function ScoreUpload({ session, sessions }: { session: string; sessions: 
                 ...report.outOfRange.map((k) => [<span className="tnum" key="k">{k}</span>, <Pil kind="grey" key="w">Score out of 0–100</Pil>]),
               ]} />
             </Panel>
-          ) : <Note kind="ok" title="Every row reconciled and applied">All {report.applied} scores matched an applicant and were entered. Release them from the Applicants desk when the Board is ready.</Note>}
+          ) : <Note kind="ok" title="Every row reconciled and applied">All {report.applied} scores matched an applicant and were entered.</Note>}
         </>
       ) : null}
+
+      <Panel title="Release the scores" right="Held until released; the Board decides on released scores">
+        <PBody>
+          <div className="sub2" style={{ marginBottom: 8 }}>An uploaded score is entered but <b>held</b> until it is released — a candidate&rsquo;s aggregate and the Board&rsquo;s decision both wait on it. Releasing publishes every entered score for {session} (seated or uploaded) and notifies each applicant.</div>
+          {released !== null ? <Note kind="ok" title={`${released} score${released === 1 ? "" : "s"} released for ${session}`}>They are no longer held; the Board can now decide, and each applicant has been notified.</Note> : null}
+          <Btn kind="primary" disabled={!mayRelease || busy} onClick={() => void release()}>{busy ? "Releasing…" : "Release scores"}</Btn>
+          {!mayRelease ? <div className="sub2" style={{ marginTop: 6 }}>Releasing is the Academic Office&rsquo;s act; ask them to release, or release from the Applicants desk.</div> : null}
+        </PBody>
+      </Panel>
     </>
   );
 }
