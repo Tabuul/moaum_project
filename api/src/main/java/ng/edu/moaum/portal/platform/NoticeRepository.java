@@ -54,4 +54,14 @@ public class NoticeRepository {
                   FROM platform.notice ORDER BY created_at DESC LIMIT :n
                 """).param("n", limit).query().listOfRows();
     }
+
+    /** put a failed notice (or all of them) back in the queue so the dispatcher tries again */
+    public int requeue(java.util.UUID id) {
+        return jdbc.sql("UPDATE platform.notice SET state = 'QUEUED', attempts = 0, last_error = NULL WHERE id = :id AND state = 'FAILED'")
+                .param("id", id).update();
+    }
+
+    public int requeueAllFailed() {
+        return jdbc.sql("UPDATE platform.notice SET state = 'QUEUED', attempts = 0, last_error = NULL WHERE state = 'FAILED'").update();
+    }
 }

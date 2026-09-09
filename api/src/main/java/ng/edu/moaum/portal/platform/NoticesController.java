@@ -2,9 +2,13 @@ package ng.edu.moaum.portal.platform;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,5 +38,23 @@ class NoticesController {
         out.put("smsProvider", dispatcher.smsConfigured());
         out.put("recent", notices.recent(50));
         return out;
+    }
+
+    private static final String OPERATORS = "hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')";
+
+    /** put one failed notice back in the queue; the dispatcher tries it again within the minute */
+    @PostMapping("/{id}/retry")
+    @PreAuthorize(OPERATORS)
+    @Transactional
+    Map<String, Object> retry(@PathVariable UUID id) {
+        return Map.of("requeued", notices.requeue(id));
+    }
+
+    /** put every failed notice back in the queue */
+    @PostMapping("/retry-failed")
+    @PreAuthorize(OPERATORS)
+    @Transactional
+    Map<String, Object> retryFailed() {
+        return Map.of("requeued", notices.requeueAllFailed());
     }
 }
