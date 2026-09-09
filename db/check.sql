@@ -91,6 +91,7 @@ BEGIN
     DELETE FROM finance.gateway_event;
     DELETE FROM finance.gateway_attempt;
     DELETE FROM finance.bank_credit;
+    DELETE FROM finance.refund;
     -- the student's side (V026): accounts, contact, fees and references, before the students they hang on
     DELETE FROM finance.payment_reference;
     DELETE FROM finance.fee_schedule WHERE session LIKE '99%';

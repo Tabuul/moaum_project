@@ -30,6 +30,7 @@ export const ROUTES: Record<string, string> = {
   "t/deptcourses": "/catalogue",
   "t/eligibility": "/eligibility",
   "t/overview": "/overview",
+  "t/refunds": "/finance/refunds",
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
   "t/capsintake": "/admissions/caps",
