@@ -193,6 +193,12 @@ class CapsRepository {
                 """).param("s", session).param("q", q, java.sql.Types.VARCHAR).param("lim", limit).query().listOfRows();
     }
 
+    /** the merit list for a programme: admissions.merit_list ranks the eligible pool and proposes the offers */
+    java.util.List<java.util.Map<String, Object>> meritList(String session, String programme) {
+        return jdbc.sql("SELECT * FROM admissions.merit_list(:s, :p)")
+                .param("s", session).param("p", programme).query().listOfRows();
+    }
+
     java.util.Map<String, Object> applicantCounts(String session) {
         return jdbc.sql("""
                 SELECT count(*) AS total,

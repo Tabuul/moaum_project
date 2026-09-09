@@ -772,6 +772,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Applicants (post-UTME)"
           },
           {
+            "id": "t/merit",
+            "icon": "chart",
+            "label": "Merit list"
+          },
+          {
             "id": "t/candidatedata",
             "icon": "user",
             "label": "Passports, DOB & O’Level"

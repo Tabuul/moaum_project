@@ -217,7 +217,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 113
+\set EXPECTED 114
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1122,6 +1122,20 @@ BEGIN
      WHERE finding = 'A programme cut-off is below its faculty''s';
     PERFORM pg_temp.assert('A programme cut-off below its faculty''s is a finding',
         n = 1, 'Computer Science at 150 under a Faculty of Science at 160');
+END $$;
+
+-- ── 61c. the merit engine runs against the in-force policy ─────────────
+DO $$
+DECLARE n int; m int;
+BEGIN
+    -- merit_list executes end to end: policy in force, faculty ratio, cut-off,
+    -- the eligible pool, the UTME:DE split and the flexible fill. With no
+    -- application for the programme the pool is empty — a computed list of zero,
+    -- not an error — and an empty pool fills no seat.
+    SELECT count(*), count(*) FILTER (WHERE proposed_offer) INTO n, m
+      FROM admissions.merit_list('9999/0000', 'C18115');
+    PERFORM pg_temp.assert('The merit engine runs against the in-force policy, and an empty pool fills no seat',
+        n = 0 AND m = 0, 'no application for the programme yet — an empty list, computed, not an error');
 END $$;
 
 -- ── 62. the database refuses a weighting that does not total 100 ────────

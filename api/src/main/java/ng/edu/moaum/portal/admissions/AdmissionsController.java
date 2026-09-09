@@ -67,6 +67,13 @@ class AdmissionsController {
         return intake.applicants(session, q, limit);
     }
 
+    /** the merit list for a programme: the eligible pool ranked, with the proposed offer that fills the quota */
+    @GetMapping("/merit")
+    @PreAuthorize(READERS)
+    Map<String, Object> merit(@RequestParam String session, @RequestParam String programme) {
+        return intake.meritList(session, programme);
+    }
+
     @PostMapping("/caps-batches/{id}/commit")
     @PreAuthorize(LOADERS)
     Map<String, Object> commit(@PathVariable UUID id) {

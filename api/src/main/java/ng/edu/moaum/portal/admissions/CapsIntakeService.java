@@ -179,6 +179,20 @@ public class CapsIntakeService {
         return out;
     }
 
+    /** the merit list for a programme: the eligible pool ranked, with the proposed offer that fills the quota */
+    @Transactional(readOnly = true)
+    public Map<String, Object> meritList(String session, String programme) {
+        java.util.List<java.util.Map<String, Object>> rows = caps.meritList(session, programme);
+        long eligible = rows.stream().filter(r -> Boolean.TRUE.equals(r.get("eligible"))).count();
+        long offered = rows.stream().filter(r -> Boolean.TRUE.equals(r.get("proposed_offer"))).count();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("programme", programme);
+        out.put("counts", Map.of("pool", rows.size(), "eligible", eligible, "proposed", offered));
+        out.put("rows", rows);
+        return out;
+    }
+
     @Transactional(readOnly = true)
     public List<Finding> reconcile(String session) {
         return caps.reconcile(session);
