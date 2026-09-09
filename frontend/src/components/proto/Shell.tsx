@@ -48,6 +48,7 @@ export const ROUTES: Record<string, string> = {
   "t/putme": "/admissions/scores",
   "t/candidatedata": "/admissions/candidate-data",
   "t/matriculation": "/matriculation",
+  "t/reports": "/reports",
   "t/college": "/college",
   "t/session": "/calendar",
   "t/examsession": "/examinations/sessions",
@@ -140,6 +141,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "a/password": ["Your password", "Chosen by you, known to nobody else"],
   "s/graduation": ["Graduation", "The audit, Senate's word, clearance and the certificate"],
   "t/support": ["Help & requests", "What students have put to this office, the oldest open first"],
+  "t/reports": ["Reports & returns", "The University's statutory returns, read off the register and branded for print"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };

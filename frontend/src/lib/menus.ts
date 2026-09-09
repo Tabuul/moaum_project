@@ -793,6 +793,11 @@ export const MENUS: Record<string, Menu> = {
             "badge": "!"
           },
           {
+            "id": "t/reports",
+            "icon": "chart",
+            "label": "Reports & returns"
+          },
+          {
             "id": "t/college",
             "icon": "swap",
             "label": "College of Health Sciences"
@@ -922,6 +927,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/refunds",
             "icon": "swap",
             "label": "Refunds & credits"
+          },
+          {
+            "id": "t/reports",
+            "icon": "chart",
+            "label": "Reports & returns"
           }
         ]
       },
@@ -1656,6 +1666,11 @@ export const MENUS: Record<string, Menu> = {
             "icon": "doc",
             "label": "Transcripts",
             "badge": "9"
+          },
+          {
+            "id": "t/reports",
+            "icon": "chart",
+            "label": "Reports & returns"
           },
           {
             "id": "t/college",
