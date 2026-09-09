@@ -35,7 +35,9 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
   const [said, setSaid] = useState<string | null>(null);
   const may = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
 
-  const cands = state.candidates.map((c) => ({ num: c.jambKey, name: `${c.surname}, ${c.otherNames}`, list: c.entryMode === "DIRECT_ENTRY" ? "de" : "utme", has: c }));
+  /* V038: a file attaches only to a candidate on a committed list, so the matcher sees only committed candidates */
+  const cands = state.candidates.filter((c) => c.committed).map((c) => ({ num: c.jambKey, name: `${c.surname}, ${c.otherNames}`, list: c.entryMode === "DIRECT_ENTRY" ? "de" : "utme", has: c }));
+  const uncommitted = state.candidates.filter((c) => !c.committed).length;
   const held = (kind: string) => state.attachments.filter((a) => a.kind === kind);
 
   function readPassports(files: FileList | null) {
@@ -132,7 +134,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
           <div className="sub2">Nothing leaves this browser until you record what was read; a photograph over 64 KB is recorded by name, size and dimensions only.</div>
         </div></div>
         {!m ? (
-          <Note kind="info" title={held("PASSPORT").length ? `${held("PASSPORT").length} photographs already recorded for ${state.session}` : "No photographs uploaded yet"}>{held("PASSPORT").length ? `${held("PASSPORT").filter((a) => a.matched).length} attached to a candidate, ${held("PASSPORT").filter((a) => !a.matched && a.jambKey).length} held for nobody yet, ${held("PASSPORT").filter((a) => a.readAs === "UNREADABLE").length} unreadable. Choose the folder above to record more.` : "Choose the folder above."}</Note>
+          <Note kind="info" title={held("PASSPORT").length ? `${held("PASSPORT").length} photographs already recorded for ${state.session}` : "No photographs uploaded yet"}>{held("PASSPORT").length ? `${held("PASSPORT").filter((a) => a.matched).length} attached to a candidate, ${held("PASSPORT").filter((a) => !a.matched && a.jambKey).length} held for nobody yet, ${held("PASSPORT").filter((a) => a.readAs === "UNREADABLE").length} unreadable.${uncommitted ? ` ${uncommitted} candidate${uncommitted === 1 ? " is" : "s are"} on a list not yet committed — their files stay held until it is.` : ""} Choose the folder above to record more.` : "Choose the folder above."}</Note>
         ) : (
           <>
             {counts(m, "photograph", "Photographs")}

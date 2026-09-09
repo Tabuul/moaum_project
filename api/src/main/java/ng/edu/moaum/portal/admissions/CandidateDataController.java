@@ -47,7 +47,7 @@ class CandidateDataController {
     }
 
     public record Candidate(UUID id, String jambKey, String surname, String otherNames, String programme, String entryMode,
-                            boolean hasPassport, boolean hasDob, boolean hasOlevel) {
+                            boolean hasPassport, boolean hasDob, boolean hasOlevel, boolean committed) {
     }
 
     public record State(String session, List<Finding> findings, List<Attachment> attachments, List<Candidate> candidates) {
@@ -78,7 +78,8 @@ class CandidateDataController {
                 SELECT c.id, c.jamb_key, c.surname, c.other_names, c.programme, c.entry_mode,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT') AS has_passport,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'DATE_OF_BIRTH') AS has_dob,
-                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'OLEVEL') AS has_olevel
+                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'OLEVEL') AS has_olevel,
+                       admissions.candidate_is_committed(c.session, c.jamb_key) AS committed
                   FROM admissions.candidate c WHERE c.session = :s ORDER BY c.surname, c.other_names
                 """).param("s", s).query(Candidate.class).list();
         return new State(s, intake.attachmentState(s), attachments, candidates);

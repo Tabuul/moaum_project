@@ -202,7 +202,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 111
+\set EXPECTED 112
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -921,14 +921,18 @@ END $$;
 
 -- ── 47-50. held, not discarded ───────────────────────────────────────────
 DO $$
-DECLARE c_id uuid := gen_random_uuid(); c_key text := '202699176777GF';
+DECLARE c_id uuid := gen_random_uuid(); c_key text := '202699176777GF'; b_id uuid := gen_random_uuid();
         v_n bigint; unread bigint; pending bigint;
 BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
     PERFORM set_config('moaum.actor_office', 'academic', true);
 
-    -- a candidate with a REAL registration number: the fixtures elsewhere
-    -- use short invented ones, and the whole point here is the real shape
+    -- a candidate with a REAL registration number, on a COMMITTED admission
+    -- list: a file attaches only once the list it belongs to is committed (V038)
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office, committed_at)
+    VALUES (b_id, '2026/2027', 'CAPS_DOWNLOAD', 'UTME', '\xF1'::bytea, 1, current_date, gen_random_uuid(), 'academic', now());
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode)
+    VALUES (gen_random_uuid(), b_id, '2026/2027', c_key, '{}'::jsonb, 'IORFA', 'Msendoo Blessing', 'C00023', 220, 'UTME');
     INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname,
         other_names, programme, entry_mode, entry_level, offer_state)
     VALUES (c_id, '2026/2027', c_key, 'IORFA', 'Msendoo Blessing',
@@ -2044,6 +2048,39 @@ BEGIN
         AND (SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = v_ref)
         AND (SELECT resolved_by = two AND resolution IS NOT NULL FROM finance.gateway_event WHERE id = ev),
         format('why_required=%s same_officer_refused=%s posted=%s in_day_book=%s', ok1, ok2, v_out, n_book));
+END $$;
+
+-- ── 112. passport, date of birth and O'Level attach only once the candidate's admission list is committed (V038) ──
+DO $$
+DECLARE b_id uuid := gen_random_uuid(); c_id uuid := gen_random_uuid(); c_key text := '202612340001XX';
+        before_attach bigint; after_attach bigint; held bigint;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    -- a list loaded but NOT committed, and a candidate record standing against it
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b_id, '9995/9996', 'CAPS_DOWNLOAD', 'UTME', '\xF2'::bytea, 1, current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode)
+    VALUES (gen_random_uuid(), b_id, '9995/9996', c_key, '{}'::jsonb, 'CHECKUNCOMMITTED', 'Invented', 'C00023', 210, 'UTME');
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (c_id, '9995/9996', c_key, 'CHECKUNCOMMITTED', 'Invented', 'B.Sc. COMPUTER SCIENCE', 'UTME', 100, 'PROPOSED');
+    -- the passport, the date of birth and the O'Level all arrive, readable
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, bytes, width_px, height_px)
+    VALUES (gen_random_uuid(), '9995/9996', 'PASSPORT', c_key || '.jpg', c_key, 'EXACT', 4000, 132, 151);
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+    VALUES (gen_random_uuid(), '9995/9996', 'DATE_OF_BIRTH', c_key || ' dob', c_key, 'COLUMN', '{"dob":"05-07-2004"}'::jsonb),
+           (gen_random_uuid(), '9995/9996', 'OLEVEL', c_key || ' ol', c_key, 'COLUMN', '{"sittings":[]}'::jsonb);
+    -- the sweep attaches NOTHING while the list is not committed
+    SELECT coalesce(sum(newly_attached), 0) INTO before_attach FROM admissions.attach_pending('9995/9996');
+    SELECT count(*) INTO held FROM admissions.attachment_state('9995/9996') s WHERE s.finding = 'Held for a candidate not yet committed' AND s.n = 3;
+    -- the Academic Office commits the list; now the three attach
+    UPDATE admissions.caps_batch SET committed_at = now() WHERE id = b_id;
+    SELECT coalesce(sum(newly_attached), 0) INTO after_attach FROM admissions.attach_pending('9995/9996');
+    PERFORM pg_temp.assert('A candidate''s passport, date of birth and O''Level are held until the admission list is committed, then attach',
+        before_attach = 0 AND held = 1 AND after_attach = 3
+        AND (SELECT count(*) FROM admissions.attachment WHERE session = '9995/9996' AND candidate_id = c_id) = 3
+        AND admissions.candidate_is_committed('9995/9996', c_key),
+        format('before_commit=%s held_finding=%s after_commit=%s', before_attach, held, after_attach));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
