@@ -99,6 +99,9 @@ BEGIN
     DELETE FROM expenditure.budget;
     DELETE FROM expenditure.bid;
     DELETE FROM expenditure.tender;
+    -- API consumers and their keys (V047)
+    DELETE FROM apimgmt.key;
+    DELETE FROM apimgmt.consumer;
     -- the student's side (V026): accounts, contact, fees and references, before the students they hang on
     DELETE FROM finance.payment_reference;
     DELETE FROM finance.fee_schedule WHERE session LIKE '99%';

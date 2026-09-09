@@ -38,6 +38,7 @@ export const ROUTES: Record<string, string> = {
   "t/audit": "/audit",
   "t/notify": "/notices",
   "t/channels": "/notices",
+  "t/api": "/api-keys",
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
   "t/capsintake": "/admissions/caps",
