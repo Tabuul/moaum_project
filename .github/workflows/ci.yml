@@ -53,6 +53,11 @@ jobs:
       # committed: it is installed here and nowhere near the deployed image.
       - name: Install Playwright and Chromium
         run: |
+          # The runner ships a Google Chrome apt source that intermittently
+          # serves a corrupt index (Hash Sum mismatch), which fails the
+          # apt-get run inside `playwright install --with-deps`. We need only
+          # Ubuntu's own repos here, so drop the third-party source lists.
+          sudo rm -f /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*
           npm init -y >/dev/null
           npm install --no-save playwright@1.49.1
           npx playwright install --with-deps chromium
@@ -96,7 +101,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install the postgresql client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+        run: |
+          # Drop the runner's Google Chrome apt source: it intermittently
+          # serves a corrupt index (Hash Sum mismatch) that fails apt-get
+          # update. postgresql-client comes from Ubuntu's own repos.
+          sudo rm -f /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
 
       - name: Apply the migrations with the same runner Railway uses
         run: bash db/migrate.sh
@@ -179,7 +189,12 @@ jobs:
           cache-dependency-path: api/pom.xml
 
       - name: Install the postgresql client
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+        run: |
+          # Drop the runner's Google Chrome apt source: it intermittently
+          # serves a corrupt index (Hash Sum mismatch) that fails apt-get
+          # update. postgresql-client comes from Ubuntu's own repos.
+          sudo rm -f /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
 
       # The API never migrates. The same runner Railway uses does, first.
       - name: Apply the migrations
