@@ -112,6 +112,7 @@ export const ROUTES: Record<string, string> = {
   "t/leave": "/hr/leave",
   "t/movement": "/hr/movements",
   "t/recruit": "/hr/recruitment",
+  "t/appraisal": "/hr/appraisal",
   "t/auditrevenue": "/audit/revenue",
   "t/auditstaff": "/audit/staff",
   "t/exception": "/finance/exceptions",

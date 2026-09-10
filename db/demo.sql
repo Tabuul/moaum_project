@@ -556,4 +556,24 @@ BEGIN
     RAISE NOTICE 'demo recruitment ready: % vacancy(ies)', (SELECT count(*) FROM hrm.vacancy);
 END $recruit$;
 
+-- ── appraisal (V074): one APER recorded for the current cycle ──
+DO $appraisal$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_hr uuid; em record; v_session text;
+BEGIN
+    SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
+    v_session := coalesce(v_session, '2026/2027');
+    SELECT a.person_id INTO v_hr FROM iam.office_assignment a WHERE a.office_code = 'hrm' LIMIT 1;
+    PERFORM set_config('moaum.actor_id', coalesce(v_hr, v_actor)::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    SELECT em2.id, em2.person_id INTO em FROM hrm.employment em2 JOIN iam.person p ON p.id = em2.person_id
+      WHERE em2.status = 'ACTIVE' AND em2.category = 'ACADEMIC' AND p.staff_number LIKE 'MOAUM/DEMO/%' ORDER BY em2.staff_no LIMIT 1;
+    IF em.id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM hrm.appraisal WHERE person_id = em.person_id AND cycle = v_session) THEN
+        INSERT INTO hrm.appraisal (employment_id, person_id, cycle, self_score, supervisor_score, aper_grade, publications, note, state)
+        VALUES (em.id, em.person_id, v_session, 88, 84, 'A', 12, 'Strong teaching and research output', 'MODERATED');
+    END IF;
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo appraisal ready: % record(s)', (SELECT count(*) FROM hrm.appraisal);
+END $appraisal$;
+
 COMMIT;
