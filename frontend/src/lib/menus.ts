@@ -803,6 +803,11 @@ export const MENUS: Record<string, Menu> = {
             "badge": "!"
           },
           {
+            "id": "t/transfers",
+            "icon": "swap",
+            "label": "Departmental transfer"
+          },
+          {
             "id": "t/reports",
             "icon": "chart",
             "label": "Reports & returns"
@@ -1660,6 +1665,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Admissions"
           },
           {
+            "id": "t/transfers",
+            "icon": "swap",
+            "label": "Departmental transfer"
+          },
+          {
             "id": "t/applicants",
             "icon": "user",
             "label": "Admitted list"
@@ -2166,6 +2176,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/results", "icon": "cap", "label": "Results" },
           { "id": "s/query", "icon": "alert", "label": "Result query" },
           { "id": "s/carryover", "icon": "swap", "label": "Carryover" },
+          { "id": "s/transfer", "icon": "swap", "label": "Departmental transfer" },
           { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
         ]
       },

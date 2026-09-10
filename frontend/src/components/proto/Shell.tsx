@@ -105,6 +105,8 @@ export const ROUTES: Record<string, string> = {
   "t/payroll": "/payroll",
   "t/auditpayroll": "/payroll/variance",
   "t/staff": "/staff",
+  "t/transfers": "/transfers",
+  "s/transfer": "/student/transfer",
   "t/exception": "/finance/exceptions",
   "t/cashdesk": "/finance/exceptions",
   "t/feesched": "/finance/fees",

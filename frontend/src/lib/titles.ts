@@ -256,6 +256,14 @@ export const TITLES: Record<string, [string, string]> = {
     "Matriculation",
     "2026/2027 · numbers issued over the confirmed register"
   ],
+  "t/transfers": [
+    "Inter-departmental transfer",
+    "Applications, the committee, Senate and the register"
+  ],
+  "s/transfer": [
+    "Departmental transfer",
+    "Apply to move to another department"
+  ],
   "t/matlist": [
     "Students registered in this faculty",
     "The list the Academic Office matriculates from"
