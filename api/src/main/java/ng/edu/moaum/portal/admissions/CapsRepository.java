@@ -175,22 +175,52 @@ class CapsRepository {
         return jdbc.sql("SELECT admissions.commit_batch(:id)").param("id", batchId).query(String.class).single();
     }
 
-    /** the applicants on committed admission lists for a session, and whether each has registered */
-    java.util.List<java.util.Map<String, Object>> applicants(String session, String q, int limit) {
+    /** the applicants on committed admission lists for a session, filtered by faculty, programme
+     *  and entry mode, and whether each has registered */
+    java.util.List<java.util.Map<String, Object>> applicants(String session, String q, String faculty, String programme, String entryMode, int limit) {
         return jdbc.sql("""
                 SELECT r.jamb_reg_no, r.surname, r.other_names, r.jamb_code, r.entry_mode, r.aggregate,
-                       p.name AS programme, (a.id IS NOT NULL) AS registered, c.offer_state
+                       p.name AS programme, p.faculty_code, fa.name AS faculty, (a.id IS NOT NULL) AS registered, c.offer_state
                   FROM admissions.caps_row_live r
                   JOIN admissions.caps_batch b ON b.id = r.batch_id AND b.committed_at IS NOT NULL
                   LEFT JOIN ref.programme p ON p.code = r.jamb_code
+                  LEFT JOIN ref.faculty fa ON fa.code = p.faculty_code
                   LEFT JOIN admissions.candidate c ON c.session = r.session AND c.jamb_reg_no = r.jamb_reg_no
                   LEFT JOIN admissions.applicant_account a ON a.candidate_id = c.id
                  WHERE r.session = :s
                    AND (:q::text IS NULL OR r.surname ILIKE '%' || :q || '%' OR r.other_names ILIKE '%' || :q || '%'
                         OR r.jamb_reg_no ILIKE '%' || :q || '%')
-                 ORDER BY r.surname, r.other_names
+                   AND (:fac::text IS NULL OR p.faculty_code = :fac)
+                   AND (:prog::text IS NULL OR r.jamb_code = :prog)
+                   AND (:em::text IS NULL OR r.entry_mode = :em)
+                 ORDER BY fa.name, p.name, r.surname, r.other_names
                  LIMIT :lim
-                """).param("s", session).param("q", q, java.sql.Types.VARCHAR).param("lim", limit).query().listOfRows();
+                """).param("s", session).param("q", q, java.sql.Types.VARCHAR)
+                .param("fac", faculty, java.sql.Types.VARCHAR).param("prog", programme, java.sql.Types.VARCHAR)
+                .param("em", entryMode, java.sql.Types.VARCHAR).param("lim", limit).query().listOfRows();
+    }
+
+    /** the committed admission list broken down by programme, for the current filter — the clear
+     *  admitted view: how many are admitted into each programme and how many have registered */
+    java.util.List<java.util.Map<String, Object>> applicantBreakdown(String session, String faculty, String programme, String entryMode) {
+        return jdbc.sql("""
+                SELECT p.faculty_code, fa.name AS faculty, r.jamb_code AS programme_code, p.name AS programme,
+                       count(*) AS admitted, count(*) FILTER (WHERE a.id IS NOT NULL) AS registered
+                  FROM admissions.caps_row_live r
+                  JOIN admissions.caps_batch b ON b.id = r.batch_id AND b.committed_at IS NOT NULL
+                  LEFT JOIN ref.programme p ON p.code = r.jamb_code
+                  LEFT JOIN ref.faculty fa ON fa.code = p.faculty_code
+                  LEFT JOIN admissions.candidate c ON c.session = r.session AND c.jamb_reg_no = r.jamb_reg_no
+                  LEFT JOIN admissions.applicant_account a ON a.candidate_id = c.id
+                 WHERE r.session = :s
+                   AND (:fac::text IS NULL OR p.faculty_code = :fac)
+                   AND (:prog::text IS NULL OR r.jamb_code = :prog)
+                   AND (:em::text IS NULL OR r.entry_mode = :em)
+                 GROUP BY p.faculty_code, fa.name, r.jamb_code, p.name
+                 ORDER BY fa.name NULLS LAST, p.name NULLS LAST
+                """).param("s", session).param("fac", faculty, java.sql.Types.VARCHAR)
+                .param("prog", programme, java.sql.Types.VARCHAR).param("em", entryMode, java.sql.Types.VARCHAR)
+                .query().listOfRows();
     }
 
     /** the merit list for a programme: admissions.merit_list ranks the eligible pool and proposes the offers */
@@ -212,16 +242,21 @@ class CapsRepository {
                 .query().listOfRows();
     }
 
-    java.util.Map<String, Object> applicantCounts(String session) {
+    java.util.Map<String, Object> applicantCounts(String session, String faculty, String programme, String entryMode) {
         return jdbc.sql("""
                 SELECT count(*) AS total,
                        count(*) FILTER (WHERE a.id IS NOT NULL) AS registered
                   FROM admissions.caps_row_live r
                   JOIN admissions.caps_batch b ON b.id = r.batch_id AND b.committed_at IS NOT NULL
+                  LEFT JOIN ref.programme p ON p.code = r.jamb_code
                   LEFT JOIN admissions.candidate c ON c.session = r.session AND c.jamb_reg_no = r.jamb_reg_no
                   LEFT JOIN admissions.applicant_account a ON a.candidate_id = c.id
                  WHERE r.session = :s
-                """).param("s", session).query().singleRow();
+                   AND (:fac::text IS NULL OR p.faculty_code = :fac)
+                   AND (:prog::text IS NULL OR r.jamb_code = :prog)
+                   AND (:em::text IS NULL OR r.entry_mode = :em)
+                """).param("s", session).param("fac", faculty, java.sql.Types.VARCHAR)
+                .param("prog", programme, java.sql.Types.VARCHAR).param("em", entryMode, java.sql.Types.VARCHAR).query().singleRow();
     }
 
     List<Finding> reconcile(String session) {

@@ -169,13 +169,18 @@ public class CapsIntakeService {
         return caps.withdraw(id, reason);
     }
 
-    /** the applicants on committed admission lists for a session, with a count of how many have registered */
+    /** the applicants on committed admission lists for a session — filterable by faculty, programme
+     *  and entry mode — with a per-programme breakdown and how many have registered */
     @Transactional(readOnly = true)
-    public Map<String, Object> applicants(String session, String q, int limit) {
+    public Map<String, Object> applicants(String session, String q, String faculty, String programme, String entryMode, int limit) {
+        String fac = faculty == null || faculty.isBlank() ? null : faculty.trim();
+        String prog = programme == null || programme.isBlank() ? null : programme.trim();
+        String em = entryMode == null || entryMode.isBlank() ? null : entryMode.trim();
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", session);
-        out.put("counts", caps.applicantCounts(session));
-        out.put("applicants", caps.applicants(session, q == null || q.isBlank() ? null : q.trim(), Math.min(Math.max(limit, 1), 500)));
+        out.put("counts", caps.applicantCounts(session, fac, prog, em));
+        out.put("breakdown", caps.applicantBreakdown(session, fac, prog, em));
+        out.put("applicants", caps.applicants(session, q == null || q.isBlank() ? null : q.trim(), fac, prog, em, Math.min(Math.max(limit, 1), 500)));
         return out;
     }
 

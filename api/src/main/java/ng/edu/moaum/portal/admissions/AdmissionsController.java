@@ -63,8 +63,11 @@ class AdmissionsController {
     @PreAuthorize(READERS)
     Map<String, Object> applicants(@RequestParam String session,
                                    @RequestParam(required = false) String q,
+                                   @RequestParam(required = false) String faculty,
+                                   @RequestParam(required = false) String programme,
+                                   @RequestParam(required = false) String entryMode,
                                    @RequestParam(defaultValue = "200") int limit) {
-        return intake.applicants(session, q, limit);
+        return intake.applicants(session, q, faculty, programme, entryMode, limit);
     }
 
     /** the merit list for a programme: the eligible pool ranked, with the proposed offer that fills the quota */

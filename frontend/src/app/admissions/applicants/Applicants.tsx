@@ -1,7 +1,8 @@
 "use client";
 
-/** The applicants on committed admission lists: the pool JAMB admitted, whether each has
- *  registered for post-UTME, and the programme the University offers them. */
+/** The applicants on committed admission lists: the pool JAMB admitted, filterable by faculty,
+ *  programme and entry mode, whether each has registered for post-UTME, and a per-programme
+ *  breakdown — the clear admitted view. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -9,58 +10,116 @@ import { DTable } from "@/components/proto/DTable";
 
 export interface Applicant {
   jamb_reg_no: string; surname: string; other_names: string; jamb_code: string; entry_mode: string;
-  aggregate: number | null; programme: string | null; registered: boolean; offer_state: string | null;
+  aggregate: number | null; programme: string | null; faculty: string | null; faculty_code: string | null;
+  registered: boolean; offer_state: string | null;
 }
-export interface ApplicantsView { session: string; counts: { total: number; registered: number }; applicants: Applicant[] }
+export interface BreakdownRow { faculty: string | null; faculty_code: string | null; programme_code: string; programme: string | null; admitted: number; registered: number }
+export interface ApplicantsView { session: string; counts: { total: number; registered: number }; breakdown: BreakdownRow[]; applicants: Applicant[] }
+export interface ProgrammeOption { code: string; name: string; facultyCode: string; facultyName: string; archived: boolean }
 
-export function Applicants({ d, session, q }: { d: ApplicantsView; session: string; q: string }) {
+const modeLabel = (m: string) => (m === "UTME" ? "UTME" : m.charAt(0) + m.slice(1).toLowerCase().replace("_", " "));
+
+export function Applicants({ d, session, q, faculty, programme, entryMode, programmes }: {
+  d: ApplicantsView; session: string; q: string; faculty: string; programme: string; entryMode: string; programmes: ProgrammeOption[];
+}) {
   const router = useRouter();
   const [search, setSearch] = useState(q);
   const total = Number(d.counts.total);
   const registered = Number(d.counts.registered);
   const pending = total - registered;
 
-  function go() {
-    const p = new URLSearchParams();
-    p.set("session", session);
-    if (search.trim()) p.set("q", search.trim());
+  // faculties for the filter, and the programmes under the chosen faculty
+  const faculties = Array.from(new Map(programmes.filter((p) => !p.archived).map((p) => [p.facultyCode, p.facultyName])).entries())
+    .map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name));
+  const facProgs = programmes.filter((p) => !p.archived && (!faculty || p.facultyCode === faculty)).sort((a, b) => a.name.localeCompare(b.name));
+
+  function navigate(next: Partial<{ q: string; faculty: string; programme: string; entryMode: string }>) {
+    const state = { q: search.trim(), faculty, programme, entryMode, ...next };
+    const p = new URLSearchParams({ session });
+    if (state.q) p.set("q", state.q);
+    if (state.faculty) p.set("faculty", state.faculty);
+    if (state.programme) p.set("programme", state.programme);
+    if (state.entryMode) p.set("entryMode", state.entryMode);
     router.push(`/admissions/applicants?${p.toString()}`);
   }
+  const filtered = !!(q || faculty || programme || entryMode);
 
   return (
     <>
-      <Note kind="info" title="These are the applicants on the committed admission list">
-        Everyone JAMB admitted to the University for {session}, from the committed CAPS lists. Each proceeds to post-UTME by registering on the applicant portal with their JAMB number, which opens their application and screening. This screen shows who has registered and who has not, so the office can follow the pool up.
+      <Note kind="info" title="The admitted list — everyone on the committed admission list">
+        Everyone JAMB admitted to the University for {session}, from the committed CAPS lists. Filter by faculty, programme or entry mode to see the admitted list for any part of the University, with how many have registered for post-UTME. Each applicant proceeds to the admission process by registering on the applicant portal with their JAMB number.
       </Note>
 
       <Tiles items={[
-        ["On the committed list", total.toLocaleString(), null, `Admitted for ${session}`],
-        ["Registered for post-UTME", registered.toLocaleString(), registered ? "var(--green-ink)" : null, total ? `${Math.round((100 * registered) / total)}% of the pool` : ""],
+        [filtered ? "Admitted (this filter)" : "On the committed list", total.toLocaleString(), null, filtered ? "Matching the filter" : `Admitted for ${session}`],
+        ["Registered for post-UTME", registered.toLocaleString(), registered ? "var(--green-ink)" : null, total ? `${Math.round((100 * registered) / total)}% of these` : ""],
         ["Not yet registered", pending.toLocaleString(), pending ? "var(--chrome)" : "var(--green-ink)", "Yet to open their application"],
-        ["Showing", String(d.applicants.length), null, "Search to find a candidate"],
+        ["Showing", String(d.applicants.length), null, "The list below"],
       ]} />
 
-      <Panel title="Applicants" right={`${session} · committed admission list`}>
-        <div className="card__body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", borderBottom: "1px solid var(--line-2)" }}>
-          <div className="field" style={{ flexGrow: 1, minWidth: 220 }}><label htmlFor="ap-q">Find an applicant</label>
-            <input id="ap-q" className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); }} placeholder="Surname, other names or JAMB number" autoComplete="off" />
+      <Panel title="Filter the admitted list" right={`${session}`}>
+        <div className="card__body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="field" style={{ minWidth: 220 }}>
+            <label htmlFor="ap-fac">Faculty</label>
+            <select id="ap-fac" className="ctl" value={faculty} onChange={(e) => navigate({ faculty: e.target.value, programme: "" })}>
+              <option value="">All faculties</option>
+              {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
+            </select>
           </div>
-          <button className="btn btn--primary" onClick={go}>Search</button>
-          {q ? <button className="btn btn--ghost" onClick={() => { setSearch(""); router.push(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear</button> : null}
+          <div className="field" style={{ minWidth: 260 }}>
+            <label htmlFor="ap-prog">Programme</label>
+            <select id="ap-prog" className="ctl" value={programme} onChange={(e) => navigate({ programme: e.target.value })}>
+              <option value="">{faculty ? "All in this faculty" : "All programmes"}</option>
+              {facProgs.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+            </select>
+          </div>
+          <div className="field" style={{ minWidth: 150 }}>
+            <label htmlFor="ap-em">Entry mode</label>
+            <select id="ap-em" className="ctl" value={entryMode} onChange={(e) => navigate({ entryMode: e.target.value })}>
+              <option value="">All modes</option>
+              <option value="UTME">UTME</option>
+              <option value="DIRECT_ENTRY">Direct Entry</option>
+            </select>
+          </div>
+          <div className="field" style={{ flexGrow: 1, minWidth: 220 }}>
+            <label htmlFor="ap-q">Find an applicant</label>
+            <input id="ap-q" className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") navigate({}); }} placeholder="Surname, other names or JAMB number" autoComplete="off" />
+          </div>
+          <button className="btn btn--primary" onClick={() => navigate({})}>Search</button>
+          {filtered ? <button className="btn btn--ghost" onClick={() => { setSearch(""); router.push(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear</button> : null}
         </div>
+      </Panel>
+
+      <Panel title="Admitted by programme" right={`${d.breakdown.length} programme${d.breakdown.length === 1 ? "" : "s"}`}>
+        {d.breakdown.length ? (
+          <DTable
+            cols={["Faculty", "Programme", "Admitted|num", "Registered|num", "Yet to register|num"]}
+            rows={d.breakdown.map((b) => [
+              <span key="f">{b.faculty ?? "—"}</span>,
+              b.programme ? <span key="p">{b.programme}</span> : <span className="sub2" key="p" style={{ color: "var(--red-ink)" }}>{b.programme_code} — not a programme the University runs</span>,
+              <b className="tnum" key="a">{Number(b.admitted).toLocaleString()}</b>,
+              <span className="tnum" key="r">{Number(b.registered).toLocaleString()}</span>,
+              <span className="tnum" key="y">{(Number(b.admitted) - Number(b.registered)).toLocaleString()}</span>,
+            ])}
+            texts={d.breakdown.map((b) => `${b.faculty ?? ""} ${b.programme ?? b.programme_code}`)}
+          />
+        ) : <PBody><div className="sub2">No committed admission list for this session yet. Commit a CAPS list on the JAMB admission lists screen, and the admitted appear here.</div></PBody>}
+      </Panel>
+
+      <Panel title="Applicants" right={`${d.applicants.length} shown${filtered ? " · filtered" : ""}`}>
         {d.applicants.length ? (
           <DTable cols={["Applicant", "JAMB number|mid", "Programme (University offers)", "Entry|mid", "Aggregate|mid", "Post-UTME|num"]} rows={d.applicants.map((a) => [
-            <Two key="n" a={`${a.surname}, ${a.other_names}`} b={a.registered && a.offer_state ? a.offer_state.charAt(0) + a.offer_state.slice(1).toLowerCase() : ""} />,
+            <Two key="n" a={`${a.surname}, ${a.other_names}`} b={[a.faculty, a.registered && a.offer_state ? a.offer_state.charAt(0) + a.offer_state.slice(1).toLowerCase() : ""].filter(Boolean).join(" · ")} />,
             <span className="tnum" key="j">{a.jamb_reg_no}</span>,
             a.programme ? <span key="p">{a.programme}</span> : <span className="sub2" key="p" style={{ color: "var(--red-ink)" }}>{a.jamb_code} — not a programme the University runs</span>,
-            <span className="sub2" key="e">{a.entry_mode === "UTME" ? "UTME" : a.entry_mode.charAt(0) + a.entry_mode.slice(1).toLowerCase().replace("_", " ")}</span>,
+            <span className="sub2" key="e">{modeLabel(a.entry_mode)}</span>,
             <span className="tnum" key="ag">{a.aggregate ?? "—"}</span>,
             a.registered ? <Pil kind="ok" key="s">Registered</Pil> : <Pil kind="grey" key="s">Not yet</Pil>,
           ])} texts={d.applicants.map((a) => `${a.surname} ${a.other_names} ${a.jamb_reg_no}`)} />
-        ) : <PBody><div className="sub2">{q ? "No applicant matches that search on the committed list." : "No committed admission list for this session yet. Commit a CAPS list on the JAMB admission lists screen, and the applicants appear here."}</div></PBody>}
+        ) : <PBody><div className="sub2">{filtered ? "No applicant matches this filter on the committed list." : "No committed admission list for this session yet."}</div></PBody>}
       </Panel>
 
-      {d.applicants.length >= 200 ? <Note kind="info" title="Only the first 200 are shown">The committed list is large. Use the search to find a specific applicant by name or JAMB number; the counts above are for the whole list.</Note> : null}
+      {d.applicants.length >= 200 ? <Note kind="info" title="Only the first 200 are shown">Narrow the list with the faculty, programme or entry-mode filters, or search by name or JAMB number; the counts and the breakdown above are for the whole filtered list.</Note> : null}
     </>
   );
 }
