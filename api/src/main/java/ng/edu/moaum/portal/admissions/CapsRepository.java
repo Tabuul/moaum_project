@@ -389,4 +389,8 @@ class CapsRepository {
     Optional<String> regNoIn(String text) {
         return jdbc.sql("SELECT admissions.reg_no_in(:text)").param("text", text).query(String.class).optional();
     }
+
+    java.util.Map<String, Object> resetIntake(String session) {
+        return jdbc.sql("SELECT * FROM admissions.reset_intake(:s)").param("s", session).query().singleRow();
+    }
 }

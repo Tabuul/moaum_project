@@ -331,6 +331,11 @@ public class CapsIntakeService {
         return caps.regNoIn(text);
     }
 
+    @Transactional
+    public java.util.Map<String, Object> resetIntake(String session) {
+        return caps.resetIntake(session);
+    }
+
     private static String blankToNull(String s) {
         return s == null || s.isBlank() ? null : s.trim();
     }

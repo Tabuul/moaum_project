@@ -234,7 +234,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 118
+\set EXPECTED 119
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2277,6 +2277,19 @@ BEGIN
     DELETE FROM hrm.movement WHERE person_id = p;
     DELETE FROM hrm.employment WHERE person_id = p;
     DELETE FROM iam.person WHERE id = p;
+END $$;
+
+-- ── 119. the JAMB-list reset runs end to end and reports its counts (V078) ──
+DO $$
+DECLARE r record;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check: reset intake', true);
+    SELECT * INTO r FROM admissions.reset_intake('9990/9991');
+    PERFORM pg_temp.assert('Resetting a session''s JAMB list runs across every related table and reports its counts',
+        r.candidates = 0 AND r.applications = 0 AND r.caps_rows = 0 AND r.olevel = 0 AND r.students_detached = 0,
+        format('candidates=%s applications=%s caps=%s olevel=%s detached=%s', r.candidates, r.applications, r.caps_rows, r.olevel, r.students_detached));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

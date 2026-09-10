@@ -89,6 +89,12 @@ class AdmissionsController {
     }
 
     /** the Board records the proposed merit list: an offer per proposed candidate, waiting list for the rest eligible */
+    @PostMapping("/sessions/{session}/reset-intake")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> resetIntake(@org.springframework.web.bind.annotation.PathVariable String session) {
+        return intake.resetIntake(session);
+    }
+
     @PostMapping("/merit/record")
     @PreAuthorize(LOADERS)
     Map<String, Object> recordMerit(@jakarta.validation.Valid @RequestBody MeritRecord body) {

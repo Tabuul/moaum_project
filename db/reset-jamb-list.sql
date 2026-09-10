@@ -60,6 +60,11 @@ SELECT set_config('moaum.reason', 'reset-jamb-list.sql: cleared the JAMB list, O
 -- keep students on the register; detach them from the candidate rows being deleted
 UPDATE people.student SET candidate_id = NULL WHERE candidate_id IS NOT NULL;
 
+-- the gateway trail for the applicant fee references (linked by reference text)
+DELETE FROM finance.gateway_event WHERE reference IN (SELECT reference FROM admissions.fee_reference);
+DELETE FROM finance.gateway_attempt WHERE reference IN (SELECT reference FROM admissions.fee_reference);
+DELETE FROM finance.payment_reconciliation WHERE reference IN (SELECT reference FROM admissions.fee_reference);
+
 -- ── the applicant intake (built on the JAMB list) ──
 DELETE FROM admissions.password_reset;
 DELETE FROM admissions.clearance_document;

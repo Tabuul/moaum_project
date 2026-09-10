@@ -151,6 +151,28 @@ export function CapsIntake({
   const [problem, setProblem] = useState<Problem | null>(null);
   const [committing, setCommitting] = useState<string | null>(null);
   const [committed, setCommitted] = useState<Record<string, string>>({});
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+
+  async function resetIntake() {
+    if (!window.confirm(`Delete the entire JAMB list, applicant accounts, applications and O'Level for ${session}? Admission settings and any students already on the register are kept. This cannot be undone.`)) return;
+    if (!window.confirm("Please confirm again: this permanently deletes the uploaded candidates and everything built on them for this session.")) return;
+    setResetting(true);
+    setProblem(null);
+    setResetMsg(null);
+    try {
+      const r = await post(`/api/v1/admissions/sessions/${encodeURIComponent(session)}/reset-intake`, `Reset the JAMB list for ${session}`);
+      if (r.ok) {
+        const b = (r.body ?? {}) as Record<string, number>;
+        setResetMsg(`Reset complete for ${session}: ${b.candidates ?? 0} candidates, ${b.applications ?? 0} applications, ${b.olevel ?? 0} O'Level sittings and ${b.caps_rows ?? 0} CAPS rows deleted; ${b.students_detached ?? 0} students on the register were kept. You can upload a fresh list now.`);
+        router.refresh();
+      } else {
+        setProblem(asProblem(r.status, r.body));
+      }
+    } finally {
+      setResetting(false);
+    }
+  }
 
   const mayLoad = actingOffice !== null && LOADING_OFFICES.includes(actingOffice);
   const inForce = !!policy?.inForce;
@@ -822,6 +844,26 @@ export function CapsIntake({
         time the file is e-mailed. Pasting the rows into a fresh workbook removes it, and this screen reports it on
         every file it reads.
       </Note>
+
+      {mayLoad ? (
+        <Panel title={`Reset the JAMB list for ${session}`} right="Start the intake again">
+          <div style={{ padding: 16 }}>
+            {resetMsg ? <Note kind="ok" title="Done">{resetMsg}</Note> : null}
+            <Note kind="bad" title="This clears the uploaded list so you can upload again">
+              It deletes, for {session}, the CAPS/JAMB list and its candidates, their O&rsquo;Level, photos and attachments,
+              and the applicant intake built on them &mdash; applicant accounts, applications, documents, fee references and
+              their gateway records, and screening batches. It <b>keeps</b> your admission settings and policy, and every
+              student already on the register (each is detached from the deleted candidate). Use it when a re-upload is
+              refused because the previous list is still loaded.
+            </Note>
+            <div style={{ marginTop: 10 }}>
+              <Btn kind="urgent" disabled={resetting} onClick={() => void resetIntake()}>
+                {resetting ? "Resetting…" : `Delete the ${session} list, applications and O'Level`}
+              </Btn>
+            </div>
+          </div>
+        </Panel>
+      ) : null}
     </>
   );
 }
