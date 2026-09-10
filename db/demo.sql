@@ -599,4 +599,38 @@ BEGIN
     RAISE NOTICE 'demo governance ready: % DSR, % drill(s)', (SELECT count(*) FROM governance.dsr), (SELECT count(*) FROM governance.dr_drill);
 END $gov$;
 
+-- ── procurement, stores, assets and grants (V076) ──
+DO $ops$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_bursar uuid;
+BEGIN
+    SELECT a.person_id INTO v_bursar FROM iam.office_assignment a WHERE a.office_code = 'bursar' LIMIT 1;
+    PERFORM set_config('moaum.actor_id', coalesce(v_bursar, v_actor)::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+
+    IF NOT EXISTS (SELECT 1 FROM expenditure.requisition WHERE reference LIKE 'RQ-DEMO%') THEN
+        INSERT INTO expenditure.requisition (reference, item, description, cost_centre, value, state) VALUES
+         ('RQ-DEMO-0001', '40 desktop computers', 'CBT Hall B refresh', 'ICT Directorate', 34000000, 'RAISED'),
+         ('RQ-DEMO-0002', 'Laboratory reagents', 'Semester consumables', 'Health Sciences', 8400000, 'APPROVED'),
+         ('RQ-DEMO-0003', 'Library book acquisition', '220 CCMAS-aligned titles', 'Library', 12100000, 'PO_RAISED');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM expenditure.store_item WHERE code LIKE 'DEMO%') THEN
+        INSERT INTO expenditure.store_item (code, name, unit, quantity, reorder_level, location) VALUES
+         ('DEMO-A4', 'A4 paper', 'ream', 120, 40, 'Central Stores'),
+         ('DEMO-TONER', 'Printer toner (black)', 'cartridge', 8, 12, 'Central Stores');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM expenditure.asset WHERE tag LIKE 'DEMO%') THEN
+        INSERT INTO expenditure.asset (tag, name, category, location, acquired_on, cost, condition, last_verified_on) VALUES
+         ('DEMO/GEN/001', '100 KVA generator', 'Plant', 'Works yard', current_date - 800, 18500000, 'GOOD', current_date - 40),
+         ('DEMO/VEH/002', 'University bus', 'Vehicle', 'Transport pool', current_date - 1200, 22000000, 'FAIR', current_date - 400);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM expenditure.research_grant WHERE reference LIKE 'GR-DEMO%') THEN
+        INSERT INTO expenditure.research_grant (reference, title, principal_investigator, sponsor, amount, currency, starts_on, ends_on, state) VALUES
+         ('GR-DEMO-0001', 'Machine learning for crop yield prediction', 'Dr. T. Iorpuu (invented)', 'TETFund', 15000000, 'NGN', current_date - 90, current_date + 640, 'ACTIVE');
+    END IF;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo expenditure ops ready: % requisition(s), % asset(s)', (SELECT count(*) FROM expenditure.requisition), (SELECT count(*) FROM expenditure.asset);
+END $ops$;
+
 COMMIT;

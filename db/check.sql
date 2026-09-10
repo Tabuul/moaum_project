@@ -109,6 +109,11 @@ BEGIN
     DELETE FROM expenditure.budget;
     DELETE FROM expenditure.bid;
     DELETE FROM expenditure.tender;
+    -- procurement, stores and grants (V076)
+    DELETE FROM expenditure.requisition;
+    DELETE FROM expenditure.store_item;
+    DELETE FROM expenditure.asset;
+    DELETE FROM expenditure.research_grant;
     -- API consumers and their keys (V047)
     DELETE FROM apimgmt.key;
     DELETE FROM apimgmt.consumer;
