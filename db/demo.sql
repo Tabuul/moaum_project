@@ -481,4 +481,33 @@ BEGIN
     RAISE NOTICE 'demo transfers ready: % application(s)', (SELECT count(*) FROM people.transfer_application);
 END $xfer$;
 
+-- ── staff leave (V071): one request awaiting a decision, one already approved ──
+DO $leave$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; s1 uuid; s2 uuid; v_hr uuid; v_req uuid;
+BEGIN
+    SELECT em.person_id INTO s1 FROM hrm.employment em JOIN iam.person p ON p.id = em.person_id
+      WHERE em.status = 'ACTIVE' AND p.staff_number LIKE 'MOAUM/DEMO/%' ORDER BY em.staff_no LIMIT 1;
+    SELECT em.person_id INTO s2 FROM hrm.employment em JOIN iam.person p ON p.id = em.person_id
+      WHERE em.status = 'ACTIVE' AND p.staff_number LIKE 'MOAUM/DEMO/%' AND em.person_id <> coalesce(s1, gen_random_uuid()) ORDER BY em.staff_no LIMIT 1;
+    SELECT a.person_id INTO v_hr FROM iam.office_assignment a WHERE a.office_code = 'hrm' LIMIT 1;
+
+    IF s1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM hrm.leave_request WHERE person_id = s1) THEN
+        PERFORM set_config('moaum.actor_id', s1::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        PERFORM hrm.request_leave(s1, 'ANNUAL', current_date + 14, current_date + 23, 'A departmental colleague', 'Annual rest');
+    END IF;
+    IF s2 IS NOT NULL AND v_hr IS NOT NULL AND NOT EXISTS (SELECT 1 FROM hrm.leave_request WHERE person_id = s2) THEN
+        PERFORM set_config('moaum.actor_id', s2::text, true);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        v_req := hrm.request_leave(s2, 'CASUAL', current_date + 3, current_date + 4, NULL, 'Personal');
+        PERFORM set_config('moaum.actor_id', v_hr::text, true);
+        PERFORM set_config('moaum.actor_office', 'hrm', true);
+        PERFORM hrm.decide_leave(v_req, true, NULL);
+    END IF;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo leave ready: % request(s)', (SELECT count(*) FROM hrm.leave_request);
+END $leave$;
+
 COMMIT;

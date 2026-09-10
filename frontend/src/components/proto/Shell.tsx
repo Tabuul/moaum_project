@@ -109,6 +109,7 @@ export const ROUTES: Record<string, string> = {
   "s/transfer": "/student/transfer",
   "t/matlist": "/matriculation",
   "t/alumni": "/alumni",
+  "t/leave": "/hr/leave",
   "t/auditrevenue": "/audit/revenue",
   "t/auditstaff": "/audit/staff",
   "t/exception": "/finance/exceptions",

@@ -66,7 +66,8 @@ BEGIN
     DELETE FROM finance.nelfund_row;
     DELETE FROM finance.nelfund_batch;
     DELETE FROM finance.nelfund_status;
-    -- payroll (V069): payslips before the runs and the establishment they hang on
+    -- payroll (V069) and leave (V071): before the establishment they hang on
+    DELETE FROM hrm.leave_request;
     DELETE FROM hrm.payslip;
     DELETE FROM hrm.pay_run;
     DELETE FROM hrm.employment WHERE staff_no LIKE 'CHK-%';
@@ -223,7 +224,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 116
+\set EXPECTED 117
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2203,6 +2204,37 @@ BEGIN
     DELETE FROM finance.payment_reference WHERE reference = v_ref;
     DELETE FROM people.transfer_application WHERE student_id = stu;
     DELETE FROM people.student WHERE id = stu;
+END $$;
+
+-- ── 117. staff leave: a request is approved by a second officer and draws down the annual balance (V071) ──
+DO $$
+DECLARE p uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
+        prog text; v_req uuid; v_state text; v_bal_before int; v_bal_after int;
+BEGIN
+    SELECT code INTO prog FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+    PERFORM set_config('moaum.actor_id', a1::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check: leave', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p, 'CHK-LV', 'CHECKLEAVE', 'Invented');
+    INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status)
+    VALUES (p, 'CHK-LV-001', 'CONTISS 9', 1, 'NON_ACADEMIC', current_date, 'ACTIVE');
+    v_bal_before := hrm.leave_balance(p, extract(year FROM current_date)::int);
+    -- the staff member requests annual leave
+    PERFORM set_config('moaum.actor_id', p::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    v_req := hrm.request_leave(p, 'ANNUAL', date_trunc('year', current_date)::date + 40, date_trunc('year', current_date)::date + 44, NULL, 'check');
+    -- a second officer approves
+    PERFORM set_config('moaum.actor_id', a2::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM hrm.decide_leave(v_req, true, NULL);
+    SELECT state INTO v_state FROM hrm.leave_request WHERE id = v_req;
+    v_bal_after := hrm.leave_balance(p, extract(year FROM current_date)::int);
+    PERFORM pg_temp.assert('Staff leave is approved and draws down the annual balance',
+        v_state = 'APPROVED' AND v_bal_before = 30 AND v_bal_after = 25,
+        format('state=%s before=%s after=%s', v_state, v_bal_before, v_bal_after));
+    DELETE FROM hrm.leave_request WHERE person_id = p;
+    DELETE FROM hrm.employment WHERE person_id = p;
+    DELETE FROM iam.person WHERE id = p;
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

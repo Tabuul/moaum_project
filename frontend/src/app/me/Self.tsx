@@ -13,6 +13,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { d } from "@/lib/calendar";
 import { money } from "@/lib/format";
+import { LeaveSelf, type MyLeave } from "./LeaveSelf";
 
 export interface StaffMe {
   person: { staffNumber: string | null; surname: string; givenNames: string } | null;
@@ -43,11 +44,13 @@ function monthLabel(period: string): string {
 export function Self({
   staff,
   payslips,
+  leave,
   problem,
   actingOffice,
 }: {
   staff: StaffMe | null;
   payslips: Payslip[];
+  leave: MyLeave | null;
   problem: Problem | null;
   actingOffice: string | null;
 }) {
@@ -55,6 +58,8 @@ export function Self({
   const offices = staff?.offices ?? [];
   const who = person ? `${person.surname}, ${person.givenNames}` : "Not recorded in the Registry yet";
   const latest = payslips[0] ?? null;
+  const bal = leave && leave.isStaff && typeof leave.balance === "number" ? leave.balance : null;
+  const taken = bal == null ? null : Math.max(0, 30 - bal);
 
   return (
     <>
@@ -62,8 +67,8 @@ export function Self({
 
       <Tiles
         items={[
-          ["Leave taken", "—", null, NOT_YET],
-          ["Leave remaining", "—", null, NOT_YET],
+          taken == null ? ["Leave taken", "—", null, "Annual, this year"] : ["Leave taken", `${taken} days`, null, "Annual, this year"],
+          bal == null ? ["Leave remaining", "—", null, "Annual entitlement"] : ["Leave remaining", `${bal} days`, null, "Annual entitlement"],
           latest ? ["Last payslip", money(Number(latest.net)), "var(--green-ink)", `${monthLabel(latest.period)} · net`] : ["Last payslip", "—", null, "No payslip yet"],
           ["Appraisal", "—", null, NOT_YET],
         ]}
@@ -138,19 +143,11 @@ export function Self({
         )}
       </Panel>
 
-      <Panel title="Leave">
-        <DTable cols={["Type", "From|mid", "To|mid", "Days|mid", "Status|num"]} rows={[]} />
-        <PBody>
-          <Note kind="info" title="Leave arrives with the Staff module">
-            Applying for leave, and approving it, is the Staff module&rsquo;s work. Nothing is shown here in the meantime,
-            because a leave balance that is not the payroll&rsquo;s balance is worse than none.
-          </Note>
-        </PBody>
-      </Panel>
+      {leave ? <LeaveSelf d={leave} /> : null}
 
       <Note kind="info" title="Leave that overlaps a teaching commitment needs a named replacement">
-        The request carries the courses you teach in that window and asks who will take them. A Head of Department approving
-        leave is therefore approving a specific arrangement, not a date range.
+        Name who will take your duties in the Cover field. A Head of Department approving leave is therefore approving a
+        specific arrangement, not a date range.
       </Note>
     </>
   );
