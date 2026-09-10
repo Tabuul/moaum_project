@@ -53,6 +53,12 @@ class WalletRepository {
         return jdbc.sql("SELECT finance.wallet_topup_reference(:s, :n, :a)").param("s", student).param("n", session).param("a", amount).query(String.class).single();
     }
 
+    UUID creditWallet(UUID student, String session, BigDecimal amount, String reason) {
+        return jdbc.sql("SELECT finance.credit_wallet(:s, :n, :a, :r)")
+                .param("s", student).param("n", session).param("a", amount).param("r", reason)
+                .query(UUID.class).single();
+    }
+
     /* ── the Bursary ── */
 
     Map<String, Object> tiles(String session) {

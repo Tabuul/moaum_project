@@ -41,6 +41,9 @@ class WalletController {
     public record StatusList(String session, List<Map<String, Object>> rows) {
     }
 
+    public record Credit(@NotBlank @Size(max = 40) String number, String session, BigDecimal amount, @NotBlank @Size(max = 400) String reason) {
+    }
+
     private final WalletService service;
 
     WalletController(WalletService service) {
@@ -95,6 +98,13 @@ class WalletController {
     @PreAuthorize(BURSARY)
     Map<String, Object> reverse(@PathVariable UUID id, @Valid @RequestBody Why body) {
         return service.reverse(id, body.why());
+    }
+
+    /** the Bursary credits a student's wallet by hand — a correction, a sponsor's off-gateway payment, a goodwill credit */
+    @PostMapping("/api/v1/nelfund/credit")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> credit(@Valid @RequestBody Credit body) {
+        return service.creditWallet(body.number(), body.session(), body.amount(), body.reason());
     }
 
     @PostMapping("/api/v1/nelfund/status")

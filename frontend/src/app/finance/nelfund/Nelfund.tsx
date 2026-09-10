@@ -20,6 +20,7 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const [batch, setBatch] = useState({ ref: "", receivedOn: "", note: "", text: "" });
+  const [credit, setCredit] = useState({ number: "", amount: "", reason: "" });
   const [statusText, setStatusText] = useState("");
   const [fix, setFix] = useState<Record<string, { number: string; note: string }>>({});
   const t = d.tiles;
@@ -85,6 +86,19 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
                 </div>
                 <Field id="nb-rows" label="The rows" hint="Paste the Fund's schedule: matriculation number, name, amount — one student per line, comma- or tab-separated, with or without a header."><textarea id="nb-rows" className="ctl tnum" rows={6} value={batch.text} onChange={(e) => setBatch({ ...batch, text: e.target.value })} /></Field>
                 <div><Btn kind="primary" disabled={busy || !batch.ref.trim() || !batch.text.trim()} onClick={async () => { const rows = parseRows(batch.text, ["matric", "name", "amount"]).map((r) => ({ matricNo: r.matric, name: r.name, amount: r.amount })); const j = await send("/api/bff/api/v1/nelfund/batches", { ref: batch.ref, session: d.session, receivedOn: batch.receivedOn || null, note: batch.note || null, rows }, `NELFUND remittance ${batch.ref} loaded`); if (j) { setSaid(`${batch.ref}: ${j.matched} matched, ${j.unmatched} in suspense, ${money(Number(j.amount))}`); setBatch({ ref: "", receivedOn: "", note: "", text: "" }); } }}>Load and match</Btn></div>
+              </PBody>
+            </Panel>
+          ) : null}
+          {bursary ? (
+            <Panel title="Credit a student's wallet" right="A correction, a sponsor's payment off the gateway, a goodwill credit">
+              <PBody>
+                <div className="grid grid--3">
+                  <Field id="cw-num" label="Matriculation or admission number"><input id="cw-num" className="ctl tnum" value={credit.number} onChange={(e) => setCredit({ ...credit, number: e.target.value })} placeholder="MOAUM/CSC/26/0001" /></Field>
+                  <Field id="cw-amt" label="Amount"><input id="cw-amt" className="ctl tnum" inputMode="decimal" value={credit.amount} onChange={(e) => setCredit({ ...credit, amount: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="50000" /></Field>
+                  <Field id="cw-why" label="Reason" hint="The student sees this on their wallet statement."><input id="cw-why" className="ctl" value={credit.reason} onChange={(e) => setCredit({ ...credit, reason: e.target.value })} placeholder="Sponsor payment received by bank transfer" /></Field>
+                </div>
+                <div><Btn kind="primary" disabled={busy || !credit.number.trim() || !Number(credit.amount) || !credit.reason.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/nelfund/credit", { number: credit.number.trim(), session: d.session, amount: Number(credit.amount), reason: credit.reason.trim() }, `Wallet credited: ${credit.number.trim()}`); if (j) { setSaid(`${money(Number(credit.amount))} credited to ${credit.number.trim()} — wallet balance ${money(Number(j.balance))}`); setCredit({ number: "", amount: "", reason: "" }); } }}>Credit the wallet</Btn></div>
+                <div className="sub2" style={{ marginTop: 6 }}>This is an attributed credit against the named student&rsquo;s wallet. It counts toward what the wallet can apply to their charges, and the reason travels on the statement.</div>
               </PBody>
             </Panel>
           ) : null}

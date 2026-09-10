@@ -8,13 +8,14 @@ import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui"
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { naira, onDay, useAct } from "../common";
+import { naira, onDay, PayByCard, useAct } from "../common";
 
 const KIND: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = { CREDIT: ["NELFUND credit", "ok"], TOPUP: ["Top-up", "ok"], APPLIED: ["Applied to fees", "info"], REVERSED: ["Reversed to the Fund", "bad"], REFUND: ["Refund", "grey"] };
 
 export function Wallet({ w }: { w: StudentWallet }) {
   const { act, busy, problem } = useAct();
   const [topup, setTopup] = useState("");
+  const [topupRef, setTopupRef] = useState<{ reference: string; amount: number } | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const owed = Number(w.position.balance);
   const bal = Number(w.balance);
@@ -69,8 +70,14 @@ export function Wallet({ w }: { w: StudentWallet }) {
         <Panel title="Top up the wallet" right="When the loan does not cover the whole fee">
           <PBody>
             <Field id="wt-amt" label="Amount" hint="A payment reference like any other; confirmed, it credits the wallet."><input id="wt-amt" className="ctl tnum" value={topup} onChange={(e) => setTopup(e.target.value.replace(/[^0-9.]/g, ""))} /></Field>
-            <div><Btn kind="ghost" disabled={busy !== null || !Number(topup)} onClick={async () => { const r = await act("topup", "POST", "/me/wallet/topup-reference", { session: w.session, amount: Number(topup) }, "Wallet top-up reference"); if (r) setSaid(`Pay ${naira(Number(topup))} against ${r.reference} on the Fees page`); }}>Generate the reference</Btn> <Link href="/student/fees" className="btn btn--ghost btn--sm">Fees &amp; payments</Link></div>
-            <div className="sub2">Your upkeep is not here, and that is not an error: NELFUND pays it straight into the account you gave the Fund. It does not pass through the University.</div>
+            <div><Btn kind="ghost" disabled={busy !== null || !Number(topup)} onClick={async () => { const amt = Number(topup); const r = await act("topup", "POST", "/me/wallet/topup-reference", { session: w.session, amount: amt }, "Wallet top-up reference"); if (r) { setTopupRef({ reference: String(r.reference), amount: amt }); setSaid(`Reference ${r.reference} generated — pay it by card below, or on the Fees page.`); } }}>Generate the reference</Btn> <Link href="/student/fees" className="btn btn--ghost btn--sm">Fees &amp; payments</Link></div>
+            {topupRef ? (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line-2)" }}>
+                <div className="sub2" style={{ marginBottom: 6 }}>Reference <span className="tnum">{topupRef.reference}</span> for {naira(topupRef.amount)}. Pay it by card or USSD; the moment the gateway confirms, your wallet is credited.</div>
+                <PayByCard reference={topupRef.reference} amount={topupRef.amount} />
+              </div>
+            ) : null}
+            <div className="sub2" style={{ marginTop: 8 }}>Your upkeep is not here, and that is not an error: NELFUND pays it straight into the account you gave the Fund. It does not pass through the University.</div>
           </PBody>
         </Panel>
       </div>

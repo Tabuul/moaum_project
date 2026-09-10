@@ -82,6 +82,21 @@ public class WalletService {
     }
 
     @Transactional
+    public Map<String, Object> creditWallet(String number, String sessionAsked, BigDecimal amount, String reason) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new DomainRuleViolation("WAL_AMOUNT", "A wallet credit is for an amount.", new DomainRuleViolation.Remedy("In naira, above zero.", "Bursary"));
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new DomainRuleViolation("WAL_REASON", "A wallet credit names its reason.", new DomainRuleViolation.Remedy("Say why; the student sees it on the statement.", "Bursary"));
+        }
+        UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
+                "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("The number as the register holds it.", "Registry")));
+        String session = session(sessionAsked);
+        UUID entry = repo.creditWallet(student, session, amount, reason.trim());
+        return Map.of("entry", entry, "student", student, "session", session, "amount", amount, "balance", repo.balance(student));
+    }
+
+    @Transactional
     public Map<String, Object> match(UUID row, String number, String note) {
         UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
                 "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("The number as the register holds it.", "Registry")));
