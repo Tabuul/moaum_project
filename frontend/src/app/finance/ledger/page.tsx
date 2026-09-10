@@ -17,7 +17,7 @@ export default async function LedgerPage({ searchParams }: { searchParams: Promi
   const [me, l] = await Promise.all([api<Me>("/api/v1/iam/me"), api<{ from: string; to: string; rows: DayBookRow[] }>(`/api/v1/finance/ledger${q.toString() ? `?${q}` : ""}`)]);
   return (
     <Shell route="t/ledger" me={me.ok ? me.data : null}>
-      {l.ok ? <Ledger from={l.data.from} to={l.data.to} rows={l.data.rows} /> : <ProblemNotice problem={l.problem} />}
+      {l.ok ? <Ledger from={l.data.from} to={l.data.to} rows={l.data.rows} actingOffice={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={l.problem} />}
     </Shell>
   );
 }

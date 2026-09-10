@@ -2,6 +2,7 @@
 
 /** tLedger — proto/part18.html: the day book, filtered by day, exported as the finance system takes it (V037). */
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { when, type DayBookRow } from "@/lib/bursary";
 import { csv, download } from "@/lib/results";
@@ -9,8 +10,9 @@ import { Btn, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 
-export function Ledger({ from, to, rows }: { from: string; to: string; rows: DayBookRow[] }) {
+export function Ledger({ from, to, rows, actingOffice }: { from: string; to: string; rows: DayBookRow[]; actingOffice?: string | null }) {
   const router = useRouter();
+  const mayRefund = ["bursar", "super"].includes(actingOffice ?? "");
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
   const total = rows.reduce((n, r) => n + Number(r.amount), 0);
@@ -38,7 +40,7 @@ export function Ledger({ from, to, rows }: { from: string; to: string; rows: Day
       </Panel>
       <Panel title="Transactions" right={`${rows.length} · newest first`}>
         {rows.length ? (
-          <DTable cols={["Reference", "When|mid", "Payer", "Purpose", "Channel", "Amount|num", "Receipt|num"]} rows={rows.map((r) => [
+          <DTable cols={mayRefund ? ["Reference", "When|mid", "Payer", "Purpose", "Channel", "Amount|num", "Receipt|num", "Action|num"] : ["Reference", "When|mid", "Payer", "Purpose", "Channel", "Amount|num", "Receipt|num"]} rows={rows.map((r) => [
             <span className="tnum sub2" key="r">{r.reference}</span>,
             <span className="sub2 tnum" key="w">{when(r.confirmed_at)}</span>,
             <Two key="p" a={r.payer} b={r.number} />,
@@ -46,6 +48,7 @@ export function Ledger({ from, to, rows }: { from: string; to: string; rows: Day
             <span key="c">{r.channel.startsWith("Card") ? <Pil kind="ok">{r.channel}</Pil> : r.channel.includes("wallet") ? <Pil kind="info">{r.channel}</Pil> : <Pil kind="grey">{r.channel}</Pil>}{r.note ? <div className="sub2">{r.note}</div> : null}</span>,
             <b className="tnum" key="a">{money(Number(r.amount))}</b>,
             <span className="tnum sub2" key="n">{r.receipt_no ?? "—"}</span>,
+            ...(mayRefund ? [<Link key="rf" href={`/finance/refunds?refund=${encodeURIComponent(r.reference)}`} className="btn btn--ghost btn--sm">Refund</Link>] : []),
           ])} texts={rows.map((r) => `${r.reference} ${r.payer} ${r.number} ${r.purpose} ${r.channel}`)} />
         ) : <PBody><div className="sub2">Nothing confirmed between {from} and {to}.</div></PBody>}
       </Panel>

@@ -6,11 +6,13 @@ import { Refunds, type Refund } from "./Refunds";
 export const dynamic = "force-dynamic";
 
 /** t/refunds — refunds and credits, maker–checker controlled. */
-export default async function RefundsPage() {
+export default async function RefundsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const params = await searchParams;
+  const initialRefund = typeof params.refund === "string" ? params.refund : null;
   const [me, list] = await Promise.all([api<Me>("/api/v1/iam/me"), api<Refund[]>("/api/v1/finance/refunds")]);
   return (
     <Shell route="t/refunds" me={me.ok ? me.data : null}>
-      {list.ok ? <Refunds refunds={list.data} actingOffice={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={list.problem} />}
+      {list.ok ? <Refunds refunds={list.data} actingOffice={me.ok ? me.data.activeOffice : null} initialRefund={initialRefund} /> : <ProblemNotice problem={list.problem} />}
     </Shell>
   );
 }
