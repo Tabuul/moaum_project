@@ -77,11 +77,26 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
   async function record(kind: string, items: { sourceName: string; jambKey: string | null; readAs: string; payload: Record<string, unknown>; bytes?: number; widthPx?: number; heightPx?: number }[]) {
     setBusy(true);
     setProblem(null);
+    /* A whole O'Level list is tens of MB in one body — too large for a single request; send it in
+       tranches. record() is idempotent per source name and re-matches everything held on every call,
+       so the tranches add up and the last findings stand. */
+    const CHUNK = 400;
     try {
-      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${kind} download recorded for ${state.session}`) }, body: JSON.stringify({ kind, items }) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setSaid(`${j.recorded} recorded; ${(j.attached as { kind: string; newly_attached: number }[]).map((a) => `${a.newly_attached} ${a.kind.toLowerCase().replace("_", " ")}`).join(", ") || "nothing newly"} attached to a candidate.`);
+      let recorded = 0;
+      const tally: Record<string, number> = {};
+      for (let i = 0; i < items.length; i += CHUNK) {
+        const slice = items.slice(i, i + CHUNK);
+        if (items.length > CHUNK) setSaid(`Recording ${Math.min(i + slice.length, items.length)} of ${items.length}…`);
+        const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${kind} download recorded for ${state.session}`) }, body: JSON.stringify({ kind, items: slice }) });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+        recorded += (j.recorded as number) ?? 0;
+        for (const a of (j.attached as { kind: string; newly_attached: number }[] | undefined) ?? []) {
+          tally[a.kind] = (tally[a.kind] ?? 0) + a.newly_attached;
+        }
+      }
+      const attached = Object.entries(tally).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k.toLowerCase().replace("_", " ")}`).join(", ");
+      setSaid(`${recorded} recorded; ${attached || "nothing newly"} attached to a candidate.`);
       router.refresh();
     } finally {
       setBusy(false);
