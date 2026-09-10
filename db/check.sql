@@ -62,6 +62,7 @@ BEGIN
     DELETE FROM health.visit;
     DELETE FROM health.appointment;
     DELETE FROM health.profile;
+    DELETE FROM finance.paydirect_collection;
     DELETE FROM finance.wallet_withdrawal;
     DELETE FROM finance.wallet_entry;
     DELETE FROM finance.nelfund_row;
@@ -235,7 +236,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 120
+\set EXPECTED 121
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2331,6 +2332,28 @@ BEGIN
         AND w.state = 'PAID' AND finance.wallet_balance(s3) = 0,
         format('early_refused=%s eligible=%s bal=%s over_refused=%s samepay_refused=%s state=%s final=%s',
                ok_early, elig.eligible, v_bal, ok_over, ok_samepay, w.state, finance.wallet_balance(s3)));
+END $$;
+
+-- ── 121. Quickteller PayDirect billers route by College, and the collections import confirms a PRN (V080) ──
+DO $$
+DECLARE s_main uuid := gen_random_uuid(); s_chs uuid := gen_random_uuid(); v_ref text; r record; b_main text; b_chs text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s_main, 'MOAUM/ADM/99/990130', 'MOAUM/CHK/99/0130', 'CHECKPD', 'Main', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+        (s_chs,  'MOAUM/ADM/99/990131', 'MOAUM/CHK/99/0131', 'CHECKPD', 'Health', 'C00061', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    SELECT biller_code INTO b_main FROM finance.paydirect_biller_for(s_main);
+    SELECT biller_code INTO b_chs FROM finance.paydirect_biller_for(s_chs);
+    -- a reference (the PRN) for the main student, then the collections import matches and confirms it; an unknown PRN does not
+    v_ref := finance.new_reference(s_main, '9999/0000', 50000, NULL);
+    SELECT * INTO r FROM finance.import_paydirect(
+        ('[{"prn":"' || v_ref || '","amount":"50000","rrn":"RRNCHK001"},{"prn":"NOPRN-CHK-9999","amount":"1000","rrn":"RRNCHK002"}]')::jsonb);
+    PERFORM pg_temp.assert('PayDirect routes a Health Sciences programme to the CHS biller and every other programme to the main biller, and the collections import matches a PRN and confirms it through the same confirmation as every payment',
+        b_main = '04255101' AND b_chs = '04263001' AND r.matched = 1 AND r.unmatched = 1
+        AND (SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = v_ref)
+        AND (SELECT channel FROM finance.payment_reference WHERE reference = v_ref) = 'Quickteller PayDirect',
+        format('main=%s chs=%s matched=%s unmatched=%s', b_main, b_chs, r.matched, r.unmatched));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

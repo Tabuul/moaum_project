@@ -157,4 +157,38 @@ class PaymentsRepository {
     void clearGatewaySecret(String gateway) {
         jdbc.sql("SELECT finance.clear_gateway_secret(:g)").param("g", gateway).query().singleRow();
     }
+
+    /* ── Quickteller PayDirect billers (V080): routing by College, and the collections import ── */
+
+    List<Map<String, Object>> paydirectBillers() {
+        return jdbc.sql("SELECT scope, biller_code, name, pay_link, active, updated_at FROM finance.paydirect_biller ORDER BY scope").query().listOfRows();
+    }
+
+    boolean paydirectActive() {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.paydirect_biller WHERE scope = 'MAIN' AND active)").query(Boolean.class).single());
+    }
+
+    Map<String, Object> paydirectBillerFor(UUID student) {
+        return jdbc.sql("SELECT scope, biller_code, name, pay_link FROM finance.paydirect_biller_for(:s)").param("s", student).query().singleRow();
+    }
+
+    Map<String, Object> paydirectMain() {
+        return jdbc.sql("SELECT scope, biller_code, name, pay_link FROM finance.paydirect_biller WHERE scope = 'MAIN'").query().singleRow();
+    }
+
+    Map<String, Object> setPaydirectBiller(String scope, String code, String name, String link, boolean active) {
+        return jdbc.sql("SELECT scope, biller_code, name, pay_link, active, updated_at FROM finance.set_paydirect_biller(:sc, :c, :n, :l, :a)")
+                .param("sc", scope).param("c", code).param("n", name).param("l", link, Types.VARCHAR).param("a", active).query().singleRow();
+    }
+
+    Map<String, Object> importPaydirect(String rowsJson) {
+        return jdbc.sql("SELECT * FROM finance.import_paydirect(:j::jsonb)").param("j", rowsJson).query().singleRow();
+    }
+
+    List<Map<String, Object>> paydirectCollections(int limit) {
+        return jdbc.sql("""
+                SELECT biller_code, prn, amount, paid_at, channel, rrn, payer, state, reference, why, imported_at
+                  FROM finance.paydirect_collection ORDER BY imported_at DESC LIMIT :n
+                """).param("n", limit).query().listOfRows();
+    }
 }

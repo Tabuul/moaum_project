@@ -7,6 +7,10 @@ export interface GatewayEvent {
 }
 export interface Hanging { id: string; reference: string; gateway: string; kind: string; opened_at: string; checked_at: string | null; checks: number; amount: number | null; expires_at: string | null; minutes: number; payer: string | null; number: string | null }
 export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; settled: number; exceptions: number; bad_signatures: number; settled_today: number }; events: GatewayEvent[]; hanging: Hanging[]; portalUrl: string }
+
+export interface PaydirectBiller { scope: string; biller_code: string; name: string; pay_link: string | null; active: boolean; updated_at: string }
+export interface PaydirectCollection { biller_code: string | null; prn: string; amount: number | null; paid_at: string | null; channel: string | null; rrn: string | null; payer: string | null; state: string; reference: string | null; why: string | null; imported_at: string }
+export interface PaydirectDesk { billers: PaydirectBiller[]; collections: PaydirectCollection[] }
 export interface DayBookRow { reference: string; confirmed_at: string; payer: string; number: string; purpose: string; amount: number; channel: string; receipt_no: string | null; note: string | null; session: string }
 export interface BursaryView {
   session: string;

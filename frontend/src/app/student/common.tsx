@@ -48,13 +48,16 @@ export function naira(n: number | string | null | undefined): string {
   return `₦${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
-const GATEWAY_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller" };
+const GATEWAY_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller", paydirect: "Quickteller PayDirect" };
+
+interface Paydirect { gateway: string; billerName: string; billerCode: string; prn: string; payLink: string | null; ussd: string }
 
 /** Card and USSD through whichever gateway is wired; when more than one is on, the payer picks. */
 export function PayByCard({ reference, amount }: { reference: string; amount: number }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [choices, setChoices] = useState<string[] | null>(null);
+  const [pd, setPd] = useState<Paydirect | null>(null);
   async function go(gateway?: string) {
     setBusy(true);
     setProblem(null);
@@ -65,6 +68,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
         setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
         return;
       }
+      if (j && (j as Paydirect).gateway === "paydirect") { setPd(j as Paydirect); setChoices(null); return; }
       window.location.href = String((j as { url: string }).url);
     } finally {
       setBusy(false);
@@ -86,7 +90,19 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
   }
   return (
     <>
-      {choices ? (
+      {pd ? (
+        <div className="notice notice--info" style={{ marginTop: 6 }}>
+          <p><b>Pay {naira(amount)} to {pd.billerName} on Quickteller.</b></p>
+          <p>Your Payment Reference Number (PRN) is <b className="tnum">{pd.prn}</b>. Enter it on any of these — the payment reaches the University and clears your fee automatically:</p>
+          <ul style={{ margin: "6px 0 0 18px" }}>
+            <li>Online: {pd.payLink ? <a href={pd.payLink} target="_blank" rel="noreferrer">{pd.payLink}</a> : <>Quickteller, biller code <b className="tnum">{pd.billerCode}</b></>}</li>
+            <li>USSD: <b className="tnum">{pd.ussd}</b></li>
+            <li>Any bank branch or ATM: quote biller code <b className="tnum">{pd.billerCode}</b> and the PRN above.</li>
+          </ul>
+          <p className="sub2" style={{ marginTop: 6 }}>Keep the PRN. Once you pay, it is confirmed here when the Bursary reconciles the day&rsquo;s Quickteller collections; you will see the receipt on your Fees page.</p>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setPd(null)}>Choose another way to pay</button>
+        </div>
+      ) : choices ? (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <span className="sub2">Pay {naira(amount)} with</span>
           {choices.map((g) => <button key={g} type="button" className="btn btn--go" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</button>)}

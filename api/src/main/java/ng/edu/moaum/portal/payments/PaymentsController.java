@@ -160,4 +160,32 @@ class PaymentsController {
     Map<String, Object> clearKey(@PathVariable String gateway) {
         return payments.clearKey(gateway);
     }
+
+    /* ── V080: Quickteller PayDirect billers, routing and the collections import ── */
+
+    public record ImportRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {
+    }
+
+    public record BillerIn(@NotBlank String code, @NotBlank String name, String link, Boolean active) {
+    }
+
+    /** the billers, and the imported collections — the Bursary's PayDirect desk */
+    @GetMapping("/paydirect")
+    @PreAuthorize(READERS)
+    Map<String, Object> paydirect() {
+        return payments.paydirect();
+    }
+
+    /** import the Quickteller/PayDirect collections report: each PRN matched to its reference and confirmed */
+    @PostMapping("/paydirect/import")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> importPaydirect(@Valid @RequestBody ImportRows body) {
+        return payments.importPaydirect(body.rows());
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/paydirect/billers/{scope}")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> setBiller(@PathVariable String scope, @Valid @RequestBody BillerIn body) {
+        return payments.setPaydirectBiller(scope, body.code(), body.name(), body.link(), body.active());
+    }
 }

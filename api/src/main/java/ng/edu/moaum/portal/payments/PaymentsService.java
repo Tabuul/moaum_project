@@ -168,12 +168,18 @@ public class PaymentsService {
         return quickteller() != null;
     }
 
+    /** PayDirect is on when a main biller is configured (the billers are a setting, seeded by V080) */
+    public boolean paydirectOn() {
+        return repo.paydirectActive();
+    }
+
     /** which gateways are wired, for the button to say so */
     public Map<String, Object> gateways() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("paystack", paystackOn());
         m.put("flutterwave", flutterwaveOn());
         m.put("quickteller", quicktellerOn());
+        m.put("paydirect", paydirectOn());
         return m;
     }
 
@@ -206,6 +212,11 @@ public class PaymentsService {
             // Quickteller's page is reached by a form POST, so the browser is sent to
             // this portal's own /quickteller/start, which renders the self-posting form.
             url = quicktellerStartUrl(r.reference());
+        } else if ("paydirect".equals(g) && paydirectOn()) {
+            // PayDirect is not a redirect checkout: the student pays the reference (the PRN)
+            // on the Quickteller biller for their College, or by ATM/USSD/bank. Return the
+            // instruction, and record the attempt so the sweep re-checks it.
+            return paydirectInstruction(r, account);
         } else {
             throw new DomainRuleViolation("PAY_GATEWAY_NOT_WIRED", "Card and USSD payment arrive when a payment gateway is wired to the portal.",
                     new DomainRuleViolation.Remedy("Pay by bank transfer or at a bank branch against the reference; the Bursary confirms it against the bank's record.", "Bursary"));
@@ -240,6 +251,50 @@ public class PaymentsService {
                     new DomainRuleViolation.Remedy("Try again in a moment, or pay by transfer against the reference.", "Bursary"));
         }
         return String.valueOf(d.get("link"));
+    }
+
+    /* ── Quickteller PayDirect (V080): billers routed by College; the PRN is the reference ── */
+
+    private Map<String, Object> paydirectInstruction(PaymentsRepository.Reference r, UUID account) {
+        Map<String, Object> b = "FEES".equals(r.kind()) ? repo.paydirectBillerFor(account) : repo.paydirectMain();
+        final String chosen = "paydirect";
+        AuditContextHolder.with(new AuditContext(account, "bursar", "PayDirect PRN issued for " + r.reference(), null, null),
+                () -> tx.execute(st -> { repo.attempt(r.reference(), chosen, r.kind(), account); return null; }));
+        String code = str(b.get("biller_code"));
+        String amt = r.amount().stripTrailingZeros().toPlainString();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("gateway", "paydirect");
+        out.put("reference", r.reference());
+        out.put("prn", r.reference());
+        out.put("billerCode", code);
+        out.put("billerName", str(b.get("name")));
+        out.put("payLink", b.get("pay_link"));
+        out.put("ussd", "*723*" + code + "*" + amt + "#");
+        out.put("amount", r.amount());
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> paydirect() {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("billers", repo.paydirectBillers());
+        m.put("collections", repo.paydirectCollections(200));
+        return m;
+    }
+
+    /** the Quickteller/PayDirect collections report, matched by PRN and confirmed — the report route to the details */
+    public Map<String, Object> importPaydirect(java.util.List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new DomainRuleViolation("PAY_PD_ROWS", "The report is rows: PRN, amount, and a settlement reference.",
+                    new DomainRuleViolation.Remedy("Export the Quickteller collections report and send its rows.", "Bursary"));
+        }
+        String json = mapper.writeValueAsString(rows);
+        return AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.importPaydirect(json)));
+    }
+
+    public Map<String, Object> setPaydirectBiller(String scope, String code, String name, String link, Boolean active) {
+        return AuditContextHolder.with(AuditContextHolder.required(),
+                () -> tx.execute(st -> repo.setPaydirectBiller(scope, code, name, link, active == null || active)));
     }
 
     /* ── Quickteller Business (Interswitch): hosted page reached by a self-posting form ── */
