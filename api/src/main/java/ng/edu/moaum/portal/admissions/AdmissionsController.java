@@ -88,11 +88,12 @@ class AdmissionsController {
     public record MeritRecord(@jakarta.validation.constraints.NotBlank String session, @jakarta.validation.constraints.NotBlank String programme) {
     }
 
-    /** the Board records the proposed merit list: an offer per proposed candidate, waiting list for the rest eligible */
-    @PostMapping("/sessions/{session}/reset-intake")
+    /** Clear a CAPS upload and start the intake again: deletes the JAMB list, candidates, O'Level and
+     *  applicant intake for the session, keeps the admission config and every student on the register. */
+    @PostMapping("/sessions/{session}/{year}/reset-intake")
     @PreAuthorize(LOADERS)
-    Map<String, Object> resetIntake(@org.springframework.web.bind.annotation.PathVariable String session) {
-        return intake.resetIntake(session);
+    Map<String, Object> resetIntake(@PathVariable String session, @PathVariable String year) {
+        return intake.resetIntake(session + "/" + year);
     }
 
     @PostMapping("/merit/record")

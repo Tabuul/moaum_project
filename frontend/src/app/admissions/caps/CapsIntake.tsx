@@ -161,7 +161,7 @@ export function CapsIntake({
     setProblem(null);
     setResetMsg(null);
     try {
-      const r = await post(`/api/v1/admissions/sessions/${encodeURIComponent(session)}/reset-intake`, `Reset the JAMB list for ${session}`);
+      const r = await post(`/api/v1/admissions/sessions/${session}/reset-intake`, `Reset the JAMB list for ${session}`);
       if (r.ok) {
         const b = (r.body ?? {}) as Record<string, number>;
         setResetMsg(`Reset complete for ${session}: ${b.candidates ?? 0} candidates, ${b.applications ?? 0} applications, ${b.olevel ?? 0} O'Level sittings and ${b.caps_rows ?? 0} CAPS rows deleted; ${b.students_detached ?? 0} students on the register were kept. You can upload a fresh list now.`);
