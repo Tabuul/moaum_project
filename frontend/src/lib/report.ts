@@ -42,6 +42,12 @@ export const REPORTS: ReportSpec[] = [
     subtitle: "Fees confirmed for the session, by category",
     offices: ["bursar", "registrar", "dregistrar", "academic", "audit", "ict", "admin", "super", "vc", "dvc"],
   },
+  {
+    slug: "funding",
+    title: "Funding return",
+    subtitle: "Student funding by source and nature, and the wallet cash flow",
+    offices: ["bursar", "audit", "deputyaudit", "registrar", "dregistrar", "academic", "ict", "admin", "super", "vc", "dvc"],
+  },
 ];
 
 export function reportFor(slug: string): ReportSpec | undefined {

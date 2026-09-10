@@ -652,4 +652,66 @@ BEGIN
     RAISE NOTICE 'demo question bank ready: % question(s)', (SELECT count(*) FROM assessment.question);
 END $cbt$;
 
+-- ── sources of funding (V079): a NELFUND remittance, scholarships, an applied wallet and a paid withdrawal ──
+DO $fund$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30';
+        v_session text; v_rows jsonb; v_appr uuid; v_payer uuid; s_paid uuid; s_apply uuid; w record;
+BEGIN
+    SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
+    IF v_session IS NULL THEN v_session := '2026/2027'; END IF;
+    -- once only (CI runs demo.sql twice)
+    IF EXISTS (SELECT 1 FROM finance.nelfund_batch WHERE ref = 'NLF/DEMO/0001') THEN RETURN; END IF;
+
+    -- two demo staff stand behind money leaving the wallet (the approver is not the payer)
+    SELECT id INTO v_appr FROM iam.person WHERE staff_number LIKE 'MOAUM/DEMO/%' ORDER BY staff_number LIMIT 1;
+    SELECT id INTO v_payer FROM iam.person WHERE staff_number LIKE 'MOAUM/DEMO/%' AND id <> v_appr ORDER BY staff_number LIMIT 1;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+
+    -- a NELFUND remittance for the Accounting demo students, matched against the register (credits their wallets)
+    SELECT jsonb_agg(jsonb_build_object('matricNo', matric_no, 'name', surname || ' ' || other_names, 'amount', '45000'))
+      INTO v_rows FROM people.student WHERE surname = 'DEMO' AND matric_no LIKE 'MOAUM/ACC/%' AND status = 'ACTIVE';
+    IF v_rows IS NOT NULL THEN
+        PERFORM finance.load_nelfund_batch('NLF/DEMO/0001', v_session, current_date, 'Demo NELFUND remittance', v_rows);
+    END IF;
+
+    -- scholarships (grants): to the paid-in-full student, and to an Economics student so a balance is held
+    SELECT id INTO s_paid FROM people.student WHERE matric_no LIKE 'MOAUM/MTC/%/9903' LIMIT 1;
+    IF s_paid IS NOT NULL THEN
+        PERFORM finance.credit_wallet(s_paid, v_session, 50000, 'TETFund merit scholarship 2026/2027 (demo)', 'SCHOLARSHIP');
+    END IF;
+    SELECT id INTO s_apply FROM people.student WHERE surname = 'DEMO' AND matric_no LIKE 'MOAUM/ECO/%' AND status = 'ACTIVE' LIMIT 1;
+    IF s_apply IS NOT NULL THEN
+        PERFORM finance.credit_wallet(s_apply, v_session, 60000, 'State bursary award 2026/2027 (demo)', 'SCHOLARSHIP');
+    END IF;
+
+    -- one Accounting student applies their NELFUND credit to the session charge (shows applied + reconciliation)
+    BEGIN
+        SELECT id INTO s_apply FROM people.student WHERE surname = 'DEMO' AND matric_no LIKE 'MOAUM/ACC/%' AND status = 'ACTIVE' ORDER BY matric_no LIMIT 1;
+        IF s_apply IS NOT NULL THEN
+            PERFORM set_config('moaum.actor_id', s_apply::text, true);
+            PERFORM finance.apply_wallet(s_apply, v_session, NULL);
+        END IF;
+    EXCEPTION WHEN OTHERS THEN NULL;   -- best effort: needs an outstanding charge
+    END;
+
+    -- the paid-in-full student withdraws the scholarship excess: requested, approved, and paid by a second officer
+    BEGIN
+        IF s_paid IS NOT NULL AND v_appr IS NOT NULL AND v_payer IS NOT NULL THEN
+            PERFORM set_config('moaum.actor_id', s_paid::text, true);
+            SELECT * INTO w FROM finance.request_withdrawal(s_paid, v_session, 50000, 'Zenith Bank', '1234567890', 'DEMO Student');
+            PERFORM set_config('moaum.actor_id', v_appr::text, true);
+            PERFORM finance.approve_withdrawal(w.id);
+            PERFORM set_config('moaum.actor_id', v_payer::text, true);
+            PERFORM finance.pay_withdrawal(w.id, 'TRX/DEMO/0001');
+        END IF;
+    EXCEPTION WHEN OTHERS THEN NULL;   -- best effort: needs the fees cleared
+    END;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo funding ready: % source(s), % wallet entr(ies)', (SELECT count(*) FROM finance.funding_source), (SELECT count(*) FROM finance.wallet_entry);
+END $fund$;
+
 COMMIT;
