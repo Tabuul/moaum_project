@@ -66,8 +66,9 @@ BEGIN
     DELETE FROM finance.nelfund_row;
     DELETE FROM finance.nelfund_batch;
     DELETE FROM finance.nelfund_status;
-    -- payroll (V069) and leave (V071): before the establishment they hang on
+    -- payroll (V069), leave (V071) and movements (V072): before the establishment they hang on
     DELETE FROM hrm.leave_request;
+    DELETE FROM hrm.movement;
     DELETE FROM hrm.payslip;
     DELETE FROM hrm.pay_run;
     DELETE FROM hrm.employment WHERE staff_no LIKE 'CHK-%';
@@ -224,7 +225,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 117
+\set EXPECTED 118
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2233,6 +2234,38 @@ BEGIN
         v_state = 'APPROVED' AND v_bal_before = 30 AND v_bal_after = 25,
         format('state=%s before=%s after=%s', v_state, v_bal_before, v_bal_after));
     DELETE FROM hrm.leave_request WHERE person_id = p;
+    DELETE FROM hrm.employment WHERE person_id = p;
+    DELETE FROM iam.person WHERE id = p;
+END $$;
+
+-- ── 118. a staff movement is real only when the instrument is issued, which changes the record (V072) ──
+DO $$
+DECLARE p uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
+        v_mv uuid; v_state text; v_grade_before text; v_grade_after text; v_ref text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', a1::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check: movement', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p, 'CHK-MV', 'CHECKMOVE', 'Invented');
+    INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status)
+    VALUES (p, 'CHK-MV-001', 'CONTISS 9', 1, 'NON_ACADEMIC', current_date, 'ACTIVE');
+    SELECT grade INTO v_grade_before FROM hrm.employment WHERE person_id = p;
+    v_mv := hrm.raise_movement(p, 'PROMOTION', current_date, NULL, 'Due for promotion', 'CONTISS 13', 1);
+    -- the record is unchanged while only requested
+    v_grade_after := (SELECT grade FROM hrm.employment WHERE person_id = p);
+    -- a second officer approves; the requester cannot
+    PERFORM set_config('moaum.actor_id', a2::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM hrm.approve_movement(v_mv);
+    -- still unchanged: approved is not real
+    IF (SELECT grade FROM hrm.employment WHERE person_id = p) <> 'CONTISS 9' THEN RAISE EXCEPTION 'record changed before the instrument'; END IF;
+    v_ref := hrm.issue_movement_instrument(v_mv);
+    SELECT state INTO v_state FROM hrm.movement WHERE id = v_mv;
+    v_grade_after := (SELECT grade FROM hrm.employment WHERE person_id = p);
+    PERFORM pg_temp.assert('A staff movement changes the record only when the instrument is issued',
+        v_grade_before = 'CONTISS 9' AND v_state = 'IMPLEMENTED' AND v_grade_after = 'CONTISS 13' AND v_ref IS NOT NULL,
+        format('before=%s state=%s after=%s ref=%s', v_grade_before, v_state, v_grade_after, v_ref));
+    DELETE FROM hrm.movement WHERE person_id = p;
     DELETE FROM hrm.employment WHERE person_id = p;
     DELETE FROM iam.person WHERE id = p;
 END $$;

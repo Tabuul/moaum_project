@@ -510,4 +510,29 @@ BEGIN
     RAISE NOTICE 'demo leave ready: % request(s)', (SELECT count(*) FROM hrm.leave_request);
 END $leave$;
 
+-- ── staff movements (V072): a promotion approved but awaiting its instrument ──
+DO $movement$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_hr uuid; v_reg uuid; s1 uuid; v_cur text; v_target text; v_mv uuid;
+BEGIN
+    SELECT a.person_id INTO v_hr FROM iam.office_assignment a WHERE a.office_code = 'hrm' LIMIT 1;
+    SELECT a.person_id INTO v_reg FROM iam.office_assignment a WHERE a.office_code = 'registrar' LIMIT 1;
+    SELECT em.person_id, em.grade INTO s1, v_cur FROM hrm.employment em JOIN iam.person p ON p.id = em.person_id
+      WHERE em.status = 'ACTIVE' AND p.staff_number LIKE 'MOAUM/DEMO/%' AND em.category = 'NON_ACADEMIC' ORDER BY em.staff_no LIMIT 1;
+    SELECT grade INTO v_target FROM hrm.grade WHERE category = 'NON_ACADEMIC' AND grade <> v_cur ORDER BY basic DESC LIMIT 1;
+
+    IF s1 IS NOT NULL AND v_hr IS NOT NULL AND v_reg IS NOT NULL AND v_hr <> v_reg AND v_target IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM hrm.movement WHERE person_id = s1) THEN
+        PERFORM set_config('moaum.actor_id', v_hr::text, true);
+        PERFORM set_config('moaum.actor_office', 'hrm', true);
+        v_mv := hrm.raise_movement(s1, 'PROMOTION', current_date, NULL, 'Due for promotion on merit', v_target, 1);
+        PERFORM set_config('moaum.actor_id', v_reg::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM hrm.approve_movement(v_mv);   -- left APPROVED: awaiting the instrument, so nothing has changed yet
+    END IF;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo movements ready: % movement(s)', (SELECT count(*) FROM hrm.movement);
+END $movement$;
+
 COMMIT;
