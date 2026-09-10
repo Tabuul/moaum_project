@@ -132,6 +132,7 @@ BEGIN
     DELETE FROM assessment.decision;
     DELETE FROM assessment.score_sheet;
     DELETE FROM assessment.exam_session;
+    DELETE FROM assessment.question;
     DELETE FROM registration.entry;
     DELETE FROM registration.course_registration;
     DELETE FROM catalogue.offering;

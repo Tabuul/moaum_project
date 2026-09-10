@@ -633,4 +633,23 @@ BEGIN
     RAISE NOTICE 'demo expenditure ops ready: % requisition(s), % asset(s)', (SELECT count(*) FROM expenditure.requisition), (SELECT count(*) FROM expenditure.asset);
 END $ops$;
 
+-- ── CBT question bank (V077): a few questions for a demo course ──
+DO $cbt$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_lect uuid; v_course text;
+BEGIN
+    SELECT a.person_id INTO v_lect FROM iam.office_assignment a WHERE a.office_code = 'lecturer' LIMIT 1;
+    SELECT code INTO v_course FROM catalogue.course ORDER BY code LIMIT 1;
+    PERFORM set_config('moaum.actor_id', coalesce(v_lect, v_actor)::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    IF v_course IS NOT NULL AND NOT EXISTS (SELECT 1 FROM assessment.question WHERE course_code = v_course) THEN
+        INSERT INTO assessment.question (course_code, topic, stem, options, answer, difficulty, marks) VALUES
+         (v_course, 'Fundamentals', 'Which data structure works on a Last-In-First-Out basis?', '["Queue","Stack","Tree","Graph"]'::jsonb, 1, 'EASY', 1),
+         (v_course, 'Fundamentals', 'What is the time complexity of binary search on a sorted array?', '["O(n)","O(n log n)","O(log n)","O(1)"]'::jsonb, 2, 'MEDIUM', 1),
+         (v_course, 'Algorithms', 'Which algorithm is NOT a comparison sort?', '["Merge sort","Quick sort","Radix sort","Heap sort"]'::jsonb, 2, 'HARD', 2);
+    END IF;
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo question bank ready: % question(s)', (SELECT count(*) FROM assessment.question);
+END $cbt$;
+
 COMMIT;
