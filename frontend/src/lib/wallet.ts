@@ -1,11 +1,17 @@
-/** The NELFUND wallet and the Bursary's desk, as the API states them (V033). */
-export interface WalletEntry { id: string; at: string; session: string; kind: string; amount: number; reference: string | null; note: string | null; balance: number }
+/** The funding wallet and the Bursary's desk, as the API states them (V033, V079). */
+export interface WalletEntry { id: string; at: string; session: string; kind: string; amount: number; reference: string | null; note: string | null; source_code: string | null; source_name: string | null; nature: string | null; balance: number }
 export interface FundStatus { session: string; number: string; state: string; reason: string | null; correctable: boolean; loaded_at: string }
+export interface Eligibility { eligible: boolean; balance: number; cleared: boolean; arrears: boolean; pending: boolean; reason: string }
+export interface Withdrawal { id: string; session: string; amount: number; bank_name: string; account_no: string; account_name: string; state: string; reason: string | null; requested_at: string; decided_at: string | null; paid_at: string | null; paid_ref: string | null }
 export interface StudentWallet {
   session: string; balance: number; statement: WalletEntry[];
   position: { due: number; paid: number; balance: number; instalments_paid: number; paid_in_full: boolean; has_arrears: boolean };
   status: FundStatus | null;
+  eligibility: Eligibility;
+  withdrawal: Withdrawal | null;
 }
+export interface FundingSource { code: string; name: string; nature: string; sponsor: string | null; account: string | null; active: boolean; note: string | null; sort: number }
+export interface QueueWithdrawal { id: string; student_id: string; matric_no: string | null; student_name: string; session: string; amount: number; bank_name: string; account_no: string; account_name: string; state: string; reason: string | null; requested_at: string; decided_at: string | null; paid_at: string | null; paid_ref: string | null }
 export interface Batch { id: string; ref: string; received_on: string; amount: number; rows_read: number; note: string | null; loaded_at: string; matched: number; unmatched: number; reversed: number }
 export interface UnmatchedRow { id: string; matric_no: string; name_on_remit: string | null; amount: number; why: string | null; owner: string | null; batch_ref: string; received_on: string; student_name: string | null; student_status: string | null }
 export interface NelfundDesk {
@@ -14,6 +20,13 @@ export interface NelfundDesk {
   batches: Batch[]; unmatched: UnmatchedRow[];
   status: { applied: number; approved: number; not_approved: number; pending: number; correctable: number };
   refusals: { reason: string; students: number; correctable: boolean }[];
+  sources: FundingSource[];
+  withdrawals: QueueWithdrawal[];
+}
+export interface FundingReport {
+  session: string;
+  bySource: { code: string; name: string; nature: string; sponsor: string | null; account: string | null; students: number; credited: number }[];
+  cashflow: { credited: number; topped_up: number; applied: number; reversed: number; withdrawn: number; held: number; loans_in: number; grants_in: number; self_in: number; settled_to_fees: number; applied_matches: boolean };
 }
 
 /** what the wallet may pay (proto/part37 NLF_COVERS): set by what the Fund covers */

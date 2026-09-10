@@ -41,7 +41,20 @@ class WalletController {
     public record StatusList(String session, List<Map<String, Object>> rows) {
     }
 
-    public record Credit(@NotBlank @Size(max = 40) String number, String session, BigDecimal amount, @NotBlank @Size(max = 400) String reason) {
+    public record Credit(@NotBlank @Size(max = 40) String number, String session, BigDecimal amount,
+                         @NotBlank @Size(max = 400) String reason, @Size(max = 40) String source) {
+    }
+
+    public record SourceIn(@NotBlank @Size(max = 40) String code, @NotBlank @Size(max = 120) String name,
+                           @NotBlank @Size(max = 10) String nature, @Size(max = 160) String sponsor,
+                           @Size(max = 160) String account, Boolean active, @Size(max = 400) String note, Integer sort) {
+    }
+
+    public record WithdrawIn(String session, BigDecimal amount, @NotBlank @Size(max = 120) String bank,
+                             @NotBlank @Size(max = 40) String accountNo, @NotBlank @Size(max = 160) String accountName) {
+    }
+
+    public record PayIn(@Size(max = 60) String ref) {
     }
 
     private final WalletService service;
@@ -72,6 +85,13 @@ class WalletController {
     @PreAuthorize("hasAuthority('OFFICE_student')")
     Map<String, Object> topup(Authentication auth, @Valid @RequestBody Amount body) {
         return service.topup(student(auth), body.session(), body.amount());
+    }
+
+    /** the student asks to withdraw the wallet balance to their own bank account (fees must be cleared) */
+    @PostMapping("/api/v1/me/wallet/withdrawal")
+    @PreAuthorize("hasAuthority('OFFICE_student')")
+    Map<String, Object> withdraw(Authentication auth, @Valid @RequestBody WithdrawIn body) {
+        return service.requestWithdrawal(student(auth), body.session(), body.amount(), body.bank(), body.accountNo(), body.accountName());
     }
 
     /* ── the Bursary ── */
@@ -107,16 +127,54 @@ class WalletController {
         return service.reverse(id, body.why());
     }
 
-    /** the Bursary credits a student's wallet by hand — a correction, a sponsor's off-gateway payment, a goodwill credit */
+    /** the Bursary credits a student's wallet by hand — a scholarship, a sponsor's off-gateway payment, a correction */
     @PostMapping("/api/v1/nelfund/credit")
     @PreAuthorize(BURSARY)
     Map<String, Object> credit(@Valid @RequestBody Credit body) {
-        return service.creditWallet(body.number(), body.session(), body.amount(), body.reason());
+        return service.creditWallet(body.number(), body.session(), body.amount(), body.reason(), body.source());
     }
 
     @PostMapping("/api/v1/nelfund/status")
     @PreAuthorize(BURSARY)
     Map<String, Object> status(@RequestBody StatusList body) {
         return service.loadStatus(body.session(), body.rows());
+    }
+
+    /* ── sources of funding (a setting), the report, and withdrawals ── */
+
+    @GetMapping("/api/v1/funding/sources")
+    @PreAuthorize(READERS)
+    Map<String, Object> sources() {
+        return service.sources();
+    }
+
+    @PostMapping("/api/v1/funding/sources")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> upsertSource(@Valid @RequestBody SourceIn body) {
+        return service.upsertSource(body.code(), body.name(), body.nature(), body.sponsor(), body.account(), body.active(), body.note(), body.sort());
+    }
+
+    @GetMapping("/api/v1/funding/sessions/{s}/{y}/report")
+    @PreAuthorize(READERS)
+    Map<String, Object> report(@PathVariable String s, @PathVariable String y) {
+        return service.report(s + "/" + y);
+    }
+
+    @PostMapping("/api/v1/funding/withdrawals/{id}/approve")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> approveWithdrawal(@PathVariable UUID id) {
+        return service.approveWithdrawal(id);
+    }
+
+    @PostMapping("/api/v1/funding/withdrawals/{id}/reject")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> rejectWithdrawal(@PathVariable UUID id, @Valid @RequestBody Why body) {
+        return service.rejectWithdrawal(id, body.why());
+    }
+
+    @PostMapping("/api/v1/funding/withdrawals/{id}/pay")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> payWithdrawal(@PathVariable UUID id, @RequestBody(required = false) PayIn body) {
+        return service.payWithdrawal(id, body == null ? null : body.ref());
     }
 }

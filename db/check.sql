@@ -62,6 +62,7 @@ BEGIN
     DELETE FROM health.visit;
     DELETE FROM health.appointment;
     DELETE FROM health.profile;
+    DELETE FROM finance.wallet_withdrawal;
     DELETE FROM finance.wallet_entry;
     DELETE FROM finance.nelfund_row;
     DELETE FROM finance.nelfund_batch;
@@ -234,7 +235,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 119
+\set EXPECTED 120
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2290,6 +2291,46 @@ BEGIN
     PERFORM pg_temp.assert('Resetting a session''s JAMB list runs across every related table and reports its counts',
         r.candidates = 0 AND r.applications = 0 AND r.caps_rows = 0 AND r.olevel = 0 AND r.students_detached = 0,
         format('candidates=%s applications=%s caps=%s olevel=%s detached=%s', r.candidates, r.applications, r.caps_rows, r.olevel, r.students_detached));
+END $$;
+
+-- ── 120. funding has many sources; a credit carries its source; a balance withdraws to a bank only once fees clear, capped, under two people (V079) ──
+DO $$
+DECLARE s3 uuid := gen_random_uuid(); a_appr uuid := gen_random_uuid(); a_pay uuid := gen_random_uuid();
+        v_entry uuid; w record; elig record; ok_early boolean := false; ok_over boolean := false; ok_samepay boolean := false; v_bal numeric;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (s3, 'MOAUM/ADM/99/990120', 'MOAUM/CHK/99/0120', 'CHECKFUND', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    -- a scholarship (a grant) of 150,000 credited by the Bursary, tagged with its source
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    v_entry := finance.credit_wallet(s3, '9999/0000', 150000, 'CHECK scholarship', 'SCHOLARSHIP');
+    -- not yet clear: the 100,000 charge is outstanding, so a withdrawal is refused
+    BEGIN PERFORM finance.request_withdrawal(s3, '9999/0000', NULL, 'Bank', '0123456789', 'CHECKFUND Invented'); EXCEPTION WHEN OTHERS THEN ok_early := true; END;
+    -- the student applies the wallet to clear the fee; 50,000 is left over
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM finance.apply_wallet(s3, '9999/0000', 100000);
+    v_bal := finance.wallet_balance(s3);
+    SELECT * INTO elig FROM finance.withdrawal_eligibility(s3, '9999/0000');
+    -- more than the balance is refused
+    BEGIN PERFORM finance.request_withdrawal(s3, '9999/0000', 90000, 'Bank', '0123456789', 'CHECKFUND Invented'); EXCEPTION WHEN OTHERS THEN ok_over := true; END;
+    -- the excess is requested, approved and paid by a second officer
+    SELECT * INTO w FROM finance.request_withdrawal(s3, '9999/0000', 50000, 'Zenith', '0123456789', 'CHECKFUND Invented');
+    PERFORM set_config('moaum.actor_id', a_appr::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.approve_withdrawal(w.id);
+    -- the officer who approved cannot also pay
+    BEGIN PERFORM finance.pay_withdrawal(w.id, 'TRX-CHK'); EXCEPTION WHEN OTHERS THEN ok_samepay := true; END;
+    PERFORM set_config('moaum.actor_id', a_pay::text, true);
+    PERFORM finance.pay_withdrawal(w.id, 'TRX-CHK');
+    SELECT * INTO w FROM finance.wallet_withdrawal WHERE id = w.id;
+    PERFORM pg_temp.assert('Funding carries its source (NELFUND is a loan), a credit is tagged, and a wallet balance withdraws to a bank only after fees clear, capped, and under two people',
+        (SELECT nature FROM finance.funding_source WHERE code = 'NELFUND') = 'LOAN'
+        AND (SELECT source_code FROM finance.wallet_entry WHERE id = v_entry) = 'SCHOLARSHIP'
+        AND ok_early AND elig.eligible AND v_bal = 50000 AND ok_over AND ok_samepay
+        AND w.state = 'PAID' AND finance.wallet_balance(s3) = 0,
+        format('early_refused=%s eligible=%s bal=%s over_refused=%s samepay_refused=%s state=%s final=%s',
+               ok_early, elig.eligible, v_bal, ok_over, ok_samepay, w.state, finance.wallet_balance(s3)));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

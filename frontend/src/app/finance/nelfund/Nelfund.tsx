@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { parseRows, type NelfundDesk } from "@/lib/wallet";
+import { parseRows, type NelfundDesk, type FundingReport } from "@/lib/wallet";
 import { buildXlsx, xlsxRows } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -16,9 +16,11 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 interface LedgerEntry { id: string; at: string; session: string; kind: string; amount: number; reference: string | null; note: string | null; balance: number }
 interface StudentLedger { student: { name: string; number: string; matric_no: string | null; admission_no: string | null; status: string }; session: string; balance: number; statement: LedgerEntry[]; position: { balance: number; paid_in_full: boolean } }
 
-const LKIND: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = { CREDIT: ["NELFUND credit", "ok"], TOPUP: ["Top-up", "ok"], APPLIED: ["Applied to fees", "info"], REVERSED: ["Reversed to the Fund", "bad"], REFUND: ["Refund", "grey"] };
+const LKIND: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = { CREDIT: ["Credit", "ok"], TOPUP: ["Top-up", "ok"], APPLIED: ["Applied to fees", "info"], REVERSED: ["Reversed to source", "bad"], REFUND: ["Withdrawn to bank", "grey"] };
 
-export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; tab: string; sessions: string[]; actingOffice: string | null }) {
+const NAT: Record<string, [string, "ok" | "info" | "grey"]> = { LOAN: ["Loan", "info"], GRANT: ["Grant", "ok"], SELF: ["Own money", "grey"] };
+
+export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: NelfundDesk; report: FundingReport | null; tab: string; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const bursary = ["bursar", "admin", "super"].includes(actingOffice ?? "");
   const registry = ["registrar", "dregistrar", "academic", "super", "bursar"].includes(actingOffice ?? "");
@@ -26,13 +28,16 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const [batch, setBatch] = useState({ ref: "", receivedOn: "", note: "", text: "" });
-  const [credit, setCredit] = useState({ number: "", amount: "", reason: "" });
+  const [credit, setCredit] = useState({ number: "", amount: "", reason: "", source: "" });
   const [lookup, setLookup] = useState("");
   const [ledger, setLedger] = useState<StudentLedger | null>(null);
   const [statusText, setStatusText] = useState("");
   const [fix, setFix] = useState<Record<string, { number: string; note: string }>>({});
+  const [src, setSrc] = useState({ code: "", name: "", nature: "GRANT", sponsor: "", account: "", note: "", sort: "50" });
+  const [payRef, setPayRef] = useState<Record<string, string>>({});
   const t = d.tiles;
   const s = d.status;
+  const waiting = d.withdrawals.filter((x) => x.state === "REQUESTED").length;
 
   async function send(path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
     setBusy(true);
@@ -102,7 +107,7 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
         <div className="field" style={{ minWidth: 160 }}><label htmlFor="nf-s">Session</label>
           <select id="nf-s" className="ctl" value={d.session} onChange={(e) => go(tab, e.target.value)}>{(sessions.includes(d.session) ? sessions : [d.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
         <div className="role-tabs" role="tablist" style={{ marginBottom: 2 }}>
-          {[["batches", "Remittances"], ["match", `Suspense${t.unmatched_rows ? ` (${t.unmatched_rows})` : ""}`], ["status", "The Fund's decisions"]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => go(k)}>{l}</button>)}
+          {[["batches", "NELFUND remittances"], ["match", `Suspense${t.unmatched_rows ? ` (${t.unmatched_rows})` : ""}`], ["status", "The Fund's decisions"], ["withdrawals", `Withdrawals${waiting ? ` (${waiting})` : ""}`], ["sources", "Sources"], ["report", "Report"]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => go(k)}>{l}</button>)}
         </div>
       </div></div>
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -153,15 +158,23 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
             </Panel>
           ) : null}
           {bursary ? (
-            <Panel title="Credit a student's wallet" right="A correction, a sponsor's payment off the gateway, a goodwill credit">
+            <Panel title="Credit a student's wallet" right="A scholarship, a sponsor's payment off the gateway, a correction">
               <PBody>
-                <div className="grid grid--3">
+                <div className="grid grid--2">
                   <Field id="cw-num" label="Matriculation or admission number"><input id="cw-num" className="ctl tnum" value={credit.number} onChange={(e) => setCredit({ ...credit, number: e.target.value })} placeholder="MOAUM/CSC/26/0001" /></Field>
-                  <Field id="cw-amt" label="Amount"><input id="cw-amt" className="ctl tnum" inputMode="decimal" value={credit.amount} onChange={(e) => setCredit({ ...credit, amount: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="50000" /></Field>
-                  <Field id="cw-why" label="Reason" hint="The student sees this on their wallet statement."><input id="cw-why" className="ctl" value={credit.reason} onChange={(e) => setCredit({ ...credit, reason: e.target.value })} placeholder="Sponsor payment received by bank transfer" /></Field>
+                  <Field id="cw-src" label="Source of the funding" hint="The source says whether it is repayable — set the list on the Sources tab.">
+                    <select id="cw-src" className="ctl" value={credit.source} onChange={(e) => setCredit({ ...credit, source: e.target.value })}>
+                      <option value="">Choose a source…</option>
+                      {d.sources.filter((x) => x.active).map((x) => <option key={x.code} value={x.code}>{x.name} · {x.nature === "LOAN" ? "loan" : x.nature === "GRANT" ? "grant" : "own money"}</option>)}
+                    </select>
+                  </Field>
                 </div>
-                <div><Btn kind="primary" disabled={busy || !credit.number.trim() || !Number(credit.amount) || !credit.reason.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/nelfund/credit", { number: credit.number.trim(), session: d.session, amount: Number(credit.amount), reason: credit.reason.trim() }, `Wallet credited: ${credit.number.trim()}`); if (j) { setSaid(`${money(Number(credit.amount))} credited to ${credit.number.trim()} — wallet balance ${money(Number(j.balance))}`); setCredit({ number: "", amount: "", reason: "" }); } }}>Credit the wallet</Btn></div>
-                <div className="sub2" style={{ marginTop: 6 }}>This is an attributed credit against the named student&rsquo;s wallet. It counts toward what the wallet can apply to their charges, and the reason travels on the statement.</div>
+                <div className="grid grid--2">
+                  <Field id="cw-amt" label="Amount"><input id="cw-amt" className="ctl tnum" inputMode="decimal" value={credit.amount} onChange={(e) => setCredit({ ...credit, amount: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="50000" /></Field>
+                  <Field id="cw-why" label="Reason" hint="The student sees this on their wallet statement."><input id="cw-why" className="ctl" value={credit.reason} onChange={(e) => setCredit({ ...credit, reason: e.target.value })} placeholder="TETFund scholarship 2026/2027" /></Field>
+                </div>
+                <div><Btn kind="primary" disabled={busy || !credit.number.trim() || !Number(credit.amount) || !credit.reason.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/nelfund/credit", { number: credit.number.trim(), session: d.session, amount: Number(credit.amount), reason: credit.reason.trim(), source: credit.source || null }, `Wallet credited: ${credit.number.trim()}`); if (j) { setSaid(`${money(Number(credit.amount))} credited to ${credit.number.trim()} — wallet balance ${money(Number(j.balance))}`); setCredit({ number: "", amount: "", reason: "", source: "" }); } }}>Credit the wallet</Btn></div>
+                <div className="sub2" style={{ marginTop: 6 }}>This is an attributed credit against the named student&rsquo;s wallet. It counts toward what the wallet can apply to their charges, and the source and reason travel on the statement.</div>
               </PBody>
             </Panel>
           ) : null}
@@ -219,7 +232,7 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
           </Panel>
           <Note kind="info" title="Suspense is owned, not parked">Every row carries an office. A suspense account nobody owns is how money sits for a session and a student carries a debt they were never told about.</Note>
         </>
-      ) : (
+      ) : tab === "status" ? (
         <>
           <Note kind="info" title="The Fund decides, the University records, and the student must be able to see which">
             Nothing on this screen is the University&rsquo;s decision. What is the University&rsquo;s responsibility is that a student knows where they stand <b>before</b> registration rather than at it — and that the ones refused for a reason they can fix are told which field to fix, by name.
@@ -244,6 +257,108 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
               </PBody>
             </Panel>
           ) : null}
+        </>
+      ) : tab === "withdrawals" ? (
+        <>
+          <Note kind="info" title="Money leaving the wallet to a student's bank account">
+            A student may withdraw a wallet balance only once the session&rsquo;s fees are cleared and nothing is owed — a student who paid ahead before their loan landed has genuinely paid twice. It is requested by the student, approved here, and <b>paid by a second officer</b>; the portal records the payout, it does not move the money itself.
+          </Note>
+          <Panel title="Withdrawal requests" right={`${waiting} awaiting a decision`}>
+            {d.withdrawals.length ? (
+              <DTable cols={["Student", "Bank account", "Amount|num", "State|mid", "Requested|mid", "|num"]} rows={d.withdrawals.map((x) => [
+                <Two key="s" a={x.student_name} b={x.matric_no ?? ""} />,
+                <span key="b">{x.bank_name}<div className="sub2 tnum">{x.account_no} · {x.account_name}</div></span>,
+                <span className="tnum" key="a">{money(Number(x.amount))}</span>,
+                <Pil kind={x.state === "PAID" ? "ok" : x.state === "REJECTED" ? "bad" : x.state === "APPROVED" ? "info" : "grey"} key="st">{x.state.toLowerCase()}</Pil>,
+                <span className="sub2" key="rq">{day(x.requested_at)}</span>,
+                <span key="x" style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {bursary && x.state === "REQUESTED" ? <>
+                    <Btn kind="go" disabled={busy} onClick={async () => { if (await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/approve`, {}, `Withdrawal for ${x.student_name} approved`)) setSaid("Approved — a second officer records the payout"); }}>Approve</Btn>
+                    <Btn kind="ghost" disabled={busy} onClick={async () => { const why = window.prompt("Why is it declined? The student sees it."); if (why && await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/reject`, { why }, `Withdrawal for ${x.student_name} declined`)) setSaid("Declined"); }}>Decline</Btn>
+                  </> : null}
+                  {bursary && x.state === "APPROVED" ? <>
+                    <input className="ctl tnum" style={{ width: 150 }} placeholder="Bank transfer ref" value={payRef[x.id] ?? ""} onChange={(e) => setPayRef({ ...payRef, [x.id]: e.target.value })} />
+                    <Btn kind="primary" disabled={busy} onClick={async () => { if (await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/pay`, { ref: payRef[x.id] || null }, `Withdrawal for ${x.student_name} paid`)) setSaid("Paid — the wallet is debited"); }}>Mark paid</Btn>
+                  </> : null}
+                  {x.state === "PAID" ? <span className="sub2 tnum">{x.paid_ref ?? "paid"}</span> : x.state === "REJECTED" ? <span className="sub2">{x.reason ?? ""}</span> : null}
+                </span>,
+              ])} texts={d.withdrawals.map((x) => `${x.student_name} ${x.matric_no ?? ""} ${x.state}`)} />
+            ) : <PBody><div className="sub2">No withdrawal request for {d.session}.</div></PBody>}
+          </Panel>
+          <Note kind="info" title="The officer who approves is not the one who pays">The database refuses a payout recorded by the same person who approved it — two people stand behind money leaving the University.</Note>
+        </>
+      ) : tab === "sources" ? (
+        <>
+          <Note kind="info" title="The sources funding is credited from">Each source is a <b>loan</b> the student repays (NELFUND), a <b>grant</b> that is never repaid (a scholarship or bursary), or the student&rsquo;s own money (a top-up). Every wallet credit names its source, so the ledger and the report can say what is repayable and what is not.</Note>
+          <Panel title="Funding sources" right={`${d.sources.length} on the list`}>
+            <DTable cols={["Code|mid", "Name", "Nature|mid", "Sponsor", "Holding account", "Active|mid"]} rows={d.sources.map((x) => [
+              <span className="tnum" key="c">{x.code}</span>,
+              <span key="n">{x.name}<div className="sub2">{x.note ?? ""}</div></span>,
+              <Pil kind={NAT[x.nature]?.[1] ?? "grey"} key="na">{NAT[x.nature]?.[0] ?? x.nature}</Pil>,
+              <span className="sub2" key="sp">{x.sponsor ?? "—"}</span>,
+              <span className="sub2" key="ac">{x.account ?? "Main school account"}</span>,
+              x.active ? <Pil kind="ok" key="a">Active</Pil> : <Pil kind="grey" key="a">Off</Pil>,
+            ])} />
+          </Panel>
+          {bursary ? (
+            <Panel title="Add or edit a source" right="A new scholarship, sponsor or fund — same code edits">
+              <PBody>
+                <div className="grid grid--3">
+                  <Field id="fs-code" label="Code" hint="Short, e.g. TETFUND"><input id="fs-code" className="ctl tnum" value={src.code} onChange={(e) => setSrc({ ...src, code: e.target.value.toUpperCase() })} /></Field>
+                  <Field id="fs-name" label="Name"><input id="fs-name" className="ctl" value={src.name} onChange={(e) => setSrc({ ...src, name: e.target.value })} /></Field>
+                  <Field id="fs-nat" label="Nature"><select id="fs-nat" className="ctl" value={src.nature} onChange={(e) => setSrc({ ...src, nature: e.target.value })}><option value="LOAN">Loan — repaid</option><option value="GRANT">Grant — never repaid</option><option value="SELF">Own money</option></select></Field>
+                </div>
+                <div className="grid grid--3">
+                  <Field id="fs-sp" label="Sponsor" hint="Optional"><input id="fs-sp" className="ctl" value={src.sponsor} onChange={(e) => setSrc({ ...src, sponsor: e.target.value })} /></Field>
+                  <Field id="fs-ac" label="Holding account" hint="Blank = main school account"><input id="fs-ac" className="ctl" value={src.account} onChange={(e) => setSrc({ ...src, account: e.target.value })} /></Field>
+                  <Field id="fs-so" label="Sort order"><input id="fs-so" className="ctl tnum" value={src.sort} onChange={(e) => setSrc({ ...src, sort: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+                </div>
+                <div><Btn kind="primary" disabled={busy || !src.code.trim() || !src.name.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/funding/sources", { code: src.code.trim(), name: src.name.trim(), nature: src.nature, sponsor: src.sponsor || null, account: src.account || null, active: true, note: src.note || null, sort: Number(src.sort) || 100 }, `Funding source ${src.code.trim()} stated`); if (j) { setSaid(`Source ${src.code.trim()} saved`); setSrc({ code: "", name: "", nature: "GRANT", sponsor: "", account: "", note: "", sort: "50" }); } }}>Save the source</Btn></div>
+                <div className="sub2" style={{ marginTop: 6 }}>NELFUND, Scholarship and Self top-up are seeded; add TETFund, a state scholarship, a sponsor or a bursary here.</div>
+              </PBody>
+            </Panel>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {report ? (
+            <>
+              <Tiles items={[
+                ["Funded this session", money(Number(report.cashflow.credited) + Number(report.cashflow.topped_up)), null, "Credits and top-ups, all sources"],
+                ["Applied to school fees", money(Number(report.cashflow.applied)), report.cashflow.applied_matches ? null : "var(--red-ink)", report.cashflow.applied_matches ? "Reconciles with Bursary receipts" : "Does not match receipts"],
+                ["Withdrawn to bank", money(Number(report.cashflow.withdrawn)), null, "Paid out to students"],
+                ["Held in wallets", money(Number(report.cashflow.held)), null, "Not yet applied or withdrawn"],
+              ]} />
+              <div className="grid grid--2">
+                <Panel title="By source" right="Where the money came from">
+                  <DTable cols={["Source", "Nature|mid", "Students|num", "Credited|num"]} rows={report.bySource.map((x) => [
+                    <span key="n">{x.name}<div className="sub2 tnum">{x.code}{x.sponsor ? ` · ${x.sponsor}` : ""}</div></span>,
+                    <Pil kind={NAT[x.nature]?.[1] ?? "grey"} key="na">{NAT[x.nature]?.[0] ?? x.nature}</Pil>,
+                    <span className="tnum" key="s">{Number(x.students).toLocaleString()}</span>,
+                    <span className="tnum" key="c">{money(Number(x.credited))}</span>,
+                  ])} />
+                </Panel>
+                <Panel title="By nature" right="Repayable or not">
+                  <DTable cols={["Nature", "In|num"]} rows={([["Loans (repayable)", report.cashflow.loans_in], ["Grants (never repaid)", report.cashflow.grants_in], ["Own money (top-ups)", report.cashflow.self_in]] as [string, number][]).map(([l, v]) => [<span key="l">{l}</span>, <span className="tnum" key="v">{money(Number(v))}</span>])} />
+                  <PBody><div className="sub2">A loan is a liability the student repays the Fund; a grant is not repaid; own money is the student&rsquo;s.</div></PBody>
+                </Panel>
+              </div>
+              <Panel title="Cash-flow reconciliation" right="The wallet against the Bursary and school payments">
+                <DTable cols={["Movement", "Amount|num", "Note"]} rows={([
+                  ["Credited (loans + grants)", report.cashflow.credited, "Into wallets, from all sources"],
+                  ["Topped up by students", report.cashflow.topped_up, "Own money paid in"],
+                  ["Applied to school fees", report.cashflow.applied, "Moved to the main account against invoices"],
+                  ["Confirmed as wallet payments", report.cashflow.settled_to_fees, report.cashflow.applied_matches ? "Matches the applied total" : "Does NOT match — investigate"],
+                  ["Reversed to source", report.cashflow.reversed, "Returned to the Fund"],
+                  ["Withdrawn to bank", report.cashflow.withdrawn, "Paid out to students"],
+                  ["Held in wallets", report.cashflow.held, "The balance the University still holds"],
+                ] as [string, number, string][]).map((r) => [<span key="m">{r[0]}</span>, <span className="tnum" key="a">{money(Number(r[1]))}</span>, <span className="sub2" key="n">{r[2]}</span>])} />
+              </Panel>
+              <Note kind={report.cashflow.applied_matches ? "ok" : "bad"} title={report.cashflow.applied_matches ? "The wallet reconciles with school payments" : "The wallet does not reconcile — investigate"}>
+                Every naira a wallet applied to fees is a confirmed payment on the main account with the wallet as its channel. {money(Number(report.cashflow.applied))} applied against {money(Number(report.cashflow.settled_to_fees))} confirmed.
+              </Note>
+            </>
+          ) : <Note kind="info" title="No report yet">Nothing has moved through the wallet for {d.session}.</Note>}
         </>
       )}
     </>

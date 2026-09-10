@@ -53,10 +53,72 @@ class WalletRepository {
         return jdbc.sql("SELECT finance.wallet_topup_reference(:s, :n, :a)").param("s", student).param("n", session).param("a", amount).query(String.class).single();
     }
 
-    UUID creditWallet(UUID student, String session, BigDecimal amount, String reason) {
-        return jdbc.sql("SELECT finance.credit_wallet(:s, :n, :a, :r)")
+    UUID creditWallet(UUID student, String session, BigDecimal amount, String reason, String source) {
+        return jdbc.sql("SELECT finance.credit_wallet(:s, :n, :a, :r, :src)")
                 .param("s", student).param("n", session).param("a", amount).param("r", reason)
+                .param("src", source, Types.VARCHAR)
                 .query(UUID.class).single();
+    }
+
+    /* ── sources of funding (a setting) ── */
+
+    List<Map<String, Object>> sources() {
+        return jdbc.sql("SELECT code, name, nature, sponsor, account, active, note, sort FROM finance.funding_source ORDER BY sort, name")
+                .query().listOfRows();
+    }
+
+    Map<String, Object> upsertSource(String code, String name, String nature, String sponsor, String account,
+                                     boolean active, String note, Integer sort) {
+        return jdbc.sql("SELECT * FROM finance.upsert_funding_source(:c, :n, :na, :sp, :ac, :ok, :no, :so)")
+                .param("c", code).param("n", name).param("na", nature).param("sp", sponsor, Types.VARCHAR)
+                .param("ac", account, Types.VARCHAR).param("ok", active).param("no", note, Types.VARCHAR)
+                .param("so", sort, Types.INTEGER).query().singleRow();
+    }
+
+    /* ── withdrawing the wallet to a bank account ── */
+
+    Map<String, Object> eligibility(UUID student, String session) {
+        return jdbc.sql("SELECT * FROM finance.withdrawal_eligibility(:s, :n)").param("s", student).param("n", session).query().singleRow();
+    }
+
+    Map<String, Object> requestWithdrawal(UUID student, String session, BigDecimal amount, String bank, String acctNo, String acctName) {
+        return jdbc.sql("SELECT * FROM finance.request_withdrawal(:s, :n, :a, :b, :no, :nm)")
+                .param("s", student).param("n", session).param("a", amount, Types.NUMERIC)
+                .param("b", bank).param("no", acctNo).param("nm", acctName).query().singleRow();
+    }
+
+    Optional<Map<String, Object>> myWithdrawal(UUID student) {
+        return jdbc.sql("""
+                SELECT id, session, amount, bank_name, account_no, account_name, state, reason,
+                       requested_at, decided_at, paid_at, paid_ref
+                  FROM finance.wallet_withdrawal WHERE student_id = :s ORDER BY requested_at DESC LIMIT 1
+                """).param("s", student).query().listOfRows().stream().findFirst();
+    }
+
+    List<Map<String, Object>> withdrawalQueue(String session) {
+        return jdbc.sql("SELECT * FROM finance.withdrawal_queue(:n)").param("n", session, Types.VARCHAR).query().listOfRows();
+    }
+
+    void approveWithdrawal(UUID id) {
+        jdbc.sql("SELECT finance.approve_withdrawal(:i)").param("i", id).query().singleRow();
+    }
+
+    void rejectWithdrawal(UUID id, String why) {
+        jdbc.sql("SELECT finance.reject_withdrawal(:i, :w)").param("i", id).param("w", why).query().singleRow();
+    }
+
+    void payWithdrawal(UUID id, String ref) {
+        jdbc.sql("SELECT finance.pay_withdrawal(:i, :r)").param("i", id).param("r", ref, Types.VARCHAR).query().singleRow();
+    }
+
+    /* ── the reports ── */
+
+    List<Map<String, Object>> fundingSummary(String session) {
+        return jdbc.sql("SELECT * FROM finance.funding_summary(:n)").param("n", session, Types.VARCHAR).query().listOfRows();
+    }
+
+    Map<String, Object> cashflow(String session) {
+        return jdbc.sql("SELECT * FROM finance.wallet_cashflow(:n)").param("n", session, Types.VARCHAR).query().singleRow();
     }
 
     /* ── the Bursary ── */

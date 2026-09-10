@@ -39,7 +39,19 @@ public class WalletService {
         out.put("statement", repo.statement(student));
         out.put("position", repo.position(student, session));
         out.put("status", repo.status(student).orElse(null));
+        out.put("eligibility", repo.eligibility(student, session));
+        out.put("withdrawal", repo.myWithdrawal(student).orElse(null));
         return out;
+    }
+
+    @Transactional
+    public Map<String, Object> requestWithdrawal(UUID student, String sessionAsked, BigDecimal amount,
+                                                 String bank, String accountNo, String accountName) {
+        if (bank == null || bank.isBlank() || accountNo == null || accountNo.isBlank() || accountName == null || accountName.isBlank()) {
+            throw new DomainRuleViolation("WAL_BANK", "A withdrawal names the bank, the account number and the account name.",
+                    new DomainRuleViolation.Remedy("Enter your own bank account details.", "You"));
+        }
+        return repo.requestWithdrawal(student, session(sessionAsked), amount, bank.trim(), accountNo.trim(), accountName.trim());
     }
 
     @Transactional
@@ -69,7 +81,57 @@ public class WalletService {
         out.put("unmatched", repo.unmatched(session));
         out.put("status", repo.statusTiles(session));
         out.put("refusals", repo.refusals(session));
+        out.put("sources", repo.sources());
+        out.put("withdrawals", repo.withdrawalQueue(session));
         return out;
+    }
+
+    /* ── sources of funding (a setting) ── */
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> sources() {
+        return Map.of("sources", repo.sources());
+    }
+
+    @Transactional
+    public Map<String, Object> upsertSource(String code, String name, String nature, String sponsor, String account,
+                                            Boolean active, String note, Integer sort) {
+        return repo.upsertSource(code, name, nature, sponsor, account, active == null || active, note, sort);
+    }
+
+    /* ── the report ── */
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> report(String sessionAsked) {
+        String session = session(sessionAsked);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("bySource", repo.fundingSummary(session));
+        out.put("cashflow", repo.cashflow(session));
+        return out;
+    }
+
+    /* ── withdrawals: the Bursary's queue ── */
+
+    @Transactional
+    public Map<String, Object> approveWithdrawal(UUID id) {
+        repo.approveWithdrawal(id);
+        return Map.of("id", id, "state", "APPROVED");
+    }
+
+    @Transactional
+    public Map<String, Object> rejectWithdrawal(UUID id, String why) {
+        if (why == null || why.isBlank()) {
+            throw new DomainRuleViolation("WAL_WHY", "A rejection says why.", new DomainRuleViolation.Remedy("The student sees it.", "Bursary"));
+        }
+        repo.rejectWithdrawal(id, why.trim());
+        return Map.of("id", id, "state", "REJECTED");
+    }
+
+    @Transactional
+    public Map<String, Object> payWithdrawal(UUID id, String ref) {
+        repo.payWithdrawal(id, ref);
+        return Map.of("id", id, "state", "PAID");
     }
 
     @Transactional
@@ -82,7 +144,7 @@ public class WalletService {
     }
 
     @Transactional
-    public Map<String, Object> creditWallet(String number, String sessionAsked, BigDecimal amount, String reason) {
+    public Map<String, Object> creditWallet(String number, String sessionAsked, BigDecimal amount, String reason, String source) {
         if (amount == null || amount.signum() <= 0) {
             throw new DomainRuleViolation("WAL_AMOUNT", "A wallet credit is for an amount.", new DomainRuleViolation.Remedy("In naira, above zero.", "Bursary"));
         }
@@ -92,7 +154,7 @@ public class WalletService {
         UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
                 "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("The number as the register holds it.", "Registry")));
         String session = session(sessionAsked);
-        UUID entry = repo.creditWallet(student, session, amount, reason.trim());
+        UUID entry = repo.creditWallet(student, session, amount, reason.trim(), source == null || source.isBlank() ? null : source.trim());
         return Map.of("entry", entry, "student", student, "session", session, "amount", amount, "balance", repo.balance(student));
     }
 

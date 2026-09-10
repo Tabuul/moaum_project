@@ -956,18 +956,17 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
-        "name": "NELFUND",
+        "name": "Sources of funding",
         "items": [
-          {
-            "id": "t/nelstatus",
-            "icon": "user",
-            "label": "Applicants & status"
-          },
           {
             "id": "t/nelfund",
             "icon": "swap",
-            "label": "Remittances & wallets",
-            "badge": "7"
+            "label": "Sources & wallets"
+          },
+          {
+            "id": "t/nelstatus",
+            "icon": "user",
+            "label": "NELFUND applicants"
           },
           {
             "id": "t/nelmatch",
@@ -2193,7 +2192,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Services",
         "items": [
           { "id": "s/fees", "icon": "card", "label": "Fees & payments" },
-          { "id": "s/wallet", "icon": "swap", "label": "NELFUND wallet" },
+          { "id": "s/wallet", "icon": "swap", "label": "Wallet & funding" },
           { "id": "s/hostel", "icon": "bed", "label": "Hostel" },
           { "id": "s/library", "icon": "book", "label": "Library" },
           { "id": "s/idcard", "icon": "user", "label": "Identity card" },

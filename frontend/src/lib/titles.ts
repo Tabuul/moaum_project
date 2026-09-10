@@ -29,8 +29,8 @@ export const TITLES: Record<string, [string, string]> = {
     "2026/2027 session"
   ],
   "s/wallet": [
-    "NELFUND wallet",
-    "Money the Fund has paid on your behalf"
+    "Wallet & funding",
+    "Loans, scholarships and other funding paid on your behalf"
   ],
   "s/pay": [
     "Payment",
@@ -413,8 +413,8 @@ export const TITLES: Record<string, [string, string]> = {
     "Versioned and effective-dated"
   ],
   "t/nelfund": [
-    "NELFUND",
-    "Remittances, allocation and suspense"
+    "Sources of funding",
+    "Loans, scholarships, wallets, withdrawals and the report"
   ],
   "t/nelmatch": [
     "Unmatched remittances",
