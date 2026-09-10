@@ -21,6 +21,11 @@
 
 BEGIN;
 
+-- the seed and backfill below are on the audit spine; attribute them to the system actor, the way the seed migrations do
+SELECT set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+SELECT set_config('moaum.actor_office', 'bursar', true);
+SELECT set_config('moaum.reason', 'Sources of funding: sources, source-tagged credits, withdrawals and reports (V079)', true);
+
 -- ── 1 · the sources, as a setting ───────────────────────────────────────────
 CREATE TABLE finance.funding_source (
     code       text PRIMARY KEY,
