@@ -13,6 +13,17 @@ import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
+/** the show/hide eye that sits inside a password field; crossed out while the text is visible */
+function EyeIcon({ off }: { off: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+      {off ? <line x1="3" y1="3" x2="21" y2="21" /> : null}
+    </svg>
+  );
+}
+
 const REG_SHAPE = /^\d{12}[A-Z]{2,3}$/;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 const MAIL_TYPO: Record<string, string> = {
@@ -190,15 +201,18 @@ export function Register({ session }: { session: string }) {
                 <label htmlFor="rw">Choose a password<span className="lreq">required</span></label>
                 <div className="pwrow">
                   <input id="rw" type={show ? "text" : "password"} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" required />
-                  <button type="button" className="pweye" aria-pressed={show ? "true" : "false"} onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button>
+                  <button type="button" className="pweye" aria-pressed={show ? "true" : "false"} aria-label={show ? "Hide password" : "Show password"} title={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}><EyeIcon off={show} /></button>
                 </div>
                 {err.pw ? <div className="ferr">{err.pw}</div> : null}
               </div>
               <div className="field">
                 <label htmlFor="rw2">Confirm password<span className="lreq">required</span></label>
-                <input id="rw2" type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" required />
+                <div className="pwrow">
+                  <input id="rw2" type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" required />
+                  <button type="button" className="pweye" aria-pressed={show ? "true" : "false"} aria-label={show ? "Hide password" : "Show password"} title={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}><EyeIcon off={show} /></button>
+                </div>
                 {err.pw2 ? <div className="ferr">{err.pw2}</div> : null}
-                <div className="hint">{show ? "Both boxes are showing. Nobody standing behind you should be able to read them." : "Asked twice because a password mistyped once locks you out of your own application on the morning of screening, and the portal cannot tell it from a stranger. Press Show if you would rather see what you typed."}</div>
+                <div className="hint">{show ? "Both boxes are showing. Nobody standing behind you should be able to read them." : "Asked twice because a password mistyped once locks you out of your own application on the morning of screening, and the portal cannot tell it from a stranger. Tap the eye in the box if you would rather see what you typed."}</div>
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
               <button className="btn btn--primary" type="submit" disabled={busy}>{busy ? "Creating your account…" : "Continue"}</button>

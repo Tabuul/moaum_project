@@ -1059,13 +1059,16 @@
      the bottom of a form are a puzzle, not a correction. */
   .ferr { margin-top: 5px; font-size: 12.4px; line-height: 1.45; color: var(--red-ink); }
   .ferr .tnum { color: var(--red-ink); }
-  .pwrow { display: flex; gap: 8px; align-items: stretch; }
-  .pwrow input { flex: 1 1 auto; min-width: 0; }
-  .pweye { flex: 0 0 auto; padding: 0 13px; border: 1px solid var(--field);
-           border-radius: 8px; background: var(--surface); color: var(--chrome);
-           font-family: inherit; font-size: 12.6px; font-weight: 650; cursor: pointer; }
-  .pweye:hover { background: var(--bg); }
-  .pweye[aria-pressed="true"] { background: var(--sky-bg); border-color: var(--sky-line); }
+  .pwrow { position: relative; }
+  .pwrow input { width: 100%; padding-right: 42px; }
+  .pweye { position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+           display: inline-flex; align-items: center; justify-content: center;
+           width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px;
+           background: transparent; color: var(--chrome); cursor: pointer; }
+  .pweye svg { width: 18px; height: 18px; display: block; }
+  .pweye:hover { background: var(--bg); color: var(--ink); }
+  .pweye:focus-visible { outline: 2px solid var(--sky-line); outline-offset: 1px; }
+  .pweye[aria-pressed="true"] { color: var(--sky-ink, var(--ink)); }
   .readout { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px;
              background: var(--bg); font-weight: 650; font-size: 14.5px;
              color: var(--ink); }
