@@ -35,9 +35,9 @@ export async function GET() {
   y -= 8;
   y = p.paragraph(L, y, "This offer is provisional. It stands on the results JAMB sent and the documents you declared, every one of which the Registry verifies with the examination bodies before clearance. A result that does not verify voids the admission at any point afterwards, including after the award of a degree.", A4.w - 2 * L, 10.5, 1.45);
   y -= 8;
-  y = p.paragraph(L, y, `You accepted this offer on ${when(a.acceptedAt)} and the acceptance fee is confirmed${a.admissionNo ? `; your admission number is ${a.admissionNo}` : ""}. Nothing is paid to any person; every naira you owe is paid on the portal, to a reference the portal generates.`, A4.w - 2 * L, 10.5, 1.45);
+  y = p.paragraph(L, y, `You accepted this offer on ${when(a.acceptedAt)} and the acceptance fee is confirmed. Nothing is paid to any person; every naira you owe is paid on the portal, to a reference the portal generates.`, A4.w - 2 * L, 10.5, 1.45);
   y -= 8;
-  y = p.paragraph(L, y, "After acceptance, present your original documents at the Registry for clearance. You then pay your fees and register your courses under your admission number; your matriculation number is issued afterwards, over the confirmed register.", A4.w - 2 * L, 10.5, 1.45);
+  y = p.paragraph(L, y, "After acceptance, present your original documents at the Registry for clearance, then pay your school fees and register your courses on the portal. Your matriculation number is issued once your fees are paid and your courses registered; it is not issued with this letter.", A4.w - 2 * L, 10.5, 1.45);
   y -= 30;
   if (a.result) {
     p.fill(L, y - 58, A4.w - 2 * L, 66);
