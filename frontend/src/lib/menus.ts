@@ -1788,6 +1788,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Mail server"
           },
           {
+            "id": "t/sms",
+            "icon": "server",
+            "label": "SMS gateway"
+          },
+          {
             "id": "t/putme",
             "icon": "doc",
             "label": "Post-UTME scores"
@@ -1978,6 +1983,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/mail",
             "icon": "server",
             "label": "Mail server"
+          },
+          {
+            "id": "t/sms",
+            "icon": "server",
+            "label": "SMS gateway"
           },
           {
             "id": "t/putme",

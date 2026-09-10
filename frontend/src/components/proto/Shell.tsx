@@ -98,6 +98,7 @@ export const ROUTES: Record<string, string> = {
   "t/support": "/support",
   "t/gateways": "/finance/gateways",
   "t/mail": "/platform/mail",
+  "t/sms": "/platform/sms",
   "t/ledger": "/finance/ledger",
   "t/hanging": "/finance/hanging",
   "t/reconcile": "/finance/reconcile",
@@ -142,6 +143,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "s/graduation": ["Graduation", "The audit, Senate's word, clearance and the certificate"],
   "t/support": ["Help & requests", "What students have put to this office, the oldest open first"],
   "t/reports": ["Reports & returns", "The University's statutory returns, read off the register and branded for print"],
+  "t/sms": ["SMS gateway", "The eBulkSMS account the portal sends text messages from"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };

@@ -48,9 +48,12 @@ public class NoticeDispatcher {
 
     private final MailService mailService;
     private final SmtpMailer smtpMailer;
+    private final SmsService smsService;
+    private final EbulkSmsSender ebulkSms;
 
     public NoticeDispatcher(NoticeRepository notices, PlatformTransactionManager transactions,
                             MailService mailService, SmtpMailer smtpMailer,
+                            SmsService smsService, EbulkSmsSender ebulkSms,
                             @Value("${moaum.notices.email-url:}") String emailUrl,
                             @Value("${moaum.notices.sms-url:}") String smsUrl,
                             @Value("${moaum.notices.token:}") String token,
@@ -62,6 +65,8 @@ public class NoticeDispatcher {
         this.tx = new TransactionTemplate(transactions);
         this.mailService = mailService;
         this.smtpMailer = smtpMailer;
+        this.smsService = smsService;
+        this.ebulkSms = ebulkSms;
         this.emailUrl = emailUrl == null ? "" : emailUrl.trim();
         this.smsUrl = smsUrl == null ? "" : smsUrl.trim();
         this.token = token == null ? "" : token.trim();
@@ -103,10 +108,12 @@ public class NoticeDispatcher {
         // the mail account set on the Mail server screen (V057) sends email over SMTP; an HTTP
         // relay (MOAUM_NOTICES_EMAIL_URL) is the fallback, and SMS still goes by the relay
         java.util.Optional<MailService.Smtp> smtp = mailService.smtp();
+        java.util.Optional<SmsService.Creds> smsCreds = smsService.creds();
         boolean emailReady = smtp.isPresent() || emailConfigured();
-        if (!emailReady && !smsConfigured()) {
+        boolean smsReady = smsConfigured() || smsCreds.isPresent();
+        if (!emailReady && !smsReady) {
             if (!saidNoProvider) {
-                LOG.info("notices: no email account (Mail server screen) or provider configured; the outbox holds them");
+                LOG.info("notices: no email account (Mail server screen), SMS account (SMS settings screen) or relay configured; the outbox holds them");
                 saidNoProvider = true;
             }
             return;
@@ -121,6 +128,12 @@ public class NoticeDispatcher {
                 try {
                     smtpMailer.send(smtp.get(), n.recipient(), n.subject(), n.body());
                     outcome = "smtp " + smtp.get().host();
+                } catch (Exception e) {
+                    error = e.getClass().getSimpleName() + ": " + e.getMessage();
+                }
+            } else if (!email && smsCreds.isPresent()) {
+                try {
+                    outcome = ebulkSms.send(smsCreds.get(), n.recipient(), n.body());
                 } catch (Exception e) {
                     error = e.getClass().getSimpleName() + ": " + e.getMessage();
                 }
