@@ -12,6 +12,9 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface Report { received: number; applied: number; notFound: string[]; alreadyReleased: string[]; outOfRange: string[] }
 
+export interface PostUtmeRow { programme_code: string; programme: string; faculty: string | null; registered: number; scored: number; released: number; awaiting: number }
+export interface PostUtme { session: string; counts: { programmes: number; awaitingScores: number }; programmes: PostUtmeRow[] }
+
 /** parse pasted/loaded text: one row per line, "key<sep>score" (comma, tab, or spaces); a header line is skipped */
 function parse(text: string): { key: string; score: number }[] {
   const out: { key: string; score: number }[] = [];
@@ -28,7 +31,7 @@ function parse(text: string): { key: string; score: number }[] {
   return out;
 }
 
-export function ScoreUpload({ session, sessions, actingOffice }: { session: string; sessions: string[]; actingOffice: string | null }) {
+export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { session: string; sessions: string[]; actingOffice: string | null; postUtme: PostUtme | null }) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -97,6 +100,29 @@ export function ScoreUpload({ session, sessions, actingOffice }: { session: stri
       <Note kind="info" title="Upload the Post-UTME scores and reconcile them against the applicants">
         The scores collected from the CBT exam, uploaded here by the Directorate of ICT, the Super Administrator or the Academic Office. Each row is keyed by the candidate&rsquo;s <b>JAMB registration number</b> or <b>application number</b> and reconciled against the session&rsquo;s applicants: a matched candidate whose score is not yet released has it entered; the rest are reported and nothing is invented. Releasing the scores is done from the Applicants desk.
       </Note>
+
+      {postUtme ? (
+        <Panel title="Programmes whose Post-UTME scores must be uploaded" right={postUtme.counts.awaitingScores ? `${postUtme.counts.awaitingScores} still awaiting` : "All scored"}>
+          <div className="card__body" style={{ paddingBottom: 0 }}>
+            <div className="sub2">These are the programmes whose applicants have registered for Post-UTME for {session}. Every one must have its screening scores uploaded and released before the admission process (merit list, offers) proceeds for it. A programme still awaiting scores is highlighted.</div>
+          </div>
+          {postUtme.programmes.length ? (
+            <DTable
+              cols={["Faculty", "Programme", "Registered|num", "Scored|num", "Released|num", "Awaiting|num", "Status|mid"]}
+              rows={postUtme.programmes.map((r) => [
+                <span key="f">{r.faculty ?? "—"}</span>,
+                <span key="p">{r.programme}</span>,
+                <span className="tnum" key="rg">{Number(r.registered).toLocaleString()}</span>,
+                <span className="tnum" key="sc">{Number(r.scored).toLocaleString()}</span>,
+                <span className="tnum" key="rl">{Number(r.released).toLocaleString()}</span>,
+                <span className="tnum" key="aw" style={Number(r.awaiting) ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{Number(r.awaiting).toLocaleString()}</span>,
+                Number(r.awaiting) ? <Pil kind="bad" key="s">Scores due</Pil> : Number(r.released) >= Number(r.registered) ? <Pil kind="ok" key="s">Released</Pil> : <Pil kind="warn" key="s">Uploaded, release</Pil>,
+              ])}
+              texts={postUtme.programmes.map((r) => `${r.faculty ?? ""} ${r.programme}`)}
+            />
+          ) : <PBody><div className="sub2">No applicant has registered for Post-UTME this session yet. Programmes appear here as applicants register.</div></PBody>}
+        </Panel>
+      ) : null}
 
       <Panel title="Post-UTME scores" right={
         <select className="ws__select" value={session} onChange={(e) => pick(e.target.value)} aria-label="Session">

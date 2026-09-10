@@ -28,7 +28,10 @@ class StudentController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_dvc','OFFICE_vc','OFFICE_records','OFFICE_dean','OFFICE_hod','OFFICE_exams',"
-            + "'OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            + "'OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_ict','OFFICE_admin','OFFICE_super',"
+            // offices that carry the Records & queries menu and so must be able to read it
+            + "'OFFICE_bursar','OFFICE_library','OFFICE_security','OFFICE_housing','OFFICE_hrm',"
+            + "'OFFICE_audit','OFFICE_lecturer')";
     private static final String WRITERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
 
     private final StudentService students;

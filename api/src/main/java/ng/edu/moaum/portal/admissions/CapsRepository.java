@@ -223,6 +223,31 @@ class CapsRepository {
                 .query().listOfRows();
     }
 
+    /** the programmes whose applicants have registered for post-UTME, with how many are scored,
+     *  released and still awaiting a score — the programmes whose scores must be uploaded before
+     *  the admission process proceeds */
+    java.util.List<java.util.Map<String, Object>> postUtmeProgrammes(String session) {
+        return jdbc.sql("""
+                WITH app AS (
+                    SELECT a.screening_score, a.score_released_at,
+                           (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS code
+                      FROM admissions.application a
+                      JOIN admissions.candidate c ON c.id = a.candidate_id
+                     WHERE a.session = :s AND a.submitted_at IS NOT NULL
+                )
+                SELECT pr.code AS programme_code, pr.name AS programme, fa.name AS faculty,
+                       count(*) AS registered,
+                       count(*) FILTER (WHERE app.screening_score IS NOT NULL) AS scored,
+                       count(*) FILTER (WHERE app.score_released_at IS NOT NULL) AS released,
+                       count(*) FILTER (WHERE app.screening_score IS NULL) AS awaiting
+                  FROM app
+                  JOIN ref.programme pr ON pr.code = app.code
+                  LEFT JOIN ref.faculty fa ON fa.code = pr.faculty_code
+                 GROUP BY pr.code, pr.name, fa.name
+                 ORDER BY count(*) FILTER (WHERE app.screening_score IS NULL) DESC, fa.name, pr.name
+                """).param("s", session).query().listOfRows();
+    }
+
     /** the merit list for a programme: admissions.merit_list ranks the eligible pool and proposes the offers */
     java.util.List<java.util.Map<String, Object>> meritList(String session, String programme) {
         return jdbc.sql("SELECT * FROM admissions.merit_list(:s, :p)")

@@ -77,6 +77,14 @@ class AdmissionsController {
         return intake.meritList(session, programme);
     }
 
+    /** the programmes registered for post-UTME and their score-upload status — which programmes'
+     *  scores must be uploaded before the admission process proceeds */
+    @GetMapping("/post-utme-programmes")
+    @PreAuthorize(READERS)
+    Map<String, Object> postUtmeProgrammes(@RequestParam String session) {
+        return intake.postUtmeProgrammes(session);
+    }
+
     public record MeritRecord(@jakarta.validation.constraints.NotBlank String session, @jakarta.validation.constraints.NotBlank String programme) {
     }
 

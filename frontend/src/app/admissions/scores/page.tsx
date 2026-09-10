@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
-import { ScoreUpload } from "./ScoreUpload";
+import { ScoreUpload, type PostUtme } from "./ScoreUpload";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +12,11 @@ export default async function ScoresPage({ searchParams }: { searchParams: Promi
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
   const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? "2026/2027";
+  const postUtme = await api<PostUtme>(`/api/v1/admissions/post-utme-programmes?session=${encodeURIComponent(session)}`);
   return (
     <Shell route="t/putme" me={me.ok ? me.data : null}>
-      <ScoreUpload session={session} sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]} actingOffice={me.ok ? me.data.activeOffice : null} />
+      <ScoreUpload session={session} sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]}
+        actingOffice={me.ok ? me.data.activeOffice : null} postUtme={postUtme.ok ? postUtme.data : null} />
     </Shell>
   );
 }

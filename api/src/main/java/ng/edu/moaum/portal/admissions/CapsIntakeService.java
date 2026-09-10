@@ -184,6 +184,20 @@ public class CapsIntakeService {
         return out;
     }
 
+    /** the programmes registered for post-UTME and their score-upload status, so the office knows
+     *  which programmes' scores must be uploaded before the admission process proceeds */
+    @Transactional(readOnly = true)
+    public Map<String, Object> postUtmeProgrammes(String session) {
+        java.util.List<java.util.Map<String, Object>> rows = caps.postUtmeProgrammes(session);
+        long programmes = rows.size();
+        long awaiting = rows.stream().filter(r -> ((Number) r.get("awaiting")).longValue() > 0).count();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("counts", Map.of("programmes", programmes, "awaitingScores", awaiting));
+        out.put("programmes", rows);
+        return out;
+    }
+
     /** the merit list for a programme: the eligible pool ranked, with the proposed offer that fills the quota */
     @Transactional(readOnly = true)
     public Map<String, Object> meritList(String session, String programme) {
