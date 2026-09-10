@@ -91,6 +91,7 @@ BEGIN
     DELETE FROM finance.gateway_event;
     DELETE FROM finance.gateway_attempt;
     DELETE FROM finance.bank_credit;
+    DELETE FROM finance.payment_reconciliation;
     DELETE FROM finance.refund;
     -- payment vouchers (V044): queries and acts before the vouchers they hang on
     DELETE FROM expenditure.voucher_query;

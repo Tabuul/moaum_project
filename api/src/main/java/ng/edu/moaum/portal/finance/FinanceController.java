@@ -33,6 +33,8 @@ class FinanceController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
+    /** who may reconcile a transaction against the bank: the Bursary and the audit directorate */
+    private static final String RECONCILERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_super')";
 
     public record Item(@NotBlank @Size(max = 120) String item, @NotNull @DecimalMin("0") BigDecimal amount, Integer level,
                        @Size(max = 20) String entryMode, @Size(max = 12) String facultyCode, @Size(max = 12) String programmeCode,
@@ -220,6 +222,32 @@ class FinanceController {
         LocalDate t = to == null ? LocalDate.now() : to;
         List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM finance.day_book(:f, :t)").param("f", f).param("t", t).query().listOfRows();
         return Map.of("from", f, "to", t, "rows", rows);
+    }
+
+    /* ── V068: reconciliation of confirmed payments against the bank ── */
+
+    public record Check(@NotBlank @Size(max = 20) String result, @Size(max = 120) String bankReference, @Size(max = 400) String note) {
+    }
+
+    @GetMapping("/reconciliation")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> reconciliation(@RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to) {
+        LocalDate f = from == null ? LocalDate.now().minusDays(30) : from;
+        LocalDate t = to == null ? LocalDate.now() : to;
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM finance.reconciliation_list(:f, :t)").param("f", f).param("t", t).query().listOfRows();
+        return Map.of("from", f, "to", t, "rows", rows);
+    }
+
+    @PostMapping("/reconciliation/{reference}/check")
+    @PreAuthorize(RECONCILERS)
+    @Transactional
+    Map<String, Object> reconcile(@PathVariable String reference, @Valid @RequestBody Check body) {
+        UUID id = jdbc.sql("SELECT finance.reconcile_payment(:r, :res, :b, :n)")
+                .param("r", reference).param("res", body.result())
+                .param("b", body.bankReference(), Types.VARCHAR).param("n", body.note(), Types.VARCHAR)
+                .query(UUID.class).single();
+        return Map.of("id", id, "reference", reference.toUpperCase(), "result", body.result().toUpperCase());
     }
 
     @GetMapping("/bank-credits")

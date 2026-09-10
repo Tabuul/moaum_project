@@ -7,6 +7,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
+import { ReconcileLedger } from "./ReconcileLedger";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ export default async function ReconcilePage() {
   const exceptions = events.filter((e) => ["UNKNOWN_REFERENCE", "SHORT_PAID", "BAD_SIGNATURE", "GATEWAY_ERROR"].includes(e.outcome) && !e.resolved_at);
   const exceptionAmount = exceptions.reduce((n, e) => n + Number(e.amount ?? 0), 0);
   const open = credits.ok ? credits.data : [];
+  const office = me.ok ? me.data.activeOffice : null;
+  const canCheck = ["bursar", "audit", "deputyaudit", "super"].includes(office ?? "");
   return (
     <Shell route="t/reconcile" me={me.ok ? me.data : null}>
       <Tiles items={[
@@ -30,6 +33,7 @@ export default async function ReconcilePage() {
         ["Exceptions", String(exceptions.length + open.length), exceptions.length + open.length ? "var(--red-ink)" : null, `${money(exceptionAmount)} at the gateways · ${open.length} bank credit${open.length === 1 ? "" : "s"}`],
         ["Hanging", String(gw.data.hanging.length), gw.data.hanging.length ? "var(--red-ink)" : null, "Checkouts with nothing confirmed"],
       ]} />
+      <ReconcileLedger canCheck={canCheck} />
       <Panel title="Exceptions requiring action" right="Every exception is cleared before the period closes">
         {exceptions.length + open.length ? (
           <DTable cols={["Reference", "Amount|num", "Payer", "Exception", "Resolution|num"]} rows={[
