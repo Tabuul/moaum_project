@@ -4,7 +4,7 @@ import { ReportDoc } from "@/components/proto/ReportDoc";
 import { ReportToolbar } from "@/components/proto/ReportToolbar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { money } from "@/lib/format";
-import { type ReportColumn, officeLabel, reportFor, sessionSlug, toCsv } from "@/lib/report";
+import { type ReportColumn, officeLabel, reportFor, sessionSlug } from "@/lib/report";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +30,8 @@ export default async function RevenueReport({ searchParams }: { searchParams: Pr
   if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
 
-  const csv = toCsv(
-    ["Category", "Payments", "Amount (NGN)"],
-    d.rows.map((r) => [r.category, r.payments, Number(r.amount).toFixed(2)]),
-  );
+  const sheetHeaders = ["Category", "Payments", "Amount (NGN)"];
+  const sheetRows: (string | number | null)[][] = d.rows.map((r) => [r.category, r.payments, Number(r.amount)]);
 
   return (
     <ReportDoc
@@ -45,7 +43,7 @@ export default async function RevenueReport({ searchParams }: { searchParams: Pr
       totals={d.totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${d.totals.payments.toLocaleString()} payments confirmed for ${session}, totalling ${money(Number(d.totals.amount))}. Only payments the Bursary has confirmed against the bank record are counted; a reference not yet confirmed is not revenue.`}
-      toolbar={<ReportToolbar csv={csv} filename={`revenue-return-${sessionSlug(session)}.csv`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`revenue-return-${sessionSlug(session)}`} />}
     />
   );
 }

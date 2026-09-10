@@ -4,7 +4,7 @@ import type { AdmissionCycle } from "@/lib/matriculation";
 import { ReportDoc } from "@/components/proto/ReportDoc";
 import { ReportToolbar } from "@/components/proto/ReportToolbar";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { type ReportColumn, officeLabel, reportFor, sessionSlug, toCsv } from "@/lib/report";
+import { type ReportColumn, officeLabel, reportFor, sessionSlug } from "@/lib/report";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +39,8 @@ export default async function AdmissionsReport({ searchParams }: { searchParams:
   const sum = (k: "applied" | "quota" | "offered" | "accepted") => progs.reduce((n, x) => n + (Number(x[k]) || 0), 0);
   const totals = { applied: sum("applied"), quota: sum("quota"), offered: sum("offered"), accepted: sum("accepted") };
 
-  const csv = toCsv(
-    columns.map((k) => k.label),
-    rows.map((r) => columns.map((k) => r[k.key as keyof typeof r] ?? "")),
-  );
+  const sheetHeaders = columns.map((k) => k.label);
+  const sheetRows = rows.map((r) => columns.map((k) => r[k.key as keyof typeof r] ?? ""));
 
   return (
     <ReportDoc
@@ -54,7 +52,7 @@ export default async function AdmissionsReport({ searchParams }: { searchParams:
       totals={totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${c.applications.toLocaleString()} applications on the committed list, ${c.screened.toLocaleString()} carrying a screening aggregate; ${c.offers.toLocaleString()} offers and ${c.accepted.toLocaleString()} acceptances${c.capacity != null ? ` against ${c.capacity.toLocaleString()} places` : ""}.`}
-      toolbar={<ReportToolbar csv={csv} filename={`admissions-return-${sessionSlug(session)}.csv`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`admissions-return-${sessionSlug(session)}`} />}
     />
   );
 }

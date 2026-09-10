@@ -1,3 +1,5 @@
+import { buildXlsx } from "@/lib/xlsx";
+
 /** the shapes the results and registration modules answer with */
 export interface SheetListed {
   id: string;
@@ -124,16 +126,33 @@ export const RS_STAGES: [string, string, string][] = [
   ["Senate approved — published", "Visible to students; the result is now final", ""],
 ];
 
-export function csv(rows: (string | number | null | undefined)[][]): string {
-  return rows.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+/** a table for download: the first row is the header. csv() tags the rows so
+ *  download() writes a formatted .xlsx (auto column widths, bordered cells). */
+export interface SheetData { __sheet: (string | number | null | undefined)[][] }
+
+export function csv(rows: (string | number | null | undefined)[][]): SheetData {
+  return { __sheet: rows };
 }
 
-export function download(name: string, text: string) {
+function saveBlob(name: string, blob: Blob) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  a.href = URL.createObjectURL(blob);
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/** download a table as a formatted .xlsx, or a raw string as text */
+export function download(name: string, data: string | SheetData) {
+  if (typeof data === "object" && data !== null && "__sheet" in data) {
+    const rows = data.__sheet;
+    const headers = (rows[0] ?? []).map((h) => String(h ?? ""));
+    const base = name.replace(/\.(csv|xlsx|txt)$/i, "");
+    const sheet = base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet1";
+    saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet));
+    return;
+  }
+  saveBlob(name, new Blob([data], { type: "text/csv;charset=utf-8" }));
 }
 
 /* ── the lecturer's own sheets, the roll, the broadsheet and Senate (V013 results module, second cut) ── */

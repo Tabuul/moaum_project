@@ -3,7 +3,7 @@ import type { Me } from "@/components/proto/Shell";
 import { ReportDoc } from "@/components/proto/ReportDoc";
 import { ReportToolbar } from "@/components/proto/ReportToolbar";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { type ReportColumn, officeLabel, reportFor, sessionSlug, toCsv } from "@/lib/report";
+import { type ReportColumn, officeLabel, reportFor, sessionSlug } from "@/lib/report";
 
 export const dynamic = "force-dynamic";
 
@@ -34,10 +34,8 @@ export default async function EnrolmentReport({ searchParams }: { searchParams: 
   const d = data.data;
 
   const rows = d.rows.map((r) => ({ ...r, level: `${r.level} Level` }));
-  const csv = toCsv(
-    columns.map((k) => k.label),
-    d.rows.map((r) => columns.map((k) => r[k.key as keyof EnrolmentRow] ?? "")),
-  );
+  const sheetHeaders = columns.map((k) => k.label);
+  const sheetRows = d.rows.map((r) => columns.map((k) => r[k.key as keyof EnrolmentRow] ?? ""));
 
   return (
     <ReportDoc
@@ -49,7 +47,7 @@ export default async function EnrolmentReport({ searchParams }: { searchParams: 
       totals={d.totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${d.totals.total.toLocaleString()} students in the ${session} cohort — ${d.totals.male.toLocaleString()} male, ${d.totals.female.toLocaleString()} female${d.totals.unstated ? `, ${d.totals.unstated.toLocaleString()} unstated` : ""}. Those withdrawn, expelled, transferred out or deceased are not counted.`}
-      toolbar={<ReportToolbar csv={csv} filename={`enrolment-return-${sessionSlug(session)}.csv`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`enrolment-return-${sessionSlug(session)}`} />}
     />
   );
 }
