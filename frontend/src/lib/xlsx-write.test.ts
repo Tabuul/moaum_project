@@ -9,11 +9,15 @@ test("columns are lettered the way a spreadsheet letters them", () => {
   assert.equal(colName(36), "AK");
 });
 
-test("a sheet writes strings inline and numbers as values, and skips empty cells", () => {
+test("a sheet writes strings inline and numbers as values, styled and bordered", () => {
   const x = sheetXml([["SN", "REG_NO", "UTME SCORE"], [1, "202699176777GF", 287], [2, "", null]]);
-  assert.ok(x.includes('<c r="A1" t="inlineStr"><is><t xml:space="preserve">SN</t></is></c>'));
-  assert.ok(x.includes('<c r="C2"><v>287</v></c>'));
-  assert.ok(x.includes('<row r="3"><c r="A3"><v>2</v></c></row>'));
+  // heading row carries the bold header style (s=1); body carries the bordered style (s=2)
+  assert.ok(x.includes('<c r="A1" s="1" t="inlineStr"><is><t xml:space="preserve">SN</t></is></c>'));
+  assert.ok(x.includes('<c r="C2" s="2"><v>287</v></c>'));
+  // empty cells within a row are now emitted (bordered) so the grid stays complete
+  assert.ok(x.includes('<row r="3"><c r="A3" s="2"><v>2</v></c><c r="B3" s="2"/><c r="C3" s="2"/></row>'));
+  // column widths are declared so each column fits its data
+  assert.ok(x.includes("<cols>") && x.includes('customWidth="1"'));
   assert.ok(x.includes("&amp;") === false);
   assert.ok(sheetXml([["A & B"]]).includes("A &amp; B"));
 });
