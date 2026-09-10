@@ -125,4 +125,17 @@ class MatriculationController {
         MatriculationRepository.RunResult r = repo.run(s + "/" + y);
         return Map.of("run", r.runRef(), "issued", r.issued());
     }
+
+    /**
+     * Matriculate one student who has since paid the fees and registered — a straggler the batch
+     * run missed. The database refuses, with the reason, anyone not admitted, not registered, or
+     * still owing; nothing is typed, the number follows the record.
+     */
+    @PostMapping("/students/{studentId}/matriculate")
+    @PreAuthorize(RUNNERS)
+    @Transactional
+    Map<String, Object> matriculateStudent(@PathVariable String s, @PathVariable String y, @PathVariable UUID studentId) {
+        String matric = repo.matriculateStudent(studentId);
+        return Map.of("student", studentId, "matricNo", matric);
+    }
 }

@@ -21,6 +21,7 @@ export function FacultyListScreen({ list, actingOffice }: { list: FacultyList; a
   const [office, setOffice] = useState("Faculty Officer");
   const conf = list.state === "CONFIRMED";
   const may = ["academic", "registrar", "dregistrar", "facultyofficer"].includes(actingOffice ?? "");
+  const mayIssue = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
   const queried = list.rows.filter((r) => r.queryReason);
   const ready = list.rows.length - queried.length;
   const min = list.minUnits ?? 15;
@@ -66,7 +67,10 @@ export function FacultyListScreen({ list, actingOffice }: { list: FacultyList; a
             r.queryReason ? <Pil kind="bad" key="s">Query</Pil> : <Pil kind="ok" key="s">For matriculation</Pil>,
             r.queryReason
               ? <Btn kind="ghost" key="q" disabled={busy || !may || conf} onClick={() => void send("POST", `${base}/queries/${r.studentId}/withdraw`, {}, `Query withdrawn for ${r.admissionNo}`)}>Withdraw query</Btn>
-              : <Btn kind="ghost" key="q" disabled={busy || !may || conf} onClick={() => { setQuery(r.studentId); setReason(r.units < min ? `Registered ${r.units} units. The minimum at 100 level is ${min}` : ""); }}>Query</Btn>,
+              : <span key="act" style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                  <Btn kind="go" disabled={busy || !mayIssue} onClick={() => void send("POST", `/api/bff/api/v1/matriculation/sessions/${list.session}/students/${r.studentId}/matriculate`, {}, `Matriculation number issued for ${r.admissionNo}`)}>Issue number</Btn>
+                  <Btn kind="ghost" disabled={busy || !may || conf} onClick={() => { setQuery(r.studentId); setReason(r.units < min ? `Registered ${r.units} units. The minimum at 100 level is ${min}` : ""); }}>Query</Btn>
+                </span>,
           ])}
           texts={list.rows.map((r) => `${r.admissionNo} ${r.surname} ${r.otherNames} ${r.deptName}`)}
         />

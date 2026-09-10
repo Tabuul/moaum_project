@@ -115,6 +115,11 @@ class MatriculationRepository {
         return jdbc.sql("SELECT run_ref, issued FROM people.matriculate(:s)").param("s", session).query(RunResult.class).single();
     }
 
+    /** matriculate one student once fees are paid and courses registered; returns the number issued */
+    String matriculateStudent(java.util.UUID studentId) {
+        return jdbc.sql("SELECT people.matriculate_student(:id)").param("id", studentId).query(String.class).single();
+    }
+
     Integer minUnits(int level) {
         return jdbc.sql("SELECT min_units FROM policy.level_limit WHERE level = :l").param("l", level).query(Integer.class)
                 .optional().orElse(null);
