@@ -88,7 +88,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
   const problem: Problem =
     json && typeof json === "object" && "status" in (json as object)
       ? (json as Problem)
-      : { status: response.status, title: response.statusText, detail: text.slice(0, 500) };
+      : fallbackProblem(response.status, response.statusText, text);
   if (response.status === 401 && !token) {
     problem.remedy = problem.remedy ?? {
       message: "Sign in again.",
@@ -96,6 +96,41 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
     };
   }
   return { ok: false, problem };
+}
+
+/**
+ * A readable problem when the API answers with no problem body. This happens on a bare
+ * 403/401 from the security layer, and on HTTP/2 (Railway) `statusText` is empty — so
+ * without this the screen showed a blank red box. Give each status its own words.
+ */
+function fallbackProblem(status: number, statusText: string, text: string): Problem {
+  const detail = text.slice(0, 500).trim() || undefined;
+  switch (status) {
+    case 401:
+      return {
+        status, title: "You are not signed in",
+        detail: detail ?? "Your session has ended.",
+        remedy: { message: "Sign in again.", office: "Directorate of ICT" },
+      };
+    case 403:
+      return {
+        status, title: "You don’t have access to this screen",
+        detail: detail ?? "The office you are signed in as is not permitted to open this screen.",
+        remedy: { message: "Switch to an office that owns this screen with the office selector, top left — or ask for access.", office: "Directorate of ICT" },
+      };
+    case 404:
+      return { status, title: "Not found", detail: detail ?? "There is nothing at this address." };
+    case 502:
+    case 503:
+    case 504:
+      return {
+        status, title: "The portal API is not answering",
+        detail: detail ?? "The service is briefly unavailable.",
+        remedy: { message: "Try again in a moment.", office: "Directorate of ICT" },
+      };
+    default:
+      return { status, title: statusText.trim() || `The request was refused (${status})`, detail };
+  }
 }
 
 function safeJson(text: string): unknown {

@@ -8,7 +8,7 @@ import { Note } from "@/components/proto/ui";
  */
 export function ProblemNotice({ problem }: { problem: Problem }) {
   return (
-    <Note kind="bad" title={problem.title ?? "The request was refused"}>
+    <Note kind="bad" title={problem.title?.trim() || "The request was refused"}>
       {problem.detail}
       {problem.remedy && (
         <>
