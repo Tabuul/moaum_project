@@ -47,7 +47,7 @@ export default async function EnrolmentReport({ searchParams }: { searchParams: 
       totals={d.totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${d.totals.total.toLocaleString()} students in the ${session} cohort — ${d.totals.male.toLocaleString()} male, ${d.totals.female.toLocaleString()} female${d.totals.unstated ? `, ${d.totals.unstated.toLocaleString()} unstated` : ""}. Those withdrawn, expelled, transferred out or deceased are not counted.`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`enrolment-return-${sessionSlug(session)}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`enrolment-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} />}
     />
   );
 }

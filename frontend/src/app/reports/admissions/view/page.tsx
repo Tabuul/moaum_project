@@ -52,7 +52,7 @@ export default async function AdmissionsReport({ searchParams }: { searchParams:
       totals={totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${c.applications.toLocaleString()} applications on the committed list, ${c.screened.toLocaleString()} carrying a screening aggregate; ${c.offers.toLocaleString()} offers and ${c.accepted.toLocaleString()} acceptances${c.capacity != null ? ` against ${c.capacity.toLocaleString()} places` : ""}.`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`admissions-return-${sessionSlug(session)}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`admissions-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} />}
     />
   );
 }

@@ -1,4 +1,12 @@
-import { buildXlsx } from "@/lib/xlsx";
+import { buildXlsx, loadCrest } from "@/lib/xlsx";
+
+const SCHOOL = "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI";
+
+/** a filename base as a readable title: "ledger-2026-2027" → "Ledger 2026 2027" */
+function humanize(base: string): string {
+  const s = base.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "Download";
+}
 
 /** the shapes the results and registration modules answer with */
 export interface SheetListed {
@@ -142,14 +150,18 @@ function saveBlob(name: string, blob: Blob) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-/** download a table as a formatted .xlsx, or a raw string as text */
+/** download a table as a formatted .xlsx (branded header: crest, University name, title, date),
+ *  or a raw string as text. Stays synchronous — the crest is fetched then the file saved. */
 export function download(name: string, data: string | SheetData) {
   if (typeof data === "object" && data !== null && "__sheet" in data) {
     const rows = data.__sheet;
     const headers = (rows[0] ?? []).map((h) => String(h ?? ""));
     const base = name.replace(/\.(csv|xlsx|txt)$/i, "");
     const sheet = base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet1";
-    saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet));
+    const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    void loadCrest().then((logo) =>
+      saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL, title: humanize(base), date, logo: logo ?? undefined })),
+    );
     return;
   }
   saveBlob(name, new Blob([data], { type: "text/csv;charset=utf-8" }));
