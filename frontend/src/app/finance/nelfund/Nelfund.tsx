@@ -12,6 +12,11 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, day, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
+interface LedgerEntry { id: string; at: string; session: string; kind: string; amount: number; reference: string | null; note: string | null; balance: number }
+interface StudentLedger { student: { name: string; number: string; matric_no: string | null; admission_no: string | null; status: string }; session: string; balance: number; statement: LedgerEntry[]; position: { balance: number; paid_in_full: boolean } }
+
+const LKIND: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = { CREDIT: ["NELFUND credit", "ok"], TOPUP: ["Top-up", "ok"], APPLIED: ["Applied to fees", "info"], REVERSED: ["Reversed to the Fund", "bad"], REFUND: ["Refund", "grey"] };
+
 export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; tab: string; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const bursary = ["bursar", "admin", "super"].includes(actingOffice ?? "");
@@ -21,6 +26,8 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
   const [said, setSaid] = useState<string | null>(null);
   const [batch, setBatch] = useState({ ref: "", receivedOn: "", note: "", text: "" });
   const [credit, setCredit] = useState({ number: "", amount: "", reason: "" });
+  const [lookup, setLookup] = useState("");
+  const [ledger, setLedger] = useState<StudentLedger | null>(null);
   const [statusText, setStatusText] = useState("");
   const [fix, setFix] = useState<Record<string, { number: string; note: string }>>({});
   const t = d.tiles;
@@ -40,6 +47,21 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
     }
   }
   const go = (next: string, session = d.session) => router.push(`/finance/nelfund?tab=${next}&session=${encodeURIComponent(session)}`);
+
+  async function lookUp(number: string) {
+    const n = number.trim();
+    if (!n) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/nelfund/students/${encodeURIComponent(n)}/statement?session=${encodeURIComponent(d.session)}`);
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); setLedger(null); return; }
+      setLedger(j as StudentLedger);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
@@ -102,6 +124,36 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
               </PBody>
             </Panel>
           ) : null}
+          <Panel title="Look up a student's wallet" right="The whole transaction history — credits, top-ups, what was applied, reversals and refunds">
+            <PBody>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <Field id="lk-num" label="Matriculation or admission number"><input id="lk-num" className="ctl tnum" value={lookup} onChange={(e) => setLookup(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void lookUp(lookup); }} placeholder="MOAUM/CSC/26/0001" /></Field>
+                <Btn kind="primary" disabled={busy || !lookup.trim()} onClick={() => void lookUp(lookup)}>Show the history</Btn>
+                {ledger ? <Btn kind="ghost" onClick={() => { setLedger(null); setLookup(""); }}>Clear</Btn> : null}
+              </div>
+              {ledger ? (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "baseline", marginBottom: 8 }}>
+                    <b>{ledger.student.name}</b>
+                    <span className="tnum sub2">{ledger.student.number}</span>
+                    <Pil kind="grey">{ledger.student.status}</Pil>
+                    <span className="sub2">Wallet balance <b className="tnum">{money(Number(ledger.balance))}</b></span>
+                    <span className="sub2">Outstanding for {ledger.session} <b className="tnum" style={{ color: Number(ledger.position.balance) ? "var(--red-ink)" : undefined }}>{money(Number(ledger.position.balance))}</b></span>
+                  </div>
+                  {ledger.statement.length ? (
+                    <DTable cols={["Date|mid", "Entry", "Reference|mid", "In|num", "Out|num", "Balance|num"]} rows={ledger.statement.map((e) => [
+                      <span className="sub2 tnum" key="d">{day(e.at)}</span>,
+                      <Two key="e" a={<Pil kind={LKIND[e.kind]?.[1] ?? "grey"}>{LKIND[e.kind]?.[0] ?? e.kind}</Pil>} b={e.note ?? ""} />,
+                      <span className="tnum sub2" key="r">{e.reference ?? "—"}</span>,
+                      e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="tnum" key="i" style={{ color: "var(--green-ink)", fontWeight: 600 }}>{money(Number(e.amount))}</span> : <span className="sub2" key="i">—</span>,
+                      e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="sub2" key="o">—</span> : <span className="tnum" key="o">{money(Number(e.amount))}</span>,
+                      <b className="tnum" key="b">{money(Number(e.balance))}</b>,
+                    ])} />
+                  ) : <div className="sub2">No movement on this student&rsquo;s wallet yet.</div>}
+                </div>
+              ) : null}
+            </PBody>
+          </Panel>
           <Note kind="info" title="The reconciliation runs against the register, not against a spreadsheet">A number that is not on the register is refused rather than created — which is why an unmatched row is the Registry&rsquo;s to answer, not this office&rsquo;s to force.</Note>
         </>
       ) : tab === "match" ? (

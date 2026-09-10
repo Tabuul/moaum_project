@@ -82,6 +82,13 @@ class WalletController {
         return service.desk(s + "/" + y);
     }
 
+    /** a student's wallet ledger, by matriculation or admission number — the Bursary's and the audit directorate's read */
+    @GetMapping("/api/v1/nelfund/students/{number}/statement")
+    @PreAuthorize(READERS)
+    Map<String, Object> studentLedger(@PathVariable String number, @RequestParam(required = false) String session) {
+        return service.studentLedger(number, session);
+    }
+
     @PostMapping("/api/v1/nelfund/batches")
     @PreAuthorize(BURSARY)
     Map<String, Object> load(@Valid @RequestBody Batch body) {

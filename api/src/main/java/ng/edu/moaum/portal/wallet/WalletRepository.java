@@ -111,6 +111,15 @@ class WalletRepository {
                 .param("n", number).query(UUID.class).optional();
     }
 
+    /** who the ledger belongs to, for the Bursary's lookup */
+    Map<String, Object> studentHeader(UUID student) {
+        return jdbc.sql("""
+                SELECT s.id, s.surname || ', ' || s.other_names AS name, s.matric_no, s.admission_no, s.status,
+                       coalesce(s.matric_no, s.admission_no) AS number
+                  FROM people.student s WHERE s.id = :s
+                """).param("s", student).query().singleRow();
+    }
+
     Map<String, Object> statusTiles(String session) {
         return jdbc.sql("""
                 SELECT count(*) AS applied, count(*) FILTER (WHERE state = 'APPROVED') AS approved,

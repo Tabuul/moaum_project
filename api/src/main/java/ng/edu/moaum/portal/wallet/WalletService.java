@@ -96,6 +96,22 @@ public class WalletService {
         return Map.of("entry", entry, "student", student, "session", session, "amount", amount, "balance", repo.balance(student));
     }
 
+    /** the Bursary (or the audit directorate) looks up any student's wallet ledger by number */
+    @Transactional(readOnly = true)
+    public Map<String, Object> studentLedger(String number, String sessionAsked) {
+        UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
+                "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("The number as the register holds it.", "Registry")));
+        String session = session(sessionAsked);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("student", repo.studentHeader(student));
+        out.put("session", session);
+        out.put("balance", repo.balance(student));
+        out.put("statement", repo.statement(student));
+        out.put("position", repo.position(student, session));
+        out.put("status", repo.status(student).orElse(null));
+        return out;
+    }
+
     @Transactional
     public Map<String, Object> match(UUID row, String number, String note) {
         UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
