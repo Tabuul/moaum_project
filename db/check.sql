@@ -66,7 +66,9 @@ BEGIN
     DELETE FROM finance.nelfund_row;
     DELETE FROM finance.nelfund_batch;
     DELETE FROM finance.nelfund_status;
-    -- payroll (V069), leave (V071) and movements (V072): before the establishment they hang on
+    -- payroll (V069), leave (V071), movements (V072), recruitment (V073)
+    DELETE FROM hrm.applicant;
+    DELETE FROM hrm.vacancy;
     DELETE FROM hrm.leave_request;
     DELETE FROM hrm.movement;
     DELETE FROM hrm.payslip;

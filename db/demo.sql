@@ -535,4 +535,25 @@ BEGIN
     RAISE NOTICE 'demo movements ready: % movement(s)', (SELECT count(*) FROM hrm.movement);
 END $movement$;
 
+-- ── recruitment (V073): an open vacancy with a scored shortlist ──
+DO $recruit$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_hr uuid; v_vac uuid;
+BEGIN
+    SELECT a.person_id INTO v_hr FROM iam.office_assignment a WHERE a.office_code = 'hrm' LIMIT 1;
+    PERFORM set_config('moaum.actor_id', coalesce(v_hr, v_actor)::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    IF NOT EXISTS (SELECT 1 FROM hrm.vacancy WHERE title = 'Lecturer II — Computer Science (demo)') THEN
+        INSERT INTO hrm.vacancy (title, department, requirements, grade, category, closes_on, state)
+        VALUES ('Lecturer II — Computer Science (demo)', 'Computer Science', 'Ph.D in Computer Science required; publications in accredited outlets.', 'CONUASS 3', 'ACADEMIC', current_date + 21, 'SHORTLISTING')
+        RETURNING id INTO v_vac;
+        INSERT INTO hrm.applicant (vacancy_id, name, email, qualification, publications, teaching_years, score, recommendation, state) VALUES
+         (v_vac, 'DEMO Candidate One (invented)', 'demo.cand1@example.com', 'Ph.D Computer Science, 2023', 11, 4, 86, 'Invite', 'SHORTLISTED'),
+         (v_vac, 'DEMO Candidate Two (invented)', 'demo.cand2@example.com', 'Ph.D Software Engineering, 2022', 8, 3, 81, 'Invite', 'SHORTLISTED'),
+         (v_vac, 'DEMO Candidate Three (invented)', 'demo.cand3@example.com', 'M.Sc Computer Science, 2019', 2, 5, 52, 'Below the Ph.D requirement', 'REJECTED');
+    END IF;
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo recruitment ready: % vacancy(ies)', (SELECT count(*) FROM hrm.vacancy);
+END $recruit$;
+
 COMMIT;
