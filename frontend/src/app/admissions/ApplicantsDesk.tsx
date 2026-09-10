@@ -15,6 +15,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
+import { loadCrest } from "@/lib/xlsx";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -93,7 +94,15 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const t = j as { session: string; programme: string; asAt: string; summary: Record<string, number | null>; rows: Record<string, unknown>[] };
-      const head = (title: string): Cell[][] => [[], [], [], [], [null, null, null, null, null, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI"], [null, null, null, null, null, `${t.session} UTME MERIT ADMISSION SUMMARY${t.programme ? ` FOR ${t.programme}` : ""}`], [null, null, null, null, null, `${title} AS AT ${t.asAt}`]];
+      // a letterhead in the seven rows the template reserves above the data: the
+      // school name and title at the top-left (column B, beside the floating crest),
+      // then blank rows so the "SN" column header still lands on row 8
+      const head = (title: string): Cell[][] => [
+        [null, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI"],
+        [null, `${t.session} UTME MERIT ADMISSION SUMMARY${t.programme ? ` FOR ${t.programme}` : ""}`],
+        [null, `${title} AS AT ${t.asAt}`],
+        [], [], [], [],
+      ];
       const cols = ["SN", "REG_NO", "NAME", "GENDER", "STATE", "LGA", "ENG", "SUBJ2", "SUBJ2 SCORE", "SUBJ3", "SUBJ3 SCORE", "SUBJ4", "SUBJ4 SCORE", "UTME SCORE", "ENG GRADE", "ENG POINT", "MATHS GRADE", "MATHS POINT", "SUBJ3", "SUBJ3 GRADE", "SUBJ3 POINT", "SUBJ4", "SUBJ4 GRADE", "SUBJ4 POINT", "SUBJ5", "SUBJ5 GRADE", "SUBJ5 POINT", "SITINGS", "OL/TEST TOTAL SCORE", "NO OF SITTINGS POINTS", "TOTAL O/L SCORE", "OL/TEST SCORE RATIO (_%)", "UTME SCORE RATIO (_%)", "TOTAL SCORE (100%)", "GENERAL REMARKS"];
       const line = (x: Record<string, unknown>, i: number, extra: Cell[] = []): Cell[] => {
         const us = (x.utmeSubjects as { subject: string; score: string }[]) ?? [];
@@ -116,6 +125,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         [1, "Total Applicants", s.totalApplicants], [2, "Registered Applicants", s.registeredApplicants], [3, "Qualified Cases", s.qualifiedCases],
         [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Admission Quota", s.admissionQuota], [6, "Number On Merit List", s.numberOnMeritList]];
       const nonCols = [...cols, "UTME REMARKS", "OL REMARKS"];
+      const logo = await loadCrest();
       const book = xlsx([
         ["Admission_Summary", summary],
         ["Merit_List", [...head("MERIT LIST"), cols, ...merit.map((x, i) => line(x, i))]],
@@ -124,7 +134,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           x.cutoff !== null && x.total !== null && Number(x.total) < Number(x.cutoff) ? "Below cut-off" : "Correct Combination",
           x.olevelTotal === null || Number(x.olevelTotal) === 0 ? "Insufficient OLevel; " : "",
         ]))]],
-      ]);
+      ], { logo: logo ?? undefined });
       const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
