@@ -580,10 +580,16 @@ public class PaymentsService {
         return verify(reference, "VERIFY");
     }
 
-    /** every ten minutes, and whether or not anybody is watching: the hanging payments are asked about */
+    /**
+     * Every ten minutes, and whether or not anybody is watching: the hanging
+     * payments are asked about, each on the channel of the gateway it was opened
+     * on — Paystack's verify, Flutterwave's verify-by-reference, Quickteller's
+     * requery. A reference the gateway now says is paid is settled exactly as a
+     * webhook would settle it, so a dropped callback resolves itself.
+     */
     @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${moaum.payments.sweep-every-ms:600000}", initialDelayString = "120000")
     public void sweep() {
-        if (!paystackOn() && !flutterwaveOn()) {
+        if (!paystackOn() && !flutterwaveOn() && !quicktellerOn()) {
             return;
         }
         for (Map<String, Object> h : repo.hanging()) {
