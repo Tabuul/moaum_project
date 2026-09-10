@@ -453,4 +453,32 @@ BEGIN
     RAISE NOTICE 'demo payroll ready: establishment seeded, % run(s)', (SELECT count(*) FROM hrm.pay_run);
 END $payroll$;
 
+-- ── inter-departmental transfer (V070): a case awaiting the committee, and one recommended, awaiting Senate ──
+DO $xfer$
+DECLARE v_academic uuid; s1 uuid; s2 uuid; p1 text; p2 text; v_app uuid;
+BEGIN
+    SELECT a.person_id INTO v_academic FROM iam.office_assignment a WHERE a.office_code = 'academic' LIMIT 1;
+    SELECT id, programme_code INTO s1, p1 FROM people.student WHERE surname = 'DEMO' AND matric_no LIKE 'MOAUM/MTC/%' AND status = 'ACTIVE' ORDER BY matric_no LIMIT 1;
+    SELECT id, programme_code INTO s2, p2 FROM people.student WHERE surname = 'DEMO' AND matric_no LIKE 'MOAUM/ACC/%' AND status = 'ACTIVE' ORDER BY matric_no LIMIT 1;
+
+    IF s1 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM people.transfer_application WHERE student_id = s1 AND state IN ('APPLIED','RECOMMENDED','APPROVED')) THEN
+        PERFORM set_config('moaum.actor_id', s1::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        v_app := people.apply_transfer(s1, (SELECT code FROM ref.programme WHERE NOT archived AND code <> p1 ORDER BY code LIMIT 1), 'I have a stronger passion for the course applied for.', 215);
+        PERFORM set_config('moaum.actor_id', coalesce(v_academic, v_actor)::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM people.review_transfer(v_app, true, 200, 'Good academic standing; space available.');
+    END IF;
+
+    IF s2 IS NOT NULL AND NOT EXISTS (SELECT 1 FROM people.transfer_application WHERE student_id = s2 AND state IN ('APPLIED','RECOMMENDED','APPROVED')) THEN
+        PERFORM set_config('moaum.actor_id', s2::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM people.apply_transfer(s2, (SELECT code FROM ref.programme WHERE NOT archived AND code <> p2 ORDER BY code LIMIT 1), 'Inability to cope in the current department.', 208);
+    END IF;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo transfers ready: % application(s)', (SELECT count(*) FROM people.transfer_application);
+END $xfer$;
+
 COMMIT;

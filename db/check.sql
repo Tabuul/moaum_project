@@ -135,6 +135,7 @@ BEGIN
     DELETE FROM people.status_change;
     DELETE FROM people.enrolment;
     DELETE FROM people.search_log;
+    DELETE FROM people.transfer_application;
     DELETE FROM people.student;
     DELETE FROM people.matriculation_run;
     DELETE FROM policy.semester WHERE session IN ('9999/0000', '9998/9999');
@@ -222,7 +223,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 115
+\set EXPECTED 116
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2166,6 +2167,42 @@ BEGIN
     DELETE FROM hrm.pay_run WHERE id = v_run;
     DELETE FROM hrm.employment WHERE person_id = p;
     DELETE FROM iam.person WHERE id = p;
+END $$;
+
+-- ── 116. an inter-departmental transfer is recommended, approved by Senate, guarded to one live case, and raises a non-refundable fee (V070) ──
+DO $$
+DECLARE stu uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
+        v_app uuid; v_state text; v_ref text; ok_guard boolean := false; prog text; prog2 text;
+BEGIN
+    SELECT code INTO prog FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+    SELECT code INTO prog2 FROM ref.programme WHERE NOT archived AND code <> prog ORDER BY code LIMIT 1;
+    PERFORM set_config('moaum.actor_id', a1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check: transfer', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (stu, 'MOAUM/ADM/20/999123', 'MOAUM/XX/20/9123', 'CHECKXFER', 'Invented', prog, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now());
+    -- the student applies
+    PERFORM set_config('moaum.actor_id', stu::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    v_app := people.apply_transfer(stu, prog2, 'Passion for the field', 210);
+    -- a second live application is refused
+    BEGIN PERFORM people.apply_transfer(stu, prog2, 'again', NULL); EXCEPTION WHEN others THEN ok_guard := true; END;
+    -- the committee recommends for 200, Senate (a different officer) approves
+    PERFORM set_config('moaum.actor_id', a1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM people.review_transfer(v_app, true, 200, 'In good standing');
+    PERFORM set_config('moaum.actor_id', a2::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM people.senate_transfer(v_app, true, NULL);
+    SELECT state INTO v_state FROM people.transfer_application WHERE id = v_app;
+    v_ref := people.transfer_fee_reference(v_app);
+    PERFORM pg_temp.assert('An inter-departmental transfer reaches Senate approval, guards one live case, and raises the non-refundable fee',
+        v_state = 'APPROVED' AND ok_guard AND v_ref IS NOT NULL
+        AND (SELECT amount FROM finance.payment_reference WHERE reference = v_ref) = 10000,
+        format('state=%s guard=%s ref=%s', v_state, ok_guard, v_ref));
+    DELETE FROM finance.payment_reference WHERE reference = v_ref;
+    DELETE FROM people.transfer_application WHERE student_id = stu;
+    DELETE FROM people.student WHERE id = stu;
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
