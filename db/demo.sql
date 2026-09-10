@@ -455,7 +455,7 @@ END $payroll$;
 
 -- ── inter-departmental transfer (V070): a case awaiting the committee, and one recommended, awaiting Senate ──
 DO $xfer$
-DECLARE v_academic uuid; s1 uuid; s2 uuid; p1 text; p2 text; v_app uuid;
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_academic uuid; s1 uuid; s2 uuid; p1 text; p2 text; v_app uuid;
 BEGIN
     SELECT a.person_id INTO v_academic FROM iam.office_assignment a WHERE a.office_code = 'academic' LIMIT 1;
     SELECT id, programme_code INTO s1, p1 FROM people.student WHERE surname = 'DEMO' AND matric_no LIKE 'MOAUM/MTC/%' AND status = 'ACTIVE' ORDER BY matric_no LIMIT 1;
