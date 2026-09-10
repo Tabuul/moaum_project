@@ -152,6 +152,27 @@ class AdmissionSettingsRepository {
                 .update();
     }
 
+    /* ── capacity: the NUC, faculty and programme quotas are places, not qualification rules, and
+       the NUC ceiling can rise mid-cycle — so these three are editable even when the policy is in force.
+       Each touches only its quota column; the cut-offs, weights, ratios and subject rules stay frozen. */
+
+    int setNucQuota(UUID policyId, int quota) {
+        return jdbc.sql("UPDATE admissions.session_policy SET nuc_quota = :q WHERE id = :id")
+                .param("q", quota).param("id", policyId).update();
+    }
+
+    int setFacultyQuota(UUID policyId, String facultyCode, Integer quota) {
+        return jdbc.sql("""
+                INSERT INTO admissions.faculty_quota (policy_id, faculty_code, quota) VALUES (:id, :f, :q)
+                ON CONFLICT (policy_id, faculty_code) DO UPDATE SET quota = EXCLUDED.quota
+                """).param("id", policyId).param("f", facultyCode).param("q", quota, Types.INTEGER).update();
+    }
+
+    int setProgrammeQuota(UUID policyId, String code, Integer quota) {
+        return jdbc.sql("UPDATE admissions.programme_rule SET quota = :q WHERE policy_id = :id AND programme_code = :code")
+                .param("q", quota, Types.INTEGER).param("id", policyId).param("code", code).update();
+    }
+
     void upsertProgrammeRule(UUID policyId, String code, AdmissionSettingsService.ProgrammeRuleIn r) {
         jdbc.sql("""
                 INSERT INTO admissions.programme_rule

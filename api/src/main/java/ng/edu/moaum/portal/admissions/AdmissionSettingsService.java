@@ -160,6 +160,51 @@ public class AdmissionSettingsService {
         return policy(session);
     }
 
+    /* ── capacity, editable in force ──
+       A quota is the number of places, not a rule of qualification. The NUC can raise the approved
+       quota mid-cycle and the Deans redistribute it, so these three are edited whether the policy is a
+       draft or in force — unlike everything else, they do not assert DRAFT. Every change is still an
+       attributed act on the audit spine, and the cut-offs, weightings, criteria and subject
+       combinations a candidate is admitted against stay frozen once the policy is in force. */
+
+    @Transactional
+    public AdmissionPolicy setNucQuota(String session, Integer quota) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        if (quota == null || quota <= 0) {
+            throw refused("ADM_QUOTA", "The NUC approved quota is a positive number of places.", "State the quota the NUC approved.");
+        }
+        settings.setNucQuota(id, quota);
+        return policy(session);
+    }
+
+    @Transactional
+    public AdmissionPolicy setFacultyQuota(String session, String facultyCode, Integer quota) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = facultyCode.trim().toUpperCase();
+        if (!settings.facultyExists(code)) {
+            throw new NotFound("faculty", code);
+        }
+        if (quota != null && quota < 0) {
+            throw refused("ADM_QUOTA", "A faculty quota is a number of places, or blank.", "Enter the places distributed to the faculty, or leave it blank.");
+        }
+        settings.setFacultyQuota(id, code, quota);
+        return policy(session);
+    }
+
+    @Transactional
+    public AdmissionPolicy setProgrammeQuota(String session, String programmeCode, Integer quota) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        if (quota != null && quota < 0) {
+            throw refused("ADM_QUOTA", "A programme quota is a number of places, or blank.", "Enter the places the programme carries, or leave it blank.");
+        }
+        settings.setProgrammeQuota(id, code, quota);
+        return policy(session);
+    }
+
     /** The general UTME cut-off a session loads its JAMB lists under (V024): stated before the file is uploaded, whatever the programme. */
     @Transactional(readOnly = true)
     public Map<String, Object> loadCutoff(String session) {

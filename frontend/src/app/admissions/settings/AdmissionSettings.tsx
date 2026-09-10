@@ -182,13 +182,16 @@ export function AdmissionSettings({
   }
 
   const val = (key: string, current: number | null | undefined) => (key in edits ? edits[key] : current === null || current === undefined ? "" : String(current));
-  const field = (key: string, current: number | null | undefined, width: number, onSave: (v: number | null) => void, placeholder?: string) => (
+  /* `capacity` fields are quotas — places, not qualification rules — so they stay editable when the
+     policy is in force (the NUC ceiling can rise mid-cycle and the Deans redistribute it); everything
+     else is frozen once in force. */
+  const field = (key: string, current: number | null | undefined, width: number, onSave: (v: number | null) => void, placeholder?: string, capacity?: boolean) => (
     <input
       className="tnum ws__in"
       style={{ width }}
       value={val(key, current)}
       placeholder={placeholder}
-      disabled={locked}
+      disabled={capacity ? !may : locked}
       onChange={(e) => setEdits({ ...edits, [key]: e.target.value })}
       onBlur={() => {
         if (!(key in edits)) return;
@@ -378,7 +381,7 @@ export function AdmissionSettings({
     <>
       <Note kind="info" title={`The ${session} distribution is the Deans' to submit`}>
         Paragraph 2.3 asks each Dean to distribute the faculty quota across the courses in the faculty and submit it to the
-        Academic Office; this is where it is submitted. The NUC approved quota is {field("nucQuota", policy.nucQuota, 96, (v) => void send("PUT", base, settingsBody({ nucQuota: v ?? policy.nucQuota }), `NUC approved quota stated as ${v ?? policy.nucQuota} for ${session}`, "q"))} <span className="sub2">(a setting: change it here, and the distribution below is checked against it)</span>
+        Academic Office; this is where it is submitted. The NUC approved quota is {field("nucQuota", policy.nucQuota, 96, (v) => void send("PUT", `${base}/nuc-quota`, { quota: v ?? policy.nucQuota }, `NUC approved quota stated as ${v ?? policy.nucQuota} for ${session}`, "q"), undefined, true)} <span className="sub2">(a setting: change it here — it can be raised even after the policy is in force, and the distribution below is checked against it)</span>
         {previous ? <>; the {previousSession} distribution beside it totals <b>{prevTotal.toLocaleString()}</b>.</> : "."}
       </Note>
       <Panel title="Faculty quotas and cut-off marks" right="Paragraphs 2.3 and 2.13">
@@ -389,7 +392,7 @@ export function AdmissionSettings({
               <span key="n"><strong>{fc.facultyName}</strong><div className="sub2 tnum">{fc.facultyCode}</div></span>,
               FAC_GUIDE[fc.facultyCode] ? <span className="sub2" style={{ color: "var(--red-ink)" }} key="g">{FAC_GUIDE[fc.facultyCode]}</span> : <span className="sub2" key="g">the same</span>,
               <span className="tnum sub2" key="p">{prevQuota(fc.facultyCode)?.toLocaleString() ?? "—"}</span>,
-              <span key="q">{field(`q:${fc.facultyCode}`, fc.quota, 88, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: v, cutoff: fc.cutoff, ratioUtme: fc.ratioUtme, ratioDe: fc.ratioDe }, `${fc.facultyName} quota changed`, "q"), "—")}</span>,
+              <span key="q">{field(`q:${fc.facultyCode}`, fc.quota, 88, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}/quota`, { quota: v }, `${fc.facultyName} quota changed`, "q"), "—", true)}</span>,
               <span key="k">{field(`k:${fc.facultyCode}`, fc.cutoff, 74, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: v, ratioUtme: fc.ratioUtme, ratioDe: fc.ratioDe }, `${fc.facultyName} cut-off changed`, "k"))}</span>,
               <span key="r">{field(`ru:${fc.facultyCode}`, fc.ratioUtme, 52, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: fc.cutoff, ratioUtme: v, ratioDe: v == null ? null : 100 - v }, `${fc.facultyName} UTME:DE split changed`, "r"), String(policy.ratioUtme))}<span className="sub2">:{fc.ratioUtme == null ? `${policy.ratioDe} (default)` : (100 - fc.ratioUtme)}</span></span>,
             ]),
@@ -430,7 +433,7 @@ export function AdmissionSettings({
       ) : null}
       <Panel title="Every programme the University runs" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${withRule.length} of ${policy.programmes.length} carry a requirement${closedThisSession.length ? ` · ${closedThisSession.length} closed this session` : ""}`}<Btn kind="primary" disabled={locked || !withoutRule.length} onClick={() => { setChoosing(true); setChosen(""); }}>New rule</Btn></span>}>
         <DTable
-          cols={["Programme", "Faculty|mid", "Cut-off|num", "O’Level requirement", "UTME subjects", "Direct Entry", "|num"]}
+          cols={["Programme", "Faculty|mid", "Cut-off|num", "O’Level requirement", "UTME subjects", "Direct Entry", "Places|num", "|num"]}
           rows={progRows.map((p) => {
             const cut = p.cutoff ?? facultyCutoff(p.facultyCode);
             return [
@@ -440,6 +443,9 @@ export function AdmissionSettings({
               p.closed ? <span className="sub2" key="o">Not admitting this session: {p.closedReason}</span> : p.stated ? <span className="sub2" key="o">{p.olevelText}</span> : <Pil kind="bad" key="o">not stated</Pil>,
               <span className="sub2" key="u">{p.stated && !p.closed ? p.utmeText : ""}</span>,
               <span className="sub2" key="d">{p.stated && !p.closed ? p.deText : ""}</span>,
+              p.stated && !p.closed
+                ? <span key="q">{field(`pq:${p.code}`, p.quota, 68, (v) => void send("PUT", `${base}/programmes/${p.code}/quota`, { quota: v }, `${p.name} quota changed`, `pq-${p.code}`), "—", true)}</span>
+                : <span className="sub2" key="q">—</span>,
               <span key="e" style={{ display: "inline-flex", gap: 6 }}>
                 {p.closed ? (
                   <Btn kind="ghost" disabled={locked || busy !== null} onClick={() => void send("POST", `${base}/programmes/${p.code}/reopen`, {}, `${p.name} reopened for ${session}`, `re-${p.code}`)}>{busy === `re-${p.code}` ? "Reopening…" : "Reopen"}</Btn>
@@ -604,7 +610,7 @@ export function AdmissionSettings({
     <>
       <Note kind={policy.inForce ? "ok" : "info"} title={policy.inForce ? `The ${session} admission settings are in force` : `The ${session} admission settings are a DRAFT, and nothing may be admitted under them`}>
         {policy.inForce ? (
-          <>Every cut-off, quota and subject combination the portal applies this session comes from here, and carries the minute that approved it. A correction is a new version citing a new minute; nothing is edited away.</>
+          <>Every cut-off and subject combination the portal applies this session comes from here, and carries the minute that approved it &mdash; those are frozen now. The <b>quotas</b> stay adjustable, because places are not a rule of qualification: the NUC can raise the approved quota mid-cycle and the Deans redistribute it. Every change is recorded against whoever made it.</>
         ) : (
           <>These are the Central Admissions Committee&rsquo;s guidelines, made into settings the portal can actually apply. Until they are put in force by the Committee&rsquo;s minute, <b>no candidate can be ranked, cut off or admitted</b> &mdash; the portal refuses rather than falling back on last year&rsquo;s numbers. Last year&rsquo;s quota applied to this year&rsquo;s candidates is how a university over-admits by nine hundred and learns of it at accreditation.</>
         )}

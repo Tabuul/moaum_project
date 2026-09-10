@@ -69,6 +69,31 @@ class AdmissionSettingsController {
         return service.saveProgrammeRule(session + "/" + year, code, body);
     }
 
+    public record QuotaIn(Integer quota) {
+    }
+
+    /* ── capacity, editable in force: a quota is places, not a qualification rule; the NUC ceiling
+       can rise mid-cycle and the Deans redistribute it, so these are allowed whether the policy is a draft
+       or in force. Cut-offs, weights, ratios and subject rules stay on the draft-only endpoints above. */
+
+    @PutMapping("/sessions/{session}/{year}/policy/nuc-quota")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy nucQuota(@PathVariable String session, @PathVariable String year, @RequestBody QuotaIn body) {
+        return service.setNucQuota(session + "/" + year, body.quota());
+    }
+
+    @PutMapping("/sessions/{session}/{year}/policy/faculties/{code}/quota")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy facultyQuota(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody QuotaIn body) {
+        return service.setFacultyQuota(session + "/" + year, code, body.quota());
+    }
+
+    @PutMapping("/sessions/{session}/{year}/policy/programmes/{code}/quota")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy programmeQuota(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody QuotaIn body) {
+        return service.setProgrammeQuota(session + "/" + year, code, body.quota());
+    }
+
     public record Catchment(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> lgas) {
     }
 
