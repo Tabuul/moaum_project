@@ -576,4 +576,27 @@ BEGIN
     RAISE NOTICE 'demo appraisal ready: % record(s)', (SELECT count(*) FROM hrm.appraisal);
 END $appraisal$;
 
+-- ── data governance (V075): a demo data-subject request and DR drills ──
+DO $gov$
+DECLARE v_actor uuid := '00000000-0000-0000-0000-00000000de30'; v_reg uuid;
+BEGIN
+    SELECT a.person_id INTO v_reg FROM iam.office_assignment a WHERE a.office_code = 'registrar' LIMIT 1;
+    PERFORM set_config('moaum.actor_id', coalesce(v_reg, v_actor)::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    IF NOT EXISTS (SELECT 1 FROM governance.dsr WHERE reference = 'DSR-DEMO-0001') THEN
+        INSERT INTO governance.dsr (reference, kind, requester, received_on, due_on, state, note) VALUES
+         ('DSR-DEMO-0001', 'ACCESS', 'DEMO alumnus (invented)', current_date - 4, current_date + 26, 'IN_PROGRESS', 'Demo request'),
+         ('DSR-DEMO-0002', 'RECTIFICATION', 'DEMO student — name spelling (invented)', current_date - 12, current_date + 18, 'COMPLETED', 'Demo request');
+    END IF;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    IF NOT EXISTS (SELECT 1 FROM governance.dr_drill WHERE note = 'Demo drill') THEN
+        INSERT INTO governance.dr_drill (kind, ran_on, rpo_minutes, rto_minutes, outcome, note) VALUES
+         ('RESTORE_VERIFY', current_date, 4, NULL, 'PASSED', 'Demo drill'),
+         ('FULL_DR', current_date - 30, 5, 31, 'PASSED', 'Demo drill');
+    END IF;
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo governance ready: % DSR, % drill(s)', (SELECT count(*) FROM governance.dsr), (SELECT count(*) FROM governance.dr_drill);
+END $gov$;
+
 COMMIT;
