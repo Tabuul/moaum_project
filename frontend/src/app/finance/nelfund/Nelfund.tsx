@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { parseRows, type NelfundDesk } from "@/lib/wallet";
+import { buildXlsx, xlsxRows } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day, money } from "@/components/proto/blocks";
@@ -47,6 +48,38 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
     }
   }
   const go = (next: string, session = d.session) => router.push(`/finance/nelfund?tab=${next}&session=${encodeURIComponent(session)}`);
+
+  function downloadTemplate() {
+    const blob = buildXlsx(
+      ["Matriculation Number", "Name", "Amount"],
+      [["MOAUM/CSC/26/0001", "Ada Example (delete this row)", "50000"]],
+      "NELFUND remittance",
+    );
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "NELFUND remittance template.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function readTemplate(file: File) {
+    setProblem(null);
+    try {
+      const rows = await xlsxRows(await file.arrayBuffer());
+      const body = rows
+        .filter((r) => r.some((c) => (c ?? "").toString().trim() !== ""))
+        .filter((r, i) => !(i === 0 && /matric/i.test((r[0] ?? "").toString())))
+        .filter((r) => !/delete this row/i.test((r[1] ?? "").toString()))
+        .map((r) => [r[0] ?? "", r[1] ?? "", r[2] ?? ""].join("\t"));
+      if (!body.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill the template's Matriculation Number, Name and Amount columns, then upload it." }); return; }
+      setBatch((b) => ({ ...b, text: body.join("\n") }));
+      setSaid(`${body.length} row${body.length === 1 ? "" : "s"} read from the file — review below, then Load and match.`);
+    } catch {
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Use the downloaded template (.xlsx)." });
+    }
+  }
 
   async function lookUp(number: string) {
     const n = number.trim();
@@ -106,7 +139,15 @@ export function Nelfund({ d, tab, sessions, actingOffice }: { d: NelfundDesk; ta
                   <Field id="nb-on" label="Received on"><input id="nb-on" className="ctl" type="date" value={batch.receivedOn} onChange={(e) => setBatch({ ...batch, receivedOn: e.target.value })} /></Field>
                   <Field id="nb-note" label="Note"><input id="nb-note" className="ctl" value={batch.note} onChange={(e) => setBatch({ ...batch, note: e.target.value })} /></Field>
                 </div>
-                <Field id="nb-rows" label="The rows" hint="Paste the Fund's schedule: matriculation number, name, amount — one student per line, comma- or tab-separated, with or without a header."><textarea id="nb-rows" className="ctl tnum" rows={6} value={batch.text} onChange={(e) => setBatch({ ...batch, text: e.target.value })} /></Field>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                  <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
+                  <label className="btn btn--ghost btn--sm" style={{ cursor: "pointer", margin: 0 }}>
+                    Upload filled file
+                    <input type="file" accept=".xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void readTemplate(f); e.target.value = ""; }} />
+                  </label>
+                  <span className="sub2">Download the .xlsx, fill it, and upload it — or paste the rows below.</span>
+                </div>
+                <Field id="nb-rows" label="The rows" hint="Matriculation number, name, amount — one student per line, comma- or tab-separated, with or without a header. The uploaded file fills this in for you."><textarea id="nb-rows" className="ctl tnum" rows={6} value={batch.text} onChange={(e) => setBatch({ ...batch, text: e.target.value })} /></Field>
                 <div><Btn kind="primary" disabled={busy || !batch.ref.trim() || !batch.text.trim()} onClick={async () => { const rows = parseRows(batch.text, ["matric", "name", "amount"]).map((r) => ({ matricNo: r.matric, name: r.name, amount: r.amount })); const j = await send("/api/bff/api/v1/nelfund/batches", { ref: batch.ref, session: d.session, receivedOn: batch.receivedOn || null, note: batch.note || null, rows }, `NELFUND remittance ${batch.ref} loaded`); if (j) { setSaid(`${batch.ref}: ${j.matched} matched, ${j.unmatched} in suspense, ${money(Number(j.amount))}`); setBatch({ ref: "", receivedOn: "", note: "", text: "" }); } }}>Load and match</Btn></div>
               </PBody>
             </Panel>
