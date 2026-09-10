@@ -14,7 +14,13 @@ import { DTable } from "@/components/proto/DTable";
 import { Bar, Gate, Gates, Modal, Field, TwoCol, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-const MY_UNIT: Record<string, string> = { bursar: "BURSARY", hod: "DEPARTMENT", dean: "FACULTY", library: "LIBRARY", services: "HOSTEL" };
+/** the clearance units each office owns; Student Services covers three, and the
+ *  Registry/Academic can act for any (anyUnit below). Kept in step with
+ *  clearance.unit.office_code in the database. */
+const MY_UNITS: Record<string, string[]> = {
+  bursar: ["BURSARY"], hod: ["DEPARTMENT"], dean: ["FACULTY"], library: ["LIBRARY"],
+  services: ["HEALTH", "HOSTEL", "WORKS"],
+};
 
 export function ClearanceScreen({ scope, structure, sessions, listing, chosen, position, actingOffice }: {
   scope: Scope;
@@ -32,8 +38,11 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hold, setHold] = useState<string | null>(null);
   const [item, setItem] = useState("");
-  const [unit, setUnit] = useState<string>(MY_UNIT[actingOffice ?? ""] ?? "BURSARY");
   const anyUnit = ["registrar", "dregistrar", "academic"].includes(actingOffice ?? "");
+  // the units this office may sign: every unit for the Registry/Academic, else the office's own
+  const myUnits = anyUnit ? listing.units.map((u) => u.code) : (MY_UNITS[actingOffice ?? ""] ?? []);
+  const canSign = myUnits.length > 0;
+  const [unit, setUnit] = useState<string>(myUnits[0] ?? "BURSARY");
 
   async function post(path: string, body: unknown, reason: string): Promise<boolean> {
     setProblem(null);
@@ -119,9 +128,11 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
               ))}
               {!position.length ? <Gate state="todo" title="No candidate chosen" sub="Choose a matriculation number in the table." last /> : null}
             </Gates>
-            {me && (anyUnit || MY_UNIT[actingOffice ?? ""]) ? (
+            {me && canSign ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
-                {anyUnit ? <select className="ws__select" value={unit} onChange={(e) => setUnit(e.target.value)}>{listing.units.map((u) => <option key={u.code} value={u.code}>{u.label}</option>)}</select> : <span className="sub2">{listing.units.find((u) => u.code === unit)?.label}</span>}
+                {myUnits.length > 1
+                  ? <select className="ws__select" value={unit} onChange={(e) => setUnit(e.target.value)}>{listing.units.filter((u) => myUnits.includes(u.code)).map((u) => <option key={u.code} value={u.code}>{u.label}</option>)}</select>
+                  : <span className="sub2">{listing.units.find((u) => u.code === unit)?.label}</span>}
                 <Btn kind="go" disabled={busy} onClick={async () => { setBusy(true); if (await post(`/api/bff/api/v1/clearance/students/${me.id}/${unit}/clear`, { purpose: listing.purpose }, `${unit} clearance signed for ${me.number}`)) router.refresh(); setBusy(false); }}>Clear</Btn>
                 <Btn kind="urgent" onClick={() => { setHold(me.id); setItem(""); }}>Hold</Btn>
               </div>
@@ -147,7 +158,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
       </Note>
 
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-        <Btn kind="primary" disabled={busy || !selected.size || !(anyUnit || MY_UNIT[actingOffice ?? ""])} onClick={() => void clearSelected()}>Clear the selected candidates</Btn>
+        <Btn kind="primary" disabled={busy || !selected.size || !canSign} onClick={() => void clearSelected()}>Clear the selected candidates</Btn>
         <Btn kind="ghost" onClick={() => download(`held-${listing.purpose.toLowerCase()}.csv`, csv([["Matriculation number", "Name", "Programme", ...listing.units.map((u) => u.label)], ...listing.candidates.filter((c) => !c.cleared).map((c) => [c.number, `${c.surname}, ${c.otherNames}`, c.programmeName, ...c.states])]))}>Export the held list</Btn>
         <Btn kind="ghost" disabled={busy} onClick={() => void post("/api/bff/api/v1/clearance/notify-held", { students: listing.candidates.filter((c) => !c.cleared).map((c) => c.id) }, "Held candidates notified")}>Notify held candidates</Btn>
       </div>

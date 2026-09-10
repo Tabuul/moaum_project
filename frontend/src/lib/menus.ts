@@ -138,6 +138,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Dashboard"
           },
           {
+            "id": "t/clearance",
+            "icon": "check",
+            "label": "Department clearance"
+          },
+          {
             "id": "t/records",
             "icon": "chart",
             "label": "Records & queries"
@@ -292,6 +297,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "r/dean",
             "icon": "home",
             "label": "Dashboard"
+          },
+          {
+            "id": "t/clearance",
+            "icon": "check",
+            "label": "Faculty clearance"
           },
           {
             "id": "t/records",
@@ -891,6 +901,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Dashboard"
           },
           {
+            "id": "t/clearance",
+            "icon": "check",
+            "label": "Financial clearance"
+          },
+          {
             "id": "t/records",
             "icon": "chart",
             "label": "Records & queries"
@@ -1385,6 +1400,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Dashboard"
           },
           {
+            "id": "t/clearance",
+            "icon": "check",
+            "label": "Clearance"
+          },
+          {
             "id": "t/senate",
             "icon": "scale",
             "label": "Senate schedule",
@@ -1861,6 +1881,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/stores",
             "icon": "box",
             "label": "Stores & assets"
+          },
+          {
+            "id": "t/clearance",
+            "icon": "check",
+            "label": "Student clearance"
           }
         ]
       },
