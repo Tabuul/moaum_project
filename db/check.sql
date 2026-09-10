@@ -66,6 +66,10 @@ BEGIN
     DELETE FROM finance.nelfund_row;
     DELETE FROM finance.nelfund_batch;
     DELETE FROM finance.nelfund_status;
+    -- payroll (V069): payslips before the runs and the establishment they hang on
+    DELETE FROM hrm.payslip;
+    DELETE FROM hrm.pay_run;
+    DELETE FROM hrm.employment WHERE staff_no LIKE 'CHK-%';
     -- library (V031): loans and reservations before copies and items, before the students they name
     DELETE FROM library.reservation;
     DELETE FROM library.loan;
@@ -218,7 +222,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 114
+\set EXPECTED 115
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2129,6 +2133,39 @@ BEGIN
         AND finance.gateway_secret('paystack', 'the wrong passphrase') IS NULL
         AND cfg.configured AND cfg.mode = 'TEST' AND cfg.last4 = '1234' AND ev = 1,
         format('encrypted=%s decrypts=%s config_last4=%s events=%s', enc IS NOT NULL, back IS NOT NULL, cfg.last4, ev));
+END $$;
+
+-- ── 114. a pay run computes gross and the statutory deductions, and only a second officer approves it (V069) ──
+DO $$
+DECLARE p uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid();
+        v_run uuid; v_slips int; s record; ok_two boolean := false;
+BEGIN
+    PERFORM set_config('moaum.actor_id', a1::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check: payroll run', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p, 'CHK-PAY', 'CHECKSTAFF', 'Invented');
+    INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status)
+        VALUES (p, 'CHK-PAY-001', 'CONTISS 9', 1, 'NON_ACADEMIC', current_date, 'ACTIVE');
+    SELECT run_id INTO v_run FROM hrm.build_pay_run('2999-01-01', 'check');
+    SELECT count(*) INTO v_slips FROM hrm.payslip WHERE run_id = v_run AND staff_no = 'CHK-PAY-001';
+    SELECT * INTO s FROM hrm.payslip WHERE run_id = v_run AND staff_no = 'CHK-PAY-001';
+    -- the builder cannot approve; a second officer can
+    BEGIN
+        PERFORM hrm.approve_pay_run(v_run);            -- still actor a1, the builder — must be refused
+    EXCEPTION WHEN others THEN
+        PERFORM set_config('moaum.actor_id', a2::text, true);
+        PERFORM hrm.approve_pay_run(v_run);            -- a different officer — must pass
+        ok_two := true;
+    END;
+    PERFORM pg_temp.assert('A pay run computes gross and deductions, and only a second officer approves it',
+        v_slips = 1 AND s.gross = 232000 AND s.pension = 17360.00 AND s.paye > 0
+        AND s.net = s.gross - s.pension - s.paye
+        AND ok_two AND (SELECT state FROM hrm.pay_run WHERE id = v_run) = 'APPROVED',
+        format('slips=%s gross=%s pension=%s paye=%s net=%s two_officer=%s', v_slips, s.gross, s.pension, s.paye, s.net, ok_two));
+    DELETE FROM hrm.payslip WHERE run_id = v_run;
+    DELETE FROM hrm.pay_run WHERE id = v_run;
+    DELETE FROM hrm.employment WHERE person_id = p;
+    DELETE FROM iam.person WHERE id = p;
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

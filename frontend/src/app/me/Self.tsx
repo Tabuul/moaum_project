@@ -7,11 +7,12 @@
  */
 import type { Problem } from "@/lib/api";
 import { roleLabel, roleUnit } from "@/lib/offices";
-import { KvGrid, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { TwoCol } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { d } from "@/lib/calendar";
+import { money } from "@/lib/format";
 
 export interface StaffMe {
   person: { staffNumber: string | null; surname: string; givenNames: string } | null;
@@ -26,21 +27,34 @@ export interface StaffMe {
   }[];
 }
 
+export interface Payslip {
+  period: string; state: string; paid_at: string | null;
+  grade: string; step: number; category: string;
+  basic: number; allowances: number; gross: number; pension: number; paye: number; other_deductions: number; net: number;
+}
+
 const NOT_YET = "Staff module, not yet on the portal";
 const DASH = <span className="sub2">&mdash;</span>;
 
+function monthLabel(period: string): string {
+  return new Date(period).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
 export function Self({
   staff,
+  payslips,
   problem,
   actingOffice,
 }: {
   staff: StaffMe | null;
+  payslips: Payslip[];
   problem: Problem | null;
   actingOffice: string | null;
 }) {
   const person = staff?.person ?? null;
   const offices = staff?.offices ?? [];
   const who = person ? `${person.surname}, ${person.givenNames}` : "Not recorded in the Registry yet";
+  const latest = payslips[0] ?? null;
 
   return (
     <>
@@ -50,7 +64,7 @@ export function Self({
         items={[
           ["Leave taken", "—", null, NOT_YET],
           ["Leave remaining", "—", null, NOT_YET],
-          ["Last payslip", "—", null, NOT_YET],
+          latest ? ["Last payslip", money(Number(latest.net)), "var(--green-ink)", `${monthLabel(latest.period)} · net`] : ["Last payslip", "—", null, "No payslip yet"],
           ["Appraisal", "—", null, NOT_YET],
         ]}
       />
@@ -65,7 +79,7 @@ export function Self({
                 ["Office", roleLabel(actingOffice)],
                 ["Unit", roleUnit(actingOffice) || DASH],
                 ["Appointment", DASH],
-                ["Grade", DASH],
+                ["Grade", latest ? <span>{latest.grade} · {latest.step}</span> : DASH],
                 ["Next increment", DASH],
               ]}
             />
@@ -79,14 +93,23 @@ export function Self({
           </PBody>
         </Panel>
 
-        <Panel title="Payslips" right="Twelve months">
-          <DTable cols={["Month|mid", "Net|mid", "Action|num"]} rows={[]} />
-          <PBody>
-            <Note kind="info" title="Payslips arrive with the Staff module">
-              Payroll is not on this portal. When it is, twelve months of payslips are listed here and each one downloads as
-              the document the Bursary issued &mdash; not a page rendered to look like it.
-            </Note>
-          </PBody>
+        <Panel title="Payslips" right={payslips.length ? `${payslips.length} month${payslips.length === 1 ? "" : "s"}` : "None yet"}>
+          {payslips.length ? (
+            <DTable cols={["Month|mid", "Gross|num", "Pension|num", "PAYE|num", "Net|num", "Stage|mid"]} rows={payslips.map((s) => [
+              <span className="tnum" key="m">{monthLabel(s.period)}</span>,
+              <span className="tnum sub2" key="g">{money(Number(s.gross))}</span>,
+              <span className="tnum sub2" key="pe">{money(Number(s.pension))}</span>,
+              <span className="tnum sub2" key="pa">{money(Number(s.paye))}</span>,
+              <b className="tnum" key="n">{money(Number(s.net))}</b>,
+              <Pil kind={s.state === "PAID" ? "ok" : "info"} key="s">{s.state === "PAID" ? "Paid" : "Approved"}</Pil>,
+            ])} />
+          ) : (
+            <PBody>
+              <Note kind="info" title="No payslip yet">
+                A payslip appears here once the Human Resource office has built and approved the month&rsquo;s payroll and you were on the establishment for it. A draft run is not shown — only an approved or paid one.
+              </Note>
+            </PBody>
+          )}
         </Panel>
       </TwoCol>
 

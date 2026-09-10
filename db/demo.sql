@@ -383,4 +383,74 @@ BEGIN
     RAISE NOTICE 'demo accounts ready for session % — password for every one: %', v_session, v_pw;
 END $$;
 
+-- ── the payroll (V069): put the demo staff on the establishment and run a month ──
+DO $payroll$
+DECLARE
+    v_actor    uuid := '00000000-0000-0000-0000-00000000de30';
+    v_builder  uuid; v_approver uuid; v_run uuid; v_prev date; v_cur date;
+    emp record; v_grade text; v_cat text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'demo: payroll establishment and runs', true);
+
+    FOR emp IN
+        SELECT p.id AS pid, p.staff_number, min(a.office_code) AS office_code
+          FROM iam.person p
+          JOIN iam.office_assignment a ON a.person_id = p.id
+         WHERE p.staff_number LIKE 'MOAUM/DEMO/%' AND p.ended_on IS NULL
+         GROUP BY p.id, p.staff_number
+    LOOP
+        IF NOT EXISTS (SELECT 1 FROM hrm.employment WHERE person_id = emp.pid) THEN
+            v_grade := CASE emp.office_code
+                WHEN 'lecturer' THEN 'CONUASS 3'
+                WHEN 'exams' THEN 'CONUASS 3'
+                WHEN 'facultyexams' THEN 'CONUASS 3'
+                WHEN 'hod' THEN 'CONUASS 5'
+                WHEN 'dean' THEN 'CONUASS 7'
+                WHEN 'provost' THEN 'CONUASS 7'
+                WHEN 'bursar' THEN 'CONTISS 15'
+                WHEN 'registrar' THEN 'CONTISS 15'
+                WHEN 'audit' THEN 'CONTISS 15'
+                WHEN 'hrm' THEN 'CONTISS 15'
+                WHEN 'library' THEN 'CONTISS 13'
+                ELSE 'CONTISS 13' END;
+            v_cat := CASE WHEN v_grade LIKE 'CONUASS%' THEN 'ACADEMIC' ELSE 'NON_ACADEMIC' END;
+            INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status,
+                                        bank_name, account_name, account_last4, pension_pin)
+            VALUES (emp.pid, 'MOAUM/STAFF/' || right(emp.staff_number, 3), v_grade, 1, v_cat, date '2021-01-04', 'ACTIVE',
+                    'Demo Bank (invented)', 'DEMO account', right(emp.staff_number, 4), 'PEN' || right(emp.staff_number, 6));
+        END IF;
+    END LOOP;
+
+    SELECT a.person_id INTO v_builder FROM iam.office_assignment a WHERE a.office_code = 'hrm' LIMIT 1;
+    SELECT a.person_id INTO v_approver FROM iam.office_assignment a WHERE a.office_code = 'super' LIMIT 1;
+    v_prev := date_trunc('month', current_date - interval '1 month')::date;
+    v_cur  := date_trunc('month', current_date)::date;
+
+    -- last month: built, approved by a second officer, and paid
+    IF v_builder IS NOT NULL AND v_approver IS NOT NULL AND v_builder <> v_approver
+       AND NOT EXISTS (SELECT 1 FROM hrm.pay_run WHERE period = v_prev) THEN
+        PERFORM set_config('moaum.actor_id', v_builder::text, true);
+        PERFORM set_config('moaum.actor_office', 'hrm', true);
+        PERFORM hrm.build_pay_run(v_prev, 'Regular monthly salary');
+        SELECT id INTO v_run FROM hrm.pay_run WHERE period = v_prev;
+        PERFORM set_config('moaum.actor_id', v_approver::text, true);
+        PERFORM set_config('moaum.actor_office', 'super', true);
+        PERFORM hrm.approve_pay_run(v_run);
+        PERFORM hrm.pay_pay_run(v_run);
+    END IF;
+
+    -- this month: built, awaiting a second officer's approval
+    IF v_builder IS NOT NULL AND NOT EXISTS (SELECT 1 FROM hrm.pay_run WHERE period = v_cur) THEN
+        PERFORM set_config('moaum.actor_id', v_builder::text, true);
+        PERFORM set_config('moaum.actor_office', 'hrm', true);
+        PERFORM hrm.build_pay_run(v_cur, 'Regular monthly salary');
+    END IF;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo payroll ready: establishment seeded, % run(s)', (SELECT count(*) FROM hrm.pay_run);
+END $payroll$;
+
 COMMIT;
