@@ -95,11 +95,15 @@ class CutoffIT {
                     INSERT INTO admissions.faculty_quota (policy_id, faculty_code, quota, cutoff)
                     SELECT :id, code, 100, 150 FROM ref.faculty ON CONFLICT DO NOTHING
                     """).param("id", POLICY).update();
+            /* the 1,200 places are distributed across the programmes so they total the NUC quota
+               (quotas are per programme now — see V096, "programme quotas ... total the NUC ...") */
             jdbc.sql("""
-                    INSERT INTO admissions.programme_rule (policy_id, programme_code, cutoff, olevel_text, utme_text, de_text)
-                    SELECT :id, code, CASE WHEN code = 'C00061' THEN 200 END,
+                    INSERT INTO admissions.programme_rule (policy_id, programme_code, cutoff, quota, olevel_text, utme_text, de_text)
+                    SELECT :id, q.code, CASE WHEN q.code = 'C00061' THEN 200 END,
+                           (1200 / q.cnt) + CASE WHEN q.rn <= 1200 % q.cnt THEN 1 ELSE 0 END,
                            'Five credits (test)', 'Any three (test)', 'A-Level (test)'
-                      FROM ref.programme ON CONFLICT DO NOTHING
+                      FROM (SELECT code, row_number() OVER (ORDER BY code) AS rn, count(*) OVER () AS cnt FROM ref.programme) q
+                    ON CONFLICT DO NOTHING
                     """).param("id", POLICY).update();
             jdbc.sql("SELECT admissions.put_in_force(:s, 'CAC minute CutoffIT/1')").param("s", SESSION).query().singleRow();
             return null;
