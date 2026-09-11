@@ -48,6 +48,82 @@ class CatalogueController {
     public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows) {
     }
 
+    public record FacultyIn(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 160) String name) {
+    }
+
+    public record ProgrammeIn(@NotBlank @Size(max = 6) String code, @NotBlank @Size(max = 160) String name,
+                              @NotBlank @Size(max = 160) String faculty, @Size(max = 20) String departmentCode,
+                              @Size(max = 160) String department, @Size(max = 20) String category, Integer minScore) {
+    }
+
+    public record Rows(@NotNull List<Map<String, Object>> rows) {
+    }
+
+    /* ── faculties ── */
+
+    @GetMapping("/faculties")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> faculties() {
+        return jdbc.sql("""
+                SELECT f.code, f.name,
+                       (SELECT count(*) FROM ref.department d WHERE d.faculty_code = f.code) AS departments,
+                       (SELECT count(*) FROM ref.programme p WHERE p.faculty_code = f.code AND NOT p.archived) AS programmes
+                  FROM ref.faculty f ORDER BY f.name
+                """).query().listOfRows();
+    }
+
+    @PostMapping("/faculties")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> newFaculty(@Valid @RequestBody FacultyIn body) {
+        return jdbc.sql("SELECT code, name FROM ref.upsert_faculty(:c, :n)")
+                .param("c", body.code()).param("n", body.name()).query().singleRow();
+    }
+
+    @PostMapping("/faculties/import")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> importFaculties(@Valid @RequestBody Rows body) {
+        return jdbc.sql("SELECT * FROM ref.import_faculties(:j::jsonb)")
+                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
+    /* ── programmes ── */
+
+    @GetMapping("/programmes")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> programmes() {
+        return jdbc.sql("""
+                SELECT p.code, p.name, p.faculty_code, f.name AS faculty_name, p.dept_code, d.name AS department_name,
+                       p.category, p.min_score, p.archived
+                  FROM ref.programme p
+                  JOIN ref.faculty f ON f.code = p.faculty_code
+                  LEFT JOIN ref.department d ON d.code = p.dept_code
+                 ORDER BY f.name, p.name
+                """).query().listOfRows();
+    }
+
+    @PostMapping("/programmes")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> newProgramme(@Valid @RequestBody ProgrammeIn body) {
+        return jdbc.sql("SELECT code, name, faculty_code, dept_code, category, min_score FROM ref.upsert_programme(:c, :n, :f, :dc, :dn, :cat, :ms)")
+                .param("c", body.code()).param("n", body.name()).param("f", body.faculty())
+                .param("dc", body.departmentCode(), java.sql.Types.VARCHAR).param("dn", body.department(), java.sql.Types.VARCHAR)
+                .param("cat", body.category(), java.sql.Types.VARCHAR).param("ms", body.minScore(), java.sql.Types.INTEGER)
+                .query().singleRow();
+    }
+
+    @PostMapping("/programmes/import")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> importProgrammes(@Valid @RequestBody Rows body) {
+        return jdbc.sql("SELECT * FROM ref.import_programmes(:j::jsonb)")
+                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
     /** upload a programme's course structure (a CCMAS table): each course is created and offered at its level */
     @PostMapping("/import")
     @PreAuthorize(UPLOADERS)

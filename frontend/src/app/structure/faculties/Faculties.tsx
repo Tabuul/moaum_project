@@ -1,0 +1,102 @@
+"use client";
+
+/** t/facultyupload — create a faculty, or upload a list of them (V091). ICT/Academic and structure offices. */
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Problem } from "@/lib/api";
+import { reasonHeader } from "@/lib/reason";
+import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
+import { ProblemNotice } from "@/components/ProblemNotice";
+
+export interface Faculty { code: string; name: string; departments: number; programmes: number }
+const MAY = ["ict", "super", "admin", "academic", "registrar", "dregistrar"];
+
+export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; actingOffice: string | null }) {
+  const router = useRouter();
+  const may = MAY.includes(actingOffice ?? "");
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function downloadTemplate() {
+    const blob = buildXlsx(["Code", "Name"], [["SCI", "Faculty of Science (example — delete this row)"]], "Faculties");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "Faculties template.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function post(path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
+    setBusy(true); setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      router.refresh();
+      return j;
+    } finally { setBusy(false); }
+  }
+
+  async function upload(file: File) {
+    setMsg(null); setProblem(null);
+    try {
+      const grid = await xlsxRows(await file.arrayBuffer());
+      const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+      const at = (n: string[]) => header.findIndex((h) => n.some((x) => h.includes(x)));
+      const ci = { code: at(["code"]), name: at(["name"]) };
+      if (ci.code < 0 || ci.name < 0) { setProblem({ status: 400, title: "That file needs Code and Name columns.", detail: "Download the template." }); return; }
+      const rows = grid.slice(1).map((r) => ({ code: String(r[ci.code] ?? "").trim(), name: String(r[ci.name] ?? "").trim() })).filter((r) => r.code && !/^code$/i.test(r.code));
+      if (!rows.length) { setProblem({ status: 400, title: "No faculties found in the file." }); return; }
+      const j = await post("/faculties/import", { rows }, `${rows.length} faculties uploaded`);
+      if (j) setMsg(`${j.saved ?? 0} faculties saved${(j.bad ?? 0) ? ` · ${j.bad} rows had no name` : ""}.`);
+    } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
+  }
+
+  return (
+    <>
+      <Note kind="info" title="Create a faculty, or upload the list">
+        A faculty is a code and a name. Create one below, or upload a spreadsheet of them. Uploading again updates rather
+        than duplicates; every change is on the record in your name. Programmes and departments hang off the faculty.
+      </Note>
+      {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Academic Office">Your office may not manage faculties.</Note> : null}
+      {problem ? <ProblemNotice problem={problem} /> : null}
+      {msg ? <Note kind="ok" title="Faculties loaded">{msg}</Note> : null}
+
+      <Tiles items={[["Faculties", String(faculties.length), null, "On the register"]]} cls="grid--4" />
+
+      {may ? (
+        <Panel title="Add a faculty" right="Or upload the list">
+          <PBody>
+            <div className="grid grid--2">
+              <Field id="fc-code" label="Code" hint="Short, e.g. SCI"><input id="fc-code" className="ctl tnum" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} /></Field>
+              <Field id="fc-name" label="Name"><input id="fc-name" className="ctl" value={name} onChange={(e) => setName(e.target.value)} placeholder="Faculty of Science" /></Field>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <Btn kind="primary" disabled={busy || !code.trim() || !name.trim()} onClick={async () => { const j = await post("/faculties", { code: code.trim(), name: name.trim() }, `Faculty ${code.trim()} created`); if (j) { setMsg(`Faculty ${j.code} saved.`); setCode(""); setName(""); } }}>Save the faculty</Btn>
+              <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
+              <label className={`btn btn--ghost btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+                Upload faculties (.xlsx)
+                <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
+              </label>
+            </div>
+          </PBody>
+        </Panel>
+      ) : null}
+
+      <Panel title="Faculties" right={`${faculties.length} on the register`}>
+        {faculties.length ? (
+          <DTable cols={["Code|mid", "Name", "Departments|num", "Programmes|num"]} rows={faculties.map((f) => [
+            <span className="tnum" key="c">{f.code}</span>, <strong key="n">{f.name}</strong>,
+            <span className="tnum" key="d">{f.departments}</span>, <span className="tnum" key="p">{f.programmes}</span>,
+          ])} texts={faculties.map((f) => `${f.code} ${f.name}`)} />
+        ) : <PBody><div className="sub2">No faculty yet. Add one above.</div></PBody>}
+      </Panel>
+    </>
+  );
+}

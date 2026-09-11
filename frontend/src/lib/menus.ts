@@ -741,6 +741,26 @@ export const MENUS: Record<string, Menu> = {
     "home": "r/academic",
     "groups": [
       {
+        "name": "Academic settings",
+        "items": [
+          {
+            "id": "t/facultyupload",
+            "icon": "cap",
+            "label": "Faculty upload/create"
+          },
+          {
+            "id": "t/programmeupload",
+            "icon": "book",
+            "label": "Programme upload/create"
+          },
+          {
+            "id": "t/courseupload",
+            "icon": "doc",
+            "label": "Courses upload/create"
+          }
+        ]
+      },
+      {
         "name": "Records",
         "items": [
           {
@@ -1795,6 +1815,26 @@ export const MENUS: Record<string, Menu> = {
     "label": "Director of ICT",
     "home": "t/platform",
     "groups": [
+      {
+        "name": "Academic settings",
+        "items": [
+          {
+            "id": "t/facultyupload",
+            "icon": "cap",
+            "label": "Faculty upload/create"
+          },
+          {
+            "id": "t/programmeupload",
+            "icon": "book",
+            "label": "Programme upload/create"
+          },
+          {
+            "id": "t/courseupload",
+            "icon": "doc",
+            "label": "Courses upload/create"
+          }
+        ]
+      },
       {
         "name": "Service",
         "items": [
