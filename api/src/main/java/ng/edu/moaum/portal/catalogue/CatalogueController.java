@@ -28,15 +28,37 @@ class CatalogueController {
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc')";
 
-    private final JdbcClient jdbc;
+    /** the Directorate of ICT and Super Administrator, plus the HOD for their own department, upload a structure */
+    private static final String UPLOADERS =
+            "hasAnyAuthority('OFFICE_ict','OFFICE_super','OFFICE_admin','OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
 
-    CatalogueController(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final tools.jackson.databind.ObjectMapper json;
+
+    CatalogueController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
         this.jdbc = jdbc;
+        this.json = json;
     }
 
-    public record NewCourse(@NotBlank @Size(max = 8) String code, @NotBlank @Size(max = 120) String title,
+    public record NewCourse(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 120) String title,
                             @NotNull @Min(0) Integer units, @NotNull Integer semester, @NotNull Integer level,
                             @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind) {
+    }
+
+    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows) {
+    }
+
+    /** upload a programme's course structure (a CCMAS table): each course is created and offered at its level */
+    @PostMapping("/import")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> importCourses(@Valid @RequestBody CourseUpload body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_ROWS", "The structure has no rows to read.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Upload the department's course document.", "Directorate of ICT"));
+        }
+        return jdbc.sql("SELECT * FROM catalogue.import_courses(:p, :j::jsonb)")
+                .param("p", body.programme()).param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
     /** every course a department owns, with the lecturer of its offering in the current session, if any */

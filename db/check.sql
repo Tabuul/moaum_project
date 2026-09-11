@@ -238,7 +238,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 124
+\set EXPECTED 125
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2427,6 +2427,22 @@ BEGIN
         format('lines=%s faculties=%s no_faculty=%s ind=%s non=%s', r.lines, r.faculties, r.no_faculty,
                (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_ind, '9993/9994')),
                (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_non, '9993/9994'))));
+END $$;
+
+-- ── 125. a department's course structure uploads, accepting CCMAS codes, and offers to the programme (V084) ──
+DO $$
+DECLARE r record; v_prog text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    SELECT p.code INTO v_prog FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code WHERE NOT p.archived ORDER BY p.code LIMIT 1;
+    SELECT * INTO r FROM catalogue.import_courses(v_prog,
+        '[{"code":"BSU-ZZZ-901","title":"Group Dynamics","units":"3","status":"C","level":"100","semester":"1","lh":"45"},{"code":"ZZZ 901","title":"Intro Course","units":"2","status":"C","level":"100","semester":"1"},{"code":"Course Code","title":"header"},{"code":"","title":"Total"}]'::jsonb);
+    PERFORM pg_temp.assert('A course structure uploads: the relaxed CCMAS code is accepted, courses are created and offered to the programme, header and total rows skipped',
+        r.courses = 2 AND r.offers = 2 AND r.bad_code = 0
+        AND EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'BSU-ZZZ-901' AND units = 3 AND lecture_hours = 45)
+        AND EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = 'BSU-ZZZ-901' AND programme_code = v_prog AND level = 100),
+        format('courses=%s offers=%s bad=%s', r.courses, r.offers, r.bad_code));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

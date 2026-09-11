@@ -188,6 +188,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Department courses",
     "The department owns them, and creates them"
   ],
+  "t/courseupload": [
+    "Upload course structure",
+    "A programme's CCMAS courses, from the document"
+  ],
   "s/health": [
     "Health",
     "University Health Services"
