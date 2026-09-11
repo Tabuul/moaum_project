@@ -29,6 +29,8 @@ const I: Record<string, string> = {
   shield: '<path d="M12 3 4 6v6c0 5 3.4 8.3 8 9.3 4.6-1 8-4.3 8-9.3V6l-8-3Z"/>',
   server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   scale: '<path d="M12 4v16M7 20h10M6 8h12M6 8l-3 6h6l-3-6Zm12 0-3 6h6l-3-6Z"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M9.9 4.24A10.7 10.7 0 0 1 12 4c6.5 0 10 7 10 7a18.6 18.6 0 0 1-2.2 3M6.5 6.6A18.5 18.5 0 0 0 2 12s3.5 7 10 7a10.6 10.6 0 0 0 4.4-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/>',
 };
 
 export function Ico({ name, size = 17, stroke = "currentColor", w = 1.9 }: { name: string; size?: number; stroke?: string; w?: number }) {

@@ -29,6 +29,7 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
   const router = useRouter();
   const [uid, setUid] = useState("");
   const [pw, setPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
 
@@ -85,7 +86,19 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
           </div>
           <div className="field">
             <label htmlFor="pw">Password</label>
-            <input id="pw" type="password" value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} />
+            <div style={{ position: "relative" }}>
+              <input id="pw" type={showPw ? "text" : "password"} value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} style={{ paddingRight: 44, width: "100%" }} />
+              <button
+                type="button"
+                onClick={() => setShowPw((v) => !v)}
+                aria-label={showPw ? "Hide password" : "Show password"}
+                aria-pressed={showPw}
+                title={showPw ? "Hide password" : "Show password"}
+                style={{ position: "absolute", top: "50%", right: 8, transform: "translateY(-50%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 4, background: "none", border: "none", cursor: "pointer", color: "var(--chrome-dim)" }}
+              >
+                <Ico name={showPw ? "eyeoff" : "eye"} size={18} stroke="currentColor" w={1.9} />
+              </button>
+            </div>
           </div>
           {problem ? <ProblemNotice problem={problem} /> : null}
           {ssoProblem ? <div className="notice notice--bad"><div><div className="notice__t" style={{ color: "var(--red-deep)" }}>Single sign-on did not complete</div><p style={{ color: "var(--red-deep)" }}>{ssoProblem}</p></div></div> : null}

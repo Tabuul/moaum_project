@@ -89,8 +89,8 @@ export const TITLES: Record<string, [string, string]> = {
     "Approved, not approved, and still with the Fund"
   ],
   "t/feesetup": [
-    "Fee setup",
-    "Seven dimensions, and two payments it refuses"
+    "Fee Setup and Schedule",
+    "Set the approved fees, and see the versioned schedule"
   ],
   "t/acts": [
     "Session record",

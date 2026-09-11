@@ -933,12 +933,7 @@ export const MENUS: Record<string, Menu> = {
           {
             "id": "t/feesetup",
             "icon": "card",
-            "label": "Fee setup"
-          },
-          {
-            "id": "t/feesched",
-            "icon": "card",
-            "label": "Fee schedules"
+            "label": "Fee Setup and Schedule"
           },
           {
             "id": "t/gateways",
