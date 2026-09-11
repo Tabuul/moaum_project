@@ -150,6 +150,7 @@ export function AdmissionSettings({
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [instrument, setInstrument] = useState("");
+  const [reaffirm, setReaffirm] = useState("");
   const [tried, setTried] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [newQuota, setNewQuota] = useState("");
@@ -300,6 +301,15 @@ export function AdmissionSettings({
         ? "Settings with no instrument behind them are somebody’s opinion about a cut-off. Cite the Central Admissions Committee minute that approved them."
         : f.length
           ? `${f.length} finding${f.length === 1 ? "" : "s"} still stand${f.length === 1 ? "s" : ""}, the first being ${f[0].finding}. A session opened over an unanswered finding is a session in which somebody is admitted against a rule that was never set.`
+          : ""
+      : "";
+
+  const reaffirmRefusal =
+    tried && policy.inForce
+      ? !reaffirm.trim()
+        ? "Re-affirming records the adjusted settings against a minute. Cite the Central Admissions Committee minute that approved them."
+        : f.length
+          ? `${f.length} finding${f.length === 1 ? "" : "s"} still stand${f.length === 1 ? "s" : ""}, the first being ${f[0].finding}. Re-affirming over an unanswered finding puts a rule in force that was never set.`
           : ""
       : "";
 
@@ -564,34 +574,59 @@ export function AdmissionSettings({
       <div className="card">
         <div className="card__body">
           <div className="eyebrow">Put the {session} settings in force</div>
-          <div className="field">
-            <label htmlFor="as-instr">Central Admissions Committee minute</label>
-            <input id="as-instr" value={policy.inForce ? policy.instrument ?? "" : instrument} onChange={(e) => setInstrument(e.target.value)} placeholder="CAC/2026/07" autoComplete="off" disabled={locked} />
-            <div className="hint">
-              Settings without an instrument are somebody&rsquo;s opinion about a cut-off. Every candidate admitted this session is
-              admitted under this minute, and it is what the University produces when one of them is queried in four years&rsquo; time.
-            </div>
-          </div>
-          {refusal ? <Note kind="bad" title="Refused">{refusal}</Note> : null}
-          {problem ? <ProblemNotice problem={problem} /> : null}
           {policy.inForce ? (
-            <Note kind="ok" title="In force">
-              Cited to <b>{policy.instrument}</b>
-              {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. A change from here is a new version citing a new minute; this one
-              stays readable for as long as anybody admitted under it is alive.
-            </Note>
+            <>
+              <Note kind="ok" title="In force">
+                Cited to <b>{policy.instrument}</b>
+                {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. A programme&rsquo;s placement or cut-off adjusted here takes effect at once; re-affirm below,
+                under the minute that approved the adjustment, to record it against an instrument.
+              </Note>
+              <div className="field">
+                <label htmlFor="as-reaffirm">Central Admissions Committee minute (re-affirmation)</label>
+                <input id="as-reaffirm" value={reaffirm} onChange={(e) => setReaffirm(e.target.value)} placeholder="CAC/2026/08" autoComplete="off" disabled={!may} />
+                <div className="hint">
+                  Cite the minute that approved the adjusted placements and cut-offs. Re-affirming re-cites the settings as they now
+                  stand under this minute; the earlier citation stays readable for as long as anybody admitted under it is alive.
+                </div>
+              </div>
+              {reaffirmRefusal ? <Note kind="bad" title="Refused">{reaffirmRefusal}</Note> : null}
+              {problem ? <ProblemNotice problem={problem} /> : null}
+              <Btn
+                kind="primary"
+                disabled={!may || busy !== null}
+                onClick={() => {
+                  setTried(true);
+                  if (!reaffirm.trim() || f.length) return;
+                  void send("POST", `${base}/put-in-force`, { instrument: reaffirm.trim() }, `${session} admission settings re-affirmed in force under ${reaffirm.trim()}`, "force").then((ok) => { if (ok) setReaffirm(""); });
+                }}
+              >
+                {busy === "force" ? "Putting in force…" : "Put in force again"}
+              </Btn>
+            </>
           ) : (
-            <Btn
-              kind="primary"
-              disabled={locked || busy !== null}
-              onClick={() => {
-                setTried(true);
-                if (!instrument.trim() || f.length) return;
-                void send("POST", `${base}/put-in-force`, { instrument: instrument.trim() }, `${session} admission settings put in force under ${instrument.trim()}`, "force");
-              }}
-            >
-              {busy === "force" ? "Putting in force…" : "Put in force"}
-            </Btn>
+            <>
+              <div className="field">
+                <label htmlFor="as-instr">Central Admissions Committee minute</label>
+                <input id="as-instr" value={instrument} onChange={(e) => setInstrument(e.target.value)} placeholder="CAC/2026/07" autoComplete="off" disabled={locked} />
+                <div className="hint">
+                  Settings without an instrument are somebody&rsquo;s opinion about a cut-off. Every candidate admitted this session is
+                  admitted under this minute, and it is what the University produces when one of them is queried in four years&rsquo; time.
+                </div>
+              </div>
+              {refusal ? <Note kind="bad" title="Refused">{refusal}</Note> : null}
+              {problem ? <ProblemNotice problem={problem} /> : null}
+              <Btn
+                kind="primary"
+                disabled={locked || busy !== null}
+                onClick={() => {
+                  setTried(true);
+                  if (!instrument.trim() || f.length) return;
+                  void send("POST", `${base}/put-in-force`, { instrument: instrument.trim() }, `${session} admission settings put in force under ${instrument.trim()}`, "force");
+                }}
+              >
+                {busy === "force" ? "Putting in force…" : "Put in force"}
+              </Btn>
+            </>
           )}
         </div>
       </div>
