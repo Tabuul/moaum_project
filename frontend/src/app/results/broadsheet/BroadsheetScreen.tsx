@@ -2,12 +2,16 @@
 
 /** tBroadsheet — proto/part26.html: every candidate in one programme at one level, across all their courses. */
 import type { Scope } from "@/lib/scope";
-import { STAGE_LABEL, csv, download, type Broadsheet } from "@/lib/results";
+import { STAGE_LABEL, type Broadsheet } from "@/lib/results";
+import { loadCrest } from "@/lib/xlsx";
+import { xlsx, type Cell } from "@/lib/xlsx-write";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 const COLOUR = (points: number | null) => (points === null ? "var(--muted)" : points >= 4 ? "var(--green-ink)" : points >= 1 ? "var(--chrome)" : "var(--red-ink)");
+const UNI = "Rev. Fr. Moses Orshio Adasu University, Makurdi";
+const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
 export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null }) {
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
@@ -20,6 +24,106 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
       : m.counted ? <span><span className="tnum">{m.total}</span><div className="sub2" style={{ color: COLOUR(m.points), fontWeight: 700 }}>{m.grade}</div></span>
       : <span className="sub2" title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}>{m.outcome && m.outcome !== "GRADED" ? m.outcome.toLowerCase() : "•"}</span>;
+  const orderCols = [...core, ...elec];
+
+  /* the cover ("Examination Reporting Sheet") data, shared by the on-screen panel and the exports */
+  const cov = sheet ? (() => {
+    const fac = structure.faculties.find((f) => f.departments.some((d) => d.programmes.some((p) => p.code === scope.prog)));
+    const dept = fac?.departments.find((d) => d.programmes.some((p) => p.code === scope.prog));
+    const roll = sheet.rows.length;
+    const sat = sheet.rows.filter((r) => r.gpa !== null).length;
+    const notSit = roll - sat;
+    const probation = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.5 && r.cgpa >= 1.0).length;
+    const withdraw = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length;
+    const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "");
+    const n0 = (n: number) => (n === 0 ? "Nil" : String(n));
+    const SUM: [string, string, string][] = [
+      ["Total Number of Candidates on Roll", String(roll), ""],
+      ["Total Number of Candidates that Registered", String(roll), ""],
+      ["Total Number of Candidates that did not Register", "Nil", ""],
+      ["Total Number of Candidates at Examination", String(sat), sat ? "100" : ""],
+      ["Total Number of Candidates that did not sit for the Examination", n0(notSit), notSit ? pc(notSit) : ""],
+      ["Total Number of Candidates with Pass", String(sheet.passed), pc(sheet.passed)],
+      ["Total Number of Candidates that Deferred", "Nil", ""],
+      ["Total Number of Candidates with Carryover/Fail", String(sheet.carrying), pc(sheet.carrying)],
+      ["Total Number of Candidates on Probation", n0(probation), probation ? pc(probation) : ""],
+      ["Total Number of Candidates Advised to Withdraw", n0(withdraw), withdraw ? pc(withdraw) : ""],
+      ["Total Number of Candidates Expelled", "Nil", ""],
+    ];
+    const KEY: [string, string][] = [
+      ["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"], ["WGP", "Weighted Grade Point"],
+      ["GPA", "Grade Point Average"], ["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"],
+      ["TWGP", "Total Weighted Grade Point"], ["LCGPA", "Last Cumulative Grade Point Average"], ["CGPA", "Cumulative Grade Point Average"],
+    ];
+    return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
+  })() : null;
+
+  const bsCols: Cell[] = ["S/N", "Matric no.", "Name", "Carryover", ...orderCols.map((c) => `${c.courseCode} (${c.units})`), "CUE", "WGP", "GPA", "TCR", "TCE", "TWGP", "LCGPA", "CGPA", "Remarks"];
+  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, r.number, r.name, r.carryovers.join(" "),
+    ...orderCols.map((c) => { const m = markOf(r, c.courseCode); return m && m.counted ? `${m.total} ${m.grade}` : m && m.stage !== "NOT_REGISTERED" ? "pending" : ""; }),
+    r.units, r.points, r.gpa ?? "", r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? "", r.remarks];
+
+  async function exportExcel() {
+    if (!sheet || !cov) return;
+    const logo = await loadCrest();
+    const head = (t: string): Cell[][] => [[null, UNI], [null, t], [null, `${cov.degree} · ${sheet.level} Level · ${semester} semester · ${sheet.session}`], [], [], [], []];
+    const summary: Cell[][] = [...head("Examination Reporting Sheet"),
+      ["Faculty", cov.facName], ["Department", cov.deptName], ["Degree in view", cov.degree],
+      ["Level", sheet.level], ["Semester", semester], ["Session", sheet.session], [],
+      ["Summary of results", "", "%"], ...cov.SUM.map((s) => [s[0], s[1], s[2]] as Cell[]), [],
+      ["Key", ""], ...cov.KEY.map((k) => [k[0], k[1]] as Cell[]), [],
+      ["Courses", "", ""], ["Code", "Title", "Units"], ...sheet.courses.map((c) => [c.courseCode, c.title, c.units] as Cell[])];
+    const broad: Cell[][] = [...head("Broadsheet"), bsCols, ...sheet.rows.map((r, i) => bsRow(r, i))];
+    const book = xlsx([["Summary", summary], ["Broadsheet", broad]], { logo: logo ?? undefined });
+    const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `Result ${cov.degree} ${sheet.level}L ${sheet.session.replace("/", "-")} ${semester}.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  function exportPdf() {
+    if (!sheet || !cov) return;
+    const crest = location.origin + "/crest.png";
+    const sumRows = cov.SUM.map((s) => `<tr><td>${escd(s[0])}</td><td class="n">${escd(String(s[1]))}</td><td class="p">${escd(s[2])}</td></tr>`).join("");
+    const keyRows = cov.KEY.map((k) => `<tr><td class="ab">${k[0]}</td><td>${escd(k[1])}</td></tr>`).join("");
+    const courseRows = sheet.courses.map((c) => `<tr><td class="ab">${escd(c.courseCode)}</td><td>${escd(c.title)}</td><td class="u">${c.units} units</td></tr>`).join("");
+    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">Matric</th><th rowspan="2">Name</th><th rowspan="2">C/O</th>`
+      + (core.length ? `<th colspan="${core.length}">Core</th>` : "") + (elec.length ? `<th colspan="${elec.length}">Elective</th>` : "")
+      + `<th colspan="3">This semester</th><th colspan="5">Cumulative to date</th><th rowspan="2">Remarks</th></tr>`
+      + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUE</th><th>WGP</th><th>GPA</th><th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th></tr>`;
+    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(r.number)}</td><td class="nm">${escd(r.name)}</td><td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`
+      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const v = m && m.counted ? `${m.total}<br><b>${m.grade}</b>` : m && m.stage !== "NOT_REGISTERED" ? "·" : ""; return `<td>${v}</td>`; }).join("")
+      + `<td>${r.units}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td><td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td><td class="co">${escd(r.remarks)}</td></tr>`).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
+      body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
+      .head{text-align:center;margin-bottom:14px}.head img{height:56px}.uni{font-weight:700;font-size:16px}.st{text-transform:uppercase;letter-spacing:.06em;text-decoration:underline;font-size:12px;color:#444}
+      .meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 30px;font-size:12px;margin:12px 0}.meta div{display:flex;gap:8px}.meta .k{min-width:110px;color:#555;text-transform:uppercase;font-size:10px}
+      h3{font-size:12px;text-transform:uppercase;text-decoration:underline;margin:14px 0 6px}
+      .cols{display:grid;grid-template-columns:1.6fr 1fr;gap:24px}
+      table{border-collapse:collapse;width:100%}.t td{padding:2px 6px;font-size:11.5px;vertical-align:top}.t td.n,.t td.p{text-align:right;width:40px}.t td.ab{font-family:monospace;font-weight:700}
+      .bs{border-collapse:collapse;width:100%;margin-top:8px}.bs th,.bs td{border:1px solid #bbb;padding:3px 5px;text-align:center;font-size:10.5px}.bs td.nm,.bs td.co{text-align:left}
+      .bs td.b{font-weight:700}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
+      @media print{.pb{page-break-before:always}}</style></head><body>
+      <div class="head"><img src="${crest}" alt=""><div class="uni">${escd(UNI)}</div><div class="st">Examination Reporting Sheet</div></div>
+      <div class="meta"><div><span class="k">Faculty</span><b>${escd(cov.facName)}</b></div><div><span class="k">Level</span><b>${sheet.level}</b></div>
+        <div><span class="k">Department</span><b>${escd(cov.deptName)}</b></div><div><span class="k">Semester</span><b>${semester}</b></div>
+        <div><span class="k">Degree in view</span><b>${escd(cov.degree)}</b></div><div><span class="k">Session</span><b>${escd(sheet.session)}</b></div></div>
+      <div class="cols"><div><h3>Summary of results</h3><table class="t"><tbody>${sumRows}</tbody></table></div><div><h3>Key</h3><table class="t"><tbody>${keyRows}</tbody></table></div></div>
+      <h3>Courses</h3><table class="t"><tbody>${courseRows}</tbody></table>
+      <div class="sign"><div><div class="role">Dean of Faculty</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div>
+        <div><div class="role">Head of Department</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div></div>
+      <div class="pb"></div><h3>Broadsheet — ${escd(cov.degree)}, ${sheet.level} Level, ${semester} semester</h3>
+      <table class="bs"><thead>${gh}</thead><tbody>${body}</tbody></table></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 350);
+  }
+
   return (
     <>
       <Note kind="info" title="The broadsheet is computed, not typed">
@@ -29,14 +133,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
         A score sheet carries every candidate registered for one course, from every programme the course was made available to. A broadsheet carries every candidate in one programme at one level, across all their courses, because a GPA belongs to a student in a programme.
       </Note>
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="the broadsheet" count={sheet?.rows.length ?? 0} of={sheet?.rows.length ?? 0}
-        onExport={sheet ? () => download(`broadsheet-${sheet.programme}-${sheet.level}-${sheet.session.replace("/", "-")}-${sheet.semester}.csv`, csv([
-          ["S/N", "Matriculation number", "Name", "Carryover",
-            ...core.map((c) => `${c.courseCode} (${c.units})`), ...elec.map((c) => `${c.courseCode} (${c.units})`),
-            "CUE", "WGP", "GPA", "TCR", "TCE", "TWGP", "LCGPA", "CGPA", "Remarks"],
-          ...sheet.rows.map((r, i) => [i + 1, r.number, r.name, r.carryovers.join(" "),
-            ...[...core, ...elec].map((c) => { const m = markOf(r, c.courseCode); return m && m.counted ? `${m.total} ${m.grade}` : m && m.stage !== "NOT_REGISTERED" ? "pending" : ""; }),
-            r.units, r.points, r.gpa ?? "", r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? "", r.remarks]),
-        ])) : undefined} />
+        onExport={sheet ? () => void exportExcel() : undefined} />
       {!sheet ? (
         <Note kind="info" title="Choose a programme and a level">The broadsheet is one programme at one level in one semester. Pick them in the bar above; the session and semester are the ones the bar holds.</Note>
       ) : (
@@ -47,81 +144,54 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             ["Passed every course", String(sheet.passed), "var(--green-ink)", sheet.rows.length ? `${Math.round((100 * sheet.passed) / sheet.rows.length)}% of the level` : "—"],
             ["Carrying over", String(sheet.carrying), sheet.carrying ? "var(--red-ink)" : null, sheet.pendingSets ? `${sheet.pendingSets} set${sheet.pendingSets === 1 ? "" : "s"} still in the chain` : "One or more F grades"],
           ]} />
-          {(() => {
-            const fac = structure.faculties.find((f) => f.departments.some((d) => d.programmes.some((p) => p.code === scope.prog)));
-            const dept = fac?.departments.find((d) => d.programmes.some((p) => p.code === scope.prog));
-            const roll = sheet.rows.length;
-            const sat = sheet.rows.filter((r) => r.gpa !== null).length;
-            const notSit = roll - sat;
-            const probation = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.5 && r.cgpa >= 1.0).length;
-            const withdraw = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length;
-            const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "—");
-            const n0 = (n: number) => (n === 0 ? "Nil" : String(n));
-            const SUM: [string, string, string][] = [
-              ["Total Number of Candidates on Roll", String(roll), ""],
-              ["Total Number of Candidates that Registered", String(roll), ""],
-              ["Total Number of Candidates that did not Register", "Nil", ""],
-              ["Total Number of Candidates at Examination", String(sat), sat ? "100" : ""],
-              ["Total Number of Candidates that did not sit for the Examination", n0(notSit), notSit ? pc(notSit) : ""],
-              ["Total Number of Candidates with Pass", String(sheet.passed), pc(sheet.passed)],
-              ["Total Number of Candidates that Deferred", "Nil", ""],
-              ["Total Number of Candidates with Carryover/Fail", String(sheet.carrying), pc(sheet.carrying)],
-              ["Total Number of Candidates on Probation", n0(probation), probation ? pc(probation) : ""],
-              ["Total Number of Candidates Advised to Withdraw", n0(withdraw), withdraw ? pc(withdraw) : ""],
-              ["Total Number of Candidates Expelled", "Nil", ""],
-            ];
-            const KEY: [string, string][] = [
-              ["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"], ["WGP", "Weighted Grade Point"],
-              ["GPA", "Grade Point Average"], ["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"],
-              ["TWGP", "Total Weighted Grade Point"], ["LCGPA", "Last Cumulative Grade Point Average"], ["CGPA", "Cumulative Grade Point Average"],
-            ];
-            return (
-              <Panel title="Examination reporting sheet" right="The cover page of the downloaded result">
-                <PBody>
-                  <div className="ers">
-                    <div className="ers__title">
-                      <div className="ers__uni">Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-                      <div className="ers__sub">Examination Reporting Sheet</div>
+          {cov ? (
+            <Panel title="Examination reporting sheet" right={<span style={{ display: "inline-flex", gap: 8 }}><Btn kind="ghost" onClick={() => void exportExcel()}>Download Excel</Btn><Btn kind="primary" onClick={exportPdf}>Download PDF</Btn></span>}>
+              <PBody>
+                <div className="ers">
+                  <div className="ers__title">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/crest.png" alt="University crest" className="ers__crest" />
+                    <div className="ers__uni">{UNI}</div>
+                    <div className="ers__sub">Examination Reporting Sheet</div>
+                  </div>
+                  <div className="ers__meta">
+                    <div>
+                      <div><span className="k">Faculty</span><b>{cov.facName}</b></div>
+                      <div><span className="k">Department</span><b>{cov.deptName}</b></div>
+                      <div><span className="k">Degree in view</span><b>{cov.degree}</b></div>
                     </div>
-                    <div className="ers__meta">
-                      <div>
-                        <div><span className="k">Faculty</span><b>{fac?.name ?? "—"}</b></div>
-                        <div><span className="k">Department</span><b>{dept?.name ?? "—"}</b></div>
-                        <div><span className="k">Degree in view</span><b>{programme?.name ?? sheet.programme}</b></div>
-                      </div>
-                      <div>
-                        <div><span className="k">Level</span><b>{sheet.level}</b></div>
-                        <div><span className="k">Semester</span><b>{semester}</b></div>
-                        <div><span className="k">Session</span><b className="tnum">{sheet.session}</b></div>
-                      </div>
-                    </div>
-                    <div className="ers__cols">
-                      <div>
-                        <div className="ers__h">Summary of results</div>
-                        <table className="ers__t"><tbody>
-                          {SUM.map(([l, n, p]) => <tr key={l}><td>{l}</td><td className="tnum n">{n}</td><td className="tnum p">{p}</td></tr>)}
-                        </tbody></table>
-                      </div>
-                      <div>
-                        <div className="ers__h">Key</div>
-                        <table className="ers__t"><tbody>
-                          {KEY.map(([a, m]) => <tr key={a}><td className="tnum ab">{a}</td><td>{m}</td></tr>)}
-                        </tbody></table>
-                      </div>
-                    </div>
-                    <div className="ers__h" style={{ marginTop: 14 }}>Courses</div>
-                    <table className="ers__t ers__courses"><tbody>
-                      {sheet.courses.map((c) => <tr key={c.courseCode}><td className="tnum ab">{c.courseCode}</td><td>{c.title}</td><td className="tnum">{c.units} units</td></tr>)}
-                    </tbody></table>
-                    <div className="ers__sign">
-                      <div><div className="role">Dean of Faculty</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
-                      <div><div className="role">Head of Department</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
+                    <div>
+                      <div><span className="k">Level</span><b>{sheet.level}</b></div>
+                      <div><span className="k">Semester</span><b>{semester}</b></div>
+                      <div><span className="k">Session</span><b className="tnum">{sheet.session}</b></div>
                     </div>
                   </div>
-                </PBody>
-              </Panel>
-            );
-          })()}
+                  <div className="ers__cols">
+                    <div>
+                      <div className="ers__h">Summary of results</div>
+                      <table className="ers__t"><tbody>
+                        {cov.SUM.map(([l, n, p]) => <tr key={l}><td>{l}</td><td className="tnum n">{n}</td><td className="tnum p">{p}</td></tr>)}
+                      </tbody></table>
+                    </div>
+                    <div>
+                      <div className="ers__h">Key</div>
+                      <table className="ers__t"><tbody>
+                        {cov.KEY.map(([a, m]) => <tr key={a}><td className="tnum ab">{a}</td><td>{m}</td></tr>)}
+                      </tbody></table>
+                    </div>
+                  </div>
+                  <div className="ers__h" style={{ marginTop: 14 }}>Courses</div>
+                  <table className="ers__t ers__courses"><tbody>
+                    {sheet.courses.map((c) => <tr key={c.courseCode}><td className="tnum ab">{c.courseCode}</td><td>{c.title}</td><td className="tnum">{c.units} units</td></tr>)}
+                  </tbody></table>
+                  <div className="ers__sign">
+                    <div><div className="role">Dean of Faculty</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
+                    <div><div className="role">Head of Department</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
+                  </div>
+                </div>
+              </PBody>
+            </Panel>
+          ) : null}
           <Panel title={`Broadsheet — ${programme?.name ?? sheet.programme}, ${sheet.level} Level, ${semester} semester`} right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
             {sheet.rows.length === 0 ? (
               <div className="card__body sub2">No approved registration at this level in {sheet.session} semester {sheet.semester} for this programme. The broadsheet has nobody to compute.</div>
@@ -185,6 +255,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             .bsheet tbody tr:nth-child(even) td{background:var(--line-2)}
             .ers{max-width:900px;margin:0 auto}
             .ers__title{text-align:center;margin-bottom:16px}
+            .ers__crest{height:54px;width:auto;object-fit:contain;margin-bottom:4px}
             .ers__uni{font-weight:700;font-size:15px}
             .ers__sub{text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--chrome-dim);text-decoration:underline;margin-top:3px}
             .ers__meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:18px;font-size:13px}

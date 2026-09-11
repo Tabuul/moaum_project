@@ -243,12 +243,12 @@
       ["Total Number of Candidates Expelled", "Nil", ""]
     ];
     var KEY = [["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"], ["WGP", "Weighted Grade Point"], ["GPA", "Grade Point Average"], ["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"], ["TWGP", "Total Weighted Grade Point"], ["LCGPA", "Last Cumulative Grade Point Average"], ["CGPA", "Cumulative Grade Point Average"]];
-    var cover = '<style>.ers{max-width:900px;margin:0 auto}.ers__title{text-align:center;margin-bottom:16px}.ers__uni{font-weight:700;font-size:15px}.ers__sub{text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--chrome-dim);text-decoration:underline;margin-top:3px}'
+    var cover = '<style>.ers{max-width:900px;margin:0 auto}.ers__title{text-align:center;margin-bottom:16px}.ers__crest{height:54px;width:auto;object-fit:contain;margin-bottom:4px}.ers__uni{font-weight:700;font-size:15px}.ers__sub{text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--chrome-dim);text-decoration:underline;margin-top:3px}'
       + '.ers__meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:18px;font-size:13px}.ers__meta>div>div{display:flex;gap:8px;padding:2px 0}.ers__meta .k{min-width:110px;color:var(--chrome-dim);text-transform:uppercase;font-size:11px;letter-spacing:.03em;align-self:center}'
       + '.ers__cols{display:grid;grid-template-columns:1.5fr 1fr;gap:28px}.ers__h{font-weight:700;text-decoration:underline;font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}.ers__t{width:100%;font-size:12.5px;border-collapse:collapse}.ers__t td{padding:2px 6px;vertical-align:top}'
       + '.ers__t td.n{text-align:right;width:44px;font-weight:600}.ers__t td.p{text-align:right;width:44px;color:var(--chrome-dim)}.ers__t td.ab{font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap;width:64px}.ers__courses td:last-child{text-align:right;color:var(--chrome-dim);white-space:nowrap}'
       + '.ers__sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px;font-size:13px}.ers__sign .role{font-style:italic;font-weight:600;margin-bottom:10px}.ers__sign .ln{color:var(--chrome-dim);border-bottom:1px dotted var(--line);padding:6px 0 2px;margin-bottom:6px}</style>'
-      + '<div class="ers"><div class="ers__title"><div class="ers__uni">Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div class="ers__sub">Examination Reporting Sheet</div></div>'
+      + '<div class="ers"><div class="ers__title"><img class="ers__crest" src="__CREST__" alt="University crest"><div class="ers__uni">Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div class="ers__sub">Examination Reporting Sheet</div></div>'
       + '<div class="ers__meta"><div>'
       + '<div><span class="k">Faculty</span><b>Science</b></div><div><span class="k">Department</span><b>Mathematics and Computer Science</b></div><div><span class="k">Degree in view</span><b>B.Sc. (Hons) Statistics</b></div>'
       + '</div><div><div><span class="k">Level</span><b>300</b></div><div><span class="k">Semester</span><b>First</b></div><div><span class="k">Session</span><b class="tnum">2026/2027</b></div></div></div>'
@@ -278,7 +278,7 @@
       ["Carrying over", String(rows.length - passed), "var(--red-ink)", "One or more F grades"]
     ]) +
 
-    panel('Examination reporting sheet', 'The cover page of the downloaded result', cover) +
+    panel('Examination reporting sheet', btn('ghost', 'Download Excel') + ' ' + btn('primary', 'Download PDF'), cover) +
 
     panel('Broadsheet &mdash; 300 Level, First semester',
       'Grading scheme v3, in force from 2024/2025 &middot; score over grade', bs) +
