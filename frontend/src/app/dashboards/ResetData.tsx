@@ -13,7 +13,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export function ResetData({ office }: { office: string | null }) {
   const router = useRouter();
-  const isSuper = office === "super";
+  const may = office === "super" || office === "ict";
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [reason, setReason] = useState("");
@@ -21,7 +21,7 @@ export function ResetData({ office }: { office: string | null }) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
-  if (!isSuper) return null;
+  if (!may) return null;
 
   async function run() {
     setBusy(true);
@@ -44,7 +44,7 @@ export function ResetData({ office }: { office: string | null }) {
   }
 
   return (
-    <Panel title="Danger zone — reset uploaded data" right="Super Administrator only">
+    <Panel title="Danger zone — reset uploaded data" right="Super Administrator & Director of ICT">
       <PBody>
         <Note kind="bad" title="Clear all uploaded operational data and start afresh">
           This permanently deletes the admissions and JAMB/CAPS lists, applicants, students, course registrations,

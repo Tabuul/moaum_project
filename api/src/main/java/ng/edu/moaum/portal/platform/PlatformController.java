@@ -53,7 +53,7 @@ class PlatformController {
      * transaction and records every deletion on the spine in the actor's name.
      */
     @PostMapping("/reset-data")
-    @PreAuthorize("hasAuthority('OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_super','OFFICE_ict')")
     @Transactional
     Map<String, Object> resetData(@Valid @RequestBody ResetIn body) {
         String result = jdbc.sql("SELECT platform.reset_operational_data(:c, :r)")
