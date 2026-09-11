@@ -238,7 +238,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 123
+\set EXPECTED 124
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2406,6 +2406,27 @@ BEGIN
         AND (SELECT published FROM assessment.student_results(stu) WHERE course_code = 'ARC 999')
         AND (SELECT gpa FROM assessment.student_gpa(stu) WHERE session = '9994/9995' AND semester = 1) IS NOT NULL,
         format('created=%s results=%s no_student=%s regs=%s', r.created, g.results, g.no_student, g.registrations));
+END $$;
+
+-- ── 124. the approved fees import charges by faculty, level and indigeneship (V083) ──
+DO $$
+DECLARE s_ind uuid := gen_random_uuid(); s_non uuid := gen_random_uuid(); r record;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s_ind, 'MOAUM/FEE/23/0001', 'CHECKFEE', 'Indigene', 'Benue', 'C00023', 'UTME', '2023/2024', 100, 100, 'ACTIVE', now()),
+        (s_non, 'MOAUM/FEE/23/0002', 'CHECKFEE', 'Stranger', 'Kano', 'C00023', 'UTME', '2023/2024', 100, 100, 'ACTIVE', now());
+    SELECT * INTO r FROM finance.import_fee_structure('9993/9994',
+        '[{"faculty":"SC","level":"100","indigene":"INDIGENE","amount":"50000"},{"faculty":"SC","level":"100","indigene":"NON_INDIGENE","amount":"80000"}]'::jsonb);
+    PERFORM pg_temp.assert('The approved fees import charges an indigene and a non-indigene of the same faculty and level their own cell',
+        r.lines = 2 AND r.faculties = 1 AND r.no_faculty = 0
+        AND (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_ind, '9993/9994')) = 50000
+        AND (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_non, '9993/9994')) = 80000
+        AND finance.session_fee_total(s_ind, '9993/9994') = 50000,
+        format('lines=%s faculties=%s no_faculty=%s ind=%s non=%s', r.lines, r.faculties, r.no_faculty,
+               (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_ind, '9993/9994')),
+               (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_non, '9993/9994'))));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

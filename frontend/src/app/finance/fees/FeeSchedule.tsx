@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { xlsxRows } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -32,6 +33,46 @@ export interface ApplicantFees { session: string; stated: boolean; applicationFe
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 
+/** Parse the approved-fees cross-tab (faculty blocks × 1st/2nd/Total rows × level bands × Indigene/Non-indigene)
+ *  into one row per cell. A band like "100/200DE" is level 100 plus level 200 for Direct Entry. */
+interface FeeRow { faculty: string; level: number; entryMode: string | null; semester: number; indigene: string; amount: number }
+function parseFeeMatrix(grid: (string | number | null)[][]): FeeRow[] {
+  const norm = (v: string | number | null | undefined) => String(v ?? "").trim();
+  const hIdx = grid.findIndex((r) => r.some((c) => /faculty\s*\/\s*semester|^faculty$/i.test(norm(c))));
+  if (hIdx < 0) return [];
+  const header = grid[hIdx].map(norm);
+  const facCol = header.findIndex((c) => /faculty/i.test(c));
+  const bands: { col: number; level: number; de: number | null }[] = [];
+  for (let c = facCol + 1; c < header.length; c++) {
+    const h = header[c];
+    if (!h || /law|spillover/i.test(h)) continue; // the 500 Law/spillover band duplicates 500L; skip it
+    const nums = h.match(/\d{3}/g);
+    if (!nums) continue;
+    bands.push({ col: c, level: Number(nums[0]), de: /de/i.test(h) && nums[1] ? Number(nums[1]) : null });
+  }
+  const semOf = (s: string) => (/1st|first/i.test(s) ? 1 : /2nd|second/i.test(s) ? 2 : /3rd|third/i.test(s) ? 3 : null);
+  const rows: FeeRow[] = [];
+  let fac = "";
+  for (let i = hIdx + 1; i < grid.length; i++) {
+    const r = grid[i].map(norm);
+    const c1 = r[facCol];
+    if (!c1) continue;
+    if (!/semester|total/i.test(c1)) { fac = c1; continue; } // a faculty name starts a block
+    const sem = semOf(c1);
+    if (!sem || !fac) continue; // skip the Total row
+    for (const b of bands) {
+      const cell = (v: string, indigene: string, level: number, mode: string | null) => {
+        const n = Number(v.replace(/[^0-9.]/g, ""));
+        if (level && n > 0) rows.push({ faculty: fac, level, entryMode: mode, semester: sem, indigene, amount: Math.round(n * 100) / 100 });
+      };
+      cell(r[b.col] ?? "", "INDIGENE", b.level, null);
+      cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.level, null);
+      if (b.de) { cell(r[b.col] ?? "", "INDIGENE", b.de, "DIRECT_ENTRY"); cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.de, "DIRECT_ENTRY"); }
+    }
+  }
+  return rows;
+}
+
 export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const may = actingOffice === "bursar" || actingOffice === "super";
@@ -41,6 +82,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [confirming, setConfirming] = useState<OpenReference | null>(null);
   const [scheming, setScheming] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [feeMsg, setFeeMsg] = useState<string | null>(null);
   const val = (k: string, d = "") => edits[k] ?? d;
   const [af, setAf] = useState({
     applicationFee: String(applicantFees?.applicationFee ?? ""),
@@ -79,6 +121,30 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     }
   }
 
+  async function uploadFees(file: File) {
+    setBusy("feeupload");
+    setProblem(null);
+    setFeeMsg(null);
+    try {
+      const grid = await xlsxRows(await file.arrayBuffer());
+      const rows = parseFeeMatrix(grid);
+      if (!rows.length) {
+        setProblem({ status: 400, title: "That file is not the approved-fees structure.", detail: "It must have a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
+        return;
+      }
+      const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-structure`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Approved fees structure uploaded for ${session}`) }, body: JSON.stringify({ rows }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      const c = j as { rows: number; lines: number; faculties: number; no_faculty: number };
+      setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} faculties${c.no_faculty ? ` · ${c.no_faculty} rows had a faculty name that did not match one on the register` : ""}. It replaced the previous structure for ${session}.`);
+      router.refresh();
+    } catch {
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const rules = schedule.scheme.rules ? (JSON.parse(schedule.scheme.rules) as Record<string, string>) : {};
   const total = schedule.items.filter((i) => !i.level && !i.entry_mode && !i.faculty_code && !i.programme_code).reduce((n, i) => n + Number(i.amount), 0);
 
@@ -109,6 +175,18 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         ])} />
         {!schedule.items.length ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no student owes anything, no reference can be generated, and registration waits.</div></PBody> : null}
       </Panel>
+      {may ? (
+        <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 8 }}>Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b></div>
+            <label className={`btn btn--primary${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer", margin: 0 }}>
+              {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx)"}
+              <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
+            </label>
+            {feeMsg ? <Note kind="ok" title="Approved fees loaded">{feeMsg}</Note> : null}
+          </PBody>
+        </Panel>
+      ) : null}
       <Panel title="References waiting on the bank's record" right={`${open.length}`}>
         <DTable cols={["Reference", "Student", "Amount|num", "Generated|mid", "|num"]} rows={open.map((r) => [
           <span className="tnum" key="r">{r.reference}</span>,

@@ -47,10 +47,36 @@ class FinanceController {
     public record Confirmation(@NotBlank @Size(max = 60) String channel, @Size(max = 400) String note) {
     }
 
-    private final JdbcClient jdbc;
+    public record FeeRows(@NotNull List<Map<String, Object>> rows) {
+    }
 
-    FinanceController(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final tools.jackson.databind.ObjectMapper json;
+
+    FinanceController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
         this.jdbc = jdbc;
+        this.json = json;
+    }
+
+    /** upload the approved fees structure for a session — one row per faculty/level/semester/indigeneship cell;
+     *  it replaces the session's structure. */
+    @PostMapping("/sessions/{session}/{year}/fee-structure")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> importFeeStructure(@PathVariable String session, @PathVariable String year, @Valid @RequestBody FeeRows body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("FEE_ROWS", "The structure has no rows to read.",
+                    new DomainRuleViolation.Remedy("Upload the approved fees spreadsheet.", "Bursary"));
+        }
+        return jdbc.sql("SELECT * FROM finance.import_fee_structure(:s, :j::jsonb)")
+                .param("s", session + "/" + year).param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
+    @GetMapping("/sessions/{session}/{year}/fee-structure")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> feeStructure(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT * FROM finance.fee_structure(:s)").param("s", session + "/" + year).query().listOfRows();
     }
 
     /* ── the schedule ── */
