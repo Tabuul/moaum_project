@@ -10,9 +10,16 @@ import java.util.List;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * What is actually true about this service — the same questions
@@ -28,10 +35,30 @@ class PlatformController {
 
     private final JdbcClient jdbc;
     private final String commit;
+    private final tools.jackson.databind.ObjectMapper json;
 
-    PlatformController(JdbcClient jdbc, @Value("${moaum.commit:${RAILWAY_GIT_COMMIT_SHA:}}") String commit) {
+    PlatformController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, @Value("${moaum.commit:${RAILWAY_GIT_COMMIT_SHA:}}") String commit) {
         this.jdbc = jdbc;
+        this.json = json;
         this.commit = commit;
+    }
+
+    public record ResetIn(@NotBlank @Size(max = 20) String confirm, @NotBlank @Size(max = 400) String reason) {
+    }
+
+    /**
+     * The Super Administrator's clean slate: clears operational data (admissions, students, results,
+     * courses, fees, payments, wallets) while keeping reference data, configuration, staff logins and
+     * the audit trail. Guarded by the word RESET and a reason; the database function runs it in one
+     * transaction and records every deletion on the spine in the actor's name.
+     */
+    @PostMapping("/reset-data")
+    @PreAuthorize("hasAuthority('OFFICE_super')")
+    @Transactional
+    Map<String, Object> resetData(@Valid @RequestBody ResetIn body) {
+        String result = jdbc.sql("SELECT platform.reset_operational_data(:c, :r)")
+                .param("c", body.confirm()).param("r", body.reason()).query(String.class).single();
+        return json.readValue(result, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     @GetMapping("/status")

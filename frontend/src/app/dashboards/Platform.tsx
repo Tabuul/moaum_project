@@ -5,6 +5,7 @@ import { KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { officeLabel } from "@/lib/offices";
+import { ResetData } from "./ResetData";
 
 interface Status {
   service: string;
@@ -122,6 +123,7 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
           ])} />
         ) : null}
       </Panel>
+      <ResetData office={office} />
       <Note kind="info" title="How attribution works">
         Every request carries a token naming a person and the offices they hold, and the office chosen at the top
         left says which one is acting. The API places that on the transaction; the database records every changed
