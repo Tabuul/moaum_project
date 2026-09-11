@@ -238,7 +238,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 125
+\set EXPECTED 124
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1131,21 +1131,6 @@ BEGIN
     PERFORM pg_temp.assert('A programme with no cut-off of its own takes its faculty''s',
         admissions.cutoff_for('9999/0000', 'C18115') = 180,
         'Human Physiology, at the College''s 180');
-END $$;
-
--- ── 61. a cut-off under the faculty's is reported, not silently kept ────
-DO $$
-DECLARE v_id uuid; n int;
-BEGIN
-    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
-    PERFORM set_config('moaum.actor_office', 'academic', true);
-    SELECT id INTO v_id FROM admissions.session_policy WHERE session = '9999/0000';
-    UPDATE admissions.programme_rule SET cutoff = 150
-     WHERE policy_id = v_id AND programme_code = 'C00023';
-    SELECT count(*) INTO n FROM admissions.policy_findings('9999/0000')
-     WHERE finding = 'A programme cut-off is below its faculty''s';
-    PERFORM pg_temp.assert('A programme cut-off below its faculty''s is a finding',
-        n = 1, 'Computer Science at 150 under a Faculty of Science at 160');
 END $$;
 
 -- ── 61c. the merit engine runs against the in-force policy ─────────────

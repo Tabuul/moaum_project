@@ -100,15 +100,25 @@ class SettingsIT {
             assertThat(r.getStatusCode().value()).as(f + ": " + r.getBody()).isEqualTo(200);
         }
 
-        // 4 · a rule for every programme; MBBS with a cut-off of its own
+        // 4 · a rule for every programme; MBBS with a cut-off of its own; the 1,200 places
+        //     distributed across the programmes so they total the NUC quota (quotas are per programme)
         ResponseEntity<Map> after = get("/api/v1/admissions/sessions/2097/2098/policy");
-        for (Object p : (List<?>) after.getBody().get("programmes")) {
+        List<?> progs = (List<?>) after.getBody().get("programmes");
+        int cnt = progs.size();
+        int base = cnt == 0 ? 0 : 1200 / cnt;
+        int rem = cnt == 0 ? 0 : 1200 % cnt;
+        int idx = 0;
+        for (Object p : progs) {
             String code = String.valueOf(((Map<?, ?>) p).get("code"));
             Map<String, Object> rule = "C00061".equals(code)
                     ? Map.of("cutoff", 200, "olevelText", "Five credits (test)", "utmeText", "Physics, Chemistry and Biology (test)", "deText", "A-Level (test)")
                     : Map.of("olevelText", "Five credits (test)", "utmeText", "Any three (test)", "deText", "A-Level (test)");
             ResponseEntity<Map> r = call(HttpMethod.PUT, "/api/v1/admissions/sessions/2097/2098/policy/programmes/" + code, rule);
             assertThat(r.getStatusCode().value()).as(code + ": " + r.getBody()).isEqualTo(200);
+            int q = base + (idx < rem ? 1 : 0);
+            ResponseEntity<Map> qr = call(HttpMethod.PUT, "/api/v1/admissions/sessions/2097/2098/policy/programmes/" + code + "/quota", Map.of("quota", q));
+            assertThat(qr.getStatusCode().value()).as(code + " quota: " + qr.getBody()).isEqualTo(200);
+            idx++;
         }
 
         // 5 · nothing outstanding; without a minute it is still refused

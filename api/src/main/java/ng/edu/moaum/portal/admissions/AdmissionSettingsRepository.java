@@ -308,8 +308,8 @@ class AdmissionSettingsRepository {
                 """).param("id", id).param("from", from).update();
         jdbc.sql("""
                 INSERT INTO admissions.programme_rule
-                       (policy_id, programme_code, cutoff, olevel_credits, olevel_sittings, olevel_text, utme_text, de_text)
-                SELECT :id, r.programme_code, r.cutoff, r.olevel_credits, r.olevel_sittings, r.olevel_text, r.utme_text, r.de_text
+                       (policy_id, programme_code, cutoff, quota, olevel_credits, olevel_sittings, olevel_text, utme_text, de_text)
+                SELECT :id, r.programme_code, r.cutoff, r.quota, r.olevel_credits, r.olevel_sittings, r.olevel_text, r.utme_text, r.de_text
                   FROM admissions.programme_rule r
                   JOIN admissions.session_policy p ON p.id = r.policy_id WHERE p.session = :from
                 """).param("id", id).param("from", from).update();
