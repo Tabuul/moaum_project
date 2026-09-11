@@ -173,6 +173,45 @@ public class PaymentsService {
         return repo.paydirectActive();
     }
 
+    /** the PayDirect query-API credentials (V080): the client id and secret Interswitch issues for the
+     *  Transaction Query; kept in the same encrypted secret slot as the other gateways, read only here. */
+    record PayDirect(String clientId, String clientSecret, boolean sandbox) {
+    }
+
+    private String paydirectConfigJson() {
+        if (!configKey.isBlank()) {
+            String db = repo.gatewaySecret("paydirect", configKey);
+            if (db != null && !db.isBlank()) return db;
+        }
+        return "";
+    }
+
+    PayDirect paydirectQuery() {
+        String json = paydirectConfigJson();
+        if (json.isBlank()) return null;
+        try {
+            Map<String, Object> m = mapper.readValue(json, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+            String clientId = str(m.get("clientId"));
+            String clientSecret = str(m.get("clientSecret"));
+            boolean sandbox = m.get("sandbox") == null || Boolean.parseBoolean(String.valueOf(m.get("sandbox")));
+            if (clientId.isEmpty() || clientSecret.isEmpty()) return null;
+            return new PayDirect(clientId, clientSecret, sandbox);
+        } catch (RuntimeException notJson) {
+            LOG.warn("payments: the PayDirect configuration is not the JSON it should be: {}", notJson.getMessage());
+            return null;
+        }
+    }
+
+    public boolean paydirectQueryOn() {
+        return paydirectQuery() != null;
+    }
+
+    private static String paydirectQueryEndpoint(boolean sandbox) {
+        // Interswitch PayDirect transaction query; confirm the exact host/path on merchant onboarding
+        return sandbox ? "https://qa.interswitchng.com/paydirect/api/v1/gettransaction.json"
+                : "https://webpay.interswitchng.com/paydirect/api/v1/gettransaction.json";
+    }
+
     /** which gateways are wired, for the button to say so */
     public Map<String, Object> gateways() {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -493,7 +532,8 @@ public class PaymentsService {
             answer = Map.of("outcome", "short paid", "paid", paid, "owed", r.amount());
         } else {
             final boolean student = "FEES".equals(r.kind());
-            String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
+            String channel = gateway.equals("paydirect") ? "Quickteller PayDirect"
+                    : "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
             String settled = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " " + providerRef, null, null),
                     () -> tx.execute(st -> student
                             ? repo.confirmStudent(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())
@@ -620,6 +660,37 @@ public class PaymentsService {
                 }
             }
         }
+        PayDirect pd = paydirectQuery();
+        if (pd != null) {
+            // the biller a reference belongs to: routed by College for a student's fees, else the main biller
+            String biller = "FEES".equals(r.kind())
+                    ? String.valueOf(repo.paydirectBillerFor(r.accountId()).get("biller_code"))
+                    : String.valueOf(repo.paydirectMain().get("biller_code"));
+            long kobo = r.amount().movePointRight(2).longValueExact();
+            // Interswitch transaction query: the Hash header is SHA-512 of (clientId + reference + clientSecret);
+            // the biller code is the merchantcode. The exact inputs are per the merchant's profile — confirm on onboarding.
+            String hash = sha512Hex(pd.clientId() + reference + pd.clientSecret());
+            String url = paydirectQueryEndpoint(pd.sandbox()) + "?merchantcode=" + enc(biller)
+                    + "&transactionreference=" + enc(reference) + "&amount=" + kobo;
+            Map<String, Object> a = getWith(url, Map.of("Hash", hash, "Accept", "application/json"));
+            Object rc = a.get("ResponseCode");
+            if (rc != null) {
+                boolean success = "00".equals(String.valueOf(rc));
+                BigDecimal paid = a.get("Amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(a.get("Amount"))).movePointLeft(2);
+                String providerRef = a.get("PaymentReference") != null ? String.valueOf(a.get("PaymentReference"))
+                        : a.get("RetrievalReferenceNumber") != null ? String.valueOf(a.get("RetrievalReferenceNumber")) : reference;
+                out = settle("paydirect", source, "verify", reference, paid, String.valueOf(rc), success, providerRef, mapper.writeValueAsString(a));
+                if (success) {
+                    AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "reconciler checked " + reference, null, null), () -> tx.execute(st -> { repo.checked(reference); return null; }));
+                    return out;
+                }
+            } else {
+                log("paydirect", source, "verify", reference, null, null, String.valueOf(a.getOrDefault("ResponseDescription", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(a));
+                if ("no gateway".equals(out.get("outcome"))) {
+                    out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "paydirect", "said", String.valueOf(a.getOrDefault("ResponseDescription", "")));
+                }
+            }
+        }
         AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "reconciler checked " + reference, null, null), () -> tx.execute(st -> { repo.checked(reference); return null; }));
         return out;
     }
@@ -644,7 +715,7 @@ public class PaymentsService {
      */
     @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${moaum.payments.sweep-every-ms:600000}", initialDelayString = "120000")
     public void sweep() {
-        if (!paystackOn() && !flutterwaveOn() && !quicktellerOn()) {
+        if (!paystackOn() && !flutterwaveOn() && !quicktellerOn() && !paydirectQueryOn()) {
             return;
         }
         for (Map<String, Object> h : repo.hanging()) {

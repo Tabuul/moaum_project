@@ -87,6 +87,22 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
   const [problem, setProblem] = useState<Problem | null>(null);
   const [choices, setChoices] = useState<string[] | null>(null);
   const [pd, setPd] = useState<Paydirect | null>(null);
+  const [checkMsg, setCheckMsg] = useState<string | null>(null);
+  async function check(prn: string) {
+    setBusy(true);
+    setProblem(null);
+    setCheckMsg(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checked ${prn}`) }, body: JSON.stringify({ reference: prn }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      const outcome = String((j as { outcome?: string })?.outcome ?? "");
+      if (outcome === "confirmed" || outcome === "already confirmed") { window.location.reload(); return; }
+      setCheckMsg("Not confirmed yet. If you have just paid, it can take a few minutes to reach the University — wait a moment and check again.");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function go(gateway?: string) {
     setBusy(true);
     setProblem(null);
@@ -128,8 +144,12 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
             <li>USSD: <b className="tnum">{pd.ussd}</b></li>
             <li>Any bank branch or ATM: quote biller code <b className="tnum">{pd.billerCode}</b> and the PRN.</li>
           </ul>
-          <p className="sub2" style={{ marginTop: 6 }}>Keep the PRN. Your payment is confirmed here once the collections are reconciled.</p>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setPd(null)}>Choose another way to pay</button>
+          <p className="sub2" style={{ marginTop: 6 }}>Keep the PRN. After you pay, use &ldquo;I&rsquo;ve paid&rdquo; below, or it is confirmed automatically once the collection reaches the University.</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn--go btn--sm" disabled={busy} onClick={() => void check(pd.prn)}>{busy ? "Checking…" : "I've paid — check now"}</button>
+            <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={() => setPd(null)}>Choose another way to pay</button>
+          </div>
+          {checkMsg ? <p className="sub2" style={{ marginTop: 6 }}>{checkMsg}</p> : null}
         </div>
       ) : choices ? (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
