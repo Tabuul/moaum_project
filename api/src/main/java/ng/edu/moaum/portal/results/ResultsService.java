@@ -248,9 +248,11 @@ public class ResultsService {
     public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem) {
         List<Sheets.BroadsheetCell> cells = repo.broadsheet(prog, level, session, sem);
         Map<String, Integer> courses = new LinkedHashMap<>();
+        Map<String, String> courseKind = new LinkedHashMap<>();
         Map<UUID, List<Sheets.BroadsheetCell>> byStudent = new LinkedHashMap<>();
         for (Sheets.BroadsheetCell c : cells) {
             courses.putIfAbsent(c.courseCode(), c.units());
+            courseKind.putIfAbsent(c.courseCode(), c.kind());
             byStudent.computeIfAbsent(c.studentId(), k -> new ArrayList<>()).add(c);
         }
         List<Sheets.ClassBand> classes = repo.classBands();
@@ -297,11 +299,16 @@ public class ResultsService {
                     passed++;
                 }
             }
+            Sheets.Cumulative cum = repo.cumulative(e.getKey(), session, sem);
+            List<String> carry = repo.carryovers(e.getKey());
+            String remarks = pending > 0 && gpa == null ? "Pending"
+                    : carry.isEmpty() ? "PASS"
+                    : "CO: " + String.join(", ", carry);
             rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
-                    points, gpa, pending, standing));
+                    points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks));
         }
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
-        List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), x.getValue())).toList();
+        List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), x.getValue(), courseKind.get(x.getKey()))).toList();
         return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,
                 repo.gradeBands(), classes, repo.gradingInstrument());
     }

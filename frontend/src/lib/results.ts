@@ -180,9 +180,9 @@ export interface RollRow {
 export interface GradeBand { grade: string; low: number; high: number; points: number }
 export interface ClassBand { clazz: string; low: number; high: number; ord: number }
 export interface BroadsheetMark { courseCode: string; stage: string; total: number | null; grade: string | null; points: number | null; outcome: string | null; counted: boolean }
-export interface BroadsheetRow { studentId: string; number: string; name: string; marks: BroadsheetMark[]; units: number; points: number; gpa: number | null; pending: number; standing: string }
+export interface BroadsheetRow { studentId: string; number: string; name: string; marks: BroadsheetMark[]; units: number; points: number; gpa: number | null; pending: number; standing: string; tcr: number; tce: number; twgp: number; cgpa: number | null; lcgpa: number | null; carryovers: string[]; remarks: string }
 export interface Broadsheet {
-  programme: string; level: number; session: string; semester: number; courses: { courseCode: string; units: number }[]; rows: BroadsheetRow[];
+  programme: string; level: number; session: string; semester: number; courses: { courseCode: string; units: number; kind: string }[]; rows: BroadsheetRow[];
   meanGpa: number | null; passed: number; carrying: number; pendingSets: number; bands: GradeBand[]; classes: ClassBand[]; gradingInstrument: string | null;
 }
 export interface SenateFaculty { facultyCode: string; facultyName: string; sets: number; atSenate: number; published: number; outstanding: number; candidates: number }

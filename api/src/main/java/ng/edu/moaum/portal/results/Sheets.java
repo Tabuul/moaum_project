@@ -104,17 +104,22 @@ public final class Sheets {
 
     /** one candidate, one course, on the broadsheet */
     public record BroadsheetCell(UUID studentId, String number, String surname, String otherNames, String courseCode,
-                                 int units, String stage, Integer total, String grade, BigDecimal points, String outcome) {
+                                 int units, String kind, String stage, Integer total, String grade, BigDecimal points, String outcome) {
     }
 
-    public record BroadsheetCourse(String courseCode, int units) {
+    public record BroadsheetCourse(String courseCode, int units, String kind) {
     }
 
     public record BroadsheetMark(String courseCode, String stage, Integer total, String grade, BigDecimal points, String outcome, boolean counted) {
     }
 
+    public record Cumulative(int tcr, int tce, BigDecimal twgp, BigDecimal cgpa, BigDecimal prevCgpa) {
+    }
+
     public record BroadsheetRow(UUID studentId, String number, String name, List<BroadsheetMark> marks, int units,
-                                BigDecimal points, BigDecimal gpa, int pending, String standing) {
+                                BigDecimal points, BigDecimal gpa, int pending, String standing,
+                                int tcr, int tce, BigDecimal twgp, BigDecimal cgpa, BigDecimal lcgpa,
+                                List<String> carryovers, String remarks) {
     }
 
     public record Broadsheet(String programme, int level, String session, int semester, List<BroadsheetCourse> courses,

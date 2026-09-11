@@ -235,11 +235,12 @@ class ResultsRepository {
     List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem) {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names,
-                       o.course_code, e.units, coalesce(sh.stage, 'NO_SHEET') AS stage, l.total, l.grade, l.points, l.outcome
+                       o.course_code, e.units, coalesce(c.kind, 'Compulsory') AS kind, coalesce(sh.stage, 'NO_SHEET') AS stage, l.total, l.grade, l.points, l.outcome
                   FROM registration.course_registration r
                   JOIN people.student st ON st.id = r.student_id
                   JOIN registration.entry e ON e.registration_id = r.id AND e.status = 'APPROVED'
                   JOIN catalogue.offering o ON o.id = e.offering_id
+                  JOIN catalogue.course c ON c.code = o.course_code
                   LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
                   LEFT JOIN LATERAL (SELECT * FROM assessment.latest_scores(sh.id) x WHERE x.student_id = st.id) l ON sh.id IS NOT NULL
                  WHERE st.programme_code = :prog AND r.level = :level AND r.session = :session AND r.semester = :sem
@@ -247,6 +248,19 @@ class ResultsRepository {
                  ORDER BY st.surname, st.other_names, o.course_code
                 """).param("prog", prog).param("level", level).param("session", session).param("sem", sem)
                 .query(Sheets.BroadsheetCell.class).list();
+    }
+
+    /** the candidate's cumulative figures to a point (TCR, TCE, TWGP, CGPA, previous CGPA) */
+    Sheets.Cumulative cumulative(UUID student, String session, int sem) {
+        return jdbc.sql("SELECT tcr, tce, twgp, cgpa, prev_cgpa AS prevCgpa FROM assessment.student_cumulative(:s, :ss, :sem)")
+                .param("s", student).param("ss", session).param("sem", sem)
+                .query(Sheets.Cumulative.class).optional().orElse(new Sheets.Cumulative(0, 0, java.math.BigDecimal.ZERO, null, null));
+    }
+
+    /** the candidate's outstanding carryover course codes */
+    List<String> carryovers(UUID student) {
+        return jdbc.sql("SELECT course_code FROM registration.carryovers(:s) ORDER BY course_code")
+                .param("s", student).query(String.class).list();
     }
 
     List<Sheets.GradeBand> gradeBands() {
