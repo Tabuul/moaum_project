@@ -20,6 +20,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
   const router = useRouter();
   const may = MAY.includes(actingOffice ?? "");
   const [f, setF] = useState({ code: "", name: "", faculty: "", deptCode: "", department: "", category: "UNDER GRADUATE", minScore: "" });
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -45,6 +46,28 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
       router.refresh();
       return j;
     } finally { setBusy(false); }
+  }
+
+  async function archive(p: Programme, archived: boolean) {
+    const j = await post(`/programmes/${encodeURIComponent(p.code)}/archive`, { archived }, `Programme ${p.code} ${archived ? "archived" : "restored"}`);
+    if (j) setMsg(`${p.name} ${archived ? "archived" : "restored"}.`);
+  }
+
+  async function remove(p: Programme) {
+    if (!window.confirm(`Delete ${p.name} (${p.code})? This cannot be undone. If any records hang on it, archive it instead.`)) return;
+    setBusy(true); setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/catalogue/programmes/${encodeURIComponent(p.code)}`, { method: "DELETE", headers: { "X-Reason": reasonHeader(`Programme ${p.code} removed`) } });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      setMsg(`Programme ${p.code} removed.`); router.refresh();
+    } finally { setBusy(false); }
+  }
+
+  function edit(p: Programme) {
+    setF({ code: p.code, name: p.name, faculty: p.faculty_code, deptCode: p.dept_code ?? "", department: p.department_name ?? "", category: p.category, minScore: String(p.min_score ?? "") });
+    setEditing(true);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function upload(file: File) {
@@ -83,10 +106,10 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
       ]} />
 
       {may ? (
-        <Panel title="Add a programme" right="Or upload the list">
+        <Panel title={editing ? `Edit ${f.code}` : "Add a programme"} right="Or upload the list">
           <PBody>
             <div className="grid grid--3">
-              <Field id="pg-code" label="Code" hint="C then five digits"><input id="pg-code" className="ctl tnum" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} placeholder="C00101" /></Field>
+              <Field id="pg-code" label="Code" hint={editing ? "The code cannot change" : "C then five digits"}><input id="pg-code" className="ctl tnum" value={f.code} disabled={editing} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} placeholder="C00101" /></Field>
               <Field id="pg-name" label="Name"><input id="pg-name" className="ctl" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="B.Sc. Computer Science" /></Field>
               <Field id="pg-fac" label="Faculty"><select id="pg-fac" className="ctl" value={f.faculty} onChange={(e) => setF({ ...f, faculty: e.target.value })}><option value="">Choose the faculty…</option>{faculties.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field>
             </div>
@@ -102,8 +125,9 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <Btn kind="primary" disabled={busy || !/^C[0-9]{5}$/.test(f.code.trim()) || !f.name.trim() || !f.faculty} onClick={async () => {
                 const j = await post("/programmes", { code: f.code.trim(), name: f.name.trim(), faculty: f.faculty, departmentCode: f.deptCode || null, department: f.department || null, category: f.category, minScore: f.minScore ? Number(f.minScore) : null }, `Programme ${f.code.trim()} created`);
-                if (j) { setMsg(`Programme ${j.code} saved.`); setF({ code: "", name: "", faculty: "", deptCode: "", department: "", category: "UNDER GRADUATE", minScore: "" }); }
-              }}>Save the programme</Btn>
+                if (j) { setMsg(`Programme ${j.code} saved.`); setF({ code: "", name: "", faculty: "", deptCode: "", department: "", category: "UNDER GRADUATE", minScore: "" }); setEditing(false); }
+              }}>{editing ? "Save changes" : "Save the programme"}</Btn>
+              {editing ? <Btn kind="ghost" onClick={() => { setF({ code: "", name: "", faculty: "", deptCode: "", department: "", category: "UNDER GRADUATE", minScore: "" }); setEditing(false); }}>Cancel</Btn> : null}
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
               <label className={`btn btn--ghost btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
                 Upload programmes (.xlsx)
@@ -117,13 +141,18 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
 
       <Panel title="Programmes" right={`${programmes.length} on the register`}>
         {programmes.length ? (
-          <DTable cols={["Code|mid", "Programme", "Faculty", "Department", "Category|mid", "Min|num"]} rows={programmes.map((p) => [
+          <DTable cols={["Code|mid", "Programme", "Faculty", "Department", "Category|mid", "Min|num", "|num"]} rows={programmes.map((p) => [
             <span className="tnum" key="c">{p.code}</span>,
             <strong key="n">{p.name}{p.archived ? <Pil kind="grey" key="a">archived</Pil> : null}</strong>,
             <span className="sub2" key="f">{p.faculty_name}</span>,
             <span className="sub2" key="d">{p.department_name ?? p.dept_code ?? "—"}</span>,
             <span className="sub2" key="cat">{p.category === "POST GRADUATE" ? "PG" : "UG"}</span>,
             <span className="tnum" key="m">{p.min_score}</span>,
+            may ? <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <Btn kind="ghost" disabled={busy} onClick={() => edit(p)}>Edit</Btn>
+              <Btn kind="ghost" disabled={busy} onClick={() => void archive(p, !p.archived)}>{p.archived ? "Restore" : "Archive"}</Btn>
+              <Btn kind="ghost" disabled={busy} title="Delete outright (only if nothing hangs on it)" onClick={() => void remove(p)}>Delete</Btn>
+            </span> : <span className="sub2" key="x">—</span>,
           ])} texts={programmes.map((p) => `${p.code} ${p.name} ${p.faculty_name}`)} />
         ) : <PBody><div className="sub2">No programme yet. Add one above.</div></PBody>}
       </Panel>

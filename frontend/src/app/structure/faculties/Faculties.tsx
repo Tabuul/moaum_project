@@ -19,6 +19,7 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
   const may = MAY.includes(actingOffice ?? "");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -40,6 +41,18 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       router.refresh();
       return j;
+    } finally { setBusy(false); }
+  }
+
+  async function remove(fac: Faculty) {
+    if (fac.programmes || fac.departments) { setProblem({ status: 400, title: `${fac.name} still has ${fac.programmes} programme(s) and ${fac.departments} department(s).`, detail: "Remove or move them first; a faculty is deleted only when it is empty." }); return; }
+    if (!window.confirm(`Remove ${fac.name}? This cannot be undone.`)) return;
+    setBusy(true); setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/catalogue/faculties/${encodeURIComponent(fac.code)}`, { method: "DELETE", headers: { "X-Reason": reasonHeader(`Faculty ${fac.code} removed`) } });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      setMsg(`Faculty ${fac.code} removed.`); router.refresh();
     } finally { setBusy(false); }
   }
 
@@ -71,14 +84,15 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
       <Tiles items={[["Faculties", String(faculties.length), null, "On the register"]]} cls="grid--4" />
 
       {may ? (
-        <Panel title="Add a faculty" right="Or upload the list">
+        <Panel title={editing ? `Edit ${code}` : "Add a faculty"} right="Or upload the list">
           <PBody>
             <div className="grid grid--2">
-              <Field id="fc-code" label="Code" hint="Short, e.g. SCI"><input id="fc-code" className="ctl tnum" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} /></Field>
+              <Field id="fc-code" label="Code" hint={editing ? "The code cannot change" : "Short, e.g. SCI"}><input id="fc-code" className="ctl tnum" value={code} disabled={editing} onChange={(e) => setCode(e.target.value.toUpperCase())} /></Field>
               <Field id="fc-name" label="Name"><input id="fc-name" className="ctl" value={name} onChange={(e) => setName(e.target.value)} placeholder="Faculty of Science" /></Field>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <Btn kind="primary" disabled={busy || !code.trim() || !name.trim()} onClick={async () => { const j = await post("/faculties", { code: code.trim(), name: name.trim() }, `Faculty ${code.trim()} created`); if (j) { setMsg(`Faculty ${j.code} saved.`); setCode(""); setName(""); } }}>Save the faculty</Btn>
+              <Btn kind="primary" disabled={busy || !code.trim() || !name.trim()} onClick={async () => { const j = await post("/faculties", { code: code.trim(), name: name.trim() }, `Faculty ${code.trim()} ${editing ? "edited" : "created"}`); if (j) { setMsg(`Faculty ${j.code} saved.`); setCode(""); setName(""); setEditing(false); } }}>{editing ? "Save changes" : "Save the faculty"}</Btn>
+              {editing ? <Btn kind="ghost" onClick={() => { setCode(""); setName(""); setEditing(false); }}>Cancel</Btn> : null}
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
               <label className={`btn btn--ghost btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
                 Upload faculties (.xlsx)
@@ -91,9 +105,13 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
 
       <Panel title="Faculties" right={`${faculties.length} on the register`}>
         {faculties.length ? (
-          <DTable cols={["Code|mid", "Name", "Departments|num", "Programmes|num"]} rows={faculties.map((f) => [
+          <DTable cols={["Code|mid", "Name", "Departments|num", "Programmes|num", "|num"]} rows={faculties.map((f) => [
             <span className="tnum" key="c">{f.code}</span>, <strong key="n">{f.name}</strong>,
             <span className="tnum" key="d">{f.departments}</span>, <span className="tnum" key="p">{f.programmes}</span>,
+            may ? <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+              <Btn kind="ghost" disabled={busy} onClick={() => { setCode(f.code); setName(f.name); setEditing(true); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</Btn>
+              <Btn kind="ghost" disabled={busy || !!f.programmes || !!f.departments} title={f.programmes || f.departments ? "Empty the faculty first" : "Remove"} onClick={() => void remove(f)}>Remove</Btn>
+            </span> : <span className="sub2" key="x">—</span>,
           ])} texts={faculties.map((f) => `${f.code} ${f.name}`)} />
         ) : <PBody><div className="sub2">No faculty yet. Add one above.</div></PBody>}
       </Panel>

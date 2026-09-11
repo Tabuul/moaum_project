@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Size;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -122,6 +123,36 @@ class CatalogueController {
     Map<String, Object> importProgrammes(@Valid @RequestBody Rows body) {
         return jdbc.sql("SELECT * FROM ref.import_programmes(:j::jsonb)")
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
+    public record Archive(@NotNull Boolean archived) {
+    }
+
+    /** archive or restore a programme — the safe removal; it keeps its code */
+    @PostMapping("/programmes/{code}/archive")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> archiveProgramme(@PathVariable String code, @Valid @RequestBody Archive body) {
+        return jdbc.sql("SELECT code, name, archived FROM ref.set_programme_archived(:c, :a)")
+                .param("c", code).param("a", body.archived()).query().singleRow();
+    }
+
+    /** hard-delete a programme (only when nothing hangs on it) */
+    @DeleteMapping("/programmes/{code}")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> deleteProgramme(@PathVariable String code) {
+        jdbc.sql("SELECT ref.delete_programme(:c)").param("c", code).query().singleRow();
+        return Map.of("code", code.toUpperCase(), "deleted", true);
+    }
+
+    /** delete a faculty (only when it holds no programme and no course-bearing department) */
+    @DeleteMapping("/faculties/{code}")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> deleteFaculty(@PathVariable String code) {
+        jdbc.sql("SELECT ref.delete_faculty(:c)").param("c", code).query().singleRow();
+        return Map.of("code", code.toUpperCase(), "deleted", true);
     }
 
     /** upload a programme's course structure (a CCMAS table): each course is created and offered at its level */
