@@ -164,18 +164,29 @@
   }
 
   /* the six courses a 300-level Computer Science student carries */
-  var BS_COURSES = [["CSC 311", 3], ["CSC 321", 3], ["MTH 212", 3], ["CSC 331", 3], ["CSC 341", 3], ["GST 301", 2]];
+  // code, units, kind (C core / E elective) — the University's senate result format
+  var BS_COURSES = [["EPS 301", 2, "C"], ["STA 311", 3, "C"], ["STA 319", 3, "C"], ["STA 321", 3, "C"], ["STA 323", 3, "C"], ["STA 325", 3, "E"], ["STA 315", 3, "E"]];
 
   function bsRows() {
     return REC_NAMES.filter(function (r) { return r[2] === 300; }).map(function (st) {
-      var pts = 0, units = 0, marks = BS_COURSES.map(function (c) {
+      var pts = 0, units = 0, carry = [], marks = BS_COURSES.map(function (c) {
         var m = seedNum(st[0] + c[0], 28, 92);
         var g = gradeOf(m);
         pts += g[3] * c[1]; units += c[1];
+        if (g[3] === 0) carry.push(c[0]);
         return [m, g];
       });
       var gpa = units ? pts / units : 0;
-      return { st: st, marks: marks, units: units, pts: pts, gpa: gpa };
+      // cumulative to date — mock, internally consistent across two prior semesters
+      var priorUnits = seedNum(st[0] + "U", 60, 96);
+      var lcgpa = Math.max(0, Math.min(5, gpa + (seedNum(st[0] + "L", 0, 60) - 30) / 100));
+      var tcr = units + priorUnits;
+      var twgp = pts + Math.round(lcgpa * priorUnits);
+      var tce = tcr - carry.length * 3;
+      var cgpa = tcr ? twgp / tcr : 0;
+      var remarks = carry.length ? "CO: " + carry.join(", ") : "PASS";
+      return { st: st, marks: marks, units: units, pts: pts, gpa: gpa, carry: carry,
+        tcr: tcr, tce: tce, twgp: twgp, cgpa: cgpa, lcgpa: lcgpa, remarks: remarks };
     });
   }
 
@@ -183,6 +194,33 @@
     var rows = bsRows();
     var passed = rows.filter(function (r) { return r.gpa >= 1; }).length;
     var mean = rows.reduce(function (a, r) { return a + r.gpa; }, 0) / (rows.length || 1);
+
+    var core = BS_COURSES.filter(function (c) { return c[2] !== "E"; });
+    var elec = BS_COURSES.filter(function (c) { return c[2] === "E"; });
+    var order = core.concat(elec);
+    var mi = {}; BS_COURSES.forEach(function (c, k) { mi[c[0]] = k; });
+    var cell = function (m) { return '<span class="tnum">' + m[0] + '</span><div class="sub2" style="color:' + m[1][4] + ';font-weight:700">' + m[1][0] + '</div>'; };
+    var bs = '<style>.bsheet{border-collapse:collapse;font-size:12px;width:100%}.bsheet th,.bsheet td{border:1px solid var(--line);padding:4px 6px;text-align:center;vertical-align:middle}'
+      + '.bsheet thead th{background:var(--line-2);font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--chrome-dim)}.bsheet th.band{color:var(--chrome);font-weight:700}'
+      + '.bsheet th.l,.bsheet td.l{text-align:left;white-space:nowrap}.bsheet td.nm{white-space:normal;min-width:150px;font-weight:600}'
+      + '.bsheet th.course .mono{display:block;font-family:ui-monospace,monospace;font-weight:700}.bsheet th.course .u{display:block;font-size:10px;color:var(--chrome-dim)}'
+      + '.bsheet td.mk{min-width:44px}.bsheet td.b{font-weight:700}.bsheet td.co,.bsheet td.rm{text-align:left;min-width:120px;max-width:220px}.bsheet tbody tr:nth-child(even) td{background:var(--line-2)}</style>'
+      + '<div class="tablewrap"><table class="bsheet"><thead><tr>'
+      + '<th rowspan="2">S/N</th><th rowspan="2" class="l">Matric no.</th><th rowspan="2" class="l">Name of candidate</th><th rowspan="2">Carryover</th>'
+      + (core.length ? '<th colspan="' + core.length + '" class="band">Core courses</th>' : '')
+      + (elec.length ? '<th colspan="' + elec.length + '" class="band">Elective courses</th>' : '')
+      + '<th colspan="3" class="band">This semester</th><th colspan="5" class="band">Cumulative to date</th><th rowspan="2" class="l">Remarks</th></tr><tr>'
+      + order.map(function (c) { return '<th class="course"><span class="mono">' + c[0] + '</span><span class="u">' + c[1] + '</span></th>'; }).join('')
+      + '<th>CUE</th><th>WGP</th><th>GPA</th><th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th></tr></thead><tbody>'
+      + rows.map(function (r, i) {
+        return '<tr><td class="tnum">' + (i + 1) + '</td><td class="l tnum">' + r.st[0] + '</td><td class="l nm">' + r.st[1] + '</td>'
+          + '<td class="co sub2">' + (r.carry.length ? r.carry.join(", ") : "&mdash;") + '</td>'
+          + order.map(function (c) { return '<td class="mk">' + cell(r.marks[mi[c[0]]]) + '</td>'; }).join('')
+          + '<td class="tnum">' + r.units + '</td><td class="tnum">' + r.pts + '</td><td class="tnum b">' + r.gpa.toFixed(2) + '</td>'
+          + '<td class="tnum">' + r.tcr + '</td><td class="tnum">' + r.tce + '</td><td class="tnum">' + r.twgp + '</td><td class="tnum">' + r.lcgpa.toFixed(2) + '</td><td class="tnum b">' + r.cgpa.toFixed(2) + '</td>'
+          + '<td class="rm sub2">' + r.remarks + '</td></tr>';
+      }).join('')
+      + '</tbody></table></div>';
 
     return note('info', 'The broadsheet is computed, not typed',
       'Every figure on this sheet comes from the approved score sheets and the grading scheme in force for the session. Nobody keys a GPA. If a mark changes at Faculty Board, this sheet changes with it, and so does the result the student sees and the transcript the Registrar signs &mdash; because they are one calculation, not three spreadsheets.') +
@@ -200,21 +238,7 @@
     ]) +
 
     panel('Broadsheet &mdash; 300 Level, First semester',
-      'Grading scheme v3, in force from 2024/2025',
-      dtable(
-        ["Matriculation number", "Name"].concat(BS_COURSES.map(function (c) { return c[0] + "|mid"; }))
-          .concat(["Units|mid", "Points|mid", "GPA|mid", "Standing|num"]),
-        rows.map(function (r) {
-          return ['<span class="tnum">' + r.st[0] + '</span>', "<strong>" + r.st[1] + "</strong>"]
-            .concat(r.marks.map(function (m) {
-              return '<span class="tnum">' + m[0] + '</span><div class="sub2" style="color:' + m[1][4] +
-                ';font-weight:700">' + m[1][0] + '</div>';
-            }))
-            .concat(['<span class="tnum">' + r.units + '</span>',
-              '<span class="tnum">' + r.pts + '</span>',
-              '<span class="tnum" style="font-weight:700">' + r.gpa.toFixed(2) + '</span>',
-              r.gpa >= 1 ? pil('ok', 'Pass') : pil('bad', 'Carryover')]);
-        }))) +
+      'Grading scheme v3, in force from 2024/2025 &middot; score over grade', bs) +
 
     panel('The grading scheme this sheet used', 'Effective-dated: a 2019 result is graded by the 2019 scheme',
       dtable(["Grade|mid", "From|mid", "To|mid", "Points|mid", "Meaning"],
