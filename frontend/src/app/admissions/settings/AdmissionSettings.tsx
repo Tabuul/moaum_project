@@ -112,7 +112,7 @@ const ADM_QUESTIONS: [string, string, ReactNode, string][] = [
 
 const ADM_TABS: [string, string, ReactNode][] = [
   ["session", "Session and criteria", "Quota, weighting and the four criteria"],
-  ["faculty", "Faculty quotas", "Distribution and cut-off marks"],
+  ["faculty", "Faculty settings", "NUC ceiling and the UTME:Direct-Entry split"],
   ["prog", "Programme requirements", <>O&rsquo;Level, UTME subjects, Direct Entry</>],
   ["force", "Put in force", "What stands in the way, and the minute that clears it"],
 ];
@@ -274,7 +274,8 @@ export function AdmissionSettings({
 
   /* ── derived ── */
   const critTotal = policy.criteria.reduce((a, c) => a + c.percent, 0);
-  const quotaTotal = policy.facultyCutoffs.reduce((a, f) => a + (f.quota ?? 0), 0);
+  /* quotas are per programme now — the distributed total is the sum of the programme quotas */
+  const quotaTotal = policy.programmes.reduce((a, p) => a + (p.quota ?? 0), 0);
   const withRule = policy.programmes.filter((p) => p.stated && !p.closed);
   /* a programme closed for the session needs no rule: it is not admitted into (V023) */
   const closedThisSession = policy.programmes.filter((p) => p.closed);
@@ -375,46 +376,29 @@ export function AdmissionSettings({
 
   /* ── 2 · the faculties ── */
   const facultiesSorted = [...policy.facultyCutoffs].sort((a, b) => (a.facultyName < b.facultyName ? -1 : 1));
-  const prevQuota = (code: string) => previous?.facultyCutoffs.find((x) => x.facultyCode === code)?.quota ?? null;
-  const prevTotal = previous ? previous.facultyCutoffs.reduce((a, x) => a + (x.quota ?? 0), 0) : 0;
   const facultyTab = (
     <>
-      <Note kind="info" title={`The ${session} distribution is the Deans' to submit`}>
-        Paragraph 2.3 asks each Dean to distribute the faculty quota across the courses in the faculty and submit it to the
-        Academic Office; this is where it is submitted. The NUC approved quota is {field("nucQuota", policy.nucQuota, 96, (v) => void send("PUT", `${base}/nuc-quota`, { quota: v ?? policy.nucQuota }, `NUC approved quota stated as ${v ?? policy.nucQuota} for ${session}`, "q"), undefined, true)} <span className="sub2">(a setting: change it here — it can be raised even after the policy is in force, and the distribution below is checked against it)</span>
-        {previous ? <>; the {previousSession} distribution beside it totals <b>{prevTotal.toLocaleString()}</b>.</> : "."}
+      <Note kind="info" title="Quotas and cut-offs are set per programme">
+        A quota and a cut-off belong to each programme now — set them on the <b>Programme requirements</b> tab, where the
+        merit engine reads them. The faculty no longer carries a quota or a cut-off. What stays a faculty setting is the
+        NUC-approved ceiling for the whole session and the UTME:Direct-Entry split the merit engine uses to divide a
+        programme&rsquo;s places.
       </Note>
-      <Panel title="Faculty quotas and cut-off marks" right="Paragraphs 2.3 and 2.13">
-        <DTable
-          cols={["Faculty", "As the guidelines name it", `${previousSession}|num`, `${session}|num`, "UTME cut-off|num", "UTME:DE|num"]}
-          rows={[
-            ...facultiesSorted.map((fc) => [
-              <span key="n"><strong>{fc.facultyName}</strong><div className="sub2 tnum">{fc.facultyCode}</div></span>,
-              FAC_GUIDE[fc.facultyCode] ? <span className="sub2" style={{ color: "var(--red-ink)" }} key="g">{FAC_GUIDE[fc.facultyCode]}</span> : <span className="sub2" key="g">the same</span>,
-              <span className="tnum sub2" key="p">{prevQuota(fc.facultyCode)?.toLocaleString() ?? "—"}</span>,
-              <span key="q">{field(`q:${fc.facultyCode}`, fc.quota, 88, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}/quota`, { quota: v }, `${fc.facultyName} quota changed`, "q"), "—", true)}</span>,
-              <span key="k">{field(`k:${fc.facultyCode}`, fc.cutoff, 74, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: v, ratioUtme: fc.ratioUtme, ratioDe: fc.ratioDe }, `${fc.facultyName} cut-off changed`, "k"))}</span>,
-              <span key="r">{field(`ru:${fc.facultyCode}`, fc.ratioUtme, 52, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: fc.cutoff, ratioUtme: v, ratioDe: v == null ? null : 100 - v }, `${fc.facultyName} UTME:DE split changed`, "r"), String(policy.ratioUtme))}<span className="sub2">:{fc.ratioUtme == null ? `${policy.ratioDe} (default)` : (100 - fc.ratioUtme)}</span></span>,
-            ]),
-            [<strong key="t">Total</strong>, "", <b className="tnum" key="p">{prevTotal.toLocaleString()}</b>,
-              <span key="q"><b className="tnum" style={{ fontSize: 15, color: quotaTotal === policy.nucQuota ? "var(--green-ink)" : "var(--red-ink)" }}>{quotaTotal.toLocaleString()}</b><div className="sub2">of {policy.nucQuota.toLocaleString()}</div></span>, "", ""],
-          ]}
-        />
-        <PBody><div className="sub2">The UTME:Direct-Entry split is the faculty&rsquo;s own; type the UTME share and Direct Entry is the rest. Blank inherits the session default of {policy.ratioUtme}:{policy.ratioDe}. Education is 60:40. The merit engine fills each faculty&rsquo;s places by the split in force here.</div></PBody>
+      <Panel title="NUC approved quota" right="The ceiling for the session">
+        <PBody>
+          <div className="sub2">The total number of places the NUC approved for {session}: {field("nucQuota", policy.nucQuota, 96, (v) => void send("PUT", `${base}/nuc-quota`, { quota: v ?? policy.nucQuota }, `NUC approved quota stated as ${v ?? policy.nucQuota} for ${session}`, "q"), undefined, true)} <span className="sub2">— a setting; it can be raised even after the policy is in force. The programmes&rsquo; own quotas are distributed under it on the Programme requirements tab.</span></div>
+        </PBody>
       </Panel>
-      <Panel title="Programme cut-offs above their faculty’s" right="Paragraph 2.13">
+      <Panel title="Faculty UTME:Direct-Entry split" right="Paragraph 2.3">
         <DTable
-          cols={["Programme", "Faculty", "Faculty cut-off|num", "Programme cut-off|num"]}
-          rows={policy.programmeCutoffs.map((pc) => {
-            const p = policy.programmes.find((x) => x.code === pc.code);
-            return [
-              <strong key="n">{pc.name}</strong>,
-              <span className="sub2" key="f">{p?.facultyName ?? ""}</span>,
-              <span className="tnum sub2" key="k">{p ? facultyCutoff(p.facultyCode) ?? "—" : "—"}</span>,
-              <b className="tnum" key="c">{pc.cutoff}</b>,
-            ];
-          })}
+          cols={["Faculty", "As the guidelines name it", "UTME:DE|num"]}
+          rows={facultiesSorted.map((fc) => [
+            <span key="n"><strong>{fc.facultyName}</strong><div className="sub2 tnum">{fc.facultyCode}</div></span>,
+            FAC_GUIDE[fc.facultyCode] ? <span className="sub2" style={{ color: "var(--red-ink)" }} key="g">{FAC_GUIDE[fc.facultyCode]}</span> : <span className="sub2" key="g">the same</span>,
+            <span key="r">{field(`ru:${fc.facultyCode}`, fc.ratioUtme, 52, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: fc.cutoff, ratioUtme: v, ratioDe: v == null ? null : 100 - v }, `${fc.facultyName} UTME:DE split changed`, "r"), String(policy.ratioUtme))}<span className="sub2">:{fc.ratioUtme == null ? `${policy.ratioDe} (default)` : (100 - fc.ratioUtme)}</span></span>,
+          ])}
         />
+        <PBody><div className="sub2">Type the UTME share; Direct Entry is the rest. Blank inherits the session default of {policy.ratioUtme}:{policy.ratioDe}. Education is 60:40. The merit engine fills each programme&rsquo;s places by the split in force here.</div></PBody>
       </Panel>
     </>
   );
