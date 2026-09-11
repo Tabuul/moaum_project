@@ -4,7 +4,7 @@
 import type { Scope } from "@/lib/scope";
 import { STAGE_LABEL, csv, download, type Broadsheet } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Note, Panel, Tiles } from "@/components/proto/ui";
+import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 const COLOUR = (points: number | null) => (points === null ? "var(--muted)" : points >= 4 ? "var(--green-ink)" : points >= 1 ? "var(--chrome)" : "var(--red-ink)");
@@ -47,6 +47,81 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             ["Passed every course", String(sheet.passed), "var(--green-ink)", sheet.rows.length ? `${Math.round((100 * sheet.passed) / sheet.rows.length)}% of the level` : "—"],
             ["Carrying over", String(sheet.carrying), sheet.carrying ? "var(--red-ink)" : null, sheet.pendingSets ? `${sheet.pendingSets} set${sheet.pendingSets === 1 ? "" : "s"} still in the chain` : "One or more F grades"],
           ]} />
+          {(() => {
+            const fac = structure.faculties.find((f) => f.departments.some((d) => d.programmes.some((p) => p.code === scope.prog)));
+            const dept = fac?.departments.find((d) => d.programmes.some((p) => p.code === scope.prog));
+            const roll = sheet.rows.length;
+            const sat = sheet.rows.filter((r) => r.gpa !== null).length;
+            const notSit = roll - sat;
+            const probation = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.5 && r.cgpa >= 1.0).length;
+            const withdraw = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length;
+            const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "—");
+            const n0 = (n: number) => (n === 0 ? "Nil" : String(n));
+            const SUM: [string, string, string][] = [
+              ["Total Number of Candidates on Roll", String(roll), ""],
+              ["Total Number of Candidates that Registered", String(roll), ""],
+              ["Total Number of Candidates that did not Register", "Nil", ""],
+              ["Total Number of Candidates at Examination", String(sat), sat ? "100" : ""],
+              ["Total Number of Candidates that did not sit for the Examination", n0(notSit), notSit ? pc(notSit) : ""],
+              ["Total Number of Candidates with Pass", String(sheet.passed), pc(sheet.passed)],
+              ["Total Number of Candidates that Deferred", "Nil", ""],
+              ["Total Number of Candidates with Carryover/Fail", String(sheet.carrying), pc(sheet.carrying)],
+              ["Total Number of Candidates on Probation", n0(probation), probation ? pc(probation) : ""],
+              ["Total Number of Candidates Advised to Withdraw", n0(withdraw), withdraw ? pc(withdraw) : ""],
+              ["Total Number of Candidates Expelled", "Nil", ""],
+            ];
+            const KEY: [string, string][] = [
+              ["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"], ["WGP", "Weighted Grade Point"],
+              ["GPA", "Grade Point Average"], ["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"],
+              ["TWGP", "Total Weighted Grade Point"], ["LCGPA", "Last Cumulative Grade Point Average"], ["CGPA", "Cumulative Grade Point Average"],
+            ];
+            return (
+              <Panel title="Examination reporting sheet" right="The cover page of the downloaded result">
+                <PBody>
+                  <div className="ers">
+                    <div className="ers__title">
+                      <div className="ers__uni">Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+                      <div className="ers__sub">Examination Reporting Sheet</div>
+                    </div>
+                    <div className="ers__meta">
+                      <div>
+                        <div><span className="k">Faculty</span><b>{fac?.name ?? "—"}</b></div>
+                        <div><span className="k">Department</span><b>{dept?.name ?? "—"}</b></div>
+                        <div><span className="k">Degree in view</span><b>{programme?.name ?? sheet.programme}</b></div>
+                      </div>
+                      <div>
+                        <div><span className="k">Level</span><b>{sheet.level}</b></div>
+                        <div><span className="k">Semester</span><b>{semester}</b></div>
+                        <div><span className="k">Session</span><b className="tnum">{sheet.session}</b></div>
+                      </div>
+                    </div>
+                    <div className="ers__cols">
+                      <div>
+                        <div className="ers__h">Summary of results</div>
+                        <table className="ers__t"><tbody>
+                          {SUM.map(([l, n, p]) => <tr key={l}><td>{l}</td><td className="tnum n">{n}</td><td className="tnum p">{p}</td></tr>)}
+                        </tbody></table>
+                      </div>
+                      <div>
+                        <div className="ers__h">Key</div>
+                        <table className="ers__t"><tbody>
+                          {KEY.map(([a, m]) => <tr key={a}><td className="tnum ab">{a}</td><td>{m}</td></tr>)}
+                        </tbody></table>
+                      </div>
+                    </div>
+                    <div className="ers__h" style={{ marginTop: 14 }}>Courses</div>
+                    <table className="ers__t ers__courses"><tbody>
+                      {sheet.courses.map((c) => <tr key={c.courseCode}><td className="tnum ab">{c.courseCode}</td><td>{c.title}</td><td className="tnum">{c.units} units</td></tr>)}
+                    </tbody></table>
+                    <div className="ers__sign">
+                      <div><div className="role">Dean of Faculty</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
+                      <div><div className="role">Head of Department</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
+                    </div>
+                  </div>
+                </PBody>
+              </Panel>
+            );
+          })()}
           <Panel title={`Broadsheet — ${programme?.name ?? sheet.programme}, ${sheet.level} Level, ${semester} semester`} right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
             {sheet.rows.length === 0 ? (
               <div className="card__body sub2">No approved registration at this level in {sheet.session} semester {sheet.semester} for this programme. The broadsheet has nobody to compute.</div>
@@ -108,6 +183,24 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             .bsheet td.b{font-weight:700}
             .bsheet td.co,.bsheet td.rm{text-align:left;min-width:120px;max-width:220px}
             .bsheet tbody tr:nth-child(even) td{background:var(--line-2)}
+            .ers{max-width:900px;margin:0 auto}
+            .ers__title{text-align:center;margin-bottom:16px}
+            .ers__uni{font-weight:700;font-size:15px}
+            .ers__sub{text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--chrome-dim);text-decoration:underline;margin-top:3px}
+            .ers__meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:18px;font-size:13px}
+            .ers__meta>div>div{display:flex;gap:8px;padding:2px 0}
+            .ers__meta .k{min-width:110px;color:var(--chrome-dim);text-transform:uppercase;font-size:11px;letter-spacing:.03em;align-self:center}
+            .ers__cols{display:grid;grid-template-columns:1.5fr 1fr;gap:28px}
+            .ers__h{font-weight:700;text-decoration:underline;font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+            .ers__t{width:100%;font-size:12.5px;border-collapse:collapse}
+            .ers__t td{padding:2px 6px;vertical-align:top}
+            .ers__t td.n{text-align:right;width:44px;font-weight:600}
+            .ers__t td.p{text-align:right;width:44px;color:var(--chrome-dim)}
+            .ers__t td.ab{font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap;width:64px}
+            .ers__courses td:last-child{text-align:right;color:var(--chrome-dim);white-space:nowrap}
+            .ers__sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px;font-size:13px}
+            .ers__sign .role{font-style:italic;font-weight:600;margin-bottom:10px}
+            .ers__sign .ln{color:var(--chrome-dim);border-bottom:1px dotted var(--line);padding:6px 0 2px;margin-bottom:6px}
           `}</style>
           <Panel title="The grading scheme this sheet used" right="Effective-dated: a 2019 result is graded by the 2019 scheme">
             <DTable cols={["Grade|mid", "From|mid", "To|mid", "Points|mid", "Meaning"]}

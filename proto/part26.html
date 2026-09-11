@@ -222,6 +222,47 @@
       }).join('')
       + '</tbody></table></div>';
 
+    var TITLES = { "EPS 301": "Entrepreneurship Studies I", "STA 311": "Probability", "STA 319": "Statistical Inference I", "STA 321": "Sampling Techniques", "STA 323": "Design of Experiments", "STA 325": "Operations Research I", "STA 315": "Demography" };
+    var sat = rows.length;
+    var passN = rows.filter(function (r) { return r.gpa >= 1; }).length;
+    var carryN = rows.length - passN;
+    var probN = rows.filter(function (r) { return r.cgpa < 1.5 && r.cgpa >= 1; }).length;
+    var wdN = rows.filter(function (r) { return r.cgpa < 1; }).length;
+    var pc = function (n) { return sat ? Math.round(n / sat * 100) + "%" : ""; };
+    var SUM = [
+      ["Total Number of Candidates on Roll", rows.length, ""],
+      ["Total Number of Candidates that Registered", rows.length, ""],
+      ["Total Number of Candidates that did not Register", "Nil", ""],
+      ["Total Number of Candidates at Examination", sat, "100"],
+      ["Total Number of Candidates that did not sit for the Examination", "Nil", ""],
+      ["Total Number of Candidates with Pass", passN, pc(passN)],
+      ["Total Number of Candidates that Deferred", "Nil", ""],
+      ["Total Number of Candidates with Carryover/Fail", carryN, pc(carryN)],
+      ["Total Number of Candidates on Probation", probN || "Nil", probN ? pc(probN) : ""],
+      ["Total Number of Candidates Advised to Withdraw", wdN || "Nil", wdN ? pc(wdN) : ""],
+      ["Total Number of Candidates Expelled", "Nil", ""]
+    ];
+    var KEY = [["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"], ["WGP", "Weighted Grade Point"], ["GPA", "Grade Point Average"], ["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"], ["TWGP", "Total Weighted Grade Point"], ["LCGPA", "Last Cumulative Grade Point Average"], ["CGPA", "Cumulative Grade Point Average"]];
+    var cover = '<style>.ers{max-width:900px;margin:0 auto}.ers__title{text-align:center;margin-bottom:16px}.ers__uni{font-weight:700;font-size:15px}.ers__sub{text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--chrome-dim);text-decoration:underline;margin-top:3px}'
+      + '.ers__meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:18px;font-size:13px}.ers__meta>div>div{display:flex;gap:8px;padding:2px 0}.ers__meta .k{min-width:110px;color:var(--chrome-dim);text-transform:uppercase;font-size:11px;letter-spacing:.03em;align-self:center}'
+      + '.ers__cols{display:grid;grid-template-columns:1.5fr 1fr;gap:28px}.ers__h{font-weight:700;text-decoration:underline;font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}.ers__t{width:100%;font-size:12.5px;border-collapse:collapse}.ers__t td{padding:2px 6px;vertical-align:top}'
+      + '.ers__t td.n{text-align:right;width:44px;font-weight:600}.ers__t td.p{text-align:right;width:44px;color:var(--chrome-dim)}.ers__t td.ab{font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap;width:64px}.ers__courses td:last-child{text-align:right;color:var(--chrome-dim);white-space:nowrap}'
+      + '.ers__sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px;font-size:13px}.ers__sign .role{font-style:italic;font-weight:600;margin-bottom:10px}.ers__sign .ln{color:var(--chrome-dim);border-bottom:1px dotted var(--line);padding:6px 0 2px;margin-bottom:6px}</style>'
+      + '<div class="ers"><div class="ers__title"><div class="ers__uni">Rev. Fr. Moses Orshio Adasu University, Makurdi</div><div class="ers__sub">Examination Reporting Sheet</div></div>'
+      + '<div class="ers__meta"><div>'
+      + '<div><span class="k">Faculty</span><b>Science</b></div><div><span class="k">Department</span><b>Mathematics and Computer Science</b></div><div><span class="k">Degree in view</span><b>B.Sc. (Hons) Statistics</b></div>'
+      + '</div><div><div><span class="k">Level</span><b>300</b></div><div><span class="k">Semester</span><b>First</b></div><div><span class="k">Session</span><b class="tnum">2026/2027</b></div></div></div>'
+      + '<div class="ers__cols"><div><div class="ers__h">Summary of results</div><table class="ers__t"><tbody>'
+      + SUM.map(function (s) { return '<tr><td>' + s[0] + '</td><td class="tnum n">' + s[1] + '</td><td class="tnum p">' + s[2] + '</td></tr>'; }).join('')
+      + '</tbody></table></div><div><div class="ers__h">Key</div><table class="ers__t"><tbody>'
+      + KEY.map(function (k) { return '<tr><td class="tnum ab">' + k[0] + '</td><td>' + k[1] + '</td></tr>'; }).join('')
+      + '</tbody></table></div></div>'
+      + '<div class="ers__h" style="margin-top:14px">Courses</div><table class="ers__t ers__courses"><tbody>'
+      + BS_COURSES.map(function (c) { return '<tr><td class="tnum ab">' + c[0] + '</td><td>' + (TITLES[c[0]] || "") + '</td><td class="tnum">' + c[1] + ' units</td></tr>'; }).join('')
+      + '</tbody></table>'
+      + '<div class="ers__sign"><div><div class="role">Dean of Faculty</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div>'
+      + '<div><div class="role">Head of Department</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div></div></div>';
+
     return note('info', 'The broadsheet is computed, not typed',
       'Every figure on this sheet comes from the approved score sheets and the grading scheme in force for the session. Nobody keys a GPA. If a mark changes at Faculty Board, this sheet changes with it, and so does the result the student sees and the transcript the Registrar signs &mdash; because they are one calculation, not three spreadsheets.') +
 
@@ -236,6 +277,8 @@
       ["Passed every course", String(passed), "var(--green-ink)", Math.round(passed / rows.length * 100) + "% of the level"],
       ["Carrying over", String(rows.length - passed), "var(--red-ink)", "One or more F grades"]
     ]) +
+
+    panel('Examination reporting sheet', 'The cover page of the downloaded result', cover) +
 
     panel('Broadsheet &mdash; 300 Level, First semester',
       'Grading scheme v3, in force from 2024/2025 &middot; score over grade', bs) +
