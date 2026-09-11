@@ -45,7 +45,7 @@ class CatalogueController {
                             @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind) {
     }
 
-    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows) {
+    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @Size(max = 20) String session, @NotNull List<Map<String, Object>> rows) {
     }
 
     /** upload a programme's course structure (a CCMAS table): each course is created and offered at its level */
