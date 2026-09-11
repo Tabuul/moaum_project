@@ -51,7 +51,7 @@ LANGUAGE sql STABLE AS $$
                 ELSE 'none' END
       FROM scored
      WHERE NOT by_exam AND screening_score IS NULL    -- did not sit the Post-UTME
-     ORDER BY computed DESC NULLS LAST, cand_name;
+     ORDER BY 9 DESC NULLS LAST, 2;                    -- by computed score (col 9), then name (col 2)
 $$;
 
 COMMENT ON FUNCTION admissions.non_sitter_post_utme(text) IS
