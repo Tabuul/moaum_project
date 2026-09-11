@@ -92,7 +92,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/nelfund/students/${encodeURIComponent(n)}/statement?session=${encodeURIComponent(d.session)}`);
+      const r = await fetch(`/api/bff/api/v1/nelfund/student/statement?number=${encodeURIComponent(n)}&session=${encodeURIComponent(d.session)}`);
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); setLedger(null); return; }
       setLedger(j as StudentLedger);

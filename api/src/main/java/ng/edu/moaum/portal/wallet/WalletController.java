@@ -105,10 +105,12 @@ class WalletController {
         return service.desk(s + "/" + y);
     }
 
-    /** a student's wallet ledger, by matriculation or admission number — the Bursary's and the audit directorate's read */
-    @GetMapping("/api/v1/nelfund/students/{number}/statement")
+    /** a student's wallet ledger, by matriculation or admission number — the Bursary's and the audit directorate's read.
+     *  The number is a query parameter, not a path segment: a matriculation number carries slashes, and an encoded
+     *  slash (%2F) in a path is rejected by the request firewall as a bad request. */
+    @GetMapping("/api/v1/nelfund/student/statement")
     @PreAuthorize(READERS)
-    Map<String, Object> studentLedger(@PathVariable String number, @RequestParam(required = false) String session) {
+    Map<String, Object> studentLedger(@RequestParam String number, @RequestParam(required = false) String session) {
         return service.studentLedger(number, session);
     }
 
