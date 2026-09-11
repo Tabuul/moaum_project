@@ -336,6 +336,25 @@ public class CapsIntakeService {
         return caps.resetIntake(session);
     }
 
+    /** the JAMB admission-status list uploaded back: match by registration number, offer and release the accepted */
+    @Transactional
+    public java.util.Map<String, Object> loadJambAdmissions(String session, List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new DomainRuleViolation("ADM_JAMB_ROWS", "The list is rows: registration number, name, course, admission status.",
+                    new DomainRuleViolation.Remedy("Download the admission-status file from JAMB and upload its rows.", "Academic Office"));
+        }
+        return caps.loadJambAdmissions(session, json.writeValueAsString(rows));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> jambAdmissions(String session) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("tiles", caps.jambAdmissionTiles(session));
+        out.put("rows", caps.jambAdmissionList(session));
+        return out;
+    }
+
     private static String blankToNull(String s) {
         return s == null || s.isBlank() ? null : s.trim();
     }

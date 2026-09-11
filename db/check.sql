@@ -212,6 +212,7 @@ BEGIN
     DELETE FROM admissions.olevel_grade;
     DELETE FROM admissions.olevel_sitting;
 
+    DELETE FROM admissions.jamb_admission;
     DELETE FROM admissions.candidate_photo;
     DELETE FROM admissions.attachment;
     DELETE FROM admissions.candidate;
@@ -236,7 +237,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 121
+\set EXPECTED 122
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2354,6 +2355,33 @@ BEGIN
         AND (SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = v_ref)
         AND (SELECT channel FROM finance.payment_reference WHERE reference = v_ref) = 'Quickteller PayDirect',
         format('main=%s chs=%s matched=%s unmatched=%s', b_main, b_chs, r.matched, r.unmatched));
+END $$;
+
+-- ── 122. the JAMB admission-status list, uploaded back: matched by reg number, the accepted offered and released (V081) ──
+DO $$
+DECLARE b uuid := gen_random_uuid(); acct uuid; app uuid; r record; a admissions.application;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b, '9995/9996', 'CAPS_DOWNLOAD', 'UTME', '\xC2'::bytea, 1, current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+    VALUES (gen_random_uuid(), b, '9995/9996', '20269995JA', '{}'::jsonb, 'CHECKJAMB', 'Invented', 'C00061', 250, 'UTME', 'M', 'Benue', 'Makurdi');
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    acct := admissions.register_applicant('9995/9996', '20269995JA', 'check.jamb@example.com', '08034117726',
+        '$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab');
+    SELECT id INTO app FROM admissions.application WHERE account_id = acct;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT * INTO r FROM admissions.load_jamb_admissions('9995/9996',
+        '[{"RG_NUM":"20269995JA","RG_CANDNAME":"CHECKJAMB Invented","CO_NAME":"MBBS","AdmissionStatus":"Accepted","AdmissionCategoryName":"Merit","Total":"55"},{"RG_NUM":"20269995ZZ","AdmissionStatus":"Accepted"}]'::jsonb);
+    SELECT * INTO a FROM admissions.application WHERE id = app;
+    PERFORM pg_temp.assert('The JAMB admission list matches by registration number, offers and releases the accepted, and holds a number not on the register',
+        r.loaded = 2 AND r.matched = 1 AND r.accepted = 1 AND r.offered = 1 AND r.unmatched = 1
+        AND a.decision = 'OFFERED' AND a.decision_released_at IS NOT NULL
+        AND (SELECT offer_state FROM admissions.candidate c JOIN admissions.applicant_account ac ON ac.candidate_id = c.id WHERE ac.id = acct) = 'ADMITTED'
+        AND (SELECT matched AND offered FROM admissions.jamb_admission WHERE session = '9995/9996' AND jamb_reg_no = '20269995JA')
+        AND NOT (SELECT matched FROM admissions.jamb_admission WHERE session = '9995/9996' AND jamb_reg_no = '20269995ZZ'),
+        format('loaded=%s matched=%s accepted=%s offered=%s unmatched=%s decision=%s', r.loaded, r.matched, r.accepted, r.offered, r.unmatched, a.decision));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
-import { loadCrest } from "@/lib/xlsx";
+import { loadCrest, xlsxRows } from "@/lib/xlsx";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -46,6 +46,9 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newBatch, setNewBatch] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [jambBusy, setJambBusy] = useState(false);
+  const [jambMsg, setJambMsg] = useState<string | null>(null);
+  const [jambList, setJambList] = useState<{ tiles: Record<string, number>; rows: Record<string, unknown>[] } | null>(null);
   const [nowMs] = useState(() => Date.now());
   const base = `/api/bff/api/v1/admissions/sessions/${desk.session}`;
   const office = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
@@ -164,6 +167,41 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     }
   }
 
+  async function refreshJamb() {
+    const r = await fetch(`${base}/jamb-admissions`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (r.ok && j) setJambList(j as { tiles: Record<string, number>; rows: Record<string, unknown>[] });
+  }
+
+  async function uploadJamb(file: File) {
+    setJambBusy(true);
+    setProblem(null);
+    setJambMsg(null);
+    try {
+      const grid = await xlsxRows(await file.arrayBuffer());
+      const header = (grid[0] ?? []).map((c) => String(c ?? "").trim());
+      if (!header.some((h) => /^rg_num$/i.test(h) || /reg/i.test(h))) {
+        setProblem({ status: 400, title: "That file is not the JAMB admission-status list.", detail: "The first row must carry RG_NUM (registration number), AdmissionStatus and the other JAMB columns." });
+        return;
+      }
+      const body = grid.slice(1)
+        .filter((r) => r.some((c) => String(c ?? "").trim() !== ""))
+        .map((r) => { const o: Record<string, string> = {}; header.forEach((h, i) => { if (h) o[h] = String(r[i] ?? "").trim(); }); return o; });
+      if (!body.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill or download the JAMB admission-status list, then upload it." }); return; }
+      const r = await fetch(`${base}/jamb-admissions`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`JAMB admission status uploaded for ${desk.session}`) }, body: JSON.stringify({ rows: body }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      const c = j as { loaded: number; matched: number; accepted: number; offered: number; unmatched: number };
+      setJambMsg(`${c.loaded} rows read · ${c.matched} matched the register · ${c.accepted} accepted at JAMB · ${c.offered} offered admission here · ${c.unmatched} not on the register.`);
+      await refreshJamb();
+      router.refresh();
+    } catch {
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx downloaded from JAMB." });
+    } finally {
+      setJambBusy(false);
+    }
+  }
+
   const rows = desk.applications;
   const programmes = [...new Set(rows.map((r) => r.programme))].sort();
   const stageOf = (n: number) => STAGES[Math.min(n, 9)][0];
@@ -225,6 +263,49 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           </div>
         </PBody>
       </Panel>
+
+      {office ? (
+        <Panel title="Admission status from JAMB" right="The list of candidates who accepted, uploaded back">
+          <PBody>
+            <div className="sub2">After JAMB offers admission and the candidates accept on JAMB&rsquo;s portal, download the admission-status list from JAMB and upload it here. Each row is matched to the candidate the University screened, by registration number. A candidate JAMB records as <b>Accepted</b> is offered admission here and the offer released &mdash; so the applicant can pay the acceptance fee, pay school fees, register and be matriculated. A number not on the register is held, not admitted on a guess.</div>
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+              <label className="btn btn--primary" style={{ cursor: "pointer", margin: 0 }}>
+                {jambBusy ? "Uploading…" : "Upload JAMB admission status"}
+                <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={jambBusy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadJamb(f); e.target.value = ""; }} />
+              </label>
+              <Btn kind="ghost" disabled={jambBusy} onClick={() => void refreshJamb()}>Show what was uploaded</Btn>
+            </div>
+            {jambMsg ? <Note kind="ok" title="Uploaded and matched">{jambMsg}</Note> : null}
+            {jambList ? (
+              <div style={{ marginTop: 10 }}>
+                <Tiles items={[
+                  ["Loaded", String(jambList.tiles.loaded ?? 0), null, "Rows on the JAMB list"],
+                  ["Matched", String(jambList.tiles.matched ?? 0), null, "On the register here"],
+                  ["Accepted at JAMB", String(jambList.tiles.accepted ?? 0), "var(--green-ink)", "Took their offer"],
+                  ["Offered here", String(jambList.tiles.offered ?? 0), "var(--green-ink)", "Can pay and register"],
+                  ["Not on the register", String(jambList.tiles.unmatched ?? 0), Number(jambList.tiles.unmatched) ? "var(--red-ink)" : null, "For the Registry"],
+                ]} />
+                {jambList.rows.length ? (
+                  <DTable
+                    cols={["Reg number|mid", "Name", "Course", "Status|mid", "Category|mid", "On register|mid", "Offered|mid", "Note"]}
+                    rows={jambList.rows.slice(0, 400).map((x) => [
+                      <span className="tnum" key="r">{String(x.jamb_reg_no ?? "")}</span>,
+                      <span key="n">{String(x.name ?? "")}</span>,
+                      <span className="sub2" key="c">{String(x.course_name ?? "")}</span>,
+                      <Pil kind={String(x.status ?? "").toLowerCase().startsWith("accept") ? "ok" : "grey"} key="s">{String(x.status ?? "—")}</Pil>,
+                      <span className="sub2" key="cat">{String(x.category ?? "—")}</span>,
+                      x.matched ? <Pil kind="ok" key="m">Yes</Pil> : <Pil kind="bad" key="m">No</Pil>,
+                      x.offered ? <Pil kind="ok" key="o">Offered</Pil> : <span className="sub2" key="o">—</span>,
+                      <span className="sub2" key="w">{String(x.why ?? "")}</span>,
+                    ])}
+                    texts={jambList.rows.slice(0, 400).map((x) => `${x.jamb_reg_no ?? ""} ${x.name ?? ""} ${x.status ?? ""}`)}
+                  />
+                ) : <div className="sub2">No JAMB admission list uploaded for {desk.session} yet.</div>}
+              </div>
+            ) : null}
+          </PBody>
+        </Panel>
+      ) : null}
 
 
       {newBatch ? (

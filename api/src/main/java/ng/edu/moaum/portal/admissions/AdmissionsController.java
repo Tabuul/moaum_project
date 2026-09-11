@@ -102,6 +102,22 @@ class AdmissionsController {
         return intake.recordMerit(body.session(), body.programme());
     }
 
+    record JambRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {
+    }
+
+    /** The admission-status list downloaded from JAMB: matched by registration number; the accepted are offered and released here. */
+    @PostMapping("/sessions/{session}/{year}/jamb-admissions")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> loadJambAdmissions(@PathVariable String session, @PathVariable String year, @Valid @RequestBody JambRows body) {
+        return intake.loadJambAdmissions(session + "/" + year, body.rows());
+    }
+
+    @GetMapping("/sessions/{session}/{year}/jamb-admissions")
+    @PreAuthorize(READERS)
+    Map<String, Object> jambAdmissions(@PathVariable String session, @PathVariable String year) {
+        return intake.jambAdmissions(session + "/" + year);
+    }
+
     @PostMapping("/caps-batches/{id}/commit")
     @PreAuthorize(LOADERS)
     Map<String, Object> commit(@PathVariable UUID id) {

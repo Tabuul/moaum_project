@@ -77,6 +77,9 @@ DELETE FROM admissions.applicant_account;
 DELETE FROM admissions.applicant_event;
 DELETE FROM admissions.screening_batch;
 
+-- the JAMB admission-status rows uploaded back (V081), before the candidates they point to
+DELETE FROM admissions.jamb_admission;
+
 -- ── the O'Level, then the JAMB (CAPS) list itself ──
 DELETE FROM admissions.olevel_grade;
 DELETE FROM admissions.olevel_sitting;

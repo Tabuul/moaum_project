@@ -393,4 +393,17 @@ class CapsRepository {
     java.util.Map<String, Object> resetIntake(String session) {
         return jdbc.sql("SELECT * FROM admissions.reset_intake(:s)").param("s", session).query().singleRow();
     }
+
+    java.util.Map<String, Object> loadJambAdmissions(String session, String rowsJson) {
+        return jdbc.sql("SELECT * FROM admissions.load_jamb_admissions(:s, :j::jsonb)")
+                .param("s", session).param("j", rowsJson).query().singleRow();
+    }
+
+    java.util.Map<String, Object> jambAdmissionTiles(String session) {
+        return jdbc.sql("SELECT * FROM admissions.jamb_admission_tiles(:s)").param("s", session).query().singleRow();
+    }
+
+    java.util.List<java.util.Map<String, Object>> jambAdmissionList(String session) {
+        return jdbc.sql("SELECT * FROM admissions.jamb_admission_list(:s)").param("s", session).query().listOfRows();
+    }
 }
