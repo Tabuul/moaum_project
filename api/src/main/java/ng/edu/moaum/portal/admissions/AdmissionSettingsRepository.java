@@ -173,6 +173,11 @@ class AdmissionSettingsRepository {
                 .param("q", quota, Types.INTEGER).param("id", policyId).param("code", code).update();
     }
 
+    int setProgrammeCutoff(UUID policyId, String code, Integer cutoff) {
+        return jdbc.sql("UPDATE admissions.programme_rule SET cutoff = :k WHERE policy_id = :id AND programme_code = :code")
+                .param("k", cutoff, Types.INTEGER).param("id", policyId).param("code", code).update();
+    }
+
     void upsertProgrammeRule(UUID policyId, String code, AdmissionSettingsService.ProgrammeRuleIn r) {
         jdbc.sql("""
                 INSERT INTO admissions.programme_rule

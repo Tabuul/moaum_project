@@ -94,6 +94,16 @@ class AdmissionSettingsController {
         return service.setProgrammeQuota(session + "/" + year, code, body.quota());
     }
 
+    public record CutoffIn(Integer cutoff) {
+    }
+
+    /** a programme's own UTME cut-off, editable in force like its quota — the settings are by programme, not faculty */
+    @PutMapping("/sessions/{session}/{year}/policy/programmes/{code}/cutoff")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy programmeCutoff(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody CutoffIn body) {
+        return service.setProgrammeCutoff(session + "/" + year, code, body.cutoff());
+    }
+
     public record Catchment(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> lgas) {
     }
 

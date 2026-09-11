@@ -424,6 +424,12 @@ export function AdmissionSettings({
   const editingProgramme = editing ? policy.programmes.find((p) => p.code === editing) ?? null : null;
   const progTab = (
     <>
+      <Note kind="info" title="Quotas and cut-offs are set here, per programme">
+        Each programme carries its own <b>quota</b> (Places) and <b>UTME cut-off</b>, edited inline in the table below and
+        editable even while the policy is in force. A programme with no cut-off of its own inherits its faculty&rsquo;s as a
+        fallback; the Faculty quotas tab holds the NUC ceiling, the UTME:Direct-Entry split and that fallback. The merit
+        engine fills each programme&rsquo;s quota and ranks against its own cut-off.
+      </Note>
       {withoutRule.length ? (
         <Note kind="bad" title={`${withoutRule.length} of ${policy.programmes.length} programmes have no rule for this session`}>
           Nobody may be admitted into them. That is the correct behaviour and not a gap to be papered over: a candidate
@@ -439,7 +445,9 @@ export function AdmissionSettings({
             return [
               <span key="n"><strong>{p.name}</strong><div className="sub2 tnum">{p.code}</div></span>,
               <span className="sub2" key="f">{p.facultyName}</span>,
-              p.closed ? <Pil kind="grey" key="c">closed</Pil> : cut ? <span key="c"><b className="tnum">{cut}</b><div className="sub2">{p.cutoff ? "its own" : "faculty"}</div></span> : <Pil kind="bad" key="c">none</Pil>,
+              p.closed ? <Pil kind="grey" key="c">closed</Pil>
+                : p.stated ? <span key="c">{field(`pk:${p.code}`, p.cutoff, 64, (v) => void send("PUT", `${base}/programmes/${p.code}/cutoff`, { cutoff: v }, `${p.name} cut-off changed`, `pk-${p.code}`), facultyCutoff(p.facultyCode) != null ? String(facultyCutoff(p.facultyCode)) : "—", true)}<div className="sub2">{p.cutoff ? "its own" : cut ? "faculty" : "none"}</div></span>
+                : cut ? <span key="c"><b className="tnum">{cut}</b><div className="sub2">faculty</div></span> : <Pil kind="bad" key="c">none</Pil>,
               p.closed ? <span className="sub2" key="o">Not admitting this session: {p.closedReason}</span> : p.stated ? <span className="sub2" key="o">{p.olevelText}</span> : <Pil kind="bad" key="o">not stated</Pil>,
               <span className="sub2" key="u">{p.stated && !p.closed ? p.utmeText : ""}</span>,
               <span className="sub2" key="d">{p.stated && !p.closed ? p.deText : ""}</span>,

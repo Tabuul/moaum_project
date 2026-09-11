@@ -205,6 +205,22 @@ public class AdmissionSettingsService {
         return policy(session);
     }
 
+    @Transactional
+    public AdmissionPolicy setProgrammeCutoff(String session, String programmeCode, Integer cutoff) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        if (cutoff != null && (cutoff < 1 || cutoff > 400)) {
+            throw refused("ADM_CUTOFF", "A cut-off is a UTME aggregate from 1 to 400, or blank to inherit the faculty's.", "Enter the programme's own cut-off, or leave it blank.");
+        }
+        if (settings.setProgrammeCutoff(id, code, cutoff) == 0) {
+            throw refused("ADM_NO_RULE", "This programme has no rule for the session yet.", "State the programme's rule on the Programme requirements tab first, then set its cut-off.");
+        }
+        return policy(session);
+    }
+
     /** The general UTME cut-off a session loads its JAMB lists under (V024): stated before the file is uploaded, whatever the programme. */
     @Transactional(readOnly = true)
     public Map<String, Object> loadCutoff(String session) {
