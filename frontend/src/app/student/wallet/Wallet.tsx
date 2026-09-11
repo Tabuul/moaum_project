@@ -44,6 +44,7 @@ export function Wallet({ w }: { w: StudentWallet }) {
       .sort((a, b) => (rank[a.nature ?? ""] ?? 3) - (rank[b.nature ?? ""] ?? 3) || (a.code === "NELFUND" ? -1 : b.code === "NELFUND" ? 1 : 0) || b.received - a.received);
   })();
   const funded = bySource.reduce((n, x) => n + x.received, 0);
+  const srcCls = bySource.length >= 4 ? "grid--4" : bySource.length === 3 ? "grid--3" : "grid--2";
   const canClear = bal > 0 && owed > 0;
   const st = w.status;
   const elig = w.eligibility;
@@ -59,16 +60,19 @@ export function Wallet({ w }: { w: StudentWallet }) {
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record; the receipt is on your Fees page.</Note> : null}
-      <Panel title="Funding by source" right={`${naira(funded)} credited from ${bySource.length} source${bySource.length === 1 ? "" : "s"}`}>
-        {bySource.length ? (
-          <DTable cols={["Source", "Nature|mid", "Received|num"]} rows={bySource.map((x) => [
-            <span key="n">{x.name}<div className="sub2 tnum">{x.code}</div></span>,
-            <Pil kind={NATURE[x.nature ?? ""]?.[1] ?? "grey"} key="na">{NATURE[x.nature ?? ""]?.[0] ?? x.nature ?? "—"}</Pil>,
-            <b className="tnum" key="r" style={{ color: "var(--green-ink)" }}>{naira(x.received)}</b>,
+      {bySource.length ? (
+        <>
+          <div className="eyebrow" style={{ margin: "6px 2px -2px", color: "var(--chrome-dim)" }}>Funding by source — the wallet balance above is all of them together</div>
+          <Tiles cls={srcCls} items={bySource.map((x) => [
+            x.name,
+            naira(x.received),
+            null,
+            <span key="c">{NATURE[x.nature ?? ""]?.[0] ?? x.nature ?? "Source"} · <span className="tnum">{x.code}</span></span>,
           ])} />
-        ) : <PBody><div className="sub2">Nothing has been credited to your wallet yet. NELFUND, a scholarship or your own top-up will each appear here on its own line, and the wallet balance above is their total.</div></PBody>}
-        {bySource.length ? <PBody><div className="sub2">Each source is credited to the same wallet; the <b>wallet balance</b> above is the total of every source together. A <b>loan</b> (NELFUND) is repaid to the Fund after graduation; a <b>grant</b> is never repaid; a top-up is your own money.</div></PBody> : null}
-      </Panel>
+        </>
+      ) : (
+        <Note kind="info" title="No funding on your wallet yet">NELFUND, a scholarship or your own top-up will each show as its own card here, and the wallet balance is their total.</Note>
+      )}
       {st ? (
         <Note kind={st.state === "APPROVED" ? "ok" : st.state === "NOT_APPROVED" ? "bad" : "info"} title={st.state === "APPROVED" ? "The Fund approved your NELFUND loan" : st.state === "NOT_APPROVED" ? "The Fund did not approve your NELFUND loan" : "Your NELFUND application is still with the Fund"}>
           {st.state === "NOT_APPROVED" ? `${st.reason ?? "No reason was given."} ${st.correctable ? "This is a correction, not a judgement: fix the field named and the Fund reissues." : ""}` : st.state === "PENDING" ? "No decision yet — and that is a real answer, shown as one. You apply to NELFUND on the Fund's own portal; the University records what it decides and credits your wallet when the money arrives." : `Recorded from the Fund's list of ${onDay(st.loaded_at)}. Money arrives as a remittance and is credited here when it does.`}
