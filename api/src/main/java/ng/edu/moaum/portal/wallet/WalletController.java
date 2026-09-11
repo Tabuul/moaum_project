@@ -45,6 +45,9 @@ class WalletController {
                          @NotBlank @Size(max = 400) String reason, @Size(max = 40) String source) {
     }
 
+    public record Reset(@NotBlank @Size(max = 40) String number, @NotBlank @Size(max = 400) String reason) {
+    }
+
     public record SourceIn(@NotBlank @Size(max = 40) String code, @NotBlank @Size(max = 120) String name,
                            @NotBlank @Size(max = 10) String nature, @Size(max = 160) String sponsor,
                            @Size(max = 160) String account, Boolean active, @Size(max = 400) String note, Integer sort) {
@@ -138,6 +141,13 @@ class WalletController {
     @PreAuthorize(BURSARY)
     Map<String, Object> status(@RequestBody StatusList body) {
         return service.loadStatus(body.session(), body.rows());
+    }
+
+    /** the Bursary wipes one student's wallet to zero — every entry and withdrawal — to start afresh */
+    @PostMapping("/api/v1/nelfund/reset")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> reset(@Valid @RequestBody Reset body) {
+        return service.resetWallet(body.number(), body.reason());
     }
 
     /* ── sources of funding (a setting), the report, and withdrawals ── */

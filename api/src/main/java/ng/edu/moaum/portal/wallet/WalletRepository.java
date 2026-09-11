@@ -60,6 +60,10 @@ class WalletRepository {
                 .query(UUID.class).single();
     }
 
+    Map<String, Object> resetWallet(UUID student) {
+        return jdbc.sql("SELECT * FROM finance.reset_wallet(:s)").param("s", student).query().singleRow();
+    }
+
     /* ── sources of funding (a setting) ── */
 
     List<Map<String, Object>> sources() {

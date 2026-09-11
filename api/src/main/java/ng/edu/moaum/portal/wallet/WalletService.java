@@ -158,6 +158,18 @@ public class WalletService {
         return Map.of("entry", entry, "student", student, "session", session, "amount", amount, "balance", repo.balance(student));
     }
 
+    /** the Bursary wipes one student's wallet to zero — every entry and withdrawal, so the balance starts afresh */
+    @Transactional
+    public Map<String, Object> resetWallet(String number, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new DomainRuleViolation("WAL_RESET_WHY", "A wallet reset names its reason.", new DomainRuleViolation.Remedy("Say why the wallet is wiped; it is on the record.", "Bursary"));
+        }
+        UUID student = repo.studentByNumber(number == null ? "" : number.trim()).orElseThrow(() -> new DomainRuleViolation("WAL_NO_STUDENT",
+                "No student carries the number " + number + ".", new DomainRuleViolation.Remedy("The number as the register holds it.", "Registry")));
+        Map<String, Object> wiped = repo.resetWallet(student);
+        return Map.of("student", student, "entries", wiped.getOrDefault("entries", 0), "withdrawals", wiped.getOrDefault("withdrawals", 0), "balance", repo.balance(student));
+    }
+
     /** the Bursary (or the audit directorate) looks up any student's wallet ledger by number */
     @Transactional(readOnly = true)
     public Map<String, Object> studentLedger(String number, String sessionAsked) {

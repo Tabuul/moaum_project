@@ -193,6 +193,16 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
                     <Pil kind="grey">{ledger.student.status}</Pil>
                     <span className="sub2">Wallet balance <b className="tnum">{money(Number(ledger.balance))}</b></span>
                     <span className="sub2">Outstanding for {ledger.session} <b className="tnum" style={{ color: Number(ledger.position.balance) ? "var(--red-ink)" : undefined }}>{money(Number(ledger.position.balance))}</b></span>
+                    {bursary ? (
+                      <Btn kind="ghost" disabled={busy} onClick={async () => {
+                        const who = ledger.student.number;
+                        if (!window.confirm(`Wipe ${ledger.student.name}'s wallet to zero?\n\nEvery credit, top-up, applied entry and withdrawal is deleted and the balance starts afresh. This cannot be undone.`)) return;
+                        const why = window.prompt("Why is the wallet being reset? It goes on the record.");
+                        if (!why || !why.trim()) return;
+                        const j = await send("/api/bff/api/v1/nelfund/reset", { number: who, reason: why.trim() }, `Wallet reset to zero: ${who}`);
+                        if (j) { setSaid(`${ledger.student.name}'s wallet wiped — ${j.entries} entr${Number(j.entries) === 1 ? "y" : "ies"} and ${j.withdrawals} withdrawal${Number(j.withdrawals) === 1 ? "" : "s"} removed. Balance ${money(0)}.`); void lookUp(who); }
+                      }}>Reset wallet to zero</Btn>
+                    ) : null}
                   </div>
                   {ledger.statement.length ? (
                     <DTable cols={["Date|mid", "Entry", "Reference|mid", "In|num", "Out|num", "Balance|num"]} rows={ledger.statement.map((e) => [
