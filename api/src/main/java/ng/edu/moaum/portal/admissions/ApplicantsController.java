@@ -126,6 +126,15 @@ class ApplicantsController {
                         "portalCharge", fees.get("portal_charge"), "acceptanceFee", fees.get("acceptance_fee")));
     }
 
+    /** the Academic Office's computed Post-UTME for candidates who did not sit it (Direct Entry, non-exam programmes) */
+    @GetMapping("/post-utme-computed")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_super')")
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> computedPostUtme(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT * FROM admissions.non_sitter_post_utme(:s)")
+                .param("s", session + "/" + year).query().listOfRows();
+    }
+
     private List<Map<String, Object>> batches(String session) {
         return jdbc.sql("""
                 SELECT b.id, b.label, b.held_on, b.starts_at, b.ends_at, b.venue, b.capacity,

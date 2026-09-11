@@ -807,6 +807,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Post-UTME scores"
           },
           {
+            "id": "t/postutme",
+            "icon": "chart",
+            "label": "Computed Post-UTME"
+          },
+          {
             "id": "t/candidatedata",
             "icon": "user",
             "label": "Passports, DOB & O’Level"

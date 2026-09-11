@@ -404,6 +404,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Passports, dates of birth and O’Level",
     "The three other JAMB downloads · matched on the registration number"
   ],
+  "t/postutme": [
+    "Computed Post-UTME",
+    "For candidates who did not sit it — O’Level blended with UTME · Academic Office"
+  ],
   "t/transcripts": [
     "Transcript requests",
     "Exams & Records · production queue"
