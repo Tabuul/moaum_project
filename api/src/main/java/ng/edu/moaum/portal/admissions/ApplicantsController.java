@@ -454,14 +454,97 @@ class ApplicantsController {
                 SELECT f.quota FROM admissions.faculty_quota f JOIN admissions.session_policy p ON p.id = f.policy_id
                   JOIN ref.programme pr ON pr.faculty_code = f.faculty_code WHERE p.session = :s AND pr.name = :p LIMIT 1
                 """).param("s", s).param("p", programme).query(Integer.class).optional().orElse(null);
+        // the UTME share of the quota: the faculty's UTME:DE ratio where set, else the session's (V054)
+        Integer ratioUtme = programme == null ? null : jdbc.sql("""
+                SELECT coalesce(f.ratio_utme, p.ratio_utme) FROM admissions.session_policy p
+                  LEFT JOIN admissions.faculty_quota f ON f.policy_id = p.id
+                    AND f.faculty_code = (SELECT faculty_code FROM ref.programme WHERE name = :p LIMIT 1)
+                 WHERE p.session = :s LIMIT 1
+                """).param("s", s).param("p", programme).query(Integer.class).optional().orElse(null);
+        Integer utmeQuota = (quota == null || ratioUtme == null) ? null : (int) Math.round(quota * ratioUtme / 100.0);
+        long onMerit = out.stream().filter(x -> "OFFERED".equals(x.get("decision"))).count();
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("totalApplicants", onCaps);
         summary.put("registeredApplicants", ((Number) fees.get("n")).longValue());
         summary.put("qualifiedCases", out.stream().filter(x -> "OFFERED".equals(x.get("decision")) || "WAITING".equals(x.get("decision"))).count());
         summary.put("nonQualifiedCases", out.stream().filter(x -> "NOT_OFFERED".equals(x.get("decision"))).count());
-        summary.put("admissionQuota", quota);
-        summary.put("numberOnMeritList", out.stream().filter(x -> "OFFERED".equals(x.get("decision"))).count());
-        return Map.of("session", s, "programme", programme == null ? "" : programme, "asAt", LocalDate.now().toString(), "summary", summary, "rows", out);
+        summary.put("totalQuota", quota);
+        summary.put("utmeQuota", utmeQuota);
+        summary.put("numberOnMeritList", onMerit);
+
+        // the quota distribution: each selection criterion's share of the UTME quota, and how many it admitted
+        List<Map<String, Object>> quotaDistribution = new java.util.ArrayList<>();
+        if (programme != null && utmeQuota != null) {
+            Map<String, String> critName = Map.of("NM", "National Merit", "SM", "State Merit", "ELG", "Equality of LG", "LOCALITY", "Locality");
+            for (String code : List.of("NM", "SM", "ELG", "LOCALITY")) {
+                Integer pct = jdbc.sql("SELECT sc.percent FROM admissions.selection_criterion sc JOIN admissions.session_policy p ON p.id = sc.policy_id WHERE p.session = :s AND sc.criterion = :c")
+                        .param("s", s).param("c", code).query(Integer.class).optional().orElse(null);
+                if (pct == null) {
+                    continue;
+                }
+                long admitted = out.stream().filter(x -> "OFFERED".equals(x.get("decision")) && code.equals(x.get("decisionBasis"))).count();
+                int cQuota = (int) Math.round(utmeQuota * pct / 100.0);
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("criterion", critName.get(code));
+                row.put("percent", pct);
+                row.put("quota", cQuota);
+                row.put("admitted", admitted);
+                row.put("shortfall", Math.max(cQuota - admitted, 0));
+                quotaDistribution.add(row);
+            }
+        }
+
+        // the LGA analysis: the offered candidates by local government and the basis they came in on
+        List<Map<String, Object>> lgaAnalysis = new java.util.ArrayList<>();
+        Map<String, long[]> byLga = new java.util.TreeMap<>();
+        for (Map<String, Object> x : out) {
+            if (!"OFFERED".equals(x.get("decision"))) {
+                continue;
+            }
+            String lga = x.get("lga") == null || String.valueOf(x.get("lga")).isBlank() ? "Others" : String.valueOf(x.get("lga"));
+            String basis = String.valueOf(x.get("decisionBasis"));
+            long[] c = byLga.computeIfAbsent(lga, k -> new long[3]);
+            if ("ELG".equals(basis)) {
+                c[0]++;
+            } else if ("SM".equals(basis)) {
+                c[1]++;
+            } else if ("NM".equals(basis)) {
+                c[2]++;
+            }
+        }
+        long tElg = 0;
+        long tSm = 0;
+        long tNm = 0;
+        for (Map.Entry<String, long[]> e : byLga.entrySet()) {
+            long[] c = e.getValue();
+            tElg += c[0];
+            tSm += c[1];
+            tNm += c[2];
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("lga", e.getKey());
+            row.put("elg", c[0]);
+            row.put("sm", c[1]);
+            row.put("nm", c[2]);
+            row.put("total", c[0] + c[1] + c[2]);
+            lgaAnalysis.add(row);
+        }
+        Map<String, Object> lgaTotal = new LinkedHashMap<>();
+        lgaTotal.put("lga", "TOTAL");
+        lgaTotal.put("elg", tElg);
+        lgaTotal.put("sm", tSm);
+        lgaTotal.put("nm", tNm);
+        lgaTotal.put("total", tElg + tSm + tNm);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("session", s);
+        result.put("programme", programme == null ? "" : programme);
+        result.put("asAt", LocalDate.now().toString());
+        result.put("summary", summary);
+        result.put("quotaDistribution", quotaDistribution);
+        result.put("lgaAnalysis", lgaAnalysis);
+        result.put("lgaTotal", lgaTotal);
+        result.put("rows", out);
+        return result;
     }
 
     private static Object scale(Object value, Object weight) {

@@ -93,7 +93,13 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       const r = await fetch(`${base}/jamb-template${programme ? `?programme=${encodeURIComponent(programme)}` : ""}`, { cache: "no-store" });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      const t = j as { session: string; programme: string; asAt: string; summary: Record<string, number | null>; rows: Record<string, unknown>[] };
+      const t = j as {
+        session: string; programme: string; asAt: string; summary: Record<string, number | null>;
+        quotaDistribution: { criterion: string; percent: number; quota: number; admitted: number; shortfall: number }[];
+        lgaAnalysis: { lga: string; elg: number; sm: number; nm: number; total: number }[];
+        lgaTotal: { lga: string; elg: number; sm: number; nm: number; total: number };
+        rows: Record<string, unknown>[];
+      };
       // a letterhead in the seven rows the template reserves above the data: the
       // school name and title at the top-left (column B, beside the floating crest),
       // then blank rows so the "SN" column header still lands on row 8
@@ -117,23 +123,34 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           num(x.sittings), num(x.cbtScore) ?? 0, num(x.sittingPoints), num(x.olevelTotal), num(x.olevelRatio), num(x.utmeRatio), num(x.total),
           (x.decisionBasis as string) || (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
       };
+      const remarks = (x: Record<string, unknown>): Cell[] => [
+        x.cutoff !== null && x.total !== null && Number(x.total) < Number(x.cutoff) ? "Below cut-off" : "Correct Combination",
+        x.olevelTotal === null || Number(x.olevelTotal) === 0 ? "Insufficient OLevel; " : "",
+      ];
       const merit = t.rows.filter((x) => x.decision === "OFFERED");
       const other = t.rows.filter((x) => x.decision === "WAITING");
       const non = t.rows.filter((x) => x.decision === "NOT_OFFERED");
       const s = t.summary;
       const summary: Cell[][] = [...head("SUMMARY OF UTME ADMISSION"), ["SN", "ITEM", "COUNT"],
         [1, "Total Applicants", s.totalApplicants], [2, "Registered Applicants", s.registeredApplicants], [3, "Qualified Cases", s.qualifiedCases],
-        [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Admission Quota", s.admissionQuota], [6, "Number On Merit List", s.numberOnMeritList]];
+        [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Total Quota (100%)", s.totalQuota], [6, "UTME Quota (80%)", s.utmeQuota], [7, "Number On Merit List", s.numberOnMeritList]];
+      if (t.quotaDistribution.length) {
+        summary.push([], [null, "QUOTA DISTRIBUTION"], ["SN", "ADMISSION CRITERIA", "(%)", "QUOTA", "ADMITTED", "S/FALLS", "REMARK"]);
+        t.quotaDistribution.forEach((q, i) => summary.push([i + 1, q.criterion, q.percent, q.quota, q.admitted, q.shortfall, q.shortfall ? `${q.admitted} of ${q.quota}` : ""]));
+      }
+      if (t.lgaAnalysis.length) {
+        summary.push([], [null, "NATIONAL/STATE/LOCAL GOVERNMENT ANALYSIS"], ["SN", "LGA NAME", "ELG", "SM", "NM", "TOTAL"]);
+        t.lgaAnalysis.forEach((l, i) => summary.push([i + 1, l.lga, l.elg, l.sm, l.nm, l.total]));
+        summary.push([null, t.lgaTotal.lga, t.lgaTotal.elg, t.lgaTotal.sm, t.lgaTotal.nm, t.lgaTotal.total]);
+      }
       const nonCols = [...cols, "UTME REMARKS", "OL REMARKS"];
       const logo = await loadCrest();
       const book = xlsx([
         ["Admission_Summary", summary],
         ["Merit_List", [...head("MERIT LIST"), cols, ...merit.map((x, i) => line(x, i))]],
         ["Other_Qualified_Cases", [...head("OTHER QUALIFIED CASES"), cols, ...other.map((x, i) => line(x, i))]],
-        ["Non_Qualified_Cases", [...head("NON-QUALIFIED CASES"), nonCols, ...non.map((x, i) => line(x, i, [
-          x.cutoff !== null && x.total !== null && Number(x.total) < Number(x.cutoff) ? "Below cut-off" : "Correct Combination",
-          x.olevelTotal === null || Number(x.olevelTotal) === 0 ? "Insufficient OLevel; " : "",
-        ]))]],
+        ["Non_Qualified_Cases", [...head("NON-QUALIFIED CASES"), nonCols, ...non.map((x, i) => line(x, i, remarks(x)))]],
+        ["Ranked_sheet", [...head("RANKED SHEET"), nonCols, ...t.rows.map((x, i) => line(x, i, remarks(x)))]],
       ], { logo: logo ?? undefined });
       const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
@@ -196,7 +213,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         ) : <div className="card__body"><div className="sub2">No applicant has registered for {desk.session} yet. Registration starts from the JAMB number on the CAPS list loaded on the JAMB admission lists screen.</div></div>}
       </Panel>
 
-      <Panel title="The list that goes back to JAMB" right="JAMB’s admission template, four sheets">
+      <Panel title="The list that goes back to JAMB" right="JAMB’s admission template, five sheets">
         <PBody>
           <div className="sub2">Admission summary, merit list, other qualified cases and non-qualified cases, per programme, with the UTME subjects as CAPS sent them, the O&rsquo;Level grades and points under this session&rsquo;s grading, the sittings and their bonus, both ratios under the session&rsquo;s weighting, and the Board&rsquo;s decision as the remark. Built from the record, never typed.</div>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
