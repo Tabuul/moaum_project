@@ -1092,12 +1092,15 @@ BEGIN
     INSERT INTO admissions.faculty_quota (policy_id, faculty_code, quota, cutoff)
     SELECT v_id, code, 100, 160 FROM ref.faculty;
 
-    /* every programme the University runs has a rule */
+    /* every programme the University runs has a rule; the 1,200 places are
+       distributed across the programmes so they total the NUC quota (V096:
+       the distribution is per programme, not per faculty) */
     INSERT INTO admissions.programme_rule
-        (policy_id, programme_code, cutoff, olevel_text, utme_text, de_text)
-    SELECT v_id, code, NULL, 'five credits including English and Mathematics',
-           'as JAMB prescribes', 'two A Level passes'
-      FROM ref.programme;
+        (policy_id, programme_code, cutoff, quota, olevel_text, utme_text, de_text)
+    SELECT v_id, q.code, NULL,
+           (1200 / q.cnt) + CASE WHEN q.rn <= 1200 % q.cnt THEN 1 ELSE 0 END,
+           'five credits including English and Mathematics', 'as JAMB prescribes', 'two A Level passes'
+      FROM (SELECT code, row_number() OVER (ORDER BY code) AS rn, count(*) OVER () AS cnt FROM ref.programme) q;
 
     SELECT count(*) INTO v_n FROM admissions.policy_findings('9999/0000');
     PERFORM pg_temp.assert('A complete session has nothing outstanding against it',
