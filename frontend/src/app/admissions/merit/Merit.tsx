@@ -23,6 +23,50 @@ export interface MeritView { session: string; programme: string; counts: { pool:
 const BASIS: Record<string, string> = { NM: "National Merit", SM: "State Merit", ELG: "Equality of LG", LOCALITY: "Locality" };
 const mode = (m: string) => (m === "UTME" ? "UTME" : m.charAt(0) + m.slice(1).toLowerCase().replace("_", " "));
 
+/** Type-to-search over the programmes — name, faculty or code — so one of ~90 is easy to find. */
+function ProgrammePicker({ programmes, chosen, onPick }: { programmes: ProgrammeOption[]; chosen: ProgrammeOption | undefined; onPick: (code: string) => void }) {
+  const live = programmes.filter((p) => !p.archived);
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const term = q.trim().toLowerCase();
+  const matches = (term ? live.filter((p) => `${p.name} ${p.facultyName} ${p.code}`.toLowerCase().includes(term)) : live).slice(0, 60);
+  const label = chosen ? `${chosen.name} · ${chosen.facultyName}` : "";
+  return (
+    <div className="field" style={{ flexGrow: 1, minWidth: 300, position: "relative" }}>
+      <label htmlFor="mr-prog">Programme</label>
+      <input
+        id="mr-prog" className="ctl" autoComplete="off" role="combobox" aria-controls="mr-prog-list" aria-expanded={open} aria-autocomplete="list"
+        value={open ? q : label}
+        placeholder="Type to search — name, faculty or code"
+        onFocus={() => { setQ(""); setOpen(true); setHi(0); }}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); setHi(0); }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (!open) return;
+          if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(h + 1, matches.length - 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+          else if (e.key === "Enter") { e.preventDefault(); const m = matches[hi]; if (m) { onPick(m.code); setOpen(false); (e.target as HTMLInputElement).blur(); } }
+          else if (e.key === "Escape") { setOpen(false); }
+        }}
+      />
+      {open ? (
+        <ul id="mr-prog-list" role="listbox" style={{ position: "absolute", zIndex: 30, top: "100%", left: 0, right: 0, margin: "2px 0 0", padding: 0, listStyle: "none", maxHeight: 300, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,.12)" }}>
+          {matches.length ? matches.map((p, i) => (
+            <li key={p.code} role="option" aria-selected={i === hi}
+              onMouseDown={(e) => { e.preventDefault(); onPick(p.code); setOpen(false); }}
+              onMouseEnter={() => setHi(i)}
+              style={{ padding: "8px 10px", cursor: "pointer", borderTop: i ? "1px solid var(--line-2)" : undefined, background: i === hi ? "var(--line-2)" : "transparent" }}>
+              <div>{p.name}</div>
+              <div className="sub2 tnum">{p.code} · {p.facultyName}</div>
+            </li>
+          )) : <li className="sub2" style={{ padding: "8px 10px" }}>No programme matches &ldquo;{q}&rdquo;.</li>}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export function Merit({ session, programme, programmes, view, problem, actingOffice }: {
   session: string; programme: string; programmes: ProgrammeOption[]; view: MeritView | null; problem: Problem | null; actingOffice: string | null;
 }) {
@@ -57,13 +101,8 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
 
       <Panel title="Choose a programme" right={`${session}`}>
         <div className="card__body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="field" style={{ flexGrow: 1, minWidth: 280 }}>
-            <label htmlFor="mr-prog">Programme</label>
-            <select id="mr-prog" className="ctl" value={programme} onChange={(e) => pick(e.target.value)}>
-              <option value="">— choose a programme —</option>
-              {programmes.filter((p) => !p.archived).map((p) => <option key={p.code} value={p.code}>{p.name} · {p.facultyName}</option>)}
-            </select>
-          </div>
+          <ProgrammePicker programmes={programmes} chosen={chosen} onPick={pick} />
+          {chosen ? <Btn kind="ghost" onClick={() => pick("")}>Clear</Btn> : null}
         </div>
       </Panel>
 
