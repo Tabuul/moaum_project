@@ -424,6 +424,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Sources of funding",
     "Loans, scholarships, wallets, withdrawals and the report"
   ],
+  "t/fundsources": [
+    "Funding sources",
+    "The sources of income a wallet is funded from — add as many as you need"
+  ],
   "t/nelmatch": [
     "Unmatched remittances",
     "Money received that is not yet on a wallet"

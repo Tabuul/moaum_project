@@ -969,6 +969,11 @@ export const MENUS: Record<string, Menu> = {
         "name": "Sources of funding",
         "items": [
           {
+            "id": "t/fundsources",
+            "icon": "card",
+            "label": "Funding sources"
+          },
+          {
             "id": "t/nelfund",
             "icon": "swap",
             "label": "Sources & wallets"
