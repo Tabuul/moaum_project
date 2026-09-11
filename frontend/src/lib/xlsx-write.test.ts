@@ -14,8 +14,8 @@ test("a sheet writes strings inline and numbers as values, styled and bordered",
   // heading row carries the bold header style (s=1); body carries the bordered style (s=2)
   assert.ok(x.includes('<c r="A1" s="1" t="inlineStr"><is><t xml:space="preserve">SN</t></is></c>'));
   assert.ok(x.includes('<c r="C2" s="2"><v>287</v></c>'));
-  // empty cells within a row are now emitted (bordered) so the grid stays complete
-  assert.ok(x.includes('<row r="3"><c r="A3" s="2"><v>2</v></c><c r="B3" s="2"/><c r="C3" s="2"/></row>'));
+  // empty cells within a row are emitted so the grid stays complete; data rows stripe (s=2 then s=7)
+  assert.ok(x.includes('<row r="3"><c r="A3" s="7"><v>2</v></c><c r="B3" s="7"/><c r="C3" s="7"/></row>'));
   // column widths are declared so each column fits its data
   assert.ok(x.includes("<cols>") && x.includes('customWidth="1"'));
   assert.ok(x.includes("&amp;") === false);

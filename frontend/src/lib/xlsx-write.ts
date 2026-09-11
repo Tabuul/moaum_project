@@ -48,35 +48,54 @@ export function sheetXml(rows: Cell[][], hasLogo = false): string {
   }
   const cols = nCols ? "<cols>" + widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("") + "</cols>" : "";
   const out: string[] = [];
-  let titleSeen = false;
+  let lh = 0;        // letterhead lines seen: 0 = school name, 1 = title, 2+ = the date/muted line
+  let dataIdx = 0;   // data rows seen, for the zebra stripe
   rows.forEach((row, r) => {
+    const nonEmpty = row.filter((v) => v !== null && v !== undefined && v !== "").length;
     if (r < hdr) {
-      // letterhead: only the non-empty cells, no borders; the first is the school name
+      // letterhead: only the non-empty cells, no borders — the school name, the title, then the date
       const cells: string[] = [];
       row.forEach((v, c) => {
         if (v === null || v === undefined || v === "") return;
-        const style = titleSeen ? 4 : 3;
-        titleSeen = true;
+        const style = lh === 0 ? 3 : lh === 1 ? 4 : 5;
+        lh++;
         cells.push(`<c r="${colName(c)}${r + 1}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${esc(String(v))}</t></is></c>`);
       });
       if (cells.length) out.push(`<row r="${r + 1}">${cells.join("")}</row>`);
       return;
     }
-    const s = r === hdr ? 1 : 2; // the column-header row bold on a shaded fill; the data bordered
+    if (nonEmpty === 0) { return; } // a blank spacer row: nothing to draw, and it must not shift the stripe
+    // a "SN" row is a column-header (there are several: the summary table, the quota table, the LGA table);
+    // a lone non-empty cell below a header is a section title, given a coloured band the width of the grid;
+    // every other row is data, striped for the eye and bordered for the grid
+    const isHeader = String(row[0] ?? "").trim().toUpperCase() === "SN";
+    const only = nonEmpty === 1 ? row.find((v) => v !== null && v !== undefined && v !== "") : null;
+    const isSection = !isHeader && nonEmpty === 1 && typeof only === "string" && !Number.isFinite(Number(only));
+    let s: number;
+    if (isHeader) { s = 1; }
+    else if (isSection) { s = 6; }
+    else { s = dataIdx % 2 === 0 ? 2 : 7; dataIdx++; }
+    const width = isHeader || isSection ? nCols : row.length;
     const cells: string[] = [];
-    row.forEach((v, c) => {
+    for (let c = 0; c < width; c++) {
+      const v = row[c];
       const ref = `${colName(c)}${r + 1}`;
-      if (v === null || v === undefined || v === "") { cells.push(`<c r="${ref}" s="${s}"/>`); return; }
+      if (v === null || v === undefined || v === "") { cells.push(`<c r="${ref}" s="${s}"/>`); continue; }
       if (typeof v === "number" && Number.isFinite(v)) cells.push(`<c r="${ref}" s="${s}"><v>${v}</v></c>`);
       else cells.push(`<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${esc(String(v))}</t></is></c>`);
-    });
+    }
     if (cells.length) out.push(`<row r="${r + 1}">${cells.join("")}</row>`);
   });
   const drawing = hasLogo ? `<drawing r:id="rId1"/>` : "";
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${cols}<sheetData>${out.join("")}</sheetData>${drawing}</worksheet>`;
 }
 
-const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="13"/><color rgb="FF0E3F55"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF122019"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0E3F55"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFB4C2CC"/></left><right style="thin"><color rgb="FFB4C2CC"/></right><top style="thin"><color rgb="FFB4C2CC"/></top><bottom style="thin"><color rgb="FFB4C2CC"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf></cellXfs></styleSheet>`;
+// fonts: 0 normal · 1 white-bold (header) · 2 navy-bold-15 (school name) · 3 navy-bold-12 (title)
+//        4 grey-10 (date) · 5 white-bold-12 (section band)
+// fills:  0 none · 1 gray125 · 2 navy (header) · 3 mid-navy (section band) · 4 pale (zebra)
+// borders: 0 none · 1 thin
+// cellXfs: 0 normal · 1 header · 2 data · 3 school name · 4 title · 5 date · 6 section band · 7 data zebra
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="6"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="15"/><color rgb="FF0E3F55"/><name val="Calibri"/></font><font><b/><sz val="12"/><color rgb="FF0E3F55"/><name val="Calibri"/></font><font><sz val="10"/><color rgb="FF6B7B85"/><name val="Calibri"/></font><font><b/><sz val="12"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0E3F55"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF2A6F97"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEEF3F6"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFB4C2CC"/></left><right style="thin"><color rgb="FFB4C2CC"/></right><top style="thin"><color rgb="FFB4C2CC"/></top><bottom style="thin"><color rgb="FFB4C2CC"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1"/></cellXfs></styleSheet>`;
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
