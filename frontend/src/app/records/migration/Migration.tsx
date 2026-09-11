@@ -35,7 +35,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       }
       const rows = grid.slice(1)
         .filter((r) => r.some((c) => String(c ?? "").trim() !== ""))
-        .map((r) => { const o: Record<string, string> = {}; header.forEach((h, i) => { if (h) o[h] = String(r[i] ?? "").trim(); }); return o; });
+        .map((r) => canonicalRow(kind, header, r))
+        .filter((o) => o.matric && !/^matric/i.test(o.matric));
       if (!rows.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Export the list from the old portal and upload it." }); return; }
       const path = kind === "students" ? "/api/bff/api/v1/results/legacy/students"
         : kind === "registration" ? "/api/bff/api/v1/results/legacy/registration" : "/api/bff/api/v1/results/legacy/results";
@@ -87,8 +88,42 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const CARDS: Record<Tab, [string, string][]> = {
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"]],
     registration: [["rows", "Rows read"], ["students", "Students"], ["offerings", "Courses"], ["registrations", "Registrations"], ["no_student", "No such student"], ["no_course", "No such course"]],
-    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["no_student", "No such student"], ["no_course", "No such course"], ["no_mark", "No mark given"]],
+    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["no_student", "No such student"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"]],
   };
+
+  /* map an old-portal export's own column names onto the keys the importer reads, so a real file
+     uploads without renaming — CA in [0,40], Exam in [0,60], Total in [0,100]; an out-of-range
+     mark is skipped and reported, not fatal. */
+  function canonicalRow(kind: Tab, header: string[], r: (string | number | null)[]): Record<string, string> {
+    const h = header.map((x) => String(x ?? "").trim().toLowerCase());
+    const val = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
+    const at = (...names: RegExp[]) => h.findIndex((x) => names.some((n) => n.test(x)));
+    const o: Record<string, string> = {};
+    const put = (key: string, i: number) => { if (i >= 0 && val(i)) o[key] = val(i); };
+    put("matric", at(/matric/, /reg\.?\s*(no|number)/, /registration/));
+    if (kind === "students") {
+      put("surname", at(/surname/, /last\s*name/));
+      put("otherNames", at(/other\s*name/, /first\s*name/, /given/));
+      put("name", at(/full\s*name/, /^name$/, /student\s*name/, /^names$/));
+      put("programme", at(/programme/, /program/, /course of study/, /department|dept/));
+      put("sex", at(/^sex$/, /gender/));
+      put("dob", at(/birth/, /^dob$/, /d\.o\.b/));
+      put("entryMode", at(/entry\s*mode/, /mode of entry/, /^mode$/, /admission type/));
+      put("entrySession", at(/entry\s*session/, /admission\s*session/, /year of entry/, /session admitted/));
+      put("level", at(/current\s*level/, /^level$/, /^lvl$/));
+    } else {
+      put("course", at(/course\s*code/, /^course$/, /^code$/, /subject\s*code/));
+      put("units", at(/unit/, /^cu$/, /credit/));
+      put("level", at(/^level$/, /^lvl$/));
+      if (kind === "results") {
+        put("ca", at(/\bca\b/, /continuous/, /c\.a/));
+        put("exam", at(/exam/, /examination/));
+        put("total", at(/total/, /^score$/, /^mark$/, /aggregate/));
+        put("outcome", at(/outcome/, /remark/, /status/, /grade/));
+      }
+    }
+    return o;
+  }
 
   return (
     <>
