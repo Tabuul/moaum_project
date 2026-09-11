@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS finance.fee_setting (
     CONSTRAINT ck_fee_setting_one CHECK (id = 1)
 );
 INSERT INTO finance.fee_setting (id, home_state) VALUES (1, 'Benue') ON CONFLICT (id) DO NOTHING;
+SELECT audit.attach('finance.fee_setting');
 
 -- ── 2 · charges now also pick the student's indigeneship cell (keeping V055's group + open-semester rule) ──
 CREATE OR REPLACE FUNCTION finance.charges(p_student uuid, p_session text)
