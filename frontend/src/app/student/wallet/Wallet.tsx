@@ -24,6 +24,26 @@ export function Wallet({ w }: { w: StudentWallet }) {
   const bal = Number(w.balance);
   const credited = w.statement.filter((e) => e.kind === "CREDIT").reduce((n, e) => n + Number(e.amount), 0);
   const applied = w.statement.filter((e) => e.kind === "APPLIED").reduce((n, e) => n + Number(e.amount), 0);
+
+  /* every credit and top-up carries the source it came from — group them so NELFUND and each
+     other source stand on their own, while the balance above is the sum of them all (V079). */
+  const bySource = (() => {
+    const m = new Map<string, { name: string; nature: string | null; received: number }>();
+    for (const e of w.statement) {
+      if (!e.source_code) continue;
+      const cur = m.get(e.source_code) ?? { name: e.source_name ?? e.source_code, nature: e.nature, received: 0 };
+      if (e.kind === "CREDIT" || e.kind === "TOPUP") cur.received += Number(e.amount);
+      else if (e.kind === "REVERSED") cur.received -= Number(e.amount);
+      m.set(e.source_code, cur);
+    }
+    /* NELFUND and the other loans first, then grants, then the student's own money */
+    const rank: Record<string, number> = { LOAN: 0, GRANT: 1, SELF: 2 };
+    return [...m.entries()]
+      .map(([code, v]) => ({ code, ...v }))
+      .filter((x) => x.received > 0)
+      .sort((a, b) => (rank[a.nature ?? ""] ?? 3) - (rank[b.nature ?? ""] ?? 3) || (a.code === "NELFUND" ? -1 : b.code === "NELFUND" ? 1 : 0) || b.received - a.received);
+  })();
+  const funded = bySource.reduce((n, x) => n + x.received, 0);
   const canClear = bal > 0 && owed > 0;
   const st = w.status;
   const elig = w.eligibility;
@@ -33,12 +53,22 @@ export function Wallet({ w }: { w: StudentWallet }) {
     <>
       <Tiles items={[
         ["Wallet balance", naira(bal), null, bal ? "Held by the University on your behalf" : "Fully applied"],
-        ["Funded", naira(credited), null, "Loans, scholarships and other credits"],
+        ["Funded", naira(funded || credited), null, "Every source, added together"],
         ["Applied to your invoices", naira(applied), null, w.position.paid_in_full ? "The session charge is settled" : `${w.position.instalments_paid} instalment${w.position.instalments_paid === 1 ? "" : "s"} counted`],
         ["Outstanding on your account", naira(owed), owed ? "var(--red-ink)" : null, owed ? `For ${w.session}` : "Nothing owing"],
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record; the receipt is on your Fees page.</Note> : null}
+      <Panel title="Funding by source" right={`${naira(funded)} credited from ${bySource.length} source${bySource.length === 1 ? "" : "s"}`}>
+        {bySource.length ? (
+          <DTable cols={["Source", "Nature|mid", "Received|num"]} rows={bySource.map((x) => [
+            <span key="n">{x.name}<div className="sub2 tnum">{x.code}</div></span>,
+            <Pil kind={NATURE[x.nature ?? ""]?.[1] ?? "grey"} key="na">{NATURE[x.nature ?? ""]?.[0] ?? x.nature ?? "—"}</Pil>,
+            <b className="tnum" key="r" style={{ color: "var(--green-ink)" }}>{naira(x.received)}</b>,
+          ])} />
+        ) : <PBody><div className="sub2">Nothing has been credited to your wallet yet. NELFUND, a scholarship or your own top-up will each appear here on its own line, and the wallet balance above is their total.</div></PBody>}
+        {bySource.length ? <PBody><div className="sub2">Each source is credited to the same wallet; the <b>wallet balance</b> above is the total of every source together. A <b>loan</b> (NELFUND) is repaid to the Fund after graduation; a <b>grant</b> is never repaid; a top-up is your own money.</div></PBody> : null}
+      </Panel>
       {st ? (
         <Note kind={st.state === "APPROVED" ? "ok" : st.state === "NOT_APPROVED" ? "bad" : "info"} title={st.state === "APPROVED" ? "The Fund approved your NELFUND loan" : st.state === "NOT_APPROVED" ? "The Fund did not approve your NELFUND loan" : "Your NELFUND application is still with the Fund"}>
           {st.state === "NOT_APPROVED" ? `${st.reason ?? "No reason was given."} ${st.correctable ? "This is a correction, not a judgement: fix the field named and the Fund reissues." : ""}` : st.state === "PENDING" ? "No decision yet — and that is a real answer, shown as one. You apply to NELFUND on the Fund's own portal; the University records what it decides and credits your wallet when the money arrives." : `Recorded from the Fund's list of ${onDay(st.loaded_at)}. Money arrives as a remittance and is credited here when it does.`}
