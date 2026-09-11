@@ -138,6 +138,7 @@ export const ROUTES: Record<string, string> = {
   "t/resultdesk": "/results/desk",
   "t/review": "/results/chain",
   "t/pipeline": "/results/pipeline",
+  "t/legacy": "/records/migration",
   "t/broadsheet": "/results/broadsheet",
   "t/senate": "/results/senate",
   "t/publish": "/results/publish",

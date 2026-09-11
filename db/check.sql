@@ -151,8 +151,9 @@ BEGIN
     DELETE FROM people.transfer_application;
     DELETE FROM people.student;
     DELETE FROM people.matriculation_run;
-    DELETE FROM policy.semester WHERE session IN ('9999/0000', '9998/9999');
-    DELETE FROM policy.academic_session WHERE name IN ('9999/0000', '9998/9999');
+    DELETE FROM policy.semester WHERE session IN ('9999/0000', '9998/9999', '9994/9995');
+    DELETE FROM policy.academic_session WHERE name IN ('9999/0000', '9998/9999', '9994/9995');
+    DELETE FROM catalogue.course WHERE code = 'ARC 999';
     DELETE FROM platform.number_series WHERE session = '9999/0000';
 
     DELETE FROM credentials.revocation;
@@ -237,7 +238,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 122
+\set EXPECTED 123
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2382,6 +2383,29 @@ BEGIN
         AND (SELECT matched AND offered FROM admissions.jamb_admission WHERE session = '9995/9996' AND jamb_reg_no = '20269995JA')
         AND NOT (SELECT matched FROM admissions.jamb_admission WHERE session = '9995/9996' AND jamb_reg_no = '20269995ZZ'),
         format('loaded=%s matched=%s accepted=%s offered=%s unmatched=%s decision=%s', r.loaded, r.matched, r.accepted, r.offered, r.unmatched, a.decision));
+END $$;
+
+-- ── 123. the legacy migration: students, then a registration and a published result the GPA reads (V082) ──
+DO $$
+DECLARE r record; g record; stu uuid;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'exams', true);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code)
+    VALUES ('ARC 999', 'Migration Test Course', 3, 1, 100, 'ARC') ON CONFLICT (code) DO NOTHING;
+    -- 1. the students, exported from the old portal
+    SELECT * INTO r FROM people.import_students('[{"matric":"MOAUM/MIG/22/0001","name":"CHECKMIG, Invented","programme":"C00023","level":"200","sex":"M"}]'::jsonb);
+    SELECT id INTO stu FROM people.student WHERE matric_no = 'MOAUM/MIG/22/0001';
+    -- 3. a past result imported as final (creating the registration), plus a number that is not a student
+    SELECT * INTO g FROM assessment.import_legacy_semester('9994/9995', 1,
+        '[{"matric":"MOAUM/MIG/22/0001","course":"ARC 999","units":"3","ca":"30","exam":"45"},{"matric":"MOAUM/NOPE/22/0009","course":"ARC 999","total":"50"}]'::jsonb, true);
+    PERFORM pg_temp.assert('The legacy migration creates the student, an approved registration, and a PUBLISHED result the transcript and GPA read',
+        r.created = 1 AND stu IS NOT NULL
+        AND g.results = 1 AND g.no_student = 1 AND g.registrations = 1
+        AND (SELECT total FROM assessment.student_results(stu) WHERE course_code = 'ARC 999') = 75
+        AND (SELECT published FROM assessment.student_results(stu) WHERE course_code = 'ARC 999')
+        AND (SELECT gpa FROM assessment.student_gpa(stu) WHERE session = '9994/9995' AND semester = 1) IS NOT NULL,
+        format('created=%s results=%s no_student=%s regs=%s', r.created, g.results, g.no_student, g.registrations));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

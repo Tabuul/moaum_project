@@ -40,13 +40,49 @@ public class ResultsService {
                                 @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
     }
 
+    public record MigrationIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester,
+                              @NotNull List<Map<String, Object>> rows) {
+    }
+
+    public record StudentsIn(@NotNull List<Map<String, Object>> rows) {
+    }
+
     private final ResultsRepository repo;
     private final TransactionTemplate eachInItsOwn;
+    private final tools.jackson.databind.ObjectMapper json;
 
-    ResultsService(ResultsRepository repo, PlatformTransactionManager transactions) {
+    ResultsService(ResultsRepository repo, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json) {
         this.repo = repo;
+        this.json = json;
         this.eachInItsOwn = new TransactionTemplate(transactions);
         this.eachInItsOwn.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /* ── migration from the old portal (V082) ── */
+
+    @Transactional
+    public Map<String, Object> importStudents(List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importStudents(json.writeValueAsString(rows));
+    }
+
+    @Transactional
+    public Map<String, Object> importRegistration(String session, int semester, List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importLegacy(session, semester, json.writeValueAsString(rows), false);
+    }
+
+    @Transactional
+    public Map<String, Object> importResults(String session, int semester, List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importLegacy(session, semester, json.writeValueAsString(rows), true);
+    }
+
+    private static void requireRows(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new DomainRuleViolation("RES_MIGRATE_ROWS", "The file has no rows to read.",
+                    new DomainRuleViolation.Remedy("Export the list from the old portal and upload it.", "Examinations Officer"));
+        }
     }
 
     private Sheets.Listed listed(Sheets.Row r, AuditContext ctx) {

@@ -40,6 +40,31 @@ class ResultsController {
         this.service = service;
     }
 
+    private static final String MIGRATE =
+            "hasAnyAuthority('OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_records',"
+            + "'OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+
+    /** the students exported from the old portal — the first migration step, so results and registration can match */
+    @PostMapping("/legacy/students")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importStudents(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.importStudents(body.rows());
+    }
+
+    /** the course registration of a past semester, from the old portal */
+    @PostMapping("/legacy/registration")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importRegistration(@Valid @RequestBody ResultsService.MigrationIn body) {
+        return service.importRegistration(body.session(), body.semester(), body.rows());
+    }
+
+    /** the past results of a semester, imported as final under a legacy minute */
+    @PostMapping("/legacy/results")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importResults(@Valid @RequestBody ResultsService.MigrationIn body) {
+        return service.importResults(body.session(), body.semester(), body.rows());
+    }
+
     @GetMapping("/sheets")
     @PreAuthorize(READERS)
     Sheets.Listing sheets(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,

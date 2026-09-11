@@ -191,6 +191,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Result pipeline"
           },
           {
+            "id": "t/legacy",
+            "icon": "swap",
+            "label": "Migrate from old portal"
+          },
+          {
             "id": "t/broadsheet",
             "icon": "chart",
             "label": "Broadsheet"
@@ -706,6 +711,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/approvals",
             "icon": "check",
             "label": "Verification queue"
+          },
+          {
+            "id": "t/legacy",
+            "icon": "swap",
+            "label": "Migrate from old portal"
           }
         ]
       },
@@ -1325,6 +1335,11 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Results",
         "items": [
+          {
+            "id": "t/legacy",
+            "icon": "swap",
+            "label": "Migrate from old portal"
+          },
           {
             "id": "t/broadsheet",
             "icon": "chart",

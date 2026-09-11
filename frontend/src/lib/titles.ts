@@ -128,6 +128,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Result pipeline",
     "Student to transcript, in ten stages"
   ],
+  "t/legacy": [
+    "Migrate from the old portal",
+    "Students, course registration and past results"
+  ],
   "t/resultdesk": [
     "Result desk",
     "The stage this office holds"
