@@ -11,13 +11,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { xlsxRows } from "@/lib/xlsx";
+import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number }
+export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number; spillover: boolean }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
 export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string }
@@ -32,10 +32,11 @@ export interface OpenReference { id: string; reference: string; session: string;
 export interface ApplicantFees { session: string; stated: boolean; applicationFee: number; portalCharge: number; acceptanceFee: number }
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
+const esc = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
 /** Parse the approved-fees cross-tab (faculty blocks × 1st/2nd/Total rows × level bands × Indigene/Non-indigene)
  *  into one row per cell. A band like "100/200DE" is level 100 plus level 200 for Direct Entry. */
-interface FeeRow { faculty: string; level: number; entryMode: string | null; semester: number; indigene: string; amount: number }
+interface FeeRow { faculty: string; level: number; entryMode: string | null; semester: number; indigene: string; amount: number; spillover?: boolean }
 function parseFeeMatrix(grid: (string | number | null)[][]): FeeRow[] {
   const norm = (v: string | number | null | undefined) => String(v ?? "").trim();
   const hIdx = grid.findIndex((r) => r.some((c) => /faculty\s*\/\s*semester|^faculty$/i.test(norm(c))));
@@ -43,9 +44,11 @@ function parseFeeMatrix(grid: (string | number | null)[][]): FeeRow[] {
   const header = grid[hIdx].map(norm);
   const facCol = header.findIndex((c) => /faculty/i.test(c));
   const bands: { col: number; level: number; de: number | null }[] = [];
+  const spillBands: { col: number }[] = [];
   for (let c = facCol + 1; c < header.length; c++) {
     const h = header[c];
-    if (!h || /law|spillover/i.test(h)) continue; // the 500 Law/spillover band duplicates 500L; skip it
+    if (!h) continue;
+    if (/spill/i.test(h)) { spillBands.push({ col: c }); continue; } // the spillover band, level-agnostic
     const nums = h.match(/\d{3}/g);
     if (!nums) continue;
     bands.push({ col: c, level: Number(nums[0]), de: /de/i.test(h) && nums[1] ? Number(nums[1]) : null });
@@ -69,6 +72,14 @@ function parseFeeMatrix(grid: (string | number | null)[][]): FeeRow[] {
       cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.level, null);
       if (b.de) { cell(r[b.col] ?? "", "INDIGENE", b.de, "DIRECT_ENTRY"); cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.de, "DIRECT_ENTRY"); }
     }
+    for (const b of spillBands) {
+      const spill = (v: string, indigene: string) => {
+        const n = Number(v.replace(/[^0-9.]/g, ""));
+        if (n > 0) rows.push({ faculty: fac, level: 0, entryMode: null, semester: sem, indigene, amount: Math.round(n * 100) / 100, spillover: true });
+      };
+      spill(r[b.col] ?? "", "INDIGENE");
+      spill(r[b.col + 1] ?? "", "NON_INDIGENE");
+    }
   }
   return rows;
 }
@@ -83,7 +94,67 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [scheming, setScheming] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [feeMsg, setFeeMsg] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [filterFac, setFilterFac] = useState("");
+  const [filterSem, setFilterSem] = useState("");
+  const [filterSpill, setFilterSpill] = useState("");
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(0);
   const val = (k: string, d = "") => edits[k] ?? d;
+
+  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, i.semester ? `Semester ${i.semester}` : null].filter(Boolean).join(" · ") || "Every student";
+
+  const filteredItems = schedule.items.filter((i) =>
+    (!filterFac || i.faculty_code === filterFac || (filterFac === "__none__" && !i.faculty_code)) &&
+    (!filterSem || String(i.semester ?? "") === filterSem) &&
+    (!filterSpill || (filterSpill === "spill" ? i.spillover : !i.spillover)));
+  const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(filteredItems.length / pageSize)) : 1;
+  const pageItems = pageSize > 0 ? filteredItems.slice(page * pageSize, page * pageSize + pageSize) : filteredItems;
+
+  function exportExcel() {
+    const blob = buildXlsx(
+      ["Item", "Applies to", "Level", "Semester", "Faculty", "Entry mode", "Spillover", "Amount"],
+      filteredItems.map((i) => [i.item, appliesTo(i), i.spillover ? "Spillover" : i.level ? String(i.level) : "All", i.semester ? String(i.semester) : "Session", i.faculty_name ?? "All", i.entry_mode ?? "All", i.spillover ? "Yes" : "No", i.amount]),
+      `Fee schedule ${session.replace("/", "-")}`,
+    );
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `Fee schedule ${session.replace("/", "-")}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  function exportPdf() {
+    const facLabel = filterFac === "__none__" ? "No faculty (all students)" : filterFac ? (faculties.find((f) => f.code === filterFac)?.name ?? "") : "All faculties";
+    const rowsHtml = filteredItems.map((i) => `<tr><td>${esc(i.item)}</td><td>${esc(appliesTo(i))}</td><td style="text-align:right">${naira(i.amount)}</td></tr>`).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Fee schedule ${esc(session)}</title>
+      <style>body{font:13px system-ui,Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin:0 0 2px}.sub{color:#555;margin:0 0 14px}
+      table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}
+      th{background:#f3f4f6}tfoot td{font-weight:700}</style></head><body>
+      <h1>Rev. Fr. Moses Orshio Adasu University, Makurdi</h1>
+      <p class="sub">Fee schedule — ${esc(session)} · ${esc(facLabel)}${filterSem ? ` · Semester ${esc(filterSem)}` : ""}${filterSpill === "spill" ? " · Spillover only" : filterSpill === "normal" ? " · Excluding spillover" : ""} · ${filteredItems.length} lines</p>
+      <table><thead><tr><th>Item</th><th>Applies to</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { setProblem({ status: 400, title: "Allow pop-ups to print", detail: "Your browser blocked the print window. Allow pop-ups for this site, or use Download Excel." }); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  }
+
+  function openEdit(i: ScheduleItem) {
+    const known = feeItems.some((it) => it.name === i.item);
+    setEditingId(i.id);
+    setAdding(true);
+    setEdits({
+      item: known ? i.item : "__other__", itemOther: known ? "" : i.item, amount: String(i.amount),
+      addSession: session, semester: i.semester ? String(i.semester) : "", group: i.fee_group ?? "",
+      level: i.level ? String(i.level) : "", mode: i.entry_mode ?? "", faculty: i.faculty_code ?? "", progs: i.programme_code ?? "",
+    });
+  }
   const [af, setAf] = useState({
     applicationFee: String(applicantFees?.applicationFee ?? ""),
     portalCharge: String(applicantFees?.portalCharge ?? ""),
@@ -166,14 +237,57 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           The portal refuses rather than assumes what a payment releases. The recommended scheme: the first instalment, half the charge, opens registration, the identity card and the library; payment in full opens the examination, results, the transcript and convocation; arrears block everything. It is put in force under a minute, from a date.
         </Note>
       )}
-      <Panel title={`The charges for ${session}`} right={<Btn kind="primary" disabled={!may} onClick={() => { setAdding(true); setEdits({}); }}>Add an item</Btn>}>
-        <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={schedule.items.map((i) => [
-          <strong key="i">{i.item}</strong>,
-          <span className="sub2" key="a">{[i.fee_group_name, i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, i.semester ? `Semester ${i.semester}` : null].filter(Boolean).join(" · ") || "Every student"}</span>,
+      <Panel title={`The charges for ${session}`} right={<Btn kind="primary" disabled={!may} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>}>
+        <PBody>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="field" style={{ minWidth: 180, margin: 0 }}><label htmlFor="flt-fac">Faculty</label>
+              <select id="flt-fac" className="ctl" value={filterFac} onChange={(e) => { setFilterFac(e.target.value); setPage(0); }}>
+                <option value="">Every faculty</option>
+                <option value="__none__">No faculty (all students)</option>
+                {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ minWidth: 130, margin: 0 }}><label htmlFor="flt-sem">Semester</label>
+              <select id="flt-sem" className="ctl" value={filterSem} onChange={(e) => { setFilterSem(e.target.value); setPage(0); }}>
+                <option value="">Whole session</option><option value="1">First semester</option><option value="2">Second semester</option><option value="3">Third semester</option>
+              </select>
+            </div>
+            <div className="field" style={{ minWidth: 140, margin: 0 }}><label htmlFor="flt-spill">Spillover</label>
+              <select id="flt-spill" className="ctl" value={filterSpill} onChange={(e) => { setFilterSpill(e.target.value); setPage(0); }}>
+                <option value="">All students</option><option value="normal">Exclude spillover</option><option value="spill">Spillover only</option>
+              </select>
+            </div>
+            <div className="field" style={{ minWidth: 120, margin: 0 }}><label htmlFor="flt-size">Per page</label>
+              <select id="flt-size" className="ctl" value={String(pageSize)} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+                {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}<option value="0">All</option>
+              </select>
+            </div>
+            <span style={{ flexGrow: 1 }} />
+            <Btn kind="ghost" onClick={exportExcel}>Download Excel</Btn>
+            <Btn kind="ghost" onClick={exportPdf}>Download PDF</Btn>
+          </div>
+          <div className="sub2" style={{ marginTop: 8 }}>{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill ? " (filtered)" : ""}.</div>
+        </PBody>
+        <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={pageItems.map((i) => [
+          <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">Spillover</Pil> : null}</strong>,
+          <span className="sub2" key="a">{appliesTo(i)}</span>,
           <span className="tnum" key="m">{naira(i.amount)}</span>,
-          <Btn kind="ghost" key="e" disabled={!may || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>,
+          <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => openEdit(i)}>Edit</Btn>
+            <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>
+          </span>,
         ])} />
-        {!schedule.items.length ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no student owes anything, no reference can be generated, and registration waits.</div></PBody> : null}
+        {!schedule.items.length ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no student owes anything, no reference can be generated, and registration waits.</div></PBody>
+          : !filteredItems.length ? <PBody><div className="sub2">No fee line matches the filters.</div></PBody> : null}
+        {pageSize > 0 && filteredItems.length > pageSize ? (
+          <PBody>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
+              <Btn kind="ghost" disabled={page <= 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</Btn>
+              <span className="sub2">Page {Math.min(page, pageCount - 1) + 1} of {pageCount}</span>
+              <Btn kind="ghost" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}>Next</Btn>
+            </div>
+          </PBody>
+        ) : null}
       </Panel>
       {may ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
@@ -206,11 +320,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         const selectedProgs = (val("progs") ? val("progs").split(",") : []).filter(Boolean);
         const toggleProg = (code: string) => { const s = new Set(selectedProgs); if (s.has(code)) s.delete(code); else s.add(code); setEdits({ ...edits, progs: [...s].join(",") }); };
         return (
-        <Modal title="An item of the charge" sub={`${addSession} · applies where every filter it carries matches, or is blank`} onClose={() => setAdding(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdding(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
+        <Modal title={editingId ? "Edit the charge item" : "An item of the charge"} sub={`${addSession} · applies where every filter it carries matches, or is blank`} onClose={() => { setAdding(false); setEditingId(null); }}
+          foot={<><Btn kind="ghost" onClick={() => { setAdding(false); setEditingId(null); }}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
             const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null };
             let ok = true;
-            if (selectedProgs.length) {
+            if (editingId) {
+              // edit the one line in place
+              ok = await send("edit", "PUT", `/sessions/${addSession}/schedule/${editingId}`, { ...shared, programmeCode: selectedProgs[0] ?? null }, `Fee item edited for ${addSession}: ${itemName}`);
+            } else if (selectedProgs.length) {
               // one row per chosen programme; the fee applies to exactly those
               for (const code of selectedProgs) {
                 ok = (await send(`add-${code}`, "POST", `/sessions/${addSession}/schedule`, { ...shared, programmeCode: code }, `Fee item stated for ${addSession}: ${itemName} · ${code}`)) && ok;
@@ -219,8 +336,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
               // none chosen: the whole faculty (if one is set), else every programme
               ok = await send("add", "POST", `/sessions/${addSession}/schedule`, { ...shared, programmeCode: null }, `Fee item stated for ${addSession}: ${itemName}`);
             }
-            if (ok) { setAdding(false); if (addSession !== session) router.push(`/finance/fees?session=${encodeURIComponent(addSession)}`); }
-          }}>{busy === "add" || (busy ?? "").startsWith("add-") ? "Stating…" : "State the item"}</Btn></>}>
+            if (ok) { setAdding(false); setEditingId(null); if (addSession !== session) router.push(`/finance/fees?session=${encodeURIComponent(addSession)}`); }
+          }}>{busy === "edit" ? "Saving…" : busy === "add" || (busy ?? "").startsWith("add-") ? "Stating…" : editingId ? "Save changes" : "State the item"}</Btn></>}>
           <div className="grid grid--2">
             <Field id="fi" label="Payment item" hint="A payment category; choose Other to name a one-off">
               <select id="fi" className="ctl" value={val("item")} onChange={(e) => setEdits({ ...edits, item: e.target.value })}>

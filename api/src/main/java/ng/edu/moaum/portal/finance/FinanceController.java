@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -102,7 +103,7 @@ class FinanceController {
         String s = session + "/" + year;
         List<Map<String, Object>> items = jdbc.sql("""
                 SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
-                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.ord
+                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.ord, f.spillover
                   FROM finance.fee_schedule f
                   LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code
                   LEFT JOIN ref.programme p ON p.code = f.programme_code
@@ -174,6 +175,33 @@ class FinanceController {
     Map<String, Object> endItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id) {
         jdbc.sql("UPDATE finance.fee_schedule SET ended_at = now() WHERE id = :id AND session = :s AND ended_at IS NULL")
                 .param("id", id).param("s", session + "/" + year).update();
+        return schedule(session, year);
+    }
+
+    /** edit a standing fee line in place — its amount and the filters it carries */
+    @PutMapping("/sessions/{session}/{year}/schedule/{id}")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> editItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody Item body) {
+        if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600).contains(body.level())) {
+            throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 600.", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
+        }
+        if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
+            throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
+        }
+        int n = jdbc.sql("""
+                UPDATE finance.fee_schedule SET item = :i, amount = :a, level = :l, entry_mode = :m, faculty_code = :f,
+                       programme_code = :p, fee_group = :g, semester = :sem, ord = :o
+                 WHERE id = :id AND session = :s AND ended_at IS NULL
+                """).param("id", id).param("s", session + "/" + year)
+                .param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
+                .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
+                .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)
+                .param("sem", body.semester(), Types.INTEGER).param("o", body.ord() == null ? 0 : body.ord()).update();
+        if (n == 0) {
+            throw new DomainRuleViolation("FEE_GONE", "That fee line is not on the current schedule.",
+                    new DomainRuleViolation.Remedy("Refresh the schedule.", "Bursary"));
+        }
         return schedule(session, year);
     }
 
