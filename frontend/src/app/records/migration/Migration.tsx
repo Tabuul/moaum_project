@@ -5,8 +5,8 @@
 import { useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { xlsxRows } from "@/lib/xlsx";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -51,6 +51,37 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     }
   }
 
+  /* the download templates — the columns each import reads, with one example row to delete */
+  const TEMPLATES: Record<Tab, { name: string; headers: string[]; example: string[] }> = {
+    students: {
+      name: "Students biodata",
+      headers: ["Matriculation Number", "Surname", "Other Names", "Programme", "Sex", "Date of Birth", "Entry Mode", "Entry Session", "Level"],
+      example: ["MOAUM/CSC/22/0001", "Doe", "John Ada (example — delete this row)", "Computer Science", "M", "2003-05-14", "UTME", "2022/2023", "300"],
+    },
+    registration: {
+      name: "Course registration",
+      headers: ["Matriculation Number", "Course Code", "Course Title", "Units", "Level"],
+      example: ["MOAUM/CSC/22/0001", "CSC 301", "Operating Systems (example — delete this row)", "3", "300"],
+    },
+    results: {
+      name: "Past results",
+      headers: ["Matriculation Number", "Course Code", "Course Title", "Units", "Level", "CA", "Exam", "Total", "Outcome"],
+      example: ["MOAUM/CSC/22/0001", "CSC 301", "Operating Systems (example — delete this row)", "3", "300", "25", "55", "80", "GRADED"],
+    },
+  };
+
+  function downloadTemplate(kind: Tab) {
+    const t = TEMPLATES[kind];
+    const blob = buildXlsx(t.headers, [t.example], t.name);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${t.name} template.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
   const needScope = tab !== "students";
   const scopeReady = !needScope || (/^[0-9]{4}\/[0-9]{4}$/.test(session) && ["1", "2", "3"].includes(semester));
   const CARDS: Record<Tab, [string, string][]> = {
@@ -92,13 +123,17 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           <div className="sub2" style={{ marginBottom: 8 }}>
             {tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
               : tab === "registration" ? "Columns read: matriculation number, course code, units. Each student's approved registration and course entries are created for the semester above."
-              : "Columns read: matriculation number, course code, and the mark — CA and Exam where the old record has the split, otherwise a Total (0–100). Units and outcome are read when present."}
+              : "Columns read: matriculation number, course code, and the mark. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Units and outcome are read when present."}
           </div>
-          <label className={`btn btn--primary${!may || (needScope && !scopeReady) || busy ? " btn--disabled" : ""}`} style={{ cursor: may && scopeReady && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || (needScope && !scopeReady) ? 0.6 : 1 }}>
-            {busy ? "Importing…" : `Upload ${tab === "students" ? "students" : tab === "registration" ? "registration" : "results"} file`}
-            <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || (needScope && !scopeReady) || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(tab, f); e.target.value = ""; }} />
-          </label>
-          {needScope && !scopeReady ? <span className="sub2" style={{ marginLeft: 8 }}>Enter the session (YYYY/YYYY) and semester first.</span> : null}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
+            <label className={`btn btn--primary${!may || (needScope && !scopeReady) || busy ? " btn--disabled" : ""}`} style={{ cursor: may && scopeReady && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || (needScope && !scopeReady) ? 0.6 : 1 }}>
+              {busy ? "Importing…" : `Upload ${tab === "students" ? "students" : tab === "registration" ? "registration" : "results"} file`}
+              <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || (needScope && !scopeReady) || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(tab, f); e.target.value = ""; }} />
+            </label>
+            {needScope && !scopeReady ? <span className="sub2">Enter the session (YYYY/YYYY) and semester first.</span> : null}
+          </div>
+          <div className="sub2" style={{ marginTop: 8 }}>Download the template, fill it from the old-portal export (delete the example row), and upload it. Column names are matched flexibly, so an export that already has these columns can be uploaded as-is.</div>
         </PBody>
       </Panel>
 
