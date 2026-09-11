@@ -45,7 +45,7 @@ class CatalogueController {
                             @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind) {
     }
 
-    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @Size(max = 20) String session, @NotNull List<Map<String, Object>> rows) {
+    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows) {
     }
 
     /** upload a programme's course structure (a CCMAS table): each course is created and offered at its level */
@@ -78,6 +78,21 @@ class CatalogueController {
                  WHERE c.dept_code = :dept
                  ORDER BY c.level, c.semester, c.code
                 """).param("dept", dept).query().listOfRows();
+    }
+
+    /** every course offered to a programme, level by level — the view for the course-upload desk */
+    @GetMapping("/offered")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> offered(@RequestParam String programme) {
+        return jdbc.sql("""
+                SELECT c.code, c.title, c.units, co.level, c.semester, c.kind, co.basis,
+                       c.lecture_hours, c.practical_hours
+                  FROM catalogue.course_offer co
+                  JOIN catalogue.course c ON c.code = co.course_code
+                 WHERE co.programme_code = :p
+                 ORDER BY co.level, c.semester, c.code
+                """).param("p", programme).query().listOfRows();
     }
 
     /** who may register a course: the eligible programme-and-level set, assigned at creation, with how many are registered */

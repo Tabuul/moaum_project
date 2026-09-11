@@ -14,23 +14,39 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
 interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string }
+interface Loaded { code: string; title: string; units: number; level: number; semester: number | null; kind: string; basis: string }
 const MAY = ["ict", "super", "admin", "hod", "dean", "academic", "registrar", "dregistrar"];
 
 export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOption[]; actingOffice: string | null }) {
   const may = MAY.includes(actingOffice ?? "");
   const [programme, setProgramme] = useState("");
-  const [session, setSession] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [preview, setPreview] = useState<Row[] | null>(null);
+  const [loaded, setLoaded] = useState<Loaded[] | null>(null);
+  const [listing, setListing] = useState(false);
+
+  async function viewLoaded(prog = programme) {
+    if (!prog) return;
+    setListing(true);
+    setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/catalogue/offered?programme=${encodeURIComponent(prog)}`);
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      setLoaded(j as Loaded[]);
+    } finally {
+      setListing(false);
+    }
+  }
 
   function downloadTemplate() {
     const blob = buildXlsx(
-      ["Session", "Course Code", "Course Title", "Units", "Status", "Level", "Semester", "Lecture Hours", "Practical Hours"],
+      ["Course Code", "Course Title", "Units", "Status", "Level", "Semester", "Lecture Hours", "Practical Hours"],
       [
-        ["2025/2026", "BSU-SOC-101", "Introduction to Sociology", "3", "C", "100", "1", "45", ""],
-        ["2025/2026", "BSU-SOC-102", "Social Institutions", "2", "C", "100", "2", "30", ""],
+        ["BSU-SOC-101", "Introduction to Sociology", "3", "C", "100", "1", "45", ""],
+        ["BSU-SOC-102", "Social Institutions", "2", "C", "100", "2", "30", ""],
       ],
       "Course structure",
     );
@@ -66,21 +82,18 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     return rows;
   }
 
-  async function rowsFromXlsx(buf: ArrayBuffer): Promise<{ rows: Row[]; session: string }> {
+  async function rowsFromXlsx(buf: ArrayBuffer): Promise<Row[]> {
     const grid = await xlsxRows(buf);
     const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
     const at = (names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
-    const ci = { code: at(["code"]), title: at(["title", "course"]), units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]), session: at(["session"]) };
-    if (ci.code < 0) return { rows: [], session: "" };
-    const body = grid.slice(1).filter((r) => (r[ci.code] ?? "").toString().trim());
-    const rows = body.map((r) => {
+    const ci = { code: at(["code"]), title: at(["title", "course"]), units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]) };
+    if (ci.code < 0) return [];
+    return grid.slice(1).filter((r) => (r[ci.code] ?? "").toString().trim()).map((r) => {
       const g = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
       const lv = Number(g(ci.level).replace(/[^0-9]/g, ""));
       const sm = Number(g(ci.sem).replace(/[^0-9]/g, ""));
       return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: sm || null, lh: g(ci.lh), ph: g(ci.ph) };
     }).filter((x) => !/^course\s*code$/i.test(x.code));
-    const session = ci.session >= 0 ? (body.map((r) => String(r[ci.session] ?? "").trim()).find((s) => /^[0-9]{4}\/[0-9]{4}$/.test(s)) ?? "") : "";
-    return { rows, session };
   }
 
   async function read(file: File) {
@@ -90,14 +103,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     setPreview(null);
     try {
       const buf = await file.arrayBuffer();
-      let rows: Row[];
-      if (file.name.toLowerCase().endsWith(".xlsx")) {
-        const out = await rowsFromXlsx(buf);
-        rows = out.rows;
-        if (out.session && !session) setSession(out.session);
-      } else {
-        rows = await rowsFromDocx(buf);
-      }
+      const rows = file.name.toLowerCase().endsWith(".xlsx") ? await rowsFromXlsx(buf) : await rowsFromDocx(buf);
       if (!rows.length) { setProblem({ status: 400, title: "No courses were found in that file.", detail: "Download the template, or upload the CCMAS .docx (its tables of Course Code, Title, Units, Status) or an .xlsx with those columns." }); return; }
       setPreview(rows);
     } catch {
@@ -113,12 +119,13 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     setProblem(null);
     setMsg(null);
     try {
-      const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${programme}${session ? ` (${session})` : ""}`) }, body: JSON.stringify({ programme, session: session || null, rows: preview }) });
+      const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${programme}`) }, body: JSON.stringify({ programme, rows: preview }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as { courses: number; offers: number; bad_code: number };
       setMsg(`${c.courses} courses created or updated and offered to the programme${c.bad_code ? ` · ${c.bad_code} rows had a code the catalogue could not accept` : ""}.`);
       setPreview(null);
+      void viewLoaded();
     } finally {
       setBusy(false);
     }
@@ -138,31 +145,44 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       <Panel title="The programme and its document" right="CCMAS structure">
         <PBody>
-          <div className="grid grid--2">
-            <Field id="cu-prog" label="Programme" hint="The programme these courses belong to">
-              <select id="cu-prog" className="ctl" value={programme} onChange={(e) => setProgramme(e.target.value)}>
-                <option value="">Choose the programme…</option>
-                {programmes.map((p) => <option key={p.code} value={p.code}>{p.name}{p.facultyName ? ` · ${p.facultyName}` : ""}</option>)}
-              </select>
-            </Field>
-            <Field id="cu-ses" label="Session" hint="The session this structure is for, e.g. 2025/2026 (read from the template's Session column when present)">
-              <input id="cu-ses" className="ctl tnum" value={session} placeholder="2025/2026" onChange={(e) => setSession(e.target.value.trim())} />
-            </Field>
-          </div>
+          <Field id="cu-prog" label="Programme" hint="The programme these courses belong to">
+            <select id="cu-prog" className="ctl" value={programme} onChange={(e) => { setProgramme(e.target.value); setLoaded(null); }}>
+              <option value="">Choose the programme…</option>
+              {programmes.map((p) => <option key={p.code} value={p.code}>{p.name}{p.facultyName ? ` · ${p.facultyName}` : ""}</option>)}
+            </select>
+          </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
+            <Btn kind="ghost" disabled={!programme || listing} onClick={() => void viewLoaded()}>{listing ? "Loading…" : "View loaded courses"}</Btn>
             <label className={`btn btn--primary${!may || !programme || busy ? " btn--disabled" : ""}`} style={{ cursor: may && programme && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || !programme ? 0.6 : 1 }}>
               {busy ? "Reading…" : "Choose the course document (.docx or .xlsx)"}
               <input type="file" accept=".docx,.xlsx" style={{ display: "none" }} disabled={!may || !programme || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
             {!programme ? <span className="sub2">Choose the programme first.</span> : null}
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>The template carries a <b>Session</b> and a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C compulsory, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
+          <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C compulsory, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
         </PBody>
       </Panel>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
       {msg ? <Note kind="ok" title="Course structure loaded">{msg}</Note> : null}
+
+      {loaded ? (
+        <Panel title="Courses offered to this programme" right={`${loaded.length} course${loaded.length === 1 ? "" : "s"} · ${loaded.reduce((n, c) => n + Number(c.units || 0), 0)} units`}>
+          {loaded.length ? (
+            <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+              <table className="tbl" style={{ width: "100%" }}>
+                <thead><tr><th>Code</th><th>Title</th><th>Units</th><th>Level</th><th>Sem</th><th>Basis</th></tr></thead>
+                <tbody>
+                  {loaded.map((c) => (
+                    <tr key={c.code + c.level}><td className="tnum">{c.code}</td><td>{c.title}</td><td className="tnum">{c.units}</td><td className="tnum">{c.level}</td><td className="tnum">{c.semester ?? "—"}</td><td className="sub2">{c.basis}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <PBody><div className="sub2">No course has been loaded for this programme yet. Upload the structure below.</div></PBody>}
+        </Panel>
+      ) : null}
 
       {preview ? (
         <Panel title="Read from the document — check, then load" right={`${preview.length} course${preview.length === 1 ? "" : "s"}${byLevel.length ? ` · levels ${byLevel.join(", ")}` : ""}`}>
