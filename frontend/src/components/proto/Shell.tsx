@@ -90,6 +90,7 @@ export const ROUTES: Record<string, string> = {
   "s/wallet": "/student/wallet",
   "t/nelfund": "/finance/nelfund",
   "t/fundsources": "/finance/sources",
+  "t/legacyfees": "/finance/legacy-fees",
   "t/nelmatch": "/finance/nelfund?tab=match",
   "t/nelstatus": "/finance/nelfund?tab=status",
   "s/courses": "/student/courses",

@@ -936,6 +936,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Fee Setup and Schedule"
           },
           {
+            "id": "t/legacyfees",
+            "icon": "swap",
+            "label": "Old fees history"
+          },
+          {
             "id": "t/gateways",
             "icon": "card",
             "label": "Payment gateways",

@@ -428,6 +428,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Funding sources",
     "The sources of income a wallet is funded from — add as many as you need"
   ],
+  "t/legacyfees": [
+    "Old fees history",
+    "Clear returning students' past school-fees history from the old portal"
+  ],
   "t/nelmatch": [
     "Unmatched remittances",
     "Money received that is not yet on a wallet"

@@ -79,6 +79,20 @@ class FinanceController {
         return jdbc.sql("SELECT * FROM finance.fee_structure(:s)").param("s", session + "/" + year).query().listOfRows();
     }
 
+    /** old students' school-fees history from the old portal — each row settles a past session (or semester)
+     *  by amount paid, or in full against the fee schedule when the amount is left blank. */
+    @PostMapping("/legacy-fees")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> importLegacyFees(@Valid @RequestBody FeeRows body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("FEE_ROWS", "The file has no rows to read.",
+                    new DomainRuleViolation.Remedy("Upload the old-portal fees export.", "Bursary"));
+        }
+        return jdbc.sql("SELECT * FROM finance.import_legacy_payments(:j::jsonb)")
+                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
     /* ── the schedule ── */
 
     @GetMapping("/sessions/{session}/{year}/schedule")
