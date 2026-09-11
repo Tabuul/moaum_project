@@ -161,11 +161,11 @@ export function DTable({ cols, rows, texts, title }: DTableProps) {
             ) : null}
           </div>
         )}
-        <button className="btn btn--ghost btn--sm tfoot__x" title="Export arrives with the table tools" disabled>
+        <button className="btn btn--ghost btn--sm tfoot__x" title="Print this table" onClick={() => window.print()}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 3v12M8 11l4 4 4-4M4 19h16" />
+            <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" />
           </svg>
-          Export
+          Print
         </button>
       </div>
     </>

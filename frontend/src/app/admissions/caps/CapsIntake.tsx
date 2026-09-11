@@ -22,7 +22,6 @@ import {
   isError,
   parseCaps,
   sha256Hex,
-  toCsv,
   toRequest,
   type CapsParse,
   type Cutoffs,
@@ -682,21 +681,6 @@ export function CapsIntake({
           </Note>
 
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
-            <Btn
-              kind="ghost"
-              title="The list as read here, with its findings, as a CSV file"
-              onClick={() => {
-                const blob = new Blob([toCsv(d, kind)], { type: "text/csv;charset=utf-8" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `CAPS-${kind === "UTME" ? "UTME" : "DE"}-${session.replace("/", "-")}-as-read.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-            >
-              Export this list
-            </Btn>
             <Btn
               kind="ghost"
               onClick={() => {
