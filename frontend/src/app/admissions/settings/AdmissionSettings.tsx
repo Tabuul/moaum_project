@@ -576,17 +576,14 @@ export function AdmissionSettings({
           <div className="eyebrow">Put the {session} settings in force</div>
           {policy.inForce ? (
             <>
-              <Note kind="ok" title="In force">
-                Cited to <b>{policy.instrument}</b>
-                {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. A programme&rsquo;s placement or cut-off adjusted here takes effect at once; re-affirm below,
-                under the minute that approved the adjustment, to record it against an instrument.
-              </Note>
               <div className="field">
                 <label htmlFor="as-reaffirm">Central Admissions Committee minute (re-affirmation)</label>
-                <input id="as-reaffirm" value={reaffirm} onChange={(e) => setReaffirm(e.target.value)} placeholder="CAC/2026/08" autoComplete="off" disabled={!may} />
+                <input id="as-reaffirm" value={reaffirm} onChange={(e) => setReaffirm(e.target.value)} placeholder={policy.instrument ?? "CAC/2026/08"} autoComplete="off" disabled={!may} />
                 <div className="hint">
-                  Cite the minute that approved the adjusted placements and cut-offs. Re-affirming re-cites the settings as they now
-                  stand under this minute; the earlier citation stays readable for as long as anybody admitted under it is alive.
+                  In force under <b>{policy.instrument}</b>
+                  {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. A placement or cut-off
+                  adjusted here takes effect at once; cite the minute that approved the adjustment to record it &mdash; the same number
+                  if that meeting authorised it, or a fresh one for a new decision. The earlier citation stays readable either way.
                 </div>
               </div>
               {reaffirmRefusal ? <Note kind="bad" title="Refused">{reaffirmRefusal}</Note> : null}
