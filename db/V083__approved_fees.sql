@@ -47,7 +47,8 @@ LANGUAGE sql STABLE AS $$
           LEFT JOIN admissions.caps_row r ON r.id = c.admitted_from
          WHERE s.id = p_student)
     SELECT f.id, f.item, f.amount, f.ord
-      FROM finance.fee_schedule f, me
+      FROM finance.fee_schedule f
+      CROSS JOIN me
       JOIN ref.programme p ON p.code = me.programme_code
       LEFT JOIN ref.fee_group g ON g.code = f.fee_group
       CROSS JOIN home
@@ -78,7 +79,8 @@ LANGUAGE sql STABLE AS $$
           LEFT JOIN admissions.caps_row r ON r.id = c.admitted_from
          WHERE s.id = p_student)
     SELECT coalesce(sum(f.amount), 0)
-      FROM finance.fee_schedule f, me
+      FROM finance.fee_schedule f
+      CROSS JOIN me
       JOIN ref.programme p ON p.code = me.programme_code
       LEFT JOIN ref.fee_group g ON g.code = f.fee_group
       CROSS JOIN home
