@@ -189,7 +189,35 @@ public class StudentPortalService {
         StudentPortalRepository.Student s = student(id);
         List<Map<String, Object>> rows = repo.results(id);
         List<Map<String, Object>> gpa = repo.gpa(id);
+
+        // the fee gate: a semester's marks are withheld until that session's fees clear (RESULTS).
+        // Redacted here on the server, not just hidden on the screen, so an unpaid student cannot read
+        // the marks through the raw endpoint. No scheme in force means no gate.
+        boolean scheme = repo.schemeInForce();
+        Map<String, Boolean> clearedBySession = new java.util.HashMap<>();
+        java.util.function.Function<String, Boolean> cleared = ses ->
+                !scheme || clearedBySession.computeIfAbsent(ses, x -> repo.clears(id, x, "RESULTS"));
+        List<String> withheld = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String ses = String.valueOf(row.get("session"));
+            if (!Boolean.TRUE.equals(cleared.apply(ses))) {
+                row.put("ca", null); row.put("exam", null); row.put("total", null);
+                row.put("grade", null); row.put("points", null);
+                row.put("withheld", true);
+                if (!withheld.contains(ses)) {
+                    withheld.add(ses);
+                }
+            } else {
+                row.put("withheld", false);
+            }
+        }
+        for (Map<String, Object> g : gpa) {
+            if (!Boolean.TRUE.equals(cleared.apply(String.valueOf(g.get("session"))))) {
+                g.put("gpa", null); g.put("cgpa", null);
+            }
+        }
         BigDecimal cgpa = gpa.isEmpty() ? null : (BigDecimal) gpa.get(gpa.size() - 1).get("cgpa");
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", s.surname() + ", " + s.otherNames());
         out.put("matricNo", s.matricNo());
@@ -200,8 +228,9 @@ public class StudentPortalService {
         out.put("cgpa", cgpa);
         out.put("standing", repo.classOf(cgpa));
         out.put("carryovers", repo.carryovers(id));
-        Boolean resultsCleared = repo.schemeInForce() ? repo.clears(id, session(), "RESULTS") : null;
+        Boolean resultsCleared = scheme ? repo.clears(id, session(), "RESULTS") : null;
         out.put("clearsResults", resultsCleared);
+        out.put("withheldSessions", withheld);
         return out;
     }
 
