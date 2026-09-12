@@ -44,8 +44,8 @@ class AdmissionCycleRepository {
                 SELECT p.code, p.name, p.faculty_code, f.name AS faculty_name,
                        (SELECT count(*) FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
                          WHERE r.session = :s AND b.committed_at IS NOT NULL AND r.jamb_code = p.code) AS applied,
-                       (SELECT q.quota FROM admissions.faculty_quota q JOIN admissions.session_policy sp ON sp.id = q.policy_id
-                         WHERE sp.session = :s AND q.faculty_code = p.faculty_code) AS quota,
+                       (SELECT r.quota FROM admissions.programme_rule r JOIN admissions.session_policy sp ON sp.id = r.policy_id
+                         WHERE sp.session = :s AND r.programme_code = p.code) AS quota,
                        (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.programme = p.code
                            AND c.offer_state IN ('ADMITTED','ACCEPTED')) AS offered,
                        (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.programme = p.code
