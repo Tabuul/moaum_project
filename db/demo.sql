@@ -867,7 +867,7 @@ END $bulk$;
 -- ════════════════════════════════════════════════════════════════════════
 DO $adm$
 DECLARE
-    v_adm text := '2098/2099'; v_pol uuid; v_batch uuid; v_pw text := 'Demo password 2026';
+    v_adm text := '2098/2099'; v_pol uuid; v_batch uuid; v_grp uuid; v_pw text := 'Demo password 2026';
     v_actor uuid := '00000000-0000-0000-0000-000000000000'; d record;
 BEGIN
     PERFORM set_config('moaum.actor_id', v_actor::text, true);
@@ -910,10 +910,19 @@ BEGIN
         VALUES (v_pol, d.code, 150, d.cutoff, 'Five credits including English and Mathematics', 'UTME as JAMB sent them', 'A-Level or equivalent')
         ON CONFLICT (policy_id, programme_code) DO NOTHING;
 
+        -- the UTME subject requirement, so the combination reads correct or incorrect
+        IF NOT EXISTS (SELECT 1 FROM admissions.rule_subject_group WHERE policy_id = v_pol AND programme_code = d.code AND scope = 'UTME') THEN
+            v_grp := gen_random_uuid();
+            INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (v_grp, v_pol, d.code, 'UTME', 2);
+            INSERT INTO admissions.rule_subject (group_id, subject) VALUES (v_grp, 'Mathematics'), (v_grp, 'Economics');
+        END IF;
+
         -- the CAPS rows: 135 candidates, each bucket a UTME aggregate, origin and O'Level shape
         INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
         SELECT gen_random_uuid(), v_batch, v_adm, '2098' || lpad((d.ix * 1000 + i)::text, 7, '0'),
-               jsonb_build_object('subjects', jsonb_build_array('Use of English', 'Mathematics', 'Economics', 'Government')),
+               CASE WHEN i BETWEEN 96 AND 100    -- a wrong UTME combination: no Mathematics, no Economics
+                    THEN jsonb_build_object('Subject1', 'Use of English', 'Subject2', 'Government', 'Subject3', 'Biology', 'Subject4', 'Literature')
+                    ELSE jsonb_build_object('Subject1', 'Use of English', 'Subject2', 'Mathematics', 'Subject3', 'Economics', 'Subject4', 'Government') END,
                'DEMO', d.code || ' Applicant ' || i, d.code,
                CASE WHEN i <= 100 THEN d.cutoff + 5 + (i % 85)             -- qualifies
                     WHEN i <= 115 THEN d.cutoff - 15 - (i % 10)            -- below the cut-off
@@ -923,6 +932,13 @@ BEGIN
                CASE WHEN i % 3 = 0 THEN 'Makurdi' WHEN i % 5 = 0 THEN 'Gboko' ELSE 'Ushongo' END
           FROM generate_series(1, 135) i
          WHERE NOT EXISTS (SELECT 1 FROM admissions.caps_row r WHERE r.session = v_adm AND r.jamb_reg_no = '2098' || lpad((d.ix * 1000 + i)::text, 7, '0'));
+
+        -- correct any rows seeded before the UTME subjects took the Subject1..4 shape
+        UPDATE admissions.caps_row SET raw =
+               CASE WHEN (substring(jamb_reg_no from '...$'))::int BETWEEN 96 AND 100
+                    THEN jsonb_build_object('Subject1', 'Use of English', 'Subject2', 'Government', 'Subject3', 'Biology', 'Subject4', 'Literature')
+                    ELSE jsonb_build_object('Subject1', 'Use of English', 'Subject2', 'Mathematics', 'Subject3', 'Economics', 'Subject4', 'Government') END
+         WHERE session = v_adm AND jamb_code = d.code AND raw ? 'subjects';
 
         -- the candidate record for each CAPS row
         INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
