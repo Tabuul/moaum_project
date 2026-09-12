@@ -394,7 +394,7 @@ class ApplicantsController {
                        a.decision, a.decision_note, a.decision_basis, a.decision_released_at, a.screening_score, a.submitted_at,
                        sr.utme_scaled, sr.screening, sr.screening_source, sr.weight_utme, sr.weight_putme, sr.aggregate AS total, sr.cutoff,
                        sc.olevel_total, sc.olevel_ceiling,
-                       (SELECT count(DISTINCT st.id) FROM admissions.olevel_sitting st WHERE st.session = a.session AND st.jamb_key = c.jamb_key) AS sittings,
+                       admissions.olevel_sittings(a.session, c.jamb_key) AS sittings,
                        rule.bonus_one_sitting, rule.bonus_two_sittings, rule.subjects_counted
                   FROM admissions.application a
                   JOIN admissions.candidate c ON c.id = a.candidate_id

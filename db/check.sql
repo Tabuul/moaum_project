@@ -1550,6 +1550,7 @@ BEGIN
     SELECT * INTO r FROM admissions.olevel_score('9998/9999', '20269999OL', 'C00061');
     PERFORM pg_temp.assert('The same O''Level result uploaded twice counts once: sittings are deduped by their identity, not by how many times they were uploaded',
         r.sittings = 2 AND r.points = 28 AND r.bonus = 3 AND r.total = 31
+        AND admissions.olevel_sittings('9998/9999', '20269999OL') = 2
         AND (SELECT count(*) FROM admissions.olevel_sitting WHERE session = '9998/9999' AND jamb_key = '20269999OL') = 3,
         format('sittings=%s points=%s bonus=%s total=%s rows=%s', r.sittings, r.points, r.bonus, r.total,
                (SELECT count(*) FROM admissions.olevel_sitting WHERE session = '9998/9999' AND jamb_key = '20269999OL')));
