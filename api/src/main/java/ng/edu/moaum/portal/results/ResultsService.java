@@ -67,6 +67,12 @@ public class ResultsService {
     }
 
     @Transactional
+    public Map<String, Object> importBiography(List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importBiography(json.writeValueAsString(rows));
+    }
+
+    @Transactional
     public Map<String, Object> importRegistration(String session, int semester, List<Map<String, Object>> rows) {
         requireRows(rows);
         return repo.importLegacy(session, semester, json.writeValueAsString(rows), false);

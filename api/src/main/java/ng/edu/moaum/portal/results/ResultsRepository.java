@@ -332,6 +332,10 @@ class ResultsRepository {
         return jdbc.sql("SELECT * FROM people.import_students(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
 
+    java.util.Map<String, Object> importBiography(String rowsJson) {
+        return jdbc.sql("SELECT * FROM people.import_biography(:j::jsonb)").param("j", rowsJson).query().singleRow();
+    }
+
     java.util.Map<String, Object> importLegacy(String session, int semester, String rowsJson, boolean withResults) {
         return jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, :sem, :j::jsonb, :wr)")
                 .param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).query().singleRow();

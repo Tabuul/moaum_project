@@ -238,7 +238,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 124
+\set EXPECTED 125
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2431,6 +2431,32 @@ BEGIN
         AND EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'BSU-ZZZ-901' AND units = 3 AND lecture_hours = 45)
         AND EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = 'BSU-ZZZ-901' AND programme_code = v_prog AND level = 100),
         format('courses=%s offers=%s bad=%s', r.courses, r.offers, r.bad_code));
+END $$;
+
+-- ── 126. a full old-portal biography imports whole: the matric as issued, the contact, the biography and a sign-in account (V098) ──
+DO $$
+DECLARE res record; v_student uuid; v_hobby text; v_acct boolean; v_phone text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK biography import', true);
+    SELECT * INTO res FROM people.import_biography($json$[
+      {"matno":"BSU/BM/RAD/21/2204","surname":"CHECKBIO","otherNames":"Legacy One","programme":"C00061",
+       "sex":"Male","dob":"2003-08-05","yoe":"2021/2022","level":"400","phone":"7032357502",
+       "email":"CHECKBIO@example.com","address":"KM 8 Lafia Road","nationality":"Nigeria","state":"Benue",
+       "lga":"Makurdi","guardianName":"MR CHECK","nokName":"CHECK KIN","sponsorName":"MR CHECK",
+       "extracurricular":"READING","appno":"10000259GC"},
+      {"matno":"not a matric","surname":"BAD","programme":"C00061"}
+    ]$json$::jsonb);
+    SELECT id INTO v_student FROM people.student WHERE matric_no = 'BSU/BM/RAD/21/2204';
+    SELECT value INTO v_hobby FROM people.biodata WHERE student_id = v_student AND field = 'extracurricular';
+    SELECT exists(SELECT 1 FROM iam.student_account WHERE student_id = v_student AND must_change) INTO v_acct;
+    SELECT phone INTO v_phone FROM people.student_contact WHERE student_id = v_student;
+    PERFORM pg_temp.assert('A legacy old-portal biography imports whole: the matric kept as issued, the contact, the biography and a sign-in account',
+        res.rows = 2 AND res.created = 1 AND res.bad_number = 1 AND res.contacts = 1 AND res.accounts = 1
+        AND v_hobby = 'READING' AND v_acct AND v_phone = '07032357502',
+        format('rows=%s created=%s bad=%s contacts=%s accounts=%s biography=%s hobby=%s phone=%s',
+               res.rows, res.created, res.bad_number, res.contacts, res.accounts, res.biography, v_hobby, v_phone));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

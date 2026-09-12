@@ -51,6 +51,13 @@ class ResultsController {
         return service.importStudents(body.rows());
     }
 
+    /** the full student biography exported from the old portal — core, contact, biography and a sign-in account */
+    @PostMapping("/legacy/biodata")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importBiography(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.importBiography(body.rows());
+    }
+
     /** the course registration of a past semester, from the old portal */
     @PostMapping("/legacy/registration")
     @PreAuthorize(MIGRATE)
