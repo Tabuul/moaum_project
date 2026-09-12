@@ -153,13 +153,15 @@ BEGIN
     DELETE FROM admissions.applicant_event;
     DELETE FROM admissions.screening_batch;
     DELETE FROM admissions.jamb_admission;
+    -- the O'Level sittings are derived from the attachments and reference them,
+    -- so they (and the grades that hang on them) go before the attachments.
+    DELETE FROM admissions.olevel_grade;
+    DELETE FROM admissions.olevel_sitting;
     DELETE FROM admissions.candidate_photo;
     DELETE FROM admissions.attachment;
     DELETE FROM admissions.candidate;
     DELETE FROM admissions.caps_row;
     DELETE FROM admissions.caps_batch;
-    DELETE FROM admissions.olevel_grade;
-    DELETE FROM admissions.olevel_sitting;
 
     RETURN r || jsonb_build_object('reset', true, 'reason', btrim(p_reason));
 END $$;
