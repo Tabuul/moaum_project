@@ -1005,4 +1005,49 @@ BEGIN
         (SELECT count(*) FROM admissions.programme_rule WHERE policy_id = v_pol);
 END $adm$;
 
+-- ── a worked staff profile for the demo lecturer, so /me/profile opens full ──
+DO $prof$
+DECLARE v_person uuid;
+BEGIN
+    SELECT id INTO v_person FROM iam.person WHERE staff_number = 'MOAUM/DEMO/001';
+    IF v_person IS NULL THEN RETURN; END IF;
+
+    INSERT INTO hrm.staff_profile AS sp (
+        person_id, email, phone, department, faculty, responsibility, scholar_url, orcid,
+        research_interests, masters_graduated, phd_graduated,
+        publications, grants, collaborations, conferences, assignments, innovations,
+        patents, achievements, contributions)
+    VALUES (
+        v_person, 'demo.lecturer@example.com', '08030000001', 'Mathematics', 'Science',
+        'Examinations Officer', 'https://scholar.google.com/citations?user=DEMO', '0000-0002-1825-0097',
+        'Numerical analysis, optimisation and mathematical modelling of teaching outcomes.', 6, 2,
+        '["Demo A. et al. (2023). A note on iterative solvers. J. Demo Maths, 12(3), 45-58.",
+          "Demo A. (2021). Modelling attendance. Proc. Demo Conf., 210-219."]'::jsonb,
+        '["TETFund Institution-Based Research 2024 - NGN 5,000,000",
+          "MOAUM Senate Research Grant 2022 - NGN 1,200,000"]'::jsonb,
+        '["University of Ibadan, Nigeria (local)", "University of Turin, Italy (international)"]'::jsonb,
+        '["ICM Satellite, Abuja, 2022", "West African Maths Colloquium, Accra, 2023"]'::jsonb,
+        '["NUC accreditation panel member, 2023 (national)"]'::jsonb,
+        '["A low-cost classroom response system"]'::jsonb,
+        '[]'::jsonb,
+        '["Best Lecturer, Faculty of Science, 2021"]'::jsonb,
+        '["Free JAMB coaching for rural secondary schools, Benue"]'::jsonb)
+    ON CONFLICT (person_id) DO UPDATE SET
+        email = excluded.email, phone = excluded.phone, department = excluded.department,
+        faculty = excluded.faculty, responsibility = excluded.responsibility,
+        scholar_url = excluded.scholar_url, orcid = excluded.orcid,
+        research_interests = excluded.research_interests,
+        masters_graduated = excluded.masters_graduated, phd_graduated = excluded.phd_graduated,
+        publications = excluded.publications, grants = excluded.grants,
+        collaborations = excluded.collaborations, conferences = excluded.conferences,
+        assignments = excluded.assignments, innovations = excluded.innovations,
+        patents = excluded.patents, achievements = excluded.achievements,
+        contributions = excluded.contributions, updated_at = now();
+
+    INSERT INTO hrm.staff_photo (person_id, content_type, bytes, content)
+    VALUES (v_person, 'image/png', 70,
+        decode('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da6360000002000001e221bc330000000049454e44ae426082', 'hex'))
+    ON CONFLICT (person_id) DO NOTHING;
+END $prof$;
+
 COMMIT;

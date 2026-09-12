@@ -230,6 +230,8 @@ BEGIN
     DELETE FROM iam.credential;
     DELETE FROM iam.sign_in_event;
     DELETE FROM platform.session;
+    DELETE FROM hrm.staff_photo;
+    DELETE FROM hrm.staff_profile;
     DELETE FROM iam.office_assignment;
     DELETE FROM iam.person;
 
@@ -244,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 128
+\set EXPECTED 129
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2578,6 +2580,56 @@ BEGIN
         AND v_hobby = 'READING' AND v_acct AND v_phone = '07032357502',
         format('rows=%s created=%s bad=%s contacts=%s accounts=%s biography=%s hobby=%s phone=%s',
                res.rows, res.created, res.bad_number, res.contacts, res.accounts, res.biography, v_hobby, v_phone));
+END $$;
+
+-- ── 127. a lecturer keeps their own profile: scalars, list sections and a photograph, upserted whole and read back (V107) ──
+DO $$
+DECLARE
+    v_person uuid := '00000000-0000-0000-0000-0000000000c7';
+    r        hrm.staff_profile;
+    v_pubs   int; v_ct text; v_dept text;
+BEGIN
+    INSERT INTO iam.person (id, staff_number, surname, given_names)
+    VALUES (v_person, 'MOAUM/CHK/PROF', 'CHECKPROF', 'Ada Lovelace')
+    ON CONFLICT (id) DO NOTHING;
+
+    PERFORM set_config('moaum.actor_id', v_person::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    PERFORM set_config('moaum.reason', 'CHECK staff profile', true);
+
+    -- first save
+    r := hrm.save_my_staff_profile($json$
+        {"email":"ada@example.com","phone":"08030000000","department":"Mathematics",
+         "faculty":"Science","responsibility":"Examinations Officer",
+         "scholarUrl":"https://scholar.google.com/citations?user=ADA",
+         "researchInterests":"Numerical analysis, computability",
+         "mastersGraduated":"7","phdGraduated":"2",
+         "publications":["A note on engines, J. Analytical Eng., 1843"],
+         "grants":["TETFund IBR 2024 — 5,000,000"],
+         "collaborations":["University of Turin (international)"],
+         "conferences":["ICM 2022, attended"],
+         "assignments":["NUC accreditation panel (national)"],
+         "innovations":["A teaching abacus"],"patents":["NG/PAT/2023/1"],
+         "achievements":["Best lecturer 2021"],"contributions":["STEM outreach, rural schools"]}
+    $json$::jsonb);
+
+    -- upsert again with fewer fields: the row is replaced whole, not merged
+    r := hrm.save_my_staff_profile('{"department":"Applied Mathematics","phdGraduated":"3"}'::jsonb);
+    PERFORM hrm.set_my_staff_photo('image/png', 3, E'\\x89504e'::bytea);
+    PERFORM hrm.set_my_staff_photo('image/jpeg', 2, E'\\xffd8'::bytea);  -- replaces, one row
+
+    SELECT jsonb_array_length(publications), department INTO v_pubs, v_dept
+      FROM hrm.staff_profile WHERE person_id = v_person;
+    SELECT content_type INTO v_ct FROM hrm.staff_photo WHERE person_id = v_person;
+
+    PERFORM pg_temp.assert(
+      'A lecturer keeps their own profile: it upserts whole, the list sections are read back, and one photograph is held',
+      r.person_id = v_person AND r.phd_graduated = 3 AND r.department = 'Applied Mathematics'
+      AND v_dept = 'Applied Mathematics' AND v_pubs = 0
+      AND (SELECT count(*) FROM hrm.staff_profile WHERE person_id = v_person) = 1
+      AND (SELECT count(*) FROM hrm.staff_photo WHERE person_id = v_person) = 1
+      AND v_ct = 'image/jpeg',
+      format('phd=%s dept=%s pubs=%s photo=%s', r.phd_graduated, v_dept, v_pubs, v_ct));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

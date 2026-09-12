@@ -38,6 +38,49 @@ class StaffRepository {
                 .list();
     }
 
+    /** The acting person's own profile as one JSON object, camel-cased for the portal, or empty when they have none yet. */
+    Optional<String> profileJson(UUID actor) {
+        return jdbc.sql("""
+                SELECT jsonb_build_object(
+                    'email', sp.email, 'phone', sp.phone, 'department', sp.department,
+                    'faculty', sp.faculty, 'responsibility', sp.responsibility,
+                    'scholarUrl', sp.scholar_url, 'orcid', sp.orcid,
+                    'researchInterests', sp.research_interests,
+                    'mastersGraduated', sp.masters_graduated, 'phdGraduated', sp.phd_graduated,
+                    'publications', sp.publications, 'grants', sp.grants,
+                    'collaborations', sp.collaborations, 'conferences', sp.conferences,
+                    'assignments', sp.assignments, 'innovations', sp.innovations,
+                    'patents', sp.patents, 'achievements', sp.achievements,
+                    'contributions', sp.contributions,
+                    'updatedAt', sp.updated_at,
+                    'photo', EXISTS(SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = sp.person_id)
+                )::text
+                  FROM hrm.staff_profile sp
+                 WHERE sp.person_id = :id
+                """)
+                .param("id", actor)
+                .query(String.class)
+                .optional();
+    }
+
+    /** Upsert the acting person's profile from one JSON object; the function takes the person from the audit context. */
+    void saveProfile(String profileJson) {
+        jdbc.sql("SELECT hrm.save_my_staff_profile(:j::jsonb)").param("j", profileJson).query().singleRow();
+    }
+
+    Optional<StaffMe.Photo> photo(UUID actor) {
+        return jdbc.sql("SELECT content_type, encode(content, 'base64') AS data_base64 FROM hrm.staff_photo WHERE person_id = :id")
+                .param("id", actor)
+                .query(StaffMe.Photo.class)
+                .optional();
+    }
+
+    void savePhoto(String contentType, long bytes, byte[] content) {
+        jdbc.sql("SELECT hrm.set_my_staff_photo(:ct, :b, :c)")
+                .param("ct", contentType).param("b", bytes).param("c", content)
+                .query().singleRow();
+    }
+
     Optional<College.Row> college(String code) {
         return jdbc.sql("SELECT code, name, system, url FROM ref.college WHERE code = :code")
                 .param("code", code)

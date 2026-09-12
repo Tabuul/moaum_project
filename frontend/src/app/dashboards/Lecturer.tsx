@@ -47,6 +47,19 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
         </PBody>
       </Panel>
 
+      <Panel title="Your staff profile" right="Your CV as the University holds it">
+        <PBody>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+            <div className="sub2" style={{ maxWidth: 620 }}>
+              Keep your own record current — a recent photograph, your department and responsibility, Google Scholar and research
+              interests, and the lists that grow over a career: publications, grants, the postgraduates you have graduated,
+              collaborations, conferences, assignments, innovations, patents, achievements and contributions to society.
+            </div>
+            <Link href="/me/profile" className="btn btn--primary btn--sm">Upload &amp; edit my profile</Link>
+          </div>
+        </PBody>
+      </Panel>
+
       <Tiles items={[
         ["Courses this session", String(sheets.length), null, `${sheets.filter((s) => s.mine).length} as lecturer, ${sheets.filter((s) => !s.mine).length} as second examiner`],
         ["Candidates taught", String(candidates), null, "Across every roll"],

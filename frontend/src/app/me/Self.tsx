@@ -5,6 +5,7 @@
  * a Staff module that is not on the portal yet, so the figures are an em
  * dash and the screen says why rather than showing a plausible number.
  */
+import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import { roleLabel, roleUnit } from "@/lib/offices";
 import { KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -75,8 +76,9 @@ export function Self({
       />
 
       <TwoCol>
-        <Panel title="My record" right={who}>
+        <Panel title="My record" right={<Link href="/me/profile" className="btn btn--primary btn--sm">Edit my profile</Link>}>
           <PBody>
+            <div className="sub2" style={{ marginBottom: 10 }}>{who}</div>
             <KvGrid
               cls="grid--2"
               pairs={[

@@ -23,4 +23,8 @@ public record StaffMe(Person person, List<OfficeHeld> offices) {
     public record OfficeHeld(String officeCode, String office, String scopeKind, String scopeId,
                              String instrument, LocalDate validFrom, LocalDate validTo) {
     }
+
+    /** The staff photograph, its bytes base64-encoded so it crosses the JSON API without a binary stream. */
+    public record Photo(String contentType, String dataBase64) {
+    }
 }
