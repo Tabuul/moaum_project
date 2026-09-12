@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 130
+\set EXPECTED 131
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2695,6 +2695,40 @@ BEGIN
       AND (SELECT count(*) FROM hrm.staff_photo WHERE person_id = v_person) = 1
       AND v_ct = 'image/jpeg',
       format('phd=%s dept=%s pubs=%s photo=%s', r.phd_graduated, v_dept, v_pubs, v_ct));
+END $$;
+
+-- ── 129. the operational-data reset runs to completion, clearing suggestion_sent before the applications it hangs on (V089/V108) ──
+-- Runs the real reset inside a savepoint and rolls it back, so it proves the
+-- function executes end to end without disturbing the suite's data. With a
+-- suggestion_sent row present it also guards the delete order: the pre-V108
+-- reset would fail here with a foreign-key violation.
+DO $$
+DECLARE app uuid; res jsonb; ran boolean := false; had_app boolean;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'super', true);
+    PERFORM set_config('moaum.reason', 'CHECK reset validation', true);
+
+    SELECT id INTO app FROM admissions.application LIMIT 1;
+    had_app := app IS NOT NULL;
+
+    BEGIN
+        IF had_app THEN
+            INSERT INTO admissions.suggestion_sent (application_id, programmes, sent_by)
+            VALUES (app, 'CHK suggestion', nullif(current_setting('moaum.actor_id', true), '')::uuid)
+            ON CONFLICT (application_id) DO NOTHING;
+        END IF;
+        res := platform.reset_operational_data('RESET', 'CHECK reset validation');
+        ran := (res->>'reset')::boolean;
+        RAISE EXCEPTION 'chk_reset_rollback';   -- undo every delete; the point is only that it ran
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'chk_reset_rollback' THEN RAISE; END IF;   -- a real failure (e.g. FK order) propagates
+    END;
+
+    PERFORM pg_temp.assert(
+        'The operational-data reset runs to completion, clearing suggestion_sent before the applications it references',
+        ran,
+        format('ran=%s had_application=%s', ran, had_app));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
