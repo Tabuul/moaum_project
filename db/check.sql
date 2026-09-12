@@ -209,6 +209,7 @@ BEGIN
         (SELECT id FROM admissions.session_policy WHERE session = '9998/9999');
     DELETE FROM admissions.session_policy WHERE session = '9998/9999';
     -- the merit-basis fixture's own session (V105 property)
+    DELETE FROM admissions.programme_olevel_allowance WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9994/9995');
     DELETE FROM admissions.selection_criterion WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9994/9995');
     DELETE FROM admissions.programme_rule WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9994/9995');
     DELETE FROM admissions.session_policy WHERE session = '9994/9995';
@@ -1172,6 +1173,9 @@ BEGIN
         (v_pol, 'NATIONAL_MERIT', 50), (v_pol, 'STATE_MERIT', 30), (v_pol, 'ELG', 10), (v_pol, 'LOCALITY', 10);
     INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
     VALUES (v_pol, prog, 5, 'check', 'check', 'check');
+    -- this fixture tests the merit allocation, not O'Level: waive the default compulsory subjects so the pool is eligible
+    INSERT INTO admissions.programme_olevel_allowance (policy_id, programme_code, subject) VALUES
+        (v_pol, prog, 'English Language'), (v_pol, prog, 'Mathematics');
     INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
     VALUES (v_batch, '9994/9995', 'CAPS_DOWNLOAD', 'UTME', '\xB1'::bytea, 4, current_date, gen_random_uuid(), 'academic');
 
