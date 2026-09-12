@@ -395,6 +395,10 @@ class ApplicantsController {
                        sr.utme_scaled, sr.screening, sr.screening_source, sr.weight_utme, sr.weight_putme, sr.aggregate AS total, sr.cutoff,
                        sc.olevel_total, sc.olevel_ceiling,
                        admissions.olevel_sittings(a.session, c.jamb_key) AS sittings,
+                       (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS programme_code,
+                       EXISTS (SELECT 1 FROM admissions.olevel_sitting st WHERE st.session = a.session AND st.jamb_key = c.jamb_key) AS olevel_uploaded,
+                       array_to_string(admissions.olevel_compulsory_missing(a.session, c.jamb_key,
+                           (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)), ', ') AS olevel_missing,
                        rule.bonus_one_sitting, rule.bonus_two_sittings, rule.subjects_counted
                   FROM admissions.application a
                   JOIN admissions.candidate c ON c.id = a.candidate_id
@@ -405,6 +409,23 @@ class ApplicantsController {
                  WHERE a.session = :s AND a.submitted_at IS NOT NULL AND (:p::text IS NULL OR c.programme = :p)
                  ORDER BY c.programme, sr.aggregate DESC NULLS LAST, c.surname, c.other_names
                 """).param("s", s).param("p", programme, Types.VARCHAR).query().listOfRows();
+        // the LIVE merit allocation, so the downloaded template matches the merit-list screen without a re-record:
+        // basis and decision are taken from admissions.merit_list (National Merit from the top, any origin; then
+        // State Merit, ELG, Locality from below the line), not from the recorded decision which may be stale.
+        Map<java.util.UUID, Map<String, Object>> meritByApp = new java.util.HashMap<>();
+        java.util.Set<String> codes = rows.stream().map(r -> (String) r.get("programme_code"))
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        for (String code : codes) {
+            try {
+                for (Map<String, Object> m : jdbc.sql(
+                        "SELECT app_id, basis, eligible, proposed_offer, meets_cutoff, meets_compulsory FROM admissions.merit_list(:s, :c)")
+                        .param("s", s).param("c", code).query().listOfRows()) {
+                    meritByApp.put((java.util.UUID) m.get("app_id"), m);
+                }
+            } catch (RuntimeException ex) {
+                // no policy in force for the session, or the programme is not settable — fall back to the recorded decision
+            }
+        }
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         for (Map<String, Object> r : rows) {
             Map<String, Object> raw = CandidateDataController.Json.map((String) r.get("raw_text"));
@@ -449,9 +470,26 @@ class ApplicantsController {
             row.put("utmeRatio", r.get("utme_scaled") == null ? null : scale(r.get("utme_scaled"), r.get("weight_utme")));
             row.put("total", r.get("total"));
             row.put("cutoff", r.get("cutoff"));
-            row.put("decision", r.get("decision"));
-            row.put("decisionNote", r.get("decision_note"));
-            row.put("decisionBasis", r.get("decision_basis"));
+            // decision, basis and remark from the live merit list (falls back to the recorded decision when the
+            // candidate is not in the pool — e.g. no released score yet)
+            Map<String, Object> mi = meritByApp.get((java.util.UUID) r.get("id"));
+            if (mi != null) {
+                boolean elig = Boolean.TRUE.equals(mi.get("eligible"));
+                boolean off = Boolean.TRUE.equals(mi.get("proposed_offer"));
+                if (!elig) {
+                    row.put("decision", "NOT_OFFERED");
+                    row.put("decisionBasis", null);
+                    row.put("decisionNote", ineligibleReason(mi, r));
+                } else {
+                    row.put("decision", off ? "OFFERED" : "WAITING");
+                    row.put("decisionBasis", off ? mi.get("basis") : null);
+                    row.put("decisionNote", null);
+                }
+            } else {
+                row.put("decision", r.get("decision"));
+                row.put("decisionNote", r.get("decision_note"));
+                row.put("decisionBasis", r.get("decision_basis"));
+            }
             row.put("released", r.get("decision_released_at") != null);
             out.add(row);
         }
@@ -562,6 +600,24 @@ class ApplicantsController {
 
     private static Object scale(Object value, Object weight) {
         return new BigDecimal(String.valueOf(value)).multiply(new BigDecimal(String.valueOf(weight))).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    /** why an eligible-pool candidate did not qualify: below the cut-off and/or the O'Level requirement, spelt out —
+     *  whether the O'Level was not uploaded, or which compulsory subject has no credit */
+    private static String ineligibleReason(Map<String, Object> merit, Map<String, Object> row) {
+        boolean meetsCutoff = Boolean.TRUE.equals(merit.get("meets_cutoff"));
+        boolean meetsComp = Boolean.TRUE.equals(merit.get("meets_compulsory"));
+        boolean uploaded = Boolean.TRUE.equals(row.get("olevel_uploaded"));
+        String missing = (String) row.get("olevel_missing");
+        List<String> parts = new java.util.ArrayList<>();
+        if (!meetsCutoff) {
+            parts.add("Below the programme cut-off");
+        }
+        if (!meetsComp) {
+            parts.add(!uploaded ? "O'Level result not uploaded"
+                    : "No O'Level credit in " + (missing == null || missing.isBlank() ? "a required subject" : missing));
+        }
+        return parts.isEmpty() ? "Not qualified on the merit list" : String.join("; ", parts);
     }
 
     /** the UTME subjects and scores as CAPS sent them, whichever of the two layouts the row came in */

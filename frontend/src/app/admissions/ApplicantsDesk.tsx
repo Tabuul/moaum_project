@@ -112,6 +112,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         [null, `${title} AS AT ${t.asAt}`],
         [], [], [], [],
       ];
+      const BASIS_LABEL: Record<string, string> = { NM: "National Merit", SM: "State Merit", ELG: "Equality of LG", LOCALITY: "Locality", PLWD: "PLWD", OTHER: "Other" };
       const cols = ["SN", "REG_NO", "NAME", "GENDER", "STATE", "LGA", "ENG", "SUBJ2", "SUBJ2 SCORE", "SUBJ3", "SUBJ3 SCORE", "SUBJ4", "SUBJ4 SCORE", "UTME SCORE", "ENG GRADE", "ENG POINT", "MATHS GRADE", "MATHS POINT", "SUBJ3", "SUBJ3 GRADE", "SUBJ3 POINT", "SUBJ4", "SUBJ4 GRADE", "SUBJ4 POINT", "SUBJ5", "SUBJ5 GRADE", "SUBJ5 POINT", "SITINGS", "OL/TEST TOTAL SCORE", "NO OF SITTINGS POINTS", "TOTAL O/L SCORE", "OL/TEST SCORE RATIO (_%)", "UTME SCORE RATIO (_%)", "TOTAL SCORE (100%)", "GENERAL REMARKS"];
       const line = (x: Record<string, unknown>, i: number, extra: Cell[] = []): Cell[] => {
         const us = (x.utmeSubjects as { subject: string; score: string }[]) ?? [];
@@ -124,7 +125,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           num(x.utmeScore), (x.engGrade as string) ?? null, num(x.engPoint), (x.mathsGrade as string) ?? null, num(x.mathsPoint),
           o[0]?.subject ?? null, o[0]?.grade ?? null, o[0] ? num(o[0].points) : null, o[1]?.subject ?? null, o[1]?.grade ?? null, o[1] ? num(o[1].points) : null, o[2]?.subject ?? null, o[2]?.grade ?? null, o[2] ? num(o[2].points) : null,
           num(x.sittings), num(x.cbtScore) ?? 0, num(x.sittingPoints), num(x.olevelTotal), num(x.olevelRatio), num(x.utmeRatio), num(x.total),
-          (x.decisionBasis as string) || (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
+          (x.decisionBasis ? (BASIS_LABEL[x.decisionBasis as string] ?? (x.decisionBasis as string)) : null) || (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
       };
       const remarks = (x: Record<string, unknown>): Cell[] => [
         x.cutoff !== null && x.total !== null && Number(x.total) < Number(x.cutoff) ? "Below cut-off" : "Correct Combination",
