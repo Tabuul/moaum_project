@@ -65,19 +65,16 @@ class StaffController {
     Map<String, Object> savePhoto(@RequestBody PhotoIn body) {
         String type = body == null || body.contentType() == null ? "" : body.contentType().trim().toLowerCase();
         if (!type.equals("image/jpeg") && !type.equals("image/png")) {
-            throw new DomainRuleViolation("STAFF_PHOTO_TYPE", "A photograph is a JPEG or PNG image.",
-                    new DomainRuleViolation.Remedy("Save the picture as JPEG or PNG and upload it again.", null));
+            throw new DomainRuleViolation("STAFF_PHOTO_TYPE", "A photograph is a JPEG or PNG image. Save the picture as JPEG or PNG and upload it again.");
         }
         byte[] content;
         try {
             content = Base64.getDecoder().decode(body.dataBase64() == null ? "" : body.dataBase64());
         } catch (IllegalArgumentException notBase64) {
-            throw new DomainRuleViolation("STAFF_PHOTO_DATA", "The picture could not be read.",
-                    new DomainRuleViolation.Remedy("Choose the picture again and upload it.", null));
+            throw new DomainRuleViolation("STAFF_PHOTO_DATA", "The picture could not be read. Choose the picture again and upload it.");
         }
         if (content.length < 1 || content.length > 2_097_152) {
-            throw new DomainRuleViolation("STAFF_PHOTO_SIZE", "A photograph is between 1 byte and 2 MB.",
-                    new DomainRuleViolation.Remedy("Upload a picture no larger than 2 MB.", null));
+            throw new DomainRuleViolation("STAFF_PHOTO_SIZE", "A photograph is between 1 byte and 2 MB.");
         }
         staff.savePhoto(type, content);
         return Map.of("ok", true, "bytes", content.length);

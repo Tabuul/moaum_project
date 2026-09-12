@@ -45,7 +45,12 @@ class ProblemHandler {
         problem.setTitle(e.code().replace('_', ' '));
         problem.setProperty("code", e.code());
         if (e.remedy() != null) {
-            problem.setProperty("remedy", Map.of("message", e.remedy().message(), "office", e.remedy().office()));
+            // a remedy may name no office (an action the person takes themselves); Map.of rejects a
+            // null value, so build a map that tolerates one rather than 500 on the way to a 422.
+            Map<String, Object> remedy = new java.util.LinkedHashMap<>();
+            remedy.put("message", e.remedy().message());
+            remedy.put("office", e.remedy().office());
+            problem.setProperty("remedy", remedy);
         }
         return problem;
     }
