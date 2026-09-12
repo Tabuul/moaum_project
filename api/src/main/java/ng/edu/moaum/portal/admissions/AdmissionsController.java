@@ -102,6 +102,16 @@ class AdmissionsController {
         return intake.recordMerit(body.session(), body.programme());
     }
 
+    public record MeritRecordMany(@jakarta.validation.constraints.NotBlank String session, List<String> programmes) {
+    }
+
+    /** record the merit list for several programmes at once — all with a pool when none are named */
+    @PostMapping("/merit/record-many")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> recordMeritMany(@jakarta.validation.Valid @RequestBody MeritRecordMany body) {
+        return intake.recordMeritMany(body.session(), body.programmes());
+    }
+
     record JambRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {
     }
 

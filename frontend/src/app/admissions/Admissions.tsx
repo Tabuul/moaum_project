@@ -16,8 +16,29 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recorded, setRecorded] = useState<string | null>(null);
   const may = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
   const pct = (a: number, b: number) => (b ? `${Math.round((1000 * a) / b) / 10}%` : "—");
+
+  async function recordAll() {
+    if (!window.confirm("Record the merit list for every programme with applicants this session? Offers, waiting and not-offered decisions are entered for all of them; released decisions are left untouched. Decisions are not released yet.")) return;
+    setRecording(true);
+    setProblem(null);
+    setRecorded(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/admissions/merit/record-many", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Merit list recorded across all programmes for ${cycle.session}`) },
+        body: JSON.stringify({ session: cycle.session }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      setRecorded(`${j.programmes} programme${j.programmes === 1 ? "" : "s"} recorded — ${j.offered} offered, ${j.waited} waiting, ${j.notOffered} not offered${j.skipped ? `, ${j.skipped} left untouched (already released)` : ""}. Release the decisions from the Applicants desk when the Board is ready.`);
+      router.refresh();
+    } finally {
+      setRecording(false);
+    }
+  }
 
   async function intake() {
     setBusy(true);
@@ -56,7 +77,12 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
           {cycle.offers ? `${cycle.onTheRegister.toLocaleString()} of this session's entrants carry an admission number. The next tranche from CAPS appears here the moment it is committed.` : "Upload and commit the UTME and Direct Entry lists from CAPS, and the candidates appear here."}
         </Note>
       )}
-      <Panel title="Programmes — merit lists" right="Quota is the NUC-approved carrying capacity">
+      {recorded ? <Note kind="ok" title="Merit lists recorded">{recorded}</Note> : null}
+      <Panel title="Programmes — merit lists"
+             right={may ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+               <span className="sub2">Quota is the NUC-approved carrying capacity</span>
+               <Btn kind="primary" disabled={recording} onClick={() => void recordAll()}>{recording ? "Recording…" : "Record all programmes"}</Btn>
+             </span> : "Quota is the NUC-approved carrying capacity"}>
         <DTable
           cols={["Programme", "Applied|mid", "Quota|mid", "Offered|mid", "Accepted|mid", "Cut-off|mid", "Stage|num"]}
           rows={cycle.programmes.filter((p) => p.applied || p.offered).map((p) => [

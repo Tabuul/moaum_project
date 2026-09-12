@@ -252,6 +252,26 @@ public class CapsIntakeService {
                 "notOffered", notOffered, "skipped", skipped, "pool", rows.size());
     }
 
+    /** record the merit list for several programmes at once (all with a pool when none are named), so the
+     *  Board commits the offers across programmes in one action */
+    @Transactional
+    public Map<String, Object> recordMeritMany(String session, List<String> programmes) {
+        List<String> codes = (programmes == null || programmes.isEmpty()) ? caps.programmesWithPool(session) : programmes;
+        int offered = 0, waited = 0, notOffered = 0, skipped = 0, done = 0;
+        List<Map<String, Object>> each = new ArrayList<>();
+        for (String code : codes) {
+            Map<String, Object> r = recordMerit(session, code);
+            offered += ((Number) r.get("offered")).intValue();
+            waited += ((Number) r.get("waited")).intValue();
+            notOffered += ((Number) r.get("notOffered")).intValue();
+            skipped += ((Number) r.get("skipped")).intValue();
+            done++;
+            each.add(r);
+        }
+        return Map.of("programmes", done, "offered", offered, "waited", waited,
+                "notOffered", notOffered, "skipped", skipped, "each", each);
+    }
+
     @Transactional(readOnly = true)
     public List<Finding> reconcile(String session) {
         return caps.reconcile(session);

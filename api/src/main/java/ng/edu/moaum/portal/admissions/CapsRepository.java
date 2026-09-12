@@ -248,6 +248,17 @@ class CapsRepository {
                 """).param("s", session).query().listOfRows();
     }
 
+    /** the programme codes with a merit pool this session: a submitted, score-released application behind them */
+    java.util.List<String> programmesWithPool(String session) {
+        return jdbc.sql("""
+                SELECT DISTINCT (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS code
+                  FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NOT NULL
+                   AND (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) IS NOT NULL
+                 ORDER BY code
+                """).param("s", session).query(String.class).list();
+    }
+
     /** the merit list for a programme: admissions.merit_list ranks the eligible pool and proposes the offers */
     java.util.List<java.util.Map<String, Object>> meritList(String session, String programme) {
         return jdbc.sql("SELECT * FROM admissions.merit_list(:s, :p)")
