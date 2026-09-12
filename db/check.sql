@@ -151,8 +151,8 @@ BEGIN
     DELETE FROM people.transfer_application;
     DELETE FROM people.student;
     DELETE FROM people.matriculation_run;
-    DELETE FROM policy.semester WHERE session IN ('9999/0000', '9998/9999', '9994/9995');
-    DELETE FROM policy.academic_session WHERE name IN ('9999/0000', '9998/9999', '9994/9995');
+    DELETE FROM policy.semester WHERE session IN ('9999/0000', '9998/9999', '9994/9995', '9991/9992', '9992/9993');
+    DELETE FROM policy.academic_session WHERE name IN ('9999/0000', '9998/9999', '9994/9995', '9991/9992', '9992/9993');
     DELETE FROM catalogue.course WHERE code = 'ARC 999';
     DELETE FROM platform.number_series WHERE session = '9999/0000';
 
@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 129
+\set EXPECTED 130
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1904,6 +1904,71 @@ BEGIN
             format('units=%s refused_without_scheme=%s clears_registration=%s clears_examination=%s submit=%s status=%s until=%s',
                    units, ok, reg_ok, exam_ok, sub, st_after, until));
     END;
+END $$;
+
+-- ── 128. results end to end: legacy semesters publish, a carryover is repeated and both attempts count in the CGPA, and the fee gate withholds results until fees are paid in full ──
+-- Builds on the clearance scheme the block above put in force (RESULTS is
+-- PAID_IN_FULL). One student sits two sessions: a course failed at the first
+-- sitting and repeated at the second, so the cumulative must carry both.
+DO $$
+DECLARE
+    st uuid := gen_random_uuid();
+    dept text;
+    cum record; sem1_gpa numeric; last_cgpa numeric;
+    attempts int; before_gate boolean; after_gate boolean;
+    ref text; pos record;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM set_config('moaum.reason', 'CHECK results pipeline', true);
+    SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode,
+                                entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990002', 'MOAUM/CHK/99/0002', 'CHECKRESULT', 'Invented', 'C00061', 'UTME',
+            '9991/9992', 100, 200, 'ACTIVE', now());
+
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('CHK 201', 'Check Result One',   3, 1, 100, dept, 'Compulsory', 'LIVE'),
+        ('CHK 202', 'Check Result Two',   3, 1, 100, dept, 'Elective',   'LIVE'),
+        ('CHK 203', 'Check Result Three', 3, 1, 200, dept, 'Compulsory', 'LIVE');
+
+    -- first session: CHK 201 failed (30 → F, 0.0), CHK 202 passed (70 → A, 5.0)
+    PERFORM assessment.import_legacy_semester('9991/9992', 1, $rows$[
+        {"matric":"MOAUM/CHK/99/0002","course":"CHK 201","total":"30"},
+        {"matric":"MOAUM/CHK/99/0002","course":"CHK 202","total":"70"}
+    ]$rows$::jsonb, true);
+    -- second session: CHK 201 repeated and passed (55 → C, 3.0), CHK 203 taken (60 → B, 4.0)
+    PERFORM assessment.import_legacy_semester('9992/9993', 1, $rows$[
+        {"matric":"MOAUM/CHK/99/0002","course":"CHK 201","total":"55"},
+        {"matric":"MOAUM/CHK/99/0002","course":"CHK 203","total":"60"}
+    ]$rows$::jsonb, true);
+
+    -- the carryover shows as two attempts of the same course
+    SELECT count(*) INTO attempts FROM assessment.student_results(st) WHERE course_code = 'CHK 201' AND published;
+
+    -- semester GPA (first session) and cumulative to the second session
+    SELECT gpa INTO sem1_gpa FROM assessment.student_gpa(st) WHERE session = '9991/9992' AND semester = 1;
+    SELECT cgpa INTO last_cgpa FROM assessment.student_gpa(st) WHERE session = '9992/9993' AND semester = 1;
+    SELECT * INTO cum FROM assessment.student_cumulative(st, '9992/9993', 1);
+
+    -- the fee gate: charge 100,000, RESULTS is PAID_IN_FULL, so results are withheld until fully paid
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES ('9992/9993', 'School fees', 100000, 200);
+    before_gate := finance.clears(st, '9992/9993', 'RESULTS');       -- nothing paid → withheld
+    ref := finance.new_reference(st, '9992/9993', 100000, NULL);
+    PERFORM finance.confirm_payment(ref, 'Bank transfer', 'check');
+    SELECT * INTO pos FROM finance.position(st, '9992/9993');
+    after_gate := finance.clears(st, '9992/9993', 'RESULTS');        -- paid in full → released
+
+    PERFORM pg_temp.assert(
+        'Results publish end to end: a repeated course counts both attempts in the CGPA, and the fee gate withholds results until fees are paid in full',
+        attempts = 2
+        AND sem1_gpa = 2.50 AND last_cgpa = 3.00
+        AND cum.tcr = 12 AND cum.tce = 9 AND cum.twgp = 36 AND cum.cgpa = 3.00 AND cum.prev_cgpa = 2.50
+        AND pos.paid_in_full AND before_gate = false AND after_gate = true,
+        format('attempts=%s sem1_gpa=%s cgpa=%s tcr=%s tce=%s twgp=%s cum_cgpa=%s prev=%s full=%s gate_before=%s gate_after=%s',
+               attempts, sem1_gpa, last_cgpa, cum.tcr, cum.tce, cum.twgp, cum.cgpa, cum.prev_cgpa, pos.paid_in_full, before_gate, after_gate));
 END $$;
 
 -- ══ V027 · THE LOOPS THE STUDENT SEES CLOSED ═══════════════════════════
