@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -109,8 +109,8 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
             <span className="tnum" key="c">{f.code}</span>, <strong key="n">{f.name}</strong>,
             <span className="tnum" key="d">{f.departments}</span>, <span className="tnum" key="p">{f.programmes}</span>,
             may ? <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-              <Btn kind="ghost" disabled={busy} onClick={() => { setCode(f.code); setName(f.name); setEditing(true); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</Btn>
-              <Btn kind="ghost" disabled={busy || !!f.programmes || !!f.departments} title={f.programmes || f.departments ? "Empty the faculty first" : "Remove"} onClick={() => void remove(f)}>Remove</Btn>
+              <IcoBtn key="e" icon="edit" label={`Edit ${f.name}`} disabled={busy} onClick={() => { setCode(f.code); setName(f.name); setEditing(true); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+              <IcoBtn key="x" icon="trash" danger label={f.programmes || f.departments ? "Empty the faculty first" : `Remove ${f.name}`} disabled={busy || !!f.programmes || !!f.departments} onClick={() => void remove(f)} />
             </span> : <span className="sub2" key="x">—</span>,
           ])} texts={faculties.map((f) => `${f.code} ${f.name}`)} />
         ) : <PBody><div className="sub2">No faculty yet. Add one above.</div></PBody>}

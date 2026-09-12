@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import type { FundingSource } from "@/lib/wallet";
-import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -70,7 +70,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
             <span className="sub2" key="ac">{x.account ?? "Main school account"}</span>,
             x.active ? <Pil kind="ok" key="a">Active</Pil> : <Pil kind="grey" key="a">Off</Pil>,
             canEdit ? <span key="x" style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              <Btn kind="ghost" onClick={() => edit(x)}>Edit</Btn>
+              <IcoBtn key="e" icon="edit" label="Edit this funding source" onClick={() => edit(x)} />
               <Btn kind="ghost" disabled={busy} onClick={() => void toggle(x)}>{x.active ? "Turn off" : "Turn on"}</Btn>
             </span> : <span className="sub2" key="x">—</span>,
           ])} texts={sources.map((x) => `${x.code} ${x.name} ${x.nature} ${x.sponsor ?? ""}`)} />

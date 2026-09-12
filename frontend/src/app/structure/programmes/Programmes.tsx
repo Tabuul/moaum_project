@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -149,9 +149,9 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
             <span className="sub2" key="cat">{p.category === "POST GRADUATE" ? "PG" : "UG"}</span>,
             <span className="tnum" key="m">{p.min_score}</span>,
             may ? <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <Btn kind="ghost" disabled={busy} onClick={() => edit(p)}>Edit</Btn>
+              <IcoBtn key="e" icon="edit" label={`Edit ${p.name}`} disabled={busy} onClick={() => edit(p)} />
               <Btn kind="ghost" disabled={busy} onClick={() => void archive(p, !p.archived)}>{p.archived ? "Restore" : "Archive"}</Btn>
-              <Btn kind="ghost" disabled={busy} title="Delete outright (only if nothing hangs on it)" onClick={() => void remove(p)}>Delete</Btn>
+              <IcoBtn key="x" icon="trash" danger label={`Delete ${p.name} (only if nothing hangs on it)`} disabled={busy} onClick={() => void remove(p)} />
             </span> : <span className="sub2" key="x">—</span>,
           ])} texts={programmes.map((p) => `${p.code} ${p.name} ${p.faculty_name}`)} />
         ) : <PBody><div className="sub2">No programme yet. Add one above.</div></PBody>}

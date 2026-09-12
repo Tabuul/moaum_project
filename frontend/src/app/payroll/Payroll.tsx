@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Ico, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -100,7 +100,7 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
             <b className="tnum" key="n">{money(Number(r.net_total))}</b>,
             <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.built_by_name ? <div className="sub2">Built by {r.built_by_me ? "you" : r.built_by_name}</div> : null}{r.cancelled_why ? <div className="sub2">{r.cancelled_why}</div> : null}</span>,
             <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              <Link href={`/payroll?run=${r.id}`} className="btn btn--ghost btn--sm">View</Link>
+              <Link href={`/payroll?run=${r.id}`} className="btn btn--ghost btn--sm" title={`View ${monthLabel(r.period)} pay run`} aria-label={`View ${monthLabel(r.period)} pay run`} style={{ padding: "8px 10px", minWidth: 38 }}><Ico name="eye" size={16} /></Link>
               {may && r.state === "DRAFT" && !r.built_by_me ? <Btn kind="go" disabled={busy} onClick={() => void send(`/runs/${r.id}/approve`, {}, `Approve payroll ${monthLabel(r.period)}`).then((j) => { if (j) setSaid(`${monthLabel(r.period)} approved`); })}>Approve</Btn> : null}
               {may && r.state === "DRAFT" && r.built_by_me ? <Btn kind="ghost" disabled>Awaiting another approver</Btn> : null}
               {may && r.state === "APPROVED" ? <Btn kind="primary" disabled={busy} onClick={() => { if (window.confirm(`Mark ${monthLabel(r.period)} paid? Record this once the salaries have been disbursed.`)) void send(`/runs/${r.id}/pay`, {}, `Payroll ${monthLabel(r.period)} paid`).then((j) => { if (j) setSaid(`${monthLabel(r.period)} recorded paid`); }); }}>Mark paid</Btn> : null}

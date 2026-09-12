@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -273,7 +273,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <span className="sub2" key="a">{appliesTo(i)}</span>,
           <span className="tnum" key="m">{naira(i.amount)}</span>,
           <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-            <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => openEdit(i)}>Edit</Btn>
+            <IcoBtn key="e" icon="edit" label={`Edit ${i.item}`} disabled={!may || busy !== null} onClick={() => openEdit(i)} />
             <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>
           </span>,
         ])} />
