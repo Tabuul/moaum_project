@@ -241,11 +241,17 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
 
       <Panel title="Applicants" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`)}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
         {rows.length ? (
-          <DTable cols={["Applicant", "Programme", "Stage|mid", "Seat|mid", "Score|mid", "Decision|mid", "|num"]} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.jamb_key} ${r.programme}`)}
+          <DTable cols={["Applicant", "Programme", "Stage", "Seat|mid", "Score|mid", "Decision|mid", "|num"]} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.jamb_key} ${r.programme}`)}
             rows={rows.map((r) => [
               <Two key="a" a={`${r.surname}, ${r.other_names}`} b={`${r.application_no} · ${r.jamb_key}${r.admission_no ? ` · ${r.admission_no}` : ""}`} />,
               <span className="sub2" key="p">{r.programme}</span>,
-              <span key="s"><Pil kind={r.stage >= 6 ? "ok" : r.stage >= 2 ? "info" : "grey"}>{r.stage + 1}</Pil> <span className="sub2">{stageOf(r.stage)}</span>{Number(r.documents_pending) ? <div className="sub2">{r.documents_pending} document{Number(r.documents_pending) === 1 ? "" : "s"} to review</div> : null}</span>,
+              <span key="s" style={{ display: "inline-flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                  <Pil kind={r.stage >= 6 ? "ok" : r.stage >= 2 ? "info" : "grey"}>{r.stage + 1}</Pil>
+                  <span className="sub2">{stageOf(r.stage)}</span>
+                </span>
+                {Number(r.documents_pending) ? <span className="sub2">{r.documents_pending} document{Number(r.documents_pending) === 1 ? "" : "s"} to review</span> : null}
+              </span>,
               <span className="tnum" key="t">{r.seat ?? "—"}</span>,
               <span className="tnum" key="c">{r.screening_score ?? "—"}{r.score_released_at ? "" : r.screening_score !== null ? " ·held" : ""}</span>,
               r.decision ? <Pil kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"} key="d">{r.decision}{r.decision_released_at ? "" : " · held"}</Pil> : <span className="sub2" key="d">—</span>,
