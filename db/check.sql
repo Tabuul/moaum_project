@@ -184,6 +184,7 @@ BEGIN
     DELETE FROM admissions.application_document_blob;
     DELETE FROM admissions.application_document;
     DELETE FROM admissions.fee_reference;
+    DELETE FROM admissions.suggestion_sent;
     DELETE FROM platform.session WHERE active_office = 'applicant';
     DELETE FROM admissions.application;
     DELETE FROM admissions.applicant_account;
@@ -213,7 +214,7 @@ BEGIN
     DELETE FROM admissions.selection_criterion WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9994/9995');
     DELETE FROM admissions.programme_rule WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9994/9995');
     DELETE FROM admissions.session_policy WHERE session = '9994/9995';
-    DELETE FROM admissions.olevel_grade_point WHERE session IN ('9998/9999', '9999/0000');
+    DELETE FROM admissions.olevel_grade_point WHERE session IN ('9998/9999', '9999/0000', '9994/9995');
     DELETE FROM admissions.olevel_grading WHERE session IN ('9998/9999', '9999/0000');
     DELETE FROM admissions.olevel_grade;
     DELETE FROM admissions.olevel_sitting;
@@ -243,7 +244,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 127
+\set EXPECTED 128
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1216,6 +1217,36 @@ BEGIN
         AND sm_max < nm_min,                  -- no State Merit candidate outranks a National Merit one
         format('u1=%s u2=%s u3=%s u4=%s(off=%s) n_nm=%s sm_max=%s nm_min=%s',
                b_u1, b_u2, b_u3, b_u4, off_u4, n_nm, sm_max, nm_min));
+END $$;
+
+-- ── 61e. a non-qualified candidate with five O'Level credits is suggested an open programme they qualify for (V106) ──
+DO $$
+DECLARE v_pol uuid; att uuid := gen_random_uuid(); n int; has_target boolean; has_current boolean;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK suggestion fixture (V106)', true);
+    SELECT id INTO v_pol FROM admissions.session_policy WHERE session = '9994/9995';
+
+    -- a second programme with an open seat and no cut-off of its own, to be the suggestion
+    INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
+    VALUES (v_pol, 'C00023', 5, 'check', 'check', 'check');
+    -- the session's O'Level grading, and U4's five credits (English, Mathematics and three others)
+    INSERT INTO admissions.olevel_grade_point (session, grade, points)
+    SELECT '9994/9995', v.g, v.p FROM (VALUES ('A1',10),('B2',8),('B3',6),('C4',4),('C5',3),('C6',2),('D7',0),('E8',0),('F9',0)) v(g, p);
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+    VALUES (att, '9994/9995', 'OLEVEL', 'check-suggestion', '20949990004', 'COLUMN',
+      '{"sittings":[{"type":"WAEC","year":"2024","examNumber":"S1","subjects":[
+         {"subject":"English Language","grade":"B3"},{"subject":"Mathematics","grade":"B3"},
+         {"subject":"Physics","grade":"C4"},{"subject":"Chemistry","grade":"C5"},{"subject":"Biology","grade":"C6"}]}]}'::jsonb);
+    PERFORM admissions.olevel_from_attachment(att);
+
+    SELECT count(*), bool_or(code = 'C00023'), bool_or(code = 'C00019')
+      INTO n, has_target, has_current
+      FROM admissions.programme_suggestions('9994/9995', '20949990004', 'C00019');
+    PERFORM pg_temp.assert('A non-qualified candidate with five O''Level credits is suggested an open programme they qualify for, never their own',
+        n = 1 AND has_target AND NOT coalesce(has_current, false),
+        format('suggestions=%s target(C00023)=%s current(C00019)=%s', n, has_target, has_current));
 END $$;
 
 -- ── 62. the database refuses a weighting that does not total 100 ────────

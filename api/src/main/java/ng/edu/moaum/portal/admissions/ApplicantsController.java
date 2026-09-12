@@ -506,9 +506,22 @@ class ApplicantsController {
             row.put("utmeRemark", utmeCombination(utmeSubjects(raw), utmeRulesByCode.getOrDefault((String) r.get("programme_code"), List.of())));
             boolean olUploaded = Boolean.TRUE.equals(r.get("olevel_uploaded"));
             String olMissing = (String) r.get("olevel_missing");
-            row.put("olRemark", !olUploaded ? "O'Level result not uploaded"
+            String olRemark = !olUploaded ? "O'Level result not uploaded"
                     : (olMissing != null && !olMissing.isBlank()) ? "Insufficient O'Level: [" + olMissing + "]"
-                    : "Correct Combination");
+                    : "Correct Combination";
+            // for a non-qualified candidate, suggest open programmes they could be moved to
+            List<Map<String, Object>> suggestions = List.of();
+            if ("NOT_OFFERED".equals(row.get("decision"))) {
+                suggestions = jdbc.sql("SELECT code, name FROM admissions.programme_suggestions(:s, :k, :x)")
+                        .param("s", s).param("k", r.get("jamb_key")).param("x", r.get("programme_code"), Types.VARCHAR)
+                        .query().listOfRows();
+                if (!suggestions.isEmpty()) {
+                    String names = suggestions.stream().map(m -> String.valueOf(m.get("name"))).collect(java.util.stream.Collectors.joining(", "));
+                    olRemark = olRemark + " — Suggested: " + names;
+                }
+            }
+            row.put("olRemark", olRemark);
+            row.put("suggestions", suggestions);
             out.add(row);
         }
         Map<String, Object> fees = jdbc.sql("SELECT count(*) AS n FROM admissions.application WHERE session = :s AND (:p::text IS NULL OR candidate_id IN (SELECT id FROM admissions.candidate WHERE programme = :p))")
@@ -614,6 +627,110 @@ class ApplicantsController {
         result.put("lgaTotal", lgaTotal);
         result.put("rows", out);
         return result;
+    }
+
+    /* ── candidates who can be moved to another programme, and the notice that tells them ── */
+
+    /** the app ids that the live merit list offers a place, per programme, so the rest are the non-qualified */
+    private java.util.Set<java.util.UUID> offeredApps(String s, List<Map<String, Object>> rows) {
+        java.util.Set<String> codes = rows.stream().map(r -> (String) r.get("programme_code"))
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        java.util.Set<java.util.UUID> offered = new java.util.HashSet<>();
+        for (String code : codes) {
+            try {
+                for (Map<String, Object> m : jdbc.sql("SELECT app_id, eligible, proposed_offer FROM admissions.merit_list(:s, :c)")
+                        .param("s", s).param("c", code).query().listOfRows()) {
+                    if (Boolean.TRUE.equals(m.get("eligible")) && Boolean.TRUE.equals(m.get("proposed_offer"))) {
+                        offered.add((java.util.UUID) m.get("app_id"));
+                    }
+                }
+            } catch (RuntimeException ex) {
+                // no policy in force — treat as none offered
+            }
+        }
+        return offered;
+    }
+
+    /** non-qualified candidates who hold five O'Level credits and could be moved to an open programme, with the suggestions */
+    @GetMapping("/sessions/{session}/{year}/reconsiderations")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> reconsiderations(@PathVariable String session, @PathVariable String year) {
+        String s = session + "/" + year;
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT a.id, c.jamb_reg_no, c.jamb_key, c.surname, c.other_names, c.programme,
+                       (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS programme_code,
+                       aa.email, ss.sent_at
+                  FROM admissions.application a
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  LEFT JOIN admissions.applicant_account aa ON aa.candidate_id = c.id
+                  LEFT JOIN admissions.suggestion_sent ss ON ss.application_id = a.id
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NOT NULL
+                 ORDER BY c.programme, c.surname, c.other_names
+                """).param("s", s).query().listOfRows();
+        java.util.Set<java.util.UUID> offered = offeredApps(s, rows);
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            if (offered.contains((java.util.UUID) r.get("id"))) {
+                continue;   // qualified for their own programme — not a move
+            }
+            List<Map<String, Object>> sug = jdbc.sql("SELECT code, name FROM admissions.programme_suggestions(:s, :k, :x)")
+                    .param("s", s).param("k", r.get("jamb_key")).param("x", r.get("programme_code"), Types.VARCHAR).query().listOfRows();
+            if (sug.isEmpty()) {
+                continue;   // nothing to suggest
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("applicationId", r.get("id"));
+            m.put("name", r.get("surname") + " " + r.get("other_names"));
+            m.put("regNo", r.get("jamb_reg_no"));
+            m.put("currentProgramme", r.get("programme"));
+            m.put("email", r.get("email"));
+            m.put("suggestions", sug);
+            m.put("notifiedAt", r.get("sent_at") == null ? null : r.get("sent_at").toString());
+            out.add(m);
+        }
+        return Map.of("session", s, "candidates", out);
+    }
+
+    /** email each movable candidate (not already told) their suggested programmes; the office triggers this */
+    @PostMapping("/sessions/{session}/{year}/reconsiderations/notify")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> notifySuggestions(@PathVariable String session, @PathVariable String year) {
+        String s = session + "/" + year;
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cands = (List<Map<String, Object>>) reconsiderations(session, year).get("candidates");
+        java.util.UUID actor = AuditContextHolder.required().actorId();
+        int sent = 0;
+        int skippedNoEmail = 0;
+        for (Map<String, Object> c : cands) {
+            if (c.get("notifiedAt") != null) {
+                continue;   // already told; not told twice
+            }
+            String email = (String) c.get("email");
+            if (email == null || email.isBlank()) {
+                skippedNoEmail++;
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> sug = (List<Map<String, Object>>) c.get("suggestions");
+            String names = sug.stream().map(x -> String.valueOf(x.get("name"))).collect(java.util.stream.Collectors.joining(", "));
+            java.util.UUID appId = (java.util.UUID) c.get("applicationId");
+            String subject = "Your " + s + " admission — a suggested programme";
+            String body = "Dear " + c.get("name") + ",\n\n"
+                    + "You were not offered admission to " + c.get("currentProgramme") + " for the " + s + " session. "
+                    + "On the strength of your results, you may be considered for: " + names + ".\n\n"
+                    + "If you would like to be moved to one of these programmes, please respond to the Admissions Office.\n\n"
+                    + "Admissions Office";
+            jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'application', :id)")
+                    .param("r", email).param("sub", subject).param("b", body).param("id", appId).query().listOfRows();
+            jdbc.sql("""
+                    INSERT INTO admissions.suggestion_sent (application_id, programmes, sent_by) VALUES (:id, :p, :by)
+                    ON CONFLICT (application_id) DO UPDATE SET programmes = EXCLUDED.programmes, sent_at = now(), sent_by = EXCLUDED.sent_by
+                    """).param("id", appId).param("p", names).param("by", actor).update();
+            sent++;
+        }
+        return Map.of("sent", sent, "skippedNoEmail", skippedNoEmail);
     }
 
     private static Object scale(Object value, Object weight) {

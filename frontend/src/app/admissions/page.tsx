@@ -4,6 +4,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Admissions } from "./Admissions";
 import { ApplicantsDesk, type Desk } from "./ApplicantsDesk";
+import { Reconsiderations } from "./Reconsiderations";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export default async function AdmissionsPage({ searchParams }: { searchParams: P
     <Shell route="t/admissions" me={me.ok ? me.data : null}>
       {cycle.ok ? <Admissions cycle={cycle.data} actingOffice={office} /> : <ProblemNotice problem={cycle.problem} />}
       {desk.ok ? <ApplicantsDesk desk={desk.data} actingOffice={office} /> : <ProblemNotice problem={desk.problem} />}
+      <Reconsiderations session={session} actingOffice={office} />
     </Shell>
   );
 }
