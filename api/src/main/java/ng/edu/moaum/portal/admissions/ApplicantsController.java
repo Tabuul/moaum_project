@@ -652,7 +652,7 @@ class ApplicantsController {
     }
 
     /** non-qualified candidates who hold five O'Level credits and could be moved to an open programme, with the suggestions */
-    @GetMapping("/sessions/{session}/{year}/reconsiderations")
+    @GetMapping("/reconsiderations")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> reconsiderations(@PathVariable String session, @PathVariable String year) {
@@ -693,7 +693,7 @@ class ApplicantsController {
     }
 
     /** email each movable candidate (not already told) their suggested programmes; the office triggers this */
-    @PostMapping("/sessions/{session}/{year}/reconsiderations/notify")
+    @PostMapping("/reconsiderations/notify")
     @PreAuthorize(OFFICE)
     @Transactional
     Map<String, Object> notifySuggestions(@PathVariable String session, @PathVariable String year) {
