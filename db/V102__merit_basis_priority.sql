@@ -101,24 +101,24 @@ BEGIN
         SELECT b0.*, (b0.is_eligible AND (v_nm_q IS NULL OR b0.mr <= v_nm_q)) AS is_nm FROM b0
     ),
     b2r AS (
-        SELECT q.app_id, row_number() OVER (ORDER BY q.agg DESC NULLS LAST, q.surname, q.app_id) AS r
-          FROM b1 q WHERE q.is_eligible AND NOT q.is_nm AND q.is_benue
+        SELECT app_id, row_number() OVER (ORDER BY agg DESC NULLS LAST, surname, app_id) AS r
+          FROM b1 WHERE is_eligible AND NOT is_nm AND is_benue
     ),
     b2 AS (  -- State Merit: Benue indigenes not already taken on merit
         SELECT b1.*, (b1.is_eligible AND NOT b1.is_nm AND b1.is_benue AND (v_sm_q IS NULL OR b2r.r <= v_sm_q)) AS is_sm
           FROM b1 LEFT JOIN b2r ON b2r.app_id = b1.app_id
     ),
     b3r AS (
-        SELECT q.app_id, row_number() OVER (ORDER BY q.agg DESC NULLS LAST, q.surname, q.app_id) AS r
-          FROM b2 q WHERE q.is_eligible AND NOT q.is_nm AND NOT q.is_sm AND q.is_catchment
+        SELECT app_id, row_number() OVER (ORDER BY agg DESC NULLS LAST, surname, app_id) AS r
+          FROM b2 WHERE is_eligible AND NOT is_nm AND NOT is_sm AND is_catchment
     ),
     b3 AS (  -- Equality of Local Government: candidates from the catchment LGAs
         SELECT b2.*, (b2.is_eligible AND NOT b2.is_nm AND NOT b2.is_sm AND b2.is_catchment AND (v_elg_q IS NULL OR b3r.r <= v_elg_q)) AS is_elg
           FROM b2 LEFT JOIN b3r ON b3r.app_id = b2.app_id
     ),
     b4r AS (
-        SELECT q.app_id, row_number() OVER (ORDER BY q.agg DESC NULLS LAST, q.surname, q.app_id) AS r
-          FROM b3 q WHERE q.is_eligible AND NOT q.is_nm AND NOT q.is_sm AND NOT q.is_elg AND q.is_catchment
+        SELECT app_id, row_number() OVER (ORDER BY agg DESC NULLS LAST, surname, app_id) AS r
+          FROM b3 WHERE is_eligible AND NOT is_nm AND NOT is_sm AND NOT is_elg AND is_catchment
     ),
     b4 AS (  -- Locality: the remaining catchment candidates
         SELECT b3.*, (b3.is_eligible AND NOT b3.is_nm AND NOT b3.is_sm AND NOT b3.is_elg AND b3.is_catchment AND (v_loc_q IS NULL OR b4r.r <= v_loc_q)) AS is_loc
