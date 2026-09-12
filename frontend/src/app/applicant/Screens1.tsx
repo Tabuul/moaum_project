@@ -6,9 +6,9 @@
  * database says the application is. Nothing invented: every date, number
  * and name is the record's, and where the record has none, the screen says so.
  */
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { at, confirmedReference, dob, openReference, BODY, DOCUMENT_KINDS, NEXT, STAGES, type Application } from "@/lib/applicant";
+import { at, confirmedReference, dob, openReference, BODY, NEXT, STAGES, type Application } from "@/lib/applicant";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Gate, Gates, money } from "@/components/proto/blocks";
@@ -62,13 +62,10 @@ export function Dashboard({ a }: { a: Application }) {
 
 /* ── 2. the application form ── */
 
-const DOC_LABEL = Object.fromEntries(DOCUMENT_KINDS.map(([k, l]) => [k, l]));
-
 export function Apply({ a }: { a: Application }) {
   const { act, busy, problem } = useAct();
   const [nok, setNok] = useState(a.biodata.nextOfKin ?? "");
   const [declared, setDeclared] = useState(false);
-  const file = useRef<HTMLInputElement | null>(null);
 
   if (at(a, 2)) {
     const sittings = a.olevel;
@@ -86,24 +83,6 @@ export function Apply({ a }: { a: Application }) {
             [<Two key="s" a="Declaration" b="Signed electronically" />, `Accepted ${when(a.submittedAt)}`],
           ]} />
         </Panel>
-        {(() => {
-          const p = a.documents.find((d) => d.kind === "PASSPORT");
-          return (
-            <Panel title="Your passport photograph" right="Can be uploaded or replaced at any time">
-              <input ref={file} type="file" accept="image/jpeg,image/png,application/pdf" style={{ display: "none" }}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload("PASSPORT", f); e.target.value = ""; }} />
-              <PBody>
-                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  {p ? <span className="sub2 tnum">{p.filename} · {Math.round(p.bytes / 1024)} KB</span> : <span className="sub2">Not uploaded yet. It goes on your screening slip and, later, your identity card.</span>}
-                  {p ? p.status === "ACCEPTED" ? <Pil kind="ok">Accepted</Pil> : p.status === "REJECTED" ? <Pil kind="bad">Rejected &mdash; reupload</Pil> : <Pil kind="info">Uploaded</Pil> : null}
-                  <Btn kind={p && p.status !== "REJECTED" ? "ghost" : "primary"} disabled={busy !== null} onClick={() => file.current?.click()}>{busy === "doc-PASSPORT" ? "Uploading…" : p ? "Replace" : "Upload"}</Btn>
-                </div>
-                {p?.status === "REJECTED" && p.reviewNote ? <div className="sub2" style={{ marginTop: 6, color: "var(--red-ink)" }}>{p.reviewNote}</div> : null}
-                {problem ? <ProblemNotice problem={problem} /> : null}
-              </PBody>
-            </Panel>
-          );
-        })()}
       </>
     );
   }
@@ -123,15 +102,6 @@ export function Apply({ a }: { a: Application }) {
   const gates: [string, string][] = [];
   if (!nok.trim()) gates.push(["Next of kin is missing", "Name and phone number, under Biodata."]);
   const ready = gates.length === 0 && declared;
-
-  async function upload(kind: string, f: File) {
-    if (f.size > 2 * 1024 * 1024) return;
-    const buf = await f.arrayBuffer();
-    let bin = "";
-    const bytes = new Uint8Array(buf);
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    await act(`doc-${kind}`, "POST", "/me/documents", { kind, filename: f.name, contentType: f.type || "application/pdf", contentBase64: btoa(bin) }, `${DOC_LABEL[kind]} uploaded by the applicant`);
-  }
 
   return (
     <>
