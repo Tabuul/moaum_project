@@ -9,7 +9,7 @@ import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
-const COLOUR = (points: number | null) => (points === null ? "var(--muted)" : points >= 4 ? "var(--green-ink)" : points >= 1 ? "var(--chrome)" : "var(--red-ink)");
+const COLOUR = (points: number | null | undefined) => (points == null ? "var(--muted)" : points >= 4 ? "var(--green-ink)" : points >= 1 ? "var(--chrome)" : "var(--red-ink)");
 const UNI = "Rev. Fr. Moses Orshio Adasu University, Makurdi";
 const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
@@ -140,7 +140,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
         <>
           <Tiles items={[
             ["Candidates", String(sheet.rows.length), null, `${sheet.level} Level · ${semester} semester`],
-            ["Mean GPA", sheet.meanGpa === null ? "—" : sheet.meanGpa.toFixed(2), null, sheet.meanGpa === null ? "No approved set yet" : "Unweighted, this level"],
+            ["Mean GPA", sheet.meanGpa == null ? "—" : Number(sheet.meanGpa).toFixed(2), null, sheet.meanGpa == null ? "No approved set yet" : "Unweighted, this level"],
             ["Passed every course", String(sheet.passed), "var(--green-ink)", sheet.rows.length ? `${Math.round((100 * sheet.passed) / sheet.rows.length)}% of the level` : "—"],
             ["Carrying over", String(sheet.carrying), sheet.carrying ? "var(--red-ink)" : null, sheet.pendingSets ? `${sheet.pendingSets} set${sheet.pendingSets === 1 ? "" : "s"} still in the chain` : "One or more F grades"],
           ]} />
@@ -282,7 +282,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
               ])} />
           </Panel>
           <Panel title="Classification" right="From the table in force">
-            <DTable cols={["Class", "CGPA from|mid", "to|mid"]} rows={sheet.classes.map((c) => [<span key="c">{c.clazz}</span>, <span className="tnum" key="l">{c.low.toFixed(2)}</span>, <span className="tnum" key="h">{c.high.toFixed(2)}</span>])} />
+            <DTable cols={["Class", "CGPA from|mid", "to|mid"]} rows={sheet.classes.map((c) => [<span key="c">{c.clazz}</span>, <span className="tnum" key="l">{fx(c.low)}</span>, <span className="tnum" key="h">{fx(c.high)}</span>])} />
           </Panel>
         </>
       )}
