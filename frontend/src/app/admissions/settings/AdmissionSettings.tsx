@@ -305,12 +305,8 @@ export function AdmissionSettings({
       : "";
 
   const reaffirmRefusal =
-    tried && policy.inForce
-      ? !reaffirm.trim()
-        ? "Re-affirming records the adjusted settings against a minute. Cite the Central Admissions Committee minute that approved them."
-        : f.length
-          ? `${f.length} finding${f.length === 1 ? "" : "s"} still stand${f.length === 1 ? "s" : ""}, the first being ${f[0].finding}. Re-affirming over an unanswered finding puts a rule in force that was never set.`
-          : ""
+    tried && policy.inForce && f.length
+      ? `${f.length} finding${f.length === 1 ? "" : "s"} still stand${f.length === 1 ? "s" : ""}, the first being ${f[0].finding}. Re-affirming over an unanswered finding puts a rule in force that was never set.`
       : "";
 
   /* ── 1 · the session ── */
@@ -582,8 +578,8 @@ export function AdmissionSettings({
                 <div className="hint">
                   In force under <b>{policy.instrument}</b>
                   {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. A placement or cut-off
-                  adjusted here takes effect at once; cite the minute that approved the adjustment to record it &mdash; the same number
-                  if that meeting authorised it, or a fresh one for a new decision. The earlier citation stays readable either way.
+                  adjusted here takes effect at once. Leave this blank to re-affirm under <b>{policy.instrument}</b>, or type a fresh minute
+                  for a new decision. The earlier citation stays readable either way.
                 </div>
               </div>
               {reaffirmRefusal ? <Note kind="bad" title="Refused">{reaffirmRefusal}</Note> : null}
@@ -593,8 +589,9 @@ export function AdmissionSettings({
                 disabled={!may || busy !== null}
                 onClick={() => {
                   setTried(true);
-                  if (!reaffirm.trim() || f.length) return;
-                  void send("POST", `${base}/put-in-force`, { instrument: reaffirm.trim() }, `${session} admission settings re-affirmed in force under ${reaffirm.trim()}`, "force").then((ok) => { if (ok) setReaffirm(""); });
+                  const minute = reaffirm.trim() || (policy.instrument ?? "");
+                  if (!minute || f.length) return;
+                  void send("POST", `${base}/put-in-force`, { instrument: minute }, `${session} admission settings re-affirmed in force under ${minute}`, "force").then((ok) => { if (ok) setReaffirm(""); });
                 }}
               >
                 {busy === "force" ? "Putting in force…" : "Put in force again"}
