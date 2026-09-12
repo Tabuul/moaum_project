@@ -660,7 +660,7 @@ class ApplicantsController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.id, c.jamb_reg_no, c.jamb_key, c.surname, c.other_names, c.programme,
                        (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS programme_code,
-                       aa.email, ss.sent_at
+                       aa.email, ss.sent_at, ss.programmes
                   FROM admissions.application a
                   JOIN admissions.candidate c ON c.id = a.candidate_id
                   LEFT JOIN admissions.applicant_account aa ON aa.candidate_id = c.id
@@ -687,6 +687,7 @@ class ApplicantsController {
             m.put("email", r.get("email"));
             m.put("suggestions", sug);
             m.put("notifiedAt", r.get("sent_at") == null ? null : r.get("sent_at").toString());
+            m.put("suggestedProgramme", r.get("programmes"));
             out.add(m);
         }
         return Map.of("session", s, "candidates", out);
@@ -731,6 +732,67 @@ class ApplicantsController {
             sent++;
         }
         return Map.of("sent", sent, "skippedNoEmail", skippedNoEmail);
+    }
+
+    public record SuggestOne(@NotBlank String applicationId, @NotBlank String programme) {
+    }
+
+    /** the office chooses one programme for a movable candidate and suggests it: the candidate is emailed that
+     *  programme (when an address is on file) and the choice is recorded. The programme must be one the candidate
+     *  actually qualifies for — the same open set the dashboard offers. */
+    @PostMapping("/reconsiderations/suggest")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> suggestOne(@PathVariable String session, @PathVariable String year, @Valid @RequestBody SuggestOne body) {
+        String s = session + "/" + year;
+        UUID appId;
+        try {
+            appId = UUID.fromString(body.applicationId());
+        } catch (IllegalArgumentException notAUuid) {
+            throw new DomainRuleViolation("ADM_SUGGEST_APP", "That is not an application.");
+        }
+        Map<String, Object> r = jdbc.sql("""
+                SELECT a.id, c.jamb_key, c.surname, c.other_names, c.programme,
+                       (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS programme_code,
+                       aa.email
+                  FROM admissions.application a
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  LEFT JOIN admissions.applicant_account aa ON aa.candidate_id = c.id
+                 WHERE a.id = :id AND a.session = :s
+                """).param("id", appId).param("s", s).query().optional()
+                .orElseThrow(() -> new NotFound("application", body.applicationId()));
+
+        // the chosen programme must be one the candidate qualifies for — the open set the dashboard computes
+        List<Map<String, Object>> sug = jdbc.sql("SELECT code, name FROM admissions.programme_suggestions(:s, :k, :x)")
+                .param("s", s).param("k", r.get("jamb_key")).param("x", r.get("programme_code"), Types.VARCHAR).query().listOfRows();
+        Map<String, Object> chosen = sug.stream()
+                .filter(x -> body.programme().equalsIgnoreCase(String.valueOf(x.get("code"))))
+                .findFirst()
+                .orElseThrow(() -> new DomainRuleViolation("ADM_SUGGEST_NOT_ELIGIBLE",
+                        "That programme is not one this candidate qualifies for.",
+                        new DomainRuleViolation.Remedy("Choose a programme from the candidate's open, qualified options.", "Academic Office")));
+        String chosenName = String.valueOf(chosen.get("name"));
+        UUID actor = AuditContextHolder.required().actorId();
+
+        String email = (String) r.get("email");
+        boolean emailed = false;
+        if (email != null && !email.isBlank()) {
+            String name = r.get("surname") + " " + r.get("other_names");
+            String subject = "Your " + s + " admission — a suggested programme";
+            String bodyText = "Dear " + name + ",\n\n"
+                    + "You were not offered admission to " + r.get("programme") + " for the " + s + " session. "
+                    + "On the strength of your results, the Admissions Office suggests you may be considered for " + chosenName + ".\n\n"
+                    + "If you would like to be moved to this programme, please respond to the Admissions Office.\n\n"
+                    + "Admissions Office";
+            jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'application', :id)")
+                    .param("r", email).param("sub", subject).param("b", bodyText).param("id", appId).query().listOfRows();
+            emailed = true;
+        }
+        jdbc.sql("""
+                INSERT INTO admissions.suggestion_sent (application_id, programmes, sent_by) VALUES (:id, :p, :by)
+                ON CONFLICT (application_id) DO UPDATE SET programmes = EXCLUDED.programmes, sent_at = now(), sent_by = EXCLUDED.sent_by
+                """).param("id", appId).param("p", chosenName).param("by", actor).update();
+        return Map.of("suggested", chosenName, "emailed", emailed);
     }
 
     private static Object scale(Object value, Object weight) {
