@@ -62,7 +62,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
           rows={cycle.programmes.filter((p) => p.applied || p.offered).map((p) => [
             <Two key="p" a={p.name} b={p.facultyName} />,
             <span className="tnum" key="a">{p.applied.toLocaleString()}</span>,
-            <span className="tnum" key="q">{p.quota === null ? "—" : p.quota.toLocaleString()}</span>,
+            <span className="tnum" key="q">{p.quota == null ? "—" : p.quota.toLocaleString()}</span>,
             <span className="tnum" key="o">{p.offered.toLocaleString()}</span>,
             <span className="tnum" key="c">{p.accepted.toLocaleString()}</span>,
             <span className="tnum" key="k">{p.cutoff ?? "—"}</span>,
