@@ -217,4 +217,96 @@ class StudentPortalIT {
         Map<String, Object> fees5 = it.get(token, "/api/v1/me/fees?session=2090/2091").getBody();
         assertThat(((Number) fees5.get("paid")).doubleValue()).isEqualTo(50000.0);
     }
+
+    /**
+     * The fee gate is enforced on the server, not just hidden on the screen: a
+     * published sheet's marks are redacted out of the raw /me/results endpoint
+     * until that session's fees clear (RESULTS is PAID_IN_FULL), and appear the
+     * moment they are paid in full.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void resultsAreWithheldOnTheServerUntilTheSessionsFeesArePaidInFull() {
+        final String ses = "2093/2094";
+        it.session(ses, 2093);
+        int n = new Random().nextInt(9000) + 1000;
+        String matric = "MOAUM/GTE/93/" + n;
+        UUID student = it.student("ITGATE" + n, "C00061", "MOAUM/ADM/93/00" + n, matric, 100);
+
+        // published results for two courses this session, and the charge for the session
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT code FROM ref.department ORDER BY code LIMIT 1").query(String.class).single();
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('GTE 101', 'Gate Course One', 3, 1, 100, :d, 'Compulsory', 'LIVE'), ('GTE 102', 'Gate Course Two', 3, 1, 100, :d, 'Elective', 'LIVE') ON CONFLICT (code) DO NOTHING")
+                    .param("d", dept).update();
+            jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, 1, :rows::jsonb, true)")
+                    .param("s", ses)
+                    .param("rows", "[{\"matric\":\"" + matric + "\",\"course\":\"GTE 101\",\"total\":\"70\"},"
+                            + "{\"matric\":\"" + matric + "\",\"course\":\"GTE 102\",\"total\":\"60\"}]")
+                    .query().listOfRows();
+            jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (:s, 'School fees', 100000, 100)")
+                    .param("s", ses).update();
+            return null;
+        });
+
+        String token = TestTokens.token(student, List.of("student"));
+
+        // The scheme is put in force only for the span of this test, then removed in the finally:
+        // another test relies on there being no clearance scheme in force, and method order is not guaranteed.
+        try {
+            it.db(() -> {
+                jdbc.sql("""
+                        INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+                        SELECT gen_random_uuid(), 'clearance', 'UNIVERSITY',
+                               daterange(current_date, (SELECT min(lower(validity)) FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date)),
+                               'BUR/GATE/93', 'bursar'
+                         WHERE policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL
+                        """).update();
+                jdbc.sql("INSERT INTO policy.clearance_scheme SELECT id, true FROM policy.version WHERE instrument = 'BUR/GATE/93' ON CONFLICT DO NOTHING").update();
+                jdbc.sql("""
+                        INSERT INTO policy.clearance_rule SELECT v.id, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED'
+                            WHEN 'REGISTRATION' THEN 'INSTALMENT_1' WHEN 'ID_CARD' THEN 'INSTALMENT_1' WHEN 'LIBRARY' THEN 'INSTALMENT_1' ELSE 'PAID_IN_FULL' END
+                          FROM policy.version v, ref.clearance_purpose p WHERE v.instrument = 'BUR/GATE/93' ON CONFLICT DO NOTHING
+                        """).update();
+                return null;
+            });
+
+            // before paying: the sheets are published, but the server redacts every mark
+            Map<String, Object> before = it.get(token, "/api/v1/me/results").getBody();
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) before.get("rows");
+            assertThat(rows).hasSize(2);
+            assertThat(rows).allSatisfy(r -> {
+                assertThat(r.get("published")).isEqualTo(true);
+                assertThat(r.get("withheld")).isEqualTo(true);
+                assertThat(r.get("total")).isNull();
+                assertThat(r.get("grade")).isNull();
+                assertThat(r.get("points")).isNull();
+            });
+            assertThat(before.get("cgpa")).isNull();
+            assertThat((List<String>) before.get("withheldSessions")).contains(ses);
+
+            // the student pays the session's fees in full, and the Bursary confirms it
+            Map<String, Object> withRef = it.call(token, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("session", ses, "amount", 100000)).getBody();
+            String reference = String.valueOf(withRef.get("reference"));
+            assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + reference + "/confirm", Map.of("channel", "Bank transfer")).getStatusCode().value()).isEqualTo(200);
+
+            // now the same endpoint releases the marks and the CGPA computes
+            Map<String, Object> after = it.get(token, "/api/v1/me/results").getBody();
+            List<Map<String, Object>> rows2 = (List<Map<String, Object>>) after.get("rows");
+            assertThat(rows2).hasSize(2);
+            assertThat(rows2).allSatisfy(r -> {
+                assertThat(r.get("withheld")).isEqualTo(false);
+                assertThat(r.get("total")).isNotNull();
+                assertThat(r.get("grade")).isNotNull();
+            });
+            assertThat(((Number) after.get("cgpa")).doubleValue()).isEqualTo(4.50);
+            assertThat((List<String>) after.get("withheldSessions")).isEmpty();
+        } finally {
+            it.db(() -> {
+                jdbc.sql("DELETE FROM policy.clearance_rule WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/GATE/93')").update();
+                jdbc.sql("DELETE FROM policy.clearance_scheme WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/GATE/93')").update();
+                jdbc.sql("DELETE FROM policy.version WHERE instrument = 'BUR/GATE/93'").update();
+                return null;
+            });
+        }
+    }
 }
