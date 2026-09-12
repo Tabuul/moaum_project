@@ -949,7 +949,7 @@ BEGIN
         -- O'Level: uploaded for the qualifiers, the below-cut-off group and the missing-Maths group;
         -- NOT uploaded for i in 116..125; the missing-Maths group (126..135) has no Mathematics credit
         INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
-        SELECT gen_random_uuid(), v_adm, 'OLEVEL', 'demo-olevel', c.jamb_key, 'COLUMN', '{}'::jsonb
+        SELECT gen_random_uuid(), v_adm, 'OLEVEL', 'demo-olevel-' || c.jamb_key, c.jamb_key, 'COLUMN', '{}'::jsonb
           FROM admissions.candidate c
          WHERE c.session = v_adm AND c.programme = d.pname
            AND (substring(c.jamb_key from '...$'))::int NOT BETWEEN 116 AND 125
@@ -958,7 +958,7 @@ BEGIN
         INSERT INTO admissions.olevel_sitting (id, attachment_id, session, jamb_key, exam_body, exam_type_raw, exam_year, exam_number, ord)
         SELECT gen_random_uuid(), at.id, v_adm, at.jamb_key, 'WAEC', 'WAEC', '2097', 'DMO' || at.jamb_key, 1
           FROM admissions.attachment at
-         WHERE at.session = v_adm AND at.kind = 'OLEVEL' AND at.source_name = 'demo-olevel'
+         WHERE at.session = v_adm AND at.kind = 'OLEVEL' AND at.source_name LIKE 'demo-olevel-%'
            AND at.jamb_key IN (SELECT upper(jamb_reg_no) FROM admissions.candidate WHERE session = v_adm AND programme = d.pname)
            AND NOT EXISTS (SELECT 1 FROM admissions.olevel_sitting st WHERE st.attachment_id = at.id);
 
