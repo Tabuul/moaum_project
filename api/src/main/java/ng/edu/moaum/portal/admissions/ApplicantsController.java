@@ -751,7 +751,7 @@ class ApplicantsController {
         } catch (IllegalArgumentException notAUuid) {
             throw new DomainRuleViolation("ADM_SUGGEST_APP", "That is not an application.");
         }
-        Map<String, Object> r = jdbc.sql("""
+        List<Map<String, Object>> found = jdbc.sql("""
                 SELECT a.id, c.jamb_key, c.surname, c.other_names, c.programme,
                        (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS programme_code,
                        aa.email
@@ -759,8 +759,11 @@ class ApplicantsController {
                   JOIN admissions.candidate c ON c.id = a.candidate_id
                   LEFT JOIN admissions.applicant_account aa ON aa.candidate_id = c.id
                  WHERE a.id = :id AND a.session = :s
-                """).param("id", appId).param("s", s).query().optional()
-                .orElseThrow(() -> new NotFound("application", body.applicationId()));
+                """).param("id", appId).param("s", s).query().listOfRows();
+        if (found.isEmpty()) {
+            throw new NotFound("application", body.applicationId());
+        }
+        Map<String, Object> r = found.get(0);
 
         // the chosen programme must be one the candidate qualifies for — the open set the dashboard computes
         List<Map<String, Object>> sug = jdbc.sql("SELECT code, name FROM admissions.programme_suggestions(:s, :k, :x)")
