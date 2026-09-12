@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, IcoBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -221,6 +221,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
 
   return (
     <>
+      <RoleLine allowed={["bursar"]} actingOffice={actingOffice} canAct={may} action="Stating fees and the clearance scheme" />
       <Tiles items={[
         ["Items stated", String(schedule.items.length), null, `${session} · every item applies where its filters match`],
         ["Charge to everybody", naira(total), null, "Items with no filter"],

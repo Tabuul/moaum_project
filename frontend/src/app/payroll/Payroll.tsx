@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Ico, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Ico, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -64,6 +64,7 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
 
   return (
     <>
+      <RoleLine allowed={["hrm"]} actingOffice={actingOffice} canAct={may} action="Building and approving payroll" />
       <Note kind="info" title="A payroll is built by one officer and approved by another">
         The run is computed over the active establishment: each payslip is a snapshot of the grade&rsquo;s components and the statutory deductions — the employee&rsquo;s 8% pension and PAYE after the consolidated relief. The officer who builds a run cannot approve it, and only an approved run is marked paid.
       </Note>

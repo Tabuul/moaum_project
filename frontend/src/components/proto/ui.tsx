@@ -169,13 +169,15 @@ export function RoleLine({
   allowed,
   actingOffice,
   action,
+  canAct,
 }: {
   allowed: string[];
   actingOffice: string | null;
   action?: string;
+  canAct?: boolean;
 }) {
   const names = allowed.map((o) => roleLabel(o)).join(", ");
-  const can = allowed.includes(actingOffice ?? "");
+  const can = canAct ?? allowed.includes(actingOffice ?? "");
   return (
     <div
       style={{

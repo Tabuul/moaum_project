@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -91,6 +91,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Creating and editing programmes" />
       <Note kind="info" title="Create a programme, or upload the list">
         A programme carries a code (<b>C</b> then five digits, e.g. C00101), a name and a faculty; a department is
         optional (it defaults to the faculty, and is created under it if new). Create one below or upload a spreadsheet.

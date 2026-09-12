@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import type { FundingSource } from "@/lib/wallet";
-import { Btn, IcoBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -55,6 +55,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
 
   return (
     <>
+      <RoleLine allowed={["bursar"]} actingOffice={actingOffice} canAct={canEdit} action="Adding and editing funding sources" />
       <Note kind="info" title="The sources of income, kept in the database">
         Every source here is a row the University keeps and can add to at any time. A source is a <b>loan</b> the student repays the Fund (NELFUND), a <b>grant</b> that is never repaid (a scholarship or bursary), or the student&rsquo;s <b>own money</b> (a top-up). Every wallet credit names one of these, and a student&rsquo;s wallet shows one card per source with the balance as their total.
       </Note>

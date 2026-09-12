@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, IcoBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -73,6 +73,7 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Creating and editing faculties" />
       <Note kind="info" title="Create a faculty, or upload the list">
         A faculty is a code and a name. Create one below, or upload a spreadsheet of them. Uploading again updates rather
         than duplicates; every change is on the record in your name. Programmes and departments hang off the faculty.
