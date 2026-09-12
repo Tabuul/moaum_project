@@ -486,9 +486,11 @@ class ApplicantsController {
         List<Map<String, Object>> quotaDistribution = new java.util.ArrayList<>();
         if (programme != null && utmeQuota != null) {
             Map<String, String> critName = Map.of("NM", "National Merit", "SM", "State Merit", "ELG", "Equality of LG", "LOCALITY", "Locality");
+            // the basis code on a decision is NM/SM/ELG/LOCALITY; the criterion in the settings is spelt out
+            Map<String, String> critCode = Map.of("NM", "NATIONAL_MERIT", "SM", "STATE_MERIT", "ELG", "ELG", "LOCALITY", "LOCALITY");
             for (String code : List.of("NM", "SM", "ELG", "LOCALITY")) {
                 Integer pct = jdbc.sql("SELECT sc.percent FROM admissions.selection_criterion sc JOIN admissions.session_policy p ON p.id = sc.policy_id WHERE p.session = :s AND sc.criterion = :c")
-                        .param("s", s).param("c", code).query(Integer.class).optional().orElse(null);
+                        .param("s", s).param("c", critCode.get(code)).query(Integer.class).optional().orElse(null);
                 if (pct == null) {
                     continue;
                 }
