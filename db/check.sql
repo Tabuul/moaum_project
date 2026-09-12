@@ -2589,13 +2589,13 @@ DECLARE
     r        hrm.staff_profile;
     v_pubs   int; v_ct text; v_dept text;
 BEGIN
-    INSERT INTO iam.person (id, staff_number, surname, given_names)
-    VALUES (v_person, 'MOAUM/CHK/PROF', 'CHECKPROF', 'Ada Lovelace')
-    ON CONFLICT (id) DO NOTHING;
-
     PERFORM set_config('moaum.actor_id', v_person::text, true);
     PERFORM set_config('moaum.actor_office', 'lecturer', true);
     PERFORM set_config('moaum.reason', 'CHECK staff profile', true);
+
+    INSERT INTO iam.person (id, staff_number, surname, given_names)
+    VALUES (v_person, 'MOAUM/CHK/PROF', 'CHECKPROF', 'Ada Lovelace')
+    ON CONFLICT (id) DO NOTHING;
 
     -- first save
     r := hrm.save_my_staff_profile($json$
