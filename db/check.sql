@@ -238,7 +238,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 125
+\set EXPECTED 126
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1486,7 +1486,7 @@ END $$;
 -- ── 88–90. two sittings read apart; the score under the defaults; the rule as the session states it ──
 DO $$
 DECLARE att uuid := gen_random_uuid(); pid uuid := gen_random_uuid(); gid uuid := gen_random_uuid();
-        r record; n int;
+        dup uuid := gen_random_uuid(); r record; n int;
 BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
     PERFORM set_config('moaum.actor_office', 'academic', true);
@@ -1537,6 +1537,22 @@ BEGIN
         r.relevant_known AND r.points = 28 AND r.bonus = 3 AND r.total = 31
         AND admissions.olevel_points('9998/9999', 'A1') = 10 AND admissions.olevel_points('2026/2027', 'A1') = 6,
         'Agricultural Science is not relevant to MBBS and is not counted; the stated points and bonus replace the defaults');
+
+    -- 90b. the same WAEC result uploaded a second time is one sitting, not two — deduped by its identity (V099)
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+    VALUES (dup, '9998/9999', 'OLEVEL', 'check-duplicate-sitting', '20269999OL', 'COLUMN',
+      '{"sittings":[
+         {"type":"WAEC Only","year":"2024","examNumber":"4110001","subjects":[
+            {"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"B3"},
+            {"subject":"Physics","grade":"D7"},{"subject":"Chemistry","grade":"C5"},
+            {"subject":"Biology","grade":"A1"},{"subject":"Geography","grade":"C4"}]}]}'::jsonb);
+    PERFORM admissions.olevel_from_attachment(dup);
+    SELECT * INTO r FROM admissions.olevel_score('9998/9999', '20269999OL', 'C00061');
+    PERFORM pg_temp.assert('The same O''Level result uploaded twice counts once: sittings are deduped by their identity, not by how many times they were uploaded',
+        r.sittings = 2 AND r.points = 28 AND r.bonus = 3 AND r.total = 31
+        AND (SELECT count(*) FROM admissions.olevel_sitting WHERE session = '9998/9999' AND jamb_key = '20269999OL') = 3,
+        format('sittings=%s points=%s bonus=%s total=%s rows=%s', r.sittings, r.points, r.bonus, r.total,
+               (SELECT count(*) FROM admissions.olevel_sitting WHERE session = '9998/9999' AND jamb_key = '20269999OL')));
 END $$;
 
 -- ══ V021 · THE APPLICANT'S JOURNEY ═══════════════════════════════════════
