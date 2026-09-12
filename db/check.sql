@@ -215,7 +215,7 @@ BEGIN
     DELETE FROM admissions.programme_rule WHERE policy_id IN (SELECT id FROM admissions.session_policy WHERE session = '9994/9995');
     DELETE FROM admissions.session_policy WHERE session = '9994/9995';
     DELETE FROM admissions.olevel_grade_point WHERE session IN ('9998/9999', '9999/0000', '9994/9995');
-    DELETE FROM admissions.olevel_grading WHERE session IN ('9998/9999', '9999/0000');
+    DELETE FROM admissions.olevel_grading WHERE session IN ('9998/9999', '9999/0000', '9994/9995');
     DELETE FROM admissions.olevel_grade;
     DELETE FROM admissions.olevel_sitting;
 
@@ -1232,6 +1232,8 @@ BEGIN
     INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
     VALUES (v_pol, 'C00023', 5, 'check', 'check', 'check');
     -- the session's O'Level grading, and U4's five credits (English, Mathematics and three others)
+    INSERT INTO admissions.olevel_grading (session, subjects_counted, bonus_one_sitting, bonus_two_sittings)
+    VALUES ('9994/9995', 5, 10, 6);
     INSERT INTO admissions.olevel_grade_point (session, grade, points)
     SELECT '9994/9995', v.g, v.p FROM (VALUES ('A1',10),('B2',8),('B3',6),('C4',4),('C5',3),('C6',2),('D7',0),('E8',0),('F9',0)) v(g, p);
     INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
