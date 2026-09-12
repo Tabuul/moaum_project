@@ -459,9 +459,10 @@ class ApplicantsController {
                 .param("s", s).param("p", programme, Types.VARCHAR).query().singleRow();
         long onCaps = jdbc.sql("SELECT count(*) FROM admissions.caps_row_live r JOIN ref.programme p ON p.code = r.jamb_code WHERE r.session = :s AND (:p::text IS NULL OR p.name = :p)")
                 .param("s", s).param("p", programme, Types.VARCHAR).query(Long.class).single();
+        // the quota is per programme (admissions.programme_rule.quota), the same figure the merit engine fills to
         Integer quota = programme == null ? null : jdbc.sql("""
-                SELECT f.quota FROM admissions.faculty_quota f JOIN admissions.session_policy p ON p.id = f.policy_id
-                  JOIN ref.programme pr ON pr.faculty_code = f.faculty_code WHERE p.session = :s AND pr.name = :p LIMIT 1
+                SELECT r.quota FROM admissions.programme_rule r JOIN admissions.session_policy p ON p.id = r.policy_id
+                  JOIN ref.programme pr ON pr.code = r.programme_code WHERE p.session = :s AND pr.name = :p LIMIT 1
                 """).param("s", s).param("p", programme).query(Integer.class).optional().orElse(null);
         // the UTME share of the quota: the faculty's UTME:DE ratio where set, else the session's (V054)
         Integer ratioUtme = programme == null ? null : jdbc.sql("""

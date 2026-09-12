@@ -75,7 +75,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
   const chosen = programmes.find((p) => p.code === programme);
   const mayRecord = ["academic", "registrar"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
-  const [recorded, setRecorded] = useState<{ offered: number; waited: number; skipped: number } | null>(null);
+  const [recorded, setRecorded] = useState<{ offered: number; waited: number; notOffered: number; skipped: number } | null>(null);
   const [recProblem, setRecProblem] = useState<Problem | null>(null);
 
   async function record() {
@@ -86,7 +86,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
       const r = await fetch("/api/bff/api/v1/admissions/merit/record", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Merit list recorded for ${programme}`) }, body: JSON.stringify({ session, programme }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setRecProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      setRecorded(j as { offered: number; waited: number; skipped: number });
+      setRecorded(j as { offered: number; waited: number; notOffered: number; skipped: number });
       router.refresh();
     } finally {
       setBusy(false);
@@ -117,7 +117,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
             ["Not eligible", String(view.counts.pool - view.counts.eligible), view.counts.pool - view.counts.eligible ? "var(--chrome)" : null, "Below cut-off, missing a credit, or unscored"],
           ]} />
           {recProblem ? <ProblemNotice problem={recProblem} /> : null}
-          {recorded ? <Note kind="ok" title="The merit list has been recorded">{recorded.offered} offer{recorded.offered === 1 ? "" : "s"} entered, {recorded.waited} on the waiting list, {recorded.skipped} skipped (ineligible or already released). Release the decisions from the Applicants desk when the Board is ready.</Note> : null}
+          {recorded ? <Note kind="ok" title="The merit list has been recorded">{recorded.offered} offer{recorded.offered === 1 ? "" : "s"} entered, {recorded.waited} on the waiting list, {recorded.notOffered} not offered (ineligible), {recorded.skipped} left untouched (already released). Every candidate now carries a decision, so the JAMB template reconciles. Release the decisions from the Applicants desk when the Board is ready.</Note> : null}
           <Panel title="The merit list" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><span className="sub2">{view.counts.pool} in the pool</span>{mayRecord && view.counts.proposed > 0 ? <Btn kind="primary" disabled={busy} onClick={() => void record()}>{busy ? "Recording…" : `Record ${view.counts.proposed} offer${view.counts.proposed === 1 ? "" : "s"}`}</Btn> : null}</span>}>
             {view.rows.length ? (
               <DTable
