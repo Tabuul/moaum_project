@@ -16,7 +16,7 @@ import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
 import { loadCrest, xlsxRows } from "@/lib/xlsx";
-import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, IcoBtn, KvGrid, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -210,6 +210,8 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice}
+        action="Entering screening scores and Board decisions" />
       <Tiles items={[
         ["Application accounts", String(rows.length), null, `${rows.filter((r) => r.submitted_at).length} submitted`],
         ["References open", String(desk.openReferences.length), null, "Paid on the gateway; the Bursary sees each payment"],
@@ -247,7 +249,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <span className="tnum" key="t">{r.seat ?? "—"}</span>,
               <span className="tnum" key="c">{r.screening_score ?? "—"}{r.score_released_at ? "" : r.screening_score !== null ? " ·held" : ""}</span>,
               r.decision ? <Pil kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"} key="d">{r.decision}{r.decision_released_at ? "" : " · held"}</Pil> : <span className="sub2" key="d">—</span>,
-              <Btn kind="primary" key="v" onClick={() => void view(r.id)}>View details</Btn>,
+              <IcoBtn key="v" icon="eye" label="View this applicant’s details" onClick={() => void view(r.id)} />,
             ])} />
         ) : <div className="card__body"><div className="sub2">No applicant has registered for {desk.session} yet. Registration starts from the JAMB number on the CAPS list loaded on the JAMB admission lists screen.</div></div>}
       </Panel>

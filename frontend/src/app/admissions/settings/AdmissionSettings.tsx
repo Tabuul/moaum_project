@@ -12,7 +12,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { officeLabel } from "@/lib/offices";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -449,7 +449,9 @@ export function AdmissionSettings({
                   <Btn kind="ghost" disabled={locked || busy !== null} onClick={() => void send("POST", `${base}/programmes/${p.code}/reopen`, {}, `${p.name} reopened for ${session}`, `re-${p.code}`)}>{busy === `re-${p.code}` ? "Reopening…" : "Reopen"}</Btn>
                 ) : (
                   <>
-                    <Btn kind={p.stated ? "ghost" : "urgent"} disabled={locked} onClick={() => { setEditing(p.code); setEdits({}); }}>{p.stated ? "Edit" : "State"}</Btn>
+                    {p.stated
+                      ? <IcoBtn icon="edit" label={`Edit the admission rule for ${p.name}`} disabled={locked} onClick={() => { setEditing(p.code); setEdits({}); }} />
+                      : <Btn kind="urgent" disabled={locked} onClick={() => { setEditing(p.code); setEdits({}); }}>State</Btn>}
                     {!p.stated ? (
                       <Btn kind="ghost" disabled={locked || busy !== null} title="Close this programme for the session: it needs no rule and admits nobody" onClick={() => { const reason = window.prompt(`Why is ${p.name} not admitting in ${session}? This goes on the record.`); if (!reason) return; void send("POST", `${base}/programmes/${p.code}/close`, { reason }, `${p.name} closed for ${session}: ${reason}`, `cl-${p.code}`); }}>{busy === `cl-${p.code}` ? "Closing…" : "Disable"}</Btn>
                     ) : null}
@@ -629,6 +631,8 @@ export function AdmissionSettings({
 
   return (
     <>
+      <RoleLine allowed={SECRETARIAT} actingOffice={actingOffice}
+        action="Setting the admission policy and putting a session in force" />
       <Note kind={policy.inForce ? "ok" : "info"} title={policy.inForce ? `The ${session} admission settings are in force` : `The ${session} admission settings are a DRAFT, and nothing may be admitted under them`}>
         {policy.inForce ? (
           <>Every cut-off and subject combination the portal applies this session comes from here, and carries the minute that approved it &mdash; those are frozen now. The <b>quotas</b> stay adjustable, because places are not a rule of qualification: the NUC can raise the approved quota mid-cycle and the Deans redistribute it. Every change is recorded against whoever made it.</>

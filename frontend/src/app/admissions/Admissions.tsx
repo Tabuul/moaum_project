@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { AdmissionCycle } from "@/lib/matriculation";
-import { Btn, Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -59,6 +59,8 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice}
+        action="Recording merit lists and bringing candidates onto the register" />
       <Tiles items={[
         ["Applications", cycle.applications.toLocaleString(), null, `${cycle.session} cycle · on the CAPS lists`],
         ["Screened", cycle.screened.toLocaleString(), null, `${pct(cycle.screened, cycle.applications)} carry a screening aggregate`],

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -95,6 +95,8 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar"]} actingOffice={actingOffice}
+        action="Recording the merit list against a programme" />
       <Note kind="info" title="A proposed merit list — the Board still decides">
         The eligible pool for a programme, ranked by the session&rsquo;s aggregate (UTME scaled and weighted with the Post-UTME score). The proposed offers fill the programme&rsquo;s quota, split UTME to Direct-Entry by the ratio in force for the faculty, and spill flexibly so an approved seat is never left empty. Nobody is admitted here: the Board enters and releases each decision on the applicant&rsquo;s desk.
       </Note>

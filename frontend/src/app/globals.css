@@ -73,3 +73,11 @@
   .rpt__table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .rpt__table tbody tr:nth-child(even) td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Professional input sizing (at the user's request): a single-line text or
+   number field reads better at a natural width than stretched across a whole
+   panel. Only labelled form fields are capped; textareas, selects and the small
+   native checkboxes keep their width. Narrow columns are unaffected — this only
+   stops a field growing absurdly wide on a large screen. */
+.field > input:not(.pchk):not([type="checkbox"]):not([type="radio"]) { max-width: 460px; }
+.field > input.tnum { max-width: 200px; }

@@ -30,7 +30,7 @@ import {
 } from "@/lib/caps";
 import type { Problem } from "@/lib/api";
 import { officeLabel } from "@/lib/offices";
-import { Btn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AliasMapper } from "./AliasMapper";
@@ -775,9 +775,7 @@ export function CapsIntake({
               same ? <span className="sub2" key="u">{p.name}</span> : <strong key="u">{p.name}</strong>,
               <span className="tnum" key="d">{p.deptCode}</span>,
               <span className="sub2" key="f">{p.facultyName ?? "—"}</span>,
-              <Btn kind="ghost" key="e" onClick={() => setEditing(p)} title="The University's own words for this programme">
-                Edit
-              </Btn>,
+              <IcoBtn key="e" icon="edit" label="Edit this programme’s name" onClick={() => setEditing(p)} />,
             ];
           })}
         />

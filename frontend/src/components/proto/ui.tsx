@@ -5,6 +5,7 @@
  * names: note, btn, pil, two, tiles, panel, pbody, dtable, kvGrid, ico.
  */
 import type { CSSProperties, ReactNode } from "react";
+import { roleLabel } from "@/lib/offices";
 
 const I: Record<string, string> = {
   home: '<path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-8.5Z"/>',
@@ -30,6 +31,8 @@ const I: Record<string, string> = {
   server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   scale: '<path d="M12 4v16M7 20h10M6 8h12M6 8l-3 6h6l-3-6Zm12 0-3 6h6l-3-6Z"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  edit: '<path d="M4 20h4L18.5 9.5a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16v4Z"/><path d="M13.5 6.5l4 4"/>',
+  trash: '<path d="M4 7h16M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7M6.5 7l.8 12.1A1.5 1.5 0 0 0 8.8 20.5h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/><path d="M10 11v5.5M14 11v5.5"/>',
   eyeoff: '<path d="M9.9 4.24A10.7 10.7 0 0 1 12 4c6.5 0 10 7 10 7a18.6 18.6 0 0 1-2.2 3M6.5 6.6A18.5 18.5 0 0 0 2 12s3.5 7 10 7a10.6 10.6 0 0 0 4.4-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18"/>',
 };
 
@@ -111,6 +114,85 @@ export function Btn({
     <button type={type} className={`btn btn--${kind} btn--sm`} onClick={onClick} disabled={disabled} title={title} style={style}>
       {children}
     </button>
+  );
+}
+
+/** Visually hidden, but read by screen readers — the label behind an icon-only control. */
+const SR_ONLY: CSSProperties = {
+  position: "absolute", width: 1, height: 1, padding: 0, margin: -1,
+  overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0,
+};
+
+/**
+ * An icon-only action button — Edit (pencil), View (eye), Delete (trash) and the
+ * like. The label is always given: it shows as the hover tooltip and is read by
+ * assistive tech, so the control is professional and compact without losing its
+ * meaning. {@code danger} tints a destructive action.
+ */
+export function IcoBtn({
+  icon,
+  label,
+  kind = "ghost",
+  onClick,
+  disabled,
+  danger,
+}: {
+  icon: string;
+  label: string;
+  kind?: BtnKind;
+  onClick?: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`btn btn--${kind} btn--sm`}
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      style={{ padding: "8px 10px", minWidth: 38, color: danger ? "var(--red-ink)" : undefined }}
+    >
+      <Ico name={icon} size={16} />
+      <span style={SR_ONLY}>{label}</span>
+    </button>
+  );
+}
+
+/**
+ * Who works this desk, stated plainly. Names the office(s) that may act, and
+ * tells the person signed in whether they can act or are viewing only — so the
+ * role is never a mystery behind a greyed-out button.
+ */
+export function RoleLine({
+  allowed,
+  actingOffice,
+  action,
+}: {
+  allowed: string[];
+  actingOffice: string | null;
+  action?: string;
+}) {
+  const names = allowed.map((o) => roleLabel(o)).join(", ");
+  const can = allowed.includes(actingOffice ?? "");
+  return (
+    <div
+      style={{
+        display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+        padding: "9px 13px", border: "1px solid var(--line)", borderRadius: 8,
+        background: "var(--bg)", marginBottom: 12,
+      }}
+    >
+      <Ico name={can ? "check" : "eye"} size={16} stroke={can ? "var(--green-ink)" : "var(--muted)"} />
+      <span className="sub2">
+        <strong style={{ color: "var(--ink)" }}>{action ?? "These actions"}</strong> {allowed.length === 1 ? "is worked by the " : "are worked by the "}{names}.
+      </span>
+      <span style={{ flexGrow: 1 }} />
+      <Pil kind={can ? "ok" : "grey"}>
+        {can ? `You may act — ${roleLabel(actingOffice)}` : `Signed in as ${roleLabel(actingOffice)} · view only`}
+      </Pil>
+    </div>
   );
 }
 

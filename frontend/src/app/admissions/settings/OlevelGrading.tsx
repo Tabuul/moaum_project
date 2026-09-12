@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, IcoBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -145,7 +145,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
                 return [
                   <strong key="p">{p ? p.name : code}</strong>,
                   <span className="sub2" key="f">{p?.facultyName ?? ""}</span>,
-                  <Btn kind="ghost" key="x" disabled={!may} onClick={() => setExam(examCodes.filter((c) => c !== code))}>Remove</Btn>,
+                  <IcoBtn key="x" icon="trash" label={`Remove ${p ? p.name : code} from examination screening`} danger disabled={!may} onClick={() => setExam(examCodes.filter((c) => c !== code))} />,
                 ];
               })} />
               {!examCodes.length ? <div className="sub2" style={{ marginBottom: 8 }}>No programme is screened by examination this session; every programme is screened on its O&rsquo;Level results.</div> : null}

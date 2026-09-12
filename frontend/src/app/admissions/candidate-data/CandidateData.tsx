@@ -9,7 +9,7 @@ import type { Problem } from "@/lib/api";
 import type { AttachmentState } from "@/lib/matriculation";
 import { xlsxRows } from "@/lib/xlsx";
 import { CRED, capsMatch, dobParse, jambNumFromName, olParse, type DobRow, type OlRow } from "@/lib/candidate-data";
-import { Btn, Ico, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Ico, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { OlevelView } from "./OlevelView";
@@ -300,7 +300,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
                     <strong key="n">{c.surname}, {c.otherNames}</strong>,
                     <span className="tnum" key="k">{c.jambKey}</span>,
                     <span className="sub2" key="p">{c.programme}</span>,
-                    <Btn kind="ghost" key="v" onClick={() => setViewing({ key: c.jambKey, name: `${c.surname}, ${c.otherNames}` })}>View</Btn>,
+                    <IcoBtn key="v" icon="eye" label={`View the O’Level read for ${c.surname}`} onClick={() => setViewing({ key: c.jambKey, name: `${c.surname}, ${c.otherNames}` })} />,
                   ])}
                 />
               ) : (
