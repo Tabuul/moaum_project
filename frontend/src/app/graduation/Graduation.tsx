@@ -69,7 +69,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
             rows={view.exceptions.map((x) => [
               <Two key="s" a={`${x.surname}, ${x.otherNames}`} b={x.number} />, <span key="p">{x.programmeName}</span>,
               <span key="u" style={{ color: "var(--red-ink)" }}>{x.unmet}</span>,
-              <span className="tnum" key="c">{x.cgpa === null ? "—" : x.cgpa.toFixed(2)}</span>,
+              <span className="tnum" key="c">{x.cgpa == null ? "—" : Number(x.cgpa).toFixed(2)}</span>,
               <Link key="a" href={`/students/${x.studentId}`} className="btn btn--ghost btn--sm">Review</Link>,
             ])}
             texts={view.exceptions.map((x) => `${x.number} ${x.surname} ${x.otherNames} ${x.programmeName} ${x.unmet}`)}
@@ -83,7 +83,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
           rows={view.classification.map((c) => [
             <span key="c">{c.clazz}</span>, <span className="tnum" key="n">{c.students.toLocaleString()}</span>,
             <span className="tnum" key="s">{c.share}%</span>,
-            <span className="tnum sub2" key="r">{c.low.toFixed(2)} – {c.high.toFixed(2)}</span>,
+            <span className="tnum sub2" key="r">{c.low == null ? "—" : Number(c.low).toFixed(2)} – {c.high == null ? "—" : Number(c.high).toFixed(2)}</span>,
           ])}
         />
       </Panel>
