@@ -714,4 +714,144 @@ BEGIN
     RAISE NOTICE 'demo funding ready: % source(s), % wallet entr(ies)', (SELECT count(*) FROM finance.funding_source), (SELECT count(*) FROM finance.wallet_entry);
 END $fund$;
 
+-- ════════════════════════════════════════════════════════════════════════
+--  A cohort at volume, to exercise the results module end to end:
+--  two departments (Mathematics & Computer Science C00023, Accounting
+--  C00019), a hundred students each, a prior 200-level semester published
+--  (so a CGPA accumulates and the quarter who failed a course carry it
+--  over) and the current 300-level semester published. Half pay their fees
+--  in full, so their results clear while the other half are gated. All of
+--  it computes into the senate broadsheet. Idempotent, invented (surname
+--  DEMO), never for live data.
+-- ════════════════════════════════════════════════════════════════════════
+DO $bulk$
+DECLARE
+    v_session text; v_prev text; v_yy text; v_pw text := 'Demo password 2026';
+    v_actor uuid := '00000000-0000-0000-0000-000000000000';
+    v_lecturer uuid; v_exams uuid; d record; v_rows jsonb; v_due numeric; v_ref text; st record;
+BEGIN
+    SELECT name INTO v_session FROM policy.academic_session WHERE state = 'CURRENT';
+    IF v_session IS NULL THEN v_session := '2026/2027'; END IF;
+    v_yy := substr(v_session, 3, 2);
+    v_prev := (substr(v_session, 1, 4)::int - 1)::text || '/' || substr(v_session, 1, 4);
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM assessment.ensure_session(v_prev);   -- the prior session must exist before its offerings reference it
+    SELECT person_id INTO v_lecturer FROM iam.office_assignment WHERE office_code = 'lecturer' AND valid_to IS NULL LIMIT 1;
+    SELECT person_id INTO v_exams    FROM iam.office_assignment WHERE office_code = 'exams'    AND valid_to IS NULL LIMIT 1;
+
+    -- ── the students: 100 per department, 300 level, matriculated and ACTIVE ──
+    FOR d IN SELECT * FROM (VALUES
+            ('MTC', 'C00023', 'DMC'),
+            ('ACC', 'C00019', 'DAC')
+        ) AS t(dept, prog, pfx)
+    LOOP
+        DECLARE v_ey int := substr(v_session, 1, 4)::int - 2; v_eyy text;
+        BEGIN
+            v_eyy := substr(v_ey::text, 3, 2);
+
+            INSERT INTO people.student (id, matric_no, surname, other_names, sex, programme_code, entry_mode,
+                                        entry_session, entry_level, current_level, status, matriculated_at)
+            SELECT gen_random_uuid(), 'MOAUM/' || d.dept || '/' || v_eyy || '/' || lpad(i::text, 4, '0'),
+                   'DEMO', d.dept || ' Student ' || i, CASE WHEN i % 2 = 0 THEN 'F' ELSE 'M' END,
+                   d.prog, 'UTME', v_ey || '/' || (v_ey + 1), 100, 300, 'ACTIVE', now()
+              FROM generate_series(1, 100) i
+            ON CONFLICT (matric_no) DO NOTHING;
+
+            INSERT INTO people.enrolment (id, student_id, session, level)
+            SELECT gen_random_uuid(), s.id, v_session, 300
+              FROM people.student s
+             WHERE s.matric_no LIKE 'MOAUM/' || d.dept || '/' || v_eyy || '/%' AND s.surname = 'DEMO'
+               AND NOT EXISTS (SELECT 1 FROM people.enrolment e WHERE e.student_id = s.id AND e.session = v_session);
+
+            INSERT INTO people.student_contact (student_id, email, phone)
+            SELECT s.id, lower(replace(s.matric_no, '/', '.')) || '@example.com', '080' || lpad((substring(s.matric_no from '....$'))::int::text, 8, '3')
+              FROM people.student s
+             WHERE s.matric_no LIKE 'MOAUM/' || d.dept || '/' || v_eyy || '/%' AND s.surname = 'DEMO'
+               AND NOT EXISTS (SELECT 1 FROM people.student_contact c WHERE c.student_id = s.id);
+
+            INSERT INTO iam.student_account (id, student_id, password_hash, must_change)
+            SELECT gen_random_uuid(), s.id, crypt(v_pw, gen_salt('bf', 12)), false
+              FROM people.student s
+             WHERE s.matric_no LIKE 'MOAUM/' || d.dept || '/' || v_eyy || '/%' AND s.surname = 'DEMO'
+               AND NOT EXISTS (SELECT 1 FROM iam.student_account a WHERE a.student_id = s.id);
+
+            -- ── the courses and their offerings, 200-level (prior sem 2) and 300-level (current sem 1) ──
+            INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+            SELECT d.pfx || ' ' || c.cnum, 'Demo ' || d.pfx || ' ' || c.cnum, 3, c.sem, c.lvl, d.dept, 'Compulsory', 'LIVE'
+              FROM (VALUES (201,200,2),(202,200,2),(203,200,2),(204,200,2),(205,200,2),
+                           (301,300,1),(302,300,1),(303,300,1),(304,300,1),(305,300,1)) c(cnum, lvl, sem)
+            ON CONFLICT (code) DO NOTHING;
+
+            INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis)
+            SELECT d.pfx || ' ' || c.cnum, d.prog, c.lvl, 'Core'
+              FROM (VALUES (201,200),(202,200),(203,200),(204,200),(205,200),
+                           (301,300),(302,300),(303,300),(304,300),(305,300)) c(cnum, lvl)
+            ON CONFLICT (course_code, programme_code, level) DO NOTHING;
+
+            INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id, second_examiner_id, allocated_on)
+            SELECT gen_random_uuid(), d.pfx || ' ' || c.cnum,
+                   CASE WHEN c.lvl = 200 THEN v_prev ELSE v_session END, c.sem, v_lecturer, v_exams, current_date
+              FROM (VALUES (201,200,2),(202,200,2),(203,200,2),(204,200,2),(205,200,2),
+                           (301,300,1),(302,300,1),(303,300,1),(304,300,1),(305,300,1)) c(cnum, lvl, sem)
+             WHERE NOT EXISTS (SELECT 1 FROM catalogue.offering o
+                                WHERE o.course_code = d.pfx || ' ' || c.cnum
+                                  AND o.session = CASE WHEN c.lvl = 200 THEN v_prev ELSE v_session END
+                                  AND o.semester = c.sem);
+
+            -- ── prior 200-level (semester 2): published results; a quarter fail course 203 → a carry-over ──
+            SELECT jsonb_agg(jsonb_build_object('matric', m, 'course', crs, 'level', 200, 'units', 3, 'ca', ca, 'exam', ex))
+              INTO v_rows
+              FROM (
+                SELECT 'MOAUM/' || d.dept || '/' || v_eyy || '/' || lpad(i::text, 4, '0') AS m,
+                       d.pfx || ' ' || c.cnum AS crs,
+                       least(40, round(t.total * 0.4))::int AS ca,
+                       (t.total - least(40, round(t.total * 0.4)))::int AS ex
+                  FROM generate_series(1, 100) i
+                  CROSS JOIN (VALUES (201),(202),(203),(204),(205)) c(cnum)
+                  CROSS JOIN LATERAL (SELECT CASE WHEN c.cnum = 203 AND i % 4 = 0 THEN 22
+                                                  ELSE 40 + ((i * 7 + c.cnum) % 55) END AS total) t
+              ) q;
+            PERFORM assessment.import_legacy_semester(v_prev, 2, v_rows, true);
+
+            -- ── current 300-level (semester 1): published results ──
+            SELECT jsonb_agg(jsonb_build_object('matric', m, 'course', crs, 'level', 300, 'units', 3, 'ca', ca, 'exam', ex))
+              INTO v_rows
+              FROM (
+                SELECT 'MOAUM/' || d.dept || '/' || v_eyy || '/' || lpad(i::text, 4, '0') AS m,
+                       d.pfx || ' ' || c.cnum AS crs,
+                       least(40, round(t.total * 0.4))::int AS ca,
+                       (t.total - least(40, round(t.total * 0.4)))::int AS ex
+                  FROM generate_series(1, 100) i
+                  CROSS JOIN (VALUES (301),(302),(303),(304),(305)) c(cnum)
+                  CROSS JOIN LATERAL (SELECT 40 + ((i * 11 + c.cnum) % 55) AS total) t
+              ) q;
+            PERFORM assessment.import_legacy_semester(v_session, 1, v_rows, true);
+        END;
+    END LOOP;
+
+    -- ── the fees: half the cohort pays in full, so their results clear and the other half are gated ──
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    FOR st IN
+        SELECT s.id, s.matric_no FROM people.student s
+         WHERE s.surname = 'DEMO' AND s.current_level = 300
+           AND (s.matric_no LIKE 'MOAUM/MTC/%' OR s.matric_no LIKE 'MOAUM/ACC/%')
+           AND (substring(s.matric_no from '....$'))::int % 2 = 0
+           AND NOT finance.clears(s.id, v_session, 'RESULTS')
+    LOOP
+        SELECT due INTO v_due FROM finance.position(st.id, v_session);
+        IF coalesce(v_due, 0) > 0 THEN
+            v_ref := finance.new_reference(st.id, v_session, v_due, 'School fees ' || v_session || ' (demo cohort)');
+            PERFORM finance.confirm_payment(v_ref, 'Demo — bank transfer', 'Seeded so results clear for half the cohort');
+        END IF;
+    END LOOP;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo cohort ready: % students, % published results',
+        (SELECT count(*) FROM people.student WHERE surname = 'DEMO' AND current_level = 300),
+        (SELECT count(*) FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id WHERE sh.stage = 'PUBLISHED');
+END $bulk$;
+
 COMMIT;
