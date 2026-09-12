@@ -1156,6 +1156,7 @@ DO $$
 DECLARE
     v_pol uuid := gen_random_uuid();
     v_batch uuid := gen_random_uuid();
+    v_batch_de uuid := gen_random_uuid();
     prog text := 'C00019'; pname text := 'B.Sc. ACCOUNTING';
     r record; nm_min numeric; sm_max numeric;
     b_u1 text; b_u2 text; b_u3 text; b_u4 text; off_u4 boolean; b_d1 text; mode_d1 text; off_d1 boolean;
@@ -1172,7 +1173,8 @@ BEGIN
     INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
     VALUES (v_pol, prog, 5, 'check', 'check', 'check');
     INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
-    VALUES (v_batch, '9994/9995', 'CAPS_DOWNLOAD', 'UTME', '\xB1'::bytea, 5, current_date, gen_random_uuid(), 'academic');
+    VALUES (v_batch,    '9994/9995', 'CAPS_DOWNLOAD', 'UTME',         '\xB1'::bytea, 4, current_date, gen_random_uuid(), 'academic'),
+           (v_batch_de, '9994/9995', 'CAPS_DOWNLOAD', 'DIRECT_ENTRY', '\xB2'::bytea, 1, current_date, gen_random_uuid(), 'academic');
 
     -- U1 non-indigene 300, U2 Benue 290, U3 Benue 280, U4 Benue 270 (UTME); D1 Benue 295 (Direct Entry)
     FOR r IN SELECT * FROM (VALUES
@@ -1186,7 +1188,7 @@ BEGIN
         DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid();
         BEGIN
             INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
-            VALUES (cr, v_batch, '9994/9995', r.jamb, '{}'::jsonb, 'CHECKMERIT', r.tag, prog, r.utme, r.mode, 'M', r.state, r.lga);
+            VALUES (cr, CASE WHEN r.mode = 'UTME' THEN v_batch ELSE v_batch_de END, '9994/9995', r.jamb, '{}'::jsonb, 'CHECKMERIT', r.tag, prog, r.utme, r.mode, 'M', r.state, r.lga);
             INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
             VALUES (cand, '9994/9995', r.jamb, 'CHECKMERIT', r.tag, pname, r.mode, r.level, 'ADMITTED', cr);
             INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
