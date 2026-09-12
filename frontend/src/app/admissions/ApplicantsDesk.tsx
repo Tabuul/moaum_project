@@ -128,8 +128,8 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           (x.decisionBasis ? (BASIS_LABEL[x.decisionBasis as string] ?? (x.decisionBasis as string)) : null) || (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
       };
       const remarks = (x: Record<string, unknown>): Cell[] => [
-        x.cutoff !== null && x.total !== null && Number(x.total) < Number(x.cutoff) ? "Below cut-off" : "Correct Combination",
-        x.olevelTotal === null || Number(x.olevelTotal) === 0 ? "Insufficient OLevel; " : "",
+        (x.utmeRemark as string) ?? "Correct Combination",
+        (x.olRemark as string) ?? "",
       ];
       const merit = t.rows.filter((x) => x.decision === "OFFERED");
       const other = t.rows.filter((x) => x.decision === "WAITING");

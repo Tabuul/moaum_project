@@ -426,6 +426,18 @@ class ApplicantsController {
                 // no policy in force for the session, or the programme is not settable — fall back to the recorded decision
             }
         }
+        // the programme's UTME subject groups (choose N of a set), to report the subject combination
+        Map<String, List<Map<String, Object>>> utmeRulesByCode = new java.util.HashMap<>();
+        for (String code : codes) {
+            utmeRulesByCode.put(code, jdbc.sql("""
+                    SELECT g.choose, string_agg(rs.subject, '|') AS subjects
+                      FROM admissions.rule_subject_group g
+                      JOIN admissions.rule_subject rs ON rs.group_id = g.id
+                      JOIN admissions.session_policy p ON p.id = g.policy_id
+                     WHERE p.session = :s AND g.programme_code = :c AND g.scope = 'UTME'
+                     GROUP BY g.id, g.choose
+                    """).param("s", s).param("c", code).query().listOfRows());
+        }
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         for (Map<String, Object> r : rows) {
             Map<String, Object> raw = CandidateDataController.Json.map((String) r.get("raw_text"));
@@ -491,6 +503,12 @@ class ApplicantsController {
                 row.put("decisionBasis", r.get("decision_basis"));
             }
             row.put("released", r.get("decision_released_at") != null);
+            row.put("utmeRemark", utmeCombination(utmeSubjects(raw), utmeRulesByCode.getOrDefault((String) r.get("programme_code"), List.of())));
+            boolean olUploaded = Boolean.TRUE.equals(r.get("olevel_uploaded"));
+            String olMissing = (String) r.get("olevel_missing");
+            row.put("olRemark", !olUploaded ? "O'Level result not uploaded"
+                    : (olMissing != null && !olMissing.isBlank()) ? "Insufficient O'Level: [" + olMissing + "]"
+                    : "Correct Combination");
             out.add(row);
         }
         Map<String, Object> fees = jdbc.sql("SELECT count(*) AS n FROM admissions.application WHERE session = :s AND (:p::text IS NULL OR candidate_id IN (SELECT id FROM admissions.candidate WHERE programme = :p))")
@@ -618,6 +636,37 @@ class ApplicantsController {
                     : "No O'Level credit in " + (missing == null || missing.isBlank() ? "a required subject" : missing));
         }
         return parts.isEmpty() ? "Not qualified on the merit list" : String.join("; ", parts);
+    }
+
+    /** the UTME subject combination against the programme's UTME groups (choose N of a set): "Correct Combination",
+     *  or "Incorrect Combination: [the required subjects the candidate did not sit]" */
+    private static String utmeCombination(List<Map<String, Object>> sat, List<Map<String, Object>> groups) {
+        if (groups.isEmpty()) {
+            return "Correct Combination";   // the programme states no UTME subject requirement
+        }
+        java.util.Set<String> has = sat.stream()
+                .map(m -> String.valueOf(m.get("subject")).trim().toLowerCase())
+                .filter(x -> !x.isBlank()).collect(java.util.stream.Collectors.toSet());
+        java.util.LinkedHashSet<String> missing = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> g : groups) {
+            int choose = ((Number) g.get("choose")).intValue();
+            String[] subs = String.valueOf(g.get("subjects")).split("\\|");
+            int matched = 0;
+            List<String> unmatched = new java.util.ArrayList<>();
+            for (String sub : subs) {
+                String want = sub.trim().toLowerCase();
+                boolean sitIt = has.stream().anyMatch(h -> h.equals(want) || h.contains(want) || want.contains(h));
+                if (sitIt) {
+                    matched++;
+                } else {
+                    unmatched.add(sub.trim());
+                }
+            }
+            if (matched < choose) {
+                missing.addAll(unmatched);   // the required subjects from this group the candidate did not sit
+            }
+        }
+        return missing.isEmpty() ? "Correct Combination" : "Incorrect Combination: [" + String.join(", ", missing) + "]";
     }
 
     /** the UTME subjects and scores as CAPS sent them, whichever of the two layouts the row came in */
