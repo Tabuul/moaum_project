@@ -302,6 +302,11 @@ class StudentPortalIT {
             assertThat((List<String>) after.get("withheldSessions")).isEmpty();
         } finally {
             it.db(() -> {
+                // remove this session's charge so it does not become "the latest session with charges" —
+                // that is what StudentPortalService.session() falls back to, and it would change every
+                // other student's default fees view.
+                jdbc.sql("DELETE FROM finance.payment_reference WHERE session = :s").param("s", ses).update();
+                jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", ses).update();
                 jdbc.sql("DELETE FROM policy.clearance_rule WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/GATE/93')").update();
                 jdbc.sql("DELETE FROM policy.clearance_scheme WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/GATE/93')").update();
                 jdbc.sql("DELETE FROM policy.version WHERE instrument = 'BUR/GATE/93'").update();
