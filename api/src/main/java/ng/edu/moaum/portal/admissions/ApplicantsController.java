@@ -494,7 +494,8 @@ class ApplicantsController {
                 if (pct == null) {
                     continue;
                 }
-                long admitted = out.stream().filter(x -> "OFFERED".equals(x.get("decision")) && code.equals(x.get("decisionBasis"))).count();
+                long admitted = out.stream().filter(x -> "OFFERED".equals(x.get("decision")) && code.equals(x.get("decisionBasis"))
+                        && "UTME".equals(x.get("entryMode"))).count();
                 int cQuota = (int) Math.round(utmeQuota * pct / 100.0);
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("criterion", critName.get(code));
