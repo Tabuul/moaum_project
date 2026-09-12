@@ -854,4 +854,139 @@ BEGIN
         (SELECT count(*) FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id WHERE sh.stage = 'PUBLISHED');
 END $bulk$;
 
+-- ════════════════════════════════════════════════════════════════════════
+--  An admissions cohort at volume, to exercise the merit engine and the JAMB
+--  template across every case. Four programmes — Law (C00033), MBBS (C00061),
+--  Accounting (C00019), Economics (C00024) — under one in-force demo policy on
+--  session 2098/2099, ~135 candidates each: 100 who qualify (spread across
+--  National Merit, State Merit, ELG and Locality by origin and rank), and the
+--  rest each a distinct violation — below the cut-off, no O'Level uploaded, or
+--  O'Level without a Mathematics credit. The below-the-cut-off group hold five
+--  credits, so they surface as reconsiderations with a suggested programme. The
+--  merit list and the downloaded template compute all of it live. Demo only.
+-- ════════════════════════════════════════════════════════════════════════
+DO $adm$
+DECLARE
+    v_adm text := '2098/2099'; v_pol uuid; v_batch uuid; v_pw text := 'Demo password 2026';
+    v_actor uuid := '00000000-0000-0000-0000-000000000000'; d record;
+BEGIN
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- ── the policy in force, its criteria, catchment and grading ──
+    SELECT id INTO v_pol FROM admissions.session_policy WHERE session = v_adm;
+    IF v_pol IS NULL THEN
+        v_pol := gen_random_uuid();
+        INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+        VALUES (v_pol, v_adm, 600, 70, 30, 80, 20, 'DEMO CAC/2098/1 — invented, for demonstration', tstzrange(now(), NULL), 'IN_FORCE');
+    END IF;
+    INSERT INTO admissions.selection_criterion (policy_id, criterion, percent) VALUES
+        (v_pol, 'NATIONAL_MERIT', 40), (v_pol, 'STATE_MERIT', 30), (v_pol, 'ELG', 20), (v_pol, 'LOCALITY', 10)
+    ON CONFLICT (policy_id, criterion) DO NOTHING;
+    INSERT INTO admissions.catchment_lga (policy_id, lga)
+    SELECT v_pol, x FROM (VALUES ('Makurdi'),('Gboko'),('Otukpo'),('Gwer West'),('Vandeikya')) l(x)
+    ON CONFLICT (policy_id, lga) DO NOTHING;
+    IF NOT EXISTS (SELECT 1 FROM admissions.olevel_grading WHERE session = v_adm) THEN
+        INSERT INTO admissions.olevel_grading (session, subjects_counted, bonus_one_sitting, bonus_two_sittings) VALUES (v_adm, 5, 10, 6);
+        INSERT INTO admissions.olevel_grade_point (session, grade, points)
+        SELECT v_adm, g, p FROM (VALUES ('A1',10),('B2',8),('B3',6),('C4',4),('C5',3),('C6',2),('D7',0),('E8',0),('F9',0)) v(g, p);
+    END IF;
+
+    v_batch := (SELECT id FROM admissions.caps_batch WHERE session = v_adm AND list_kind = 'UTME' LIMIT 1);
+    IF v_batch IS NULL THEN
+        v_batch := gen_random_uuid();
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (v_batch, v_adm, 'CAPS_DOWNLOAD', 'UTME', '\xAD'::bytea, 540, current_date, v_actor, 'academic');
+    END IF;
+
+    FOR d IN SELECT * FROM (VALUES
+            (1, 'C00033', 'LL.B (LAW)',       180),
+            (2, 'C00061', 'MBBS',             200),
+            (3, 'C00019', 'B.Sc. ACCOUNTING', 170),
+            (4, 'C00024', 'B.Sc. ECONOMICS',  160)
+        ) AS t(ix, code, pname, cutoff)
+    LOOP
+        INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, cutoff, olevel_text, utme_text, de_text)
+        VALUES (v_pol, d.code, 150, d.cutoff, 'Five credits including English and Mathematics', 'UTME as JAMB sent them', 'A-Level or equivalent')
+        ON CONFLICT (policy_id, programme_code) DO NOTHING;
+
+        -- the CAPS rows: 135 candidates, each bucket a UTME aggregate, origin and O'Level shape
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+        SELECT gen_random_uuid(), v_batch, v_adm, '2098' || lpad((d.ix * 1000 + i)::text, 7, '0'),
+               jsonb_build_object('subjects', jsonb_build_array('Use of English', 'Mathematics', 'Economics', 'Government')),
+               'DEMO', d.code || ' Applicant ' || i, d.code,
+               CASE WHEN i <= 100 THEN d.cutoff + 5 + (i % 85)             -- qualifies
+                    WHEN i <= 115 THEN d.cutoff - 15 - (i % 10)            -- below the cut-off
+                    ELSE d.cutoff + 10 END,                               -- otherwise blocked by O'Level
+               'UTME', CASE WHEN i % 2 = 0 THEN 'F' ELSE 'M' END,
+               CASE WHEN i % 4 = 0 THEN 'Kano' ELSE 'Benue' END,
+               CASE WHEN i % 3 = 0 THEN 'Makurdi' WHEN i % 5 = 0 THEN 'Gboko' ELSE 'Ushongo' END
+          FROM generate_series(1, 135) i
+         WHERE NOT EXISTS (SELECT 1 FROM admissions.caps_row r WHERE r.session = v_adm AND r.jamb_reg_no = '2098' || lpad((d.ix * 1000 + i)::text, 7, '0'));
+
+        -- the candidate record for each CAPS row
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        SELECT gen_random_uuid(), v_adm, r.jamb_reg_no, r.surname, r.other_names, d.pname, 'UTME', 100, 'PROPOSED', r.id
+          FROM admissions.caps_row r
+         WHERE r.session = v_adm AND r.jamb_code = d.code
+           AND NOT EXISTS (SELECT 1 FROM admissions.candidate c WHERE c.session = v_adm AND c.jamb_reg_no = r.jamb_reg_no);
+
+        -- the applicant account and the submitted, screened, released application
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        SELECT gen_random_uuid(), v_adm, c.id, upper(c.jamb_reg_no), lower(c.jamb_reg_no) || '@example.com', '08030000000', crypt(v_pw, gen_salt('bf', 12))
+          FROM admissions.candidate c
+         WHERE c.session = v_adm AND c.programme = d.pname
+           AND NOT EXISTS (SELECT 1 FROM admissions.applicant_account a WHERE a.candidate_id = c.id);
+
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, fee_confirmed_at, screening_score, score_entered_at, score_released_at)
+        SELECT gen_random_uuid(), a.id, a.candidate_id, v_adm,
+               'APP/98/' || lpad((d.ix * 1000 + row_number() OVER (ORDER BY a.jamb_key))::text, 6, '0'),
+               now(), now(), 45 + ((substring(a.jamb_key from '...$'))::int % 45), now(), now()
+          FROM admissions.applicant_account a
+         WHERE a.session = v_adm AND a.jamb_key IN (SELECT upper(jamb_reg_no) FROM admissions.candidate WHERE session = v_adm AND programme = d.pname)
+           AND NOT EXISTS (SELECT 1 FROM admissions.application ap WHERE ap.candidate_id = a.candidate_id);
+
+        -- O'Level: uploaded for the qualifiers, the below-cut-off group and the missing-Maths group;
+        -- NOT uploaded for i in 116..125; the missing-Maths group (126..135) has no Mathematics credit
+        INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+        SELECT gen_random_uuid(), v_adm, 'OLEVEL', 'demo-olevel', c.jamb_key, 'COLUMN', '{}'::jsonb
+          FROM admissions.candidate c
+         WHERE c.session = v_adm AND c.programme = d.pname
+           AND (substring(c.jamb_key from '...$'))::int NOT BETWEEN 116 AND 125
+           AND NOT EXISTS (SELECT 1 FROM admissions.attachment at WHERE at.session = v_adm AND at.kind = 'OLEVEL' AND at.jamb_key = c.jamb_key);
+
+        INSERT INTO admissions.olevel_sitting (id, attachment_id, session, jamb_key, exam_body, exam_type_raw, exam_year, exam_number, ord)
+        SELECT gen_random_uuid(), at.id, v_adm, at.jamb_key, 'WAEC', 'WAEC', '2097', 'DMO' || at.jamb_key, 1
+          FROM admissions.attachment at
+         WHERE at.session = v_adm AND at.kind = 'OLEVEL' AND at.source_name = 'demo-olevel'
+           AND at.jamb_key IN (SELECT upper(jamb_reg_no) FROM admissions.candidate WHERE session = v_adm AND programme = d.pname)
+           AND NOT EXISTS (SELECT 1 FROM admissions.olevel_sitting st WHERE st.attachment_id = at.id);
+
+        INSERT INTO admissions.olevel_grade (sitting_id, subject, grade)
+        SELECT st.id, s.subject, s.grade
+          FROM admissions.olevel_sitting st
+          JOIN admissions.attachment at ON at.id = st.attachment_id
+          CROSS JOIN LATERAL (
+              SELECT * FROM (VALUES
+                  ('English Language', 'B3'), ('Mathematics', 'B3'), ('Economics', 'C4'), ('Government', 'C5'), ('Biology', 'C6')
+              ) full_set(subject, grade)
+              WHERE (substring(st.jamb_key from '...$'))::int NOT BETWEEN 126 AND 135   -- the full five for everyone but the missing-Maths group
+              UNION ALL
+              SELECT * FROM (VALUES
+                  ('English Language', 'B3'), ('Economics', 'C4'), ('Government', 'C5'), ('Biology', 'C6'), ('Chemistry', 'C4')
+              ) no_maths(subject, grade)
+              WHERE (substring(st.jamb_key from '...$'))::int BETWEEN 126 AND 135        -- five credits, but no Mathematics
+          ) s
+         WHERE st.session = v_adm
+           AND at.jamb_key IN (SELECT upper(jamb_reg_no) FROM admissions.candidate WHERE session = v_adm AND programme = d.pname)
+           AND NOT EXISTS (SELECT 1 FROM admissions.olevel_grade g WHERE g.sitting_id = st.id AND g.subject = s.subject);
+    END LOOP;
+
+    PERFORM set_config('moaum.actor_id', v_actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    RAISE NOTICE 'demo admissions ready on %: % candidates across % programmes',
+        v_adm, (SELECT count(*) FROM admissions.candidate WHERE session = v_adm),
+        (SELECT count(*) FROM admissions.programme_rule WHERE policy_id = v_pol);
+END $adm$;
+
 COMMIT;
