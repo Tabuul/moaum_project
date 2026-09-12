@@ -69,7 +69,8 @@ class ReconsiderationsIT {
                     .param("e", jamb.toLowerCase() + "@example.com").update();
             jdbc.sql("INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, score_released_at) "
                     + "VALUES (:id, :a, :c, :s, :no, now(), now())")
-                    .param("id", appId).param("a", acct).param("c", cand).param("s", SESSION).param("no", "APP-" + n).update();
+                    .param("id", appId).param("a", acct).param("c", cand).param("s", SESSION)
+                    .param("no", "APP/94/" + String.format("%06d", n % 1_000_000)).update();
             return appId;
         });
 
