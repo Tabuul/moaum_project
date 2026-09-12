@@ -5,6 +5,7 @@
  * names: note, btn, pil, two, tiles, panel, pbody, dtable, kvGrid, ico.
  */
 import type { CSSProperties, ReactNode } from "react";
+import Link from "next/link";
 import { roleLabel } from "@/lib/offices";
 
 const I: Record<string, string> = {
@@ -214,18 +215,21 @@ export function Two({ a, b }: { a: ReactNode; b: ReactNode }) {
 }
 
 /** tiles([[label, value, colour?, caption?]], cls) */
-export function Tiles({ items, cls = "grid--4" }: { items: [ReactNode, ReactNode, string | null | undefined, ReactNode?][]; cls?: string }) {
+export function Tiles({ items, cls = "grid--4" }: { items: [ReactNode, ReactNode, string | null | undefined, ReactNode?, string?][]; cls?: string }) {
   return (
     <div className={`grid ${cls}`}>
-      {items.map((t, i) => (
-        <div className="tile" key={i}>
-          <span className="eyebrow">{t[0]}</span>
-          <span className="n tnum" style={t[2] ? { color: t[2] } : undefined}>
-            {t[1]}
-          </span>
-          {t[3] ? <span className="c">{t[3]}</span> : null}
-        </div>
-      ))}
+      {items.map((t, i) => {
+        const inner = (
+          <>
+            <span className="eyebrow">{t[0]}</span>
+            <span className="n tnum" style={t[2] ? { color: t[2] } : undefined}>{t[1]}</span>
+            {t[3] ? <span className="c">{t[3]}</span> : null}
+          </>
+        );
+        return t[4]
+          ? <Link className="tile" key={i} href={t[4]} style={{ textDecoration: "none", color: "inherit", cursor: "pointer" }}>{inner}</Link>
+          : <div className="tile" key={i}>{inner}</div>;
+      })}
     </div>
   );
 }

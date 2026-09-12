@@ -798,6 +798,29 @@ class ApplicantsController {
         return Map.of("suggested", chosenName, "emailed", emailed);
     }
 
+    /** the screened pool counted per programme — applied, screened (an aggregate on the CAPS row), quota and cut-off.
+     *  One cheap query behind the Screened overview; the per-applicant criteria come from /jamb-template?programme=. */
+    @GetMapping("/screened-summary")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> screenedSummary(@PathVariable String session, @PathVariable String year) {
+        String s = session + "/" + year;
+        return jdbc.sql("""
+                SELECT p.faculty_code, f.name AS faculty_name, p.code, p.name,
+                       (SELECT count(*) FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
+                         WHERE r.session = :s AND b.committed_at IS NOT NULL AND r.jamb_code = p.code) AS applied,
+                       (SELECT count(*) FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
+                         WHERE r.session = :s AND b.committed_at IS NOT NULL AND r.aggregate IS NOT NULL AND r.jamb_code = p.code) AS screened,
+                       (SELECT r.quota FROM admissions.programme_rule r JOIN admissions.session_policy sp ON sp.id = r.policy_id
+                         WHERE sp.session = :s AND r.programme_code = p.code) AS quota,
+                       CASE WHEN (SELECT count(*) FROM admissions.session_policy WHERE session = :s AND state = 'IN_FORCE') > 0
+                            THEN admissions.cutoff_for(:s, p.code) END AS cutoff
+                  FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE NOT p.archived
+                 ORDER BY f.name, p.name
+                """).param("s", s).query().listOfRows();
+    }
+
     private static Object scale(Object value, Object weight) {
         return new BigDecimal(String.valueOf(value)).multiply(new BigDecimal(String.valueOf(weight))).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
     }
