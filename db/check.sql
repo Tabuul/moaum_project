@@ -1151,21 +1151,21 @@ BEGIN
         n = 0 AND m = 0, 'no application for the programme yet — an empty list, computed, not an error');
 END $$;
 
--- ── 61d. National Merit is the top of each stream (any origin), State Merit only below the line, UTME:DE apart (V105) ──
+-- ── 61d. National Merit is the top by score (any origin); State Merit only below the merit line; sized off the UTME quota (V105) ──
 DO $$
 DECLARE
     v_pol uuid := gen_random_uuid();
     v_batch uuid := gen_random_uuid();
-    v_batch_de uuid := gen_random_uuid();
     prog text := 'C00019'; pname text := 'B.Sc. ACCOUNTING';
     r record; nm_min numeric; sm_max numeric;
-    b_u1 text; b_u2 text; b_u3 text; b_u4 text; off_u4 boolean; b_d1 text; mode_d1 text; off_d1 boolean;
+    b_u1 text; b_u2 text; b_u3 text; b_u4 text; off_u4 boolean; n_nm int;
 BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
     PERFORM set_config('moaum.actor_office', 'academic', true);
     PERFORM set_config('moaum.reason', 'CHECK merit basis fixture (V105)', true);
 
-    -- an in-force policy: programme quota 5, UTME:DE 80:20, criteria NM50/SM30/ELG10/LOC10
+    -- an in-force policy: programme quota 5, UTME:DE 80:20 (UTME quota 4), criteria NM50/SM30/ELG10/LOC10
+    -- so the UTME National Merit share is round(4 * 50%) = 2 seats; sized off the WHOLE quota it would be 3
     INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
     VALUES (v_pol, '9994/9995', 5, 70, 30, 80, 20, 'CHECK CAC/9994/1', tstzrange(now(), NULL), 'IN_FORCE');
     INSERT INTO admissions.selection_criterion (policy_id, criterion, percent) VALUES
@@ -1173,24 +1173,22 @@ BEGIN
     INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
     VALUES (v_pol, prog, 5, 'check', 'check', 'check');
     INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
-    VALUES (v_batch,    '9994/9995', 'CAPS_DOWNLOAD', 'UTME',         '\xB1'::bytea, 4, current_date, gen_random_uuid(), 'academic'),
-           (v_batch_de, '9994/9995', 'CAPS_DOWNLOAD', 'DIRECT_ENTRY', '\xB2'::bytea, 1, current_date, gen_random_uuid(), 'academic');
+    VALUES (v_batch, '9994/9995', 'CAPS_DOWNLOAD', 'UTME', '\xB1'::bytea, 4, current_date, gen_random_uuid(), 'academic');
 
-    -- U1 non-indigene 300, U2 Benue 290, U3 Benue 280, U4 Benue 270 (UTME); D1 Benue 295 (Direct Entry)
+    -- U1 non-indigene 300, U2 Benue 290 (both above the merit line), U3 Benue 280, U4 Benue 270 (below it)
     FOR r IN SELECT * FROM (VALUES
-        ('U1', '20949990001', 'Kano',  'Nassarawa', 'UTME',         100, 300, '000001'),
-        ('U2', '20949990002', 'Benue', 'Makurdi',   'UTME',         100, 290, '000002'),
-        ('U3', '20949990003', 'Benue', 'Gboko',     'UTME',         100, 280, '000003'),
-        ('U4', '20949990004', 'Benue', 'Vandeikya', 'UTME',         100, 270, '000004'),
-        ('D1', '20949990005', 'Benue', 'Otukpo',    'DIRECT_ENTRY', 200, 295, '000005')
-    ) AS t(tag, jamb, state, lga, mode, level, utme, seq)
+        ('U1', '20949990001', 'Kano',  'Nassarawa', 300, '000001'),
+        ('U2', '20949990002', 'Benue', 'Makurdi',   290, '000002'),
+        ('U3', '20949990003', 'Benue', 'Gboko',     280, '000003'),
+        ('U4', '20949990004', 'Benue', 'Vandeikya', 270, '000004')
+    ) AS t(tag, jamb, state, lga, utme, seq)
     LOOP
         DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid();
         BEGIN
             INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
-            VALUES (cr, CASE WHEN r.mode = 'UTME' THEN v_batch ELSE v_batch_de END, '9994/9995', r.jamb, '{}'::jsonb, 'CHECKMERIT', r.tag, prog, r.utme, r.mode, 'M', r.state, r.lga);
+            VALUES (cr, v_batch, '9994/9995', r.jamb, '{}'::jsonb, 'CHECKMERIT', r.tag, prog, r.utme, 'UTME', 'M', r.state, r.lga);
             INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
-            VALUES (cand, '9994/9995', r.jamb, 'CHECKMERIT', r.tag, pname, r.mode, r.level, 'ADMITTED', cr);
+            VALUES (cand, '9994/9995', r.jamb, 'CHECKMERIT', r.tag, pname, 'UTME', 100, 'ADMITTED', cr);
             INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
             VALUES (acct, '9994/9995', cand, r.jamb, lower(r.jamb) || '@example.com', '08030000001', crypt('x', gen_salt('bf', 12)));
             INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, screening_score, score_entered_at, score_released_at)
@@ -1202,18 +1200,18 @@ BEGIN
     SELECT basis INTO b_u2 FROM admissions.merit_list('9994/9995', prog) WHERE other_names = 'U2';
     SELECT basis INTO b_u3 FROM admissions.merit_list('9994/9995', prog) WHERE other_names = 'U3';
     SELECT basis, proposed_offer INTO b_u4, off_u4 FROM admissions.merit_list('9994/9995', prog) WHERE other_names = 'U4';
-    SELECT basis, entry_mode, proposed_offer INTO b_d1, mode_d1, off_d1 FROM admissions.merit_list('9994/9995', prog) WHERE other_names = 'D1';
-    SELECT min(aggregate) INTO nm_min FROM admissions.merit_list('9994/9995', prog) WHERE basis = 'NM' AND entry_mode = 'UTME';
-    SELECT max(aggregate) INTO sm_max FROM admissions.merit_list('9994/9995', prog) WHERE basis = 'SM' AND entry_mode = 'UTME';
+    SELECT count(*) INTO n_nm FROM admissions.merit_list('9994/9995', prog) WHERE basis = 'NM';
+    SELECT min(aggregate) INTO nm_min FROM admissions.merit_list('9994/9995', prog) WHERE basis = 'NM';
+    SELECT max(aggregate) INTO sm_max FROM admissions.merit_list('9994/9995', prog) WHERE basis = 'SM';
 
-    PERFORM pg_temp.assert('Merit fills the top of each stream (any origin); State Merit only below the line; UTME and Direct Entry are sized apart',
-        b_u1 = 'NM' AND b_u2 = 'NM'                                  -- top non-indigene AND top indigene both National Merit
-        AND b_u3 = 'SM'                                             -- the next indigene, below the merit line, is State Merit
-        AND b_u4 IS NULL AND NOT off_u4                             -- below the line, no reserved category: waiting list
-        AND sm_max < nm_min                                        -- no State Merit candidate outranks a National Merit one
-        AND b_d1 = 'NM' AND mode_d1 = 'DIRECT_ENTRY' AND off_d1,    -- DE is its own stream; its top is NM and did not take a UTME seat
-        format('u1=%s u2=%s u3=%s u4=%s(off=%s) d1=%s(%s,off=%s) sm_max=%s nm_min=%s',
-               b_u1, b_u2, b_u3, b_u4, off_u4, b_d1, mode_d1, off_d1, sm_max, nm_min));
+    PERFORM pg_temp.assert('National Merit is the top by score, any origin; State Merit only below the merit line; sized off the UTME quota',
+        b_u1 = 'NM' AND b_u2 = 'NM'          -- top non-indigene AND top indigene both National Merit
+        AND n_nm = 2                          -- exactly the UTME National Merit share (2), not the whole-quota share (3)
+        AND b_u3 = 'SM'                       -- the next indigene, below the merit line, is State Merit
+        AND b_u4 IS NULL AND NOT off_u4       -- below the line, no reserved category: waiting list
+        AND sm_max < nm_min,                  -- no State Merit candidate outranks a National Merit one
+        format('u1=%s u2=%s u3=%s u4=%s(off=%s) n_nm=%s sm_max=%s nm_min=%s',
+               b_u1, b_u2, b_u3, b_u4, off_u4, n_nm, sm_max, nm_min));
 END $$;
 
 -- ── 62. the database refuses a weighting that does not total 100 ────────
