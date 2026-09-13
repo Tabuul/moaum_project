@@ -7,17 +7,18 @@
  *  This desk reads every module and approves none of them; that is the point of it. */
 import { useState } from "react";
 import Link from "next/link";
-import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Note, Panel, PBody, Tiles, Tick, WarnIcon, Ico } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, money } from "@/components/proto/blocks";
 import { PeriodPicker } from "@/components/proto/PeriodPicker";
+import { Donut, HBars, VZ } from "@/components/proto/vz";
 import type { OverviewData } from "../overview/Overview";
 
 type Fac = {
   code: string; name: string;
   students: number; paid: number; owing: number;
   collected: number; due: number;
-  expected: number; published: number; inProgress: number;
+  expected: number; submitted: number; approved: number; published: number; inProgress: number;
 };
 
 const n = (x: unknown) => Number(x ?? 0);
@@ -29,11 +30,13 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
     const res = d.results.find((r) => r.code === f.code);
     const students = n(f.students);
     const paid = n(col?.paid_students);
+    const submitted = res?.submitted != null ? n(res.submitted) : n(res?.published) + n(res?.in_progress);
+    const approved = res?.approved != null ? n(res.approved) : n(res?.published);
     return {
       code: f.code, name: f.name,
       students, paid, owing: Math.max(0, students - paid),
       collected: n(col?.collected), due: n(col?.due),
-      expected: n(res?.expected), published: n(res?.published), inProgress: n(res?.in_progress),
+      expected: n(res?.expected), submitted, approved, published: n(res?.published), inProgress: n(res?.in_progress),
     };
   });
 
@@ -49,11 +52,14 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
     collected: facs.reduce((a, f) => a + f.collected, 0),
     due: facs.reduce((a, f) => a + f.due, 0),
     expected: facs.reduce((a, f) => a + f.expected, 0),
+    submitted: facs.reduce((a, f) => a + f.submitted, 0),
+    approved: facs.reduce((a, f) => a + f.approved, 0),
     published: facs.reduce((a, f) => a + f.published, 0),
     inProgress: facs.reduce((a, f) => a + f.inProgress, 0),
   };
-  const notRaised = Math.max(0, agg.expected - agg.published - agg.inProgress);
-  const pubPct = agg.expected ? Math.round((100 * agg.published) / agg.expected) : 0;
+  const aPending = Math.max(0, agg.submitted - agg.approved);
+  const aNever = Math.max(0, agg.expected - agg.submitted);
+  const pubPct = agg.expected ? Math.round((100 * agg.approved) / agg.expected) : 0;
   const colPct = agg.due ? Math.min(100, Math.round((100 * agg.collected) / agg.due)) : 0;
   const subtitle = sel
     ? `${agg.students.toLocaleString()} students · ${agg.expected} result set${agg.expected === 1 ? "" : "s"} this semester`
@@ -76,7 +82,7 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
 
       <Tiles items={[
         ["Students on the register", agg.students.toLocaleString(), null, sel ? agg.name : `${facs.length} facult${facs.length === 1 ? "y" : "ies"}`],
-        ["Result sets past Senate", agg.expected ? `${pubPct}%` : "—", agg.published ? "var(--green-ink)" : null, `${agg.published} of ${agg.expected} published`],
+        ["Result sets past Senate", agg.expected ? `${pubPct}%` : "—", agg.approved ? "var(--green-ink)" : null, `${agg.approved} of ${agg.expected} published`],
         ["Collected this session", money(agg.collected), agg.collected ? "var(--green-ink)" : null, agg.due ? `${colPct}% of what is charged` : "nothing charged yet"],
         ["Fees outstanding", agg.owing ? `${agg.owing.toLocaleString()}` : "0", agg.owing ? "var(--red-ink)" : "var(--green-ink)", agg.owing ? "students yet to pay in full" : "everyone on the register has paid"],
       ]} />
@@ -87,18 +93,22 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
 
       <div className="grid grid--2">
         <Panel title="Academic pipeline" right={`${sel ? agg.name : "All faculties"} · ${d.session} · ${semester === 1 ? "first" : "second"} semester`}>
-          {agg.expected ? (
-            <DTable cols={["Stage", "Sets|num", "Share|num", "Action|num"]} rows={([
-              { label: "Awaiting a lecturer or in progress", val: agg.inProgress, href: "/results/chain", col: "var(--chrome)" },
-              { label: "Published to Senate", val: agg.published, href: "/results/senate", col: "var(--green)" },
-              { label: "Not yet raised", val: notRaised, href: "/results/sheets", col: "var(--red)" },
-            ]).map((r) => [
-              <span key="l">{r.label}</span>,
-              <span className="tnum" key="c" style={{ fontWeight: 700, color: r.col }}>{r.val}</span>,
-              <span key="b" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={agg.expected ? Math.round((100 * r.val) / agg.expected) : 0} colour={r.col} /></span>,
-              <Link key="a" className="btn btn--ghost btn--sm" href={r.href}>View</Link>,
-            ])} />
-          ) : <PBody><div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester in this scope yet. A sheet appears when a lecturer is allocated and the examination session is open.</div></PBody>}
+          <PBody>
+            {agg.expected ? (
+              <>
+                <Donut capLabel="past Senate" capValue={`${pubPct}%`} items={[
+                  { l: "Approved by Senate", v: agg.approved, c: VZ.good, i: <Tick size={13} colour="#0a7a3b" /> },
+                  { l: "Pending in the chain", v: aPending, c: VZ.warn, i: <Ico name="clock" size={13} stroke="#8a6300" w={2.2} /> },
+                  { l: "Never submitted", v: aNever, c: VZ.crit, i: <WarnIcon size={13} /> },
+                ]} />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                  <Link className="btn btn--ghost btn--sm" href="/results/chain">Chase the chain</Link>
+                  <Link className="btn btn--ghost btn--sm" href="/results/senate">To Senate</Link>
+                  <Link className="btn btn--ghost btn--sm" href="/results/sheets">Unraised sheets</Link>
+                </div>
+              </>
+            ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester in this scope yet. A sheet appears when a lecturer is allocated and the examination session is open.</div>}
+          </PBody>
         </Panel>
         <Panel title="Money" right={`${sel ? agg.name : "The University"} · from the register`}>
           <DTable cols={["Measure", "Value|mid", "Action|num"]} rows={[
@@ -109,6 +119,12 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
           ]} />
         </Panel>
       </div>
+
+      <Panel title="Students by faculty" right="On the register, all levels — the shape of the University">
+        <PBody>
+          {facs.length ? <HBars items={[...facs].sort((a, b) => b.students - a.students).map((f) => ({ l: f.name, v: f.students }))} /> : <div className="sub2">Nobody is on the register yet.</div>}
+        </PBody>
+      </Panel>
 
       <Panel title="By faculty" right="The same four measures, one row each — pick a row above to focus the figures">
         {facs.length ? (
