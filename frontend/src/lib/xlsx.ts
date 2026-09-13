@@ -89,30 +89,46 @@ export function sharedStrings(xml: string): string[] {
 }
 
 /** The rows of one worksheet's XML, every cell as a trimmed string. */
+/** one <row>…</row>'s inner XML → its cells as strings */
+function parseRow(innerXml: string, shared: string[]): string[] {
+  const row: string[] = [];
+  for (const cm of innerXml.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+    const attrs = cm[1];
+    const inner = cm[2] ?? "";
+    const ref = /\br="([A-Z]+)\d+"/.exec(attrs)?.[1] ?? "A";
+    const type = /\bt="([^"]*)"/.exec(attrs)?.[1];
+    let v = "";
+    if (type === "s") {
+      const idx = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
+      v = idx === undefined ? "" : (shared[Number(idx)] ?? "");
+    } else if (type === "inlineStr") {
+      v = textRuns(inner);
+    } else {
+      const raw = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
+      v = raw === undefined ? "" : unescapeXml(raw);
+    }
+    row[colOf(ref)] = v.trim();
+  }
+  for (let i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = "";
+  return row;
+}
+
 export function sheetRows(xml: string, shared: string[]): string[][] {
   const rows: string[][] = [];
+  for (const rm of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) rows.push(parseRow(rm[1], shared));
+  return rows;
+}
+
+/** As sheetRows, but yields to the event loop every few thousand rows so a large
+ *  workbook does not freeze the tab; onRows reports progress as it goes. */
+export async function sheetRowsAsync(xml: string, shared: string[], onRows?: (n: number) => void): Promise<string[][]> {
+  const rows: string[][] = [];
+  let since = 0;
   for (const rm of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
-    const row: string[] = [];
-    for (const cm of rm[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const attrs = cm[1];
-      const inner = cm[2] ?? "";
-      const ref = /\br="([A-Z]+)\d+"/.exec(attrs)?.[1] ?? "A";
-      const type = /\bt="([^"]*)"/.exec(attrs)?.[1];
-      let v = "";
-      if (type === "s") {
-        const idx = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
-        v = idx === undefined ? "" : (shared[Number(idx)] ?? "");
-      } else if (type === "inlineStr") {
-        v = textRuns(inner);
-      } else {
-        const raw = /<v>([\s\S]*?)<\/v>/.exec(inner)?.[1];
-        v = raw === undefined ? "" : unescapeXml(raw);
-      }
-      row[colOf(ref)] = v.trim();
-    }
-    for (let i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = "";
-    rows.push(row);
+    rows.push(parseRow(rm[1], shared));
+    if (++since >= 3000) { since = 0; onRows?.(rows.length); await new Promise((r) => setTimeout(r)); }
   }
+  onRows?.(rows.length);
   return rows;
 }
 
@@ -129,6 +145,22 @@ export async function xlsxRows(buf: ArrayBuffer): Promise<string[][]> {
   ]);
   if (!/<(?:\w+:)?sheetData\b/.test(sheetXml)) throw new Error("the worksheet inside the file is not readable");
   return sheetRows(sheetXml, sharedXml ? sharedStrings(sharedXml) : []);
+}
+
+/** The first worksheet as rows of strings, parsed without freezing the tab: it
+ *  yields to the event loop as it goes and reports rows read through onRows. */
+export async function xlsxRowsAsync(buf: ArrayBuffer, onRows?: (n: number) => void): Promise<string[][]> {
+  const z = zipEntries(buf);
+  const sheet = Object.keys(z)
+    .filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
+    .sort()[0];
+  if (!sheet) throw new Error("the workbook has no worksheet in it");
+  const [sheetXml, sharedXml] = await Promise.all([
+    inflate(z[sheet]),
+    z["xl/sharedStrings.xml"] ? inflate(z["xl/sharedStrings.xml"]) : Promise.resolve(""),
+  ]);
+  if (!/<(?:\w+:)?sheetData\b/.test(sheetXml)) throw new Error("the worksheet inside the file is not readable");
+  return sheetRowsAsync(sheetXml, sharedXml ? sharedStrings(sharedXml) : [], onRows);
 }
 
 // ── writer: build a formatted .xlsx (auto widths + bordered cells) ──

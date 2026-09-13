@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { xlsxRowsAsync, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -21,7 +21,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number> } | null>(null);
-  const [progress, setProgress] = useState<{ sent: number; of: number } | null>(null);
+  const [progress, setProgress] = useState<{ label: string; sent: number; of: number } | null>(null);
 
   async function upload(kind: Tab, file: File) {
     setBusy(true);
@@ -29,16 +29,24 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     setResult(null);
     setProgress(null);
     try {
-      const grid = await xlsxRows(await file.arrayBuffer());
+      setProgress({ label: "Reading the file", sent: 0, of: 0 });
+      const grid = await xlsxRowsAsync(await file.arrayBuffer(), (n) => setProgress({ label: "Reading the file", sent: n, of: 0 }));
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim());
       if (!header.some((h) => /matric|reg|mat\.?\s*no/i.test(h))) {
         setProblem({ status: 400, title: "That file has no matriculation-number column.", detail: "The first row must name the columns; a matriculation (or registration) number is required." });
         return;
       }
-      const rows = grid.slice(1)
-        .filter((r) => r.some((c) => String(c ?? "").trim() !== ""))
-        .map((r) => canonicalRow(kind, header, r))
-        .filter((o) => o.matric && !/^matric/i.test(o.matric));
+      /* transform every row, yielding to the tab every few thousand so a large file stays responsive */
+      const dataRows = grid.slice(1);
+      const rows: Record<string, string>[] = [];
+      for (let i = 0; i < dataRows.length; i++) {
+        const r = dataRows[i];
+        if (r.some((c) => String(c ?? "").trim() !== "")) {
+          const o = canonicalRow(kind, header, r);
+          if (o.matric && !/^matric/i.test(o.matric)) rows.push(o);
+        }
+        if ((i & 4095) === 4095) { setProgress({ label: "Preparing the rows", sent: i + 1, of: dataRows.length }); await new Promise((res) => setTimeout(res)); }
+      }
       if (!rows.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Export the list from the old portal and upload it." }); return; }
       const path = kind === "biodata" ? "/api/bff/api/v1/results/legacy/biodata"
         : kind === "students" ? "/api/bff/api/v1/results/legacy/students"
@@ -50,7 +58,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
       const totals: Record<string, number> = {};
       let sent = 0;
-      setProgress({ sent: 0, of: rows.length });
+      setProgress({ label: "Importing", sent: 0, of: rows.length });
       for (const chunk of chunks) {
         const scoped = kind !== "students" && kind !== "biodata";
         const body = scoped ? { session, semester: Number(semester), rows: chunk } : { rows: chunk };
@@ -65,7 +73,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         const counts = (j ?? {}) as Record<string, number>;
         for (const [k, v] of Object.entries(counts)) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
         sent += chunk.length;
-        setProgress({ sent, of: rows.length });
+        setProgress({ label: "Importing", sent, of: rows.length });
       }
       setResult({ tab: kind, counts: totals });
     } catch {
@@ -251,7 +259,15 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
             <label className={`btn btn--primary${!may || (needScope && !scopeReady) || busy ? " btn--disabled" : ""}`} style={{ cursor: may && scopeReady && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || (needScope && !scopeReady) ? 0.6 : 1 }}>
-              {busy ? (progress && progress.of > 400 ? `Importing — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}…` : "Importing…") : `Upload ${tab === "biodata" ? "biography" : tab === "students" ? "students" : tab === "registration" ? "registration" : "results"} file`}
+              {busy
+                ? (progress
+                    ? (progress.of > 0
+                        ? `${progress.label} — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}…`
+                        : progress.sent > 0
+                          ? `${progress.label} — ${progress.sent.toLocaleString()} rows…`
+                          : `${progress.label}…`)
+                    : "Importing…")
+                : `Upload ${tab === "biodata" ? "biography" : tab === "students" ? "students" : tab === "registration" ? "registration" : "results"} file`}
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || (needScope && !scopeReady) || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(tab, f); e.target.value = ""; }} />
             </label>
             {needScope && !scopeReady ? <span className="sub2">Enter the session (YYYY/YYYY) and semester first.</span> : null}
