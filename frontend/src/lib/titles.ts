@@ -22,7 +22,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "s/form": [
     "Course form",
-    "Approved 15 September 2026"
+    "Your registered courses for the session"
   ],
   "s/fees": [
     "Fees & payments",
@@ -74,7 +74,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "t/pv": [
     "Payment voucher",
-    "PV/2026/1892 · Expenditure and Control"
+    "Expenditure and Control"
   ],
   "t/hanging": [
     "Hanging payments",
@@ -102,7 +102,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "s/idcard": [
     "Identity card",
-    "Issued 18 September 2026 · valid to 31 October 2027"
+    "Your student identity card"
   ],
   "s/query": [
     "Result query",
@@ -298,7 +298,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "t/auditpayroll": [
     "Payroll variance",
-    "October against September, explained by staff movements"
+    "This run against the last, explained by staff movements"
   ],
   "t/auditstaff": [
     "Staff movements",
@@ -450,7 +450,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "t/reconcile": [
     "Settlement reconciliation",
-    "Remita · 4 September 2026"
+    "Gateway settlements against the ledger"
   ],
   "t/refunds": [
     "Refunds & credits",
@@ -458,7 +458,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "t/payroll": [
     "Payroll",
-    "September 2026 run"
+    "Prepared, checked, then paid"
   ],
   "t/budget": [
     "Budget",
@@ -558,7 +558,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "a/dashboard": [
     "My application",
-    "UTME 2026/2027 · APP/2026/018342"
+    "From application through screening to acceptance"
   ],
   "a/apply": [
     "Application form",
