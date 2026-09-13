@@ -9,7 +9,7 @@ import type { Scope } from "@/lib/scope";
 import { reasonHeader } from "@/lib/reason";
 import type { Senate } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -50,6 +50,8 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
 
   return (
     <>
+      <RoleLine allowed={["registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may}
+        action="Publishing result sets on a Senate minute" />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={senate.sets} of={senate.sets} />
       {publish ? (
         <Note kind={senate.published ? "ok" : "bad"} title={senate.published ? `${senate.published} set${senate.published === 1 ? " is" : "s are"} live to their candidates` : "Publication is held: there is no Senate minute"}>

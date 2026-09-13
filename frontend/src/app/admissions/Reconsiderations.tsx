@@ -90,7 +90,7 @@ export function Reconsiderations({ session, actingOffice }: { session: string; a
         ) : null}
         {candidates && candidates.length > 0 ? (
           <DTable
-            cols={["Candidate", "JAMB|mid", "Not offered", "Suggested programme", "Told|mid", "Suggest|num"]}
+            cols={["Candidate", "JAMB|mid", "Not offered", "Suggested programme", "Told", "Suggest|num"]}
             rows={candidates.map((c) => {
               const selected = choice[c.applicationId] ?? c.suggestions[0]?.code ?? "";
               return [
@@ -104,7 +104,7 @@ export function Reconsiderations({ session, actingOffice }: { session: string; a
                   {c.suggestions.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
                 </select>,
                 c.notifiedAt
-                  ? <span key="t"><Pil kind="ok">{new Date(c.notifiedAt).toLocaleDateString("en-GB")}</Pil>{c.suggestedProgramme ? <div className="sub2">{c.suggestedProgramme}</div> : null}</span>
+                  ? <span key="t" style={{ display: "inline-flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}><Pil kind="ok">{new Date(c.notifiedAt).toLocaleDateString("en-GB")}</Pil>{c.suggestedProgramme ? <span className="sub2">{c.suggestedProgramme}</span> : null}</span>
                   : <Pil kind="grey" key="t">No</Pil>,
                 <Btn key="a" kind="primary" disabled={!may || rowBusy === c.applicationId || !selected}
                      onClick={() => void suggest(c)}>
