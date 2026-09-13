@@ -31,9 +31,22 @@ import org.springframework.transaction.annotation.Transactional;
 public class CalendarService {
 
     private final CalendarRepository calendar;
+    private final tools.jackson.databind.ObjectMapper json;
 
-    CalendarService(CalendarRepository calendar) {
+    CalendarService(CalendarRepository calendar, tools.jackson.databind.ObjectMapper json) {
         this.calendar = calendar;
+        this.json = json;
+    }
+
+    public record RollOverIn(@NotNull @Size(max = 200) String confirm, @NotNull @Size(max = 400) String reason) {
+    }
+
+    /** Promote continuing students one level into the new session and enrol them. The DB function is
+     *  guarded (the word ROLLOVER and a reason) and idempotent; it opens the session as PLANNED if new. */
+    @Transactional
+    public java.util.Map<String, Object> rollOver(String toSession, String confirm, String reason) {
+        String result = calendar.rollOver(toSession, confirm, reason);
+        return json.readValue(result, new tools.jackson.core.type.TypeReference<java.util.Map<String, Object>>() { });
     }
 
     public record SessionIn(@NotNull LocalDate startsOn, @NotNull LocalDate endsOn,

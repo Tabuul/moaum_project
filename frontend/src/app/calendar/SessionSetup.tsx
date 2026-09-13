@@ -51,6 +51,7 @@ export function SessionSetup({
   const [open, setOpen] = useState<Open>(null);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<Problem | null>(null);
+  const [rolled, setRolled] = useState<string | null>(null);
 
   const isSuper = actingOffice === "super";
   const sessions = calendar?.sessions ?? [];
@@ -134,6 +135,24 @@ export function SessionSetup({
     );
   }
 
+  async function rollOver() {
+    if (!window.confirm(`Promote every continuing student one level and enrol them into ${looking}? Fresh (100 level), final-year, withdrawn and graduated students are left as they are. This can be run again safely.`)) return;
+    setBusy(true); setRefusal(null); setRolled(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/calendar/sessions/${looking}/roll-over`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Register rolled into ${looking}`) },
+        body: JSON.stringify({ confirm: "ROLLOVER", reason: `Register rolled into ${looking}` }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); return; }
+      setRolled(`${j.promoted} continuing student${j.promoted === 1 ? "" : "s"} promoted into ${looking}${j.created_session ? " — the session was opened as planned" : ""}. Fresh, final-year and inactive students were left as they are.`);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveLevel(draft: Draft) {
     await send(
       "PUT",
@@ -162,6 +181,17 @@ export function SessionSetup({
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {refusal && !open ? <ProblemNotice problem={refusal} /> : null}
+      {rolled ? <Note kind="ok" title="The register rolled over">{rolled}</Note> : null}
+
+      {looking ? (
+        <Panel title="Roll the register into a new session" right={<Btn kind="primary" disabled={busy} onClick={() => void rollOver()}>{busy ? "Rolling over…" : `Roll into ${looking}`}</Btn>}>
+          <div className="card__body sub2">
+            Promotes every active, matriculated continuing student one level (up to their programme&rsquo;s final level) and enrols
+            them in <b>{looking}</b>. Fresh students still arrive through admission at 100 level; final-year, withdrawn and
+            graduated students are untouched, and unpaid fees from earlier sessions still follow the student. Safe to run again.
+          </div>
+        </Panel>
+      ) : null}
 
       <Note kind="info" title="The session is the spine everything else hangs on">
         Registration windows, fee schedules, grading schemes, examination sessions, result sets and the publication embargo

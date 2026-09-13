@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 131
+\set EXPECTED 132
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2729,6 +2729,42 @@ BEGIN
         'The operational-data reset runs to completion, clearing suggestion_sent before the applications it references',
         ran,
         format('ran=%s had_application=%s', ran, had_app));
+END $$;
+
+-- ── 130. the session roll-over promotes active continuing students one level and enrols them, leaving final-year and withdrawn students (V110) ──
+-- Runs the real roll-over inside a savepoint and rolls it back, so it neither
+-- promotes the suite's other fixtures nor leaves a session behind.
+DO $$
+DECLARE
+    v_active uuid := gen_random_uuid(); v_final uuid := gen_random_uuid(); v_wd uuid := gen_random_uuid();
+    res jsonb; ran boolean := false; lvl_active int; lvl_final int; lvl_wd int; enrolled boolean;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK session rollover', true);
+
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode,
+                                entry_session, entry_level, current_level, status, matriculated_at) VALUES
+      (v_active, 'MOAUM/ADM/99/970001', 'MOAUM/RLA/99/0001', 'ROLLACTIVE', 'Two Hundred', 'C00061', 'UTME', '9990/9991', 100, 200, 'ACTIVE', now()),
+      (v_final,  'MOAUM/ADM/99/970002', 'MOAUM/RLF/99/0002', 'ROLLFINAL',  'Final Year',  'C00019', 'UTME', '9990/9991', 100, 400, 'ACTIVE', now()),
+      (v_wd,     'MOAUM/ADM/99/970003', 'MOAUM/RLW/99/0003', 'ROLLGONE',   'Withdrawn',   'C00061', 'UTME', '9990/9991', 100, 200, 'WITHDRAWN', now());
+
+    BEGIN
+        res := people.roll_over_session('9989/9990', 'ROLLOVER', 'CHECK session rollover');
+        ran := (res->>'session') = '9989/9990';
+        SELECT current_level INTO lvl_active FROM people.student WHERE id = v_active;
+        SELECT current_level INTO lvl_final  FROM people.student WHERE id = v_final;
+        SELECT current_level INTO lvl_wd     FROM people.student WHERE id = v_wd;
+        SELECT EXISTS (SELECT 1 FROM people.enrolment WHERE student_id = v_active AND session = '9989/9990' AND level = 300) INTO enrolled;
+        RAISE EXCEPTION 'chk_rollover_rollback';   -- undo the promotion and the created session
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'chk_rollover_rollback' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert(
+        'The session roll-over promotes an active continuing student one level and enrols them, and leaves a final-year and a withdrawn student where they are',
+        ran AND lvl_active = 300 AND enrolled AND lvl_final = 400 AND lvl_wd = 200,
+        format('ran=%s active=%s enrolled=%s final=%s withdrawn=%s', ran, lvl_active, enrolled, lvl_final, lvl_wd));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

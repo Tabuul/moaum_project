@@ -59,6 +59,14 @@ class CalendarController {
         return calendar.closeSession(session + "/" + year);
     }
 
+    /** Roll the register into this session: promote continuing students one level and enrol them. */
+    @PostMapping("/sessions/{session}/{year}/roll-over")
+    @PreAuthorize(WRITERS)
+    java.util.Map<String, Object> rollOver(@PathVariable String session, @PathVariable String year,
+                                           @Valid @RequestBody CalendarService.RollOverIn body) {
+        return calendar.rollOver(session + "/" + year, body.confirm(), body.reason());
+    }
+
     @PutMapping("/sessions/{session}/{year}/semesters/{number}")
     @PreAuthorize(WRITERS)
     Calendar saveSemester(@PathVariable String session, @PathVariable String year, @PathVariable int number,

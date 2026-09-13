@@ -29,6 +29,12 @@ class CalendarRepository {
                 .list();
     }
 
+    String rollOver(String toSession, String confirm, String reason) {
+        return jdbc.sql("SELECT people.roll_over_session(:s, :c, :r)::text")
+                .param("s", toSession).param("c", confirm).param("r", reason)
+                .query(String.class).single();
+    }
+
     Optional<String> current() {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'")
                 .query(String.class)
