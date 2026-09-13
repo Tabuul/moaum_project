@@ -53,10 +53,16 @@ function printReport(title: string, sub: string, headers: string[], rows: (strin
   w.document.close();
 }
 
-const DETAIL_COLS = ["RegNo", "Name", "Sex", "State of origin", "LGA", "UTME aggregate", "Meets cut-off", "O'Level uploaded"];
+const olevelState = (r: Crit) => (r.olevel_uploaded ? "Uploaded" : "Not uploaded");
+const compulsoryState = (r: Crit) =>
+  !r.olevel_uploaded ? "—" : r.olevel_meets ? "Met" : s(r.olevel_missing) ? `Missing: ${s(r.olevel_missing)}` : "Not met";
+
+const DETAIL_COLS = ["RegNo", "Name", "Sex", "State of origin", "LGA", "UTME aggregate", "Meets cut-off",
+  "O'Level", "O'Level points", "Compulsory (Eng & Maths)"];
 const detailCells = (r: Crit, cutoff: number | null): (string | number | null)[] => [
   s(r.jamb_reg_no), `${s(r.surname)} ${s(r.other_names)}`.trim(), s(r.sex), s(r.state_of_origin), s(r.lga),
-  num(r.aggregate), meets(r.aggregate, cutoff), r.olevel_uploaded ? "Yes" : "No",
+  num(r.aggregate), meets(r.aggregate, cutoff),
+  olevelState(r), r.olevel_uploaded ? num(r.olevel_total) : "", compulsoryState(r),
 ];
 
 export function Screened({ session, summary }: { session: string; summary: ScreenedRow[] }) {
@@ -70,6 +76,8 @@ export function Screened({ session, summary }: { session: string; summary: Scree
   const [cutoff, setCutoff] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [allBusy, setAllBusy] = useState(false);
+  const [allProgress, setAllProgress] = useState(0);
 
   const shown = withApplicants.filter((r) => !faculty || r.faculty_code === faculty);
   const totalScreened = shown.reduce((n, r) => n + Number(r.screened), 0);
@@ -100,6 +108,32 @@ export function Screened({ session, summary }: { session: string; summary: Scree
     download(buildXlsx(["Faculty", "Code", "Programme", "Applied", "Screened", "Quota", "Cut-off"], rows,
       `Screened ${session.replace("/", "-")}`), `Screened summary ${session.replace("/", "-")}.xlsx`);
   }
+  // the all-programmes O'Level screening report: fetch each shown course and combine into one workbook
+  async function exportAllOlevel() {
+    setAllBusy(true);
+    setAllProgress(0);
+    try {
+      const all: (string | number | null)[][] = [];
+      for (let i = 0; i < shown.length; i++) {
+        const p = shown[i];
+        setAllProgress(i + 1);
+        try {
+          const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screened?programme=${encodeURIComponent(p.code)}`, { cache: "no-store" });
+          const j = await r.json().catch(() => null);
+          if (!r.ok || !j) continue;
+          const co = num(j.cutoff);
+          for (const row of (j.rows as Crit[]) ?? []) {
+            all.push([p.faculty_name, p.name, ...detailCells(row, co)]);
+          }
+        } catch { /* skip a course that fails, keep going */ }
+      }
+      download(buildXlsx(["Faculty", "Programme", ...DETAIL_COLS], all, `O'Level screening ${session.replace("/", "-")}`),
+        `O'Level screening ${session.replace("/", "-")}.xlsx`);
+    } finally {
+      setAllBusy(false);
+    }
+  }
+
   function exportDetailExcel() {
     if (!open || !detail) return;
     download(buildXlsx(DETAIL_COLS, detail.map((r) => detailCells(r, cutoff)), open.name.slice(0, 28)),
@@ -142,18 +176,23 @@ export function Screened({ session, summary }: { session: string; summary: Scree
             {detail && !loading ? (
               detail.length ? (
                 <DTable
-                  cols={["RegNo|mid", "Name", "Sex|mid", "State of origin", "LGA", "UTME|num", "Meets cut-off|mid", "O’Level|mid"]}
+                  cols={["RegNo|mid", "Name", "Sex|mid", "State of origin", "UTME|num", "Meets cut-off|mid", "O’Level|mid", "O’Level pts|num", "Compulsory (Eng & Maths)"]}
                   rows={detail.map((r) => [
                     <span className="tnum" key="r">{s(r.jamb_reg_no)}</span>,
-                    <strong key="n">{s(r.surname)} {s(r.other_names)}</strong>,
+                    <span key="n"><strong>{s(r.surname)} {s(r.other_names)}</strong><div className="sub2">{s(r.lga)}{r.lga && r.state_of_origin ? ", " : ""}{s(r.state_of_origin)}</div></span>,
                     <span key="x">{s(r.sex) || "—"}</span>,
                     <span className="sub2" key="st">{s(r.state_of_origin) || "—"}</span>,
-                    <span className="sub2" key="l">{s(r.lga) || "—"}</span>,
                     <strong className="tnum" key="u">{nz(r.aggregate)}</strong>,
                     cutoff == null
                       ? <span className="sub2" key="m">—</span>
                       : <Pil key="m" kind={Number(r.aggregate) >= cutoff ? "ok" : "bad"}>{Number(r.aggregate) >= cutoff ? "Yes" : "No"}</Pil>,
                     r.olevel_uploaded ? <Pil kind="ok" key="o">Uploaded</Pil> : <Pil kind="grey" key="o">Not yet</Pil>,
+                    <span className="tnum" key="op">{r.olevel_uploaded ? nz(r.olevel_total) : "—"}</span>,
+                    !r.olevel_uploaded
+                      ? <span className="sub2" key="cm">—</span>
+                      : r.olevel_meets
+                        ? <Pil kind="ok" key="cm">Met</Pil>
+                        : <span key="cm"><Pil kind="bad">Not met</Pil>{s(r.olevel_missing) ? <div className="sub2">missing {s(r.olevel_missing)}</div> : null}</span>,
                   ])}
                   texts={detail.map((r) => `${s(r.jamb_reg_no)} ${s(r.surname)} ${s(r.other_names)} ${s(r.state_of_origin)}`)}
                 />
@@ -180,11 +219,14 @@ export function Screened({ session, summary }: { session: string; summary: Scree
           {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
         </select>
         <span style={{ flexGrow: 1 }} />
-        <Btn kind="ghost" disabled={!shown.length} onClick={exportOverviewExcel}>Export Excel</Btn>
+        <Btn kind="ghost" disabled={!shown.length} onClick={exportOverviewExcel}>Export summary (Excel)</Btn>
         <Btn kind="ghost" disabled={!shown.length} onClick={() => printReport(
           `Screened applicants — summary`, `${session}${faculty ? ` · ${faculties.find((f) => f.code === faculty)?.name}` : ""} · ${totalScreened.toLocaleString()} screened`,
           ["Faculty", "Code", "Programme", "Applied", "Screened", "Quota", "Cut-off"],
           shown.map((r) => [r.faculty_name, r.code, r.name, Number(r.applied), Number(r.screened), r.quota ?? "", r.cutoff ?? ""]))}>Print / PDF</Btn>
+        <Btn kind="primary" disabled={!shown.length || allBusy} onClick={() => void exportAllOlevel()}>
+          {allBusy ? `Building… ${allProgress}/${shown.length}` : "Export all O’Level screening (Excel)"}
+        </Btn>
       </div>
 
       <Tiles items={[

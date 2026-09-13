@@ -837,12 +837,20 @@ class ApplicantsController {
                 SELECT CASE WHEN (SELECT count(*) FROM admissions.session_policy WHERE session = :s AND state = 'IN_FORCE') > 0
                             THEN admissions.cutoff_for(:s, :p) END
                 """).param("s", s).param("p", programme).query(Integer.class).optional().orElse(null);
+        // O'Level screening is computed live per candidate (only where a result is uploaded, to stay quick):
+        // its points, whether the compulsory English & Maths credits are met, and which are missing if not.
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT r.jamb_reg_no, r.surname, r.other_names, r.sex, r.state_of_origin, r.lga, r.aggregate,
-                       EXISTS (SELECT 1 FROM admissions.olevel_sitting st
-                                WHERE st.session = r.session AND st.jamb_key = upper(r.jamb_reg_no)) AS olevel_uploaded
+                       up.uploaded AS olevel_uploaded,
+                       CASE WHEN up.uploaded THEN os.total END AS olevel_total,
+                       CASE WHEN up.uploaded THEN os.sittings END AS olevel_sittings,
+                       CASE WHEN up.uploaded THEN admissions.olevel_meets_compulsory(r.session, upper(r.jamb_reg_no), :p) END AS olevel_meets,
+                       CASE WHEN up.uploaded THEN array_to_string(admissions.olevel_compulsory_missing(r.session, upper(r.jamb_reg_no), :p), ', ') END AS olevel_missing
                   FROM admissions.caps_row r
                   JOIN admissions.caps_batch b ON b.id = r.batch_id
+                  CROSS JOIN LATERAL (SELECT EXISTS (SELECT 1 FROM admissions.olevel_sitting st
+                                WHERE st.session = r.session AND st.jamb_key = upper(r.jamb_reg_no)) AS uploaded) up
+                  LEFT JOIN LATERAL admissions.olevel_score(r.session, upper(r.jamb_reg_no), :p) os ON up.uploaded
                  WHERE r.session = :s AND b.committed_at IS NOT NULL
                    AND r.aggregate IS NOT NULL AND r.jamb_code = :p
                  ORDER BY r.aggregate DESC, r.surname, r.other_names
