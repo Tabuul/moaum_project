@@ -15,6 +15,7 @@ import Link from "next/link";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 
 export interface ScreenedRow {
   faculty_code: string; faculty_name: string; code: string; name: string;
@@ -190,10 +191,11 @@ export function Screened({ session, summary }: { session: string; summary: Scree
     <>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
         <Link href={`/admissions`} className="btn btn--ghost btn--sm">← Admissions</Link>
-        <select className="ctl" style={{ maxWidth: 320 }} value={faculty} onChange={(e) => setFaculty(e.target.value)} aria-label="Filter by faculty">
-          <option value="">All departments (faculties)</option>
-          {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
-        </select>
+        <div style={{ minWidth: 260, maxWidth: 340 }}>
+          <SearchSelect value={faculty} allLabel="All departments (faculties)" placeholder="Search a faculty…"
+            options={faculties.map((f) => ({ value: f.code, label: f.name }))}
+            onChange={(v) => setFaculty(v)} />
+        </div>
         <span style={{ flexGrow: 1 }} />
         <Btn kind="ghost" disabled={!shown.length} onClick={() => void exportOverviewExcel()}>Export summary (Excel)</Btn>
         <Btn kind="ghost" disabled={!shown.length} onClick={() => brandedPrint(

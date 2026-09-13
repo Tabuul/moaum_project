@@ -7,6 +7,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 
 export interface Applicant {
   jamb_reg_no: string; surname: string; other_names: string; jamb_code: string; entry_mode: string;
@@ -58,36 +60,33 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
       ]} />
 
       <Panel title="Filter the admitted list" right={`${session}`}>
-        <div className="card__body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="field" style={{ minWidth: 220 }}>
-            <label htmlFor="ap-fac">Faculty</label>
-            <select id="ap-fac" className="ctl" value={faculty} onChange={(e) => navigate({ faculty: e.target.value, programme: "" })}>
-              <option value="">All faculties</option>
-              {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
-            </select>
+        <PBody>
+          <div className="grid grid--4 rfgrid" style={{ alignItems: "end" }}>
+            <Field id="ap-fac" label="Faculty">
+              <SearchSelect id="ap-fac" value={faculty} allLabel="All faculties" placeholder="All faculties"
+                options={faculties.map((f) => ({ value: f.code, label: f.name }))}
+                onChange={(v) => navigate({ faculty: v, programme: "" })} />
+            </Field>
+            <Field id="ap-prog" label="Programme">
+              <SearchSelect id="ap-prog" value={programme}
+                allLabel={faculty ? "All in this faculty" : "All programmes"} placeholder="Search a programme…"
+                options={facProgs.map((p) => ({ value: p.code, label: p.name }))}
+                onChange={(v) => navigate({ programme: v })} />
+            </Field>
+            <Field id="ap-em" label="Entry mode">
+              <SearchSelect id="ap-em" value={entryMode} allLabel="All modes" placeholder="All modes"
+                options={[{ value: "UTME", label: "UTME" }, { value: "DIRECT_ENTRY", label: "Direct Entry" }]}
+                onChange={(v) => navigate({ entryMode: v })} />
+            </Field>
+            <Field id="ap-q" label="Find an applicant">
+              <input id="ap-q" className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") navigate({}); }} placeholder="Surname, other names or JAMB number" autoComplete="off" />
+            </Field>
           </div>
-          <div className="field" style={{ minWidth: 260 }}>
-            <label htmlFor="ap-prog">Programme</label>
-            <select id="ap-prog" className="ctl" value={programme} onChange={(e) => navigate({ programme: e.target.value })}>
-              <option value="">{faculty ? "All in this faculty" : "All programmes"}</option>
-              {facProgs.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
-            </select>
+          <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+            {filtered ? <button className="btn btn--ghost" onClick={() => { setSearch(""); router.push(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear filters</button> : null}
+            <button className="btn btn--primary" onClick={() => navigate({})}>Search</button>
           </div>
-          <div className="field" style={{ minWidth: 150 }}>
-            <label htmlFor="ap-em">Entry mode</label>
-            <select id="ap-em" className="ctl" value={entryMode} onChange={(e) => navigate({ entryMode: e.target.value })}>
-              <option value="">All modes</option>
-              <option value="UTME">UTME</option>
-              <option value="DIRECT_ENTRY">Direct Entry</option>
-            </select>
-          </div>
-          <div className="field" style={{ flexGrow: 1, minWidth: 220 }}>
-            <label htmlFor="ap-q">Find an applicant</label>
-            <input id="ap-q" className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") navigate({}); }} placeholder="Surname, other names or JAMB number" autoComplete="off" />
-          </div>
-          <button className="btn btn--primary" onClick={() => navigate({})}>Search</button>
-          {filtered ? <button className="btn btn--ghost" onClick={() => { setSearch(""); router.push(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear</button> : null}
-        </div>
+        </PBody>
       </Panel>
 
       <Panel title="Admitted by programme" right={`${d.breakdown.length} programme${d.breakdown.length === 1 ? "" : "s"}`}>
