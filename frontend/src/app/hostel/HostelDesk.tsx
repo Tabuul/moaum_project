@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { CATEGORIES, type HostelDeskData } from "@/lib/hostel";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -55,6 +55,8 @@ export function HostelDesk({ d, sessions, actingOffice }: { d: HostelDeskData; s
 
   return (
     <>
+      <RoleLine allowed={["services", "housing", "bursar"]} actingOffice={actingOffice} canAct={may}
+        action="Allocating hostel places and rooms" />
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 160 }}><label htmlFor="hd-s">Session</label>
           <select id="hd-s" className="ctl" value={d.session} onChange={(e) => router.push(`/hostel?session=${encodeURIComponent(e.target.value)}`)}>

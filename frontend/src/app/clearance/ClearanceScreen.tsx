@@ -9,7 +9,7 @@ import type { Scope } from "@/lib/scope";
 import type { ClearanceListing, ClearancePosition } from "@/lib/credentials";
 import { csv, download } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, Gate, Gates, Modal, Field, TwoCol, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -78,6 +78,8 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
 
   return (
     <>
+      <RoleLine allowed={["registrar", "dregistrar", "academic"]} actingOffice={actingOffice} canAct={anyUnit}
+        action="Clearing students through the units" />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="candidates" count={listing.candidates.length} of={listing.total} />
       <Note kind="info" title="Clearance is a set of independent sign-offs, not a form that travels">
         Each unit clears against its own record, in any order, and none of them holds a piece of paper for the student to carry. The candidate is cleared when the last unit signs, and the certificate is released by that fact rather than by anyone assembling the evidence.

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -47,6 +47,8 @@ export function Governance({ register, dsr, actingOffice }: { register: Activity
 
   return (
     <>
+      <RoleLine allowed={["registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may}
+        action="Keeping the processing register and DPIAs" />
       <Note kind={outstanding ? "bad" : "info"} title={outstanding ? `${outstanding} data-protection impact assessment${outstanding === 1 ? "" : "s"} outstanding` : "The processing register is the University's own record"}>
         The Nigeria Data Protection Act requires a record of processing activities and a data-protection impact assessment for high-risk processing. The register below is the University&rsquo;s own; the DPO keeps it current. Figures shown are counts from the register and the request log — nothing is inferred.
       </Note>

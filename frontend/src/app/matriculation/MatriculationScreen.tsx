@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { MatriculationOverview } from "@/lib/matriculation";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Steps, TwoCol, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -36,6 +36,8 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may}
+        action="Confirming faculty lists and issuing matriculation numbers" />
       <Note kind={done && !t.confirmed ? "ok" : t.pending ? "bad" : t.confirmed ? "info" : "info"}
         title={done && !t.confirmed ? `${last.issued.toLocaleString()} matriculation numbers issued in one run`
           : t.pending ? `${t.pending} faculty list${t.pending === 1 ? " is" : "s are"} not confirmed, so the run cannot start`

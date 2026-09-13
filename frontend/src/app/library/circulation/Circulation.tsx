@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import type { LibraryDeskData, Loan } from "@/lib/library";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -47,6 +47,8 @@ export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData
 
   return (
     <>
+      <RoleLine allowed={["library", "services"]} actingOffice={actingOffice} canAct={may}
+        action="Issuing, returning and reserving loans" />
       <Tiles items={[
         ["Copies in stock", t.stock.toLocaleString(), null, "On the shelf list"],
         ["On loan", t.on_loan.toLocaleString(), null, t.stock ? `${Math.round((100 * t.on_loan) / t.stock)}% of stock` : "—"],

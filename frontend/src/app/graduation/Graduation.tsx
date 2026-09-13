@@ -9,7 +9,7 @@ import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import type { GraduationView } from "@/lib/credentials";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Btn, Note, Panel, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -44,6 +44,8 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar", "dregistrar", "records"]} actingOffice={actingOffice} canAct={office}
+        action="Confirming graduands and the Senate list" />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="candidates" count={t.finalists} of={t.finalists} />
       {t.outstanding ? (
         <Note kind="bad" title={`${t.outstanding} finalist${t.outstanding === 1 ? " has" : "s have"} an unmet requirement`} action={<a href="#exceptions" className="btn btn--urgent btn--sm">Open the exception list</a>}>

@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -66,6 +66,9 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
 
   return (
     <>
+      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice}
+        canAct={maySaic || maySenate || mayOfficer || mayEffect}
+        action="Recommending, approving and effecting transfers" />
       <Note kind="info" title="One application at a time, considered by the committee and approved by Senate">
         A matriculated student applies to move to another department. The Special Admissions and Admission Irregularities Committee recommends the case for a level, or does not; Senate approves the recommended cases; the candidate pays the non-refundable {money(10000)} processing fee and prints an approval letter; the registry then effects the change — the programme and level move, the matriculation number does not.
       </Note>
