@@ -6,6 +6,7 @@
  * order. Printed from the browser; the print sheet drops the shell.
  */
 import Link from "next/link";
+import { docSerial } from "@/lib/exportbrand";
 import { Btn, KvGrid, Note, Panel, PBody } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Passport } from "@/components/proto/blocks";
@@ -21,7 +22,14 @@ export function HallList({ data }: { data: HallListData }) {
   const day = new Date(b.held_on).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return (
     <>
-      <style>{`@media print { .nav, .topbar, .no-print { display: none !important; } .main { padding: 0 !important; } .card { break-inside: avoid; } }`}</style>
+      <style>{`.hall-mast { display: none; } @media print { .nav, .topbar, .no-print { display: none !important; } .main { padding: 0 !important; } .card { break-inside: avoid; } .hall-mast { display: block !important; text-align: center; margin-bottom: 14px; } .hall-mast img { height: 54px; } }`}</style>
+      <div className="hall-mast">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/crest.png" alt="" />
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+        <div style={{ textTransform: "uppercase", letterSpacing: ".06em", fontSize: 11 }}>Post-UTME Screening — Hall List</div>
+        <div style={{ fontSize: 10, color: "#555" }}>Batch {b.label} · {day} · Serial {docSerial("HALL")}</div>
+      </div>
       <div className="no-print" style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
         <Link href={`/admissions?session=${encodeURIComponent(data.session)}`} className="btn btn--ghost btn--sm">Back to the Admissions desk</Link>
         <Btn kind="primary" onClick={() => window.print()}>Print the hall list</Btn>
