@@ -170,7 +170,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "t/overview": [
     "Institutional overview",
-    "Data as at 5 September 2026, 06:00"
+    "Every figure live from the record, for the session you choose"
   ],
   "t/channels": [
     "Notification channels",
