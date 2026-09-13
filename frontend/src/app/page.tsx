@@ -15,8 +15,9 @@ export const dynamic = "force-dynamic";
 /* the platform's own dashboard is the technical desks'; the administrator's home is the
    whole-institution view (r/admin, /admin), so it is not in this set */
 const PLATFORM = new Set(["ict", "super"]);
-/* Academic Affairs: the offices that work the register */
-const ACADEMIC = new Set(["academic", "dregistrar", "records", "dvc", "vc"]);
+/* Academic Affairs: the offices that work the register (the VC's home is the
+   institutional overview, so it redirects there rather than to this dashboard) */
+const ACADEMIC = new Set(["academic", "dregistrar", "records", "dvc"]);
 
 export default async function DashboardPage() {
   const [me, sessions] = await Promise.all([api<Me>("/api/v1/iam/me"), api<{ name: string; state: string }[]>("/api/v1/ref/sessions")]);
@@ -26,6 +27,8 @@ export default async function DashboardPage() {
   if (office === "student") redirect("/student");
   /* the administrator's home is the whole institution at one desk (proto part18) */
   if (office === "admin") redirect("/admin");
+  /* the Vice-Chancellor's home is the institutional overview (menus.ts home t/overview) */
+  if (office === "vc") redirect("/overview");
   const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;

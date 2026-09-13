@@ -1709,6 +1709,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Records & queries"
           },
           {
+            "id": "t/overview",
+            "icon": "chart",
+            "label": "Institutional overview"
+          },
+          {
             "id": "t/admissions",
             "icon": "doc",
             "label": "Admissions"
