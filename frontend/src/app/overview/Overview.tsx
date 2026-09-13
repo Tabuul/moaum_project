@@ -1,91 +1,182 @@
 "use client";
 
-/** instOverview — the session so far, in figures: each chart carries its table, because a
- *  chart is for seeing the shape and a table is for quoting the number. Every figure is from
- *  the same record the desks work on; nothing here is entered. */
-import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+/** t/overview — the session so far, in figures (proto _ac.html instOverview). Every chart is drawn
+ *  from the same record the desks work on and carries its table beneath it, because a chart is for
+ *  seeing the shape and a table for quoting the number. Nothing here is entered by hand — the marks,
+ *  the chain stages, the collections are read once and counted, so this cannot drift from the desks. */
+import { Note, Panel, PBody, Tiles, Tick, WarnIcon, Ico } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Bar, money } from "@/components/proto/blocks";
+import { money } from "@/components/proto/blocks";
+import { Donut, HBars, Stack, Line, VBars, Legend, VZ, vzNum, type LegendKey } from "@/components/proto/vz";
 
 export interface OverviewData {
   session: string;
   semester: number;
+  uni?: { students: number; faculties: number; departments: number };
   students: { total: number; byFaculty: { code: string; name: string; students: number }[]; byLevel: { level: number; students: number }[] };
-  results: { code: string; name: string; expected: number; published: number; in_progress: number }[];
+  results: { code: string; name: string; expected: number; submitted?: number; approved?: number; published: number; in_progress: number }[];
+  grades?: { grade: string; count: number }[];
+  weeks?: { week: number; label: string; submitted: number; approved: number }[];
   collection: { faculty_code: string; faculty_name: string; students: number; paid_students: number; collected: number; due: number }[];
 }
 
+const N = (x: unknown) => Number(x ?? 0);
+const LEVEL_COLS = [VZ.s1, VZ.s2, VZ.s3, VZ.s4, VZ.s5];
+function niceMax(v: number) {
+  if (v <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  return Math.ceil((v * 1.12) / mag) * mag;
+}
+
 export function Overview({ d, semester }: { d: OverviewData; semester: number }) {
-  const expected = d.results.reduce((a, r) => a + Number(r.expected), 0);
-  const published = d.results.reduce((a, r) => a + Number(r.published), 0);
-  const collected = d.collection.reduce((a, c) => a + Number(c.collected), 0);
-  const maxFac = Math.max(1, ...d.students.byFaculty.map((f) => f.students));
+  const res = d.results.map((r) => {
+    const expected = N(r.expected);
+    const submitted = r.submitted != null ? N(r.submitted) : N(r.published) + N(r.in_progress);
+    const approved = r.approved != null ? N(r.approved) : N(r.published);
+    return { code: r.code, name: r.name, expected, submitted, approved, pending: Math.max(0, submitted - approved), never: Math.max(0, expected - submitted) };
+  });
+  const expected = res.reduce((a, r) => a + r.expected, 0);
+  const subm = res.reduce((a, r) => a + r.submitted, 0);
+  const appr = res.reduce((a, r) => a + r.approved, 0);
+  const pend = Math.max(0, subm - appr), miss = Math.max(0, expected - subm);
+  const pastPct = expected ? Math.round((appr / expected) * 100) : 0;
+  const uniStudents = N(d.uni?.students ?? d.students.total);
+  const collected = d.collection.reduce((a, c) => a + N(c.collected), 0);
+
+  const statusKeys: LegendKey[] = [
+    { l: "Approved", c: VZ.good, i: <Tick size={12} colour={VZ.good} /> },
+    { l: "Pending in the chain", c: VZ.warn, i: <Ico name="clock" size={12} stroke="#8a6300" w={2.2} /> },
+    { l: "Never submitted", c: VZ.crit, i: <WarnIcon size={12} /> },
+  ];
+
+  /* the faculty furthest behind, named from the record rather than asserted */
+  const ranked = res.filter((r) => r.expected > 0).map((r) => ({ ...r, pct: Math.round((r.approved / r.expected) * 100) })).sort((a, b) => a.pct - b.pct);
+  const worst = ranked[0];
+
+  const facStudents = [...d.students.byFaculty].map((f) => ({ l: f.name, v: N(f.students) })).sort((a, b) => b.v - a.v);
+  const gradeOrder = ["A", "B", "C", "D", "E", "F"];
+  const gradeTotal = (d.grades ?? []).reduce((a, g) => a + N(g.count), 0);
+  const grades = gradeOrder.map((g) => ({ grade: g, count: N((d.grades ?? []).find((x) => x.grade === g)?.count) }));
+  const fPct = gradeTotal ? Math.round((N(grades.find((g) => g.grade === "F")?.count) / gradeTotal) * 100) : 0;
+
+  const weeks = d.weeks ?? [];
+  const wMax = niceMax(Math.max(1, ...weeks.map((w) => Math.max(N(w.submitted), N(w.approved)))));
 
   return (
     <>
       <Note kind="info" title="The session so far, in figures">
-        Every figure on this screen is drawn from the same record the desks work on, and each chart carries its table &mdash; because a chart is for seeing the shape and a table is for quoting the number, and an institutional paper needs both. Nothing here is entered by hand.
+        Every chart on this screen is drawn from the same record the desks work on, and each carries its table beneath it &mdash; because a chart is for seeing the shape and a table is for quoting the number, and an institutional paper needs both.
       </Note>
 
       <Tiles items={[
-        ["Students on the register", d.students.total.toLocaleString(), null, `${d.students.byFaculty.length} facult${d.students.byFaculty.length === 1 ? "y" : "ies"}`],
-        ["Result sets expected", String(expected), null, `${d.session} · ${semester === 1 ? "first" : "second"} semester`],
-        ["Past Senate", expected ? `${Math.round((100 * published) / expected)}%` : "—", published ? "var(--green-ink)" : null, `${published} of ${expected} published`],
-        ["Collected this session", money(collected), collected ? "var(--green-ink)" : null, "School fees confirmed"],
+        ["Students on the register", vzNum(uniStudents), null, `${N(d.uni?.faculties ?? d.students.byFaculty.length)} faculties · ${N(d.uni?.departments)} departments`],
+        ["Result sets expected", vzNum(expected), null, `${d.session} · ${semester === 1 ? "first" : "second"} semester`],
+        ["Past Senate", expected ? `${pastPct}%` : "—", appr ? "var(--green-ink)" : null, `${vzNum(appr)} sets`],
+        ["Never submitted", vzNum(miss), miss ? "var(--red-ink)" : "var(--green-ink)", miss ? "sets with no desk yet" : "every set is on a desk"],
       ]} />
 
       <div className="grid grid--2">
-        <Panel title="Students by faculty" right="On the register, all levels">
-          {d.students.byFaculty.length ? (
-            <DTable cols={["Faculty", "Students|num", "Share|num"]} rows={d.students.byFaculty.map((f) => [
-              <span key="f">{f.name}</span>,
-              <span className="tnum" key="n">{f.students.toLocaleString()}</span>,
-              <span key="b" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={Math.round((100 * f.students) / maxFac)} /></span>,
-            ])} />
-          ) : <PBody><div className="sub2">Nobody is on the register yet, so there is nothing to chart.</div></PBody>}
+        <Panel title={`Where the ${vzNum(expected)} result sets stand`} right="Approved, pending, never submitted">
+          <PBody>
+            {expected ? (
+              <>
+                <Donut capLabel="approved" capValue={`${pastPct}%`} items={[
+                  { l: "Approved by Senate", v: appr, c: VZ.good, i: <Tick size={13} colour="#0a7a3b" /> },
+                  { l: "Pending in the chain", v: pend, c: VZ.warn, i: <Ico name="clock" size={13} stroke="#8a6300" w={2.2} /> },
+                  { l: "Never submitted", v: miss, c: VZ.crit, i: <WarnIcon size={13} /> },
+                ]} />
+                <Note kind="bad" title="The two red-ish slices are different problems">
+                  A <b>pending</b> set is on a named desk and can be chased there. A set that was <b>never submitted</b> has no desk at all &mdash; it is a lecturer who has not attested and a Head of Department who has not noticed.
+                </Note>
+              </>
+            ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester yet. A sheet appears when a lecturer is allocated and the examination session is open.</div>}
+          </PBody>
         </Panel>
         <Panel title="Students by level" right="All modes, all faculties">
-          {d.students.byLevel.length ? (
-            <DTable cols={["Level", "Students|num", "Share|num"]} rows={d.students.byLevel.map((l) => [
-              <span className="tnum" key="l">{l.level} Level</span>,
-              <span className="tnum" key="n">{l.students.toLocaleString()}</span>,
-              <span key="b" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={Math.round((100 * l.students) / Math.max(1, ...d.students.byLevel.map((x) => x.students)))} /></span>,
-            ])} />
-          ) : <PBody><div className="sub2">No enrolment recorded yet.</div></PBody>}
+          <PBody>
+            {d.students.byLevel.length ? (
+              <>
+                <Donut capLabel="students" capValue={vzNum(uniStudents)} items={d.students.byLevel.map((r, i) => ({ l: `${N(r.level)} Level`, v: N(r.students), c: LEVEL_COLS[i % LEVEL_COLS.length] }))} />
+                <Note kind="info" title="Every student on the register sits in exactly one level">
+                  The shape is the intake history &mdash; four or five years of it &mdash; as admission, progression and graduation have left it. Only the programmes with a five-year run (MBBS, the LL.B, Pharm.D and Engineering) reach 500 Level.
+                </Note>
+              </>
+            ) : <div className="sub2">No enrolment recorded yet.</div>}
+          </PBody>
         </Panel>
       </div>
 
-      <Panel title="Results by faculty" right={`${d.session} · ${semester === 1 ? "first" : "second"} semester · expected, published, in progress`}>
-        {d.results.length ? (
-          <DTable cols={["Faculty", "Expected|mid", "Published|mid", "In progress|mid", "Published %|num"]} rows={d.results.map((r) => {
-            const pct = Number(r.expected) ? Math.round((100 * Number(r.published)) / Number(r.expected)) : 0;
-            return [
-              <strong key="f">{r.name}</strong>,
-              <span className="tnum" key="e">{r.expected}</span>,
-              <span className="tnum" key="p" style={{ color: "var(--green-ink)", fontWeight: 700 }}>{r.published}</span>,
-              <span className="tnum" key="i">{r.in_progress}</span>,
-              <span key="r" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={pct} colour={pct < 55 ? "var(--red)" : "var(--green)"} /><span className="tnum sub2">{pct}%</span></span>,
-            ];
-          })} />
-        ) : <PBody><div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester yet. A sheet appears when a lecturer is allocated and the examination session is open.</div></PBody>}
+      <Panel title="Results by faculty" right="Each bar is that faculty&rsquo;s expected sets, split three ways">
+        <PBody>
+          {res.length ? (
+            <>
+              <Stack keys={statusKeys} rows={res.map((f) => ({ l: f.name, parts: [f.approved, f.pending, f.never] }))} />
+              {worst ? (
+                <Note kind="bad" title={`${worst.name} is furthest behind`}>
+                  {vzNum(worst.approved)} set{worst.approved === 1 ? "" : "s"} approved of {vzNum(worst.expected)} expected &mdash; {worst.pct} per cent, against a University average of {pastPct}. {worst.never ? <>{vzNum(worst.never)} have never been submitted, which is where a Vice-Chancellor&rsquo;s question belongs.</> : "The rest are pending on a named desk and can be chased there."}
+                </Note>
+              ) : null}
+            </>
+          ) : <div className="sub2">No score sheet exists for this session and semester yet.</div>}
+        </PBody>
       </Panel>
 
-      <Panel title="Collection by faculty" right={`${d.session} · from the register`}>
-        {d.collection.length ? (
-          <DTable cols={["Faculty", "Collected|mid", "Students paid|mid", "Rate|num"]} rows={d.collection.map((c) => {
-            const rate = Number(c.due) ? Math.min(100, Math.round((100 * Number(c.collected)) / Number(c.due))) : 0;
+      <Panel title="Results by faculty, in figures" right="The chart above, as numbers">
+        {res.length ? (
+          <DTable cols={["Faculty", "Expected|mid", "Submitted|mid", "Approved|mid", "Pending|mid", "Never submitted|mid", "Approved %|num"]} rows={res.map((f) => {
+            const pct = f.expected ? Math.round((f.approved / f.expected) * 100) : 0;
             return [
-              <span key="f">{c.faculty_name}</span>,
-              <span className="tnum" key="c">{money(Number(c.collected))}</span>,
-              <span className="tnum" key="s">{c.paid_students} of {c.students}</span>,
-              <span key="r" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={rate} colour={rate < 60 ? "var(--red)" : "var(--green)"} /><span className="tnum sub2">{Number(c.due) ? `${rate}%` : "no charge"}</span></span>,
+              <strong key="f">{f.name}</strong>,
+              <span className="tnum" key="e">{f.expected}</span>,
+              <span className="tnum" key="s">{f.submitted}</span>,
+              <span className="tnum" key="a" style={{ color: "var(--green-ink)", fontWeight: 700 }}>{f.approved}</span>,
+              <span className="tnum" key="p">{f.pending}</span>,
+              <span className="tnum" key="n" style={f.never > 30 ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{f.never}</span>,
+              <b className="tnum" key="r" style={pct < 55 ? { color: "var(--red-ink)" } : undefined}>{pct}%</b>,
             ];
           })} />
-        ) : <PBody><div className="sub2">Nothing is charged for {d.session} yet, so there is nothing to collect against.</div></PBody>}
+        ) : <PBody><div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester yet.</div></PBody>}
       </Panel>
+
+      <Panel title="The semester week by week" right="Cumulative sets, submitted and approved">
+        <PBody>
+          {weeks.length ? (
+            <>
+              <Line yMax={wMax} yLabel="Cumulative result sets submitted and approved" xs={weeks.map((w) => w.label)} series={[
+                { l: "Submitted", v: weeks.map((w) => N(w.submitted)), c: VZ.s1 },
+                { l: "Approved", v: weeks.map((w) => N(w.approved)), c: VZ.s2 },
+              ]} />
+              <Legend keys={[{ l: "Submitted by the lecturer", c: VZ.s1 }, { l: "Approved by Senate", c: VZ.s2 }]} />
+              <Note kind="info" title="The gap between the two lines is the workflow">
+                It is the width of the approval chain: work arriving and work clearing. A gap that stays roughly constant is a chain in good health; a widening gap means a desk has stopped, and it shows here before anybody reports it.
+              </Note>
+            </>
+          ) : <div className="sub2">No sheet has been submitted for {d.session}, {semester === 1 ? "first" : "second"} semester yet, so there is no week-by-week line to draw.</div>}
+        </PBody>
+      </Panel>
+
+      <div className="grid grid--2">
+        <Panel title="Students by faculty" right="On the register, all levels">
+          <PBody>
+            {facStudents.length ? <HBars items={facStudents} /> : <div className="sub2">Nobody is on the register yet.</div>}
+          </PBody>
+        </Panel>
+        <Panel title="Grades across the University" right="Every published, graded entry this semester">
+          <PBody>
+            {gradeTotal ? (
+              <>
+                <VBars items={grades.map((g) => ({ l: g.grade, v: gradeTotal ? Math.round((g.count / gradeTotal) * 100) : 0, c: g.grade === "F" ? VZ.crit : VZ.seq }))} />
+                <Note kind={fPct >= 15 ? "bad" : "info"} title={`${fPct} per cent of every graded entry is an F`}>
+                  That is roughly one entry in {fPct ? Math.max(1, Math.round(100 / fPct)) : "—"} becoming a carryover, and a carryover consumes units in a later semester that a student then cannot spend on new courses. The portal can say which courses carry the failures, but not whether the cause is the examination, the teaching or the entry standard.
+                </Note>
+              </>
+            ) : <div className="sub2">No result has been published for {d.session}, {semester === 1 ? "first" : "second"} semester yet, so there is no grade spread to show.</div>}
+          </PBody>
+        </Panel>
+      </div>
 
       <Note kind="info" title="A number here and a number on a desk are one number read twice">
-        The students on the register are the rows the Registry works; the result sets are the sheets the lecturers own; the collection is the day book the Bursary confirms. This screen counts them, it does not keep a second copy, so it cannot drift from what the desks see.
+        The students are the rows the Registry works; the result sets are the sheets the lecturers own and the chain approves; the grades are the marks the examiners entered; the {money(collected)} collected is the day book the Bursary confirms. This screen counts them, it does not keep a second copy.
       </Note>
     </>
   );

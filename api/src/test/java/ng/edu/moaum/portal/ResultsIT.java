@@ -143,6 +143,19 @@ class ResultsIT {
         ResponseEntity<Map> monitor = it.get(academic, "/api/v1/results/exam-sessions/" + examSessionId() + "/monitor");
         assertThat(monitor.getStatusCode().value()).isEqualTo(200);
         assertThat((List<?>) monitor.getBody().get("faculties")).isNotEmpty();
+
+        // the institutional overview read model — every statistical structure the screen draws
+        ResponseEntity<Map> ov = it.get(academic, "/api/v1/reporting/overview?session=" + SESSION + "&semester=1");
+        assertThat(ov.getStatusCode().value()).as(String.valueOf(ov.getBody())).isEqualTo(200);
+        Map<String, Object> body = ov.getBody();
+        assertThat(((Map<?, ?>) body.get("uni")).get("faculties")).isNotNull();
+        List<Map<String, Object>> ovResults = (List<Map<String, Object>>) body.get("results");
+        assertThat(ovResults).anySatisfy(r -> {
+            assertThat(((Number) r.get("expected")).intValue()).isGreaterThan(0);
+            assertThat(((Number) r.get("submitted")).intValue()).isGreaterThanOrEqualTo(((Number) r.get("approved")).intValue());
+        });
+        assertThat((List<?>) body.get("grades")).anySatisfy(g -> assertThat(((Map<?, ?>) g).get("grade")).isEqualTo("A"));
+        assertThat((List<?>) body.get("weeks")).as("a submitted sheet gives at least one week").isNotEmpty();
     }
 
     private String examSessionId() {
