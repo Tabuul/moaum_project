@@ -21,11 +21,13 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number> } | null>(null);
+  const [progress, setProgress] = useState<{ sent: number; of: number } | null>(null);
 
   async function upload(kind: Tab, file: File) {
     setBusy(true);
     setProblem(null);
     setResult(null);
+    setProgress(null);
     try {
       const grid = await xlsxRows(await file.arrayBuffer());
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim());
@@ -41,15 +43,36 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const path = kind === "biodata" ? "/api/bff/api/v1/results/legacy/biodata"
         : kind === "students" ? "/api/bff/api/v1/results/legacy/students"
         : kind === "registration" ? "/api/bff/api/v1/results/legacy/registration" : "/api/bff/api/v1/results/legacy/results";
-      const body = kind === "biodata" || kind === "students" ? { rows } : { session, semester: Number(semester), rows };
-      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy ${kind} imported${kind === "students" ? "" : ` for ${session} semester ${semester}`}`) }, body: JSON.stringify(body) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setResult({ tab: kind, counts: j as Record<string, number> });
+      /* a large export goes up in batches — the importers upsert on the matriculation number, so each
+         batch is independent and idempotent; the counts are summed as the batches come back */
+      const CHUNK = kind === "biodata" ? 200 : 400;
+      const chunks: typeof rows[] = [];
+      for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
+      const totals: Record<string, number> = {};
+      let sent = 0;
+      setProgress({ sent: 0, of: rows.length });
+      for (const chunk of chunks) {
+        const scoped = kind !== "students" && kind !== "biodata";
+        const body = scoped ? { session, semester: Number(semester), rows: chunk } : { rows: chunk };
+        const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy ${kind} imported${scoped ? ` for ${session} semester ${semester}` : ""}: rows ${sent + 1} to ${sent + chunk.length} of ${rows.length}`) }, body: JSON.stringify(body) });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
+          setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${sent.toLocaleString()} of ${rows.length.toLocaleString()} rows were imported before this batch was refused. The import is idempotent — fix the file and upload it again; the rows already in will update, not duplicate.` });
+          if (Object.keys(totals).length) setResult({ tab: kind, counts: totals });
+          return;
+        }
+        const counts = (j ?? {}) as Record<string, number>;
+        for (const [k, v] of Object.entries(counts)) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
+        sent += chunk.length;
+        setProgress({ sent, of: rows.length });
+      }
+      setResult({ tab: kind, counts: totals });
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -228,7 +251,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
             <label className={`btn btn--primary${!may || (needScope && !scopeReady) || busy ? " btn--disabled" : ""}`} style={{ cursor: may && scopeReady && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || (needScope && !scopeReady) ? 0.6 : 1 }}>
-              {busy ? "Importing…" : `Upload ${tab === "biodata" ? "biography" : tab === "students" ? "students" : tab === "registration" ? "registration" : "results"} file`}
+              {busy ? (progress && progress.of > 400 ? `Importing — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}…` : "Importing…") : `Upload ${tab === "biodata" ? "biography" : tab === "students" ? "students" : tab === "registration" ? "registration" : "results"} file`}
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || (needScope && !scopeReady) || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(tab, f); e.target.value = ""; }} />
             </label>
             {needScope && !scopeReady ? <span className="sub2">Enter the session (YYYY/YYYY) and semester first.</span> : null}
@@ -259,6 +282,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         <Pil kind="grey">1</Pil> Students &rarr; <Pil kind="grey">2</Pil> Registration &rarr; <Pil kind="grey">3</Pil> Results.
         A result needs the student and the course registration to exist, so the results import also creates the
         registration entry if it is missing. Uploading the same file again updates rather than duplicates.
+        A large export is sent up in batches automatically, so a file of any size uploads in one go; if a batch is
+        refused part-way, the rows already in stand and you can simply upload the file again.
       </Note>
     </>
   );
