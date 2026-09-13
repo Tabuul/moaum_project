@@ -10,7 +10,7 @@ export function PeriodPicker({ base, sessions, session, semester }: { base: stri
   const opts = sessions.includes(session) ? sessions : [session, ...sessions];
   const go = (s: string, sem: number) => router.push(`${base}?session=${encodeURIComponent(s)}&sem=${sem}`);
   return (
-    <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+    <div className="card"><div className="card__body" style={{ display: "flex", flexDirection: "row", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
       <div className="field" style={{ minWidth: 170, margin: 0 }}>
         <label htmlFor="pp-session">Session</label>
         <select id="pp-session" className="ctl" value={session} onChange={(e) => go(e.target.value, semester)}>
