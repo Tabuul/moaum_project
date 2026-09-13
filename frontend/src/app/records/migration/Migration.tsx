@@ -37,15 +37,16 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         return;
       }
       /* transform every row, yielding to the tab every few thousand so a large file stays responsive */
+      const cols = resolveColumns(kind, header);
       const dataRows = grid.slice(1);
       const rows: Record<string, string>[] = [];
       for (let i = 0; i < dataRows.length; i++) {
         const r = dataRows[i];
         if (r.some((c) => String(c ?? "").trim() !== "")) {
-          const o = canonicalRow(kind, header, r);
+          const o = applyRow(cols, r);
           if (o.matric && !/^matric/i.test(o.matric)) rows.push(o);
         }
-        if ((i & 4095) === 4095) { setProgress({ label: "Preparing the rows", sent: i + 1, of: dataRows.length }); await new Promise((res) => setTimeout(res)); }
+        if ((i & 8191) === 8191) { setProgress({ label: "Preparing the rows", sent: i + 1, of: dataRows.length }); await new Promise((res) => setTimeout(res)); }
       }
       if (!rows.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Export the list from the old portal and upload it." }); return; }
       const path = kind === "biodata" ? "/api/bff/api/v1/results/legacy/biodata"
@@ -163,57 +164,72 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     return "";
   }
 
-  function canonicalRow(kind: Tab, header: string[], r: (string | number | null)[]): Record<string, string> {
+  type Col = { key: string; idx: number; norm?: (s: string) => string };
+
+  /* resolve each field's column index from the header ONCE — the header is the same for every
+     row, so matching column names with regex per row (over tens of thousands of rows) is what
+     froze the tab. Here it is done once and every row is then a cheap read by index. */
+  function resolveColumns(kind: Tab, header: string[]): Col[] {
     const h = header.map((x) => String(x ?? "").trim().toLowerCase());
-    const val = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
     const at = (...names: RegExp[]) => h.findIndex((x) => names.some((n) => n.test(x)));
-    const o: Record<string, string> = {};
-    const put = (key: string, i: number) => { if (i >= 0 && val(i)) o[key] = val(i); };
-    put("matric", at(/matric/, /reg\.?\s*(no|number)/, /registration/, /mat\.?\s*no/, /matno/));
+    const cols: Col[] = [];
+    const add = (key: string, idx: number, norm?: (s: string) => string) => { if (idx >= 0) cols.push({ key, idx, norm }); };
+    add("matric", at(/matric/, /reg\.?\s*(no|number)/, /registration/, /mat\.?\s*no/, /matno/));
     if (kind === "biodata") {
-      put("surname", at(/surname/, /last\s*name/));
-      put("otherNames", at(/other\s*name/, /first\s*name/, /given/));
-      put("name", at(/full\s*name/, /^name$/, /student\s*name/, /^names$/));
-      put("programme", at(/programme/, /program/, /course of study/));
-      put("sex", at(/^sex$/, /gender/));
-      { const v = normDob(val(at(/birth/, /^dob$/, /d\.o\.b/))); if (v) o.dob = v; }
-      put("entryMode", at(/entry\s*mode/, /mode of entry/, /mode_entry/, /^mode$/, /admission type/));
-      put("entrySession", at(/entry\s*session/, /^yoe$/, /year of entry/, /admission\s*session/, /session admitted/));
-      put("level", at(/current\s*level/, /^level$/, /^lvl$/));
-      { const v = normPhone(val(at(/phone/, /mobile/, /gsm/, /^tel$/))); if (v) o.phone = v; }
-      put("email", at(/^e-?mail$/, /e-?mail/));
-      put("address", at(/^address$/, /home\s*address/, /residential/, /contact\s*address/));
-      put("nationality", at(/nationality/));
-      put("state", at(/state\s*of\s*origin/, /^state$/));
-      put("lga", at(/^lga$/, /local\s*govt/, /local\s*government/));
-      put("guardianName", at(/guardian\s*name/, /guardianname/));
-      put("guardianAddress", at(/guardian\s*address/, /guardianaddress/));
-      put("sponsorName", at(/sponsor\s*name/, /sponsorname/));
-      put("sponsorAddress", at(/sponsor\s*address/, /sponsoraddress/));
-      put("nokName", at(/nok\s*name/, /nokname/, /next\s*of\s*kin.*name/, /kin\s*name/));
-      put("nokAddress", at(/nok\s*address/, /nokaddress/, /next\s*of\s*kin.*address/, /kin\s*address/));
-      put("extracurricular", at(/extra.?curricular/, /hobb/));
-      put("appno", at(/^appno$/, /application\s*no/, /app\s*no/));
+      add("surname", at(/surname/, /last\s*name/));
+      add("otherNames", at(/other\s*name/, /first\s*name/, /given/));
+      add("name", at(/full\s*name/, /^name$/, /student\s*name/, /^names$/));
+      add("programme", at(/programme/, /program/, /course of study/));
+      add("sex", at(/^sex$/, /gender/));
+      add("dob", at(/birth/, /^dob$/, /d\.o\.b/), normDob);
+      add("entryMode", at(/entry\s*mode/, /mode of entry/, /mode_entry/, /^mode$/, /admission type/));
+      add("entrySession", at(/entry\s*session/, /^yoe$/, /year of entry/, /admission\s*session/, /session admitted/));
+      add("level", at(/current\s*level/, /^level$/, /^lvl$/));
+      add("phone", at(/phone/, /mobile/, /gsm/, /^tel$/), normPhone);
+      add("email", at(/^e-?mail$/, /e-?mail/));
+      add("address", at(/^address$/, /home\s*address/, /residential/, /contact\s*address/));
+      add("nationality", at(/nationality/));
+      add("state", at(/state\s*of\s*origin/, /^state$/));
+      add("lga", at(/^lga$/, /local\s*govt/, /local\s*government/));
+      add("guardianName", at(/guardian\s*name/, /guardianname/));
+      add("guardianAddress", at(/guardian\s*address/, /guardianaddress/));
+      add("sponsorName", at(/sponsor\s*name/, /sponsorname/));
+      add("sponsorAddress", at(/sponsor\s*address/, /sponsoraddress/));
+      add("nokName", at(/nok\s*name/, /nokname/, /next\s*of\s*kin.*name/, /kin\s*name/));
+      add("nokAddress", at(/nok\s*address/, /nokaddress/, /next\s*of\s*kin.*address/, /kin\s*address/));
+      add("extracurricular", at(/extra.?curricular/, /hobb/));
+      add("appno", at(/^appno$/, /application\s*no/, /app\s*no/));
     } else if (kind === "students") {
-      put("surname", at(/surname/, /last\s*name/));
-      put("otherNames", at(/other\s*name/, /first\s*name/, /given/));
-      put("name", at(/full\s*name/, /^name$/, /student\s*name/, /^names$/));
-      put("programme", at(/programme/, /program/, /course of study/, /department|dept/));
-      put("sex", at(/^sex$/, /gender/));
-      put("dob", at(/birth/, /^dob$/, /d\.o\.b/));
-      put("entryMode", at(/entry\s*mode/, /mode of entry/, /^mode$/, /admission type/));
-      put("entrySession", at(/entry\s*session/, /admission\s*session/, /year of entry/, /session admitted/));
-      put("level", at(/current\s*level/, /^level$/, /^lvl$/));
+      add("surname", at(/surname/, /last\s*name/));
+      add("otherNames", at(/other\s*name/, /first\s*name/, /given/));
+      add("name", at(/full\s*name/, /^name$/, /student\s*name/, /^names$/));
+      add("programme", at(/programme/, /program/, /course of study/, /department|dept/));
+      add("sex", at(/^sex$/, /gender/));
+      add("dob", at(/birth/, /^dob$/, /d\.o\.b/));
+      add("entryMode", at(/entry\s*mode/, /mode of entry/, /^mode$/, /admission type/));
+      add("entrySession", at(/entry\s*session/, /admission\s*session/, /year of entry/, /session admitted/));
+      add("level", at(/current\s*level/, /^level$/, /^lvl$/));
     } else {
-      put("course", at(/course\s*code/, /^course$/, /^code$/, /subject\s*code/));
-      put("units", at(/unit/, /^cu$/, /credit/));
-      put("level", at(/^level$/, /^lvl$/));
+      add("course", at(/course\s*code/, /^course$/, /^code$/, /subject\s*code/));
+      add("units", at(/unit/, /^cu$/, /credit/));
+      add("level", at(/^level$/, /^lvl$/));
       if (kind === "results") {
-        put("ca", at(/\bca\b/, /continuous/, /c\.a/));
-        put("exam", at(/exam/, /examination/));
-        put("total", at(/total/, /^score$/, /^mark$/, /aggregate/));
-        put("outcome", at(/outcome/, /remark/, /status/, /grade/));
+        add("ca", at(/\bca\b/, /continuous/, /c\.a/));
+        add("exam", at(/exam/, /examination/));
+        add("total", at(/total/, /^score$/, /^mark$/, /aggregate/));
+        add("outcome", at(/outcome/, /remark/, /status/, /grade/));
       }
+    }
+    return cols;
+  }
+
+  /** one spreadsheet row → the importer's keys, using the pre-resolved columns (no per-row regex) */
+  function applyRow(cols: Col[], r: (string | number | null)[]): Record<string, string> {
+    const o: Record<string, string> = {};
+    for (const c of cols) {
+      let v = String(r[c.idx] ?? "").trim();
+      if (c.norm) v = c.norm(v);
+      if (v) o[c.key] = v;
     }
     return o;
   }
