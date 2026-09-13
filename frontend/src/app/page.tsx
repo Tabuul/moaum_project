@@ -12,8 +12,9 @@ import type { MySheet } from "@/lib/results";
 
 export const dynamic = "force-dynamic";
 
-/* the platform's own dashboard is the platform's offices' */
-const PLATFORM = new Set(["ict", "admin", "super"]);
+/* the platform's own dashboard is the technical desks'; the administrator's home is the
+   whole-institution view (r/admin, /admin), so it is not in this set */
+const PLATFORM = new Set(["ict", "super"]);
 /* Academic Affairs: the offices that work the register */
 const ACADEMIC = new Set(["academic", "dregistrar", "records", "dvc", "vc"]);
 
@@ -23,6 +24,8 @@ export default async function DashboardPage() {
   /* an applicant's home is their application, not an office's dashboard */
   if (office === "applicant") redirect("/applicant");
   if (office === "student") redirect("/student");
+  /* the administrator's home is the whole institution at one desk (proto part18) */
+  if (office === "admin") redirect("/admin");
   const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;

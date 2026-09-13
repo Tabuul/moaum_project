@@ -33,6 +33,7 @@ export const ROUTES: Record<string, string> = {
   "t/programmeupload": "/structure/programmes",
   "t/eligibility": "/eligibility",
   "t/overview": "/overview",
+  "r/admin": "/admin",
   "t/refunds": "/finance/refunds",
   "t/pv": "/vouchers",
   "t/prepayment": "/vouchers",
