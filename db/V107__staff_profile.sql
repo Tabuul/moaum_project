@@ -67,9 +67,6 @@ COMMENT ON TABLE hrm.staff_photo IS
   'A recent photograph for the staff profile; the bytes sit here, up to 2 MB, '
   'in a table exempt from audit as every blob table is.';
 
-SELECT audit.exempt('hrm.staff_photo',
-    'The staff photograph itself, up to 2 MB; a heavy blob kept off the spine like every other, replaced whole by its owner through hrm.set_my_staff_photo.');
-
 -- ── the write: the acting person's own profile, upserted whole ──────────────
 -- One JSON in, one row out. The scalars are read out of it; a missing scalar
 -- becomes NULL and a missing list becomes the empty array, so a partial save
