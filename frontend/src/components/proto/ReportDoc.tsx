@@ -23,6 +23,10 @@ export function ReportDoc({
     if (v == null || v === "") return c.money ? money(0) : "—";
     return c.money ? money(Number(v)) : String(v);
   };
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const serial = `MOAUM/RPT/${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}/${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const generated = now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
   return (
     <div className="rpt">
       {toolbar ? <div className="rpt__toolbar no-print">{toolbar}</div> : null}
@@ -40,6 +44,7 @@ export function ReportDoc({
           <h1 className="rpt__title">{title}</h1>
           <div className="rpt__meta">{subtitle}</div>
           <div className="rpt__session">Session {session}</div>
+          <div className="rpt__meta" style={{ marginTop: 4, fontSize: 11 }}>Serial {serial} · generated {generated}</div>
         </div>
 
         {rows.length ? (
