@@ -37,6 +37,12 @@ export const REPORTS: ReportSpec[] = [
     offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
   },
   {
+    slug: "carryovers",
+    title: "Carryover return",
+    subtitle: "Outstanding carryovers by faculty, programme and course — the re-sit load, as at today",
+    offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+  },
+  {
     slug: "revenue",
     title: "Revenue return",
     subtitle: "Fees confirmed for the session, by category",

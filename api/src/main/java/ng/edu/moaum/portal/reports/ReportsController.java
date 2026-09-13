@@ -63,6 +63,48 @@ class ReportsController {
         return Map.of("session", session, "rows", rows, "totals", totals);
     }
 
+    /** Outstanding carryovers, as at now: for every active student, a course whose LATEST published attempt is
+     *  an F is still carried; grouped by faculty, programme and course so the office sees the re-sit load. Set-based
+     *  (one pass over published sheets), not per-student. */
+    @GetMapping("/carryovers")
+    @PreAuthorize(ENROLMENT_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> carryovers(@RequestParam String session) {
+        String cte = """
+                WITH attempts AS (
+                    SELECT r.student_id, c.code AS course, c.title, e.units, r.session AS ses, r.semester AS sem, ls.points,
+                           p.name AS programme, f.name AS faculty
+                      FROM registration.course_registration r
+                      JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED','APPROVED')
+                      JOIN catalogue.offering o ON o.id = e.offering_id
+                      JOIN catalogue.course c ON c.code = o.course_code
+                      JOIN assessment.score_sheet sh ON sh.offering_id = o.id AND sh.stage = 'PUBLISHED'
+                      JOIN LATERAL assessment.latest_scores(sh.id) ls ON ls.student_id = r.student_id
+                      JOIN people.student s ON s.id = r.student_id AND s.status IN ('ACTIVE','PROBATION')
+                      JOIN ref.programme p ON p.code = s.programme_code
+                      JOIN ref.faculty f ON f.code = p.faculty_code
+                     WHERE r.status IN ('APPROVED','LOCKED') AND ls.outcome = 'GRADED'
+                ),
+                latest AS (
+                    SELECT DISTINCT ON (student_id, course) student_id, course, title, units, points, programme, faculty
+                      FROM attempts ORDER BY student_id, course, ses DESC, sem DESC
+                )
+                """;
+        List<Map<String, Object>> rows = jdbc.sql(cte + """
+                SELECT faculty, programme, course, title, max(units) AS units, count(*) AS students
+                  FROM latest WHERE points = 0
+                 GROUP BY faculty, programme, course, title
+                 ORDER BY faculty, programme, course
+                """).query().listOfRows();
+        Map<String, Object> tally = jdbc.sql(cte + """
+                SELECT count(*) AS carried, count(DISTINCT student_id) AS students
+                  FROM latest WHERE points = 0
+                """).query().singleRow();
+        Map<String, Object> totals = Map.of("students", tally.getOrDefault("carried", 0L), "units", "");
+        return Map.of("session", session, "rows", rows, "totals", totals,
+                "distinctStudents", tally.getOrDefault("students", 0L));
+    }
+
     /** Revenue confirmed for a session: student fees and applicant fees, by category. */
     @GetMapping("/revenue")
     @PreAuthorize(REVENUE_READERS)
