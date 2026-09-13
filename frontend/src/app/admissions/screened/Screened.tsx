@@ -12,7 +12,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { buildXlsx } from "@/lib/xlsx";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
@@ -30,28 +30,6 @@ const meets = (agg: unknown, cutoff: number | null) => {
   if (cutoff == null || a == null) return "";
   return a >= cutoff ? "Yes" : "No";
 };
-
-/** open a clean, branded window and print it — the browser's "Save as PDF" does the rest */
-function printReport(title: string, sub: string, headers: string[], rows: (string | number | null)[][]) {
-  const esc = (x: unknown) => s(x).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] ?? c));
-  const th = headers.map((h) => `<th>${esc(h)}</th>`).join("");
-  const tr = rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
-    <style>
-      body{font:12px/1.4 "Segoe UI",system-ui,sans-serif;color:#13242d;margin:24px;}
-      h1{font-size:17px;margin:0 0 2px;} .sub{color:#5a6b74;font-size:12px;margin:0 0 14px;}
-      table{border-collapse:collapse;width:100%;} th{background:#0e3f55;color:#fff;text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.3px;}
-      td{padding:5px 8px;border-bottom:1px solid #e8eef1;font-size:11px;} tbody tr:nth-child(even){background:#f6f9fa;}
-      @media print{@page{size:landscape;margin:12mm;}}
-    </style></head><body>
-    <h1>${esc(title)}</h1><div class="sub">${esc(sub)}</div>
-    <table><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>
-    <script>window.onload=function(){window.print();}</script></body></html>`;
-  const w = window.open("", "_blank");
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-}
 
 const olevelState = (r: Crit) => (r.olevel_uploaded ? "Uploaded" : "Not uploaded");
 const compulsoryState = (r: Crit) =>
@@ -102,11 +80,13 @@ export function Screened({ session, summary }: { session: string; summary: Scree
     }
   }
 
-  function exportOverviewExcel() {
+  async function exportOverviewExcel() {
     const rows = shown.map((r) => [r.faculty_name, r.code, r.name, Number(r.applied), Number(r.screened),
       r.quota == null ? "" : Number(r.quota), r.cutoff == null ? "" : Number(r.cutoff)]);
-    download(buildXlsx(["Faculty", "Code", "Programme", "Applied", "Screened", "Quota", "Cut-off"], rows,
-      `Screened ${session.replace("/", "-")}`), `Screened summary ${session.replace("/", "-")}.xlsx`);
+    const blob = await brandedXlsx("Screened applicants — summary",
+      ["Faculty", "Code", "Programme", "Applied", "Screened", "Quota", "Cut-off"], rows,
+      { sub: session, serial: docSerial("SCR") });
+    downloadBlob(blob, `Screened summary ${session.replace("/", "-")}.xlsx`);
   }
   // the all-programmes O'Level screening report: fetch each shown course and combine into one workbook
   async function exportAllOlevel() {
@@ -127,24 +107,20 @@ export function Screened({ session, summary }: { session: string; summary: Scree
           }
         } catch { /* skip a course that fails, keep going */ }
       }
-      download(buildXlsx(["Faculty", "Programme", ...DETAIL_COLS], all, `O'Level screening ${session.replace("/", "-")}`),
-        `O'Level screening ${session.replace("/", "-")}.xlsx`);
+      const blob = await brandedXlsx("O’Level screening — all programmes",
+        ["Faculty", "Programme", ...DETAIL_COLS], all, { sub: session, serial: docSerial("OLS") });
+      downloadBlob(blob, `O'Level screening ${session.replace("/", "-")}.xlsx`);
     } finally {
       setAllBusy(false);
     }
   }
 
-  function exportDetailExcel() {
+  async function exportDetailExcel() {
     if (!open || !detail) return;
-    download(buildXlsx(DETAIL_COLS, detail.map((r) => detailCells(r, cutoff)), open.name.slice(0, 28)),
-      `Screened ${open.code} ${session.replace("/", "-")}.xlsx`);
-  }
-  function download(blob: Blob, name: string) {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    const blob = await brandedXlsx(`Screened applicants — ${open.name}`,
+      DETAIL_COLS, detail.map((r) => detailCells(r, cutoff)),
+      { sheetName: open.name.slice(0, 28), sub: `${session}${cutoff != null ? ` · cut-off ${cutoff}` : ""}`, serial: docSerial("SCR") });
+    downloadBlob(blob, `Screened ${open.code} ${session.replace("/", "-")}.xlsx`);
   }
 
   // ── the per-course criteria view ──
@@ -155,8 +131,8 @@ export function Screened({ session, summary }: { session: string; summary: Scree
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
           <Btn kind="ghost" onClick={() => { setOpen(null); setDetail(null); }}>← All courses</Btn>
           <span style={{ flexGrow: 1 }} />
-          <Btn kind="ghost" disabled={!detail?.length} onClick={exportDetailExcel}>Export Excel</Btn>
-          <Btn kind="ghost" disabled={!detail?.length} onClick={() => detail && printReport(
+          <Btn kind="ghost" disabled={!detail?.length} onClick={() => void exportDetailExcel()}>Export Excel</Btn>
+          <Btn kind="ghost" disabled={!detail?.length} onClick={() => detail && brandedPrint(
             `${open.name} — screened applicants`,
             `${session} · ${detail.length} screened${cutoff != null ? ` · cut-off ${cutoff}` : ""}`,
             DETAIL_COLS, detail.map((r) => detailCells(r, cutoff)))}>Print / PDF</Btn>
@@ -219,8 +195,8 @@ export function Screened({ session, summary }: { session: string; summary: Scree
           {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
         </select>
         <span style={{ flexGrow: 1 }} />
-        <Btn kind="ghost" disabled={!shown.length} onClick={exportOverviewExcel}>Export summary (Excel)</Btn>
-        <Btn kind="ghost" disabled={!shown.length} onClick={() => printReport(
+        <Btn kind="ghost" disabled={!shown.length} onClick={() => void exportOverviewExcel()}>Export summary (Excel)</Btn>
+        <Btn kind="ghost" disabled={!shown.length} onClick={() => brandedPrint(
           `Screened applicants — summary`, `${session}${faculty ? ` · ${faculties.find((f) => f.code === faculty)?.name}` : ""} · ${totalScreened.toLocaleString()} screened`,
           ["Faculty", "Code", "Programme", "Applied", "Screened", "Quota", "Cut-off"],
           shown.map((r) => [r.faculty_name, r.code, r.name, Number(r.applied), Number(r.screened), r.quota ?? "", r.cutoff ?? ""]))}>Print / PDF</Btn>
