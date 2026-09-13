@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, money } from "@/components/proto/blocks";
+import { PeriodPicker } from "@/components/proto/PeriodPicker";
 import type { OverviewData } from "../overview/Overview";
 
 type Fac = {
@@ -21,7 +22,7 @@ type Fac = {
 
 const n = (x: unknown) => Number(x ?? 0);
 
-export function Institution({ d, semester }: { d: OverviewData; semester: number }) {
+export function Institution({ d, semester, session, sessions }: { d: OverviewData; semester: number; session: string; sessions: string[] }) {
   /* one row per faculty, the four measures merged from the three records */
   const facs: Fac[] = d.students.byFaculty.map((f) => {
     const col = d.collection.find((c) => c.faculty_code === f.code);
@@ -60,6 +61,7 @@ export function Institution({ d, semester }: { d: OverviewData; semester: number
 
   return (
     <>
+      <PeriodPicker base="/admin" sessions={sessions} session={session} semester={semester} />
       <Panel title="Scope" right={subtitle}>
         <PBody>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

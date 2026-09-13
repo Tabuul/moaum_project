@@ -8,6 +8,7 @@ import { Note, Panel, PBody, Tiles, Tick, WarnIcon, Ico } from "@/components/pro
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/components/proto/blocks";
 import { Donut, HBars, Stack, Line, VBars, Legend, VZ, vzNum, type LegendKey } from "@/components/proto/vz";
+import { PeriodPicker } from "@/components/proto/PeriodPicker";
 
 export interface OverviewData {
   session: string;
@@ -28,7 +29,7 @@ function niceMax(v: number) {
   return Math.ceil((v * 1.12) / mag) * mag;
 }
 
-export function Overview({ d, semester }: { d: OverviewData; semester: number }) {
+export function Overview({ d, semester, session, sessions }: { d: OverviewData; semester: number; session: string; sessions: string[] }) {
   const res = d.results.map((r) => {
     const expected = N(r.expected);
     const submitted = r.submitted != null ? N(r.submitted) : N(r.published) + N(r.in_progress);
@@ -64,6 +65,7 @@ export function Overview({ d, semester }: { d: OverviewData; semester: number })
 
   return (
     <>
+      <PeriodPicker base="/overview" sessions={sessions} session={session} semester={semester} />
       <Note kind="info" title="The session so far, in figures">
         Every chart on this screen is drawn from the same record the desks work on, and each carries its table beneath it &mdash; because a chart is for seeing the shape and a table is for quoting the number, and an institutional paper needs both.
       </Note>

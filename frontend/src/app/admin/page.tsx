@@ -10,13 +10,16 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
   const semester = typeof p.sem === "string" ? Number(p.sem) || 1 : 1;
-  const [me, data] = await Promise.all([
+  const [me, sessions] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
-    api<OverviewData>(`/api/v1/reporting/overview?semester=${semester}`),
+    api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
+  const list = sessions.ok ? sessions.data : [];
+  const session = typeof p.session === "string" ? p.session : (list.find((s) => s.state === "CURRENT")?.name ?? "2026/2027");
+  const data = await api<OverviewData>(`/api/v1/reporting/overview?session=${encodeURIComponent(session)}&semester=${semester}`);
   return (
     <Shell route="r/admin" me={me.ok ? me.data : null}>
-      {data.ok ? <Institution d={data.data} semester={semester} /> : <ProblemNotice problem={data.problem} />}
+      {data.ok ? <Institution d={data.data} semester={semester} session={session} sessions={list.map((s) => s.name)} /> : <ProblemNotice problem={data.problem} />}
     </Shell>
   );
 }
