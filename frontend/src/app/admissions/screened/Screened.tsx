@@ -3,8 +3,12 @@
 /**
  * The screened pool, reached from the Screened tile. Two ways to look at it:
  * an overview by faculty and course (applied, screened, quota, cut-off), and a
- * per-course drill-in showing every admission criterion the screening applied.
- * Either view exports to Excel and to PDF (print).
+ * per-course drill-in of the screened candidates — the same population the
+ * overview counts (committed CAPS rows carrying a UTME aggregate), with the
+ * criteria known at screening: the UTME aggregate against the cut-off, origin,
+ * and whether an O'Level result has been uploaded. Full O'Level/Post-UTME/
+ * decision criteria live on the Applicants and Merit desks. Either view exports
+ * to Excel and to PDF (print).
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -21,6 +25,11 @@ type Crit = Record<string, unknown>;
 const s = (v: unknown) => (v == null ? "" : String(v));
 const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
 const nz = (v: unknown) => { const n = num(v); return n == null ? "—" : n.toLocaleString(); };
+const meets = (agg: unknown, cutoff: number | null) => {
+  const a = num(agg);
+  if (cutoff == null || a == null) return "";
+  return a >= cutoff ? "Yes" : "No";
+};
 
 /** open a clean, branded window and print it — the browser's "Save as PDF" does the rest */
 function printReport(title: string, sub: string, headers: string[], rows: (string | number | null)[][]) {
@@ -44,15 +53,10 @@ function printReport(title: string, sub: string, headers: string[], rows: (strin
   w.document.close();
 }
 
-const DETAIL_COLS = [
-  "RegNo", "Name", "Sex", "State", "LGA", "UTME", "English", "Maths", "O'Level pts", "O'Level ratio",
-  "Post-UTME", "Aggregate", "Cut-off", "UTME combination", "O'Level remark", "Decision", "Basis", "Admitted",
-];
-const detailCells = (r: Crit): (string | number | null)[] => [
-  s(r.regNo), s(r.name), s(r.gender), s(r.state), s(r.lga), num(r.utmeScore),
-  `${s(r.engGrade)} (${s(r.engPoint)})`, `${s(r.mathsGrade)} (${s(r.mathsPoint)})`,
-  num(r.olevelTotal), s(r.olevelRatio), num(r.cbtScore), num(r.total), num(r.cutoff),
-  s(r.utmeRemark), s(r.olRemark), s(r.decision), s(r.decisionBasis), r.admitted ? "Yes" : "",
+const DETAIL_COLS = ["RegNo", "Name", "Sex", "State of origin", "LGA", "UTME aggregate", "Meets cut-off", "O'Level uploaded"];
+const detailCells = (r: Crit, cutoff: number | null): (string | number | null)[] => [
+  s(r.jamb_reg_no), `${s(r.surname)} ${s(r.other_names)}`.trim(), s(r.sex), s(r.state_of_origin), s(r.lga),
+  num(r.aggregate), meets(r.aggregate, cutoff), r.olevel_uploaded ? "Yes" : "No",
 ];
 
 export function Screened({ session, summary }: { session: string; summary: ScreenedRow[] }) {
@@ -63,6 +67,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
   const [faculty, setFaculty] = useState("");
   const [open, setOpen] = useState<ScreenedRow | null>(null);
   const [detail, setDetail] = useState<Crit[] | null>(null);
+  const [cutoff, setCutoff] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -73,14 +78,15 @@ export function Screened({ session, summary }: { session: string; summary: Scree
   async function drill(row: ScreenedRow) {
     setOpen(row);
     setDetail(null);
+    setCutoff(null);
     setErr(null);
     setLoading(true);
     try {
-      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/jamb-template?programme=${encodeURIComponent(row.code)}`, { cache: "no-store" });
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screened?programme=${encodeURIComponent(row.code)}`, { cache: "no-store" });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j?.title ?? "Could not load this course."); return; }
-      const rows = ((j.rows as Crit[]) ?? []).filter((x) => num(x.total) != null || num(x.cbtScore) != null || num(x.utmeScore) != null);
-      setDetail(rows);
+      setCutoff(num(j.cutoff));
+      setDetail((j.rows as Crit[]) ?? []);
     } catch {
       setErr("Could not load this course.");
     } finally {
@@ -96,7 +102,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
   }
   function exportDetailExcel() {
     if (!open || !detail) return;
-    download(buildXlsx(DETAIL_COLS, detail.map(detailCells), open.name.slice(0, 28)),
+    download(buildXlsx(DETAIL_COLS, detail.map((r) => detailCells(r, cutoff)), open.name.slice(0, 28)),
       `Screened ${open.code} ${session.replace("/", "-")}.xlsx`);
   }
   function download(blob: Blob, name: string) {
@@ -109,6 +115,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
 
   // ── the per-course criteria view ──
   if (open) {
+    const belowNote = cutoff != null;
     return (
       <>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
@@ -116,42 +123,41 @@ export function Screened({ session, summary }: { session: string; summary: Scree
           <span style={{ flexGrow: 1 }} />
           <Btn kind="ghost" disabled={!detail?.length} onClick={exportDetailExcel}>Export Excel</Btn>
           <Btn kind="ghost" disabled={!detail?.length} onClick={() => detail && printReport(
-            `${open.name} — screened applicants`, `${session} · ${detail.length} screened · cut-off ${open.cutoff ?? "—"}`,
-            DETAIL_COLS, detail.map(detailCells))}>Print / PDF</Btn>
+            `${open.name} — screened applicants`,
+            `${session} · ${detail.length} screened${cutoff != null ? ` · cut-off ${cutoff}` : ""}`,
+            DETAIL_COLS, detail.map((r) => detailCells(r, cutoff)))}>Print / PDF</Btn>
         </div>
-        <Panel title={open.name} right={<span className="sub2">{open.faculty_name} · {open.code}</span>}>
+        <Panel title={open.name}
+               right={<span className="sub2">{open.faculty_name} · {open.code}{cutoff != null ? ` · cut-off ${cutoff}` : ""}</span>}>
           <PBody>
             <div className="sub2" style={{ marginBottom: 10 }}>
-              Every screened applicant for this programme with the criteria the screening applied — UTME and its subjects, the
-              O&rsquo;Level points and ratio, the Post-UTME score, the weighted aggregate against the cut-off, and the decision.
+              Every screened candidate for this programme — those on the committed CAPS list who carry a UTME aggregate —
+              with the criteria known at screening: the UTME aggregate {belowNote ? "against the cut-off" : ""}, origin, and
+              whether an O&rsquo;Level result has been uploaded. The full O&rsquo;Level, Post-UTME and decision criteria appear
+              on the <Link href={`/admissions/applicants?session=${encodeURIComponent(session)}&programme=${encodeURIComponent(open.code)}`}>Applicants</Link> and
+              {" "}<Link href={`/admissions/merit?session=${encodeURIComponent(session)}&programme=${encodeURIComponent(open.code)}`}>Merit</Link> desks once a candidate registers for post-UTME.
             </div>
             {err ? <Note kind="bad" title="Could not load">{err}</Note> : null}
             {loading ? <div className="sub2">Loading…</div> : null}
             {detail && !loading ? (
               detail.length ? (
                 <DTable
-                  cols={["RegNo|mid", "Name", "Sex|mid", "State", "UTME|num", "Eng|mid", "Maths|mid", "O’Level|num", "Post-UTME|num", "Aggregate|num", "Cut-off|num", "UTME combination", "O’Level remark", "Decision|mid"]}
+                  cols={["RegNo|mid", "Name", "Sex|mid", "State of origin", "LGA", "UTME|num", "Meets cut-off|mid", "O’Level|mid"]}
                   rows={detail.map((r) => [
-                    <span className="tnum" key="r">{s(r.regNo)}</span>,
-                    <span key="n">{s(r.name)}<div className="sub2">{s(r.lga)}{r.lga && r.state ? ", " : ""}{s(r.state)}</div></span>,
-                    <span key="x">{s(r.gender)}</span>,
-                    <span className="sub2" key="st">{s(r.state)}</span>,
-                    <span className="tnum" key="u">{nz(r.utmeScore)}</span>,
-                    <span className="tnum" key="e">{s(r.engGrade) || "—"}</span>,
-                    <span className="tnum" key="m">{s(r.mathsGrade) || "—"}</span>,
-                    <span className="tnum" key="o">{nz(r.olevelTotal)}{r.olevelRatio ? <span className="sub2"> ·{s(r.olevelRatio)}</span> : null}</span>,
-                    <span className="tnum" key="c">{nz(r.cbtScore)}</span>,
-                    <strong className="tnum" key="t">{num(r.total) == null ? "—" : Number(r.total).toFixed(2)}</strong>,
-                    <span className="tnum" key="co">{nz(r.cutoff)}</span>,
-                    <span className="sub2" key="uc">{s(r.utmeRemark)}</span>,
-                    <span className="sub2" key="ol">{s(r.olRemark)}</span>,
-                    r.decision
-                      ? <Pil key="d" kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"}>{s(r.decision)}{r.decisionBasis ? ` · ${s(r.decisionBasis)}` : ""}</Pil>
-                      : <span className="sub2" key="d">—</span>,
+                    <span className="tnum" key="r">{s(r.jamb_reg_no)}</span>,
+                    <strong key="n">{s(r.surname)} {s(r.other_names)}</strong>,
+                    <span key="x">{s(r.sex) || "—"}</span>,
+                    <span className="sub2" key="st">{s(r.state_of_origin) || "—"}</span>,
+                    <span className="sub2" key="l">{s(r.lga) || "—"}</span>,
+                    <strong className="tnum" key="u">{nz(r.aggregate)}</strong>,
+                    cutoff == null
+                      ? <span className="sub2" key="m">—</span>
+                      : <Pil key="m" kind={Number(r.aggregate) >= cutoff ? "ok" : "bad"}>{Number(r.aggregate) >= cutoff ? "Yes" : "No"}</Pil>,
+                    r.olevel_uploaded ? <Pil kind="ok" key="o">Uploaded</Pil> : <Pil kind="grey" key="o">Not yet</Pil>,
                   ])}
-                  texts={detail.map((r) => `${s(r.regNo)} ${s(r.name)} ${s(r.state)} ${s(r.decision)}`)}
+                  texts={detail.map((r) => `${s(r.jamb_reg_no)} ${s(r.surname)} ${s(r.other_names)} ${s(r.state_of_origin)}`)}
                 />
-              ) : <Note kind="info" title="No screened applicant">No applicant for this programme carries a screening aggregate yet.</Note>
+              ) : <Note kind="info" title="No screened applicant">No candidate for this programme carries a UTME aggregate on the committed CAPS list yet.</Note>
             ) : null}
           </PBody>
         </Panel>
@@ -160,9 +166,9 @@ export function Screened({ session, summary }: { session: string; summary: Scree
   }
 
   // ── the overview ──
-  const byFaculty = Array.from(new Map(faculties.map((f) => [f.code, f.name])).keys())
-    .filter((fc) => !faculty || fc === faculty)
-    .map((fc) => ({ code: fc, name: faculties.find((f) => f.code === fc)!.name, rows: shown.filter((r) => r.faculty_code === fc) }))
+  const byFaculty = faculties
+    .filter((f) => !faculty || f.code === faculty)
+    .map((f) => ({ code: f.code, name: f.name, rows: shown.filter((r) => r.faculty_code === f.code) }))
     .filter((g) => g.rows.length);
 
   return (
@@ -188,9 +194,9 @@ export function Screened({ session, summary }: { session: string; summary: Scree
         ["Departments", String(faculties.length), null, "Faculties with applicants"],
       ]} />
 
-      <Note kind="info" title="Click a course to see every criterion">
-        The screened pool by department and course. Open any course for the full per-applicant criteria — UTME, O&rsquo;Level,
-        Post-UTME, the weighted aggregate against the cut-off, and the decision — and export it to Excel or PDF.
+      <Note kind="info" title="Click a course to see its screened candidates">
+        The screened pool by department and course — candidates on the committed CAPS list who carry a UTME aggregate.
+        Open any course for the per-candidate criteria and export it to Excel or PDF.
       </Note>
 
       {byFaculty.map((g) => (
@@ -203,7 +209,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
               <strong className="tnum" key="s">{Number(r.screened).toLocaleString()}</strong>,
               <span className="tnum" key="q">{r.quota == null ? "—" : Number(r.quota).toLocaleString()}</span>,
               <span className="tnum" key="c">{r.cutoff == null ? "—" : r.cutoff}</span>,
-              <IcoBtn key="v" icon="eye" label={`View screened applicants for ${r.name}`} onClick={() => void drill(r)} />,
+              <IcoBtn key="v" icon="eye" label={`View screened candidates for ${r.name}`} onClick={() => void drill(r)} />,
             ])}
             texts={g.rows.map((r) => `${r.name} ${r.code}`)}
           />

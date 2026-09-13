@@ -821,6 +821,40 @@ class ApplicantsController {
                 """).param("s", s).query().listOfRows();
     }
 
+    /** the screened candidates of one programme — the same population the overview counts: committed CAPS rows that
+     *  carry a UTME aggregate. The criteria known at this stage: the UTME aggregate against the programme cut-off,
+     *  the candidate's origin, and whether an O'Level result has been uploaded. Full O'Level/Post-UTME/decision
+     *  criteria live on the Applicants and Merit desks, for candidates who have registered for post-UTME. */
+    @GetMapping("/screened")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> screened(@PathVariable String session, @PathVariable String year,
+                                 @org.springframework.web.bind.annotation.RequestParam String programme) {
+        String s = session + "/" + year;
+        Map<String, Object> prog = jdbc.sql("SELECT code, name, faculty_code FROM ref.programme WHERE code = :p")
+                .param("p", programme).query().listOfRows().stream().findFirst().orElse(Map.of());
+        Integer cutoff = jdbc.sql("""
+                SELECT CASE WHEN (SELECT count(*) FROM admissions.session_policy WHERE session = :s AND state = 'IN_FORCE') > 0
+                            THEN admissions.cutoff_for(:s, :p) END
+                """).param("s", s).param("p", programme).query(Integer.class).optional().orElse(null);
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT r.jamb_reg_no, r.surname, r.other_names, r.sex, r.state_of_origin, r.lga, r.aggregate,
+                       EXISTS (SELECT 1 FROM admissions.olevel_sitting st
+                                WHERE st.session = r.session AND st.jamb_key = upper(r.jamb_reg_no)) AS olevel_uploaded
+                  FROM admissions.caps_row r
+                  JOIN admissions.caps_batch b ON b.id = r.batch_id
+                 WHERE r.session = :s AND b.committed_at IS NOT NULL
+                   AND r.aggregate IS NOT NULL AND r.jamb_code = :p
+                 ORDER BY r.aggregate DESC, r.surname, r.other_names
+                """).param("s", s).param("p", programme).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("programme", prog.getOrDefault("name", programme));
+        out.put("programmeCode", programme);
+        out.put("cutoff", cutoff);
+        out.put("rows", rows);
+        return out;
+    }
+
     private static Object scale(Object value, Object weight) {
         return new BigDecimal(String.valueOf(value)).multiply(new BigDecimal(String.valueOf(weight))).divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
     }
