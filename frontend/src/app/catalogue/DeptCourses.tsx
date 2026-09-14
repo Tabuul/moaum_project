@@ -31,10 +31,20 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  const [fLevel, setFLevel] = useState("");
+  const [fSem, setFSem] = useState("");
+  const [fKind, setFKind] = useState("");
 
   const live = courses.filter((c) => c.state === "LIVE").length;
   const waiting = courses.filter((c) => c.state === "BOARD" || c.state === "SENATE").length;
   const noLec = courses.filter((c) => c.state === "LIVE" && c.offered && !c.lecturer).length;
+
+  /* level, semester and kind filter the already-loaded department list, client-side */
+  const shown = courses.filter((c) =>
+    (!fLevel || c.level === Number(fLevel)) &&
+    (!fSem || c.semester === Number(fSem)) &&
+    (!fKind || c.kind === fKind));
+  const filtered = Boolean(fLevel || fSem || fKind);
 
   function go(nextDept: string) {
     router.push(`/catalogue?dept=${encodeURIComponent(nextDept)}`);
@@ -64,6 +74,19 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
         <div className="field" style={{ minWidth: 240 }}><label htmlFor="dc-dept">Department</label>
           <SearchSelect id="dc-dept" value={dept} placeholder="Search a department…"
             options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go(v)} /></div>
+        <div className="field" style={{ minWidth: 120 }}><label htmlFor="dc-level">Level</label>
+          <select id="dc-level" className="ctl" value={fLevel} onChange={(e) => setFLevel(e.target.value)}>
+            <option value="">All levels</option>{LEVELS.map((l) => <option key={l} value={l}>{l} Level</option>)}
+          </select></div>
+        <div className="field" style={{ minWidth: 130 }}><label htmlFor="dc-sem">Semester</label>
+          <select id="dc-sem" className="ctl" value={fSem} onChange={(e) => setFSem(e.target.value)}>
+            <option value="">All semesters</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option>
+          </select></div>
+        <div className="field" style={{ minWidth: 140 }}><label htmlFor="dc-kind">Kind</label>
+          <select id="dc-kind" className="ctl" value={fKind} onChange={(e) => setFKind(e.target.value)}>
+            <option value="">All kinds</option>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select></div>
+        {filtered ? <Btn kind="ghost" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); }}>Clear</Btn> : null}
         <div style={{ flexGrow: 1 }} />
         <button className="btn btn--primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" }); setErr(null); setAdd(true); }}>+ New course</button>
       </div></div>
@@ -78,9 +101,9 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
         ["Live, no lecturer", String(noLec), noLec ? "var(--red-ink)" : null, noLec ? "No score sheet can open" : "All allocated"],
       ]} />
 
-      <Panel title="The department's catalogue" right="Every course this department owns">
-        {courses.length ? (
-          <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Lecturer", "State|mid", "Action|num"]} rows={courses.map((c) => [
+      <Panel title="The department's catalogue" right={filtered ? `${shown.length} of ${courses.length} · filtered` : "Every course this department owns"}>
+        {shown.length ? (
+          <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
             <b className="tnum" key="c">{c.code}</b>,
             <span key="t">{c.title}</span>,
             <span className="tnum" key="u">{c.units}</span>,
@@ -90,8 +113,8 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
             c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2" key="lec" style={{ color: "var(--red-ink)" }}>Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,
             c.state === "ENDED" ? <span className="sub2" key="a">On old records</span> : <Btn key="a" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>,
-          ])} texts={courses.map((c) => `${c.code} ${c.title} ${c.kind}`)} />
-        ) : <PBody><div className="sub2">This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board.</div></PBody>}
+          ])} texts={shown.map((c) => `${c.code} ${c.title} ${c.kind}`)} />
+        ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board."}</div></PBody>}
       </Panel>
 
       <Note kind="bad" title="Ending a course is not deleting it">
