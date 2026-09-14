@@ -21,6 +21,7 @@ const MAY = ["ict", "super", "admin", "hod", "dean", "academic", "registrar", "d
 export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOption[]; actingOffice: string | null }) {
   const may = MAY.includes(actingOffice ?? "");
   const [programme, setProgramme] = useState("");
+  const [curriculum, setCurriculum] = useState("CCMAS");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -125,7 +126,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     setProblem(null);
     setMsg(null);
     try {
-      const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${programme}`) }, body: JSON.stringify({ programme, rows: preview }) });
+      const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${programme}`) }, body: JSON.stringify({ programme, rows: preview, curriculum }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as { courses: number; offers: number; bad_code: number; skipped?: number; first_error?: string | null };
@@ -155,6 +156,12 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
             <SearchSelect id="cu-prog" value={programme} placeholder="Search a programme…"
               options={programmes.map((p) => ({ value: p.code, label: `${p.name}${p.facultyName ? ` · ${p.facultyName}` : ""}` }))}
               onChange={(v) => { setProgramme(v); setLoaded(null); }} />
+          </Field>
+          <Field id="cu-curr" label="Curriculum framework" hint="The framework this structure is drawn from">
+            <select id="cu-curr" className="ctl" value={curriculum} onChange={(e) => setCurriculum(e.target.value)}>
+              <option value="CCMAS">CCMAS (current)</option>
+              <option value="BMAS">BMAS (older)</option>
+            </select>
           </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>

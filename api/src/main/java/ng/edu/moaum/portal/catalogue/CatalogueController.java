@@ -46,7 +46,7 @@ class CatalogueController {
                             @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind) {
     }
 
-    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows) {
+    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows, @Size(max = 10) String curriculum) {
     }
 
     public record FacultyIn(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 160) String name) {
@@ -164,8 +164,10 @@ class CatalogueController {
             throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_ROWS", "The structure has no rows to read.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Upload the department's course document.", "Directorate of ICT"));
         }
-        return jdbc.sql("SELECT * FROM catalogue.import_courses(:p, :j::jsonb)")
-                .param("p", body.programme()).param("j", json.writeValueAsString(body.rows())).query().singleRow();
+        return jdbc.sql("SELECT * FROM catalogue.import_courses(:p, :j::jsonb, :curr)")
+                .param("p", body.programme()).param("j", json.writeValueAsString(body.rows()))
+                .param("curr", body.curriculum() == null || body.curriculum().isBlank() ? null : body.curriculum().trim().toUpperCase(), java.sql.Types.VARCHAR)
+                .query().singleRow();
     }
 
     /** every course a department owns, with the lecturer of its offering in the current session, if any */
