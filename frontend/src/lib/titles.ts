@@ -204,6 +204,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Programmes",
     "Create a programme, or upload the list"
   ],
+  "t/departmentupload": [
+    "Departments",
+    "Create a department, or upload the list"
+  ],
   "s/health": [
     "Health",
     "University Health Services"

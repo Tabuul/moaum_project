@@ -31,6 +31,7 @@ export const ROUTES: Record<string, string> = {
   "t/courseupload": "/catalogue/upload",
   "t/facultyupload": "/structure/faculties",
   "t/programmeupload": "/structure/programmes",
+  "t/departmentupload": "/structure/departments",
   "t/eligibility": "/eligibility",
   "t/overview": "/overview",
   "r/admin": "/admin",

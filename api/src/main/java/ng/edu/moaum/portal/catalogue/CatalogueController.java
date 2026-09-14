@@ -57,6 +57,10 @@ class CatalogueController {
                               @Size(max = 160) String department, @Size(max = 20) String category, Integer minScore) {
     }
 
+    public record DepartmentIn(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 160) String name,
+                               @NotBlank @Size(max = 160) String faculty) {
+    }
+
     public record Rows(@NotNull List<Map<String, Object>> rows) {
     }
 
@@ -88,6 +92,47 @@ class CatalogueController {
     Map<String, Object> importFaculties(@Valid @RequestBody Rows body) {
         return jdbc.sql("SELECT * FROM ref.import_faculties(:j::jsonb)")
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
+    /* ── departments ── */
+
+    @GetMapping("/departments")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> departments() {
+        return jdbc.sql("""
+                SELECT d.code, d.name, d.faculty_code, f.name AS faculty_name,
+                       (SELECT count(*) FROM ref.programme p WHERE p.dept_code = d.code AND NOT p.archived) AS programmes,
+                       (SELECT count(*) FROM catalogue.course c WHERE c.dept_code = d.code) AS courses
+                  FROM ref.department d
+                  JOIN ref.faculty f ON f.code = d.faculty_code
+                 ORDER BY f.name, d.name
+                """).query().listOfRows();
+    }
+
+    @PostMapping("/departments")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> newDepartment(@Valid @RequestBody DepartmentIn body) {
+        return jdbc.sql("SELECT code, name, faculty_code FROM ref.upsert_department(:c, :n, :f)")
+                .param("c", body.code()).param("n", body.name()).param("f", body.faculty()).query().singleRow();
+    }
+
+    @PostMapping("/departments/import")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> importDepartments(@Valid @RequestBody Rows body) {
+        return jdbc.sql("SELECT * FROM ref.import_departments(:j::jsonb)")
+                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
+    /** delete a department (only when it holds no programme and no course) */
+    @DeleteMapping("/departments/{code}")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> deleteDepartment(@PathVariable String code) {
+        jdbc.sql("SELECT ref.delete_department(:c)").param("c", code).query().singleRow();
+        return Map.of("code", code.toUpperCase(), "deleted", true);
     }
 
     /* ── programmes ── */

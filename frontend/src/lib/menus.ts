@@ -754,6 +754,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Programme upload/create"
           },
           {
+            "id": "t/departmentupload",
+            "icon": "cap",
+            "label": "Department upload/create"
+          },
+          {
             "id": "t/courseupload",
             "icon": "doc",
             "label": "Courses upload/create"
@@ -1837,6 +1842,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/programmeupload",
             "icon": "book",
             "label": "Programme upload/create"
+          },
+          {
+            "id": "t/departmentupload",
+            "icon": "cap",
+            "label": "Department upload/create"
           },
           {
             "id": "t/courseupload",
