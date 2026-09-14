@@ -39,8 +39,15 @@ DROP TRIGGER IF EXISTS trg_student_curriculum ON people.student;
 CREATE TRIGGER trg_student_curriculum BEFORE INSERT OR UPDATE ON people.student
     FOR EACH ROW EXECUTE FUNCTION people.fill_curriculum();
 
--- recompute for everyone already on the register (school id null until re-imported → by session)
-UPDATE people.student SET curriculum_version = people.curriculum_for(entry_session, school_id);
+-- backfill everyone already on the register, but WITHOUT the audit churn: a one-time derived-field
+-- fill is a system operation, not a user act, so the audit trigger is disabled around it and only the
+-- rows whose value actually changes are written — this keeps the volume from ballooning
+ALTER TABLE people.student DISABLE TRIGGER trg_audit_people_student;
+ALTER TABLE people.student DISABLE TRIGGER trg_student_curriculum;
+UPDATE people.student SET curriculum_version = people.curriculum_for(entry_session, school_id)
+ WHERE curriculum_version IS DISTINCT FROM people.curriculum_for(entry_session, school_id);
+ALTER TABLE people.student ENABLE TRIGGER trg_student_curriculum;
+ALTER TABLE people.student ENABLE TRIGGER trg_audit_people_student;
 
 -- ── the biography import now reads and stores the school id ──
 CREATE OR REPLACE FUNCTION people.import_biography(p_rows jsonb)

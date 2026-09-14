@@ -39,9 +39,7 @@ DROP TRIGGER IF EXISTS trg_student_curriculum ON people.student;
 CREATE TRIGGER trg_student_curriculum BEFORE INSERT ON people.student
     FOR EACH ROW EXECUTE FUNCTION people.fill_curriculum();
 
--- backfill the students already on the register
-UPDATE people.student SET curriculum_version = people.curriculum_of(entry_session)
- WHERE curriculum_version IS NULL AND entry_session ~ '^[0-9]{4}/[0-9]{4}$';
+-- (no mass backfill here — V117 does the authoritative, audit-light one, once school_id exists)
 
 -- 3 · the importer records the framework of the structure it loads
 DROP FUNCTION IF EXISTS catalogue.import_courses(text, jsonb);
