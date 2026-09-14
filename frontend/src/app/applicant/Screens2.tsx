@@ -195,7 +195,7 @@ export function Status({ a }: { a: Application }) {
       </Note>
       {at(a, 6) ? (
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-          <a href="/applicant/status/letter" target="_blank" rel="noopener" className="btn btn--primary">Print admission letter (PDF)</a>
+          <a href="/applicant/status/letter" target="_blank" rel="noopener" className="btn btn--primary">Print Offer Letter</a>
         </div>
       ) : null}
     </>
