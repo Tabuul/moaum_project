@@ -20,7 +20,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [semester, setSemester] = useState("1");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number> } | null>(null);
+  const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null } | null>(null);
   const [progress, setProgress] = useState<{ label: string; sent: number; of: number } | null>(null);
 
   async function upload(kind: Tab, file: File) {
@@ -58,6 +58,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const chunks: typeof rows[] = [];
       for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
       const totals: Record<string, number> = {};
+      let firstErr: string | null = null;
       let sent = 0;
       setProgress({ label: "Importing", sent: 0, of: rows.length });
       for (const chunk of chunks) {
@@ -68,15 +69,16 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         if (!r.ok) {
           const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
           setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${sent.toLocaleString()} of ${rows.length.toLocaleString()} rows were imported before this batch was refused. The import is idempotent — fix the file and upload it again; the rows already in will update, not duplicate.` });
-          if (Object.keys(totals).length) setResult({ tab: kind, counts: totals });
+          if (Object.keys(totals).length) setResult({ tab: kind, counts: totals, firstError: firstErr });
           return;
         }
-        const counts = (j ?? {}) as Record<string, number>;
+        const counts = (j ?? {}) as Record<string, unknown>;
         for (const [k, v] of Object.entries(counts)) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
+        if (!firstErr && typeof counts.first_error === "string" && counts.first_error) firstErr = counts.first_error;
         sent += chunk.length;
         setProgress({ label: "Importing", sent, of: rows.length });
       }
-      setResult({ tab: kind, counts: totals });
+      setResult({ tab: kind, counts: totals, firstError: firstErr });
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
     } finally {
@@ -130,7 +132,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const needScope = tab !== "students" && tab !== "biodata";
   const scopeReady = !needScope || (/^[0-9]{4}\/[0-9]{4}$/.test(session) && ["1", "2", "3"].includes(semester));
   const CARDS: Record<Tab, [string, string][]> = {
-    biodata: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"]],
+    biodata: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"]],
     registration: [["rows", "Rows read"], ["students", "Students"], ["offerings", "Courses"], ["registrations", "Registrations"], ["no_student", "No such student"], ["no_course", "No such course"]],
     results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["no_student", "No such student"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"]],
@@ -296,7 +298,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         <>
           <Tiles items={CARDS[tab].map(([k, label]) => {
             const v = Number(result.counts[k] ?? 0);
-            const bad = /no_|bad_/.test(k) && v > 0;
+            const bad = (/no_|bad_|skipped/.test(k)) && v > 0;
             return [label, String(v), bad ? "var(--red-ink)" : /created|results|registrations|students/.test(k) ? "var(--green-ink)" : null, ""] as [string, string, string | null, string];
           })} />
           <Note kind="ok" title="Imported">
@@ -306,6 +308,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : `${result.counts.results ?? 0} results posted.`}
             {" "}Rows that did not match are counted above; fix them at source and re-upload — the import is idempotent.
             {(result.counts.no_student ?? 0) > 0 ? <> <b>Import the students first</b> if a number was not found.</> : null}
+            {(result.counts.skipped ?? 0) > 0 ? <> <b>{result.counts.skipped} row{result.counts.skipped === 1 ? "" : "s"} were skipped by an error</b> and are not on the register; the first was — <span className="tnum">{result.firstError ?? "no detail"}</span>. Fix those rows and re-upload.</> : null}
           </Note>
         </>
       ) : null}
