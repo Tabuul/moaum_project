@@ -318,9 +318,14 @@ public class ResultsService {
                 }
             }
             Sheets.Cumulative cum = repo.cumulative(e.getKey(), session, sem);
-            /* the CARRYOVER COLUMN is what the student carried INTO this semester — courses failed in an
-               EARLIER period, not yet passed; re-attempts they now pass or fail again. Never a later level. */
-            List<String> carry = repo.carryoversAt(e.getKey(), session, sem, false);
+            /* the CARRYOVER COLUMN is a carryover the student BROUGHT IN from an earlier period AND is
+               re-writing this semester — one they now pass or fail again. Courses owed but not re-taken
+               this semester stay in the remark, not the column. (Hidden entirely at 100 level in the UI.) */
+            java.util.Set<String> writtenThisSheet = marks.stream()
+                    .filter(m -> !"NOT_REGISTERED".equals(m.stage()))
+                    .map(Sheets.BroadsheetMark::courseCode).collect(java.util.stream.Collectors.toSet());
+            List<String> carry = repo.carryoversAt(e.getKey(), session, sem, false).stream()
+                    .filter(writtenThisSheet::contains).toList();
             /* the REMARK is what the student owes AS OF this sheet: prior unpassed carryovers plus this
                semester's failures — scoped to this period, so a level not yet reached never appears. Plus
                any course on a PUBLISHED sheet whose score is still missing (a missing script), shown as
