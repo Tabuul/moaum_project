@@ -73,9 +73,10 @@ class ResultsController {
     }
 
     /** set a first password (the student's own number) for migrated accounts still on the random import
-     *  password; must_change stays on, so the student replaces it at first sign-in */
+     *  password; must_change stays on, so the student replaces it at first sign-in. Same offices as the rest
+     *  of the migration desk (MIGRATE), so the button works wherever the desk is shown. */
     @PostMapping("/legacy/default-passwords")
-    @PreAuthorize("hasAnyAuthority('OFFICE_super','OFFICE_registrar','OFFICE_records','OFFICE_ict','OFFICE_admin')")
+    @PreAuthorize(MIGRATE)
     Map<String, Object> setDefaultPasswords() {
         return service.setDefaultPasswords();
     }
