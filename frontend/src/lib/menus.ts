@@ -2268,9 +2268,15 @@ export const MENUS: Record<string, Menu> = {
     "home": "s/dashboard",
     "groups": [
       {
-        "name": "Academic",
+        "name": "Start here",
         "items": [
           { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "s/fees", "icon": "card", "label": "School fees — pay first" }
+        ]
+      },
+      {
+        "name": "Academic",
+        "items": [
           { "id": "s/register", "icon": "book", "label": "Course registration" },
           { "id": "s/reghistory", "icon": "chart", "label": "Registration history" },
           { "id": "s/results", "icon": "cap", "label": "Results" },
@@ -2292,7 +2298,6 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Services",
         "items": [
-          { "id": "s/fees", "icon": "card", "label": "Fees & payments" },
           { "id": "s/wallet", "icon": "swap", "label": "Wallet & funding" },
           { "id": "s/hostel", "icon": "bed", "label": "Hostel" },
           { "id": "s/library", "icon": "book", "label": "Library" },

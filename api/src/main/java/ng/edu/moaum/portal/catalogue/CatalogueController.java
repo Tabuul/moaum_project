@@ -215,6 +215,17 @@ class CatalogueController {
                 .query().singleRow();
     }
 
+    /** open course registration for a session: create an offering for every offered course of that
+     *  semester, so students see the real programme/level courses (not leftover demo offerings) */
+    @PostMapping("/open-registration")
+    @PreAuthorize(UPLOADERS)
+    @Transactional
+    Map<String, Object> openRegistration(@RequestParam String session, @RequestParam int semester) {
+        Integer n = jdbc.sql("SELECT registration.open_course_registration(:s, :sem)")
+                .param("s", session).param("sem", semester).query(Integer.class).single();
+        return Map.of("opened", n, "session", session, "semester", semester);
+    }
+
     /** every course a department owns, with the lecturer of its offering in the current session, if any */
     @GetMapping("/courses")
     @PreAuthorize(READERS)

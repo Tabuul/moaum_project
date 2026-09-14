@@ -31,6 +31,20 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   const [listing, setListing] = useState(false);
   const [unregistered, setUnregistered] = useState<{ programme: string; rows: number }[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [openSession, setOpenSession] = useState("");
+  const [openSem, setOpenSem] = useState("1");
+  const [openMsg, setOpenMsg] = useState<string | null>(null);
+
+  async function openRegistration() {
+    if (!/^\d{4}\/\d{4}$/.test(openSession.trim())) { setProblem({ status: 400, title: "Enter the session as YYYY/YYYY, e.g. 2024/2025." }); return; }
+    setBusy(true); setProblem(null); setOpenMsg(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/catalogue/open-registration?session=${encodeURIComponent(openSession.trim())}&semester=${openSem}`, { method: "POST", headers: { "X-Reason": reasonHeader(`Open course registration for ${openSession.trim()} semester ${openSem}`) } });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      setOpenMsg(`${Number(j?.opened ?? 0).toLocaleString()} course offering${Number(j?.opened ?? 0) === 1 ? "" : "s"} opened for ${openSession.trim()} · semester ${openSem}. Students now see the real courses at registration.`);
+    } finally { setBusy(false); }
+  }
 
   async function viewLoaded(prog = programme) {
     if (!prog) return;
@@ -263,6 +277,18 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       {problem ? <ProblemNotice problem={problem} /> : null}
       {msg ? <Note kind="ok" title="Course structure loaded">{msg}</Note> : null}
+
+      <Panel title="Open course registration for a session" right="After the structure is uploaded">
+        <PBody>
+          <div className="sub2" style={{ marginBottom: 8 }}>Registration shows a course only once it is <b>offered</b> for the session. Open the session here to create an offering for every uploaded course of that semester — then students see their real programme and level courses instead of demo data. Safe to run again; already-offered courses are skipped.</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Field id="or-ses" label="Session"><input id="or-ses" className="ctl tnum" style={{ maxWidth: 160 }} value={openSession} placeholder="2024/2025" onChange={(e) => setOpenSession(e.target.value)} /></Field>
+            <Field id="or-sem" label="Semester"><select id="or-sem" className="ctl" value={openSem} onChange={(e) => setOpenSem(e.target.value)}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
+            <Btn kind="primary" disabled={busy || !may} onClick={() => void openRegistration()}>{busy ? "Working…" : "Open course registration"}</Btn>
+          </div>
+          {openMsg ? <Note kind="ok" title="Course registration opened">{openMsg}</Note> : null}
+        </PBody>
+      </Panel>
 
       {unregistered.length ? (
         <Note kind="bad" title={`${unregistered.length} programme${unregistered.length === 1 ? "" : "s"} not on the register — their courses were held back`}>
