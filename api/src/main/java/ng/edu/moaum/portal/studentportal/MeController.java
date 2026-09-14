@@ -76,6 +76,11 @@ class MeController {
         return portal.registrationView(id(auth), session == null || session.isBlank() ? portal.session() : session, semester);
     }
 
+    @GetMapping("/registration-history")
+    Map<String, Object> registrationHistory(Authentication auth) {
+        return portal.registrationHistory(id(auth));
+    }
+
     @PutMapping("/registration")
     Map<String, Object> choose(Authentication auth, @Valid @RequestBody Choice body) {
         return portal.choose(id(auth), body.session(), body.semester(), body.offerings());

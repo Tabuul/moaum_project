@@ -79,6 +79,7 @@ export const ROUTES: Record<string, string> = {
   "s/notifications": "/student/notifications",
   "s/query": "/student/query",
   "s/carryover": "/student/carryover",
+  "s/reghistory": "/student/registration-history",
   "s/transcript": "/student/transcript",
   "s/exams": "/student/exams",
   "s/timetable": "/student/timetable",

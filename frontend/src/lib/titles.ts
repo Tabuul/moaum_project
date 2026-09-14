@@ -112,6 +112,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Carryover",
     "What must be repeated, and when it is next offered"
   ],
+  "s/reghistory": [
+    "Registration history",
+    "Every course you registered, session by session"
+  ],
   "t/idcards": [
     "Identity cards",
     "Printed by the Library, handed over by Security"

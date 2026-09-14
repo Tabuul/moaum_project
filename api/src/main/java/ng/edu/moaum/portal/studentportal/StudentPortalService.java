@@ -163,6 +163,19 @@ public class StudentPortalService {
         return out;
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Object> registrationHistory(UUID id) {
+        StudentPortalRepository.Student s = student(id);
+        List<Map<String, Object>> history = repo.registrationHistory(id).stream().map(StudentPortalService::withEntries).toList();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("matricNo", s.matricNo());
+        out.put("admissionNo", s.admissionNo());
+        out.put("name", s.surname() + ", " + s.otherNames());
+        out.put("programme", s.programme());
+        out.put("history", history);
+        return out;
+    }
+
     @Transactional
     public Map<String, Object> choose(UUID id, String session, int semester, List<UUID> offerings) {
         StudentPortalRepository.Student s = student(id);

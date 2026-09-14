@@ -190,6 +190,19 @@ class StudentPortalRepository {
                 """).param("s", student).param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst();
     }
 
+    /* every registration the student has made, newest session first — the registration history */
+    List<Map<String, Object>> registrationHistory(UUID student) {
+        return jdbc.sql("""
+                SELECT r.id, r.session, r.semester, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
+                       (SELECT json_agg(json_build_object('courseCode', c.code, 'title', c.title, 'units', e.units,
+                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
+                          FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                         WHERE e.registration_id = r.id) AS entries
+                  FROM registration.course_registration r WHERE r.student_id = :s
+                 ORDER BY r.session DESC, r.semester
+                """).param("s", student).query().listOfRows();
+    }
+
     UUID draft(UUID student, String session, int semester) {
         return jdbc.sql("SELECT registration.student_draft(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query(UUID.class).single();
     }
