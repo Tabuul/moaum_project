@@ -96,7 +96,16 @@ public class StudentAuthService {
                 return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                         + a.lockedUntil().toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
-            if (!encoder.matches(password == null ? "" : password, a.passwordHash())) {
+            boolean ok = encoder.matches(password == null ? "" : password, a.passwordHash());
+            if (!ok && a.mustChange()) {
+                /* a migrated student whose password was never set signs in with their own number as the
+                   password (username == password) and is then forced to choose a real one. This is the
+                   default first password, granted at sign-in — so no 40,000 accounts are pre-hashed. */
+                String u = matricNo == null ? "" : matricNo.trim();
+                String p = password == null ? "" : password.trim();
+                ok = !p.isEmpty() && p.equalsIgnoreCase(u);
+            }
+            if (!ok) {
                 int attempts = a.failedAttempts() + 1;
                 repo.failed(s.id(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
                 repo.event(matricNo, s.id(), "BAD_PASSWORD", ip);

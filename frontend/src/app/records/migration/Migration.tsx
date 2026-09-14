@@ -27,18 +27,6 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null } | null>(null);
   const [progress, setProgress] = useState<{ label: string; sent: number; of: number } | null>(null);
   const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
-  const [pw, setPw] = useState<string | null>(null);
-
-  async function setDefaults() {
-    if (!window.confirm("Set the default first password (the student's own number) for every migrated student that has not chosen one yet? They will be required to change it on first sign-in. Students who already chose a password are not affected.")) return;
-    setBusy(true); setProblem(null); setPw(null);
-    try {
-      const r = await fetch("/api/bff/api/v1/results/legacy/default-passwords", { method: "POST", headers: { "X-Reason": reasonHeader("Default first passwords set for migrated students") } });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setPw(`${Number(j?.updated ?? 0).toLocaleString()} student account${Number(j?.updated ?? 0) === 1 ? "" : "s"} were given their number as a first password. Each must change it at first sign-in; anyone who had already chosen a password was left untouched.`);
-    } finally { setBusy(false); }
-  }
 
   async function upload(kind: Tab, file: File) {
     setBusy(true);
@@ -400,19 +388,12 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       </Note>
 
       {may ? (
-        <Panel title="Default first password for migrated students" right="One-time bootstrap">
-          <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>
-              Give every migrated student who has not chosen a password a first password equal to their own
-              <b> matriculation number</b> (or admission / JAMB number, whichever they have). They sign in with it once
-              and the portal makes them set a real password. A student who has already chosen a password is never
-              overwritten, so this is safe to run again after loading more students. Because a matriculation number is
-              semi-public, this is only a first step — the forced change at sign-in is what keeps the account safe.
-            </div>
-            <Btn kind="primary" disabled={busy} onClick={() => void setDefaults()}>{busy ? "Working…" : "Set default passwords"}</Btn>
-            {pw ? <Note kind="ok" title="Default passwords set">{pw}</Note> : null}
-          </PBody>
-        </Panel>
+        <Note kind="info" title="How migrated students sign in — no password reset needed">
+          A student brought over from the old portal signs in with their <b>number as both the username and the
+          password</b> (matriculation number, or admission / JAMB number). The portal then makes them choose a real
+          password on that first sign-in. Nothing is pre-set for the whole cohort — each student&rsquo;s first password
+          is granted at the moment they sign in, so there is nothing to run here.
+        </Note>
       ) : null}
     </>
   );
