@@ -252,4 +252,40 @@ class CatalogueController {
         jdbc.sql("SELECT catalogue.end_course(:c)").param("c", code).query().singleRow();
         return Map.of("code", code, "state", "ENDED");
     }
+
+    /** how far course-structure upload has got: programmes with a structure loaded vs. still to upload,
+     *  the totals, the split by faculty, and the list still pending — for the ICT/management dashboard */
+    @GetMapping("/upload-coverage")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_hod','OFFICE_dean')")
+    @Transactional(readOnly = true)
+    Map<String, Object> uploadCoverage() {
+        Map<String, Object> sum = jdbc.sql("""
+                WITH prog AS (SELECT p.code, EXISTS (SELECT 1 FROM catalogue.course_offer o WHERE o.programme_code = p.code) AS uploaded
+                                FROM ref.programme p WHERE NOT p.archived)
+                SELECT count(*) AS total, count(*) FILTER (WHERE uploaded) AS uploaded FROM prog
+                """).query().singleRow();
+        long total = ((Number) sum.get("total")).longValue();
+        long uploaded = ((Number) sum.get("uploaded")).longValue();
+        List<Map<String, Object>> byFaculty = jdbc.sql("""
+                SELECT f.name AS faculty, count(*) AS total,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM catalogue.course_offer o WHERE o.programme_code = p.code)) AS uploaded
+                  FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE NOT p.archived GROUP BY f.name ORDER BY f.name
+                """).query().listOfRows();
+        List<Map<String, Object>> pendingList = jdbc.sql("""
+                SELECT p.code, p.name, f.name AS faculty
+                  FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE NOT p.archived AND NOT EXISTS (SELECT 1 FROM catalogue.course_offer o WHERE o.programme_code = p.code)
+                 ORDER BY f.name, p.name
+                """).query().listOfRows();
+        long courses = jdbc.sql("SELECT count(*) FROM catalogue.course").query(Long.class).single();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("total", total);
+        out.put("uploaded", uploaded);
+        out.put("pending", total - uploaded);
+        out.put("courses", courses);
+        out.put("byFaculty", byFaculty);
+        out.put("pendingList", pendingList);
+        return out;
+    }
 }
