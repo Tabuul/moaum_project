@@ -99,7 +99,10 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     return grid.slice(1).filter((r) => (r[ci.code] ?? "").toString().trim()).map((r) => {
       const g = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
       const lv = Number(g(ci.level).replace(/[^0-9]/g, ""));
-      const sm = Number(g(ci.sem).replace(/[^0-9]/g, ""));
+      /* the semester cell may read a word ("First"/"Second"/"Third") or a digit — accept both */
+      const semRaw = g(ci.sem);
+      let sm = Number(semRaw.replace(/[^0-9]/g, ""));
+      if (!sm) sm = /first|1st/i.test(semRaw) ? 1 : /second|2nd/i.test(semRaw) ? 2 : /third|3rd/i.test(semRaw) ? 3 : 0;
       return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: sm || null, lh: g(ci.lh), ph: g(ci.ph), programmeCode: g(ci.prog) || undefined, category: g(ci.cat) || undefined };
     }).filter((x) => !/^course\s*code$/i.test(x.code));
   }
