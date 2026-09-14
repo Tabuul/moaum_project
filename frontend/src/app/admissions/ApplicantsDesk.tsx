@@ -15,7 +15,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
-import { loadCrest, xlsxRows } from "@/lib/xlsx";
+import { loadCrest, xlsxRowsAsync } from "@/lib/xlsx";
 import { Btn, IcoBtn, KvGrid, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -47,6 +47,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [newBatch, setNewBatch] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [jambBusy, setJambBusy] = useState(false);
+  const [jambProg, setJambProg] = useState<{ label: string; sent: number; of: number } | null>(null);
   const [jambMsg, setJambMsg] = useState<string | null>(null);
   const [jambList, setJambList] = useState<{ tiles: Record<string, number>; rows: Record<string, unknown>[] } | null>(null);
   const [nowMs] = useState(() => Date.now());
@@ -178,28 +179,56 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     setJambBusy(true);
     setProblem(null);
     setJambMsg(null);
+    setJambProg({ label: "Reading the file", sent: 0, of: 0 });
     try {
-      const grid = await xlsxRows(await file.arrayBuffer());
+      const grid = await xlsxRowsAsync(await file.arrayBuffer(), (n) => setJambProg({ label: "Reading the file", sent: n, of: 0 }));
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim());
       if (!header.some((h) => /^rg_num$/i.test(h) || /reg/i.test(h))) {
         setProblem({ status: 400, title: "That file is not the JAMB admission-status list.", detail: "The first row must carry RG_NUM (registration number), AdmissionStatus and the other JAMB columns." });
         return;
       }
-      const body = grid.slice(1)
-        .filter((r) => r.some((c) => String(c ?? "").trim() !== ""))
-        .map((r) => { const o: Record<string, string> = {}; header.forEach((h, i) => { if (h) o[h] = String(r[i] ?? "").trim(); }); return o; });
+      /* build the rows, yielding so a large list does not freeze the tab */
+      const dataRows = grid.slice(1);
+      const body: Record<string, string>[] = [];
+      for (let i = 0; i < dataRows.length; i++) {
+        const r = dataRows[i];
+        if (r.some((c) => String(c ?? "").trim() !== "")) {
+          const o: Record<string, string> = {};
+          header.forEach((h, k) => { if (h) o[h] = String(r[k] ?? "").trim(); });
+          body.push(o);
+        }
+        if ((i & 8191) === 8191) { setJambProg({ label: "Preparing the rows", sent: i + 1, of: dataRows.length }); await new Promise((res) => setTimeout(res)); }
+      }
       if (!body.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill or download the JAMB admission-status list, then upload it." }); return; }
-      const r = await fetch(`${base}/jamb-admissions`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`JAMB admission status uploaded for ${desk.session}`) }, body: JSON.stringify({ rows: body }) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      const c = j as { loaded: number; matched: number; accepted: number; offered: number; unmatched: number };
-      setJambMsg(`${c.loaded} rows read · ${c.matched} matched the register · ${c.accepted} accepted at JAMB · ${c.offered} offered admission here · ${c.unmatched} not on the register.`);
+      /* the loader upserts on (session, registration number), so a large list goes up in idempotent batches */
+      const CHUNK = 500;
+      const totals = { loaded: 0, matched: 0, accepted: 0, offered: 0, unmatched: 0 };
+      let sent = 0;
+      setJambProg({ label: "Matching against the register", sent: 0, of: body.length });
+      for (let i = 0; i < body.length; i += CHUNK) {
+        const chunk = body.slice(i, i + CHUNK);
+        const r = await fetch(`${base}/jamb-admissions`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`JAMB admission status uploaded for ${desk.session}: rows ${sent + 1} to ${sent + chunk.length} of ${body.length}`) }, body: JSON.stringify({ rows: chunk }) });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const b = (j ?? { status: r.status, title: r.statusText }) as Problem;
+          setProblem({ ...b, detail: `${b.detail ? b.detail + " " : ""}${sent.toLocaleString()} of ${body.length.toLocaleString()} rows were processed before this batch was refused. The load is idempotent — upload the file again to continue.` });
+          await refreshJamb();
+          router.refresh();
+          return;
+        }
+        const c = (j ?? {}) as Record<string, number>;
+        for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += Number(c[k] ?? 0);
+        sent += chunk.length;
+        setJambProg({ label: "Matching against the register", sent, of: body.length });
+      }
+      setJambMsg(`${totals.loaded} rows read · ${totals.matched} matched the register · ${totals.accepted} accepted at JAMB · ${totals.offered} offered admission here · ${totals.unmatched} not on the register.`);
       await refreshJamb();
       router.refresh();
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx downloaded from JAMB." });
     } finally {
       setJambBusy(false);
+      setJambProg(null);
     }
   }
 
@@ -279,7 +308,15 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
             <div className="sub2">After JAMB offers admission and the candidates accept on JAMB&rsquo;s portal, download the admission-status list from JAMB and upload it here. Each row is matched to the candidate the University screened, by registration number. A candidate JAMB records as <b>Accepted</b> is offered admission here and the offer released &mdash; so the applicant can pay the acceptance fee, pay school fees, register and be matriculated. A number not on the register is held, not admitted on a guess.</div>
             <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
               <label className="btn btn--primary" style={{ cursor: "pointer", margin: 0 }}>
-                {jambBusy ? "Uploading…" : "Upload JAMB admission status"}
+                {jambBusy
+                  ? (jambProg
+                      ? (jambProg.of > 0
+                          ? `${jambProg.label} — ${jambProg.sent.toLocaleString()} of ${jambProg.of.toLocaleString()}…`
+                          : jambProg.sent > 0
+                            ? `${jambProg.label} — ${jambProg.sent.toLocaleString()} rows…`
+                            : `${jambProg.label}…`)
+                      : "Uploading…")
+                  : "Upload JAMB admission status"}
                 <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={jambBusy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadJamb(f); e.target.value = ""; }} />
               </label>
               <Btn kind="ghost" disabled={jambBusy} onClick={() => void refreshJamb()}>Show what was uploaded</Btn>
