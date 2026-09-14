@@ -22,9 +22,29 @@
 
 BEGIN;
 
--- 1 · units of record stay on the entry: assessment.student_results already reads e.units (V028), and it
---     must keep V028's `published` fix (coalesce(... , false)), so this migration does NOT redefine it —
---     the frozen entry unit is the unit at the time, and a later catalogue change never rewrites a result.
+-- 1 · the per-student results view reads the entry's (frozen) unit — restated here for the record
+CREATE OR REPLACE FUNCTION assessment.student_results(p_student uuid)
+RETURNS TABLE (session text, semester int, course_code text, title text, units int, entry_type text,
+               stage text, published boolean, published_at timestamptz, senate_minute text,
+               ca int, exam int, total int, grade text, points numeric, outcome text)
+LANGUAGE sql STABLE AS $$
+    SELECT r.session, r.semester, c.code, c.title, e.units, e.entry_type,
+           coalesce(sh.stage, 'NO_SHEET'), sh.stage = 'PUBLISHED', sh.published_at, sh.senate_minute,
+           CASE WHEN sh.stage = 'PUBLISHED' THEN ls.ca END,
+           CASE WHEN sh.stage = 'PUBLISHED' THEN ls.exam END,
+           CASE WHEN sh.stage = 'PUBLISHED' THEN ls.total END,
+           CASE WHEN sh.stage = 'PUBLISHED' THEN ls.grade END,
+           CASE WHEN sh.stage = 'PUBLISHED' THEN ls.points END,
+           CASE WHEN sh.stage = 'PUBLISHED' THEN ls.outcome END
+      FROM registration.course_registration r
+      JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED','APPROVED')
+      JOIN catalogue.offering o ON o.id = e.offering_id
+      JOIN catalogue.course c ON c.code = o.course_code
+      LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
+      LEFT JOIN LATERAL (SELECT * FROM assessment.latest_scores(sh.id) x WHERE x.student_id = p_student) ls ON sh.id IS NOT NULL
+     WHERE r.student_id = p_student AND r.status IN ('APPROVED','LOCKED')
+     ORDER BY r.session, r.semester, c.code;
+$$;
 
 -- 2 · bring the stored entry units into line with the catalogue — a one-time system repair of the bad
 --     import, not a user act, so the audit trigger is disabled around it (as V117 did for a backfill) and
