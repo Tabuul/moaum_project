@@ -257,10 +257,18 @@ class ResultsRepository {
                 .query(Sheets.Cumulative.class).optional().orElse(new Sheets.Cumulative(0, 0, java.math.BigDecimal.ZERO, null, null));
     }
 
-    /** the candidate's outstanding carryover course codes */
+    /** the candidate's outstanding carryover course codes (their standing right now, all levels) */
     List<String> carryovers(UUID student) {
         return jdbc.sql("SELECT course_code FROM registration.carryovers(:s) ORDER BY course_code")
                 .param("s", student).query(String.class).list();
+    }
+
+    /** carryovers the candidate held as of a period — inclusive=false: carried INTO the semester (the
+     *  column); inclusive=true: owed leaving it (the remark). Never pulls from a later period. */
+    List<String> carryoversAt(UUID student, String session, int semester, boolean inclusive) {
+        return jdbc.sql("SELECT course_code FROM registration.carryovers_at(:s, :se, :sem, :inc) ORDER BY course_code")
+                .param("s", student).param("se", session).param("sem", semester).param("inc", inclusive)
+                .query(String.class).list();
     }
 
     List<Sheets.GradeBand> gradeBands() {

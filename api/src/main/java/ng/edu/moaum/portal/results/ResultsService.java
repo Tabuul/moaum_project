@@ -318,15 +318,22 @@ public class ResultsService {
                 }
             }
             Sheets.Cumulative cum = repo.cumulative(e.getKey(), session, sem);
-            List<String> carry = repo.carryovers(e.getKey());
-            /* the remark is THIS semester's outcome: the courses failed on THIS sheet, not the student's
-               whole outstanding list — a later semester's carryover must not surface on an earlier sheet */
-            List<String> sheetFails = marks.stream()
-                    .filter(m -> m.counted() && m.points() != null && m.points().signum() == 0)
-                    .map(Sheets.BroadsheetMark::courseCode).sorted().toList();
-            String remarks = pending > 0 && gpa == null ? "Pending"
-                    : sheetFails.isEmpty() ? "PASS"
-                    : "CO: " + String.join(", ", sheetFails);
+            /* the CARRYOVER COLUMN is what the student carried INTO this semester — courses failed in an
+               EARLIER period, not yet passed; re-attempts they now pass or fail again. Never a later level. */
+            List<String> carry = repo.carryoversAt(e.getKey(), session, sem, false);
+            /* the REMARK is what the student owes AS OF this sheet: prior unpassed carryovers plus this
+               semester's failures — scoped to this period, so a level not yet reached never appears. Plus
+               any course on a PUBLISHED sheet whose score is still missing (a missing script), shown as
+               pending until the score is found and the sheet re-viewed. */
+            List<String> owed = new java.util.ArrayList<>(repo.carryoversAt(e.getKey(), session, sem, true));
+            List<String> awaiting = marks.stream()
+                    .filter(m -> COUNTED.contains(m.stage()) && !m.counted())
+                    .map(m -> m.courseCode() + " (pending)").sorted().toList();
+            owed.addAll(awaiting);
+            boolean anyUnreleased = marks.stream().anyMatch(m -> !"NOT_REGISTERED".equals(m.stage()) && !COUNTED.contains(m.stage()));
+            String remarks = !owed.isEmpty() ? "CO: " + String.join(", ", owed)
+                    : anyUnreleased ? "Pending"
+                    : "PASS";
             rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
                     cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks));
         }
