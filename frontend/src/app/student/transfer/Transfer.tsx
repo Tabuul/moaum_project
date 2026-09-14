@@ -6,6 +6,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { Field, Step } from "@/components/proto/blocks";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, PayByCard, useAct } from "../common";
 
@@ -109,7 +110,7 @@ export function Transfer({ d }: { d: MyTransfer }) {
       {canApply ? (
         <Panel title="Apply to transfer" right="One application at a time">
           <PBody>
-            <Field id="ap-prog" label="Course applied for"><select id="ap-prog" className="ctl" value={prog} onChange={(e) => setProg(e.target.value)}><option value="">Select a department…</option>{d.programmes.map((p) => <option key={p.code} value={p.code}>{p.name} — {p.faculty}</option>)}</select></Field>
+            <Field id="ap-prog" label="Course applied for"><SearchSelect id="ap-prog" value={prog} placeholder="Search a programme…" options={d.programmes.map((p) => ({ value: p.code, label: `${p.name} — ${p.faculty}` }))} onChange={(v) => setProg(v)} /></Field>
             <Field id="ap-reason" label="Reason for seeking transfer" hint="The committee reads this."><textarea id="ap-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
             <Field id="ap-utme" label="Your UTME score" hint="Optional — helps the committee weigh the case."><input id="ap-utme" className="ctl tnum" inputMode="numeric" value={utme} onChange={(e) => setUtme(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
             <div><Btn kind="primary" disabled={busy !== null || !prog || !reason.trim()} onClick={async () => { const r = await act("apply", "POST", "/me/transfer", { toProgramme: prog, reason: reason.trim(), utme: utme ? Number(utme) : null }, "Apply for departmental transfer"); if (r) { setSaid("Your application is with the office."); setProg(""); setReason(""); setUtme(""); } }}>Submit the application</Btn></div>

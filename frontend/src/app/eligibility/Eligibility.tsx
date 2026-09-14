@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Dept { code: string; name: string; faculty_code: string }
@@ -36,13 +37,11 @@ export function Eligibility({ depts, dept, courses, code, view, problem }: {
 
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ minWidth: 220 }}><label htmlFor="el-dept">Department</label>
-          <select id="el-dept" className="ctl" value={dept} onChange={(e) => go({ dept: e.target.value, course: "" })}>
-            {depts.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
-          </select></div>
+          <SearchSelect id="el-dept" value={dept} placeholder="Search a department…"
+            options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v, course: "" })} /></div>
         <div className="field" style={{ minWidth: 260 }}><label htmlFor="el-course">Course</label>
-          <select id="el-course" className="ctl" value={code} onChange={(e) => go({ course: e.target.value })}>
-            {courses.length ? courses.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.title}</option>) : <option value="">No course in this department</option>}
-          </select></div>
+          <SearchSelect id="el-course" value={code} placeholder={courses.length ? "Search a course…" : "No course in this department"}
+            options={courses.map((c) => ({ value: c.code, label: `${c.code} — ${c.title}` }))} onChange={(v) => go({ course: v })} /></div>
       </div></div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}

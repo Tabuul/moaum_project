@@ -9,6 +9,7 @@ import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Dept { code: string; name: string; faculty_code: string }
@@ -61,9 +62,8 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
 
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ minWidth: 240 }}><label htmlFor="dc-dept">Department</label>
-          <select id="dc-dept" className="ctl" value={dept} onChange={(e) => go(e.target.value)}>
-            {depts.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
-          </select></div>
+          <SearchSelect id="dc-dept" value={dept} placeholder="Search a department…"
+            options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go(v)} /></div>
         <div style={{ flexGrow: 1 }} />
         <button className="btn btn--primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" }); setErr(null); setAdd(true); }}>+ New course</button>
       </div></div>
