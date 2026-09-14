@@ -233,6 +233,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   }
 
   const rows = desk.applications;
+  const feeUnset = !desk.fees?.stated || Number(desk.fees?.acceptanceFee) <= 0;
   const programmes = [...new Set(rows.map((r) => r.programme))].sort();
   const stageOf = (n: number) => STAGES[Math.min(n, 9)][0];
   const val = (k: string, d = "") => (k in edits ? edits[k] : d);
@@ -252,6 +253,11 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       <Note kind="info" title="Applicant fees are set by the Bursary and paid on the gateway">
         The Post-UTME screening fee and the acceptance fee are stated on the Bursary&rsquo;s fee-setup screen, under &ldquo;Applicant · Post-UTME fees&rdquo;. An applicant generates a reference and pays it on the payment gateway; the payment confirms itself and the Bursary sees it &mdash; there is no confirmation step here.
       </Note>
+      {feeUnset ? (
+        <Note kind="bad" title="The acceptance fee is not set for this session" action={<Link href="/finance/fees" className="btn btn--urgent btn--sm">Set the fee</Link>}>
+          An applicant you admit will see the offer but cannot pay the acceptance fee until the Bursary states it for {desk.session} &mdash; the Accept page opens with nothing to pay, and clearance and matriculation cannot follow. Set the acceptance fee before you release decisions.
+        </Note>
+      ) : null}
 
       <Panel title="Screening batches" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${desk.batches.length} batch${desk.batches.length === 1 ? "" : "es"}`}<Btn kind="ghost" disabled={!office} onClick={() => { setNewBatch(true); setEdits({}); }}>New batch</Btn><Btn kind="primary" disabled={!office || busy !== null} onClick={() => void send("release-scores", "POST", "/screening-scores/release", {}, `Screening results released for ${desk.session}`)}>{busy === "release-scores" ? "Releasing…" : "Release results"}</Btn></span>}>
         {desk.batches.length ? (
@@ -268,7 +274,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         ) : <div className="card__body"><div className="sub2">No batch yet. Make one, then seat the submitted applications over it; the slip appears on each applicant&rsquo;s screen the moment they are seated.</div></div>}
       </Panel>
 
-      <Panel title="Applicants" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`)}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
+      <Panel title="Applicants" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => { if (feeUnset && !window.confirm(`The acceptance fee is not set for ${desk.session}. Applicants can accept their offer but cannot pay the acceptance fee. Release decisions anyway?`)) return; void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`); }}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
         {rows.length ? (
           <DTable cols={["Applicant", "Programme", "Stage", "Seat|mid", "Score|mid", "Decision|mid", "|num"]} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.jamb_key} ${r.programme}`)}
             rows={rows.map((r) => [
