@@ -249,6 +249,24 @@ class CatalogueController {
                 """).param("p", programme).query().listOfRows();
     }
 
+    /** the whole uploaded catalogue — every course offered to every programme — for a download */
+    @GetMapping("/catalogue-export")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> catalogueExport() {
+        return jdbc.sql("""
+                SELECT f.name AS faculty, pr.code AS programme_code, pr.name AS programme,
+                       d.name AS department, co.level, c.semester, c.code, c.title, c.units,
+                       c.kind, co.basis, c.curriculum
+                  FROM catalogue.course_offer co
+                  JOIN catalogue.course c ON c.code = co.course_code
+                  JOIN ref.programme pr ON pr.code = co.programme_code
+                  JOIN ref.faculty f ON f.code = pr.faculty_code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                 ORDER BY f.name, pr.name, co.level, c.semester, c.code
+                """).query().listOfRows();
+    }
+
     /** who may register a course: the eligible programme-and-level set, assigned at creation, with how many are registered */
     @GetMapping("/courses/{code}/eligibility")
     @PreAuthorize(READERS)

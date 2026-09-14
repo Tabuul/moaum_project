@@ -30,6 +30,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   const [loaded, setLoaded] = useState<Loaded[] | null>(null);
   const [listing, setListing] = useState(false);
   const [unregistered, setUnregistered] = useState<{ programme: string; rows: number }[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   async function viewLoaded(prog = programme) {
     if (!prog) return;
@@ -195,6 +196,30 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     brandedPrint(`Courses offered — ${progLabel}`, `${(loaded ?? []).length} courses`, LOADED_COLS, loadedRows(), docSerial("CRS"));
   }
 
+  /* the whole uploaded catalogue — every course offered to every programme */
+  const ALL_COLS = ["Faculty", "Programme Code", "Programme", "Level", "Semester", "Course Code", "Title", "Units", "Kind", "Basis", "Curriculum"];
+  interface AllRow { faculty: string; programme_code: string; programme: string; level: number; semester: number | null; code: string; title: string; units: number; kind: string; basis: string; curriculum: string | null }
+  async function fetchAll(): Promise<AllRow[] | null> {
+    setExporting(true); setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/catalogue/catalogue-export");
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      return j as AllRow[];
+    } finally { setExporting(false); }
+  }
+  const allRows = (rows: AllRow[]) => rows.map((c) => [c.faculty, c.programme_code, c.programme, c.level, c.semester ?? "", c.code, c.title, c.units, c.kind, c.basis, c.curriculum ?? ""]);
+  async function exportAllXlsx() {
+    const rows = await fetchAll(); if (!rows) return;
+    if (!rows.length) { setMsg("No courses have been uploaded yet."); return; }
+    downloadBlob(await brandedXlsx("All courses in the catalogue", ALL_COLS, allRows(rows), { serial: docSerial("CAT") }), "All courses (catalogue).xlsx");
+  }
+  async function exportAllPdf() {
+    const rows = await fetchAll(); if (!rows) return;
+    if (!rows.length) { setMsg("No courses have been uploaded yet."); return; }
+    brandedPrint("All courses in the catalogue", `${rows.length} course offerings across all programmes`, ALL_COLS, allRows(rows), docSerial("CAT"));
+  }
+
   return (
     <>
       <Note kind="info" title="Load a department's approved course structure">
@@ -228,6 +253,11 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
             {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
           <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C compulsory, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+            <span className="sub2"><b>Download every uploaded course</b> across all programmes:</span>
+            <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllXlsx()}>{exporting ? "Preparing…" : "All courses — Excel"}</Btn>
+            <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllPdf()}>{exporting ? "Preparing…" : "All courses — PDF"}</Btn>
+          </div>
         </PBody>
       </Panel>
 
