@@ -54,7 +54,7 @@ export async function BursarDashboard({ session }: { session: string }) {
         </Panel>
       </div>
       <Note kind="info" title="No academic transaction completes while money is owed">The clearance gate is checked inside the transaction, at the moment a student tries to register, sit, graduate or order a transcript. That is why a payment that cannot be attributed is an urgent matter rather than an accounting one.</Note>
-      <Panel title="Recent confirmations" right="The day book, last seven days">
+      <Panel title="Recent confirmations" right={<Link href="/finance/payments" className="btn btn--ghost btn--sm">Query all payments</Link>}>
         {v.data.recent.length ? (
           <DTable cols={["When", "Payer", "Purpose", "Channel", "Amount|num", "Receipt|num"]} rows={v.data.recent.map((r) => [<span className="tnum sub2" key="w">{when(r.confirmed_at)}</span>, <Two key="p" a={r.payer} b={r.number} />, <span className="sub2" key="u">{r.purpose}</span>, <span className="sub2" key="c">{r.channel}</span>, <b className="tnum" key="a">{money(Number(r.amount))}</b>, <span className="tnum sub2" key="r">{r.receipt_no ?? r.reference}</span>])} />
         ) : <PBody><div className="sub2">Nothing confirmed in the last seven days. <Link href="/finance/ledger">The full ledger</Link>.</div></PBody>}

@@ -324,6 +324,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Transactions & accounts",
     "Payment history and the ledger"
   ],
+  "t/payments": [
+    "Payments query",
+    "Confirmed payments, sliced by faculty, programme, level, category and session"
+  ],
   "t/clearance": [
     "Clearance",
     "Graduation and registration sign-off"

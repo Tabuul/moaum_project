@@ -292,6 +292,49 @@ class FinanceController {
         return Map.of("from", f, "to", t, "rows", rows);
     }
 
+    /** A well-defined payments query for the Bursary: confirmed student payments, newest first, sliced by
+     *  session, faculty, department, programme, level, payment category and channel. Returns the page, the
+     *  full-match count and total, and the option lists for the filters. */
+    @GetMapping("/payments")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> payments(@RequestParam(required = false) String session, @RequestParam(required = false) String faculty,
+            @RequestParam(required = false) String dept, @RequestParam(required = false) String programme,
+            @RequestParam(required = false) Integer level, @RequestParam(required = false) String category,
+            @RequestParam(required = false) String channel, @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to, @RequestParam(defaultValue = "500") int limit) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT * FROM finance.payments_query(:session, :faculty, :dept, :programme, :level, :category, :channel, :from, :to, :limit)
+                """)
+                .param("session", blank(session), Types.VARCHAR).param("faculty", blank(faculty), Types.VARCHAR)
+                .param("dept", blank(dept), Types.VARCHAR).param("programme", blank(programme), Types.VARCHAR)
+                .param("level", level, Types.INTEGER).param("category", blank(category), Types.VARCHAR)
+                .param("channel", blank(channel), Types.VARCHAR).param("from", from, Types.DATE)
+                .param("to", to, Types.DATE).param("limit", limit)
+                .query().listOfRows();
+        long count = rows.isEmpty() ? 0 : ((Number) rows.getFirst().get("match_count")).longValue();
+        Object total = rows.isEmpty() ? BigDecimal.ZERO : rows.getFirst().get("match_total");
+
+        Map<String, Object> options = new java.util.LinkedHashMap<>();
+        options.put("sessions", jdbc.sql("SELECT DISTINCT session FROM finance.payment_reference WHERE confirmed_at IS NOT NULL ORDER BY session DESC").query(String.class).list());
+        options.put("faculties", jdbc.sql("SELECT code, name FROM ref.faculty ORDER BY name").query().listOfRows());
+        options.put("departments", jdbc.sql("SELECT code, name, faculty_code FROM ref.department ORDER BY name").query().listOfRows());
+        options.put("programmes", jdbc.sql("SELECT code, name, faculty_code, dept_code FROM ref.programme WHERE NOT archived ORDER BY name").query().listOfRows());
+        options.put("categories", jdbc.sql("SELECT DISTINCT finance.payment_category(purpose) AS c FROM finance.payment_reference WHERE confirmed_at IS NOT NULL ORDER BY c").query(String.class).list());
+        options.put("channels", jdbc.sql("SELECT DISTINCT channel FROM finance.payment_reference WHERE confirmed_at IS NOT NULL AND channel IS NOT NULL ORDER BY channel").query(String.class).list());
+
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("rows", rows);
+        out.put("count", count);
+        out.put("total", total);
+        out.put("options", options);
+        return out;
+    }
+
+    private static String blank(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
     /* ── V068: reconciliation of confirmed payments against the bank ── */
 
     public record Check(@NotBlank @Size(max = 20) String result, @Size(max = 120) String bankReference, @Size(max = 400) String note) {
