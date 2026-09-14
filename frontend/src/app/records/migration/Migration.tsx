@@ -14,6 +14,8 @@ type Tab = "biodata" | "students" | "registration" | "results";
 const MIGRATE = ["exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
 /* the matric shapes the biography/students importers accept — the University's own, or a legacy old-portal number */
 const MATRIC_OK = /^(MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}|[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7})$/i;
+/** a semester cell — "First"/"Second"/"Third" or 1/2/3 — to its number */
+const semNum = (v: string) => { const t = v.trim().toLowerCase(); return t.startsWith("f") || t === "1" ? 1 : t.startsWith("s") || t === "2" ? 2 : t.startsWith("t") || t === "3" ? 3 : Number(v) || 0; };
 
 export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const may = MIGRATE.includes(actingOffice ?? "");
@@ -66,29 +68,52 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         : kind === "registration" ? "/api/bff/api/v1/results/legacy/registration" : "/api/bff/api/v1/results/legacy/results";
       /* a large export goes up in batches — the importers upsert on the matriculation number, so each
          batch is independent and idempotent; the counts are summed as the batches come back */
+      const scoped = kind !== "students" && kind !== "biodata";
+      /* registration and results carry the session and semester on each row (falling back to the fields
+         above), so one file can hold many sessions and semesters — group by them and load each group */
+      type G = { session: string; semester: number; rows: Record<string, string>[] };
+      let groups: G[];
+      if (scoped) {
+        const map = new Map<string, G>();
+        for (const o of rows) {
+          const ses = o.session && /^[0-9]{4}\/[0-9]{4}$/.test(o.session) ? o.session : session;
+          const sem = o.semester ? semNum(o.semester) : Number(semester);
+          if (!/^[0-9]{4}\/[0-9]{4}$/.test(ses) || ![1, 2, 3].includes(sem)) continue;
+          const key = `${ses}|${sem}`;
+          let g = map.get(key);
+          if (!g) { g = { session: ses, semester: sem, rows: [] }; map.set(key, g); }
+          g.rows.push(o);
+        }
+        groups = [...map.values()];
+        if (!groups.length) { setProblem({ status: 400, title: "No session and semester to load against.", detail: "Add Session (YYYY/YYYY) and Semester columns to the file, or choose them in the fields above." }); return; }
+      } else {
+        groups = [{ session: "", semester: 0, rows }];
+      }
+
       const CHUNK = kind === "biodata" ? 200 : 400;
-      const chunks: typeof rows[] = [];
-      for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
+      const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
       const totals: Record<string, number> = {};
       let firstErr: string | null = null;
       let sent = 0;
-      setProgress({ label: "Importing", sent: 0, of: rows.length });
-      for (const chunk of chunks) {
-        const scoped = kind !== "students" && kind !== "biodata";
-        const body = scoped ? { session, semester: Number(semester), rows: chunk } : { rows: chunk };
-        const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy ${kind} imported${scoped ? ` for ${session} semester ${semester}` : ""}: rows ${sent + 1} to ${sent + chunk.length} of ${rows.length}`) }, body: JSON.stringify(body) });
-        const j = await r.json().catch(() => null);
-        if (!r.ok) {
-          const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
-          setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${sent.toLocaleString()} of ${rows.length.toLocaleString()} rows were imported before this batch was refused. The import is idempotent — fix the file and upload it again; the rows already in will update, not duplicate.` });
-          if (Object.keys(totals).length) setResult({ tab: kind, counts: totals, firstError: firstErr });
-          return;
+      setProgress({ label: "Importing", sent: 0, of: totalRows });
+      for (const g of groups) {
+        for (let i = 0; i < g.rows.length; i += CHUNK) {
+          const chunk = g.rows.slice(i, i + CHUNK);
+          const body = scoped ? { session: g.session, semester: g.semester, rows: chunk } : { rows: chunk };
+          const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy ${kind} imported${scoped ? ` for ${g.session} semester ${g.semester}` : ""}: rows ${sent + 1} to ${sent + chunk.length} of ${totalRows}`) }, body: JSON.stringify(body) });
+          const j = await r.json().catch(() => null);
+          if (!r.ok) {
+            const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
+            setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${sent.toLocaleString()} of ${totalRows.toLocaleString()} rows were imported before this batch was refused. The import is idempotent — fix the file and upload it again; the rows already in will update, not duplicate.` });
+            if (Object.keys(totals).length) setResult({ tab: kind, counts: totals, firstError: firstErr });
+            return;
+          }
+          const counts = (j ?? {}) as Record<string, unknown>;
+          for (const [k, v] of Object.entries(counts)) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
+          if (!firstErr && typeof counts.first_error === "string" && counts.first_error) firstErr = counts.first_error;
+          sent += chunk.length;
+          setProgress({ label: "Importing", sent, of: totalRows });
         }
-        const counts = (j ?? {}) as Record<string, unknown>;
-        for (const [k, v] of Object.entries(counts)) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
-        if (!firstErr && typeof counts.first_error === "string" && counts.first_error) firstErr = counts.first_error;
-        sent += chunk.length;
-        setProgress({ label: "Importing", sent, of: rows.length });
       }
       setResult({ tab: kind, counts: totals, firstError: firstErr });
     } catch {
@@ -119,13 +144,13 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     },
     registration: {
       name: "Course registration",
-      headers: ["Matriculation Number", "Course Code", "Course Title", "Units", "Level"],
-      example: ["MOAUM/CSC/22/0001", "CSC 301", "Operating Systems (example — delete this row)", "3", "300"],
+      headers: ["Matriculation Number", "Course Code", "Units", "Level", "Session", "Semester"],
+      example: ["MOAUM/CSC/22/0001", "CSC 301", "3", "300", "2024/2025", "First"],
     },
     results: {
       name: "Past results",
-      headers: ["Matriculation Number", "Course Code", "Course Title", "Units", "Level", "CA", "Exam", "Total", "Outcome"],
-      example: ["MOAUM/CSC/22/0001", "CSC 301", "Operating Systems (example — delete this row)", "3", "300", "25", "55", "80", "GRADED"],
+      headers: ["Matriculation Number", "Course Code", "Units", "Level", "Session", "Semester", "CA", "Exam", "Total", "Outcome"],
+      example: ["MOAUM/CSC/22/0001", "CSC 301", "3", "300", "2024/2025", "First", "25", "55", "80", "GRADED"],
     },
   };
 
@@ -158,7 +183,9 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   }
 
   const needScope = tab !== "students" && tab !== "biodata";
-  const scopeReady = !needScope || (/^[0-9]{4}\/[0-9]{4}$/.test(session) && ["1", "2", "3"].includes(semester));
+  /* the file now carries Session and Semester per row; the fields below are only a fallback for a file
+     that has neither column, so the upload is never gated on them */
+  const scopeReady = true;
   const CARDS: Record<Tab, [string, string][]> = {
     biodata: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
@@ -243,6 +270,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       add("course", at(/course\s*code/, /^course$/, /^code$/, /subject\s*code/));
       add("units", at(/unit/, /^cu$/, /credit/));
       add("level", at(/^level$/, /^lvl$/));
+      add("session", at(/session/));
+      add("semester", at(/semester/, /^sem$/));
       if (kind === "results") {
         add("ca", at(/\bca\b/, /continuous/, /c\.a/));
         add("exam", at(/exam/, /examination/));
@@ -291,16 +320,16 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         <PBody>
           {needScope ? (
             <div className="grid grid--3">
-              <Field id="mg-ses" label="Session" hint="The session these records belong to, e.g. 2024/2025"><input id="mg-ses" className="ctl tnum" value={session} placeholder="2024/2025" onChange={(e) => setSession(e.target.value.trim())} /></Field>
-              <Field id="mg-sem" label="Semester"><select id="mg-sem" className="ctl" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option><option value="3">Third semester</option></select></Field>
+              <Field id="mg-ses" label="Session (fallback)" hint="Used only for rows with no Session column, e.g. 2024/2025"><input id="mg-ses" className="ctl tnum" value={session} placeholder="2024/2025" onChange={(e) => setSession(e.target.value.trim())} /></Field>
+              <Field id="mg-sem" label="Semester (fallback)"><select id="mg-sem" className="ctl" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option><option value="3">Third semester</option></select></Field>
               <div />
             </div>
           ) : null}
           <div className="sub2" style={{ marginBottom: 8 }}>
             {tab === "biodata" ? "Columns read: matriculation number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor and next-of-kin. The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
-              : tab === "registration" ? "Columns read: matriculation number, course code, units. Each student's approved registration and course entries are created for the semester above."
-              : "Columns read: matriculation number, course code, and the mark. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Units and outcome are read when present."}
+              : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
+              : "Columns read: matriculation number, course code, units, level, session, semester, and the mark. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Session and semester are read per row; outcome is read when present."}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
