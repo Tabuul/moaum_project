@@ -14,7 +14,7 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
-interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string }
+interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string; programmeCode?: string; category?: string }
 interface Loaded { code: string; title: string; units: number; level: number; semester: number | null; kind: string; basis: string }
 const MAY = ["ict", "super", "admin", "hod", "dean", "academic", "registrar", "dregistrar"];
 
@@ -93,13 +93,14 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     const codeIx = at(["code"]);
     let titleIx = at(["title"]);
     if (titleIx < 0) titleIx = header.findIndex((h, i) => i !== codeIx && h.includes("course"));
-    const ci = { code: codeIx, title: titleIx, units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]) };
+    const ci = { code: codeIx, title: titleIx, units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]),
+      prog: at(["programme_code", "programme code", "programmecode"]), cat: at(["course_category", "course category", "curriculum", "category"]) };
     if (ci.code < 0) return [];
     return grid.slice(1).filter((r) => (r[ci.code] ?? "").toString().trim()).map((r) => {
       const g = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
       const lv = Number(g(ci.level).replace(/[^0-9]/g, ""));
       const sm = Number(g(ci.sem).replace(/[^0-9]/g, ""));
-      return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: sm || null, lh: g(ci.lh), ph: g(ci.ph) };
+      return { code: g(ci.code), title: g(ci.title), units: g(ci.units), status: g(ci.status), level: lv || null, semester: sm || null, lh: g(ci.lh), ph: g(ci.ph), programmeCode: g(ci.prog) || undefined, category: g(ci.cat) || undefined };
     }).filter((x) => !/^course\s*code$/i.test(x.code));
   }
 
@@ -121,16 +122,43 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   }
 
   async function upload() {
-    if (!preview || !programme) return;
+    if (!preview) return;
+    const perRow = preview.some((r) => r.programmeCode);
+    if (!perRow && !programme) { setProblem({ status: 400, title: "Choose a programme, or upload a file with a programme_code column.", detail: "A file without a Programme Code column loads against the one programme chosen above." }); return; }
     setBusy(true);
     setProblem(null);
     setMsg(null);
     try {
-      const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${programme}`) }, body: JSON.stringify({ programme, rows: preview, curriculum }) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      const c = j as { courses: number; offers: number; bad_code: number; skipped?: number; first_error?: string | null };
-      setMsg(`${c.courses} courses created or updated and offered to the programme${c.bad_code ? ` · ${c.bad_code} rows had a code the catalogue could not accept` : ""}${c.skipped ? ` · ${c.skipped} row${c.skipped === 1 ? "" : "s"} skipped by an error (first: ${c.first_error ?? "no detail"})` : ""}.`);
+      /* group the rows by the programme (and curriculum) each row names, so a single file of many
+         departments loads at once; a file without a programme_code column uses the one chosen above */
+      const groups = new Map<string, { programme: string; curriculum: string; rows: Row[] }>();
+      for (const row of preview) {
+        const pc = row.programmeCode || programme;
+        if (!pc) continue;
+        const cur = (row.category || curriculum || "").toUpperCase();
+        const key = `${pc}|${cur}`;
+        let g = groups.get(key);
+        if (!g) { g = { programme: pc, curriculum: cur === "CCMAS" || cur === "BMAS" ? cur : curriculum, rows: [] }; groups.set(key, g); }
+        g.rows.push(row);
+      }
+      const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0 };
+      let firstErr: string | null = null;
+      let done = 0;
+      for (const g of groups.values()) {
+        const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${g.programme}`) }, body: JSON.stringify({ programme: g.programme, rows: g.rows, curriculum: g.curriculum }) });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
+          setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${done} of ${groups.size} programmes were loaded before this one (${g.programme}) was refused. The import is idempotent — fix and upload again.` });
+          return;
+        }
+        const c = (j ?? {}) as { courses?: number; offers?: number; bad_code?: number; skipped?: number; first_error?: string | null };
+        totals.courses += Number(c.courses ?? 0); totals.offers += Number(c.offers ?? 0);
+        totals.bad_code += Number(c.bad_code ?? 0); totals.skipped += Number(c.skipped ?? 0);
+        if (!firstErr && c.first_error) firstErr = c.first_error;
+        done += 1;
+      }
+      setMsg(`${totals.courses} courses created or updated across ${groups.size} programme${groups.size === 1 ? "" : "s"}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}.`);
       setPreview(null);
       void viewLoaded();
     } finally {
@@ -166,11 +194,11 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
             <Btn kind="ghost" disabled={!programme || listing} onClick={() => void viewLoaded()}>{listing ? "Loading…" : "View loaded courses"}</Btn>
-            <label className={`btn btn--primary${!may || !programme || busy ? " btn--disabled" : ""}`} style={{ cursor: may && programme && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || !programme ? 0.6 : 1 }}>
+            <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
               {busy ? "Reading…" : "Choose the course document (.docx or .xlsx)"}
-              <input type="file" accept=".docx,.xlsx" style={{ display: "none" }} disabled={!may || !programme || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
+              <input type="file" accept=".docx,.xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
-            {!programme ? <span className="sub2">Choose the programme first.</span> : null}
+            {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
           <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C compulsory, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
         </PBody>
