@@ -994,6 +994,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Payments query"
           },
           {
+            "id": "t/paymenthistory",
+            "icon": "upload",
+            "label": "Payment history upload"
+          },
+          {
             "id": "t/refunds",
             "icon": "swap",
             "label": "Refunds & credits"

@@ -36,6 +36,7 @@ class FinanceController {
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
     /** who may reconcile a transaction against the bank: the Bursary and the audit directorate */
     private static final String RECONCILERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_super')";
+    private static final String MIGRATORS = "hasAnyAuthority('OFFICE_bursar','OFFICE_super','OFFICE_ict','OFFICE_admin')";
 
     public record Item(@NotBlank @Size(max = 120) String item, @NotNull @DecimalMin("0") BigDecimal amount, Integer level,
                        @Size(max = 20) String entryMode, @Size(max = 12) String facultyCode, @Size(max = 12) String programmeCode,
@@ -57,6 +58,19 @@ class FinanceController {
     FinanceController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
         this.jdbc = jdbc;
         this.json = json;
+    }
+
+    /** bulk-load past students' confirmed payment (school-fees) history from the old portal (V120) */
+    @PostMapping("/payments/import")
+    @PreAuthorize(MIGRATORS)
+    @Transactional
+    Map<String, Object> importPayments(@Valid @RequestBody FeeRows body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("PAYMENT_ROWS", "The file has no rows to read.",
+                    new DomainRuleViolation.Remedy("Upload the payment-history spreadsheet.", "Bursary"));
+        }
+        return jdbc.sql("SELECT * FROM finance.import_payments(:j::jsonb)")
+                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
     /** upload the approved fees structure for a session — one row per faculty/level/semester/indigeneship cell;
