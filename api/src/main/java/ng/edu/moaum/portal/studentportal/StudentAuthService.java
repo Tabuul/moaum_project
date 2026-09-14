@@ -61,13 +61,16 @@ public class StudentAuthService {
 
     private static DomainRuleViolation badCredentials() {
         return new DomainRuleViolation("AUTH_BAD_CREDENTIALS", "That number and password do not match a student account.",
-                new DomainRuleViolation.Remedy("Use your matriculation number and the password you chose at application, or the one the Registry gave you; five failures lock the account for fifteen minutes.", "Registry"));
+                new DomainRuleViolation.Remedy("Use your matriculation number, or your admission number before it is issued, with the password you chose at application or the one the Registry gave you; five failures lock the account for fifteen minutes.", "Registry"));
     }
 
     public SignedIn signIn(String matricNo, String password, String ip) {
         StudentPortalRepository.Student s = repo.byMatric(matricNo).orElse(null);
         Object outcome = atTheDoor(s == null ? null : s.id(), "student sign-in", () -> {
-            if (s == null || s.matricNo() == null) {
+            /* the student door opens on the matriculation number and, before it is issued, on the
+               admission number — so an admitted candidate signs in to pay school fees and register
+               courses under it; matriculation issues the matric number afterwards */
+            if (s == null || (s.matricNo() == null && s.admissionNo() == null)) {
                 repo.event(matricNo, s == null ? null : s.id(), "UNKNOWN", ip);
                 return badCredentials();
             }
@@ -77,7 +80,7 @@ public class StudentAuthService {
                 String applicantHash = repo.applicantHash(s.candidateId()).orElse(null);
                 if (applicantHash == null) {
                     repo.event(matricNo, s.id(), "NO_ACCOUNT", ip);
-                    return new DomainRuleViolation("AUTH_NO_STUDENT_ACCOUNT", "No portal account has been opened for this matriculation number yet.",
+                    return new DomainRuleViolation("AUTH_NO_STUDENT_ACCOUNT", "No portal account has been opened for this number yet.",
                             new DomainRuleViolation.Remedy("The Registry opens it and gives you a first password; you change it when you sign in.", "Registry"));
                 }
                 if (!encoder.matches(password == null ? "" : password, applicantHash)) {

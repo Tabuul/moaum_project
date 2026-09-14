@@ -39,8 +39,12 @@ class StudentPortalRepository {
               JOIN ref.department d ON d.code = p.dept_code
             """;
 
+    /* the student is found by the matriculation number, or before it is issued by the admission
+       number, or by the JAMB registration number the candidate has used since application — so the
+       same JAMB number that opened the applicant portal opens the student dashboard once they are
+       on the register. */
     Optional<Student> byMatric(String matricNo) {
-        return jdbc.sql(STUDENT + " WHERE upper(s.matric_no) = upper(:m) OR upper(s.admission_no) = upper(:m)")
+        return jdbc.sql(STUDENT + " WHERE upper(s.matric_no) = upper(:m) OR upper(s.admission_no) = upper(:m) OR upper(s.jamb_reg_no) = upper(:m)")
                 .param("m", matricNo == null ? "" : matricNo.trim()).query(Student.class).optional();
     }
 

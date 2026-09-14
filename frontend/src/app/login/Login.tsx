@@ -13,12 +13,14 @@ import { Ico } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
+const ADMISSION = /^MOAUM\/ADM\/[0-9]{2}\/[0-9]{6}$/i;
 const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
 const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
 
 function whoIs(id: string): string {
   const s = id.trim();
   if (!s) return "";
+  if (ADMISSION.test(s)) return "An admitted student, on the admission number";
   if (MATRIC.test(s)) return "A student, on the matriculation number";
   if (JAMB.test(s) || APPLICATION.test(s)) return "An applicant, on the JAMB or application number";
   if (s.includes("@")) return "A member of staff or an applicant, on the email address";

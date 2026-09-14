@@ -13,6 +13,9 @@ import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
  * which side of the portal opens.
  */
 const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
+/* the admission number an admitted candidate carries before matriculation: MOAUM/ADM/YY/NNNNNN.
+   It opens the student door too, so they pay school fees and register courses under it. */
+const ADMISSION = /^MOAUM\/ADM\/[0-9]{2}\/[0-9]{6}$/i;
 const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
 const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
 
@@ -37,12 +40,21 @@ export async function POST(request: NextRequest) {
   const password = typeof body?.password === "string" ? body.password : "";
   const preferredOffice = typeof body?.office === "string" ? body.office : undefined;
 
-  let kind: Kind = MATRIC.test(identifier) ? "student" : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
+  let kind: Kind = MATRIC.test(identifier) || ADMISSION.test(identifier) ? "student" : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
   let r: Response | null;
   if (kind === "student") {
     r = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
   } else if (kind === "applicant") {
-    r = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
+    /* the same JAMB/application number opens the student dashboard once the candidate is on the
+       register; try the student door first, and fall back to the applicant portal if they are not
+       a student yet (offer not accepted, or not brought onto the register). */
+    const asStudent = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
+    if (asStudent && asStudent.ok) {
+      r = asStudent;
+      kind = "student";
+    } else {
+      r = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
+    }
   } else {
     r = await upstream("/api/v1/auth/sign-in", { username: identifier, password, office: preferredOffice }, request);
     /* an email address is also how an applicant signs in: the same wrong answer either way, so try the other door */
