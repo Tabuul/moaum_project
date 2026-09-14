@@ -131,16 +131,16 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       headers: ["Matriculation Number", "Surname", "Other Names", "Sex", "Date of Birth", "Programme", "Level",
         "Entry Mode", "Entry Session", "Phone", "Email", "Address", "Nationality", "State", "LGA",
         "Guardian Name", "Guardian Address", "Sponsor Name", "Sponsor Address", "Next of Kin Name", "Next of Kin Address",
-        "Extracurricular", "Application No"],
+        "Extracurricular", "Application No", "School Id"],
       example: ["MOAUM/CSC/22/0001", "Doe", "John Ada (example — delete this row)", "M", "2003-05-14", "Computer Science", "300",
         "UTME", "2022/2023", "08030000000", "john.doe@example.com", "12 Example Street, Makurdi", "Nigeria", "Benue", "Makurdi",
         "Mr Doe Senior", "12 Example Street, Makurdi", "Mr Doe Senior", "12 Example Street, Makurdi", "Jane Doe", "12 Example Street, Makurdi",
-        "Football, Debate", "10000000AA"],
+        "Football, Debate", "10000000AA", "S001"],
     },
     students: {
       name: "Students biodata",
-      headers: ["Matriculation Number", "Surname", "Other Names", "Programme", "Sex", "Date of Birth", "Entry Mode", "Entry Session", "Level"],
-      example: ["MOAUM/CSC/22/0001", "Doe", "John Ada (example — delete this row)", "Computer Science", "M", "2003-05-14", "UTME", "2022/2023", "300"],
+      headers: ["Matriculation Number", "Surname", "Other Names", "Programme", "Sex", "Date of Birth", "Entry Mode", "Entry Session", "Level", "School Id"],
+      example: ["MOAUM/CSC/22/0001", "Doe", "John Ada (example — delete this row)", "Computer Science", "M", "2003-05-14", "UTME", "2022/2023", "300", "S001"],
     },
     registration: {
       name: "Course registration",
@@ -256,6 +256,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       add("nokAddress", at(/nok\s*address/, /nokaddress/, /next\s*of\s*kin.*address/, /kin\s*address/));
       add("extracurricular", at(/extra.?curricular/, /hobb/));
       add("appno", at(/^appno$/, /application\s*no/, /app\s*no/));
+      add("schoolId", at(/school\s*id/, /schoolid/, /^school$/));
     } else if (kind === "students") {
       add("surname", at(/surname/, /last\s*name/));
       add("otherNames", at(/other\s*name/, /first\s*name/, /given/));
@@ -266,6 +267,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       add("entryMode", at(/entry\s*mode/, /mode of entry/, /^mode$/, /admission type/));
       add("entrySession", at(/entry\s*session/, /admission\s*session/, /year of entry/, /session admitted/));
       add("level", at(/current\s*level/, /^level$/, /^lvl$/));
+      add("schoolId", at(/school\s*id/, /schoolid/, /^school$/));
     } else {
       add("course", at(/course\s*code/, /^course$/, /^code$/, /subject\s*code/));
       add("units", at(/unit/, /^cu$/, /credit/));
@@ -326,7 +328,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             </div>
           ) : null}
           <div className="sub2" style={{ marginBottom: 8 }}>
-            {tab === "biodata" ? "Columns read: matriculation number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor and next-of-kin. The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
+            {tab === "biodata" ? "Columns read: matriculation number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
               : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
               : "Columns read: matriculation number, course code, units, level, session, semester, and the mark. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Session and semester are read per row; outcome is read when present."}
