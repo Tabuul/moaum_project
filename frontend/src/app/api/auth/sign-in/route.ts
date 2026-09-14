@@ -18,6 +18,10 @@ const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
 const ADMISSION = /^MOAUM\/ADM\/[0-9]{2}\/[0-9]{6}$/i;
 const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
 const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
+/* a legacy old-portal matriculation number carried over from the old portal — BSU/…, MOAU/…, and the
+   like: two-to-six letters, one to four more segments, then digits. It opens the student door too, so a
+   migrated student signs in; a rare staff number of the same shape falls back to the staff door. */
+const LEGACY_MATRIC = /^[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7}$/i;
 
 type Kind = "staff" | "student" | "applicant";
 
@@ -41,9 +45,20 @@ export async function POST(request: NextRequest) {
   const preferredOffice = typeof body?.office === "string" ? body.office : undefined;
 
   let kind: Kind = MATRIC.test(identifier) || ADMISSION.test(identifier) ? "student" : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
+  /* a legacy old-portal matric was not matched above (only MOAUM/… is) — route it to the student door,
+     and fall back to staff if it turns out to be a staff number of the same shape */
+  const legacyMatric = kind === "staff" && !identifier.includes("@") && LEGACY_MATRIC.test(identifier);
   let r: Response | null;
   if (kind === "student") {
     r = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
+  } else if (legacyMatric) {
+    const asStudent = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
+    if (asStudent && asStudent.ok) {
+      r = asStudent;
+      kind = "student";
+    } else {
+      r = await upstream("/api/v1/auth/sign-in", { username: identifier, password, office: preferredOffice }, request);
+    }
   } else if (kind === "applicant") {
     /* the same JAMB/application number opens the student dashboard once the candidate is on the
        register; try the student door first, and fall back to the applicant portal if they are not
