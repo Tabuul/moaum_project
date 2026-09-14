@@ -87,7 +87,12 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     const grid = await xlsxRows(buf);
     const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
     const at = (names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
-    const ci = { code: at(["code"]), title: at(["title", "course"]), units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]) };
+    /* "Course Code" also contains "course", so match the title on "title" first and, only failing that,
+       a "course" column that is not the code column — otherwise the title reads the code */
+    const codeIx = at(["code"]);
+    let titleIx = at(["title"]);
+    if (titleIx < 0) titleIx = header.findIndex((h, i) => i !== codeIx && h.includes("course"));
+    const ci = { code: codeIx, title: titleIx, units: at(["unit"]), status: at(["status"]), level: at(["level"]), sem: at(["semester", "sem"]), lh: at(["lh", "lecture"]), ph: at(["ph", "practical"]) };
     if (ci.code < 0) return [];
     return grid.slice(1).filter((r) => (r[ci.code] ?? "").toString().trim()).map((r) => {
       const g = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");

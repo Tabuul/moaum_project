@@ -308,8 +308,10 @@ class FinanceController {
                 """)
                 .param("session", blank(session), Types.VARCHAR).param("faculty", blank(faculty), Types.VARCHAR)
                 .param("dept", blank(dept), Types.VARCHAR).param("programme", blank(programme), Types.VARCHAR)
-                .param("level", level, Types.INTEGER).param("category", blank(category), Types.VARCHAR)
-                .param("channel", blank(channel), Types.VARCHAR).param("from", from, Types.DATE)
+                .param("level", level, Types.INTEGER)
+                .param("category", category == null || category.isBlank() ? null : category.trim(), Types.VARCHAR)
+                .param("channel", channel == null || channel.isBlank() ? null : channel.trim(), Types.VARCHAR)
+                .param("from", from, Types.DATE)
                 .param("to", to, Types.DATE).param("limit", limit)
                 .query().listOfRows();
         long count = rows.isEmpty() ? 0 : ((Number) rows.getFirst().get("match_count")).longValue();
@@ -329,10 +331,6 @@ class FinanceController {
         out.put("total", total);
         out.put("options", options);
         return out;
-    }
-
-    private static String blank(String s) {
-        return s == null || s.isBlank() ? null : s.trim();
     }
 
     /* ── V068: reconciliation of confirmed payments against the bank ── */
