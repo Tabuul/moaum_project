@@ -10,6 +10,7 @@ import { docxBlocks } from "@/lib/docx";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
@@ -146,10 +147,9 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       <Panel title="The programme and its document" right="CCMAS structure">
         <PBody>
           <Field id="cu-prog" label="Programme" hint="The programme these courses belong to">
-            <select id="cu-prog" className="ctl" value={programme} onChange={(e) => { setProgramme(e.target.value); setLoaded(null); }}>
-              <option value="">Choose the programme…</option>
-              {programmes.map((p) => <option key={p.code} value={p.code}>{p.name}{p.facultyName ? ` · ${p.facultyName}` : ""}</option>)}
-            </select>
+            <SearchSelect id="cu-prog" value={programme} placeholder="Search a programme…"
+              options={programmes.map((p) => ({ value: p.code, label: `${p.name}${p.facultyName ? ` · ${p.facultyName}` : ""}` }))}
+              onChange={(v) => { setProgramme(v); setLoaded(null); }} />
           </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
