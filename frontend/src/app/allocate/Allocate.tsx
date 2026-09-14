@@ -9,6 +9,7 @@ import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Dept { code: string; name: string; faculty_code: string }
@@ -78,9 +79,8 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
     <>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ minWidth: 220 }}><label htmlFor="al-dept">Department</label>
-          <select id="al-dept" className="ctl" value={dept} onChange={(e) => go({ dept: e.target.value })}>
-            {depts.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
-          </select></div>
+          <SearchSelect id="al-dept" value={dept} placeholder="Search a department…"
+            options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v })} /></div>
         <div className="field" style={{ minWidth: 150 }}><label htmlFor="al-session">Session</label>
           <select id="al-session" className="ctl" value={session} onChange={(e) => go({ session: e.target.value })}>
             {(sessions.includes(session) ? sessions : [session, ...sessions]).map((s) => <option key={s} value={s}>{s}</option>)}
@@ -148,10 +148,8 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
             })} />
           ) : <Note kind="bad" title="No lecturer is on record for this department">A lecturer appears here once the Registry grants them the lecturer office scoped to this department.</Note>}
           <Field id="al-second" label="Second examiner" hint="Verifies the marks. Cannot be the lecturer. Set now so verification is not blocked later.">
-            <select id="al-second" className="ctl" value={second} onChange={(e) => setSecond(e.target.value)}>
-              <option value="">Not set yet</option>
-              {lecturers.filter((l) => l.id !== lecturer).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
+            <SearchSelect id="al-second" value={second} allLabel="Not set yet" placeholder="Search a lecturer…"
+              options={lecturers.filter((l) => l.id !== lecturer).map((l) => ({ value: l.id, label: l.name }))} onChange={setSecond} />
           </Field>
         </Modal>
       ) : null}
