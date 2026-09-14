@@ -12,6 +12,8 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 type Tab = "biodata" | "students" | "registration" | "results";
 const MIGRATE = ["exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
+/* the matric shapes the biography/students importers accept — the University's own, or a legacy old-portal number */
+const MATRIC_OK = /^(MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}|[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7})$/i;
 
 export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const may = MIGRATE.includes(actingOffice ?? "");
@@ -22,12 +24,14 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null } | null>(null);
   const [progress, setProgress] = useState<{ label: string; sent: number; of: number } | null>(null);
+  const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
 
   async function upload(kind: Tab, file: File) {
     setBusy(true);
     setProblem(null);
     setResult(null);
     setProgress(null);
+    setRejected(null);
     try {
       setProgress({ label: "Reading the file", sent: 0, of: 0 });
       const grid = await xlsxRowsAsync(await file.arrayBuffer(), (n) => setProgress({ label: "Reading the file", sent: n, of: 0 }));
@@ -40,15 +44,23 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const cols = resolveColumns(kind, header);
       const dataRows = grid.slice(1);
       const rows: Record<string, string>[] = [];
+      const rej: Record<string, string>[] = [];
+      const matricKind = kind === "biodata" || kind === "students";
       for (let i = 0; i < dataRows.length; i++) {
         const r = dataRows[i];
         if (r.some((c) => String(c ?? "").trim() !== "")) {
           const o = applyRow(cols, r);
-          if (o.matric && !/^matric/i.test(o.matric)) rows.push(o);
+          if (o.matric && !/^matric/i.test(o.matric)) {
+            /* on the matric-keyed imports, hold back a row with no valid matriculation number so the
+               officer can download and fix it, rather than send it only for the server to reject it */
+            if (matricKind && !MATRIC_OK.test(o.matric)) rej.push({ ...o, reason: "No valid matriculation number" });
+            else rows.push(o);
+          }
         }
         if ((i & 8191) === 8191) { setProgress({ label: "Preparing the rows", sent: i + 1, of: dataRows.length }); await new Promise((res) => setTimeout(res)); }
       }
-      if (!rows.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Export the list from the old portal and upload it." }); return; }
+      setRejected(rej.length ? { rows: rej, kind } : null);
+      if (!rows.length) { setProblem({ status: 400, title: rej.length ? "No row had a valid matriculation number." : "The file had no rows to read.", detail: rej.length ? `${rej.length.toLocaleString()} rows were read but none has a valid matriculation number. Download them below, fix the numbers, and upload again.` : "Export the list from the old portal and upload it." }); return; }
       const path = kind === "biodata" ? "/api/bff/api/v1/results/legacy/biodata"
         : kind === "students" ? "/api/bff/api/v1/results/legacy/students"
         : kind === "registration" ? "/api/bff/api/v1/results/legacy/registration" : "/api/bff/api/v1/results/legacy/results";
@@ -123,6 +135,22 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${t.name} template.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  function downloadRejected() {
+    if (!rejected) return;
+    const pref = ["matric", "surname", "otherNames", "name", "programme", "level", "reason"];
+    const present = new Set(rejected.rows.flatMap((r) => Object.keys(r)));
+    const keys = [...pref.filter((k) => present.has(k)), ...[...present].filter((k) => !pref.includes(k))];
+    const label = (k: string) => k === "matric" ? "Matriculation Number" : k === "otherNames" ? "Other Names" : k.charAt(0).toUpperCase() + k.slice(1);
+    const blob = buildXlsx(keys.map(label), rejected.rows.map((r) => keys.map((k) => r[k] ?? "")), "Skipped rows");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "skipped rows — no valid matric.xlsx";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -311,6 +339,13 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             {(result.counts.skipped ?? 0) > 0 ? <> <b>{result.counts.skipped} row{result.counts.skipped === 1 ? "" : "s"} were skipped by an error</b> and are not on the register; the first was — <span className="tnum">{result.firstError ?? "no detail"}</span>. Fix those rows and re-upload.</> : null}
           </Note>
         </>
+      ) : null}
+
+      {rejected && rejected.kind === tab ? (
+        <Note kind="bad" title={`${rejected.rows.length.toLocaleString()} row${rejected.rows.length === 1 ? "" : "s"} had no valid matriculation number and were not uploaded`}
+              action={<Btn kind="ghost" onClick={downloadRejected}>Download the skipped rows</Btn>}>
+          A matriculation number must be the University&rsquo;s own (MOAUM/DEPT/YY/NNNN) or a legacy old-portal number. These rows carried none the importer could read (often a blank or &ldquo;NULL&rdquo;). Download them, fix the numbers at source, and upload again &mdash; the import is idempotent, so the rows already in are untouched.
+        </Note>
       ) : null}
 
       <Note kind="info" title="Order matters, and re-uploading is safe">
