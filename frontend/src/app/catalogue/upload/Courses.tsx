@@ -28,6 +28,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   const [preview, setPreview] = useState<Row[] | null>(null);
   const [loaded, setLoaded] = useState<Loaded[] | null>(null);
   const [listing, setListing] = useState(false);
+  const [unregistered, setUnregistered] = useState<{ programme: string; rows: number }[]>([]);
 
   async function viewLoaded(prog = programme) {
     if (!prog) return;
@@ -131,6 +132,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     setBusy(true);
     setProblem(null);
     setMsg(null);
+    setUnregistered([]);
     try {
       /* group the rows by the programme (and curriculum) each row names, so a single file of many
          departments loads at once; a file without a programme_code column uses the one chosen above */
@@ -147,12 +149,21 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0 };
       let firstErr: string | null = null;
       let done = 0;
+      const notRegistered: { programme: string; rows: number }[] = [];
       for (const g of groups.values()) {
         const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${g.programme}`) }, body: JSON.stringify({ programme: g.programme, rows: g.rows, curriculum: g.curriculum }) });
         const j = await r.json().catch(() => null);
         if (!r.ok) {
           const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
+          const text = `${base.title ?? ""} ${base.detail ?? ""}`;
+          /* an unregistered programme is data, not a fault — set it aside and keep loading the rest */
+          if (/no programme is coded or named/i.test(text)) {
+            const seen = notRegistered.find((x) => x.programme === g.programme);
+            if (seen) seen.rows += g.rows.length; else notRegistered.push({ programme: g.programme, rows: g.rows.length });
+            continue;
+          }
           setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${done} of ${groups.size} programmes were loaded before this one (${g.programme}) was refused. The import is idempotent — fix and upload again.` });
+          setUnregistered(notRegistered);
           return;
         }
         const c = (j ?? {}) as { courses?: number; offers?: number; bad_code?: number; skipped?: number; first_error?: string | null };
@@ -161,9 +172,11 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
         if (!firstErr && c.first_error) firstErr = c.first_error;
         done += 1;
       }
-      setMsg(`${totals.courses} courses created or updated across ${groups.size} programme${groups.size === 1 ? "" : "s"}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}.`);
+      setUnregistered(notRegistered);
+      const skippedRows = notRegistered.reduce((s, x) => s + x.rows, 0);
+      setMsg(`${totals.courses} courses created or updated across ${done} programme${done === 1 ? "" : "s"}${totals.bad_code ? ` · ${totals.bad_code} rows had a code the catalogue could not accept` : ""}${totals.skipped ? ` · ${totals.skipped} skipped by an error (first: ${firstErr ?? "no detail"})` : ""}${notRegistered.length ? ` · ${skippedRows} rows across ${notRegistered.length} programme${notRegistered.length === 1 ? "" : "s"} not yet on the register were held back` : ""}.`);
       setPreview(null);
-      void viewLoaded();
+      if (programme) void viewLoaded();
     } finally {
       setBusy(false);
     }
@@ -209,6 +222,20 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       {problem ? <ProblemNotice problem={problem} /> : null}
       {msg ? <Note kind="ok" title="Course structure loaded">{msg}</Note> : null}
+
+      {unregistered.length ? (
+        <Note kind="bad" title={`${unregistered.length} programme${unregistered.length === 1 ? "" : "s"} not on the register — their courses were held back`}>
+          <div className="sub2" style={{ marginBottom: 6 }}>These programme codes are in the file but not yet registered (mostly postgraduate). Register them first, then upload again — the import is idempotent, so the courses already loaded stay put.</div>
+          <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, padding: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {unregistered.map((u) => (
+              <span key={u.programme} className="tnum" style={{ fontSize: 12, background: "var(--chip, #eef2f7)", borderRadius: 6, padding: "2px 6px" }}>{u.programme} · {u.rows}</span>
+            ))}
+          </div>
+          <div className="sub2" style={{ marginTop: 6 }}>
+            <Btn kind="ghost" onClick={() => { const blob = buildXlsx(["Programme Code", "Rows held back"], unregistered.map((u) => [u.programme, String(u.rows)]), "Unregistered programmes"); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Unregistered programmes.xlsx"; a.click(); URL.revokeObjectURL(a.href); }}>Download the list</Btn>
+          </div>
+        </Note>
+      ) : null}
 
       {loaded ? (
         <Panel title="Courses offered to this programme" right={`${loaded.length} course${loaded.length === 1 ? "" : "s"} · ${loaded.reduce((n, c) => n + Number(c.units || 0), 0)} units`}>
