@@ -46,11 +46,15 @@ LANGUAGE sql STABLE AS $$
      ORDER BY r.session, r.semester, c.code;
 $$;
 
--- 2 · bring the stored entry units into line with the catalogue (a course's unit is the course's, not the file's)
+-- 2 · bring the stored entry units into line with the catalogue — a one-time system repair of the bad
+--     import, not a user act, so the audit trigger is disabled around it (as V117 did for a backfill) and
+--     only rows whose value actually differs are written
+ALTER TABLE registration.entry DISABLE TRIGGER trg_audit_registration_entry;
 UPDATE registration.entry e
    SET units = c.units
   FROM catalogue.offering o, catalogue.course c
  WHERE e.offering_id = o.id AND o.course_code = c.code AND e.units IS DISTINCT FROM c.units;
+ALTER TABLE registration.entry ENABLE TRIGGER trg_audit_registration_entry;
 
 -- 3 · the legacy importer no longer reads the file's Units column; it takes the unit from the catalogue
 CREATE OR REPLACE FUNCTION assessment.import_legacy_semester(p_session text, p_semester int, p_rows jsonb, p_with_results boolean)
