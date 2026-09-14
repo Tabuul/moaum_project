@@ -8,6 +8,7 @@ import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { docxBlocks } from "@/lib/docx";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
@@ -184,6 +185,16 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
   const byLevel = preview ? [...new Set(preview.map((r) => r.level))].filter(Boolean).sort() : [];
 
+  const LOADED_COLS = ["Code", "Title", "Units", "Level", "Semester", "Basis"];
+  const loadedRows = () => (loaded ?? []).map((c) => [c.code, c.title, c.units, c.level, c.semester ?? "", c.basis]);
+  const progLabel = programmes.find((p) => p.code === programme)?.name ?? programme;
+  async function exportLoadedXlsx() {
+    downloadBlob(await brandedXlsx(`Courses offered — ${progLabel}`, LOADED_COLS, loadedRows(), { serial: docSerial("CRS") }), `Courses ${programme}.xlsx`);
+  }
+  function exportLoadedPdf() {
+    brandedPrint(`Courses offered — ${progLabel}`, `${(loaded ?? []).length} courses`, LOADED_COLS, loadedRows(), docSerial("CRS"));
+  }
+
   return (
     <>
       <Note kind="info" title="Load a department's approved course structure">
@@ -238,7 +249,11 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       ) : null}
 
       {loaded ? (
-        <Panel title="Courses offered to this programme" right={`${loaded.length} course${loaded.length === 1 ? "" : "s"} · ${loaded.reduce((n, c) => n + Number(c.units || 0), 0)} units`}>
+        <Panel title="Courses offered to this programme" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="sub2">{loaded.length} course{loaded.length === 1 ? "" : "s"} · {loaded.reduce((n, c) => n + Number(c.units || 0), 0)} units</span>
+          <Btn kind="ghost" disabled={!loaded.length} onClick={() => void exportLoadedXlsx()}>Download Excel</Btn>
+          <Btn kind="ghost" disabled={!loaded.length} onClick={exportLoadedPdf}>Download PDF</Btn>
+        </span>}>
           {loaded.length ? (
             <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
               <table className="tbl" style={{ width: "100%" }}>

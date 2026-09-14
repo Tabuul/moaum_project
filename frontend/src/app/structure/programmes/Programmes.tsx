@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -68,6 +69,15 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
     setF({ code: p.code, name: p.name, faculty: p.faculty_code, deptCode: p.dept_code ?? "", department: p.department_name ?? "", category: p.category, minScore: String(p.min_score ?? "") });
     setEditing(true);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const EXPORT_COLS = ["Code", "Name", "Faculty", "Department", "Category", "Min Score"];
+  const exportRows = () => programmes.map((p) => [p.code, p.name, p.faculty_name, p.department_name ?? "", p.category, p.min_score]);
+  async function exportXlsx() {
+    downloadBlob(await brandedXlsx("Programmes on the register", EXPORT_COLS, exportRows(), { serial: docSerial("PRG") }), "Programmes.xlsx");
+  }
+  function exportPdf() {
+    brandedPrint("Programmes on the register", `${programmes.length} programmes`, EXPORT_COLS, exportRows(), docSerial("PRG"));
   }
 
   async function upload(file: File) {
@@ -140,7 +150,11 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
         </Panel>
       ) : null}
 
-      <Panel title="Programmes" right={`${programmes.length} on the register`}>
+      <Panel title="Programmes" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <span className="sub2">{programmes.length} on the register</span>
+        <Btn kind="ghost" disabled={!programmes.length} onClick={() => void exportXlsx()}>Download Excel</Btn>
+        <Btn kind="ghost" disabled={!programmes.length} onClick={exportPdf}>Download PDF</Btn>
+      </span>}>
         {programmes.length ? (
           <DTable cols={["Code|mid", "Programme", "Faculty", "Department", "Category|mid", "Min|num", "|num"]} rows={programmes.map((p) => [
             <span className="tnum" key="c">{p.code}</span>,

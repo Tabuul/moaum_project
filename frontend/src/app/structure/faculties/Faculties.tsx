@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -56,6 +57,15 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
     } finally { setBusy(false); }
   }
 
+  const EXPORT_COLS = ["Code", "Name", "Departments", "Programmes"];
+  const exportRows = () => faculties.map((f) => [f.code, f.name, f.departments, f.programmes]);
+  async function exportXlsx() {
+    downloadBlob(await brandedXlsx("Faculties on the register", EXPORT_COLS, exportRows(), { serial: docSerial("FAC") }), "Faculties.xlsx");
+  }
+  function exportPdf() {
+    brandedPrint("Faculties on the register", `${faculties.length} faculties`, EXPORT_COLS, exportRows(), docSerial("FAC"));
+  }
+
   async function upload(file: File) {
     setMsg(null); setProblem(null);
     try {
@@ -104,7 +114,11 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
         </Panel>
       ) : null}
 
-      <Panel title="Faculties" right={`${faculties.length} on the register`}>
+      <Panel title="Faculties" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <span className="sub2">{faculties.length} on the register</span>
+        <Btn kind="ghost" disabled={!faculties.length} onClick={() => void exportXlsx()}>Download Excel</Btn>
+        <Btn kind="ghost" disabled={!faculties.length} onClick={exportPdf}>Download PDF</Btn>
+      </span>}>
         {faculties.length ? (
           <DTable cols={["Code|mid", "Name", "Departments|num", "Programmes|num", "|num"]} rows={faculties.map((f) => [
             <span className="tnum" key="c">{f.code}</span>, <strong key="n">{f.name}</strong>,

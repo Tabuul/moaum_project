@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -55,6 +56,15 @@ export function Departments({ departments, actingOffice }: { departments: Depart
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setMsg(`Department ${d.code} removed.`); router.refresh();
     } finally { setBusy(false); }
+  }
+
+  const EXPORT_COLS = ["Code", "Name", "Faculty", "Programmes", "Courses"];
+  const exportRows = () => departments.map((d) => [d.code, d.name, d.faculty_name, d.programmes, d.courses]);
+  async function exportXlsx() {
+    downloadBlob(await brandedXlsx("Departments on the register", EXPORT_COLS, exportRows(), { serial: docSerial("DEP") }), "Departments.xlsx");
+  }
+  function exportPdf() {
+    brandedPrint("Departments on the register", `${departments.length} departments`, EXPORT_COLS, exportRows(), docSerial("DEP"));
   }
 
   async function upload(file: File) {
@@ -110,7 +120,11 @@ export function Departments({ departments, actingOffice }: { departments: Depart
         </Panel>
       ) : null}
 
-      <Panel title="Departments" right={`${departments.length} on the register`}>
+      <Panel title="Departments" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <span className="sub2">{departments.length} on the register</span>
+        <Btn kind="ghost" disabled={!departments.length} onClick={() => void exportXlsx()}>Download Excel</Btn>
+        <Btn kind="ghost" disabled={!departments.length} onClick={exportPdf}>Download PDF</Btn>
+      </span>}>
         {departments.length ? (
           <DTable cols={["Code|mid", "Name", "Faculty", "Programmes|num", "Courses|num", "|num"]} rows={departments.map((d) => [
             <span className="tnum" key="c">{d.code}</span>, <strong key="n">{d.name}</strong>, <span key="f">{d.faculty_name}</span>,
