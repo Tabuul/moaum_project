@@ -117,6 +117,7 @@ public final class Sheets {
     }
 
     public record BroadsheetRow(UUID studentId, String number, String name, List<BroadsheetMark> marks, int units,
+                                int cur, int cue,
                                 BigDecimal points, BigDecimal gpa, int pending, String standing,
                                 int tcr, int tce, BigDecimal twgp, BigDecimal cgpa, BigDecimal lcgpa,
                                 List<String> carryovers, String remarks) {

@@ -278,6 +278,8 @@ public class ResultsService {
         for (Map.Entry<UUID, List<Sheets.BroadsheetCell>> e : byStudent.entrySet()) {
             List<Sheets.BroadsheetMark> marks = new ArrayList<>();
             int units = 0;
+            int cur = 0;   // credit units registered this semester
+            int cue = 0;   // credit units earned (passed) this semester
             BigDecimal points = BigDecimal.ZERO;
             int pending = 0;
             boolean failed = false;
@@ -288,12 +290,15 @@ public class ResultsService {
                     marks.add(new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false));
                     continue;
                 }
+                cur += c.units();   // registered: the student has a cell for this course
                 boolean counted = COUNTED.contains(c.stage()) && "GRADED".equals(c.outcome()) && c.points() != null;
                 if (counted) {
                     units += c.units();
                     points = points.add(c.points().multiply(BigDecimal.valueOf(c.units())));
                     if (c.points().signum() == 0) {
                         failed = true;
+                    } else {
+                        cue += c.units();   // earned: passed with points
                     }
                 } else {
                     pending++;
@@ -314,11 +319,16 @@ public class ResultsService {
             }
             Sheets.Cumulative cum = repo.cumulative(e.getKey(), session, sem);
             List<String> carry = repo.carryovers(e.getKey());
+            /* the remark is THIS semester's outcome: the courses failed on THIS sheet, not the student's
+               whole outstanding list — a later semester's carryover must not surface on an earlier sheet */
+            List<String> sheetFails = marks.stream()
+                    .filter(m -> m.counted() && m.points() != null && m.points().signum() == 0)
+                    .map(Sheets.BroadsheetMark::courseCode).sorted().toList();
             String remarks = pending > 0 && gpa == null ? "Pending"
-                    : carry.isEmpty() ? "PASS"
-                    : "CO: " + String.join(", ", carry);
+                    : sheetFails.isEmpty() ? "PASS"
+                    : "CO: " + String.join(", ", sheetFails);
             rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
-                    points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks));
+                    cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks));
         }
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
         List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()))).toList();
