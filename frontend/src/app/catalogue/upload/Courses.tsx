@@ -128,8 +128,8 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${programme}`) }, body: JSON.stringify({ programme, rows: preview }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      const c = j as { courses: number; offers: number; bad_code: number };
-      setMsg(`${c.courses} courses created or updated and offered to the programme${c.bad_code ? ` · ${c.bad_code} rows had a code the catalogue could not accept` : ""}.`);
+      const c = j as { courses: number; offers: number; bad_code: number; skipped?: number; first_error?: string | null };
+      setMsg(`${c.courses} courses created or updated and offered to the programme${c.bad_code ? ` · ${c.bad_code} rows had a code the catalogue could not accept` : ""}${c.skipped ? ` · ${c.skipped} row${c.skipped === 1 ? "" : "s"} skipped by an error (first: ${c.first_error ?? "no detail"})` : ""}.`);
       setPreview(null);
       void viewLoaded();
     } finally {

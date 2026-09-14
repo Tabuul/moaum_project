@@ -112,7 +112,14 @@ class ProblemHandler {
             problem.setProperty("code", "DATABASE_PERMISSION");
             return problem;
         }
-        throw e;
+        /* any other database error: surface its message rather than a blank 500, so a refusal is legible */
+        ProblemDetail problem = problem(HttpStatus.UNPROCESSABLE_CONTENT,
+                message == null || message.isBlank() ? "The database refused this request." : message, request);
+        problem.setProperty("code", "DATABASE_REFUSED");
+        if (state != null) {
+            problem.setProperty("sqlstate", state);
+        }
+        return problem;
     }
 
     private static PSQLException postgres(Throwable t) {
