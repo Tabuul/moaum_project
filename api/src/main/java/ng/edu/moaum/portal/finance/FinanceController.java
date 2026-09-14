@@ -317,6 +317,19 @@ class FinanceController {
         long count = rows.isEmpty() ? 0 : ((Number) rows.getFirst().get("match_count")).longValue();
         Object total = rows.isEmpty() ? BigDecimal.ZERO : rows.getFirst().get("match_total");
 
+        List<Map<String, Object>> breakdown = jdbc.sql("""
+                SELECT * FROM finance.payments_breakdown(:session, :faculty, :dept, :programme, :level, :category, :channel, :from, :to)
+                """)
+                .param("session", blank(session), Types.VARCHAR).param("faculty", blank(faculty), Types.VARCHAR)
+                .param("dept", blank(dept), Types.VARCHAR).param("programme", blank(programme), Types.VARCHAR)
+                .param("level", level, Types.INTEGER)
+                .param("category", category == null || category.isBlank() ? null : category.trim(), Types.VARCHAR)
+                .param("channel", channel == null || channel.isBlank() ? null : channel.trim(), Types.VARCHAR)
+                .param("from", from, Types.DATE).param("to", to, Types.DATE)
+                .query().listOfRows();
+        List<Map<String, Object>> byCategory = breakdown.stream().filter(b -> "category".equals(b.get("dim"))).toList();
+        List<Map<String, Object>> byFaculty = breakdown.stream().filter(b -> "faculty".equals(b.get("dim"))).toList();
+
         Map<String, Object> options = new java.util.LinkedHashMap<>();
         options.put("sessions", jdbc.sql("SELECT DISTINCT session FROM finance.payment_reference WHERE confirmed_at IS NOT NULL ORDER BY session DESC").query(String.class).list());
         options.put("faculties", jdbc.sql("SELECT code, name FROM ref.faculty ORDER BY name").query().listOfRows());
@@ -329,6 +342,8 @@ class FinanceController {
         out.put("rows", rows);
         out.put("count", count);
         out.put("total", total);
+        out.put("byCategory", byCategory);
+        out.put("byFaculty", byFaculty);
         out.put("options", options);
         return out;
     }

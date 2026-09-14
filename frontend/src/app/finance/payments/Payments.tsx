@@ -19,8 +19,10 @@ interface Row {
   channel: string; amount: number; receipt_no: string | null; session: string;
 }
 interface Opt { code: string; name: string; faculty_code?: string; dept_code?: string }
+interface Group { dim: string; label: string; cnt: number; total: number }
 export interface PaymentsData {
   rows: Row[]; count: number; total: number;
+  byCategory: Group[]; byFaculty: Group[];
   options: { sessions: string[]; faculties: Opt[]; departments: Opt[]; programmes: Opt[]; categories: string[]; channels: string[] };
 }
 export interface Filters {
@@ -117,6 +119,27 @@ export function Payments({ d, filters }: { d: PaymentsData; filters: Filters }) 
         ["Showing", `${d.rows.length.toLocaleString()}${d.count > d.rows.length ? " of " + Number(d.count).toLocaleString() : ""}`, null, d.count > d.rows.length ? "newest first — narrow the filters to see the rest" : "newest first"],
         ["Scope", active ? "Filtered" : "Everything", null, scope.length > 40 ? scope.slice(0, 40) + "…" : scope],
       ]} />
+
+      <div className="grid grid--2">
+        <Panel title="By payment category" right="the whole matching set">
+          {d.byCategory.length ? (
+            <DTable cols={["Category", "Payments|mid", "Total|num"]} rows={d.byCategory.map((g) => [
+              <span key="c">{g.label}</span>,
+              <span className="tnum" key="n">{Number(g.cnt).toLocaleString()}</span>,
+              <b className="tnum" key="t">{money(Number(g.total))}</b>,
+            ])} />
+          ) : <PBody><div className="sub2">Nothing to summarise for this query.</div></PBody>}
+        </Panel>
+        <Panel title="By faculty" right="the whole matching set">
+          {d.byFaculty.length ? (
+            <DTable cols={["Faculty", "Payments|mid", "Total|num"]} rows={d.byFaculty.map((g) => [
+              <span key="f">{g.label}</span>,
+              <span className="tnum" key="n">{Number(g.cnt).toLocaleString()}</span>,
+              <b className="tnum" key="t">{money(Number(g.total))}</b>,
+            ])} />
+          ) : <PBody><div className="sub2">Nothing to summarise for this query.</div></PBody>}
+        </Panel>
+      </div>
 
       <Panel title="Payments" right={<span style={{ display: "inline-flex", gap: 8 }}>
         <Btn kind="ghost" disabled={!d.rows.length} onClick={() => void toExcel()}>Export Excel</Btn>
