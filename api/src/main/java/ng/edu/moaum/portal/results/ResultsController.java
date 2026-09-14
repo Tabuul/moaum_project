@@ -72,6 +72,14 @@ class ResultsController {
         return service.importResults(body.session(), body.semester(), body.rows());
     }
 
+    /** set a first password (the student's own number) for migrated accounts still on the random import
+     *  password; must_change stays on, so the student replaces it at first sign-in */
+    @PostMapping("/legacy/default-passwords")
+    @PreAuthorize("hasAnyAuthority('OFFICE_super','OFFICE_registrar','OFFICE_records','OFFICE_ict','OFFICE_admin')")
+    Map<String, Object> setDefaultPasswords() {
+        return service.setDefaultPasswords();
+    }
+
     @GetMapping("/sheets")
     @PreAuthorize(READERS)
     Sheets.Listing sheets(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,

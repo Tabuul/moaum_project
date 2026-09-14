@@ -61,6 +61,11 @@ public class ResultsService {
     /* ── migration from the old portal (V082) ── */
 
     @Transactional
+    public Map<String, Object> setDefaultPasswords() {
+        return repo.setDefaultPasswords();
+    }
+
+    @Transactional
     public Map<String, Object> importStudents(List<Map<String, Object>> rows) {
         requireRows(rows);
         return repo.importStudents(json.writeValueAsString(rows));

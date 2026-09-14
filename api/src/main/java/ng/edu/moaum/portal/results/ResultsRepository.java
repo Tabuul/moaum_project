@@ -332,6 +332,10 @@ class ResultsRepository {
         return jdbc.sql("SELECT * FROM people.import_students(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
 
+    java.util.Map<String, Object> setDefaultPasswords() {
+        return jdbc.sql("SELECT iam.set_migrated_default_passwords() AS updated").query().singleRow();
+    }
+
     java.util.Map<String, Object> importBiography(String rowsJson) {
         return jdbc.sql("SELECT * FROM people.import_biography(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
