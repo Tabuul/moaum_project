@@ -1,49 +1,17 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- V116 — record the curriculum framework (CCMAS / BMAS)
+-- V119 — course import: status 'G' (GST/EPS) maps to the GST kind
 --
---   A course structure is uploaded under a framework — the NUC's current CCMAS,
---   or the older BMAS. We record which on the course, and stamp each student's
---   curriculum from the session they entered (CCMAS from 2023/2024, the national
---   start; BMAS before). This only RECORDS the split — registration still draws
---   from the one structure a programme carries. The cutover lives in one
---   function, people.curriculum_of, so it can be changed in a later migration.
+--   This change was briefly made by editing V116 in place, which is not
+--   allowed once a migration has been applied — the ledger caught it and
+--   stopped the deployment. The correction belongs in its own file, so here
+--   it is: catalogue.import_courses gains one classification rule, that a row
+--   whose status is 'G' is a GST/EPS course even when its code is not a GST
+--   code. Everything else in the function is unchanged from V116.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 BEGIN;
 
--- 1 · the framework a course was defined under
-ALTER TABLE catalogue.course ADD COLUMN IF NOT EXISTS curriculum text;
-ALTER TABLE catalogue.course DROP CONSTRAINT IF EXISTS ck_course_curriculum;
-ALTER TABLE catalogue.course ADD CONSTRAINT ck_course_curriculum
-    CHECK (curriculum IS NULL OR curriculum IN ('CCMAS', 'BMAS'));
-
--- 2 · the framework a student sits under, by the session they entered
-CREATE OR REPLACE FUNCTION people.curriculum_of(p_session text)
-RETURNS text LANGUAGE sql IMMUTABLE AS $$
-    SELECT CASE
-        WHEN p_session IS NULL OR p_session !~ '^[0-9]{4}/[0-9]{4}$' THEN NULL
-        WHEN p_session >= '2023/2024' THEN 'CCMAS'
-        ELSE 'BMAS' END
-$$;
-
--- fill it on every insert path (intake, migration imports, future) when not given
-CREATE OR REPLACE FUNCTION people.fill_curriculum() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-    IF NEW.curriculum_version IS NULL THEN
-        NEW.curriculum_version := people.curriculum_of(NEW.entry_session);
-    END IF;
-    RETURN NEW;
-END $$;
-
-DROP TRIGGER IF EXISTS trg_student_curriculum ON people.student;
-CREATE TRIGGER trg_student_curriculum BEFORE INSERT ON people.student
-    FOR EACH ROW EXECUTE FUNCTION people.fill_curriculum();
-
--- (no mass backfill here — V117 does the authoritative, audit-light one, once school_id exists)
-
--- 3 · the importer records the framework of the structure it loads
-DROP FUNCTION IF EXISTS catalogue.import_courses(text, jsonb);
-CREATE FUNCTION catalogue.import_courses(p_programme text, p_rows jsonb, p_curriculum text DEFAULT NULL)
+CREATE OR REPLACE FUNCTION catalogue.import_courses(p_programme text, p_rows jsonb, p_curriculum text DEFAULT NULL)
 RETURNS TABLE (rows int, courses int, offers int, no_dept int, bad_code int, skipped int, first_error text)
 LANGUAGE plpgsql AS $$
 DECLARE r jsonb; v_actor uuid := nullif(current_setting('moaum.actor_id', true), '')::uuid;
@@ -82,6 +50,7 @@ BEGIN
             v_ph := nullif(regexp_replace(coalesce(r->>'ph', r->>'PH', ''), '[^0-9]', '', 'g'), '')::int;
             v_status := upper(left(btrim(coalesce(r->>'status', 'C')), 1));
             v_kind := CASE WHEN v_code LIKE 'GST %' OR v_code LIKE 'GST%' THEN 'GST'
+                           WHEN v_status = 'G' THEN 'GST'  -- GST/EPS courses carried by status, not a GST code
                            WHEN v_status = 'R' THEN 'Required' WHEN v_status = 'E' THEN 'Elective' ELSE 'Compulsory' END;
             v_basis := CASE WHEN v_kind = 'GST' THEN 'GST' WHEN v_kind = 'Elective' THEN 'Elective' ELSE 'Core' END;
 
