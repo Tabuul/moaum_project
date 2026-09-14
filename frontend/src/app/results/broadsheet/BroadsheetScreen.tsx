@@ -27,6 +27,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       : <span className="sub2" title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}>{m.outcome && m.outcome !== "GRADED" ? m.outcome.toLowerCase() : "•"}</span>;
   const orderCols = [...core, ...elec];
 
+  /* a 100 level first-semester class has no prior record: no carryover, and nothing cumulative yet */
+  const hideCarry = Number(sheet?.level) === 100 && Number(sheet?.semester) === 1;
+
   /* the cover ("Examination Reporting Sheet") data, shared by the on-screen panel and the exports */
   const cov = sheet ? (() => {
     const fac = structure.faculties.find((f) => f.departments.some((d) => d.programmes.some((p) => p.code === scope.prog)));
@@ -51,7 +54,10 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       ["Total Number of Candidates Advised to Withdraw", n0(withdraw), withdraw ? pc(withdraw) : ""],
       ["Total Number of Candidates Expelled", "Nil", ""],
     ];
-    const KEY: [string, string][] = [
+    const KEY: [string, string][] = hideCarry ? [
+      ["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"],
+      ["GPA", "Grade Point Average"], ["WGP", "Weighted Grade Point"],
+    ] : [
       ["CUR", "Credit Units Registered"], ["CUE", "Credit Units Earned"], ["WGP", "Weighted Grade Point"],
       ["GPA", "Grade Point Average"], ["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"],
       ["TWGP", "Total Weighted Grade Point"], ["LCGPA", "Last Cumulative Grade Point Average"], ["CGPA", "Cumulative Grade Point Average"],
@@ -59,10 +65,13 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
 
-  const bsCols: Cell[] = ["S/N", "Matric no.", "Name", "Carryover", ...orderCols.map((c) => `${c.courseCode} (${c.units})`), "CUE", "WGP", "GPA", "TCR", "TCE", "TWGP", "LCGPA", "CGPA", "Remarks"];
-  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, r.number, r.name, r.carryovers.join(" "),
+  const bsCols: Cell[] = ["S/N", "Matric no.", "Name", ...(hideCarry ? [] : ["Carryover"]),
+    ...orderCols.map((c) => `${c.courseCode} (${c.units})`), "CUE", "WGP", "GPA",
+    ...(hideCarry ? [] : ["TCR", "TCE", "TWGP", "LCGPA", "CGPA"]), "Remarks"];
+  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, r.number, r.name,
+    ...(hideCarry ? [] : [r.carryovers.join(" ")]),
     ...orderCols.map((c) => { const m = markOf(r, c.courseCode); return m && m.counted ? `${m.total} ${m.grade}` : m && m.stage !== "NOT_REGISTERED" ? "pending" : ""; }),
-    r.units, r.points, r.gpa ?? "", r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? "", r.remarks];
+    r.units, r.points, r.gpa ?? "", ...(hideCarry ? [] : [r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? ""]), r.remarks];
 
   async function exportExcel() {
     if (!sheet || !cov) return;
@@ -91,20 +100,27 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const serial = docSerial("BRD");
     const sumRows = cov.SUM.map((s) => `<tr><td>${escd(s[0])}</td><td class="n">${escd(String(s[1]))}</td><td class="p">${escd(s[2])}</td></tr>`).join("");
     const keyRows = cov.KEY.map((k) => `<tr><td class="ab">${k[0]}</td><td>${escd(k[1])}</td></tr>`).join("");
-    const courseRows = sheet.courses.map((c) => `<tr><td class="ab">${escd(c.courseCode)}</td><td>${escd(c.title)}</td><td class="u">${c.units} units</td></tr>`).join("");
-    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">Matric</th><th rowspan="2">Name</th><th rowspan="2">C/O</th>`
+    const courseCells = (list: typeof sheet.courses) =>
+      `<tr><td class="ab ch">Course Code</td><td class="ch">Course Title</td><td class="u ch">Credit Units</td></tr>`
+      + list.map((c) => `<tr><td class="ab">${escd(c.courseCode)}</td><td>${escd(c.title)}</td><td class="u">${c.units}</td></tr>`).join("");
+    const half = Math.ceil(sheet.courses.length / 2);
+    const courseTwoCol = `<div class="cols2"><table class="t"><tbody>${courseCells(sheet.courses.slice(0, half))}</tbody></table>`
+      + `<table class="t"><tbody>${courseCells(sheet.courses.slice(half))}</tbody></table></div>`;
+    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">Matric</th><th rowspan="2">Name</th>${hideCarry ? "" : `<th rowspan="2">C/O</th>`}`
       + (core.length ? `<th colspan="${core.length}">Core</th>` : "") + (elec.length ? `<th colspan="${elec.length}">Elective</th>` : "")
-      + `<th colspan="3">This semester</th><th colspan="5">Cumulative to date</th><th rowspan="2">Remarks</th></tr>`
-      + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUE</th><th>WGP</th><th>GPA</th><th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th></tr>`;
-    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(r.number)}</td><td class="nm">${escd(r.name)}</td><td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`
+      + `<th colspan="3">This semester</th>${hideCarry ? "" : `<th colspan="5">Cumulative to date</th>`}<th rowspan="2">Remarks</th></tr>`
+      + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUE</th><th>WGP</th><th>GPA</th>${hideCarry ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
+    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(r.number)}</td><td class="nm">${escd(r.name)}</td>${hideCarry ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
       + orderCols.map((c) => { const m = markOf(r, c.courseCode); const v = m && m.counted ? `${m.total}<br><b>${m.grade}</b>` : m && m.stage !== "NOT_REGISTERED" ? "·" : ""; return `<td>${v}</td>`; }).join("")
-      + `<td>${r.units}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td><td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td><td class="co">${escd(r.remarks)}</td></tr>`).join("");
+      + `<td>${r.units}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCarry ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
       body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
       .head{text-align:center;margin-bottom:14px}.head img{height:56px}.uni{font-weight:700;font-size:16px}.st{text-transform:uppercase;letter-spacing:.06em;text-decoration:underline;font-size:12px;color:#444}
       .meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 30px;font-size:12px;margin:12px 0}.meta div{display:flex;gap:8px}.meta .k{min-width:110px;color:#555;text-transform:uppercase;font-size:10px}
       h3{font-size:12px;text-transform:uppercase;text-decoration:underline;margin:14px 0 6px}
       .cols{display:grid;grid-template-columns:1.6fr 1fr;gap:24px}
+      .cols2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+      .t td.ch{font-weight:700;text-transform:uppercase;font-size:10px;color:#333;border-bottom:1px solid #999}
       table{border-collapse:collapse;width:100%}.t td{padding:2px 6px;font-size:11.5px;vertical-align:top}.t td.n,.t td.p{text-align:right;width:40px}.t td.ab{font-family:monospace;font-weight:700}
       .bs{border-collapse:collapse;width:100%;margin-top:8px}.bs th,.bs td{border:1px solid #bbb;padding:3px 5px;text-align:center;font-size:10.5px}.bs td.nm,.bs td.co{text-align:left}
       .bs td.b{font-weight:700}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
@@ -114,7 +130,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
         <div><span class="k">Department</span><b>${escd(cov.deptName)}</b></div><div><span class="k">Semester</span><b>${semester}</b></div>
         <div><span class="k">Degree in view</span><b>${escd(cov.degree)}</b></div><div><span class="k">Session</span><b>${escd(sheet.session)}</b></div></div>
       <div class="cols"><div><h3>Summary of results</h3><table class="t"><tbody>${sumRows}</tbody></table></div><div><h3>Key</h3><table class="t"><tbody>${keyRows}</tbody></table></div></div>
-      <h3>Courses</h3><table class="t"><tbody>${courseRows}</tbody></table>
+      <h3>Courses</h3>${courseTwoCol}
       <div class="sign"><div><div class="role">Dean of Faculty</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div>
         <div><div class="role">Head of Department</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div></div>
       <div class="pb"></div><h3>Broadsheet — ${escd(cov.degree)}, ${sheet.level} Level, ${semester} semester</h3>
@@ -206,17 +222,17 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                       <th rowSpan={2} className="sn">S/N</th>
                       <th rowSpan={2} className="l">Matric no.</th>
                       <th rowSpan={2} className="l">Name of candidate</th>
-                      <th rowSpan={2}>Carryover</th>
+                      {hideCarry ? null : <th rowSpan={2}>Carryover</th>}
                       {core.length ? <th colSpan={core.length} className="band">Core courses</th> : null}
                       {elec.length ? <th colSpan={elec.length} className="band">Elective courses</th> : null}
                       <th colSpan={3} className="band">This semester</th>
-                      <th colSpan={5} className="band">Cumulative to date</th>
+                      {hideCarry ? null : <th colSpan={5} className="band">Cumulative to date</th>}
                       <th rowSpan={2} className="l">Remarks</th>
                     </tr>
                     <tr className="sub">
                       {[...core, ...elec].map((c) => <th key={c.courseCode} className="course"><span className="mono">{c.courseCode}</span><span className="u">{c.units}</span></th>)}
                       <th>CUE</th><th>WGP</th><th>GPA</th>
-                      <th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>
+                      {hideCarry ? null : <><th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th></>}
                     </tr>
                   </thead>
                   <tbody>
