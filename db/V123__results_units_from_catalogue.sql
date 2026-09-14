@@ -1,29 +1,34 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- V123 — a course's units come from the catalogue, never the results file
+-- V123 — the entry's unit is the unit at the time; the results file's is a code
 --
 --   The old-portal results export carries a "Units" column that is NOT the
 --   credit unit at all — it is a status code (1 GST, 2 core, 3 elective, 0
 --   carryover). The legacy importer stored it as the entry's units, so every
 --   GPA and CGPA was computed on 1/2/3 instead of the real credit load.
 --
---   The catalogue is the single source of truth for a course's units. So:
---     · the results views (student_results, and the broadsheet query in Java)
---       read the unit from catalogue.course, not registration.entry — which
---       corrects EVERY result already uploaded, with no re-upload;
---     · the legacy importer stops reading the file's Units column and stores
---       the catalogue unit on the entry;
---     · existing entries are corrected to the catalogue unit for consistency.
+--   A course's unit can change over time, and a student who wrote it at 2 units
+--   must keep 2 units — so the UNIT OF RECORD is the one frozen on the entry
+--   (registration.entry.units), not the current catalogue unit. GPA already
+--   reads the entry unit, so that stays. What was wrong was the VALUE stored on
+--   the legacy entries (the 1/2/3 code). So:
+--     · the legacy importer stops reading the file's Units column and freezes
+--       the catalogue's current unit onto the entry at import time (the best
+--       available, since the file has no true historical unit);
+--     · existing entries are corrected from the 1/2/3 code to the catalogue
+--       unit — a one-time repair of the bad import;
+--   and the results views keep reading the entry unit, so a later catalogue
+--   change never rewrites a result already earned.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 BEGIN;
 
--- 1 · the per-student results view reads units from the catalogue
+-- 1 · the per-student results view reads the entry's (frozen) unit — restated here for the record
 CREATE OR REPLACE FUNCTION assessment.student_results(p_student uuid)
 RETURNS TABLE (session text, semester int, course_code text, title text, units int, entry_type text,
                stage text, published boolean, published_at timestamptz, senate_minute text,
                ca int, exam int, total int, grade text, points numeric, outcome text)
 LANGUAGE sql STABLE AS $$
-    SELECT r.session, r.semester, c.code, c.title, c.units, e.entry_type,
+    SELECT r.session, r.semester, c.code, c.title, e.units, e.entry_type,
            coalesce(sh.stage, 'NO_SHEET'), sh.stage = 'PUBLISHED', sh.published_at, sh.senate_minute,
            CASE WHEN sh.stage = 'PUBLISHED' THEN ls.ca END,
            CASE WHEN sh.stage = 'PUBLISHED' THEN ls.exam END,
