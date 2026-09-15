@@ -741,64 +741,23 @@ export const MENUS: Record<string, Menu> = {
     "home": "r/academic",
     "groups": [
       {
-        "name": "Academic settings",
+        "name": "Overview",
         "items": [
-          {
-            "id": "t/facultyupload",
-            "icon": "cap",
-            "label": "Faculty upload/create"
-          },
-          {
-            "id": "t/programmeupload",
-            "icon": "book",
-            "label": "Programme upload/create"
-          },
-          {
-            "id": "t/departmentupload",
-            "icon": "cap",
-            "label": "Department upload/create"
-          },
-          {
-            "id": "t/courseupload",
-            "icon": "doc",
-            "label": "Courses upload/create"
-          }
-        ]
-      },
-      {
-        "name": "Records",
-        "items": [
-          {
-            "id": "t/search",
-            "icon": "user",
-            "label": "Search"
-          },
           {
             "id": "r/academic",
             "icon": "home",
             "label": "Dashboard"
           },
           {
-            "id": "t/records",
-            "icon": "chart",
-            "label": "Records & queries"
-          },
-          {
-            "id": "t/students",
-            "icon": "cap",
-            "label": "Student records"
-          },
-          {
-            "id": "t/biochange",
+            "id": "t/search",
             "icon": "user",
-            "label": "Biodata changes",
-            "badge": "4"
-          },
-          {
-            "id": "r/classlist",
-            "icon": "user",
-            "label": "Registered students"
-          },
+            "label": "Search"
+          }
+        ]
+      },
+      {
+        "name": "Admission Main",
+        "items": [
           {
             "id": "t/admissions",
             "icon": "doc",
@@ -846,6 +805,57 @@ export const MENUS: Record<string, Menu> = {
             "icon": "cap",
             "label": "Matriculation",
             "badge": "!"
+          }
+        ]
+      },
+      {
+        "name": "Academic settings",
+        "items": [
+          {
+            "id": "t/facultyupload",
+            "icon": "cap",
+            "label": "Faculty upload/create"
+          },
+          {
+            "id": "t/programmeupload",
+            "icon": "book",
+            "label": "Programme upload/create"
+          },
+          {
+            "id": "t/departmentupload",
+            "icon": "cap",
+            "label": "Department upload/create"
+          },
+          {
+            "id": "t/courseupload",
+            "icon": "doc",
+            "label": "Courses upload/create"
+          }
+        ]
+      },
+      {
+        "name": "Records",
+        "items": [
+          {
+            "id": "t/records",
+            "icon": "chart",
+            "label": "Records & queries"
+          },
+          {
+            "id": "t/students",
+            "icon": "cap",
+            "label": "Student records"
+          },
+          {
+            "id": "t/biochange",
+            "icon": "user",
+            "label": "Biodata changes",
+            "badge": "4"
+          },
+          {
+            "id": "r/classlist",
+            "icon": "user",
+            "label": "Registered students"
           },
           {
             "id": "t/transfers",
