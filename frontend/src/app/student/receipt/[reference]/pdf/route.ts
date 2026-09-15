@@ -19,11 +19,13 @@ export async function GET(_: Request, { params }: { params: Promise<{ reference:
   const p = new Page();
   const L = 64;
   let y = brandHeader(p, L, "Official Payment Receipt · Bursary Department");
-  p.text(L, y, "RECEIPT NUMBER", 7.5, false, [0.4, 0.4, 0.4]);
-  p.text(L + 130, y, x.receipt_no ?? "", 12, true);
-  p.text(A4.w - L - 170, y, "DATE", 7.5, false, [0.4, 0.4, 0.4]);
-  p.text(A4.w - L - 130, y, day(x.confirmed_at), 10.5);
-  y -= 28;
+  // receipt numbers can be long (legacy ones especially), so keep them small and on their own line
+  for (const [k, v, sz] of [["Receipt number", x.receipt_no ?? "", 9], ["Date", day(x.confirmed_at), 10.5]] as [string, string, number][]) {
+    p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
+    p.text(L + 130, y, v, sz, true);
+    y -= 17;
+  }
+  y -= 6;
   for (const [k, v] of [["Received from", x.name], ["Matriculation number", x.matricNo ?? ""], ["Programme", `${x.programme} · ${x.level} Level`], ["Session", x.session]]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 130, y, v, 10.5);

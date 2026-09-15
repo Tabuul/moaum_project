@@ -107,7 +107,7 @@ export function ReceiptScreen({ r }: { r: Receipt }) {
           <div className="eyebrow">Official Payment Receipt</div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 18 }}>
-          <div className="kv"><span className="k">Receipt number</span><span className="v tnum">{r.receipt_no}</span></div>
+          <div className="kv"><span className="k">Receipt number</span><span className="v tnum" style={{ fontSize: 13, overflowWrap: "anywhere" }}>{r.receipt_no}</span></div>
           <div className="kv"><span className="k">Date</span><span className="v tnum">{onDay(r.confirmed_at)}</span></div>
         </div>
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 18 }}>
@@ -127,7 +127,7 @@ export function ReceiptScreen({ r }: { r: Receipt }) {
           <div className="kv"><span className="k">Gateway or teller reference</span><span className="v tnum">{r.note ?? "—"}</span></div>
         </div>
         <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", paddingTop: 6, borderTop: "1px solid var(--line-2)" }}>
-          <div className="kv" style={{ flexGrow: 1, minWidth: 200 }}><span className="k">Verification</span><span className="v tnum" style={{ letterSpacing: ".5px" }}>{r.receipt_no}</span><span className="sub2">This receipt is valid without a signature; it is verified against the Bursary&rsquo;s ledger, not by its appearance</span></div>
+          <div className="kv" style={{ flexGrow: 1, minWidth: 200 }}><span className="k">Verification</span><span className="v tnum" style={{ fontSize: 13, overflowWrap: "anywhere" }}>{r.receipt_no}</span><span className="sub2">This receipt is valid without a signature; it is verified against the Bursary&rsquo;s ledger, not by its appearance</span></div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
