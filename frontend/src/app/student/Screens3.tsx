@@ -108,7 +108,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="card__body">{carry.map((m) => pick(m, true, true, true))}</div></div>
       ) : null}
       <div className="card"><div className="card__head"><span className="card__title">{v.level} Level compulsory</span></div>
-        <div className="card__body">{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No compulsory course is offered to your programme this semester yet. The department offers courses when it allocates lecturers.</div>}</div></div>
+        <div className="card__body">{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No compulsory course is offered to your programme this semester yet. Courses appear once the Registry opens registration for the session; a lecturer does not have to be allocated first, and you can register without one.</div>}</div></div>
       <div className="card"><div className="card__head"><span className="card__title">Electives</span><span className="sub2">choose to reach {min}–{max} units</span></div>
         <div className="card__body">{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
           <p className="sub2" style={{ margin: "2px 0 0" }}>A course owned by another department is on your form because your programme and level were made eligible for it when it was created &mdash; you do not request it and nobody grants it to you. Register one and you appear on that lecturer&rsquo;s score sheet like any other candidate.</p></div></div>
