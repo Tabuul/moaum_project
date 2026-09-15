@@ -164,6 +164,20 @@ class StudentPortalRepository {
                 """).param("s", student).param("r", reference).query().listOfRows().stream().findFirst();
     }
 
+    /** the level the student was at during a session — for a receipt, the level when they paid, not
+     *  today's. The enrolment for that session if there is one; otherwise derived from the entry level
+     *  and how many sessions have passed (a non-dated 'LEGACY' session falls back to the current level). */
+    int levelForSession(UUID student, String session) {
+        return jdbc.sql("""
+                SELECT coalesce(
+                    (SELECT e.level FROM people.enrolment e WHERE e.student_id = :s AND e.session = :ses LIMIT 1),
+                    (SELECT CASE WHEN :ses ~ '^[0-9]{4}/[0-9]{4}$'
+                                 THEN least(600, greatest(100, st.entry_level + (left(:ses, 4)::int - left(st.entry_session, 4)::int) * 100))
+                                 ELSE st.current_level END
+                       FROM people.student st WHERE st.id = :s))
+                """).param("s", student).param("ses", session).query(Integer.class).single();
+    }
+
     String newReference(UUID student, String session, BigDecimal amount, String purpose) {
         return jdbc.sql("SELECT finance.new_reference(:s, :ses, :a, :p)").param("s", student).param("ses", session).param("a", amount)
                 .param("p", purpose, Types.VARCHAR).query(String.class).single();

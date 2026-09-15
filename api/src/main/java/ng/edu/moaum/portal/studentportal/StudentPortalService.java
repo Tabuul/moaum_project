@@ -142,7 +142,8 @@ public class StudentPortalService {
         out.put("name", s.surname() + ", " + s.otherNames());
         out.put("matricNo", s.matricNo());
         out.put("programme", s.programme());
-        out.put("level", s.currentLevel());
+        // the level the student was at when they paid this session's fee, not today's level
+        out.put("level", repo.levelForSession(id, String.valueOf(r.get("session"))));
         return out;
     }
 
