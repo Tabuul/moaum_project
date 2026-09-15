@@ -226,7 +226,7 @@ public class ResultsService {
     public Sheets.Monitor monitor(UUID id) {
         Sheets.ExamSession e = repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
         List<Sheets.Outstanding> outstanding = new ArrayList<>();
-        for (Sheets.Row r : repo.sheets(null, null, null, null, e.session(), e.semester(), "ENTRY")) {
+        for (Sheets.Row r : repo.sheets(null, null, null, null, e.session(), e.semester(), "ENTRY", null)) {
             Integer late = r.dueOn() != null && r.dueOn().isBefore(LocalDate.now())
                     ? (int) ChronoUnit.DAYS.between(r.dueOn(), LocalDate.now()) : null;
             outstanding.add(new Sheets.Outstanding(r.id(), r.courseCode(), r.deptName(), r.facultyCode(), r.lecturer(),
