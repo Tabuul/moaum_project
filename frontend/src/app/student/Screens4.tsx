@@ -159,19 +159,28 @@ export function Broadsheet({ r }: { r: Results }) {
         return (
           <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`}
             right={sm ? `GPA ${sm.gpa ?? "—"} · CGPA ${sm.cgpa ?? "—"}` : undefined}>
-            <DTable cols={["Course", "Title", "Unit|mid", "CA|mid", "Exam|mid", "Total|mid", "Grade|mid", "Point|mid"]} rows={g.rows.map((c) => [
-              <b className="tnum" key="c">{c.course_code}</b>,
-              <span key="t">{c.title}</span>,
-              <span className="tnum" key="u">{c.units}</span>,
-              <span className="tnum" key="ca">{c.outcome === "GRADED" ? (c.ca ?? "—") : "—"}</span>,
-              <span className="tnum" key="ex">{c.outcome === "GRADED" ? (c.exam ?? "—") : "—"}</span>,
-              <span className="tnum" key="to">{c.outcome === "GRADED" ? (c.total ?? "—") : (c.outcome ? c.outcome.charAt(0) + c.outcome.slice(1).toLowerCase() : "—")}</span>,
-              <b className="tnum" key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] : undefined }}>{c.grade ?? "—"}</b>,
-              <span className="tnum" key="p">{c.points ?? "—"}</span>,
-            ])} />
+            <div className="tablewrap"><table style={{ minWidth: 520 }}>
+              <thead><tr>
+                <th>Course</th><th>Title</th><th className="mid">Unit</th><th className="mid">CA</th><th className="mid">Exam</th><th className="mid">Total</th><th className="mid">Grade</th><th className="mid">Point</th>
+              </tr></thead>
+              <tbody>
+                {g.rows.map((c) => (
+                  <tr key={c.course_code}>
+                    <td className="tnum" style={{ fontWeight: 600 }}>{c.course_code}</td>
+                    <td>{c.title}</td>
+                    <td className="mid tnum">{c.units}</td>
+                    <td className="mid tnum">{c.outcome === "GRADED" ? (c.ca ?? "—") : "—"}</td>
+                    <td className="mid tnum">{c.outcome === "GRADED" ? (c.exam ?? "—") : "—"}</td>
+                    <td className="mid tnum">{c.outcome === "GRADED" ? (c.total ?? "—") : (c.outcome ? c.outcome.charAt(0) + c.outcome.slice(1).toLowerCase() : "—")}</td>
+                    <td className="mid tnum" style={{ fontWeight: 700, color: c.grade ? GRADE_COLOUR[c.grade] : undefined }}>{c.grade ?? "—"}</td>
+                    <td className="mid tnum">{c.points ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
             {sm ? (
-              <div className="card__body">
-                <div className="tnum" style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 12 }}>
+              <div className="card__body" style={{ borderTop: "1px solid var(--line-2)" }}>
+                <div className="tnum" style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 12.5 }}>
                   <span><b>CUR</b> {sm.cur}</span><span><b>CUE</b> {sm.cue}</span><span><b>WGP</b> {sm.wgp}</span><span><b>GPA</b> {sm.gpa ?? "—"}</span>
                   <span style={{ color: "var(--faint)" }}>|</span>
                   <span><b>TCR</b> {sm.tcr}</span><span><b>TCE</b> {sm.tce}</span><span><b>TWGP</b> {sm.twgp}</span><span><b>LCGPA</b> {sm.lcgpa ?? "—"}</span><span><b>CGPA</b> {sm.cgpa ?? "—"}</span>
@@ -182,6 +191,11 @@ export function Broadsheet({ r }: { r: Results }) {
         );
       }) : <Panel title="No published results yet"><div className="card__body"><div className="sub2">A semester appears here once Senate approves its results. Nothing is shown before the minute exists.</div></div></Panel>}
       <p className="sub2" style={{ maxWidth: "80ch" }}>CUR credit units registered · CUE credit units earned · WGP weighted grade points · GPA the semester average · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA · CGPA the cumulative average. This is a view of the published record.</p>
+      {groups.length ? (
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <a href="/student/broadsheet/pdf" target="_blank" rel="noopener" className="btn btn--primary">Print broadsheet</a>
+        </div>
+      ) : null}
     </>
   );
 }
