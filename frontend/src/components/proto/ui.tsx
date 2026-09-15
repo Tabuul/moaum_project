@@ -219,10 +219,19 @@ export function Tiles({ items, cls = "grid--4" }: { items: [ReactNode, ReactNode
   return (
     <div className={`grid ${cls}`}>
       {items.map((t, i) => {
+        /* a long string value (a matriculation/identifier, not a number) shrinks so it fits the tile
+           on one line instead of wrapping at the big 29px KPI size; numbers stay large */
+        const v = t[1];
+        const len = typeof v === "string" ? v.length : 0;
+        const nStyle: React.CSSProperties = {};
+        if (t[2]) nStyle.color = t[2];
+        if (len > 22) nStyle.fontSize = 13;
+        else if (len > 16) nStyle.fontSize = 15;
+        else if (len > 12) nStyle.fontSize = 18;
         const inner = (
           <>
             <span className="eyebrow">{t[0]}</span>
-            <span className="n tnum" style={t[2] ? { color: t[2] } : undefined}>{t[1]}</span>
+            <span className="n tnum" style={Object.keys(nStyle).length ? nStyle : undefined}>{v}</span>
             {t[3] ? <span className="c">{t[3]}</span> : null}
           </>
         );
