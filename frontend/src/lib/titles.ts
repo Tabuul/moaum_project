@@ -532,6 +532,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Users & roles",
     "Identity and access management"
   ],
+  "t/lecturers": [
+    "Upload lecturers",
+    "Onboard lecturers in bulk — person, sign-in and lecturer office"
+  ],
   "t/audit": [
     "Audit trail",
     "Tamper-evident record of every consequential act"

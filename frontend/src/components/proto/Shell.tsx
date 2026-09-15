@@ -66,6 +66,7 @@ export const ROUTES: Record<string, string> = {
   "t/chain": "/results/chain",
   "r/self": "/me",
   "t/users": "/people",
+  "t/lecturers": "/people/lecturers",
   "a/password": "/account/password",
   /* the student's side (proto/part3, part4, part29) */
   "s/dashboard": "/student",

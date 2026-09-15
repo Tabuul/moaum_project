@@ -45,12 +45,33 @@ class AccountsController {
     public record EndGrant(LocalDate on, @NotBlank String reason) {
     }
 
+    public record Rows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {
+    }
+
     private final JdbcClient jdbc;
     private final AuthService auth;
+    private final tools.jackson.databind.ObjectMapper json;
 
-    AccountsController(JdbcClient jdbc, AuthService auth) {
+    AccountsController(JdbcClient jdbc, AuthService auth, tools.jackson.databind.ObjectMapper json) {
         this.jdbc = jdbc;
         this.auth = auth;
+        this.json = json;
+    }
+
+    /**
+     * Bulk-onboard lecturers: each row becomes a person, a sign-in
+     * (username/password = staff number, must change) and the lecturer office
+     * scoped to the department code — the same three things Users & roles makes
+     * one at a time. Resilient and idempotent; see iam.import_lecturers (V135).
+     * Chunk the rows client-side: each credential is a bcrypt-12 hash (~¼s),
+     * so a large single request would time out.
+     */
+    @PostMapping("/lecturers/import")
+    @PreAuthorize(CREDENTIALS)
+    @Transactional
+    Map<String, Object> importLecturers(@Valid @RequestBody Rows body) {
+        return jdbc.sql("SELECT * FROM iam.import_lecturers(:j::jsonb)")
+                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
     @GetMapping("/persons")

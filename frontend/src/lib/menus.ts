@@ -1627,6 +1627,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Users & roles"
           },
           {
+            "id": "t/lecturers",
+            "icon": "user",
+            "label": "Upload lecturers"
+          },
+          {
             "id": "t/channels",
             "icon": "bell",
             "label": "Notification channels"
@@ -1879,6 +1884,11 @@ export const MENUS: Record<string, Menu> = {
             "icon": "user",
             "label": "Users & roles",
             "badge": "1"
+          },
+          {
+            "id": "t/lecturers",
+            "icon": "user",
+            "label": "Upload lecturers"
           },
           {
             "id": "t/gateways",
@@ -2164,6 +2174,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/users",
             "icon": "user",
             "label": "Users & roles"
+          },
+          {
+            "id": "t/lecturers",
+            "icon": "user",
+            "label": "Upload lecturers"
           },
           {
             "id": "t/platform",
