@@ -103,6 +103,41 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       ) : reg?.status === "RETURNED" ? (
         <Note kind="bad" title="Returned to you">Your Level Adviser returned this registration. Change it and submit again.</Note>
       ) : null}
+
+      {locked && v.addDropOpen ? (() => {
+        const activeIds = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
+        const droppable = (reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.entryType !== "CARRYOVER");
+        const addable = v.menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
+        return (
+          <div className="card"><div className="card__head"><span className="card__title">Add or drop courses</span><span className="sub2">the add/drop window is open</span></div>
+            <div className="card__body">
+              {problem ? <ProblemNotice problem={problem} /> : null}
+              <div className="sub2">You can still add a course or drop one (not a carryover, and not one you already have a mark in). The change is on the record at once; your total stays within {min}–{max} units.</div>
+              {droppable.length ? (<>
+                <div className="eyebrow" style={{ marginTop: 8 }}>Registered — drop</div>
+                {droppable.map((e) => (
+                  <div key={e.offeringId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <span className="tnum" style={{ fontWeight: 600, minWidth: 92 }}>{e.courseCode}</span>
+                    <span style={{ flexGrow: 1 }}>{e.title} <span className="sub2">· {e.units}u · {courseType(e)}</span></span>
+                    <Btn kind="ghost" disabled={busy !== null} onClick={() => void act(`drop-${e.offeringId}`, "POST", "/me/registration/drop", { session: v.session, semester: v.semester, offering: e.offeringId }, `Dropped ${e.courseCode}`)}>{busy === `drop-${e.offeringId}` ? "Dropping…" : "Drop"}</Btn>
+                  </div>
+                ))}
+              </>) : null}
+              {addable.length ? (<>
+                <div className="eyebrow" style={{ marginTop: 12 }}>Offered — add</div>
+                {addable.map((m) => (
+                  <div key={m.offering_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <span className="tnum" style={{ fontWeight: 600, minWidth: 92 }}>{m.course_code}</span>
+                    <span style={{ flexGrow: 1 }}>{m.title} <span className="sub2">· {m.units}u · {m.lecturer ?? "no lecturer yet"}</span></span>
+                    <Btn kind="primary" disabled={busy !== null} onClick={() => void act(`add-${m.offering_id}`, "POST", "/me/registration/add", { session: v.session, semester: v.semester, offering: m.offering_id }, `Added ${m.course_code}`)}>{busy === `add-${m.offering_id}` ? "Adding…" : "Add"}</Btn>
+                  </div>
+                ))}
+              </>) : null}
+              {!droppable.length && !addable.length ? <div className="sub2">Nothing to add or drop.</div> : null}
+            </div></div>
+        );
+      })() : null}
+
       <div className="card"><div className="card__body">
         <div className="meter">
           <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>

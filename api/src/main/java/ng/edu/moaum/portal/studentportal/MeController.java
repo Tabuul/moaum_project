@@ -91,6 +91,21 @@ class MeController {
         return portal.submit(id(auth), body.session(), body.semester());
     }
 
+    public record AddDrop(@NotBlank String session, @Min(1) @Max(3) int semester, @jakarta.validation.constraints.NotNull UUID offering) {
+    }
+
+    /** add a course to a submitted/approved registration during the add/drop window */
+    @PostMapping("/registration/add")
+    Map<String, Object> addCourse(Authentication auth, @Valid @RequestBody AddDrop body) {
+        return portal.addCourse(id(auth), body.session(), body.semester(), body.offering());
+    }
+
+    /** drop a non-carryover course from a registration during the add/drop window */
+    @PostMapping("/registration/drop")
+    Map<String, Object> dropCourse(Authentication auth, @Valid @RequestBody AddDrop body) {
+        return portal.dropCourse(id(auth), body.session(), body.semester(), body.offering());
+    }
+
     @GetMapping("/results")
     Map<String, Object> results(Authentication auth) {
         return portal.results(id(auth));

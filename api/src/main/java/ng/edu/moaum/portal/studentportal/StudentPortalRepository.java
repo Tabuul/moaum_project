@@ -221,6 +221,21 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT registration.student_submit(:r)").param("r", registration).query(String.class).single();
     }
 
+    boolean addDropOpen(String session, int semester) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT registration.add_drop_open(:ses, :sem)")
+                .param("ses", session).param("sem", semester).query(Boolean.class).single());
+    }
+
+    int addCourse(UUID student, String session, int semester, UUID offering) {
+        return jdbc.sql("SELECT registration.student_add(:s, :ses, :sem, :o)")
+                .param("s", student).param("ses", session).param("sem", semester).param("o", offering).query(Integer.class).single();
+    }
+
+    int dropCourse(UUID student, String session, int semester, UUID offering) {
+        return jdbc.sql("SELECT registration.student_drop(:s, :ses, :sem, :o)")
+                .param("s", student).param("ses", session).param("sem", semester).param("o", offering).query(Integer.class).single();
+    }
+
     Map<String, Object> limit(int level) {
         return jdbc.sql("SELECT min_units, max_units FROM policy.level_limit WHERE level = :l").param("l", level).query().listOfRows().stream().findFirst()
                 .orElse(Map.of("min_units", 0, "max_units", 99));

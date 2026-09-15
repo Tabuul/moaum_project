@@ -160,7 +160,20 @@ public class StudentPortalService {
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
         out.put("fees", fees(id, session));
         out.put("status", s.status());
+        out.put("addDropOpen", repo.addDropOpen(session, semester));
         return out;
+    }
+
+    @Transactional
+    public Map<String, Object> addCourse(UUID id, String session, int semester, UUID offering) {
+        repo.addCourse(id, session, semester, offering);
+        return registrationView(id, session, semester);
+    }
+
+    @Transactional
+    public Map<String, Object> dropCourse(UUID id, String session, int semester, UUID offering) {
+        repo.dropCourse(id, session, semester, offering);
+        return registrationView(id, session, semester);
     }
 
     @Transactional(readOnly = true)
