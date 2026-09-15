@@ -76,14 +76,18 @@ export function ResultsScreen({ r }: { r: Results }) {
               <DTable cols={["Course", "On the desk of", "What that desk does"]} rows={waiting.map((c) => { const st = STAGE_LABEL[c.stage] ?? [c.stage, ""]; return [<b className="tnum" key="c">{c.course_code}</b>, <span className="sub2" key="d">{st[1]}</span>, <span className="sub2" key="w">{st[0]}</span>]; })} />
             </Panel>
           ) : null}
-          <Panel title="Published semesters" right="Senate-approved results only">
-            <DTable cols={["Session|mid", "Semester", "GPA|mid", "CGPA|mid", "Units|mid", "Published|mid", "Action|num"]} rows={r.semesters.map((h) => [
-              <span className="tnum" key="s">{h.session}</span>, semesterName(h.semester),
-              <b className="tnum" key="g">{h.gpa ?? "—"}</b>, <span className="tnum" key="c">{h.cgpa ?? "—"}</span>, <span className="tnum" key="u">{h.units}</span>,
-              <span className="tnum sub2" key="p">{h.published_count} of {h.registered_count}</span>,
+          <Panel title="Academic summary" right="Senate-approved results only · CUR·CUE·WGP·GPA per semester, TCR·TCE·TWGP·CGPA cumulative">
+            <DTable cols={["Session · Semester", "CUR|mid", "CUE|mid", "WGP|mid", "GPA|mid", "TCR|mid", "TCE|mid", "TWGP|mid", "LCGPA|mid", "CGPA|mid", "|num"]} rows={r.semesters.map((h) => [
+              <span key="s"><span className="tnum">{h.session}</span> · {semesterName(h.semester)}</span>,
+              <span className="tnum" key="cur">{h.cur}</span>, <span className="tnum" key="cue">{h.cue}</span>, <span className="tnum" key="wgp">{h.wgp}</span>,
+              <b className="tnum" key="g">{h.gpa ?? "—"}</b>,
+              <span className="tnum" key="tcr">{h.tcr}</span>, <span className="tnum" key="tce">{h.tce}</span>, <span className="tnum" key="twgp">{h.twgp}</span>,
+              <span className="tnum sub2" key="l">{h.lcgpa ?? "—"}</span>, <b className="tnum" key="c">{h.cgpa ?? "—"}</b>,
               h.published_count ? <Link key="a" href={`/student/results/${encodeURIComponent(h.session)}/${h.semester}`} className="btn btn--ghost btn--sm">Open</Link> : <span className="sub2" key="a">—</span>,
             ])} />
-            {!r.semesters.length ? <div className="card__body"><div className="sub2">No semester has a published result yet.</div></div> : null}
+            {!r.semesters.length ? <div className="card__body"><div className="sub2">No semester has a published result yet.</div></div> : (
+              <div className="card__body"><div className="sub2">CUR credit units registered · CUE earned · WGP weighted grade points · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA. A full semester-by-semester broadsheet is on <Link href="/student/broadsheet">Result broadsheet</Link>.</div></div>
+            )}
           </Panel>
           {r.carryovers.length ? (
             <Note kind="bad" title={`${r.carryovers.length} carryover${r.carryovers.length === 1 ? "" : "s"}`}>
@@ -130,6 +134,54 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
         <Link href="/student/results" className="btn btn--ghost">All results</Link>
       </div>
       <div className="sub2">Published {onDay(rows[0]?.published_at)} after Senate approval{rows[0]?.senate_minute ? ` · minute ${rows[0].senate_minute}` : ""}. The register is the thing; this slip is a view of it.</div>
+    </>
+  );
+}
+
+/** s/broadsheet — the student's own results as a broadsheet: each semester's courses, then its
+ *  summary line (CUR·CUE·WGP·GPA this semester; TCR·TCE·TWGP·LCGPA·CGPA cumulative). */
+export function Broadsheet({ r }: { r: Results }) {
+  if (r.clearsResults === false) {
+    return <Note kind="bad" title="Your results are withheld until your fees are settled"><Link href="/student/fees" className="btn btn--urgent btn--sm">Fees &amp; payments</Link></Note>;
+  }
+  const groups = group(r.rows.filter((x) => x.published));
+  const semOf = (s: string, n: number) => r.semesters.find((x) => x.session === s && x.semester === n);
+  return (
+    <>
+      <Tiles items={[
+        ["Name", r.name, null, `${r.matricNo} · ${r.programme}`],
+        ["Level", `${r.level} Level`, null, "Current"],
+        ["CGPA", r.cgpa != null ? String(r.cgpa) : "—", null, "On every published semester"],
+        ["Standing", r.standing ?? "—", null, "On the CGPA so far"],
+      ]} />
+      {groups.length ? groups.map((g) => {
+        const sm = semOf(g.session, g.semester);
+        return (
+          <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`}
+            right={sm ? `GPA ${sm.gpa ?? "—"} · CGPA ${sm.cgpa ?? "—"}` : undefined}>
+            <DTable cols={["Course", "Title", "Unit|mid", "CA|mid", "Exam|mid", "Total|mid", "Grade|mid", "Point|mid"]} rows={g.rows.map((c) => [
+              <b className="tnum" key="c">{c.course_code}</b>,
+              <span key="t">{c.title}</span>,
+              <span className="tnum" key="u">{c.units}</span>,
+              <span className="tnum" key="ca">{c.outcome === "GRADED" ? (c.ca ?? "—") : "—"}</span>,
+              <span className="tnum" key="ex">{c.outcome === "GRADED" ? (c.exam ?? "—") : "—"}</span>,
+              <span className="tnum" key="to">{c.outcome === "GRADED" ? (c.total ?? "—") : (c.outcome ? c.outcome.charAt(0) + c.outcome.slice(1).toLowerCase() : "—")}</span>,
+              <b className="tnum" key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] : undefined }}>{c.grade ?? "—"}</b>,
+              <span className="tnum" key="p">{c.points ?? "—"}</span>,
+            ])} />
+            {sm ? (
+              <div className="card__body">
+                <div className="tnum" style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 12 }}>
+                  <span><b>CUR</b> {sm.cur}</span><span><b>CUE</b> {sm.cue}</span><span><b>WGP</b> {sm.wgp}</span><span><b>GPA</b> {sm.gpa ?? "—"}</span>
+                  <span style={{ color: "var(--faint)" }}>|</span>
+                  <span><b>TCR</b> {sm.tcr}</span><span><b>TCE</b> {sm.tce}</span><span><b>TWGP</b> {sm.twgp}</span><span><b>LCGPA</b> {sm.lcgpa ?? "—"}</span><span><b>CGPA</b> {sm.cgpa ?? "—"}</span>
+                </div>
+              </div>
+            ) : null}
+          </Panel>
+        );
+      }) : <Panel title="No published results yet"><div className="card__body"><div className="sub2">A semester appears here once Senate approves its results. Nothing is shown before the minute exists.</div></div></Panel>}
+      <p className="sub2" style={{ maxWidth: "80ch" }}>CUR credit units registered · CUE credit units earned · WGP weighted grade points · GPA the semester average · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA · CGPA the cumulative average. This is a view of the published record.</p>
     </>
   );
 }

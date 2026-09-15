@@ -73,6 +73,7 @@ export const ROUTES: Record<string, string> = {
   "s/register": "/student/register",
   "s/form": "/student/form",
   "s/results": "/student/results",
+  "s/broadsheet": "/student/broadsheet",
   "s/slip": "/student/results",
   "s/fees": "/student/fees",
   "s/pay": "/student/fees",

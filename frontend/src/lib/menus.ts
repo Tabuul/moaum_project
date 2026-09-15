@@ -2304,6 +2304,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/register", "icon": "book", "label": "Course registration" },
           { "id": "s/reghistory", "icon": "chart", "label": "Registration history" },
           { "id": "s/results", "icon": "cap", "label": "Results" },
+          { "id": "s/broadsheet", "icon": "chart", "label": "Result broadsheet" },
           { "id": "s/query", "icon": "alert", "label": "Result query" },
           { "id": "s/carryover", "icon": "swap", "label": "Carryover" },
           { "id": "s/transfer", "icon": "swap", "label": "Departmental transfer" },

@@ -24,7 +24,8 @@ export interface Fees {
   sessions: string[];
   reference?: string;
 }
-export interface Semester { session: string; semester: number; units: number; gpa: number | null; cgpa: number | null; published_count: number; registered_count: number }
+export interface Semester { session: string; semester: number; units: number; gpa: number | null; cgpa: number | null; published_count: number; registered_count: number;
+  cur: number; cue: number; wgp: number; tcr: number; tce: number; twgp: number; lcgpa: number | null }
 export interface Carryover { course_code: string; title: string; units: number; failed_in: string }
 export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number }
 export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[] }
