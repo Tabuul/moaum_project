@@ -92,7 +92,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   );
 }
 
-export function ReceiptScreen({ r }: { r: Receipt }) {
+export function ReceiptScreen({ r, qr, verifyUrl, token }: { r: Receipt; qr?: string | null; verifyUrl?: string | null; token?: string | null }) {
   if (!r.confirmed_at) {
     return <Note kind="info" title="This payment is not confirmed yet">A receipt is issued the moment the Bursary or the gateway confirms it. Reference {r.reference}.</Note>;
   }
@@ -127,7 +127,15 @@ export function ReceiptScreen({ r }: { r: Receipt }) {
           <div className="kv"><span className="k">Gateway or teller reference</span><span className="v tnum">{r.note ?? "—"}</span></div>
         </div>
         <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", paddingTop: 6, borderTop: "1px solid var(--line-2)" }}>
-          <div className="kv" style={{ flexGrow: 1, minWidth: 200 }}><span className="k">Verification</span><span className="v tnum" style={{ fontSize: 13, overflowWrap: "anywhere" }}>{r.receipt_no}</span><span className="sub2">This receipt is valid without a signature; it is verified against the Bursary&rsquo;s ledger, not by its appearance</span></div>
+          <div className="kv" style={{ flexGrow: 1, minWidth: 200 }}><span className="k">Verification</span><span className="v tnum" style={{ fontSize: 13, overflowWrap: "anywhere" }}>{r.receipt_no}</span><span className="sub2">This receipt is valid without a signature; it is verified against the Bursary&rsquo;s ledger, not by its appearance. Scan the code to confirm the payer, amount and date.{token ? ` Check code ${token}.` : ""}</span>
+            {verifyUrl ? <a href={verifyUrl} target="_blank" rel="noopener" className="sub2 tnum" style={{ color: "var(--blue-ink)", overflowWrap: "anywhere" }}>{verifyUrl.replace(/^https?:\/\//, "")}</a> : null}</div>
+          {qr ? (
+            <div style={{ textAlign: "center" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr} alt="Scan to verify this receipt" style={{ width: 108, height: 108, display: "block" }} />
+              <span className="sub2" style={{ fontSize: 10, letterSpacing: ".08em" }}>SCAN TO VERIFY</span>
+            </div>
+          ) : null}
         </div>
       </div>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>

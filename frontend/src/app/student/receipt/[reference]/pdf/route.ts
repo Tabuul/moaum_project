@@ -3,14 +3,23 @@ import { api } from "@/lib/api";
 import type { Receipt } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
+import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
+
+/** the public origin, honouring the proxy so the QR opens a real address */
+function originOf(req: Request): string {
+  const h = req.headers;
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
+}
 
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 const naira = (n: number | string) => `NGN ${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
 /** the official payment receipt as a PDF: the same facts as the screen, on one A4 page */
-export async function GET(_: Request, { params }: { params: Promise<{ reference: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ reference: string }> }) {
   const { reference } = await params;
   const r = await api<Receipt>(`/api/v1/me/fees/receipts/${encodeURIComponent(reference)}`);
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
@@ -50,7 +59,35 @@ export async function GET(_: Request, { params }: { params: Promise<{ reference:
     y -= 18;
   }
   y -= 16;
-  y = p.paragraph(L, y, "This receipt is valid without a signature. It is verified against the Bursary's ledger by its receipt number, not by its appearance. Nothing is released against a payment the bank has not confirmed.", A4.w - 2 * L, 9);
+
+  // ── verify: a QR to the public verification page, drawn as module squares ──
+  const url = originOf(req) + verifyPath(x.reference, x.receipt_no);
+  const token = receiptToken(x.reference, x.receipt_no);
+  const { size, dark } = qrMatrix(url);
+  const cell = 2.7;
+  const qDim = size * cell;
+  const qx = A4.w - L - qDim;
+  const qy = y;                         // top edge of the QR
+  // a quiet white margin (quiet zone) behind the code keeps it scannable over any shading
+  p.fill(qx - 11, qy - qDim - 11, qDim + 22, qDim + 22, 1);
+  for (let rr = 0; rr < size; rr++) {
+    for (let cc = 0; cc < size; cc++) {
+      if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
+    }
+  }
+  p.text(L, qy, "SCAN TO VERIFY", 8, true, [0.4, 0.4, 0.4]);
+  const textW = qx - L - 16;
+  let ty = p.paragraph(L, qy - 14, "This receipt is valid without a signature. It is verified against the Bursary's ledger, not by its appearance. Scan the code, or open the address below, and confirm the payer, amount and date shown there against this receipt.", textW, 9);
+  ty -= 4;
+  p.text(L, ty, url.replace(/^https?:\/\//, ""), 8, false, [0.1, 0.25, 0.4]); ty -= 13;
+  p.text(L, ty, `Check code  ${token}`, 8.5, true);
+  y = Math.min(ty, qy - qDim) - 22;
+
+  // ── a faint microtext band: legible here, it breaks up on a photocopy ──
+  const strip = ` REV. FR. MOSES ORSHIO ADASU UNIVERSITY · OFFICIAL RECEIPT ${x.receipt_no ?? ""} · VERIFY ONLINE ·`;
+  const band = strip.repeat(6);
+  for (const my of [y + 6, 64]) p.text(L, my, band, 3.2, false, [0.82, 0.82, 0.82]);
+
   p.text(L, 50, `Issued by the portal on ${day(new Date().toISOString())} · ${x.receipt_no}`, 7.5, false, [0.4, 0.4, 0.4]);
   const bytes = pdf([p], `Receipt ${x.receipt_no}`);
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="receipt-${(x.receipt_no ?? "").replace(/\//g, "-")}.pdf"` } });
