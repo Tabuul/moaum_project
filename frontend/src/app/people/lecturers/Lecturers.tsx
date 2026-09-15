@@ -19,14 +19,19 @@ import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface StaffRow {
-  id: string; staff_number: string | null; name: string; email: string | null; phone: string | null;
+  id: string; staff_number: string | null; name: string; surname: string | null; given_names: string | null;
+  email: string | null; phone: string | null;
   present_rank: string | null; sex: string | null; conuass_step: number | null;
-  home_department: string | null; departments: string | null;
+  home_department: string | null; home_dept_code: string | null; departments: string | null;
   has_signin: boolean; must_change: boolean; username: string | null; last_sign_in_at: string | null;
 }
+
+interface StaffForm { id: string | null; pno: string; surname: string; given: string; sex: string; department: string; rank: string; phone: string; conuass: string; email: string }
+const EMPTY_FORM: StaffForm = { id: null, pno: "", surname: "", given: "", sex: "", department: "", rank: "", phone: "", conuass: "", email: "" };
 
 const MAY = ["ict", "super", "admin", "registrar", "dregistrar"];
 const CHUNK = 25; // bcrypt-12 is ~¼s per row; keep each request short so it never times out
@@ -44,6 +49,47 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [delMsg, setDelMsg] = useState<string | null>(null);
+  const [form, setForm] = useState<StaffForm | null>(null);   // null = closed; form.id null = add, set = edit
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  function openAdd() { setProblem(null); setForm({ ...EMPTY_FORM }); }
+  function openEdit(s: StaffRow) {
+    setProblem(null);
+    setForm({ id: s.id, pno: s.staff_number ?? "", surname: s.surname ?? "", given: s.given_names ?? "",
+      sex: s.sex ?? "", department: s.home_dept_code ?? s.home_department ?? "", rank: s.present_rank ?? "",
+      phone: s.phone ?? "", conuass: s.conuass_step != null ? String(s.conuass_step) : "", email: s.email ?? "" });
+  }
+  async function saveStaff() {
+    if (!form) return;
+    const edit = !!form.id;
+    if (!form.surname.trim() || !form.given.trim() || !form.department.trim() || (!edit && !form.pno.trim().replace(/\D/g, ""))) {
+      setProblem({ status: 400, title: "Staff id, surname, given names and department are all required." });
+      return;
+    }
+    setBusy(true); setProblem(null);
+    try {
+      const headers = { "Content-Type": "application/json", "X-Reason": reasonHeader(edit ? `Staff ${form.pno} edited` : `Staff ${form.pno} added`) };
+      let r: Response;
+      if (edit) {
+        r = await fetch(`/api/bff/api/v1/iam/lecturers/${form.id}`, { method: "PUT", headers, body: JSON.stringify({
+          surname: form.surname.trim(), givenNames: form.given.trim(), email: form.email.trim() || null, phone: form.phone.trim() || null,
+          sex: form.sex || null, rank: form.rank.trim() || null, conuass: form.conuass ? Number(form.conuass) : null, department: form.department.trim() }) });
+      } else {
+        r = await fetch(`/api/bff/api/v1/iam/lecturers/import`, { method: "POST", headers, body: JSON.stringify({ rows: [{
+          pno: form.pno.trim(), full_names: `${form.given.trim()} ${form.surname.trim()}`, sex: form.sex,
+          department: form.department.trim(), present_rank: form.rank.trim(), phone: form.phone.trim(), conuass: form.conuass, email: form.email.trim() }] }) });
+      }
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!edit && j && Number(j.no_department) > 0) {
+        setProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Create the department first (Department upload), or check the name." });
+        return;
+      }
+      setForm(null);
+      setSaveMsg(edit ? "Staff member updated." : "Staff member added.");
+      router.refresh();
+    } finally { setBusy(false); }
+  }
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -214,14 +260,16 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
       <Panel title="Teaching staff on record" right={`${staff.length} lecturer${staff.length === 1 ? "" : "s"}`}>
         <PBody>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id or department" style={{ maxWidth: 340 }} />
+            <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id or department" style={{ maxWidth: 300 }} />
+            {may ? <Btn kind="primary" onClick={openAdd}>Add staff</Btn> : null}
             {may && sel.size ? <Btn kind="urgent" disabled={busy} onClick={() => void del()}>{busy ? "Removing…" : `Delete selected (${sel.size})`}</Btn> : null}
             {sel.size ? <Btn kind="ghost" onClick={() => setSel(new Set())}>Clear selection</Btn> : null}
           </div>
         </PBody>
         {delMsg ? <PBody><Note kind="ok" title="Lecturers removed">{delMsg}</Note></PBody> : null}
+        {saveMsg ? <PBody><Note kind="ok" title="Saved">{saveMsg}</Note></PBody> : null}
         {shown.length ? (
-          <DTable cols={[...(may ? ["|mid"] : []), "Staff id", "Name", "Department", "Rank", "Sign-in"]} rows={shown.slice(0, 500).map((s) => [
+          <DTable cols={[...(may ? ["|mid"] : []), "Staff id", "Name", "Department", "Rank", "Sign-in", ...(may ? ["|num"] : [])]} rows={shown.slice(0, 500).map((s) => [
             ...(may ? [<input type="checkbox" key="x" checked={sel.has(s.id)} onChange={() => toggle(s.id)} aria-label={`Select ${s.name}`} />] : []),
             <span className="tnum" key="i" style={{ fontWeight: 700 }}>{s.staff_number ?? "—"}</span>,
             <span key="n">{s.name}{s.sex ? <span className="sub2"> · {s.sex}</span> : null}</span>,
@@ -230,8 +278,9 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
             s.has_signin
               ? (s.last_sign_in_at ? <Pil kind="ok" key="s">Active</Pil> : s.must_change ? <Pil kind="info" key="s">First password set</Pil> : <Pil kind="ok" key="s">Issued</Pil>)
               : <Pil kind="grey" key="s">No sign-in</Pil>,
+            ...(may ? [<Btn key="e" kind="ghost" onClick={() => openEdit(s)}>Edit</Btn>] : []),
           ])} />
-        ) : <PBody><div className="sub2">{staff.length ? "No staff match that search." : "No teaching staff on record yet. Upload the list above."}</div></PBody>}
+        ) : <PBody><div className="sub2">{staff.length ? "No staff match that search." : "No teaching staff on record yet. Upload the list above, or add one."}</div></PBody>}
         {may && shown.length ? (
           <PBody><label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }} className="sub2">
             <input type="checkbox" checked={allShownPicked} onChange={toggleAll} /> Select all {shown.length > 500 ? "(first 500) " : ""}shown
@@ -239,6 +288,34 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         ) : null}
         {shown.length > 500 ? <PBody><div className="sub2">Showing the first 500 of {shown.length}. Narrow the search to find a particular lecturer.</div></PBody> : null}
       </Panel>
+
+      {form ? (
+        <Modal title={form.id ? `Edit ${form.pno || "staff"}` : "Add a staff member"} onClose={() => setForm(null)}
+          foot={<><Btn kind="ghost" onClick={() => setForm(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+            <Btn kind="primary" disabled={busy || !form.surname.trim() || !form.given.trim() || !form.department.trim() || (!form.id && !form.pno.trim())} onClick={() => void saveStaff()}>{busy ? "Saving…" : form.id ? "Save changes" : "Add staff"}</Btn></>}>
+          {problem ? <ProblemNotice problem={problem} /> : null}
+          <div className="sub2" style={{ marginBottom: 10 }}>
+            {form.id ? "The staff id and sign-in are not changed here. Changing the department moves the lecturer office to the new one." : "The staff id becomes P<number>, and is the username and first password (must be changed on first sign-in). The department must already exist."}
+          </div>
+          <div className="grid grid--2">
+            <Field id="lf-pno" label="Staff number (PNO)" hint={form.id ? "Cannot change here" : "Digits only — becomes P<number>"}>
+              <input id="lf-pno" className="ctl tnum" value={form.pno} disabled={!!form.id} onChange={(e) => setForm({ ...form, pno: e.target.value })} placeholder="29" />
+            </Field>
+            <Field id="lf-dept" label="Department" hint="Code or name">
+              <input id="lf-dept" className="ctl" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} placeholder="ACCOUNTING" />
+            </Field>
+            <Field id="lf-sur" label="Surname"><input id="lf-sur" className="ctl" value={form.surname} onChange={(e) => setForm({ ...form, surname: e.target.value })} /></Field>
+            <Field id="lf-giv" label="Given names"><input id="lf-giv" className="ctl" value={form.given} onChange={(e) => setForm({ ...form, given: e.target.value })} /></Field>
+            <Field id="lf-sex" label="Sex">
+              <select id="lf-sex" className="ctl" value={form.sex} onChange={(e) => setForm({ ...form, sex: e.target.value })}><option value="">—</option><option value="M">M</option><option value="F">F</option></select>
+            </Field>
+            <Field id="lf-rank" label="Present rank"><input id="lf-rank" className="ctl" value={form.rank} onChange={(e) => setForm({ ...form, rank: e.target.value })} placeholder="PROFESSOR" /></Field>
+            <Field id="lf-phone" label="Phone"><input id="lf-phone" className="ctl tnum" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+            <Field id="lf-conuass" label="CONUASS"><input id="lf-conuass" className="ctl tnum" value={form.conuass} inputMode="numeric" onChange={(e) => setForm({ ...form, conuass: e.target.value })} placeholder="7" /></Field>
+            <Field id="lf-email" label="Email"><input id="lf-email" className="ctl" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+          </div>
+        </Modal>
+      ) : null}
     </>
   );
 }

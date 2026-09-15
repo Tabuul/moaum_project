@@ -87,6 +87,24 @@ class AccountsController {
                 .param("ids", body.ids().toArray(UUID[]::new)).query().singleRow();
     }
 
+    public record EditLecturer(@NotBlank String surname, @NotBlank String givenNames, String email, String phone,
+                               String sex, String rank, Integer conuass, @NotBlank String department) {
+    }
+
+    /** edit one lecturer: names, contact, sex, rank, CONUASS and home department. See iam.update_lecturer (V140). */
+    @PutMapping("/lecturers/{id}")
+    @PreAuthorize(CREDENTIALS)
+    @Transactional
+    Map<String, Object> updateLecturer(@PathVariable UUID id, @Valid @RequestBody EditLecturer b) {
+        jdbc.sql("SELECT iam.update_lecturer(:id, :sn, :gn, :em, :ph, :sx, :rk, :cn, :dp)")
+                .param("id", id).param("sn", b.surname()).param("gn", b.givenNames())
+                .param("em", b.email(), java.sql.Types.VARCHAR).param("ph", b.phone(), java.sql.Types.VARCHAR)
+                .param("sx", b.sex(), java.sql.Types.VARCHAR).param("rk", b.rank(), java.sql.Types.VARCHAR)
+                .param("cn", b.conuass(), java.sql.Types.INTEGER).param("dp", b.department())
+                .query().singleRow();
+        return Map.of("id", id, "updated", true);
+    }
+
     /** the teaching staff on record — every person holding the lecturer office, with their home
      *  department, rank and whether a sign-in has been issued. Read after an upload to confirm it. */
     @GetMapping("/lecturers")
@@ -94,8 +112,9 @@ class AccountsController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> lecturers(@RequestParam(required = false) String q) {
         return jdbc.sql("""
-                SELECT p.id, p.staff_number, trim(p.surname || ', ' || p.given_names) AS name, p.email, p.phone,
-                       sr.present_rank, sr.sex, sr.conuass_step,
+                SELECT p.id, p.staff_number, trim(p.surname || ', ' || p.given_names) AS name,
+                       p.surname, p.given_names, p.email, p.phone,
+                       sr.present_rank, sr.sex, sr.conuass_step, sr.home_department AS home_dept_code,
                        coalesce(hd.name, sr.home_department) AS home_department,
                        (SELECT string_agg(DISTINCT dd.name, ', ' ORDER BY dd.name)
                           FROM iam.office_assignment a LEFT JOIN ref.department dd ON dd.code = a.scope_id
