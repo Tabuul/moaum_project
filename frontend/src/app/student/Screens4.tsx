@@ -45,7 +45,7 @@ export function ResultsScreen({ r }: { r: Results }) {
         </Note>
       ) : (
         <Note kind="ok" title={`All ${latest.rows.length} courses are published${live[0]?.senate_minute ? ` under minute ${live[0].senate_minute}` : ""}`}>
-          Released {onDay(live[0]?.published_at)}. Your statement of results is available below.
+          Released {onDay(live[0]?.published_at)}. Your semester results are available below.
         </Note>
       )}
       {r.clearsResults !== false ? (
@@ -65,7 +65,7 @@ export function ResultsScreen({ r }: { r: Results }) {
                 return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <b className="tnum" key="s">{c.total}</b>, <b key="g" style={{ color: GRADE_COLOUR[c.grade ?? ""] ?? "var(--ink)" }}>{c.grade}</b>, <span className="tnum" key="p">{c.points}</span>, <Pil kind="ok" key="w">Published</Pil>, <span className="sub2" key="h">{c.senate_minute ?? "—"}</span>];
               })} />
               <div style={{ padding: "0 16px 16px", display: "flex", gap: 9, flexWrap: "wrap" }}>
-                {live.length ? <Link href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`} className="btn btn--primary">Statement of results</Link> : null}
+                {live.length ? <Link href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`} className="btn btn--primary">Semester Results</Link> : null}
                 <Btn kind="ghost" disabled title="Arrives with the results desk">Query a mark</Btn>
                 <Btn kind="ghost" disabled title="Arrives with the credentials module">Official transcript</Btn>
               </div>

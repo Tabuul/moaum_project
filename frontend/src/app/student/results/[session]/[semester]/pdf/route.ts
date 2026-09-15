@@ -35,7 +35,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ session: s
   // column anchors (left-aligned text at each x)
   const cUnit = R - 210, cScore = R - 155, cGrade = R - 95, cPoint = R - 40;
 
-  let y = brandHeader(p, L, "Statement of Results · Exams & Records");
+  let y = brandHeader(p, L, "Semester Results · Exams & Records");
   y -= 4;
 
   // ── candidate block: two columns ──────────────────────────────────────────
@@ -101,6 +101,15 @@ export async function GET(_: Request, { params }: { params: Promise<{ session: s
   });
   y -= bh + 12;
 
+  // ── the academic summary line: this semester, then cumulative ──────────────
+  if (sem) {
+    p.text(L, y, "SUMMARY", 7.5, true, [0.42, 0.42, 0.42]);
+    const dash = (v: number | null | undefined) => (v == null ? "-" : String(v));
+    const line = `CUR ${sem.cur}   CUE ${sem.cue}   WGP ${sem.wgp}   GPA ${dash(sem.gpa)}       TCR ${sem.tcr}   TCE ${sem.tce}   TWGP ${sem.twgp}   LCGPA ${dash(sem.lcgpa)}   CGPA ${dash(sem.cgpa)}`;
+    p.text(L + 58, y, line, 8.5, true, [0.1, 0.1, 0.1]);
+    y -= 22;
+  }
+
   // ── grading key ───────────────────────────────────────────────────────────
   p.text(L, y, "GRADING", 7.5, true, [0.42, 0.42, 0.42]);
   p.text(L + 60, y, "A 70-100 (5)   B 60-69 (4)   C 50-59 (3)   D 45-49 (2)   E 40-44 (1)   F 0-39 (0)", 8.5, false, [0.25, 0.25, 0.25]);
@@ -112,6 +121,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ session: s
   p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())}`, 7.5, false, [0.45, 0.45, 0.45]);
   p.text(cPoint - 80, 34, x.matricNo ?? "", 7.5, false, [0.45, 0.45, 0.45]);
 
-  const bytes = pdf([p], `Statement of Results ${session} ${semester}`);
-  return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="statement-of-results-${session.replace("/", "-")}-${semester}.pdf"` } });
+  const bytes = pdf([p], `Semester Results ${session} ${semester}`);
+  return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="semester-results-${session.replace("/", "-")}-${semester}.pdf"` } });
 }
