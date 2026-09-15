@@ -74,6 +74,35 @@ class AccountsController {
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
+    /** the teaching staff on record — every person holding the lecturer office, with their home
+     *  department, rank and whether a sign-in has been issued. Read after an upload to confirm it. */
+    @GetMapping("/lecturers")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> lecturers(@RequestParam(required = false) String q) {
+        return jdbc.sql("""
+                SELECT p.id, p.staff_number, trim(p.surname || ', ' || p.given_names) AS name, p.email, p.phone,
+                       sr.present_rank, sr.sex, sr.conuass_step,
+                       coalesce(hd.name, sr.home_department) AS home_department,
+                       (SELECT string_agg(DISTINCT dd.name, ', ' ORDER BY dd.name)
+                          FROM iam.office_assignment a LEFT JOIN ref.department dd ON dd.code = a.scope_id
+                         WHERE a.person_id = p.id AND a.office_code = 'lecturer' AND a.scope_kind = 'department'
+                           AND (a.valid_to IS NULL OR a.valid_to >= current_date)) AS departments,
+                       (c.person_id IS NOT NULL) AS has_signin, coalesce(c.must_change, false) AS must_change,
+                       c.username, c.last_sign_in_at
+                  FROM iam.person p
+                  LEFT JOIN hrm.staff_record sr ON sr.person_id = p.id
+                  LEFT JOIN ref.department hd ON hd.code = sr.home_department
+                  LEFT JOIN iam.credential c ON c.person_id = p.id
+                 WHERE p.ended_on IS NULL
+                   AND EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = p.id AND a.office_code = 'lecturer'
+                                AND a.scope_kind = 'department' AND (a.valid_to IS NULL OR a.valid_to >= current_date))
+                   AND (:q::text IS NULL OR p.surname ILIKE '%' || :q || '%' OR p.given_names ILIKE '%' || :q || '%'
+                        OR p.staff_number ILIKE '%' || :q || '%')
+                 ORDER BY p.surname, p.given_names
+                """).param("q", q == null || q.isBlank() ? null : q.trim()).query().listOfRows();
+    }
+
     @GetMapping("/persons")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
