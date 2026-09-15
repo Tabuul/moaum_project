@@ -16,6 +16,18 @@ import { Gate, Gates, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
 
+/** the academic type shown on the form: GST, Elective or Core (Compulsory/Required → Core) */
+function courseType(e: { kind?: string; entryType?: string }): string {
+  const k = (e.kind ?? "").toLowerCase();
+  if (k === "gst") return "GST";
+  if (k === "elective") return "Elective";
+  if (k === "compulsory" || k === "required") return "Core";
+  const t = (e.entryType ?? "").toUpperCase();
+  if (t === "GST") return "GST";
+  if (t === "ELECTIVE") return "Elective";
+  return "Core";
+}
+
 export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
@@ -133,7 +145,6 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
       </Note>
     );
   }
-  const type = (t: string) => t === "CARRYOVER" ? ["C/OVER", "var(--red-ink)"] : t === "ELECTIVE" ? ["ELECT", "var(--muted)"] : t === "GST" ? ["GST", "var(--muted)"] : t === "BORROWED" ? ["BORROW", "var(--muted)"] : ["CORE", "var(--muted)"];
   return (
     <>
       <div className="notice notice--ok"><Tick size={18} colour="var(--green-ink)" /><div><p style={{ color: "var(--green-ink)", fontWeight: 600 }}>Approved by your Head of Department on {onDay(reg.approved_at)}</p></div></div>
@@ -151,11 +162,22 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="kv"><span className="k">Level</span><span className="v">{reg.level}</span></div>
           <div className="kv"><span className="k">Session</span><span className="v tnum">{v.session} · semester {v.semester}</span></div>
         </div>
-        <div className="tablewrap"><table style={{ minWidth: 420 }}>
-          <thead><tr><th style={{ background: "var(--chrome)", color: "#fff" }}>Course</th><th className="mid" style={{ background: "var(--chrome)", color: "#fff" }}>Unit</th><th className="num" style={{ background: "var(--chrome)", color: "#fff" }}>Type</th></tr></thead>
+        <div className="tablewrap"><table style={{ minWidth: 520 }}>
+          <thead><tr>
+            {["Course code", "Course title", "Lecturer"].map((h) => <th key={h} style={{ background: "var(--chrome)", color: "#fff" }}>{h}</th>)}
+            <th className="mid" style={{ background: "var(--chrome)", color: "#fff" }}>Unit</th>
+            <th className="num" style={{ background: "var(--chrome)", color: "#fff" }}>Type</th>
+          </tr></thead>
           <tbody>
-            {reg.entries.map((e) => { const [t, c] = type(e.entryType); return <tr key={e.offeringId}><td className="tnum">{e.courseCode} {e.title}</td><td className="mid tnum">{e.units}</td><td className="num" style={{ fontSize: 11, fontWeight: 600, color: c }}>{t}</td></tr>; })}
-            <tr style={{ background: "var(--bg)" }}><td style={{ fontWeight: 700 }}>TOTAL CREDIT UNITS</td><td className="mid tnum" style={{ fontWeight: 700, fontSize: 14 }}>{reg.units}</td><td /></tr>
+            {reg.entries.map((e) => { const co = e.entryType === "CARRYOVER"; return (
+              <tr key={e.offeringId}>
+                <td className="tnum" style={{ fontWeight: 600 }}>{e.courseCode}{co ? <span style={{ color: "var(--red-ink)", fontWeight: 700 }}> · C/O</span> : null}</td>
+                <td>{e.title}</td>
+                <td className="sub2">{e.lecturer ?? "—"}</td>
+                <td className="mid tnum">{e.units}</td>
+                <td className="num" style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)" }}>{courseType(e)}</td>
+              </tr>); })}
+            <tr style={{ background: "var(--bg)" }}><td style={{ fontWeight: 700 }} colSpan={3}>TOTAL CREDIT UNITS</td><td className="mid tnum" style={{ fontWeight: 700, fontSize: 14 }}>{reg.units}</td><td /></tr>
           </tbody>
         </table></div>
         <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 18, flexWrap: "wrap" }}>
