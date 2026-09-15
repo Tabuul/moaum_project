@@ -822,11 +822,6 @@ export const MENUS: Record<string, Menu> = {
             "label": "Applicants (post-UTME)"
           },
           {
-            "id": "t/merit",
-            "icon": "chart",
-            "label": "Merit list"
-          },
-          {
             "id": "t/putme",
             "icon": "doc",
             "label": "Post-UTME scores"
@@ -835,6 +830,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/postutme",
             "icon": "chart",
             "label": "Computed Post-UTME"
+          },
+          {
+            "id": "t/merit",
+            "icon": "chart",
+            "label": "Merit list"
           },
           {
             "id": "t/candidatedata",
