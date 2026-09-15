@@ -42,11 +42,46 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
   const [problem, setProblem] = useState<Problem | null>(null);
   const [tally, setTally] = useState<Tally | null>(null);
   const [search, setSearch] = useState("");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [delMsg, setDelMsg] = useState<string | null>(null);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q ? staff.filter((s) => s.name.toLowerCase().includes(q) || (s.staff_number ?? "").toLowerCase().includes(q) || (s.departments ?? "").toLowerCase().includes(q)) : staff;
   }, [staff, search]);
+
+  function toggle(id: string) {
+    setSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  const shownIds = useMemo(() => shown.slice(0, 500).map((s) => s.id), [shown]);
+  const allShownPicked = shownIds.length > 0 && shownIds.every((id) => sel.has(id));
+  function toggleAll() {
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (allShownPicked) shownIds.forEach((id) => n.delete(id));
+      else shownIds.forEach((id) => n.add(id));
+      return n;
+    });
+  }
+
+  async function del() {
+    const ids = [...sel];
+    if (!ids.length) return;
+    if (!window.confirm(`Remove ${ids.length} lecturer${ids.length === 1 ? "" : "s"}? A lecturer who already teaches a course is kept. This cannot be undone.`)) return;
+    setBusy(true); setDelMsg(null); setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/iam/lecturers/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${ids.length} lecturer(s) removed`) },
+        body: JSON.stringify({ ids }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      setDelMsg(`${j.deleted ?? 0} lecturer(s) removed${j.skipped ? ` · ${j.skipped} kept (already teaching or on record)` : ""}.`);
+      setSel(new Set());
+      router.refresh();
+    } finally { setBusy(false); }
+  }
 
   function downloadTemplate() {
     const blob = buildXlsx(
@@ -178,10 +213,16 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
 
       <Panel title="Teaching staff on record" right={`${staff.length} lecturer${staff.length === 1 ? "" : "s"}`}>
         <PBody>
-          <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id or department" style={{ maxWidth: 340 }} />
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id or department" style={{ maxWidth: 340 }} />
+            {may && sel.size ? <Btn kind="urgent" disabled={busy} onClick={() => void del()}>{busy ? "Removing…" : `Delete selected (${sel.size})`}</Btn> : null}
+            {sel.size ? <Btn kind="ghost" onClick={() => setSel(new Set())}>Clear selection</Btn> : null}
+          </div>
         </PBody>
+        {delMsg ? <PBody><Note kind="ok" title="Lecturers removed">{delMsg}</Note></PBody> : null}
         {shown.length ? (
-          <DTable cols={["Staff id", "Name", "Department", "Rank", "Sign-in"]} rows={shown.slice(0, 500).map((s) => [
+          <DTable cols={[...(may ? ["|mid"] : []), "Staff id", "Name", "Department", "Rank", "Sign-in"]} rows={shown.slice(0, 500).map((s) => [
+            ...(may ? [<input type="checkbox" key="x" checked={sel.has(s.id)} onChange={() => toggle(s.id)} aria-label={`Select ${s.name}`} />] : []),
             <span className="tnum" key="i" style={{ fontWeight: 700 }}>{s.staff_number ?? "—"}</span>,
             <span key="n">{s.name}{s.sex ? <span className="sub2"> · {s.sex}</span> : null}</span>,
             <span key="d">{s.departments ?? s.home_department ?? "—"}</span>,
@@ -191,6 +232,11 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
               : <Pil kind="grey" key="s">No sign-in</Pil>,
           ])} />
         ) : <PBody><div className="sub2">{staff.length ? "No staff match that search." : "No teaching staff on record yet. Upload the list above."}</div></PBody>}
+        {may && shown.length ? (
+          <PBody><label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }} className="sub2">
+            <input type="checkbox" checked={allShownPicked} onChange={toggleAll} /> Select all {shown.length > 500 ? "(first 500) " : ""}shown
+          </label></PBody>
+        ) : null}
         {shown.length > 500 ? <PBody><div className="sub2">Showing the first 500 of {shown.length}. Narrow the search to find a particular lecturer.</div></PBody> : null}
       </Panel>
     </>

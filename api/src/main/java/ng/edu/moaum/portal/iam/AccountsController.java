@@ -74,6 +74,19 @@ class AccountsController {
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
+    public record Ids(@jakarta.validation.constraints.NotEmpty List<UUID> ids) {
+    }
+
+    /** remove selected lecturers (person + sign-in + lecturer grants + establishment) when they carry
+     *  no teaching history; one that already teaches an offering is kept. See iam.delete_lecturers (V138). */
+    @PostMapping("/lecturers/delete")
+    @PreAuthorize(CREDENTIALS)
+    @Transactional
+    Map<String, Object> deleteLecturers(@Valid @RequestBody Ids body) {
+        return jdbc.sql("SELECT * FROM iam.delete_lecturers(:ids)")
+                .param("ids", body.ids().toArray(UUID[]::new)).query().singleRow();
+    }
+
     /** the teaching staff on record — every person holding the lecturer office, with their home
      *  department, rank and whether a sign-in has been issued. Read after an upload to confirm it. */
     @GetMapping("/lecturers")
