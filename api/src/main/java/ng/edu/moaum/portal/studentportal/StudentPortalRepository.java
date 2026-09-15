@@ -183,8 +183,11 @@ class StudentPortalRepository {
         return jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', c.title, 'units', e.units,
+                               'kind', c.kind, 'courseSemester', c.semester,
+                               'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                          LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                          WHERE e.registration_id = r.id) AS entries
                   FROM registration.course_registration r WHERE r.student_id = :s AND r.session = :ses AND r.semester = :sem
                 """).param("s", student).param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst();
@@ -195,8 +198,11 @@ class StudentPortalRepository {
         return jdbc.sql("""
                 SELECT r.id, r.session, r.semester, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('courseCode', c.code, 'title', c.title, 'units', e.units,
+                               'kind', c.kind, 'courseSemester', c.semester,
+                               'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                          LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                          WHERE e.registration_id = r.id) AS entries
                   FROM registration.course_registration r WHERE r.student_id = :s
                  ORDER BY r.session DESC, r.semester
