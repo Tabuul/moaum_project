@@ -15,7 +15,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   const [me, listing] = await Promise.all([api<Me>("/api/v1/iam/me"), api<SheetListing>(`/api/v1/results/sheets?${scopeParams(scope)}`)]);
   return (
     <Shell route="t/pipeline" me={me.ok ? me.data : null}>
-      {listing.ok ? <Pipeline scope={scope} structure={structure} sessions={sessions} listing={listing.data} at={at} /> : <ProblemNotice problem={listing.problem} />}
+      {listing.ok ? <Pipeline scope={scope} structure={structure} sessions={sessions} listing={listing.data} at={at} office={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={listing.problem} />}
     </Shell>
   );
 }

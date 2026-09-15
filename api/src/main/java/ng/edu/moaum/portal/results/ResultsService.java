@@ -125,7 +125,16 @@ public class ResultsService {
     @Transactional(readOnly = true)
     public Sheets.Listing sheets(String fac, String dept, String prog, String course, String session, Integer sem, String stage) {
         AuditContext ctx = AuditContextHolder.current().orElse(null);
-        List<Sheets.Row> rows = repo.sheets(fac, dept, prog, course, session, sem, stage);
+        String office = ctx == null ? null : ctx.actorOffice();
+        // acting as a lecturer, you see only the sheets of the courses assigned to you — never the whole faculty
+        UUID mine = "lecturer".equals(office) ? ctx.actorId() : null;
+        // acting as a Head of Department, you see only your own department (and the programmes under it)
+        if ("hod".equals(office)) {
+            String hodDept = repo.officeDepartment(ctx.actorId(), "hod");
+            fac = null;                                    // the department fixes the faculty
+            dept = hodDept != null ? hodDept : "__none__"; // no department grant → nothing to show
+        }
+        List<Sheets.Row> rows = repo.sheets(fac, dept, prog, course, session, sem, stage, mine);
         List<Sheets.Listed> out = new ArrayList<>();
         long approved = 0;
         long entry = 0;
@@ -137,7 +146,7 @@ public class ResultsService {
                 entry++;
             }
         }
-        long expected = repo.offeringsWithLecturer(fac, dept, session, sem);
+        long expected = repo.offeringsWithLecturer(fac, dept, session, sem, mine);
         return new Sheets.Listing(new Sheets.Tiles(expected, approved, rows.size() - approved - entry, Math.max(entry, expected - rows.size() + entry)),
                 out, desk(ctx == null ? null : ctx.actorOffice()));
     }

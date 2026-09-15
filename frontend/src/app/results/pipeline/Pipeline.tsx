@@ -22,7 +22,9 @@ export const RP_STAGES: [string, string, string, string, string][] = [
   ["PUBLISHED", "Published", "Nobody — the candidates", "The result is visible to its candidates, statements can be issued, the transcript compiler sees the set, and the query window opens.", "The Senate minute on the face of the set."],
 ];
 
-export function Pipeline({ scope, structure, sessions, listing, at }: { scope: Scope; structure: ScopeStructure; sessions: string[]; listing: SheetListing; at: number }) {
+export function Pipeline({ scope, structure, sessions, listing, at, office }: { scope: Scope; structure: ScopeStructure; sessions: string[]; listing: SheetListing; at: number; office?: string | null }) {
+  // a lecturer sees only their own courses; a HOD only their department (and the programmes under it)
+  const hide: ("fac" | "dept" | "prog" | "level")[] = office === "lecturer" ? ["fac", "dept", "prog", "level"] : office === "hod" ? ["fac", "dept"] : [];
   const router = useRouter();
   const s = RP_STAGES[at];
   const t = listing.tiles;
@@ -30,7 +32,7 @@ export function Pipeline({ scope, structure, sessions, listing, at }: { scope: S
   const counts = RP_STAGES.map(([code]) => listing.sheets.filter((x) => x.stage === code).length);
   return (
     <>
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={t.expected} />
+      <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={t.expected} hide={hide} />
       <Note kind="info" title="One journey, and every stage has a name on it">
         A result is not a file that appears at the Registry in December. It is a record that starts when a student registers a course and ends on a transcript, and at every point in between there is exactly one office that holds it and one thing that has to be true before it moves. Choose a stage below to see which.
       </Note>

@@ -76,6 +76,7 @@ export function ScopeBar({
   of,
   withCourse,
   ceiling = {},
+  hide = [],
   onExport,
 }: {
   scope: Scope;
@@ -88,6 +89,8 @@ export function ScopeBar({
   of: number;
   withCourse?: boolean;
   ceiling?: Ceiling;
+  /** selectors to omit entirely — e.g. a lecturer or HOD is bound to their own courses/department */
+  hide?: ("fac" | "dept" | "prog" | "level")[];
   onExport?: () => void;
 }) {
   const router = useRouter();
@@ -130,10 +133,10 @@ export function ScopeBar({
   return (
     <div className="scope">
       <div className="scope__row">
-        <Sel id="sc-fac" label="Faculty" opts={structure.faculties.map((x) => [x.code, x.name])} value={s.fac} disabled={!!ceiling.fac} anyLabel="All faculties" onChange={(v) => set({ fac: v })} />
-        <Sel id="sc-dept" label="Department" opts={f ? f.departments.map((x) => [x.code, x.name]) : []} value={s.dept} disabled={!!ceiling.dept || !f} anyLabel={f ? "All departments" : "Choose a faculty first"} onChange={(v) => set({ dept: v })} />
-        <Sel id="sc-prog" label="Programme" opts={d ? d.programmes.map((x) => [x.code, x.name]) : []} value={s.prog} disabled={!!ceiling.prog || !d} anyLabel={d ? "All programmes" : "Choose a department first"} onChange={(v) => set({ prog: v })} />
-        <Sel id="sc-level" label="Level" opts={LEVELS.map((l) => [l, `${l} Level`])} value={s.level} anyLabel="All levels" onChange={(v) => set({ level: v })} />
+        {hide.includes("fac") ? null : <Sel id="sc-fac" label="Faculty" opts={structure.faculties.map((x) => [x.code, x.name])} value={s.fac} disabled={!!ceiling.fac} anyLabel="All faculties" onChange={(v) => set({ fac: v })} />}
+        {hide.includes("dept") ? null : <Sel id="sc-dept" label="Department" opts={f ? f.departments.map((x) => [x.code, x.name]) : []} value={s.dept} disabled={!!ceiling.dept || !f} anyLabel={f ? "All departments" : "Choose a faculty first"} onChange={(v) => set({ dept: v })} />}
+        {hide.includes("prog") ? null : <Sel id="sc-prog" label="Programme" opts={d ? d.programmes.map((x) => [x.code, x.name]) : []} value={s.prog} disabled={!!ceiling.prog || !d} anyLabel={d ? "All programmes" : "Choose a department first"} onChange={(v) => set({ prog: v })} />}
+        {hide.includes("level") ? null : <Sel id="sc-level" label="Level" opts={LEVELS.map((l) => [l, `${l} Level`])} value={s.level} anyLabel="All levels" onChange={(v) => set({ level: v })} />}
         {withCourse ? (
           <Sel id="sc-course" label="Course" opts={courseOpts} value={s.course} disabled={!p} anyLabel={p ? "All courses" : "Choose a programme first"} onChange={(v) => set({ course: v })} />
         ) : null}

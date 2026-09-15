@@ -37,7 +37,7 @@ class ResultsRepository {
         this.jdbc = jdbc;
     }
 
-    List<Sheets.Row> sheets(String fac, String dept, String prog, String course, String session, Integer sem, String stage) {
+    List<Sheets.Row> sheets(String fac, String dept, String prog, String course, String session, Integer sem, String stage, UUID mine) {
         return jdbc.sql(SHEET_SELECT + """
                  WHERE (:fac::text IS NULL OR d.faculty_code = :fac)
                    AND (:dept::text IS NULL OR c.dept_code = :dept)
@@ -47,10 +47,11 @@ class ResultsRepository {
                    AND (:session::text IS NULL OR o.session = :session)
                    AND (:sem::int IS NULL OR o.semester = :sem)
                    AND (:stage::text IS NULL OR s.stage = :stage)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine)
                  ORDER BY f.name, d.name, o.course_code
                 """)
                 .param("fac", fac).param("dept", dept).param("prog", prog).param("course", course)
-                .param("session", session).param("sem", sem).param("stage", stage)
+                .param("session", session).param("sem", sem).param("stage", stage).param("mine", mine)
                 .query(Sheets.Row.class).list();
     }
 
@@ -58,14 +59,25 @@ class ResultsRepository {
         return jdbc.sql(SHEET_SELECT + " WHERE s.id = :id").param("id", id).query(Sheets.Row.class).optional();
     }
 
-    long offeringsWithLecturer(String fac, String dept, String session, Integer sem) {
+    /** the department a person holds an office over (e.g. 'hod'), or null — used to scope a HOD to their own */
+    String officeDepartment(UUID person, String office) {
+        return jdbc.sql("""
+                SELECT scope_id FROM iam.office_assignment
+                 WHERE person_id = :p AND office_code = :o AND scope_kind = 'department'
+                   AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                 ORDER BY valid_from DESC LIMIT 1
+                """).param("p", person).param("o", office).query(String.class).optional().orElse(null);
+    }
+
+    long offeringsWithLecturer(String fac, String dept, String session, Integer sem, UUID mine) {
         return jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
                   JOIN ref.department d ON d.code = c.dept_code
                  WHERE o.lecturer_id IS NOT NULL
                    AND (:fac::text IS NULL OR d.faculty_code = :fac) AND (:dept::text IS NULL OR c.dept_code = :dept)
                    AND (:session::text IS NULL OR o.session = :session) AND (:sem::int IS NULL OR o.semester = :sem)
-                """).param("fac", fac).param("dept", dept).param("session", session).param("sem", sem)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine)
+                """).param("fac", fac).param("dept", dept).param("session", session).param("sem", sem).param("mine", mine)
                 .query(Long.class).single();
     }
 
