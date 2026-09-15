@@ -37,6 +37,12 @@ export const REPORTS: ReportSpec[] = [
     offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
   },
   {
+    slug: "registration",
+    title: "Registration & fees return",
+    subtitle: "Not-registered students by faculty and programme, split into fee-blocked and cleared-but-idle",
+    offices: ["academic", "registrar", "dregistrar", "records", "bursar", "dvc", "vc", "ict", "admin", "super"],
+  },
+  {
     slug: "carryovers",
     title: "Carryover return",
     subtitle: "Outstanding carryovers by faculty, programme and course — the re-sit load, as at today",

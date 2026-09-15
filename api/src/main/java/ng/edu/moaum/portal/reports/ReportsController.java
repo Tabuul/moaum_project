@@ -63,6 +63,35 @@ class ReportsController {
         return Map.of("session", session, "rows", rows, "totals", totals);
     }
 
+    /** Registration cause: the not-registered students per faculty/programme split into fee-blocked
+     *  (the Bursary has not cleared them) vs cleared-but-idle (cleared, not registered). Guides whether
+     *  the fix is a payment plan or a reminder/window extension. See registration.registration_cause (V143). */
+    @GetMapping("/registration-cause")
+    @PreAuthorize(ENROLMENT_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> registrationCause(@RequestParam String session, @RequestParam(defaultValue = "1") int semester) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT faculty, programme, expected, registered, not_registered, fee_blocked, cleared_idle
+                  FROM registration.registration_cause(:s, :sem)
+                """).param("s", session).param("sem", semester).query().listOfRows();
+        long exp = 0, reg = 0, nr = 0, fb = 0, ci = 0;
+        for (Map<String, Object> r : rows) {
+            exp += ((Number) r.get("expected")).longValue();
+            reg += ((Number) r.get("registered")).longValue();
+            nr += ((Number) r.get("not_registered")).longValue();
+            fb += ((Number) r.get("fee_blocked")).longValue();
+            ci += ((Number) r.get("cleared_idle")).longValue();
+        }
+        boolean inForce = Boolean.TRUE.equals(jdbc.sql("SELECT policy.in_force('clearance', 'UNIVERSITY', current_date) IS NOT NULL").query(Boolean.class).single());
+        Map<String, Object> totals = new java.util.LinkedHashMap<>();
+        totals.put("expected", exp); totals.put("registered", reg); totals.put("not_registered", nr);
+        totals.put("fee_blocked", fb); totals.put("cleared_idle", ci);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session); out.put("semester", semester); out.put("rows", rows);
+        out.put("totals", totals); out.put("schemeInForce", inForce);
+        return out;
+    }
+
     /** Outstanding carryovers, as at now: for every active student, a course whose LATEST published attempt is
      *  an F is still carried; grouped by faculty, programme and course so the office sees the re-sit load. Set-based
      *  (one pass over published sheets), not per-student. */
