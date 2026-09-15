@@ -759,11 +759,6 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admission Main",
         "items": [
           {
-            "id": "t/admissions",
-            "icon": "doc",
-            "label": "Admissions"
-          },
-          {
             "id": "t/admissionsetup",
             "icon": "doc",
             "label": "Admission settings",
@@ -772,23 +767,22 @@ export const MENUS: Record<string, Menu> = {
           {
             "id": "t/capsintake",
             "icon": "box",
-            "label": "JAMB admission lists",
-            "badge": "6"
+            "label": "Upload Applicants/Candidates"
           },
           {
-            "id": "t/applicants",
-            "icon": "user",
-            "label": "Applicants (post-UTME)"
-          },
-          {
-            "id": "t/putme",
-            "icon": "doc",
-            "label": "Post-UTME scores"
+            "id": "t/candidatedata",
+            "icon": "box",
+            "label": "Upload Passport, DOB & O’Level"
           },
           {
             "id": "t/postutme",
             "icon": "chart",
-            "label": "Computed Post-UTME"
+            "label": "Compute PUTME Score"
+          },
+          {
+            "id": "t/putme",
+            "icon": "doc",
+            "label": "PUTME Score"
           },
           {
             "id": "t/merit",
@@ -796,9 +790,14 @@ export const MENUS: Record<string, Menu> = {
             "label": "Merit list"
           },
           {
-            "id": "t/candidatedata",
+            "id": "t/applicants",
             "icon": "user",
-            "label": "Passports, DOB & O’Level"
+            "label": "Report on Post-UTME Registration"
+          },
+          {
+            "id": "t/admissions",
+            "icon": "doc",
+            "label": "Report on Admissions"
           },
           {
             "id": "t/matriculation",
