@@ -19,6 +19,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [preview, setPreview] = useState<Row[] | null>(null);
   const [result, setResult] = useState<Record<string, number> | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
 
   function downloadTemplate() {
     const blob = buildXlsx(
@@ -69,14 +70,33 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     if (!preview) return;
     setBusy(true);
     setProblem(null);
+    setResult(null);
+    const CHUNK = 500;   // a whole file of tens of thousands of rows in one body is refused ("Failed to read request")
+    const totals: Record<string, number> = { rows: 0, cleared: 0, no_student: 0, no_due: 0 };
     try {
-      const r = await fetch("/api/bff/api/v1/finance/legacy-fees", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Old students' school-fees history imported") }, body: JSON.stringify({ rows: preview }) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setResult(j as Record<string, number>);
+      for (let i = 0; i < preview.length; i += CHUNK) {
+        const batch = preview.slice(i, i + CHUNK);
+        setProgress(`Loading ${Math.min(i + batch.length, preview.length).toLocaleString()} of ${preview.length.toLocaleString()} rows…`);
+        const r = await fetch("/api/bff/api/v1/finance/legacy-fees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old students' school-fees history imported: rows ${i + 1}–${i + batch.length}`) },
+          body: JSON.stringify({ rows: batch }),
+        });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
+          setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${totals.cleared.toLocaleString()} payments were settled before this batch was refused. The import is idempotent — fix and upload again.` });
+          return;
+        }
+        const c = (j ?? {}) as Record<string, number>;
+        totals.rows += c.rows ?? 0; totals.cleared += c.cleared ?? 0;
+        totals.no_student += c.no_student ?? 0; totals.no_due += c.no_due ?? 0;
+      }
+      setResult(totals);
       setPreview(null);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -131,8 +151,9 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               </table>
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-              <button type="button" className="btn btn--primary" disabled={busy || !may} onClick={() => void upload()}>{busy ? "Loading…" : `Load ${preview.length} rows`}</button>
+              <button type="button" className="btn btn--primary" disabled={busy || !may} onClick={() => void upload()}>{busy ? (progress ?? "Loading…") : `Load ${preview.length.toLocaleString()} rows`}</button>
               <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setPreview(null)}>Cancel</button>
+              {busy && progress ? <span className="sub2">{progress}</span> : null}
             </div>
           </PBody>
         </Panel>
