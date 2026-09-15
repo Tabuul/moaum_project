@@ -61,6 +61,20 @@ class PlatformController {
         return json.readValue(result, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
+    public record ConfirmIn(@NotBlank @Size(max = 20) String confirm) {
+    }
+
+    /** Remove only the demo (db/demo.sql) operational data — demo students, DMO courses and demo
+     *  candidates — keeping the demo staff logins and every real upload. Guarded by the words REMOVE DEMO;
+     *  the database function runs it in one transaction. */
+    @PostMapping("/remove-demo")
+    @PreAuthorize("hasAnyAuthority('OFFICE_super','OFFICE_ict')")
+    @Transactional
+    Map<String, Object> removeDemo(@Valid @RequestBody ConfirmIn body) {
+        String result = jdbc.sql("SELECT platform.remove_demo_data(:c)").param("c", body.confirm()).query(String.class).single();
+        return json.readValue(result, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
     @GetMapping("/status")
     Map<String, Object> status() {
         Map<String, Object> body = new LinkedHashMap<>();

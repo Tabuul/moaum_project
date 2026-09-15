@@ -20,8 +20,32 @@ export function ResetData({ office }: { office: string | null }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [demoConfirm, setDemoConfirm] = useState("");
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoDone, setDemoDone] = useState<string | null>(null);
 
   if (!may) return null;
+
+  async function removeDemo() {
+    setDemoBusy(true);
+    setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/platform/remove-demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Demo data removed, keeping demo logins") },
+        body: JSON.stringify({ confirm: demoConfirm.trim() }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      const c = j as Record<string, number>;
+      setDemoDone(`Removed ${c.demo_students ?? 0} demo student(s), ${c.demo_courses ?? 0} demo course(s) and ${c.demo_candidates ?? 0} demo candidate(s). The demo staff logins and all real data are kept.`);
+      setDemoOpen(false); setDemoConfirm("");
+      router.refresh();
+    } finally {
+      setDemoBusy(false);
+    }
+  }
 
   async function run() {
     setBusy(true);
@@ -55,8 +79,16 @@ export function ResetData({ office }: { office: string | null }) {
         </Note>
         {problem ? <ProblemNotice problem={problem} /> : null}
         {done ? <Note kind="ok" title="Uploaded data cleared">{done}</Note> : null}
-        <div style={{ marginTop: 6 }}>
-          <Btn kind="urgent" onClick={() => { setOpen(true); setConfirm(""); setReason(""); setProblem(null); setDone(null); }}>Reset all uploaded data…</Btn>
+        {demoDone ? <Note kind="ok" title="Demo data removed">{demoDone}</Note> : null}
+        <Note kind="info" title="Just clearing the demo? Use the targeted removal">
+          <b>Remove demo data only</b> deletes the walkthrough seed — the demo students (surname DEMO), the
+          &ldquo;DMO&rdquo; courses and the demo JAMB candidates — and <b>keeps</b> the demo staff sign-ins
+          (demo.bursar, demo.hod &hellip;) and every real record you have uploaded. Use this instead of the full reset
+          when your real data should stay.
+        </Note>
+        <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn kind="primary" onClick={() => { setDemoOpen(true); setDemoConfirm(""); setProblem(null); setDemoDone(null); }}>Remove demo data only…</Btn>
+          <Btn kind="urgent" onClick={() => { setOpen(true); setConfirm(""); setReason(""); setProblem(null); setDone(null); }}>Reset ALL uploaded data…</Btn>
         </div>
       </PBody>
       {open ? (
@@ -69,6 +101,18 @@ export function ResetData({ office }: { office: string | null }) {
           </Note>
           <Field id="rd-confirm" label="Type RESET to confirm" hint="In capitals"><input id="rd-confirm" className="ctl tnum" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="RESET" autoComplete="off" /></Field>
           <Field id="rd-reason" label="Reason" hint="Recorded on the audit trail in your name"><input id="rd-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Clearing the test load before go-live" /></Field>
+        </Modal>
+      ) : null}
+      {demoOpen ? (
+        <Modal title="Remove demo data only" sub="Keeps demo logins and all real data" onClose={() => setDemoOpen(false)}
+          foot={<><Btn kind="ghost" onClick={() => setDemoOpen(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+            <Btn kind="primary" disabled={demoBusy || demoConfirm.trim().toUpperCase() !== "REMOVE DEMO"} onClick={() => void removeDemo()}>{demoBusy ? "Removing…" : "Remove demo data"}</Btn></>}>
+          <Note kind="info" title="What this removes">
+            Only the db/demo.sql seed: the demo students (surname DEMO), the &ldquo;DMO&rdquo; courses and their
+            offerings, and the demo JAMB candidates, with the records hung on them. The demo staff sign-ins and every
+            real student, course, payment and result you uploaded are kept. It runs in one transaction.
+          </Note>
+          <Field id="dd-confirm" label="Type REMOVE DEMO to confirm" hint="In capitals"><input id="dd-confirm" className="ctl tnum" value={demoConfirm} onChange={(e) => setDemoConfirm(e.target.value)} placeholder="REMOVE DEMO" autoComplete="off" /></Field>
         </Modal>
       ) : null}
     </Panel>
