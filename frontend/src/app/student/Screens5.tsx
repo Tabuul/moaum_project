@@ -112,7 +112,7 @@ export function Carryover({ r }: { r: Results }) {
 
 /* ── examinations (the docket) ── */
 
-export function Exams({ d, s }: { d: Docket; s: Me }) {
+export function Exams({ d }: { d: Docket; s: Me }) {
   const cleared = d.clearsExamination === true;
   const withPapers = d.examSessions.filter((x) => x.papers.length);
   return (
@@ -130,7 +130,11 @@ export function Exams({ d, s }: { d: Docket; s: Me }) {
             <span key="v">{p.venue ?? "—"}</span>,
             !cleared ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Docket ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
           ])} />
-          {cleared ? <div className="card__body"><Btn kind="primary" onClick={() => window.print()}>Print the docket</Btn> <span className="sub2">{s.name} · {s.matricNo}</span></div> : null}
+          {cleared ? <div className="card__body" style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+            <a href={`/student/exams/card/pdf?session=${encodeURIComponent(x.session)}&semester=${x.semester}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download exam card</a>
+            <Btn kind="ghost" onClick={() => window.print()}>Print the docket</Btn>
+            <span className="sub2">The card carries your photograph and a QR the invigilator scans to verify it — it cannot be cloned.</span>
+          </div> : null}
         </Panel>
       ))}
     </>

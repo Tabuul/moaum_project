@@ -19,6 +19,15 @@ export function verifyPath(reference: string, receiptNo: string | null): string 
   return `/verify/receipt/${encodeURIComponent(reference)}?c=${receiptToken(reference, receiptNo)}`;
 }
 
+/** the examination card's check token and the public path its QR opens */
+export function examToken(matricNo: string, session: string, semester: number): string {
+  return createHash("sha256").update(`EXAM|${matricNo}|${session}|${semester}`).digest("hex").slice(0, 12).toUpperCase();
+}
+export function examVerifyPath(matricNo: string, session: string, semester: number): string {
+  const c = examToken(matricNo, session, semester);
+  return `/verify/exam?m=${encodeURIComponent(matricNo)}&s=${encodeURIComponent(session)}&sem=${semester}&c=${c}`;
+}
+
 /** the QR as a monochrome module grid, for drawing into a PDF as filled squares */
 export function qrMatrix(text: string): { size: number; dark: boolean[] } {
   const qr = QRCode.create(text, { errorCorrectionLevel: "M" });

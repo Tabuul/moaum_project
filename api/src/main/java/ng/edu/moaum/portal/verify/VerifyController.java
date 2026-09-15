@@ -78,4 +78,71 @@ class VerifyController {
         out.put("receiptNo", row.get("receipt_no"));
         return out;
     }
+
+    private static String examToken(String matric, String session, int semester) {
+        try {
+            byte[] d = MessageDigest.getInstance("SHA-256")
+                    .digest(("EXAM|" + matric + "|" + session + "|" + semester).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(d.length * 2);
+            for (byte b : d) sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            return sb.substring(0, 12).toUpperCase();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Verify a student's examination card. The card's QR opens the public page, which asks this for
+     * the authoritative permit: the student's name and PHOTO (so the invigilator confirms the face —
+     * anti-impersonation), whether they are cleared for the examination, and the courses on the
+     * approved registration for the session and semester (anti-clone: an edited card is exposed).
+     */
+    @GetMapping("/exam")
+    @Transactional(readOnly = true)
+    Map<String, Object> exam(@RequestParam String matric, @RequestParam String session,
+                             @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT s.id, trim(s.other_names || ' ' || s.surname) AS name, s.matric_no, s.current_level, pg.name AS programme,
+                       finance.clears(s.id, :session, 'EXAMINATION') AS cleared,
+                       (SELECT d.id FROM admissions.application_document d JOIN admissions.application a ON a.id = d.application_id
+                         WHERE a.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL) AS passport_id
+                  FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
+                 WHERE upper(s.matric_no) = upper(:m) LIMIT 1
+                """).param("m", matric).param("session", session).query().listOfRows();
+        if (rows.isEmpty()) { out.put("genuine", false); return out; }
+        Map<String, Object> row = rows.get(0);
+        if (c == null || !examToken(String.valueOf(row.get("matric_no")), session, semester).equalsIgnoreCase(c.trim())) {
+            out.put("genuine", false); return out;
+        }
+        java.util.UUID sid = (java.util.UUID) row.get("id");
+        List<Map<String, Object>> courses = jdbc.sql("""
+                SELECT c.code AS course_code, c.title, e.units, e.entry_type
+                  FROM registration.course_registration r
+                  JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED','APPROVED')
+                  JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                 WHERE r.student_id = :s AND r.session = :session AND r.semester = :sem AND r.status IN ('APPROVED','LOCKED')
+                 ORDER BY c.code
+                """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
+
+        String photo = null;
+        Object pid = row.get("passport_id");
+        if (pid != null) {
+            List<Map<String, Object>> b = jdbc.sql("SELECT encode(content, 'base64') AS b64 FROM admissions.application_document_blob WHERE document_id = :d")
+                    .param("d", pid).query().listOfRows();
+            if (!b.isEmpty() && b.get(0).get("b64") != null) photo = "data:image/jpeg;base64," + b.get(0).get("b64");
+        }
+
+        out.put("genuine", true);
+        out.put("name", row.get("name"));
+        out.put("matricNo", row.get("matric_no"));
+        out.put("programme", row.get("programme"));
+        out.put("level", row.get("current_level"));
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("cleared", row.get("cleared"));
+        out.put("photo", photo);
+        out.put("courses", courses);
+        return out;
+    }
 }

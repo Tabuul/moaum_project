@@ -51,7 +51,7 @@ class SecurityConfig {
                                 "/api/v1/payments/webhook/paystack", "/api/v1/payments/webhook/flutterwave",
                                 "/api/v1/payments/webhook/quickteller", "/api/v1/payments/quickteller/start",
                                 "/api/v1/student-auth/sign-in",
-                                "/api/v1/verify/receipt/**").permitAll()
+                                "/api/v1/verify/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
                 .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);
