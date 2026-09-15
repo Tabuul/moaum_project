@@ -30,18 +30,18 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
         </Note>
       )}
 
-      <Panel title="Submitting your marks" right="Two ways in — they meet at the same score sheet">
+      <Panel title="Submitting your marks" right={first ? `${first.courseCode} — other courses under All score sheets` : "Two ways in — they meet at the same score sheet"}>
         <PBody>
           <div className="ways">
             <div className="way">
-              <div className="way__h"><span className="way__i"><Ico name="doc" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Type them in</span></div>
-              <div className="way__s">Every registered candidate is already on the sheet. Two boxes each — CA and examination — and the total, grade and point appear when you save. Enter or ↓ moves down the column, so a whole roll is entered from the keyboard.</div>
-              <div className="way__b">{first ? <Link href={`/results/sheets/${first.id}`} className="btn btn--primary btn--sm">Open the score sheet</Link> : <button className="btn btn--primary btn--sm" disabled>No sheet yet</button>}</div>
+              <div className="way__h"><span className="way__i"><Ico name="doc" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Download score sheet</span></div>
+              <div className="way__s">Get this course’s live register as a CSV — every registered candidate already on it. Fill the two columns, <b>CA</b> and <b>Exam</b>, and leave the total, grade and point to the system. Or open the sheet and type the marks straight in.</div>
+              <div className="way__b">{first ? <><a href={`/results/sheets/${first.id}/template`} className="btn btn--primary btn--sm">Download score sheet</a> <Link href={`/results/sheets/${first.id}`} className="btn btn--ghost btn--sm">Open the sheet</Link></> : <button className="btn btn--primary btn--sm" disabled>No sheet yet</button>}</div>
             </div>
             <div className="way">
-              <div className="way__h"><span className="way__i"><Ico name="box" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Upload in bulk</span></div>
-              <div className="way__s">Already keep the marks in Excel? Download the template from the sheet — it is this course’s live register — fill two columns, save as CSV and upload it there. The file is <b>checked before anything is written</b>, and accepted whole or not at all.</div>
-              <div className="way__b">{first ? <Link href={`/results/sheets/${first.id}`} className="btn btn--primary btn--sm">Upload a completed sheet</Link> : <button className="btn btn--primary btn--sm" disabled>No sheet yet</button>}</div>
+              <div className="way__h"><span className="way__i"><Ico name="box" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Upload computed score sheet</span></div>
+              <div className="way__s">Filled the sheet offline? Upload it on the score sheet — it is <b>checked before anything is written</b>, and accepted whole or not at all. The total, grade and point are computed from your CA and Exam by the scheme in force; nobody types a grade.</div>
+              <div className="way__b">{first ? <Link href={`/results/sheets/${first.id}`} className="btn btn--primary btn--sm">Upload computed score sheet</Link> : <button className="btn btn--primary btn--sm" disabled>No sheet yet</button>}</div>
             </div>
           </div>
         </PBody>
