@@ -13,7 +13,7 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Dept { code: string; name: string; faculty_code: string }
-export interface Lecturer { id: string; name: string; staff_number: string | null; load: number }
+export interface Lecturer { id: string; name: string; staff_number: string | null; load: number; department?: string | null }
 export interface Offering {
   id: string; course_code: string; title: string; units: number; allocated_on: string | null; registered: number;
   lecturer_id: string | null; lecturer: string | null; second_examiner_id: string | null; second_examiner: string | null; sheet: boolean;
@@ -32,6 +32,20 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  // cross-department: the department can assign its course to a lecturer from another department
+  const [pool, setPool] = useState<Lecturer[] | null>(null);
+  const [loadingPool, setLoadingPool] = useState(false);
+
+  async function toggleAllDepartments(on: boolean) {
+    if (!on) { setPool(null); return; }
+    setLoadingPool(true);
+    try {
+      const r = await fetch(`/api/bff/api/v1/allocation/lecturers?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}&semester=${semester}&all=true`);
+      const j = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(j)) setPool(j as Lecturer[]);
+    } finally { setLoadingPool(false); }
+  }
+  const list = pool ?? lecturers;
 
   const unassigned = offerings.filter((o) => !o.lecturer_id).length;
   const noSecond = offerings.filter((o) => o.lecturer_id && !o.second_examiner_id).length;
@@ -62,7 +76,7 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
         body: JSON.stringify({ lecturer, secondExaminer: second || null, overload }),
       });
       if (!r.ok) { setErr((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }); return; }
-      const who = lecturers.find((l) => l.id === lecturer)?.name ?? "the lecturer";
+      const who = list.find((l) => l.id === lecturer)?.name ?? "the lecturer";
       setSaid(`${open.course_code} assigned to ${who}`);
       setOpen(null);
       router.refresh();
@@ -71,7 +85,7 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
     }
   }
 
-  const chosenLoad = lecturers.find((l) => l.id === lecturer)?.load ?? 0;
+  const chosenLoad = list.find((l) => l.id === lecturer)?.load ?? 0;
   const after = open ? chosenLoad + open.units : 0;
   const overloaded = after > MAX_UNITS;
 
@@ -133,23 +147,31 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
               ? <Btn kind="urgent" disabled={busy || !lecturer} onClick={() => void assign(true)}>Assign as an overload ({after} units)</Btn>
               : <Btn kind="go" disabled={busy || !lecturer} onClick={() => void assign(false)}>Assign</Btn>}</>}>
           {err ? <ProblemNotice problem={err} /> : null}
-          <div className="sub2" style={{ marginBottom: 8 }}>Ordered by remaining capacity against the approved maximum of {MAX_UNITS} units. A lecturer already at the maximum can still be assigned, but the assignment is recorded as an overload.</div>
-          {lecturers.length ? (
-            <DTable cols={["Lecturer", "Current load|mid", "After this|mid", "|num"]} rows={lecturers.map((l) => {
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <div className="sub2">Ordered by remaining capacity against the approved maximum of {MAX_UNITS} units. A lecturer already at the maximum can still be assigned, but the assignment is recorded as an overload.</div>
+            <label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer", whiteSpace: "nowrap" }}>
+              <input type="checkbox" checked={pool !== null} disabled={loadingPool} onChange={(e) => void toggleAllDepartments(e.target.checked)} />
+              {loadingPool ? "Loading…" : "Lecturers from other departments"}
+            </label>
+          </div>
+          {list.length ? (
+            <DTable cols={pool !== null ? ["Lecturer", "Department", "Current load|mid", "After this|mid", "|num"] : ["Lecturer", "Current load|mid", "After this|mid", "|num"]} rows={list.map((l) => {
               const willBe = l.load + open.units;
-              return [
+              const cells = [
                 <Two key="n" a={l.name} b={l.staff_number ?? ""} />,
+                ...(pool !== null ? [<span className="sub2" key="d">{l.department ?? "—"}</span>] : []),
                 <span className="tnum" key="c">{l.load} units</span>,
                 <span className="tnum" key="w" style={willBe > MAX_UNITS ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{willBe} units</span>,
                 <label key="p" style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
                   <input type="radio" name="al-lec" checked={lecturer === l.id} onChange={() => setLecturer(l.id)} /> {lecturer === l.id ? "Chosen" : "Choose"}
                 </label>,
               ];
+              return cells;
             })} />
-          ) : <Note kind="bad" title="No lecturer is on record for this department">A lecturer appears here once the Registry grants them the lecturer office scoped to this department.</Note>}
+          ) : <Note kind="bad" title="No lecturer is on record for this department">A lecturer appears here once the Registry grants them the lecturer office scoped to this department. Tick &ldquo;Lecturers from other departments&rdquo; to assign the course to a lecturer elsewhere.</Note>}
           <Field id="al-second" label="Second examiner" hint="Verifies the marks. Cannot be the lecturer. Set now so verification is not blocked later.">
             <SearchSelect id="al-second" value={second} allLabel="Not set yet" placeholder="Search a lecturer…"
-              options={lecturers.filter((l) => l.id !== lecturer).map((l) => ({ value: l.id, label: l.name }))} onChange={setSecond} />
+              options={list.filter((l) => l.id !== lecturer).map((l) => ({ value: l.id, label: pool !== null && l.department ? `${l.name} · ${l.department}` : l.name }))} onChange={setSecond} />
           </Field>
         </Modal>
       ) : null}

@@ -65,21 +65,45 @@ class AllocationController {
                 """).param("session", session).param("semester", semester).param("dept", dept).query().listOfRows();
     }
 
-    /** the lecturers of a department and their current teaching load this session and semester */
+    /**
+     * The lecturers a course can be allocated to, with their current teaching load. By default the
+     * department's own lecturers; with all=true, every lecturer in the University (each labelled with
+     * their home department) so a department can assign its course to a lecturer from another
+     * department — the cross-department teaching case. The lecturer keeps one dashboard and enters the
+     * scores there, whatever department the course belongs to.
+     */
     @GetMapping("/lecturers")
     @PreAuthorize(ALLOCATORS)
     @Transactional(readOnly = true)
-    List<Map<String, Object>> lecturers(@RequestParam String dept, @RequestParam String session, @RequestParam(defaultValue = "1") int semester) {
+    List<Map<String, Object>> lecturers(@RequestParam String dept, @RequestParam String session,
+                                        @RequestParam(defaultValue = "1") int semester,
+                                        @RequestParam(defaultValue = "false") boolean all) {
+        String live = "a.office_code IN ('lecturer', 'hod') AND a.scope_kind = 'department'"
+                + " AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)";
+        String load = "coalesce((SELECT sum(c.units) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code"
+                + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester), 0) AS load";
+        if (all) {
+            return jdbc.sql("""
+                    SELECT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number,
+                           (SELECT string_agg(DISTINCT a.scope_id, ', ' ORDER BY a.scope_id) FROM iam.office_assignment a
+                             WHERE a.person_id = p.id AND %s) AS department,
+                           %s
+                      FROM iam.person p
+                     WHERE p.ended_on IS NULL
+                       AND EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = p.id AND %s)
+                     ORDER BY name
+                    """.formatted(live, load, live))
+                    .param("session", session).param("semester", semester).query().listOfRows();
+        }
         return jdbc.sql("""
-                SELECT DISTINCT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number,
-                       coalesce((SELECT sum(c.units) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
-                                  WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester), 0) AS load
+                SELECT DISTINCT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number, :dept AS department,
+                       %s
                   FROM iam.person p
                   JOIN iam.office_assignment a ON a.person_id = p.id
-                 WHERE a.office_code IN ('lecturer', 'hod') AND a.scope_kind = 'department' AND a.scope_id = :dept
-                   AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                 WHERE %s AND a.scope_id = :dept
                  ORDER BY load, name
-                """).param("session", session).param("semester", semester).param("dept", dept).query().listOfRows();
+                """.formatted(load, live))
+                .param("session", session).param("semester", semester).param("dept", dept).query().listOfRows();
     }
 
     /** assign a lecturer and a second examiner to an offering */
