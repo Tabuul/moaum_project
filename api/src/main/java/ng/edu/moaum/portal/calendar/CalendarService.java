@@ -49,6 +49,13 @@ public class CalendarService {
         return json.readValue(result, new tools.jackson.core.type.TypeReference<java.util.Map<String, Object>>() { });
     }
 
+    /** Enrol every currently-studying student into the session at their current level, without promoting
+     *  anyone — the backfill that matches an already-loaded cohort to the session they are in now. */
+    @Transactional
+    public java.util.Map<String, Object> enrolAll(String session) {
+        return calendar.enrolCurrent(session);
+    }
+
     public record SessionIn(@NotNull LocalDate startsOn, @NotNull LocalDate endsOn,
                             @NotNull @Min(1) @Max(3) Integer semesters,
                             @Size(max = 200) String senateMinute,

@@ -52,6 +52,7 @@ export function SessionSetup({
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<Problem | null>(null);
   const [rolled, setRolled] = useState<string | null>(null);
+  const [enrolled, setEnrolled] = useState<string | null>(null);
 
   const isSuper = actingOffice === "super";
   const sessions = calendar?.sessions ?? [];
@@ -153,6 +154,24 @@ export function SessionSetup({
     }
   }
 
+  async function enrolAll() {
+    if (!window.confirm(`Enrol every currently-studying student (ACTIVE or on probation) into ${looking} at their current level, without promoting anyone? Use this to match an already-loaded cohort to the session they are in now. Safe to run again.`)) return;
+    setBusy(true); setRefusal(null); setEnrolled(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/calendar/sessions/${looking}/enrol-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Cohort enrolled into ${looking}`) },
+        body: JSON.stringify({}),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); return; }
+      setEnrolled(`${j.enrolled} student${j.enrolled === 1 ? "" : "s"} enrolled into ${looking}${j.already ? ` · ${j.already} already were` : ""} · ${j.eligible} currently studying.`);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveLevel(draft: Draft) {
     await send(
       "PUT",
@@ -190,6 +209,17 @@ export function SessionSetup({
             them in <b>{looking}</b>. Fresh students still arrive through admission at 100 level; final-year, withdrawn and
             graduated students are untouched, and unpaid fees from earlier sessions still follow the student. Safe to run again.
           </div>
+        </Panel>
+      ) : null}
+
+      {looking ? (
+        <Panel title="Match the loaded cohort to this session" right={<Btn kind="ghost" disabled={busy} onClick={() => void enrolAll()}>{busy ? "Enrolling…" : `Enrol all into ${looking}`}</Btn>}>
+          <div className="card__body sub2">
+            After a historical re-upload, this enrols every currently-studying student (ACTIVE or on probation) into <b>{looking}</b>
+            at their <b>current level</b> — no promotion. Use it to match an already-loaded cohort to the session they are in now;
+            for the yearly promotion use &ldquo;Roll the register&rdquo; above instead. Idempotent — a student already enrolled is left alone.
+          </div>
+          {enrolled ? <div className="card__body"><Note kind="ok" title="Cohort enrolled">{enrolled}</Note></div> : null}
         </Panel>
       ) : null}
 

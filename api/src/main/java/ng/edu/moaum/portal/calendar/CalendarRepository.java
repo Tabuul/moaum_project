@@ -35,6 +35,12 @@ class CalendarRepository {
                 .query(String.class).single();
     }
 
+    java.util.Map<String, Object> enrolCurrent(String session) {
+        return jdbc.sql("SELECT * FROM people.enrol_current_session(:s)")
+                .param("s", session)
+                .query().singleRow();
+    }
+
     Optional<String> current() {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'")
                 .query(String.class)

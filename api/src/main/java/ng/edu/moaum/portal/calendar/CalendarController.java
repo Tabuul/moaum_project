@@ -59,6 +59,14 @@ class CalendarController {
         return calendar.closeSession(session + "/" + year);
     }
 
+    /** Enrol every currently-studying student into this session at their current level, without promoting
+     *  anyone. The backfill that matches an already-loaded cohort to the session they are in now. */
+    @PostMapping("/sessions/{session}/{year}/enrol-all")
+    @PreAuthorize(WRITERS)
+    java.util.Map<String, Object> enrolAll(@PathVariable String session, @PathVariable String year) {
+        return calendar.enrolAll(session + "/" + year);
+    }
+
     /** Roll the register into this session: promote continuing students one level and enrol them. */
     @PostMapping("/sessions/{session}/{year}/roll-over")
     @PreAuthorize(WRITERS)
