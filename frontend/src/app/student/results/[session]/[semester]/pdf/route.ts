@@ -66,13 +66,14 @@ export async function GET(_: Request, { params }: { params: Promise<{ session: s
   // ── rows, with alternating shading ────────────────────────────────────────
   let gp = 0, registered = 0, passed = 0;
   rows.forEach((c, i) => {
-    if (i % 2 === 1) p.fill(L, y - 5, W, 17, 0.965);
-    const label = clean(`${c.course_code}   ${c.title}`);
-    p.text(L + 8, y, cut(label, 62), 9.5);
-    p.text(cUnit, y, String(c.units), 9.5);
-    p.text(cScore, y, scoreOf(c), 9.5, false, c.outcome !== "GRADED" ? [0.5, 0.3, 0.05] : [0, 0, 0]);
-    p.text(cGrade, y, c.grade ?? "—", 9.5, true, c.grade === "F" ? [0.72, 0.11, 0.11] : [0.05, 0.05, 0.05]);
-    p.text(cPoint, y, c.points == null ? "—" : String(c.points), 9.5);
+    if (i % 2 === 1) p.fill(L, y - 5, W, 16, 0.965);
+    // keep the course code bold, the title lighter, and truncate so it never reaches the UNIT column
+    p.text(L + 8, y, clean(c.course_code), 8.5, true);
+    p.text(L + 8 + Math.min(clean(c.course_code).length * 5.4 + 8, 78), y, cut(clean(c.title), 44), 8.5, false, [0.2, 0.2, 0.2]);
+    p.text(cUnit, y, String(c.units), 8.5);
+    p.text(cScore, y, scoreOf(c), 8.5, false, c.outcome !== "GRADED" ? [0.5, 0.3, 0.05] : [0, 0, 0]);
+    p.text(cGrade, y, c.grade ?? "—", 8.5, true, c.grade === "F" ? [0.72, 0.11, 0.11] : [0.05, 0.05, 0.05]);
+    p.text(cPoint, y, c.points == null ? "—" : String(c.points), 8.5);
     registered += c.units;
     if (c.outcome === "GRADED") { gp += c.units * Number(c.points ?? 0); if (Number(c.points ?? 0) > 0) passed += c.units; }
     y -= 17;

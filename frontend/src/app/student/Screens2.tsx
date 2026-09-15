@@ -77,7 +77,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       ) : null}
       <Panel title="Payments" right={fees.references.length ? `${fees.references.length}` : "none yet"}>
         <DTable cols={["Reference", "Purpose", "Amount|num", "Status", "|num"]} rows={fees.references.map((r) => [
-          <span className="tnum" key="r">{r.reference}</span>,
+          <span className="tnum" key="r" style={{ fontSize: 11, letterSpacing: "-.2px", color: "var(--muted)" }}>{r.reference}</span>,
           <Two key="p" a={r.purpose} b={r.confirmed_at ? `Confirmed ${when(r.confirmed_at)} · ${r.channel}` : `Generated ${when(r.generated_at)}`} />,
           <span className="tnum" key="a">{naira(r.amount)}</span>,
           r.confirmed_at ? <Pil kind="ok" key="s">Paid</Pil> : new Date(r.expires_at).getTime() > now ? <Pil kind="info" key="s">Awaiting confirmation</Pil> : <Pil kind="grey" key="s">Expired</Pil>,
