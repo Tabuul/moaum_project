@@ -81,3 +81,18 @@
    stops a field growing absurdly wide on a large screen. */
 .field > input:not(.pchk):not([type="checkbox"]):not([type="radio"]) { max-width: 460px; }
 .field > input.tnum { max-width: 200px; }
+
+/* ── responsive hardening (mobile & tablet) ──────────────────────────────
+   The shell, grids and .tablewrap are already responsive (prototype.css).
+   This is a safety net so no page forces the whole screen to scroll sideways:
+   images never overflow, a wide table or block inside a card scrolls within
+   the card, and the standalone report document fits and scrolls its own wide
+   tables. Nothing here changes the desktop layout. */
+img { max-width: 100%; }
+@media (max-width: 760px) {
+  .card__body { overflow-x: auto; }
+  .rpt { padding: 12px 10px 48px; }
+  .rpt__paper { padding: 22px 16px; overflow-x: auto; }
+  .rpt__banner { padding: 14px 0 12px; }
+  .rpt__title { font-size: 20px; }
+}
