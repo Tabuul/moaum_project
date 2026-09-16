@@ -47,7 +47,8 @@ class ResultsRepository {
                    AND (:session::text IS NULL OR o.session = :session)
                    AND (:sem::int IS NULL OR o.semester = :sem)
                    AND (:stage::text IS NULL OR s.stage = :stage)
-                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                        OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))
                  ORDER BY f.name, d.name, o.course_code
                 """)
                 .param("fac", fac).param("dept", dept).param("prog", prog).param("course", course)
@@ -97,7 +98,8 @@ class ResultsRepository {
                  WHERE o.lecturer_id IS NOT NULL
                    AND (:fac::text IS NULL OR d.faculty_code = :fac) AND (:dept::text IS NULL OR c.dept_code = :dept)
                    AND (:session::text IS NULL OR o.session = :session) AND (:sem::int IS NULL OR o.semester = :sem)
-                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine)
+                   AND (:mine::uuid IS NULL OR o.lecturer_id = :mine OR o.second_examiner_id = :mine
+                        OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :mine))
                 """).param("fac", fac).param("dept", dept).param("session", session).param("sem", sem).param("mine", mine)
                 .query(Long.class).single();
     }
@@ -237,7 +239,8 @@ class ResultsRepository {
                   JOIN catalogue.offering o ON o.id = s.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code
                   LEFT JOIN iam.person x ON x.id = o.second_examiner_id
-                 WHERE (:all OR o.lecturer_id = :me OR o.second_examiner_id = :me)
+                 WHERE (:all OR o.lecturer_id = :me OR o.second_examiner_id = :me
+                        OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :me))
                    AND (:session::text IS NULL OR o.session = :session)
                    AND (:sem::int IS NULL OR o.semester = :sem)
                  ORDER BY o.session DESC, o.semester DESC, o.course_code

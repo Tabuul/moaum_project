@@ -13,6 +13,7 @@ import ng.edu.moaum.portal.shared.OfficeScope;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -67,6 +68,9 @@ class AllocationController {
                        CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END AS lecturer,
                        o.second_examiner_id,
                        CASE WHEN sp.id IS NULL THEN NULL ELSE sp.surname || ', ' || sp.given_names END AS second_examiner,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('id', t.lecturer_id, 'name', tp.surname || ', ' || tp.given_names) ORDER BY tp.surname)
+                                   FROM catalogue.offering_teacher t JOIN iam.person tp ON tp.id = t.lecturer_id
+                                  WHERE t.offering_id = o.id), '[]'::jsonb) AS co_lecturers,
                        EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.offering_id = o.id) AS sheet
                   FROM catalogue.offering o
                   JOIN catalogue.course c ON c.code = o.course_code
@@ -122,25 +126,62 @@ class AllocationController {
                 .param("session", session).param("semester", semester).param("dept", dept).query().listOfRows();
     }
 
-    /** assign a lecturer and a second examiner to an offering */
+    /** a HOD allocates only courses that belong to their own department */
+    private void assertHodOwnsOffering(UUID offering) {
+        if (!scope.actingHod()) {
+            return;
+        }
+        String hodDept = scope.actingHodDept();
+        String offDept = jdbc.sql("SELECT c.dept_code FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.id = :o")
+                .param("o", offering).query(String.class).optional().orElse(null);
+        if (hodDept == null || !hodDept.equals(offDept)) {
+            throw new DomainRuleViolation("ALLOC_DEPT", "A Head of Department allocates only courses that belong to their own department.",
+                    new DomainRuleViolation.Remedy("Choose a course in your department; another department allocates its own.", "Head of Department"));
+        }
+    }
+
+    /** assign the lead lecturer and a second examiner to an offering */
     @PostMapping("/{offering}")
     @PreAuthorize(ALLOCATORS)
     @Transactional
     Map<String, Object> assign(@PathVariable UUID offering, @RequestBody Assign body) {
-        if (scope.actingHod()) {                            // an HOD allocates only courses that belong to their department
-            String hodDept = scope.actingHodDept();
-            String offDept = jdbc.sql("SELECT c.dept_code FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.id = :o")
-                    .param("o", offering).query(String.class).optional().orElse(null);
-            if (hodDept == null || !hodDept.equals(offDept)) {
-                throw new DomainRuleViolation("ALLOC_DEPT", "A Head of Department allocates only courses that belong to their own department.",
-                        new DomainRuleViolation.Remedy("Choose a course in your department; another department allocates its own.", "Head of Department"));
-            }
-        }
+        assertHodOwnsOffering(offering);
         jdbc.sql("SELECT catalogue.allocate_offering(:o, :lec, :sec, :ov)")
                 .param("o", offering).param("lec", body.lecturer())
                 .param("sec", body.secondExaminer(), Types.OTHER)
                 .param("ov", Boolean.TRUE.equals(body.overload()))
                 .query().singleRow();
         return Map.of("offering", offering, "allocated", true);
+    }
+
+    public record Teacher(@NotNull UUID lecturer) {
+    }
+
+    /** add a co-lecturer who also teaches the course and enters scores on the shared sheet */
+    @PostMapping("/{offering}/teachers")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional
+    Map<String, Object> addTeacher(@PathVariable UUID offering, @RequestBody Teacher body) {
+        assertHodOwnsOffering(offering);
+        Integer n = jdbc.sql("""
+                INSERT INTO catalogue.offering_teacher (offering_id, lecturer_id, added_by)
+                SELECT :o, :lec, :by
+                 WHERE NOT EXISTS (SELECT 1 FROM catalogue.offering WHERE id = :o AND lecturer_id = :lec)
+                ON CONFLICT (offering_id, lecturer_id) DO NOTHING
+                RETURNING 1
+                """).param("o", offering).param("lec", body.lecturer())
+                .param("by", scope.actorId(), Types.OTHER).query(Integer.class).optional().orElse(0);
+        return Map.of("offering", offering, "lecturer", body.lecturer(), "added", n > 0);
+    }
+
+    /** remove a co-lecturer (the lead is changed by re-assigning, not here) */
+    @DeleteMapping("/{offering}/teachers/{lecturer}")
+    @PreAuthorize(ALLOCATORS)
+    @Transactional
+    Map<String, Object> removeTeacher(@PathVariable UUID offering, @PathVariable UUID lecturer) {
+        assertHodOwnsOffering(offering);
+        jdbc.sql("DELETE FROM catalogue.offering_teacher WHERE offering_id = :o AND lecturer_id = :lec")
+                .param("o", offering).param("lec", lecturer).update();
+        return Map.of("offering", offering, "lecturer", lecturer, "removed", true);
     }
 }
