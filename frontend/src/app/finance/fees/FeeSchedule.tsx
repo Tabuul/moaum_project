@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -198,7 +198,15 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     setProblem(null);
     setFeeMsg(null);
     try {
-      const grid = await xlsxRows(await file.arrayBuffer());
+      const isCsv = /\.csv$/i.test(file.name) || file.type === "text/csv";
+      let grid: (string | number | null)[][];
+      try {
+        grid = isCsv ? csvRows(await file.text()) : await xlsxRows(await file.arrayBuffer());
+      } catch (err) {
+        setProblem({ status: 400, title: "That file could not be read.",
+          detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` });
+        return;
+      }
       const rows = parseFeeMatrix(grid);
       if (!rows.length) {
         setProblem({ status: 400, title: "That file is not the approved-fees structure.", detail: "It must have a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
@@ -299,11 +307,11 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       {may ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b></div>
+            <div className="sub2" style={{ marginBottom: 8 }}>Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b> Accepts a real Excel workbook (.xlsx) or the same sheet saved as CSV (.csv) — if a file will not read, in Excel choose <i>Save As → Excel Workbook</i> or <i>CSV (Comma delimited)</i>.</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <label className={`btn btn--primary${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer", margin: 0 }}>
-                {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx)"}
-                <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
+                {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx / .csv)"}
+                <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
               </label>
               <Btn kind="ghost" disabled={busy !== null || !schedule.items.length} onClick={() => setClearing(true)}>{busy === "clear" ? "Clearing…" : `Clear the ${session} schedule`}</Btn>
             </div>

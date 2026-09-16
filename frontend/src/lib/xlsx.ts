@@ -147,6 +147,35 @@ export async function xlsxRows(buf: ArrayBuffer): Promise<string[][]> {
   return sheetRows(sheetXml, sharedXml ? sharedStrings(sharedXml) : []);
 }
 
+/** Parse CSV text into rows of strings — quoted fields, embedded commas/newlines
+ *  and "" escapes. A universal fallback for a sheet saved as .csv, which sidesteps
+ *  every .xlsx quirk (old .xls, Google export, odd compression). */
+export function csvRows(text: string): string[][] {
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // strip a BOM
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cur = "";
+  let q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; } else q = false;
+      } else cur += ch;
+    } else if (ch === '"') {
+      q = true;
+    } else if (ch === ",") {
+      row.push(cur); cur = "";
+    } else if (ch === "\n") {
+      row.push(cur); rows.push(row); row = []; cur = "";
+    } else if (ch !== "\r") {
+      cur += ch;
+    }
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
 /** The first worksheet as rows of strings, parsed without freezing the tab: it
  *  yields to the event loop as it goes and reports rows read through onRows. */
 export async function xlsxRowsAsync(buf: ArrayBuffer, onRows?: (n: number) => void): Promise<string[][]> {
