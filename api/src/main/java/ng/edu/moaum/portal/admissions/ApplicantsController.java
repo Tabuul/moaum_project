@@ -166,6 +166,42 @@ class ApplicantsController {
         return v;
     }
 
+    /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS
+     *  list and the O'Level JAMB sent, with the O'Level score computed under the session's grading. */
+    @GetMapping("/candidates/{jambKey}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> candidate(@PathVariable String session, @PathVariable String year, @PathVariable String jambKey) {
+        String s = session + "/" + year;
+        Map<String, Object> bio = jdbc.sql("""
+                SELECT r.surname, r.other_names, r.jamb_reg_no, r.jamb_code,
+                       coalesce(p.name, r.jamb_code) AS programme, f.name AS faculty,
+                       r.entry_mode, r.aggregate, r.sex, r.state_of_origin, r.lga
+                  FROM admissions.caps_row_live r
+                  JOIN admissions.caps_batch b ON b.id = r.batch_id AND b.committed_at IS NOT NULL
+                  LEFT JOIN ref.programme p ON p.code = r.jamb_code
+                  LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE r.session = :s AND r.jamb_reg_no = :k
+                """).param("s", s).param("k", jambKey).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("candidate in " + s, jambKey));
+        List<Map<String, Object>> sittings = jdbc.sql("""
+                SELECT st.exam_body, st.exam_type_raw, st.exam_year, st.exam_number,
+                       (SELECT json_agg(json_build_object('subject', g.subject, 'grade', g.grade) ORDER BY g.subject)::text
+                          FROM admissions.olevel_grade g WHERE g.sitting_id = st.id) AS subjects
+                  FROM admissions.olevel_sitting st WHERE st.session = :s AND st.jamb_key = :k
+                 ORDER BY st.exam_year NULLS LAST, st.ord
+                """).param("s", s).param("k", jambKey).query().listOfRows();
+        Map<String, Object> olevel = jdbc.sql("SELECT * FROM admissions.olevel_score(:s, :k, :code)")
+                .param("s", s).param("k", jambKey).param("code", bio.get("jamb_code"))
+                .query().listOfRows().stream().findFirst().orElse(java.util.Map.of());
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("biodata", bio);
+        out.put("sittings", sittings);
+        out.put("olevel", olevel);
+        return out;
+    }
+
     /* ── the fees ── */
 
     // the applicant fees are set on the Academic Office desk and, since they are a

@@ -30,6 +30,13 @@ export interface DeskRow {
 }
 export interface DeskBatch { id: string; label: string; held_on: string; starts_at: string; ends_at: string; venue: string; capacity: number; seated: number }
 export interface DeskReference { id: string; reference: string; kind: string; amount: number; generated_at: string; expires_at: string; application_no: string; surname: string; other_names: string }
+export interface CandSitting { exam_body: string; exam_type_raw: string | null; exam_year: string | null; exam_number: string | null; subjects: string | null }
+export interface Candidate {
+  session: string;
+  biodata: { surname: string; other_names: string; jamb_reg_no: string; jamb_code: string; programme: string; faculty: string | null; entry_mode: string; aggregate: number | null; sex: string | null; state_of_origin: string | null; lga: string | null };
+  sittings: CandSitting[];
+  olevel: { sittings?: number; points?: number; bonus?: number; total?: number };
+}
 export interface Desk {
   session: string;
   applications: DeskRow[];
@@ -43,6 +50,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [open, setOpen] = useState<Application | null>(null);
+  const [openCand, setOpenCand] = useState<Candidate | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newBatch, setNewBatch] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -88,6 +96,14 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   async function refreshOpen(id: string) {
     const r = await fetch(`${base}/applications/${id}`, { cache: "no-store" });
     if (r.ok) setOpen((await r.json()) as Application);
+  }
+
+  async function viewCandidate(jambKey: string) {
+    setProblem(null);
+    const r = await fetch(`${base}/candidates/${encodeURIComponent(jambKey)}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (r.ok) setOpenCand(j as Candidate);
+    else setProblem(j ?? { status: r.status, title: r.statusText });
   }
 
   async function exportTemplate(programme: string) {
@@ -297,7 +313,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <span className="tnum" key="t">{r.seat ?? "—"}</span>,
               <span className="tnum" key="c">{r.screening_score ?? "—"}{r.score_released_at ? "" : r.screening_score !== null ? " ·held" : ""}</span>,
               r.decision ? <Pil kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"} key="d">{r.decision}{r.decision_released_at ? "" : " · held"}</Pil> : <span className="sub2" key="d">—</span>,
-              r.id ? <IcoBtn key="v" icon="eye" label="View this applicant’s details" onClick={() => void view(r.id as string)} /> : <span className="sub2" key="v">—</span>,
+              r.id ? <IcoBtn key="v" icon="eye" label="View this applicant’s details" onClick={() => void view(r.id as string)} /> : <IcoBtn key="v" icon="eye" label="View this candidate’s details" onClick={() => void viewCandidate(r.jamb_key)} />,
             ])} />
         ) : <div className="card__body"><div className="sub2">No applicant on a committed admission list for {desk.session} yet. Upload and commit the CAPS admission list on the JAMB admission lists screen.</div></div>}
       </Panel>
@@ -466,6 +482,44 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <div className="sub2" style={{ marginTop: 6 }}>Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
             </PBody>
           </Panel>
+        </Modal>
+      ) : null}
+      {openCand ? (
+        <Modal title={`${openCand.biodata.surname}, ${openCand.biodata.other_names}`} sub={`${openCand.biodata.jamb_reg_no} · admitted, not yet registered`} wide onClose={() => setOpenCand(null)}
+          foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => setOpenCand(null)}>Close</Btn></>}>
+          <Panel title="Candidate — from the CAPS admission list">
+            <PBody>
+              <KvGrid cls="grid--2" pairs={[
+                ["Name", `${openCand.biodata.surname}, ${openCand.biodata.other_names}`],
+                ["JAMB registration", openCand.biodata.jamb_reg_no],
+                ["Programme", `${openCand.biodata.programme}${openCand.biodata.faculty ? ` · Faculty of ${openCand.biodata.faculty}` : ""}`],
+                ["Entry", openCand.biodata.entry_mode === "UTME" ? "UTME" : openCand.biodata.entry_mode.charAt(0) + openCand.biodata.entry_mode.slice(1).toLowerCase().replace("_", " ")],
+                ["UTME aggregate", openCand.biodata.aggregate ?? "—"],
+                ["Sex", openCand.biodata.sex === "F" ? "Female" : openCand.biodata.sex === "M" ? "Male" : "—"],
+                ["State / LGA", `${openCand.biodata.state_of_origin ?? "—"} · ${openCand.biodata.lga ?? "—"}`],
+              ]} />
+            </PBody>
+          </Panel>
+          <Panel title="O’Level results" right={openCand.olevel?.total ? `Computed screening ${openCand.olevel.total}` : "As JAMB sent them"}>
+            <PBody>
+              {openCand.sittings.length ? openCand.sittings.map((s, i) => {
+                let subs: { subject: string; grade: string }[] = [];
+                try { subs = JSON.parse(s.subjects ?? "[]") as { subject: string; grade: string }[]; } catch { subs = []; }
+                return (
+                  <div key={i}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 6px" }}>
+                      <Pil kind="grey">{BODY[s.exam_body] ?? s.exam_body}</Pil>
+                      <b>Sitting {i + 1}{s.exam_year ? ` ${s.exam_year}` : ""}</b>
+                      {s.exam_number ? <span className="sub2 tnum">exam no. {s.exam_number}</span> : null}
+                    </div>
+                    <DTable cols={["Subject", "Grade|mid"]} rows={subs.map((g) => [<span key="s">{g.subject}</span>, <b className="tnum" key="g">{g.grade}</b>])} />
+                  </div>
+                );
+              }) : <div className="sub2">No O&rsquo;Level result has reached the University from JAMB for this candidate yet.</div>}
+              {openCand.olevel?.total ? <div className="sub2" style={{ marginTop: 6 }}>Under this session&rsquo;s grading: {openCand.olevel.sittings} sitting{openCand.olevel.sittings === 1 ? "" : "s"}, {openCand.olevel.points} points + {openCand.olevel.bonus} bonus = <b>{openCand.olevel.total}</b>.</div> : null}
+            </PBody>
+          </Panel>
+          <Note kind="info" title="Not yet registered for Post-UTME">On the committed admission list but has not created an application. Seat, screening score and decision appear once they register.</Note>
         </Modal>
       ) : null}
     </>
