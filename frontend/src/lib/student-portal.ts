@@ -36,6 +36,12 @@ export interface MenuItem {
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number };
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
+  /** whether THIS semester's school fees are cleared (registration for it is gated on that) */
+  clears?: boolean;
+  /** the highest open semester of the session; the student may also register any earlier one */
+  openSemester?: number;
+  /** the semesters of this session already registered (submitted or beyond) */
+  registeredSemesters?: number[];
 }
 export interface ResultRow {
   session: string; semester: number; course_code: string; title: string; units: number; entry_type: string; stage: string;

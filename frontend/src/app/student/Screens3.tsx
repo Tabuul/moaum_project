@@ -47,11 +47,37 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       : { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: "Valid", hint: `Within the permitted range for ${v.level} Level.` };
 
   const fees = v.fees;
-  const cleared = fees.clearsRegistration === true;
+  // gate on THIS semester's fees, not only the open one — a full-session payment clears an
+  // earlier semester the student never registered, so they can go back and register it now
+  const cleared = v.clears ?? (fees.clearsRegistration === true);
+
+  // the student may register any semester up to the open one; an earlier semester never
+  // registered can still be registered (its fees are covered by a full-session payment)
+  const openSem = v.openSemester ?? v.semester;
+  const done = new Set(v.registeredSemesters ?? []);
+  const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third") + " semester";
+  const missingEarlier = Array.from({ length: openSem }, (_, i) => i + 1).filter((n) => n < openSem && !done.has(n));
+  const switcher = openSem > 1 ? (
+    <div className="card"><div className="card__body" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <span className="eyebrow">Register semester</span>
+      {Array.from({ length: openSem }, (_, i) => i + 1).map((n) => (
+        <Link key={n} href={`/student/register?session=${encodeURIComponent(v.session)}&semester=${n}`}
+          className={`btn btn--sm ${n === v.semester ? "btn--primary" : "btn--ghost"}`}>
+          {semName(n)}{done.has(n) ? " ✓" : ""}
+        </Link>
+      ))}
+      {missingEarlier.length && !done.has(v.semester) && v.semester >= openSem ? (
+        <span className="sub2" style={{ color: "var(--red-ink)", flexBasis: "100%" }}>
+          You have not registered {missingEarlier.map(semName).join(" or ")} yet — register {missingEarlier.length > 1 ? "them" : "it"} first, then this semester. Both semesters&rsquo; fees are cleared.
+        </span>
+      ) : null}
+    </div></div>
+  ) : null;
 
   if (!cleared && !locked) {
     return (
       <>
+        {switcher}
         <div className="notice notice--bad"><WarnIcon size={19} /><div><div className="notice__t" style={{ color: "var(--red-deep)" }}>You cannot register yet</div>
           <p style={{ color: "var(--red-deep)" }}>One of the requirements below is outstanding. Clear it and registration opens immediately.</p></div></div>
         <div className="card"><div className="card__body" style={{ gap: 0, padding: 0 }}>
@@ -96,6 +122,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
 
   return (
     <>
+      {switcher}
       {locked ? (
         <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"} title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? `Approved on ${onDay(reg!.approved_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Level Adviser`}
           action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <Link href="/student/form" className="btn btn--primary btn--sm">Course form</Link> : null}>

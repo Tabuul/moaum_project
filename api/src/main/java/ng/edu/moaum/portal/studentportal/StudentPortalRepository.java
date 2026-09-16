@@ -156,6 +156,15 @@ class StudentPortalRepository {
                 .param("ses", session).query(Integer.class).single();
     }
 
+    /** the semesters of the session the student has actually registered (submitted or beyond) */
+    java.util.List<Integer> registeredSemesters(UUID student, String session) {
+        return jdbc.sql("""
+                SELECT DISTINCT semester FROM registration.course_registration
+                 WHERE student_id = :s AND session = :ses AND status IN ('SUBMITTED', 'APPROVED', 'LOCKED')
+                 ORDER BY semester
+                """).param("s", student).param("ses", session).query(Integer.class).list();
+    }
+
     /** whether the student's confirmed school-fee payments cover the charge up to and including a semester */
     boolean semesterCleared(UUID student, String session, int semester) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.semester_cleared(:s, :ses, :sem)")

@@ -161,6 +161,13 @@ public class StudentPortalService {
         out.put("fees", fees(id, session));
         out.put("status", s.status());
         out.put("addDropOpen", repo.addDropOpen(session, semester));
+        /* registration is gated per semester on that semester's fees (V149). A student who has paid
+         * the whole session may register an earlier semester they never registered — the fee gate
+         * clears it — so the screen offers each semester up to the open one and gates on the one in
+         * view, not only the open one. */
+        out.put("clears", repo.semesterCleared(id, session, semester));
+        out.put("openSemester", repo.openSemester(session));
+        out.put("registeredSemesters", repo.registeredSemesters(id, session));
         return out;
     }
 
