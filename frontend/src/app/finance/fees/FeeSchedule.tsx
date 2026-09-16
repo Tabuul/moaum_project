@@ -84,6 +84,69 @@ function parseFeeMatrix(grid: (string | number | null)[][]): FeeRow[] {
   return rows;
 }
 
+/** True when the sheet is a plain one-row-per-fee table (a Faculty column and an
+ *  Amount column), not the faculty×level cross-tab. */
+function looksFlat(grid: (string | number | null)[][]): boolean {
+  return grid.some((r) => {
+    const cs = r.map((c) => String(c ?? "").trim().toLowerCase());
+    return cs.some((c) => /facult/.test(c) && !c.includes("/")) && cs.some((c) => /amount|fee/.test(c));
+  });
+}
+
+/** Parse a one-row-per-fee sheet. Each row is a single fee line: Faculty, Level,
+ *  Entry mode, Semester, Indigene, Amount (Item / Spillover / Programme optional).
+ *  Raw values pass straight to the importer, which normalises them; only the entry
+ *  mode is canonicalised here so "Direct Entry"/"DE" reach it as DIRECT_ENTRY. */
+function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string>[] {
+  const norm = (v: string | number | null | undefined) => String(v ?? "").trim();
+  const hIdx = grid.findIndex((r) => {
+    const cs = r.map((c) => norm(c).toLowerCase());
+    return cs.some((c) => /facult/.test(c) && !c.includes("/semester")) && cs.some((c) => /amount|fee/.test(c));
+  });
+  if (hIdx < 0) return [];
+  const H = grid[hIdx].map((c) => norm(c).toLowerCase());
+  const find = (re: RegExp) => H.findIndex((c) => re.test(c));
+  const col = {
+    faculty: find(/facult/), level: find(/level/), mode: find(/entry|mode/),
+    semester: find(/semester|(^|\b)sem(\b|$)/), indigene: find(/indigen|origin|state/),
+    amount: find(/amount|fee/), item: find(/item|descrip|charge|purpose/),
+    spill: find(/spill/), programme: find(/programme|program|course/),
+  };
+  const modeOf = (v: string): string | null => {
+    const s = v.toUpperCase().replace(/[^A-Z]/g, "");
+    if (!s) return null;
+    if (s === "DE" || s.includes("DIRECT")) return "DIRECT_ENTRY";
+    if (s.includes("TRANSFER")) return "TRANSFER";
+    if (s.includes("UTME")) return "UTME";
+    if (s.includes("JUPEB")) return "JUPEB";
+    if (s.includes("SANDWICH")) return "SANDWICH";
+    if (s.includes("POST") || s === "PG") return "POSTGRADUATE";
+    return v.toUpperCase().trim();
+  };
+  const rows: Record<string, string>[] = [];
+  for (let i = hIdx + 1; i < grid.length; i++) {
+    const r = grid[i].map(norm);
+    const cell = (k: keyof typeof col) => (col[k] >= 0 ? (r[col[k]] ?? "") : "");
+    const amt = cell("amount").replace(/[^0-9.]/g, "");
+    if (!amt || Number(amt) <= 0) continue;
+    const fac = cell("faculty");
+    const prog = col.programme >= 0 ? cell("programme") : "";
+    if (!fac && !prog) continue;
+    const row: Record<string, string> = { amount: amt };
+    if (fac) row.faculty = fac;
+    if (prog) row.programmeCode = prog;
+    if (cell("level")) row.level = cell("level");
+    const m = col.mode >= 0 ? modeOf(cell("mode")) : null;
+    if (m) row.entryMode = m;
+    if (cell("semester")) row.semester = cell("semester");
+    if (cell("indigene")) row.indigene = cell("indigene");
+    if (col.item >= 0 && cell("item")) row.item = cell("item");
+    if (col.spill >= 0 && /^(y|t|1|true|yes|spill)/i.test(cell("spill"))) row.spillover = "true";
+    rows.push(row);
+  }
+  return rows;
+}
+
 export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const may = actingOffice === "bursar" || actingOffice === "super";
@@ -207,9 +270,9 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` });
         return;
       }
-      const rows = parseFeeMatrix(grid);
+      const rows = looksFlat(grid) ? parseFeeFlat(grid) : parseFeeMatrix(grid);
       if (!rows.length) {
-        setProblem({ status: 400, title: "That file is not the approved-fees structure.", detail: "It must have a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
+        setProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
         return;
       }
       const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-structure`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Approved fees structure uploaded for ${session}`) }, body: JSON.stringify({ rows }) });
@@ -307,7 +370,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       {may ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b> Accepts a real Excel workbook (.xlsx) or the same sheet saved as CSV (.csv) — if a file will not read, in Excel choose <i>Save As → Excel Workbook</i> or <i>CSV (Comma delimited)</i>.</div>
+            <div className="sub2" style={{ marginBottom: 8 }}>Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b> Accepts a real Excel workbook (.xlsx) or the same sheet saved as CSV (.csv) — if a file will not read, in Excel choose <i>Save As → Excel Workbook</i> or <i>CSV (Comma delimited)</i>. Two shapes work: this faculty×level cross-tab, or a plain <b>one-row-per-fee</b> table with columns <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i> (the clearer format — one line, charged once).</div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <label className={`btn btn--primary${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer", margin: 0 }}>
                 {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx / .csv)"}
