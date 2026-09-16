@@ -25,6 +25,7 @@ export function DTable({ cols, rows, texts, title }: DTableProps) {
   const labels = cols.map((c) => c.split("|")[0]);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
+  const [size, setSize] = useState<number>(PAGE); // rows per page; 0 = all
   const wrap = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLTableElement>(null);
 
@@ -40,10 +41,11 @@ export function DTable({ cols, rows, texts, title }: DTableProps) {
   }, [rows, texts, terms]);
 
   const total = match.length;
-  const pages = Math.max(1, Math.ceil(total / PAGE));
+  const per = size === 0 ? Math.max(total, 1) : size;
+  const pages = Math.max(1, Math.ceil(total / per));
   const p = Math.min(page, pages - 1);
-  const from = total ? p * PAGE + 1 : 0;
-  const to = Math.min(total, (p + 1) * PAGE);
+  const from = total ? p * per + 1 : 0;
+  const to = Math.min(total, (p + 1) * per);
   const shown = new Set(match.slice(from - 1 < 0 ? 0 : from - 1, to));
 
   useEffect(() => {
@@ -121,6 +123,15 @@ export function DTable({ cols, rows, texts, title }: DTableProps) {
         </table>
       </div>
       <div className="tfoot">
+        {rows.length > 10 ? (
+          <label className="tfoot__n" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            Rows
+            <select className="ctl" style={{ width: "auto", padding: "2px 6px" }} value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(0); }} aria-label="Rows per page">
+              {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+              <option value={0}>All</option>
+            </select>
+          </label>
+        ) : null}
         {q && !total ? (
           <div className="tfoot__n">
             Nothing matches <b>{q}</b> in these {rows.length} rows.{" "}
