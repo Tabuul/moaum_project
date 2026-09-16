@@ -173,6 +173,7 @@ class ApplicantsController {
     @Transactional(readOnly = true)
     Map<String, Object> candidate(@PathVariable String session, @PathVariable String year, @PathVariable String jambKey) {
         String s = session + "/" + year;
+        try {
         Map<String, Object> bio = jdbc.sql("""
                 SELECT r.surname, r.other_names, r.jamb_reg_no, r.jamb_code,
                        coalesce(p.name, r.jamb_code) AS programme, f.name AS faculty,
@@ -230,6 +231,12 @@ class ApplicantsController {
         out.put("sittings", sittings);
         out.put("olevel", olevel);
         return out;
+        } catch (org.springframework.dao.DataAccessException e) {
+            Throwable c = e.getMostSpecificCause();
+            throw new DomainRuleViolation("CANDIDATE_LOAD",
+                    "Could not load the candidate: " + (c == null ? e.getMessage() : c.getMessage()),
+                    new DomainRuleViolation.Remedy("Send this message to ICT.", "Academic Office"));
+        }
     }
 
     /* ── the fees ── */
