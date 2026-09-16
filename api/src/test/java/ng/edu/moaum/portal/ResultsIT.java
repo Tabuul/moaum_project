@@ -69,11 +69,11 @@ class ResultsIT {
             return;
         }
 
-        // registrations for both, approved (fifteen units satisfies the 300-level minimum)
+        // registrations for both, approved (eighteen units satisfies the 300-level minimum)
         for (UUID s : List.of(s1, s2)) {
             ResponseEntity<Map> reg = it.call(academic, HttpMethod.POST, "/api/v1/registration/course-registrations",
                     Map.of("studentId", s.toString(), "session", SESSION, "semester", 1, "level", 300,
-                            "entries", List.of(Map.of("offeringId", offeringId, "units", 15, "entryType", "CURRENT"))));
+                            "entries", List.of(Map.of("offeringId", offeringId, "units", 18, "entryType", "CURRENT"))));
             if (reg.getStatusCode().value() == 200) {
                 ResponseEntity<Map> ok = it.call(academic, HttpMethod.POST,
                         "/api/v1/registration/course-registrations/" + reg.getBody().get("id") + "/approve", null);
