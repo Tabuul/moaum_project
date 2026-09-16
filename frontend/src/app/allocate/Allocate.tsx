@@ -92,9 +92,15 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
   return (
     <>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="field" style={{ minWidth: 220 }}><label htmlFor="al-dept">Department</label>
-          <SearchSelect id="al-dept" value={dept} placeholder="Search a department…"
-            options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v })} /></div>
+        {depts.length > 1 ? (
+          <div className="field" style={{ minWidth: 220 }}><label htmlFor="al-dept">Department</label>
+            <SearchSelect id="al-dept" value={dept} placeholder="Search a department…"
+              options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v })} /></div>
+        ) : (
+          // a Head of Department works within one department — show it, do not ask them to pick it
+          <div className="field" style={{ minWidth: 220 }}><label>Department</label>
+            <div className="ctl" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{depts[0]?.name ?? "—"}</div></div>
+        )}
         <div className="field" style={{ minWidth: 150 }}><label htmlFor="al-session">Session</label>
           <select id="al-session" className="ctl" value={session} onChange={(e) => go({ session: e.target.value })}>
             {(sessions.includes(session) ? sessions : [session, ...sessions]).map((s) => <option key={s} value={s}>{s}</option>)}

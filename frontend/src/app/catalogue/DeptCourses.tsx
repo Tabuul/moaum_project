@@ -71,9 +71,15 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
       </Note>
 
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="field" style={{ minWidth: 240 }}><label htmlFor="dc-dept">Department</label>
-          <SearchSelect id="dc-dept" value={dept} placeholder="Search a department…"
-            options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go(v)} /></div>
+        {depts.length > 1 ? (
+          <div className="field" style={{ minWidth: 240 }}><label htmlFor="dc-dept">Department</label>
+            <SearchSelect id="dc-dept" value={dept} placeholder="Search a department…"
+              options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go(v)} /></div>
+        ) : (
+          // a Head of Department owns one department — show it, do not ask them to pick it
+          <div className="field" style={{ minWidth: 240 }}><label>Department</label>
+            <div className="ctl" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{depts[0]?.name ?? "—"}</div></div>
+        )}
         <div className="field" style={{ minWidth: 120 }}><label htmlFor="dc-level">Level</label>
           <select id="dc-level" className="ctl" value={fLevel} onChange={(e) => setFLevel(e.target.value)}>
             <option value="">All levels</option>{LEVELS.map((l) => <option key={l} value={l}>{l} Level</option>)}

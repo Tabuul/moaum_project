@@ -68,18 +68,25 @@ class ResultsRepository {
      */
     String officeDepartment(UUID person, String office) {
         return jdbc.sql("""
-                SELECT COALESCE(
-                  (SELECT scope_id FROM iam.office_assignment
-                    WHERE person_id = :p AND office_code = :o AND scope_kind = 'department' AND scope_id IS NOT NULL
-                      AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
-                    ORDER BY valid_from DESC LIMIT 1),
-                  (SELECT scope_id FROM iam.office_assignment
-                    WHERE person_id = :p AND office_code = 'lecturer' AND scope_kind = 'department' AND scope_id IS NOT NULL
-                      AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
-                    ORDER BY valid_from DESC LIMIT 1),
-                  (SELECT home_department FROM hrm.staff_record
-                    WHERE person_id = :p AND home_department IS NOT NULL LIMIT 1)
-                )
+                WITH raw AS (
+                  SELECT COALESCE(
+                    (SELECT scope_id FROM iam.office_assignment
+                      WHERE person_id = :p AND office_code = :o AND scope_kind = 'department'
+                        AND nullif(btrim(scope_id), '') IS NOT NULL
+                        AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                      ORDER BY valid_from DESC LIMIT 1),
+                    (SELECT scope_id FROM iam.office_assignment
+                      WHERE person_id = :p AND office_code = 'lecturer' AND scope_kind = 'department'
+                        AND nullif(btrim(scope_id), '') IS NOT NULL
+                        AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                      ORDER BY valid_from DESC LIMIT 1),
+                    (SELECT home_department FROM hrm.staff_record
+                      WHERE person_id = :p AND nullif(btrim(home_department), '') IS NOT NULL LIMIT 1)
+                  ) AS v)
+                SELECT d.code FROM ref.department d, raw
+                 WHERE raw.v IS NOT NULL AND d.ended_on IS NULL
+                   AND (upper(btrim(d.code)) = upper(btrim(raw.v)) OR lower(btrim(d.name)) = lower(btrim(raw.v)))
+                 LIMIT 1
                 """).param("p", person).param("o", office).query(String.class).optional().orElse(null);
     }
 
