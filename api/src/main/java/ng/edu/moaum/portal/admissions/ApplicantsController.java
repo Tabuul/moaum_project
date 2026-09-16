@@ -55,7 +55,7 @@ class ApplicantsController {
     private static final String REGISTRY = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records')";
 
     public record Fees(@NotNull @DecimalMin("0") BigDecimal applicationFee, @NotNull @DecimalMin("0") BigDecimal portalCharge,
-                       @NotNull @DecimalMin("0") BigDecimal acceptanceFee) {
+                       @NotNull @DecimalMin("0") BigDecimal acceptanceFee, BigDecimal checkingFee) {
     }
 
     public record Confirmation(@NotBlank @Size(max = 60) String channel, @Size(max = 400) String note) {
@@ -136,7 +136,8 @@ class ApplicantsController {
         Map<String, Object> fees = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", s).query().singleRow();
         return Map.of("session", s, "applications", rows, "batches", batches, "openReferences", references,
                 "fees", Map.of("stated", fees.get("stated"), "applicationFee", fees.get("application_fee"),
-                        "portalCharge", fees.get("portal_charge"), "acceptanceFee", fees.get("acceptance_fee")));
+                        "portalCharge", fees.get("portal_charge"), "acceptanceFee", fees.get("acceptance_fee"),
+                        "checkingFee", fees.get("checking_fee")));
     }
 
     /** the Academic Office's computed Post-UTME for candidates who did not sit it (Direct Entry, non-exam programmes) */
@@ -252,7 +253,8 @@ class ApplicantsController {
     Map<String, Object> applicantFees(@PathVariable String session, @PathVariable String year) {
         Map<String, Object> f = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", session + "/" + year).query().singleRow();
         return Map.of("session", session + "/" + year, "stated", f.get("stated"),
-                "applicationFee", f.get("application_fee"), "portalCharge", f.get("portal_charge"), "acceptanceFee", f.get("acceptance_fee"));
+                "applicationFee", f.get("application_fee"), "portalCharge", f.get("portal_charge"),
+                "acceptanceFee", f.get("acceptance_fee"), "checkingFee", f.get("checking_fee"));
     }
 
     @PutMapping("/applicant-fees")
@@ -261,11 +263,12 @@ class ApplicantsController {
     Map<String, Object> fees(@PathVariable String session, @PathVariable String year, @Valid @RequestBody Fees body) {
         String s = session + "/" + year;
         jdbc.sql("""
-                INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, stated_at)
-                VALUES (:s, :a, :p, :c, now())
+                INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, checking_fee, stated_at)
+                VALUES (:s, :a, :p, :c, :k, now())
                 ON CONFLICT (session) DO UPDATE SET application_fee = EXCLUDED.application_fee, portal_charge = EXCLUDED.portal_charge,
-                    acceptance_fee = EXCLUDED.acceptance_fee, stated_at = now()
-                """).param("s", s).param("a", body.applicationFee()).param("p", body.portalCharge()).param("c", body.acceptanceFee()).update();
+                    acceptance_fee = EXCLUDED.acceptance_fee, checking_fee = EXCLUDED.checking_fee, stated_at = now()
+                """).param("s", s).param("a", body.applicationFee()).param("p", body.portalCharge()).param("c", body.acceptanceFee())
+                .param("k", body.checkingFee() == null ? java.math.BigDecimal.ZERO : body.checkingFee()).update();
         return applicants(session, year);
     }
 

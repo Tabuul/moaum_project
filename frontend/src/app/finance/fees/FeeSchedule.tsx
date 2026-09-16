@@ -29,7 +29,7 @@ export interface Schedule {
   position: { students_paying: number; confirmed: number; references_open: number };
 }
 export interface OpenReference { id: string; reference: string; session: string; purpose: string; amount: number; generated_at: string; expires_at: string; matric_no: string | null; admission_no: string | null; surname: string; other_names: string; programme: string; current_level: number }
-export interface ApplicantFees { session: string; stated: boolean; applicationFee: number; portalCharge: number; acceptanceFee: number }
+export interface ApplicantFees { session: string; stated: boolean; applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee: number }
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 const esc = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
@@ -223,6 +223,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     applicationFee: String(applicantFees?.applicationFee ?? ""),
     portalCharge: String(applicantFees?.portalCharge ?? ""),
     acceptanceFee: String(applicantFees?.acceptanceFee ?? ""),
+    checkingFee: String(applicantFees?.checkingFee ?? ""),
   });
 
   // the applicant fees live under admissions, not finance, so they have their own save
@@ -232,7 +233,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     try {
       const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/applicant-fees`, {
         method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Applicant / Post-UTME fees stated for ${session}`) },
-        body: JSON.stringify({ applicationFee: Number(af.applicationFee) || 0, portalCharge: Number(af.portalCharge) || 0, acceptanceFee: Number(af.acceptanceFee) || 0 }),
+        body: JSON.stringify({ applicationFee: Number(af.applicationFee) || 0, portalCharge: Number(af.portalCharge) || 0, acceptanceFee: Number(af.acceptanceFee) || 0, checkingFee: Number(af.checkingFee) || 0 }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
@@ -498,10 +499,11 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Field id="af-app" label="Post-UTME screening fee" hint="What the applicant pays to apply and be screened"><input id="af-app" className="ctl tnum" inputMode="numeric" value={af.applicationFee} onChange={(e) => setAf({ ...af, applicationFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="2000" disabled={!may} /></Field>
             <Field id="af-port" label="Portal and payment charge" hint="Added to the screening fee at checkout"><input id="af-port" className="ctl tnum" inputMode="numeric" value={af.portalCharge} onChange={(e) => setAf({ ...af, portalCharge: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="300" disabled={!may} /></Field>
             <Field id="af-acc" label="Acceptance fee" hint="Paid on an offer; credited to first-session charges"><input id="af-acc" className="ctl tnum" inputMode="numeric" value={af.acceptanceFee} onChange={(e) => setAf({ ...af, acceptanceFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="30000" disabled={!may} /></Field>
+            <Field id="af-chk" label="Admission checking fee" hint="Paid at acceptance, alongside the acceptance fee"><input id="af-chk" className="ctl tnum" inputMode="numeric" value={af.checkingFee} onChange={(e) => setAf({ ...af, checkingFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="0" disabled={!may} /></Field>
           </div>
           <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
             <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim()} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : "State the applicant fees"}</Btn>
-            <span className="sub2">An applicant generating a reference is charged the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))} in all.</span>
+            <span className="sub2">Applying costs the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))}. Accepting an offer costs the acceptance fee plus the checking fee &mdash; {naira((Number(af.acceptanceFee) || 0) + (Number(af.checkingFee) || 0))}.</span>
           </div>
         </PBody>
       </Panel>
