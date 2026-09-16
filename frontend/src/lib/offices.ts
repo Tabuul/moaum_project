@@ -2,6 +2,7 @@
 export const OFFICE_LABELS: Record<string, string> = {
   lecturer: "Lecturer",
   hod: "Head of Department",
+  siwes: "SIWES Coordinator",
   exams: "Examinations Officer",
   facultyexams: "Faculty Examinations Officer",
   facultyofficer: "Faculty Officer",
@@ -38,6 +39,7 @@ export const OFFICE_COOKIE = "moaum_office";
 export const ROLE_LABELS: Record<string, [string, string]> = {
   lecturer: ["Lecturer", "Computer Science"],
   hod: ["Head of Department", "Mathematics & Computer Science"],
+  siwes: ["SIWES Coordinator", "Department"],
   dean: ["Dean", "Faculty of Science"],
   hrm: ["Director of Human Resource Management", "Human Resource Management"],
   housing: ["Deputy Registrar (Housing, Welfare and Passages)", "Registry"],

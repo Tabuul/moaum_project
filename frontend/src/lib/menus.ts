@@ -8,6 +8,21 @@ export interface MenuGroup { name: string; items: MenuItem[] }
 export interface Menu { label: string; home: string; groups: MenuGroup[] }
 
 export const MENUS: Record<string, Menu> = {
+  "siwes": {
+    "label": "SIWES Coordinator",
+    "home": "r/academic",
+    "groups": [
+      {
+        "name": "SIWES",
+        "items": [
+          { "id": "r/academic", "icon": "home", "label": "Dashboard" },
+          { "id": "r/siwes", "icon": "swap", "label": "SIWES supervision" },
+          { "id": "r/mysiwes", "icon": "user", "label": "My SIWES students" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      }
+    ]
+  },
   "lecturer": {
     "label": "Lecturer",
     "home": "r/lecturer",
@@ -34,6 +49,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "r/classlist",
             "icon": "user",
             "label": "Registered students"
+          },
+          {
+            "id": "r/mysiwes",
+            "icon": "user",
+            "label": "My SIWES students"
           },
           {
             "id": "t/eligibility",
@@ -152,6 +172,11 @@ export const MENUS: Record<string, Menu> = {
             "icon": "swap",
             "label": "Teaching allocation",
             "badge": "3"
+          },
+          {
+            "id": "r/siwes",
+            "icon": "swap",
+            "label": "SIWES supervision"
           },
           {
             "id": "t/deptcourses",

@@ -392,6 +392,14 @@ export const TITLES: Record<string, [string, string]> = {
     "Teaching allocation",
     "Assigning a lecturer sets the second examiner at the same time"
   ],
+  "r/siwes": [
+    "SIWES supervision",
+    "Assign a supervisor to each student; the coordinator records the practical report"
+  ],
+  "r/mysiwes": [
+    "My SIWES students",
+    "The students assigned to you — record each one's assessment"
+  ],
   "r/upload": [
     "Upload course material",
     "CSC 311 — Algorithms & Complexity"
