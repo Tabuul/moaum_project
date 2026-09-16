@@ -450,7 +450,7 @@ export function AdmissionSettings({
                 ) : (
                   <>
                     {p.stated
-                      ? <IcoBtn icon="edit" label={`Edit the admission rule for ${p.name}`} disabled={locked} onClick={() => { setEditing(p.code); setEdits({}); }} />
+                      ? <IcoBtn icon="edit" label={`Edit the admission rule for ${p.name}`} disabled={!may} onClick={() => { setEditing(p.code); setEdits({}); }} />
                       : <Btn kind="urgent" disabled={locked} onClick={() => { setEditing(p.code); setEdits({}); }}>State</Btn>}
                     {!p.stated ? (
                       <Btn kind="ghost" disabled={locked || busy !== null} title="Close this programme for the session: it needs no rule and admits nobody" onClick={() => { const reason = window.prompt(`Why is ${p.name} not admitting in ${session}? This goes on the record.`); if (!reason) return; void send("POST", `${base}/programmes/${p.code}/close`, { reason }, `${p.name} closed for ${session}: ${reason}`, `cl-${p.code}`); }}>{busy === `cl-${p.code}` ? "Closing…" : "Disable"}</Btn>
@@ -482,39 +482,62 @@ export function AdmissionSettings({
           foot={<>
             <Btn kind="ghost" onClick={() => { setEditing(null); setEdits({}); }}>Cancel</Btn>
             <span style={{ flexGrow: 1 }} />
-            <Btn
-              kind="primary"
-              disabled={busy !== null}
-              onClick={async () => {
-                const ok = await send("PUT", `${base}/programmes/${editingProgramme.code}`, {
-                  cutoff: num("pr-cut" in edits ? edits["pr-cut"] : String(editingProgramme.cutoff ?? "")),
-                  quota: num("pr-quota" in edits ? edits["pr-quota"] : String(editingProgramme.quota ?? "")),
-                  olevelText: "pr-ol" in edits ? edits["pr-ol"] : editingProgramme.olevelText ?? "",
-                  utmeText: "pr-ut" in edits ? edits["pr-ut"] : editingProgramme.utmeText ?? "",
-                  deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
-                  olevelSubjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
-                  olevelAllowances: ("pr-allow" in edits ? edits["pr-allow"] : (editingProgramme.olevelAllowances ?? []).join(",")).split(",").map((s) => s.trim()).filter(Boolean),
-                }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
-                if (ok) { setEditing(null); setEdits({}); }
-              }}
-            >
-              {busy === "pr" ? "Saving…" : "Save the rule"}
-            </Btn>
+            {policy.inForce ? (
+              // the policy is in force: the rule a candidate is ranked by is frozen, but the relevant
+              // O'Level subjects (which subjects the score reads) may still be corrected
+              <Btn
+                kind="primary"
+                disabled={busy !== null}
+                onClick={async () => {
+                  const ok = await send("PUT", `${base}/programmes/${editingProgramme.code}/olevel-subjects`, {
+                    subjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+                  }, `Relevant O’Level subjects corrected for ${editingProgramme.name} (${session})`, "pr");
+                  if (ok) { setEditing(null); setEdits({}); }
+                }}
+              >
+                {busy === "pr" ? "Saving…" : "Save O’Level subjects"}
+              </Btn>
+            ) : (
+              <Btn
+                kind="primary"
+                disabled={busy !== null}
+                onClick={async () => {
+                  const ok = await send("PUT", `${base}/programmes/${editingProgramme.code}`, {
+                    cutoff: num("pr-cut" in edits ? edits["pr-cut"] : String(editingProgramme.cutoff ?? "")),
+                    quota: num("pr-quota" in edits ? edits["pr-quota"] : String(editingProgramme.quota ?? "")),
+                    olevelText: "pr-ol" in edits ? edits["pr-ol"] : editingProgramme.olevelText ?? "",
+                    utmeText: "pr-ut" in edits ? edits["pr-ut"] : editingProgramme.utmeText ?? "",
+                    deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
+                    olevelSubjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+                    olevelAllowances: ("pr-allow" in edits ? edits["pr-allow"] : (editingProgramme.olevelAllowances ?? []).join(",")).split(",").map((s) => s.trim()).filter(Boolean),
+                  }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
+                  if (ok) { setEditing(null); setEdits({}); }
+                }}
+              >
+                {busy === "pr" ? "Saving…" : "Save the rule"}
+              </Btn>
+            )}
           </>}
         >
-          <Note kind="info" title="A rule is what a candidate is admitted against">
-            The O&rsquo;Level requirement, the UTME subject combination and the Direct Entry rule are Senate&rsquo;s to state; a programme with none cannot admit anybody, and that is the correct behaviour.
-          </Note>
+          {policy.inForce ? (
+            <Note kind="bad" title="These settings are in force — only the relevant O’Level subjects may be corrected">
+              The cut-off, the requirement text and the UTME/Direct-Entry rules a candidate is ranked against are frozen once the policy is in force. You may still correct the <b>relevant O&rsquo;Level subjects</b> the screening counts, because that names which subjects the score reads — a data correction, not a change to the standard.
+            </Note>
+          ) : (
+            <Note kind="info" title="A rule is what a candidate is admitted against">
+              The O&rsquo;Level requirement, the UTME subject combination and the Direct Entry rule are Senate&rsquo;s to state; a programme with none cannot admit anybody, and that is the correct behaviour.
+            </Note>
+          )}
           <div className="grid grid--2 rfgrid">
-            <Field id="pr-cut" label="Cut-off of its own" hint="Leave blank for the faculty’s">
-              <input id="pr-cut" className="ctl tnum" value={"pr-cut" in edits ? edits["pr-cut"] : editingProgramme.cutoff ?? ""} onChange={(e) => setEdits({ ...edits, "pr-cut": e.target.value })} autoComplete="off" />
+            <Field id="pr-cut" label="Cut-off of its own" hint={policy.inForce ? "Frozen while in force · edit inline in the table" : "Leave blank for the faculty’s"}>
+              <input id="pr-cut" className="ctl tnum" disabled={policy.inForce} value={"pr-cut" in edits ? edits["pr-cut"] : editingProgramme.cutoff ?? ""} onChange={(e) => setEdits({ ...edits, "pr-cut": e.target.value })} autoComplete="off" />
             </Field>
-            <Field id="pr-quota" label="Programme quota" hint="Places it carries; blank means none — the merit engine then offers everyone eligible">
-              <input id="pr-quota" className="ctl tnum" value={"pr-quota" in edits ? edits["pr-quota"] : editingProgramme.quota ?? ""} onChange={(e) => setEdits({ ...edits, "pr-quota": e.target.value })} autoComplete="off" />
+            <Field id="pr-quota" label="Programme quota" hint={policy.inForce ? "Frozen here while in force · edit inline in the table" : "Places it carries; blank means none — the merit engine then offers everyone eligible"}>
+              <input id="pr-quota" className="ctl tnum" disabled={policy.inForce} value={"pr-quota" in edits ? edits["pr-quota"] : editingProgramme.quota ?? ""} onChange={(e) => setEdits({ ...edits, "pr-quota": e.target.value })} autoComplete="off" />
             </Field>
             {([["pr-ol", "O’Level requirement", editingProgramme.olevelText], ["pr-ut", "UTME subjects", editingProgramme.utmeText], ["pr-de", "Direct Entry", editingProgramme.deText]] as [string, string, string | null][]).map(([k, label, current]) => (
               <Field id={k} label={label} full key={k}>
-                <textarea id={k} className="ctl" rows={3} value={k in edits ? edits[k] : current ?? ""} onChange={(e) => setEdits({ ...edits, [k]: e.target.value })} />
+                <textarea id={k} className="ctl" rows={3} disabled={policy.inForce} value={k in edits ? edits[k] : current ?? ""} onChange={(e) => setEdits({ ...edits, [k]: e.target.value })} />
               </Field>
             ))}
             <Field id="pr-subj" label="Relevant O’Level subjects" hint="Comma-separated, as JAMB names them · the screening counts the best of these" full>
@@ -528,7 +551,7 @@ export function AdmissionSettings({
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     {["English Language", "Mathematics"].map((subject) => (
                       <label key={subject} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                        <input type="checkbox" className="pchk" checked={allow.includes(subject)} onChange={() => toggle(subject)} /> Accept a pass in {subject}
+                        <input type="checkbox" className="pchk" disabled={policy.inForce} checked={allow.includes(subject)} onChange={() => toggle(subject)} /> Accept a pass in {subject}
                       </label>
                     ))}
                   </div>

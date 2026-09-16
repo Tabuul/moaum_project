@@ -205,6 +205,20 @@ public class AdmissionSettingsService {
         return policy(session);
     }
 
+    /** the relevant O'Level subjects a programme's screening counts — editable in force like a quota:
+     *  it corrects which subjects the score reads, a data correction, not the cut-off or weighting a
+     *  candidate is ranked by. */
+    @Transactional
+    public AdmissionPolicy setProgrammeOlevelSubjects(String session, String programmeCode, List<String> subjects) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        settings.setProgrammeOlevelSubjects(id, code, subjects);
+        return policy(session);
+    }
+
     @Transactional
     public AdmissionPolicy setProgrammeCutoff(String session, String programmeCode, Integer cutoff) {
         UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));

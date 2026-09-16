@@ -104,6 +104,17 @@ class AdmissionSettingsController {
         return service.setProgrammeCutoff(session + "/" + year, code, body.cutoff());
     }
 
+    public record OlevelSubjectsIn(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> subjects) {
+    }
+
+    /** a programme's relevant O'Level subjects, editable in force — a correction to which subjects the
+     *  screening counts, not the cut-off or weighting a candidate is ranked by */
+    @PutMapping("/sessions/{session}/{year}/policy/programmes/{code}/olevel-subjects")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy programmeOlevelSubjects(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody OlevelSubjectsIn body) {
+        return service.setProgrammeOlevelSubjects(session + "/" + year, code, body.subjects());
+    }
+
     public record Catchment(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> lgas) {
     }
 
