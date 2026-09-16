@@ -1644,7 +1644,8 @@ BEGIN
         AND admissions.olevel_points('9998/9999', 'A1') = 10 AND admissions.olevel_points('2026/2027', 'A1') = 6,
         'Agricultural Science is not relevant to MBBS and is not counted; the stated points and bonus replace the defaults');
 
-    -- 90b. the same WAEC result uploaded a second time is one sitting, not two — deduped by its identity (V099)
+    -- 90b. the same WAEC result uploaded a second time is not recorded a second time — deduped by its
+    -- identity on import, so no duplicate row is kept and the score still counts it once (V099, V147)
     INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
     VALUES (dup, '9998/9999', 'OLEVEL', 'check-duplicate-sitting', '20269999OL', 'COLUMN',
       '{"sittings":[
@@ -1654,10 +1655,10 @@ BEGIN
             {"subject":"Biology","grade":"A1"},{"subject":"Geography","grade":"C4"}]}]}'::jsonb);
     PERFORM admissions.olevel_from_attachment(dup);
     SELECT * INTO r FROM admissions.olevel_score('9998/9999', '20269999OL', 'C00061');
-    PERFORM pg_temp.assert('The same O''Level result uploaded twice counts once: sittings are deduped by their identity, not by how many times they were uploaded',
+    PERFORM pg_temp.assert('The same O''Level result uploaded twice is deduped on import: the score counts it once and no duplicate row is kept',
         r.sittings = 2 AND r.points = 28 AND r.bonus = 3 AND r.total = 31
         AND admissions.olevel_sittings('9998/9999', '20269999OL') = 2
-        AND (SELECT count(*) FROM admissions.olevel_sitting WHERE session = '9998/9999' AND jamb_key = '20269999OL') = 3,
+        AND (SELECT count(*) FROM admissions.olevel_sitting WHERE session = '9998/9999' AND jamb_key = '20269999OL') = 2,
         format('sittings=%s points=%s bonus=%s total=%s rows=%s', r.sittings, r.points, r.bonus, r.total,
                (SELECT count(*) FROM admissions.olevel_sitting WHERE session = '9998/9999' AND jamb_key = '20269999OL')));
 END $$;
