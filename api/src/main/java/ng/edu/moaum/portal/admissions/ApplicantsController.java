@@ -184,24 +184,26 @@ class ApplicantsController {
                  WHERE r.session = :s AND r.jamb_reg_no = :k
                 """).param("s", s).param("k", jambKey).query().listOfRows().stream().findFirst()
                 .orElseThrow(() -> new NotFound("candidate in " + s, jambKey));
-        List<Map<String, Object>> utme = utmeSubjects(CandidateDataController.Json.map((String) bio.remove("raw_text")));
+        // a mutable copy so removing the raw column cannot fail on an unmodifiable row map
+        Map<String, Object> biodata = new java.util.LinkedHashMap<>(bio);
+        Object rawText = biodata.remove("raw_text");
+        List<Map<String, Object>> utme = utmeSubjects(CandidateDataController.Json.map(rawText == null ? null : String.valueOf(rawText)));
         // distinct sittings — the same result sent twice (same exam number, or same body/year/grades)
-        // is one sitting, matching how the score dedupes it (V099)
+        // is one sitting, matching how the score dedupes it (V099). The identity is computed as a column
+        // so nothing correlated sits inside DISTINCT ON / ORDER BY.
         List<Map<String, Object>> sittings = jdbc.sql("""
                 SELECT d.exam_body, d.exam_type_raw, d.exam_year, d.exam_number, d.subjects FROM (
-                    SELECT DISTINCT ON (coalesce(nullif(upper(btrim(st.exam_number)), ''),
-                             st.exam_body || '|' || coalesce(st.exam_year, '') || '|' ||
-                             coalesce((SELECT string_agg(g.subject || '=' || g.grade, ',' ORDER BY g.subject, g.grade)
-                                         FROM admissions.olevel_grade g WHERE g.sitting_id = st.id), '')))
-                           st.exam_body, st.exam_type_raw, st.exam_year, st.exam_number, st.ord,
-                           (SELECT json_agg(json_build_object('subject', g.subject, 'grade', g.grade) ORDER BY g.subject)::text
-                              FROM admissions.olevel_grade g WHERE g.sitting_id = st.id) AS subjects
-                      FROM admissions.olevel_sitting st
-                     WHERE st.session = :s AND st.jamb_key = :k
-                     ORDER BY coalesce(nullif(upper(btrim(st.exam_number)), ''),
-                             st.exam_body || '|' || coalesce(st.exam_year, '') || '|' ||
-                             coalesce((SELECT string_agg(g.subject || '=' || g.grade, ',' ORDER BY g.subject, g.grade)
-                                         FROM admissions.olevel_grade g WHERE g.sitting_id = st.id), '')), st.ord
+                    SELECT DISTINCT ON (x.sig) x.exam_body, x.exam_type_raw, x.exam_year, x.exam_number, x.ord, x.subjects FROM (
+                        SELECT st.exam_body, st.exam_type_raw, st.exam_year, st.exam_number, st.ord,
+                               coalesce(nullif(upper(btrim(st.exam_number)), ''),
+                                 st.exam_body || '|' || coalesce(st.exam_year, '') || '|' ||
+                                 coalesce((SELECT string_agg(g.subject || '=' || g.grade, ',' ORDER BY g.subject, g.grade)
+                                             FROM admissions.olevel_grade g WHERE g.sitting_id = st.id), '')) AS sig,
+                               (SELECT json_agg(json_build_object('subject', g.subject, 'grade', g.grade) ORDER BY g.subject)::text
+                                  FROM admissions.olevel_grade g WHERE g.sitting_id = st.id) AS subjects
+                          FROM admissions.olevel_sitting st
+                         WHERE st.session = :s AND st.jamb_key = :k
+                    ) x ORDER BY x.sig, x.ord
                 ) d ORDER BY d.exam_year NULLS LAST, d.ord
                 """).param("s", s).param("k", jambKey).query().listOfRows();
         // the O'Level total, plus the ceiling it is scaled against to give the screening mark out of 100
@@ -212,7 +214,7 @@ class ApplicantsController {
                           FROM admissions.olevel_rule(:s) r) AS ceiling,
                        admissions.screened_by_exam(:s, :code) AS by_exam
                   FROM admissions.olevel_score(:s, :k, :code) o
-                """).param("s", s).param("k", jambKey).param("code", bio.get("jamb_code"))
+                """).param("s", s).param("k", jambKey).param("code", biodata.get("jamb_code"))
                 .query().listOfRows().stream().findFirst().orElse(java.util.Map.of());
         // JAMB's passport, where it was small enough to keep (recorded as a data URL in the attachment payload)
         String passport = jdbc.sql("""
@@ -222,7 +224,7 @@ class ApplicantsController {
                 """).param("s", s).param("k", jambKey).query(String.class).optional().orElse(null);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", s);
-        out.put("biodata", bio);
+        out.put("biodata", biodata);
         out.put("passport", passport);
         out.put("utmeSubjects", utme);
         out.put("sittings", sittings);
