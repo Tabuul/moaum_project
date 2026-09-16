@@ -156,6 +156,15 @@ class StudentPortalRepository {
                 .param("ses", session).query(Integer.class).single();
     }
 
+    /** the SIWES / industrial-training units for the student's programme at a level and semester, else null */
+    Integer siwesUnits(UUID student, int level, int semester) {
+        return jdbc.sql("""
+                SELECT registration.siwes_units(s.programme_code, :lvl, :sem)
+                  FROM people.student s WHERE s.id = :id
+                """).param("id", student).param("lvl", level).param("sem", semester)
+                .query(Integer.class).optional().orElse(null);
+    }
+
     /** the semesters of the session the student has actually registered (submitted or beyond) */
     java.util.List<Integer> registeredSemesters(UUID student, String session) {
         return jdbc.sql("""

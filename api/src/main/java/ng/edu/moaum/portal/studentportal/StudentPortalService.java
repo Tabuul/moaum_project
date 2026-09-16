@@ -155,7 +155,10 @@ public class StudentPortalService {
         out.put("session", session);
         out.put("semester", semester);
         out.put("level", s.currentLevel());
-        out.put("limit", repo.limit(s.currentLevel()));
+        // the SIWES / industrial-training semester carries exactly the SIWES units, not the 18-24 range
+        Integer siwes = repo.siwesUnits(id, s.currentLevel(), semester);
+        out.put("limit", siwes != null ? Map.of("min_units", siwes, "max_units", siwes) : repo.limit(s.currentLevel()));
+        out.put("siwes", siwes != null);
         out.put("menu", repo.menu(id, session, semester));
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
         out.put("fees", fees(id, session));

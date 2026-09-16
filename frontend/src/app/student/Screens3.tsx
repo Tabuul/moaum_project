@@ -123,6 +123,11 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   return (
     <>
       {switcher}
+      {v.siwes ? (
+        <Note kind="info" title="Industrial training (SIWES) semester">
+          The whole of this semester is your industrial training. Register only the SIWES / industrial training course ({max} units) — nothing else, and no carryover. A carryover is registered when the course is next offered.
+        </Note>
+      ) : null}
       {locked ? (
         <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"} title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? `Approved on ${onDay(reg!.approved_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Level Adviser`}
           action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <Link href="/student/form" className="btn btn--primary btn--sm">Course form</Link> : null}>

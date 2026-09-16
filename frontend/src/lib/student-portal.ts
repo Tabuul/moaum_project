@@ -42,6 +42,8 @@ export interface RegistrationView {
   openSemester?: number;
   /** the semesters of this session already registered (submitted or beyond) */
   registeredSemesters?: number[];
+  /** true when this is the SIWES / industrial-training semester (only the SIWES course, no carryovers) */
+  siwes?: boolean;
 }
 export interface ResultRow {
   session: string; semester: number; course_code: string; title: string; units: number; entry_type: string; stage: string;
