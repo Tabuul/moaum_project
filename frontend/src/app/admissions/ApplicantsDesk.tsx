@@ -34,8 +34,10 @@ export interface CandSitting { exam_body: string; exam_type_raw: string | null; 
 export interface Candidate {
   session: string;
   biodata: { surname: string; other_names: string; jamb_reg_no: string; jamb_code: string; programme: string; faculty: string | null; entry_mode: string; aggregate: number | null; sex: string | null; state_of_origin: string | null; lga: string | null };
+  passport: string | null;
+  utmeSubjects: { subject: string; score: string }[];
   sittings: CandSitting[];
-  olevel: { sittings?: number; points?: number; bonus?: number; total?: number };
+  olevel: { sittings?: number; points?: number; bonus?: number; total?: number; counted?: string; ceiling?: number; by_exam?: boolean };
 }
 export interface Desk {
   session: string;
@@ -489,6 +491,14 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => setOpenCand(null)}>Close</Btn></>}>
           <Panel title="Candidate — from the CAPS admission list">
             <PBody>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {openCand.passport ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={openCand.passport} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+                ) : (
+                  <div className="sub2" style={{ width: 96, height: 120, borderRadius: 8, border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: 6 }}>No passport on file</div>
+                )}
+                <div style={{ flex: "1 1 320px" }}>
               <KvGrid cls="grid--2" pairs={[
                 ["Name", `${openCand.biodata.surname}, ${openCand.biodata.other_names}`],
                 ["JAMB registration", openCand.biodata.jamb_reg_no],
@@ -498,9 +508,18 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                 ["Sex", openCand.biodata.sex === "F" ? "Female" : openCand.biodata.sex === "M" ? "Male" : "—"],
                 ["State / LGA", `${openCand.biodata.state_of_origin ?? "—"} · ${openCand.biodata.lga ?? "—"}`],
               ]} />
+                </div>
+              </div>
             </PBody>
           </Panel>
-          <Panel title="O’Level results" right={openCand.olevel?.total ? `Computed screening ${openCand.olevel.total}` : "As JAMB sent them"}>
+          <Panel title="JAMB UTME subjects" right={openCand.biodata.aggregate != null ? `Aggregate ${openCand.biodata.aggregate}` : "As CAPS sent them"}>
+            <PBody>
+              {openCand.utmeSubjects?.length ? (
+                <DTable cols={["Subject", "Score|mid"]} rows={openCand.utmeSubjects.map((u, i) => [<span key={"s" + i}>{u.subject || "—"}</span>, <b className="tnum" key={"v" + i}>{u.score || "—"}</b>])} />
+              ) : <div className="sub2">No UTME subject breakdown in the CAPS row for this candidate.</div>}
+            </PBody>
+          </Panel>
+          <Panel title="O’Level results" right={openCand.olevel?.by_exam ? "Screened by examination" : (openCand.olevel?.total && openCand.olevel?.ceiling ? `Screening ${Math.round((openCand.olevel.total / openCand.olevel.ceiling) * 10000) / 100}%` : "As JAMB sent them")}>
             <PBody>
               {openCand.sittings.length ? openCand.sittings.map((s, i) => {
                 let subs: { subject: string; grade: string }[] = [];
@@ -516,7 +535,22 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                   </div>
                 );
               }) : <div className="sub2">No O&rsquo;Level result has reached the University from JAMB for this candidate yet.</div>}
-              {openCand.olevel?.total ? <div className="sub2" style={{ marginTop: 6 }}>Under this session&rsquo;s grading: {openCand.olevel.sittings} sitting{openCand.olevel.sittings === 1 ? "" : "s"}, {openCand.olevel.points} points + {openCand.olevel.bonus} bonus = <b>{openCand.olevel.total}</b>.</div> : null}
+              {(() => {
+                let counted: { subject: string; grade: string; points: number }[] = [];
+                try { counted = JSON.parse(openCand.olevel?.counted ?? "[]") as { subject: string; grade: string; points: number }[]; } catch { counted = []; }
+                return counted.length ? <div className="sub2" style={{ marginTop: 6 }}>Subjects counted in the score: {counted.map((c) => `${c.subject} ${c.grade} (${c.points})`).join(" · ")}.</div> : null;
+              })()}
+              {openCand.olevel?.total ? (() => {
+                const ceil = openCand.olevel.ceiling ?? 0;
+                const scaled = ceil ? Math.round((openCand.olevel.total! / ceil) * 10000) / 100 : null;
+                return (
+                  <div className="sub2" style={{ marginTop: 4 }}>
+                    Under this session&rsquo;s grading: {openCand.olevel.sittings} sitting{openCand.olevel.sittings === 1 ? "" : "s"}, {openCand.olevel.points} points + {openCand.olevel.bonus} bonus = <b>{openCand.olevel.total}</b> of a possible {ceil}.
+                    {scaled != null ? <> Scaled to a screening mark of <b>{scaled}%</b> (total &divide; {ceil} &times; 100).</> : null}
+                    {openCand.olevel.by_exam ? <> This programme is screened by examination, so the screening mark will be the CBT score, not this.</> : null}
+                  </div>
+                );
+              })() : null}
             </PBody>
           </Panel>
           <Note kind="info" title="Not yet registered for Post-UTME">On the committed admission list but has not created an application. Seat, screening score and decision appear once they register.</Note>
