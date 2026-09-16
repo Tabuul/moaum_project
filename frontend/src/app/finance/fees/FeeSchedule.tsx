@@ -95,6 +95,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [feeMsg, setFeeMsg] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [filterFac, setFilterFac] = useState("");
   const [filterSem, setFilterSem] = useState("");
   const [filterSpill, setFilterSpill] = useState("");
@@ -238,7 +239,12 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           The portal refuses rather than assumes what a payment releases. The recommended scheme: the first instalment, half the charge, opens registration, the identity card and the library; payment in full opens the examination, results, the transcript and convocation; arrears block everything. It is put in force under a minute, from a date.
         </Note>
       )}
-      <Panel title={`The charges for ${session}`} right={<Btn kind="primary" disabled={!may} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>}>
+      <Panel title={`The charges for ${session}`} right={<span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <select aria-label="Session" className="ctl" style={{ width: "auto" }} value={session} onChange={(e) => { if (e.target.value !== session) router.push(`/finance/fees?session=${encodeURIComponent(e.target.value)}`); }}>
+          {(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <Btn kind="primary" disabled={!may} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>
+      </span>}>
         <PBody>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
             <div className="field" style={{ minWidth: 180, margin: 0 }}><label htmlFor="flt-fac">Faculty</label>
@@ -294,10 +300,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
             <div className="sub2" style={{ marginBottom: 8 }}>Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b></div>
-            <label className={`btn btn--primary${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer", margin: 0 }}>
-              {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx)"}
-              <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
-            </label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <label className={`btn btn--primary${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer", margin: 0 }}>
+                {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx)"}
+                <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
+              </label>
+              <Btn kind="ghost" disabled={busy !== null || !schedule.items.length} onClick={() => setClearing(true)}>{busy === "clear" ? "Clearing…" : `Clear the ${session} schedule`}</Btn>
+            </div>
+            <div className="sub2" style={{ marginTop: 8 }}>An upload already replaces this session&rsquo;s schedule. Use <b>Clear</b> only to empty a session whose fees were stated by mistake (for example the wrong session) — then switch to the right session above and upload.</div>
             {feeMsg ? <Note kind="ok" title="Approved fees loaded">{feeMsg}</Note> : null}
           </PBody>
         </Panel>
@@ -400,6 +410,12 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <Field id="si" label="Instrument" hint="The Council or Bursary minute that approved it"><input id="si" className="ctl" value={val("instrument")} onChange={(e) => setEdits({ ...edits, instrument: e.target.value })} placeholder="BUR/2026/04" /></Field>
           <Field id="sf" label="From" hint="Blank for today"><input id="sf" className="ctl tnum" type="date" value={val("from")} onChange={(e) => setEdits({ ...edits, from: e.target.value })} /></Field>
           <div className="sub2">Registration, identity card and library release at the first instalment; the examination, results, transcript and convocation at payment in full; hostel is not gated; arrears block everything. Two schemes cannot overlap in time.</div>
+        </Modal>
+      ) : null}
+      {clearing ? (
+        <Modal title={`Clear the ${session} schedule`} sub={`${schedule.items.length} line${schedule.items.length === 1 ? "" : "s"} will be removed`} onClose={() => setClearing(false)}
+          foot={<><Btn kind="ghost" onClick={() => setClearing(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="urgent" disabled={busy !== null} onClick={async () => { const ok = await send("clear", "POST", `/sessions/${session}/schedule/clear`, {}, `Fee schedule cleared for ${session}`); if (ok) setClearing(false); }}>{busy === "clear" ? "Clearing…" : "Clear the schedule"}</Btn></>}>
+          <Note kind="bad" title={`Every fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Receipts and payments already made are untouched. Upload the approved fees for the right session afterwards.</Note>
         </Modal>
       ) : null}
       <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : `Default (not yet stated for ${session})`}>

@@ -192,6 +192,17 @@ class FinanceController {
         return schedule(session, year);
     }
 
+    /** clear the whole schedule for a session — ends every standing line, so the Bursar can upload a clean
+     *  structure (the same soft-end an upload does before it re-inserts). Charges ignore ended lines at once. */
+    @PostMapping("/sessions/{session}/{year}/schedule/clear")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> clearSchedule(@PathVariable String session, @PathVariable String year) {
+        jdbc.sql("UPDATE finance.fee_schedule SET ended_at = now() WHERE session = :s AND ended_at IS NULL")
+                .param("s", session + "/" + year).update();
+        return schedule(session, year);
+    }
+
     /** edit a standing fee line in place — its amount and the filters it carries */
     @PutMapping("/sessions/{session}/{year}/schedule/{id}")
     @PreAuthorize(BURSARY)

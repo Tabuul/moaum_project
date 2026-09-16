@@ -10,9 +10,13 @@ const SESSION_PATTERN = /^\d{4}\/\d{4}$/;
 /** t/feesetup — the Bursar's desk: the session's charges, the clearance scheme, the references waiting to be confirmed */
 export default async function FeesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
-  const requested = typeof params.session === "string" ? params.session : "2026/2027";
-  const session = SESSION_PATTERN.test(requested) ? requested : "2026/2027";
-  const [me, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions] = await Promise.all([
+  // No explicit ?session= lands on the CURRENT session — never a hardcoded year, so an
+  // upload does not silently go to the wrong session (the cause of the 2026/2027 mix-up).
+  const explicit = typeof params.session === "string" && SESSION_PATTERN.test(params.session) ? params.session : null;
+  const sessionsRes = await api<{ name: string; state: string }[]>("/api/v1/ref/sessions");
+  const current = sessionsRes.ok ? sessionsRes.data.find((s) => s.state === "CURRENT")?.name ?? null : null;
+  const session = explicit ?? current ?? "2026/2027";
+  const [me, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Schedule>(`/api/v1/finance/sessions/${session}/schedule`),
     api<OpenReference[]>(`/api/v1/finance/references?session=${encodeURIComponent(session)}&state=open`),
@@ -21,8 +25,8 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
     api<ProgrammeOption[]>("/api/v1/finance/programmes"),
     api<ApplicantFees>(`/api/v1/admissions/sessions/${session}/applicant-fees`),
     api<FeeItem[]>("/api/v1/finance/fee-items"),
-    api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
+  const sessions = sessionsRes;
   return (
     <Shell route="t/feesetup" me={me.ok ? me.data : null}>
       {schedule.ok ? (
