@@ -95,30 +95,34 @@ class ApplicantsController {
     @Transactional(readOnly = true)
     Map<String, Object> applicants(@PathVariable String session, @PathVariable String year) {
         String s = session + "/" + year;
-        // every applicant on a committed CAPS admission list for the session — those who have
-        // registered for Post-UTME carry their application (stage, seat, score, decision); those
-        // who have not yet registered show as admitted but unregistered.
+        // every applicant registered for Post-UTME (their application, with stage/seat/score/decision),
+        // plus every applicant admitted on a committed CAPS list who has not yet registered.
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT a.id, a.application_no,
-                       r.surname, r.other_names, r.jamb_reg_no AS jamb_key,
-                       coalesce(c.programme, p.name, r.jamb_code) AS programme, r.entry_mode,
-                       CASE WHEN a.id IS NOT NULL THEN admissions.application_stage(a.id) ELSE 0 END AS stage,
+                SELECT a.id, a.application_no, c.surname, c.other_names, c.jamb_reg_no AS jamb_key, c.programme, c.entry_mode,
+                       admissions.application_stage(a.id) AS stage,
                        a.fee_confirmed_at, a.submitted_at, sb.label AS batch, a.seat, a.screening_score, a.score_released_at,
                        a.decision, a.decision_basis, a.decision_released_at, a.accepted_at, a.declined_at, a.cleared_at, acc.email, acc.phone,
                        (SELECT count(*) FROM admissions.fee_reference f WHERE f.application_id = a.id AND f.confirmed_at IS NULL AND f.expires_at > now()) AS references_open,
                        (SELECT count(*) FROM admissions.application_document d WHERE d.application_id = a.id AND d.superseded_at IS NULL AND d.status = 'PENDING') AS documents_pending,
-                       st.admission_no, st.matric_no,
-                       (a.id IS NOT NULL) AS registered
+                       st.admission_no, st.matric_no, true AS registered
+                  FROM admissions.application a
+                  JOIN admissions.applicant_account acc ON acc.id = a.account_id
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  LEFT JOIN admissions.screening_batch sb ON sb.id = a.screening_batch_id
+                  LEFT JOIN people.student st ON st.candidate_id = c.id
+                 WHERE a.session = :s
+                UNION ALL
+                SELECT NULL, NULL, r.surname, r.other_names, r.jamb_reg_no, coalesce(p.name, r.jamb_code), r.entry_mode,
+                       0, NULL, NULL, NULL, NULL, NULL, NULL,
+                       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                       0, 0, NULL, NULL, false
                   FROM admissions.caps_row_live r
                   JOIN admissions.caps_batch b ON b.id = r.batch_id AND b.committed_at IS NOT NULL
                   LEFT JOIN ref.programme p ON p.code = r.jamb_code
-                  LEFT JOIN admissions.candidate c ON c.session = r.session AND c.jamb_reg_no = r.jamb_reg_no
-                  LEFT JOIN admissions.application a ON a.candidate_id = c.id AND a.session = r.session
-                  LEFT JOIN admissions.applicant_account acc ON acc.id = a.account_id
-                  LEFT JOIN admissions.screening_batch sb ON sb.id = a.screening_batch_id
-                  LEFT JOIN people.student st ON st.candidate_id = c.id
                  WHERE r.session = :s
-                 ORDER BY (a.id IS NOT NULL) DESC, r.surname, r.other_names
+                   AND NOT EXISTS (SELECT 1 FROM admissions.candidate c JOIN admissions.application a ON a.candidate_id = c.id AND a.session = r.session
+                                    WHERE c.session = r.session AND c.jamb_reg_no = r.jamb_reg_no)
+                 ORDER BY registered DESC, surname, other_names
                 """).param("s", s).query().listOfRows();
         List<Map<String, Object>> batches = batches(s);
         List<Map<String, Object>> references = jdbc.sql("""
