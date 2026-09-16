@@ -150,6 +150,18 @@ class StudentPortalRepository {
                 .query(Boolean.class).single());
     }
 
+    /** the highest open semester for a session (registration is gated on that semester's fees), else 1 */
+    int openSemester(String session) {
+        return jdbc.sql("SELECT coalesce(max(number), 1) FROM policy.semester WHERE session = :ses AND state = 'OPEN'")
+                .param("ses", session).query(Integer.class).single();
+    }
+
+    /** whether the student's confirmed school-fee payments cover the charge up to and including a semester */
+    boolean semesterCleared(UUID student, String session, int semester) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.semester_cleared(:s, :ses, :sem)")
+                .param("s", student).param("ses", session).param("sem", semester).query(Boolean.class).single());
+    }
+
     List<Map<String, Object>> references(UUID student) {
         return jdbc.sql("""
                 SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no

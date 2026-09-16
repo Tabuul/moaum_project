@@ -1877,15 +1877,17 @@ BEGIN
                ok, ref, rcpt, pos.due, pos.paid, pos.balance, pos.instalments_paid, pos.paid_in_full,
                (SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = st)));
 
-    -- 101. registration: the draft, the choice, and a submission the scheme decides — refused with no scheme, allowed on instalment 1
+    -- 101. registration: refused until this semester's school fees are paid in full (V149).
+    -- Only half is paid so far, so a submission is refused; paying the balance opens it.
     PERFORM set_config('moaum.actor_office', 'student', true);
     reg := registration.student_draft(st, '9999/0000', 1);
     units := registration.student_choose(reg, ARRAY[o1, o2]);
     ok := false;
     BEGIN
-        PERFORM registration.student_submit(reg);
-    EXCEPTION WHEN OTHERS THEN ok := true;   -- no scheme in force today: refuses rather than assumes (D-Q4)
+        PERFORM registration.student_submit(reg);   -- 50,000 of 100,000 paid: refused
+    EXCEPTION WHEN OTHERS THEN ok := true;
     END;
+    -- the clearance scheme is still put in force here for the examination/results gates the later blocks rely on
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     SELECT min(lower(validity)) INTO until FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date;
     INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
@@ -1893,17 +1895,19 @@ BEGIN
     INSERT INTO policy.clearance_scheme VALUES (v, true);
     INSERT INTO policy.clearance_rule VALUES (v, 'REGISTRATION', 'INSTALMENT_1'), (v, 'ID_CARD', 'INSTALMENT_1'), (v, 'LIBRARY', 'INSTALMENT_1'),
         (v, 'HOSTEL', 'NEVER_GATED'), (v, 'EXAMINATION', 'PAID_IN_FULL'), (v, 'RESULTS', 'PAID_IN_FULL'), (v, 'TRANSCRIPT', 'PAID_IN_FULL'), (v, 'CONVOCATION', 'PAID_IN_FULL');
+    -- pay the balance so the first semester's fees are cleared in full
+    ref := finance.new_reference(st, '9999/0000', 50000, NULL);
+    PERFORM finance.confirm_payment(ref, 'Bank transfer', 'balance');
     PERFORM set_config('moaum.actor_office', 'student', true);
-    DECLARE reg_ok boolean; exam_ok boolean; sub text; st_after text;
+    DECLARE sem_ok boolean; sub text; st_after text;
     BEGIN
-        reg_ok := finance.clears(st, '9999/0000', 'REGISTRATION');
-        exam_ok := finance.clears(st, '9999/0000', 'EXAMINATION');
+        sem_ok := finance.semester_cleared(st, '9999/0000', 1);
         sub := registration.student_submit(reg);
         SELECT status INTO st_after FROM registration.course_registration WHERE id = reg;
-        PERFORM pg_temp.assert('The student''s registration is submitted only when the scheme in force says the payment releases it',
-            units = 18 AND ok AND reg_ok AND NOT exam_ok AND sub = 'submitted' AND st_after = 'SUBMITTED',
-            format('units=%s refused_without_scheme=%s clears_registration=%s clears_examination=%s submit=%s status=%s until=%s',
-                   units, ok, reg_ok, exam_ok, sub, st_after, until));
+        PERFORM pg_temp.assert('Course registration for a semester is refused until that semester''s school fees are paid in full',
+            units = 18 AND ok AND sem_ok AND sub = 'submitted' AND st_after = 'SUBMITTED',
+            format('units=%s refused_when_half_paid=%s semester_cleared=%s submit=%s status=%s',
+                   units, ok, sem_ok, sub, st_after));
     END;
 END $$;
 

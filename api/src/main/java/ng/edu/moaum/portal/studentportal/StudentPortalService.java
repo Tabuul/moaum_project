@@ -111,11 +111,10 @@ public class StudentPortalService {
         out.put("instalmentsPaid", pos.get("instalments_paid"));
         out.put("paidInFull", pos.get("paid_in_full"));
         out.put("hasArrears", pos.get("has_arrears"));
-        /* asked first: policy.clears refuses when no scheme is in force, and a refused statement aborts the whole transaction */
+        /* registration is now gated per semester on that semester's school fees, paid in full (V149) */
         boolean inForce = repo.schemeInForce();
-        Boolean registration = inForce ? repo.clears(id, session, "REGISTRATION") : null;
-        String schemeProblem = inForce ? null : "No clearance scheme is in force, so nothing is released against a payment yet; the Bursar states the scheme.";
-        out.put("clearsRegistration", registration);
+        out.put("clearsRegistration", repo.semesterCleared(id, session, repo.openSemester(session)));
+        String schemeProblem = inForce ? null : "No clearance scheme is in force, so the examination, results and transcript are not yet released against a payment; the Bursar states the scheme. Course registration opens on this semester's school fees, paid in full.";
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
         out.put("sessions", repo.sessionsWithCharges());

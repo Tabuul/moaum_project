@@ -152,6 +152,9 @@ class StudentPortalIT {
                     """).update();
             return null;
         });
+        // registration for a semester opens on that semester's school fees paid in full (V149): pay the balance
+        Map<String, Object> balRef = it.call(token, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("session", SESSION, "amount", 50000)).getBody();
+        it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + balRef.get("reference") + "/confirm", Map.of("channel", "Bank transfer", "note", "balance"));
         Map<String, Object> fees4 = it.get(token, "/api/v1/me/fees?session=2090/2091").getBody();
         assertThat(fees4.get("clearsRegistration")).isEqualTo(true);
         ResponseEntity<Map> submitted = it.call(token, HttpMethod.POST, "/api/v1/me/registration/submit", Map.of("session", SESSION, "semester", 1));
@@ -190,9 +193,9 @@ class StudentPortalIT {
         Map<String, Object> queries = it.get(token, "/api/v1/me/queries").getBody();
         assertThat((List<?>) queries.get("queryable")).isEmpty();
 
-        // the docket: no examination session open yet, and the scheme says the examination waits on payment in full
+        // the docket: with the session's fees now paid in full, the examination clears (scheme: PAID_IN_FULL)
         Map<String, Object> docket = it.get(token, "/api/v1/me/docket").getBody();
-        assertThat(docket.get("clearsExamination")).isEqualTo(false);
+        assertThat(docket.get("clearsExamination")).isEqualTo(true);
 
         // the identity card: the Library issues it on the matriculation number, released at instalment 1
         String library = ItSupport.token("library");
@@ -213,9 +216,9 @@ class StudentPortalIT {
         Map<String, Object> req = ((List<Map<String, Object>>) mine.get("requests")).get(0);
         assertThat(req.get("paid_at")).isNotNull();
         assertThat(String.valueOf(req.get("stage"))).isIn("READY", "HELD_AT_CLEARANCE");
-        // a transcript paid is not fees paid
+        // a transcript paid is not school fees paid — the school-fees position stays at the 100,000 cleared for the session
         Map<String, Object> fees5 = it.get(token, "/api/v1/me/fees?session=2090/2091").getBody();
-        assertThat(((Number) fees5.get("paid")).doubleValue()).isEqualTo(50000.0);
+        assertThat(((Number) fees5.get("paid")).doubleValue()).isEqualTo(100000.0);
     }
 
     /**
