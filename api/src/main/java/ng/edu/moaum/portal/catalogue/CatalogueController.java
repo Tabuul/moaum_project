@@ -269,6 +269,50 @@ class CatalogueController {
                 """).param("dept", dept).query().listOfRows();
     }
 
+    /* the same course uploaded under two codes (a clean 'CMP 311' and a messy 'BSU-COS 311' or a
+       combined 'CSC 309/CMP 441') shows twice on registration. Group a department's live courses by
+       level, semester and title; the cleanest code is the keeper, the rest are duplicates. */
+    private static final String DUPLICATES_CTE = """
+            WITH offered AS (
+                SELECT c.code, c.title, c.level, c.semester,
+                       lower(regexp_replace(btrim(c.title), '\\s+', ' ', 'g')) AS norm_title,
+                       (c.code LIKE '%/%' OR c.code LIKE '%-%')::int AS messy,
+                       (c.code ~ '^[A-Z]{2,4} [0-9]{3}$')::int AS clean
+                  FROM catalogue.course c
+                 WHERE c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %' AND c.dept_code = :dept),
+            grp AS (
+                SELECT o.*,
+                       count(*) OVER (PARTITION BY level, semester, norm_title) AS n,
+                       row_number() OVER (PARTITION BY level, semester, norm_title
+                                          ORDER BY messy ASC, clean DESC, length(code) ASC, code ASC) AS rnk
+                  FROM offered o)
+            """;
+
+    /** the duplicate courses in a department: each group's keeper and the codes that would be ended */
+    @GetMapping("/duplicates")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> duplicates(@RequestParam String dept) {
+        return jdbc.sql(DUPLICATES_CTE + """
+                SELECT level, semester, title, code, (rnk = 1) AS keeper
+                  FROM grp WHERE n > 1
+                 ORDER BY level, semester, norm_title, rnk
+                """).param("dept", scope.scopedDept(dept)).query().listOfRows();
+    }
+
+    /** end the duplicate courses in a department, keeping the cleanest code in each group */
+    @PostMapping("/duplicates/end")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> endDuplicates(@RequestParam String dept) {
+        int ended = jdbc.sql(DUPLICATES_CTE + """
+                UPDATE catalogue.course c SET state = 'ENDED', ended_on = current_date
+                  FROM grp
+                 WHERE c.code = grp.code AND grp.n > 1 AND grp.rnk > 1 AND c.state <> 'ENDED'
+                """).param("dept", scope.scopedDept(dept)).update();
+        return Map.of("ended", ended, "dept", scope.scopedDept(dept));
+    }
+
     /** every course offered to a programme, level by level — the view for the course-upload desk */
     @GetMapping("/offered")
     @PreAuthorize(READERS)

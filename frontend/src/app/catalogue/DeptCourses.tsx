@@ -17,6 +17,7 @@ export interface Course {
   code: string; title: string; units: number; semester: number; level: number; kind: string;
   state: string; ended_on: string | null; lecturer: string | null; offered: boolean;
 }
+export interface Duplicate { level: number; semester: number; title: string; code: string; keeper: boolean }
 
 const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
   LIVE: ["ok", "Live"], BOARD: ["warn", "At the Faculty Board"], SENATE: ["info", "At Senate"], ENDED: ["grey", "Ended"],
@@ -24,7 +25,7 @@ const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> =
 const KINDS = ["Compulsory", "Required", "Elective", "GST"];
 const LEVELS = [100, 200, 300, 400, 500, 600];
 
-export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; dept: string; courses: Course[]; problem: Problem | null }) {
+export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; problem: Problem | null }) {
   const router = useRouter();
   const [add, setAdd] = useState(false);
   const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" });
@@ -38,6 +39,14 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
   const live = courses.filter((c) => c.state === "LIVE").length;
   const waiting = courses.filter((c) => c.state === "BOARD" || c.state === "SENATE").length;
   const noLec = courses.filter((c) => c.state === "LIVE" && c.offered && !c.lecturer).length;
+
+  /* the same course under more than one code — the cleanest is kept, the rest end */
+  const toEnd = duplicates.filter((d) => !d.keeper);
+  const dupGroups = Object.values(duplicates.reduce((acc, d) => {
+    const k = `${d.level}-${d.semester}-${d.title}`;
+    (acc[k] ??= { level: d.level, semester: d.semester, title: d.title, codes: [] as Duplicate[] }).codes.push(d);
+    return acc;
+  }, {} as Record<string, { level: number; semester: number; title: string; codes: Duplicate[] }>));
 
   /* level, semester and kind filter the already-loaded department list, client-side */
   const shown = courses.filter((c) =>
@@ -106,6 +115,29 @@ export function DeptCourses({ depts, dept, courses, problem }: { depts: Dept[]; 
         ["Awaiting approval", String(waiting), waiting ? "var(--chrome)" : null, "Board or Senate"],
         ["Live, no lecturer", String(noLec), noLec ? "var(--red-ink)" : null, noLec ? "No score sheet can open" : "All allocated"],
       ]} />
+
+      {toEnd.length ? (
+        <Panel title="Duplicate courses" right={`${toEnd.length} to end · the same course under more than one code`}>
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 8 }}>The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept; ending the others removes them from future registration (they stay on any transcript that already carries them).</div>
+            {dupGroups.map((g, i) => (
+              <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                <div style={{ fontWeight: 600 }}>{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                  {g.codes.map((c) => (
+                    <span key={c.code} className="tnum" style={{ fontSize: 12.5 }}>
+                      {c.keeper ? <Pil kind="ok">Keep {c.code}</Pil> : <span style={{ color: "var(--red-ink)", textDecoration: "line-through" }}>{c.code}</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: 12 }}>
+              <Btn kind="urgent" disabled={busy} onClick={() => { if (window.confirm(`End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}? The cleanest code in each group is kept. This can be undone by the Board/Senate if needed.`)) void send(`/duplicates/end?dept=${encodeURIComponent(dept)}`, {}, `Ended ${toEnd.length} duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.ended ?? toEnd.length)} duplicate course(s) ended`); }); }}>{busy ? "Ending…" : `End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}`}</Btn>
+            </div>
+          </PBody>
+        </Panel>
+      ) : null}
 
       <Panel title="The department's catalogue" right={filtered ? `${shown.length} of ${courses.length} · filtered` : "Every course this department owns"}>
         {shown.length ? (
