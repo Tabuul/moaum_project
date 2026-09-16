@@ -220,7 +220,7 @@ class ApplicantsController {
         // JAMB's passport, where it was small enough to keep (recorded as a data URL in the attachment payload)
         String passport = jdbc.sql("""
                 SELECT payload ->> 'dataUrl' FROM admissions.attachment
-                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND payload ? 'dataUrl'
+                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND jsonb_exists(payload, 'dataUrl')
                  ORDER BY arrived_at DESC LIMIT 1
                 """).param("s", s).param("k", jambKey).query(String.class).optional().orElse(null);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
