@@ -21,9 +21,17 @@ public class OfficeScope {
         this.jdbc = jdbc;
     }
 
+    /** the offices that work within a single department (their screens are bound to it) */
+    private static final java.util.Set<String> DEPARTMENT_OFFICES = java.util.Set.of("hod", "siwes");
+
     /** true when the request is being made in the Head-of-Department office */
     public boolean actingHod() {
         return AuditContextHolder.current().map(c -> "hod".equals(c.actorOffice())).orElse(false);
+    }
+
+    /** true when the acting office is bound to one department (Head of Department or SIWES Coordinator) */
+    public boolean actingDepartmentOffice() {
+        return AuditContextHolder.current().map(c -> DEPARTMENT_OFFICES.contains(c.actorOffice())).orElse(false);
     }
 
     /** the acting person, or null */
@@ -33,19 +41,27 @@ public class OfficeScope {
 
     /**
      * The department the acting HOD heads, or null (not acting as HOD, or no department can be
-     * resolved). The department is taken, in order of authority, from: the 'hod' grant's own
-     * department scope; failing that, the person's home department as a lecturer (every HOD is on
-     * the establishment as a lecturer scoped to their department, V135/V137); failing that, the
-     * home department on their staff record. The fallbacks mean an HOD whose 'hod' grant was
-     * created without a department still works, bounded to their own department all the same.
+     * resolved). See {@link #actingDept()} for how the department is resolved.
      */
     public String actingHodDept() {
-        return AuditContextHolder.current().flatMap(c -> "hod".equals(c.actorOffice())
+        return actingHod() ? actingDept() : null;
+    }
+
+    /**
+     * The department the acting department-office (Head of Department or SIWES Coordinator) works in,
+     * or null. The department is taken, in order of authority, from: the acting office's own
+     * department scope; failing that, the person's home department as a lecturer (every teacher is on
+     * the establishment scoped to their department, V135/V137); failing that, the home department on
+     * their staff record. The grant may hold the department code OR its name — either resolves to the
+     * code. The fallbacks mean an office created without a department scope still works.
+     */
+    public String actingDept() {
+        return AuditContextHolder.current().flatMap(c -> DEPARTMENT_OFFICES.contains(c.actorOffice())
                 ? jdbc.sql("""
                         WITH raw AS (
                           SELECT COALESCE(
                             (SELECT scope_id FROM iam.office_assignment
-                              WHERE person_id = :p AND office_code = 'hod' AND scope_kind = 'department'
+                              WHERE person_id = :p AND office_code = :office AND scope_kind = 'department'
                                 AND nullif(btrim(scope_id), '') IS NOT NULL
                                 AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
                               ORDER BY valid_from DESC LIMIT 1),
@@ -57,26 +73,25 @@ public class OfficeScope {
                             (SELECT home_department FROM hrm.staff_record
                               WHERE person_id = :p AND nullif(btrim(home_department), '') IS NOT NULL LIMIT 1)
                           ) AS v)
-                        -- the grant may hold the department code OR its name; resolve either to the code
                         SELECT d.code FROM ref.department d, raw
                          WHERE raw.v IS NOT NULL AND d.ended_on IS NULL
                            AND (upper(btrim(d.code)) = upper(btrim(raw.v)) OR lower(btrim(d.name)) = lower(btrim(raw.v)))
                          LIMIT 1
-                        """).param("p", c.actorId()).query(String.class).optional()
+                        """).param("p", c.actorId()).param("office", c.actorOffice()).query(String.class).optional()
                 : Optional.empty()).orElse(null);
     }
 
     /**
-     * The department a screen should be scoped to. When the request is an HOD's,
-     * it is their own department (or a sentinel that matches nothing when they
-     * hold no HOD grant), so a department parameter they send is ignored; for any
-     * other office the requested department stands.
+     * The department a screen should be scoped to. When the request is a department office's (HOD or
+     * SIWES Coordinator), it is their own department (or a sentinel that matches nothing when none can
+     * be resolved), so a department parameter they send is ignored; for any other office the requested
+     * department stands.
      */
     public String scopedDept(String requested) {
-        if (!actingHod()) {
+        if (!actingDepartmentOffice()) {
             return requested;
         }
-        String own = actingHodDept();
+        String own = actingDept();
         return own != null ? own : "__none__";
     }
 }
