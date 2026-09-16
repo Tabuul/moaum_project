@@ -26,6 +26,8 @@ class RegistrationController {
             + "'OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String CATALOGUE = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
     private static final String APPROVERS = "hasAnyAuthority('OFFICE_hod','OFFICE_lecturer','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+    /** approval is a single step and it is the Head of Department's (super is system break-glass) */
+    private static final String HOD_APPROVES = "hasAnyAuthority('OFFICE_hod','OFFICE_super')";
 
     private final RegistrationService service;
 
@@ -74,13 +76,13 @@ class RegistrationController {
     }
 
     @PostMapping("/course-registrations/{id}/approve")
-    @PreAuthorize(APPROVERS)
+    @PreAuthorize(HOD_APPROVES)
     Map<String, Object> approve(@PathVariable UUID id) {
         return service.approve(id);
     }
 
     @PostMapping("/course-registrations/{id}/return")
-    @PreAuthorize(APPROVERS)
+    @PreAuthorize(HOD_APPROVES)
     Map<String, Object> giveBack(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
         return service.giveBack(id, body == null ? null : body.get("comment"));
     }

@@ -22,7 +22,8 @@ export interface RegistrationRow {
 
 export function RegistrationApprovals({ rows, session, semester, actingOffice }: { rows: RegistrationRow[]; session: string; semester: number; actingOffice: string | null }) {
   const router = useRouter();
-  const may = ["hod", "lecturer", "academic", "registrar", "dregistrar", "super"].includes(actingOffice ?? "");
+  // approval is one step and it is the Head of Department's (super is system break-glass)
+  const may = ["hod", "super"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
 

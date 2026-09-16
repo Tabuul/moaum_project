@@ -75,7 +75,8 @@ class ResultsIT {
                     Map.of("studentId", s.toString(), "session", SESSION, "semester", 1, "level", 300,
                             "entries", List.of(Map.of("offeringId", offeringId, "units", 18, "entryType", "CURRENT"))));
             if (reg.getStatusCode().value() == 200) {
-                ResponseEntity<Map> ok = it.call(academic, HttpMethod.POST,
+                // approval is the Head of Department's, one step
+                ResponseEntity<Map> ok = it.call(ItSupport.token("hod"), HttpMethod.POST,
                         "/api/v1/registration/course-registrations/" + reg.getBody().get("id") + "/approve", null);
                 assertThat(ok.getStatusCode().value()).as(String.valueOf(ok.getBody())).isEqualTo(200);
             }
