@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { xlsxRows, buildXlsx } from "@/lib/xlsx";
+import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -70,7 +70,13 @@ export function Departments({ departments, actingOffice }: { departments: Depart
   async function upload(file: File) {
     setMsg(null); setProblem(null);
     try {
-      const grid = await xlsxRows(await file.arrayBuffer());
+      let grid: (string | number | null)[][];
+      try {
+        grid = /\.csv$/i.test(file.name) || file.type === "text/csv" ? csvRows(await file.text()) : await xlsxRows(await file.arrayBuffer());
+      } catch (err) {
+        setProblem({ status: 400, title: "That file could not be read.", detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or “CSV (Comma delimited) (.csv)” and upload that.` });
+        return;
+      }
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
       const at = (n: string[]) => header.findIndex((h) => n.some((x) => h.includes(x)));
       const ci = { code: at(["code"]), name: at(["name", "department", "dept"]), faculty: at(["faculty"]) };
@@ -112,8 +118,8 @@ export function Departments({ departments, actingOffice }: { departments: Depart
               {editing ? <Btn kind="ghost" onClick={() => { setCode(""); setName(""); setFaculty(""); setEditing(false); }}>Cancel</Btn> : null}
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
               <label className={`btn btn--ghost btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
-                Upload departments (.xlsx)
-                <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
+                Upload departments (.xlsx / .csv)
+                <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
               </label>
             </div>
           </PBody>
