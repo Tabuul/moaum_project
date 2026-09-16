@@ -22,11 +22,11 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface DeskRow {
-  id: string; application_no: string; surname: string; other_names: string; jamb_key: string; programme: string; entry_mode: string;
+  id: string | null; application_no: string | null; surname: string; other_names: string; jamb_key: string; programme: string; entry_mode: string;
   stage: number; fee_confirmed_at: string | null; submitted_at: string | null; batch: string | null; seat: string | null;
   screening_score: number | null; score_released_at: string | null; decision: string | null; decision_released_at: string | null;
-  accepted_at: string | null; declined_at: string | null; cleared_at: string | null; email: string; phone: string;
-  references_open: number; documents_pending: number; admission_no: string | null; matric_no: string | null;
+  accepted_at: string | null; declined_at: string | null; cleared_at: string | null; email: string | null; phone: string | null;
+  references_open: number; documents_pending: number; admission_no: string | null; matric_no: string | null; registered: boolean;
 }
 export interface DeskBatch { id: string; label: string; held_on: string; starts_at: string; ends_at: string; venue: string; capacity: number; seated: number }
 export interface DeskReference { id: string; reference: string; kind: string; amount: number; generated_at: string; expires_at: string; application_no: string; surname: string; other_names: string }
@@ -243,7 +243,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice}
         action="Entering screening scores and Board decisions" />
       <Tiles items={[
-        ["Application accounts", String(rows.length), null, `${rows.filter((r) => r.submitted_at).length} submitted`],
+        ["Admitted applicants", String(rows.length), null, `${rows.filter((r) => r.registered).length} registered · ${rows.filter((r) => r.submitted_at).length} submitted`],
         ["References open", String(desk.openReferences.length), null, "Paid on the gateway; the Bursary sees each payment"],
         ["Documents to review", String(rows.reduce((n, r) => n + Number(r.documents_pending), 0)), null, "Uploaded, not yet accepted"],
         ["Decisions entered", `${rows.filter((r) => r.decision).length} / ${rows.filter((r) => r.score_released_at).length}`, null, `${rows.filter((r) => r.decision_released_at).length} released`],
@@ -276,23 +276,30 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
 
       <Panel title="Applicants" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => { if (feeUnset && !window.confirm(`The acceptance fee is not set for ${desk.session}. Applicants can accept their offer but cannot pay the acceptance fee. Release decisions anyway?`)) return; void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`); }}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
         {rows.length ? (
-          <DTable cols={["Applicant", "Programme", "Stage", "Seat|mid", "Score|mid", "Decision|mid", "|num"]} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.jamb_key} ${r.programme}`)}
+          <DTable cols={["Applicant", "Programme", "Stage", "Seat|mid", "Score|mid", "Decision|mid", "|num"]} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no ?? ""} ${r.jamb_key} ${r.programme}`)}
             rows={rows.map((r) => [
-              <Two key="a" a={`${r.surname}, ${r.other_names}`} b={`${r.application_no} · ${r.jamb_key}${r.admission_no ? ` · ${r.admission_no}` : ""}`} />,
+              <Two key="a" a={`${r.surname}, ${r.other_names}`} b={`${r.application_no ?? "Not registered"} · ${r.jamb_key}${r.admission_no ? ` · ${r.admission_no}` : ""}`} />,
               <span className="sub2" key="p">{r.programme}</span>,
               <span key="s" style={{ display: "inline-flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-                  <Pil kind={r.stage >= 6 ? "ok" : r.stage >= 2 ? "info" : "grey"}>{r.stage + 1}</Pil>
-                  <span className="sub2">{stageOf(r.stage)}</span>
-                </span>
+                {r.registered ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                    <Pil kind={r.stage >= 6 ? "ok" : r.stage >= 2 ? "info" : "grey"}>{r.stage + 1}</Pil>
+                    <span className="sub2">{stageOf(r.stage)}</span>
+                  </span>
+                ) : (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                    <Pil kind="grey">Admitted</Pil>
+                    <span className="sub2">not yet registered</span>
+                  </span>
+                )}
                 {Number(r.documents_pending) ? <span className="sub2">{r.documents_pending} document{Number(r.documents_pending) === 1 ? "" : "s"} to review</span> : null}
               </span>,
               <span className="tnum" key="t">{r.seat ?? "—"}</span>,
               <span className="tnum" key="c">{r.screening_score ?? "—"}{r.score_released_at ? "" : r.screening_score !== null ? " ·held" : ""}</span>,
               r.decision ? <Pil kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"} key="d">{r.decision}{r.decision_released_at ? "" : " · held"}</Pil> : <span className="sub2" key="d">—</span>,
-              <IcoBtn key="v" icon="eye" label="View this applicant’s details" onClick={() => void view(r.id)} />,
+              r.id ? <IcoBtn key="v" icon="eye" label="View this applicant’s details" onClick={() => void view(r.id as string)} /> : <span className="sub2" key="v">—</span>,
             ])} />
-        ) : <div className="card__body"><div className="sub2">No applicant has registered for {desk.session} yet. Registration starts from the JAMB number on the CAPS list loaded on the JAMB admission lists screen.</div></div>}
+        ) : <div className="card__body"><div className="sub2">No applicant on a committed admission list for {desk.session} yet. Upload and commit the CAPS admission list on the JAMB admission lists screen.</div></div>}
       </Panel>
 
       <Panel title="The list that goes back to JAMB" right="JAMB’s admission template, five sheets">
