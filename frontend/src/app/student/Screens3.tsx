@@ -129,12 +129,12 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         </Note>
       ) : null}
       {locked ? (
-        <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"} title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? `Approved on ${onDay(reg!.approved_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Level Adviser`}
+        <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"} title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? `Approved on ${onDay(reg!.approved_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Head of Department`}
           action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <Link href="/student/form" className="btn btn--primary btn--sm">Course form</Link> : null}>
-          {reg!.units} units. {reg!.status === "SUBMITTED" ? "It goes to your Level Adviser, then your HOD; a return comes back here with the reason." : "The register carries these courses; the class lists and the score sheets are drawn from them."}
+          {reg!.units} units. {reg!.status === "SUBMITTED" ? "It goes to your Head of Department for approval; a return comes back here with the reason." : "The register carries these courses; the class lists and the score sheets are drawn from them."}
         </Note>
       ) : reg?.status === "RETURNED" ? (
-        <Note kind="bad" title="Returned to you">Your Level Adviser returned this registration. Change it and submit again.</Note>
+        <Note kind="bad" title="Returned to you">Your Head of Department returned this registration. Change it and submit again.</Note>
       ) : null}
 
       {locked && v.addDropOpen ? (() => {
@@ -197,7 +197,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student")}>{busy === "save" ? "Saving…" : "Save the draft"}</Btn>
           <Btn kind="primary" disabled={!ok || busy !== null} onClick={async () => { const saved = await act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student"); if (saved) await act("submit", "POST", "/me/registration/submit", { session: v.session, semester: v.semester }, "Course registration submitted by the student"); }}>{busy === "submit" ? "Submitting…" : "Submit for approval"}</Btn>
-          <span className="sub2">Goes to your Level Adviser, then your HOD</span>
+          <span className="sub2">Goes to your Head of Department for approval</span>
         </div>
       ) : null}
     </>

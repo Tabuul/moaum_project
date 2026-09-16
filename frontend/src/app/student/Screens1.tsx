@@ -84,7 +84,7 @@ export function Dashboard({ s }: { s: Me }) {
           <div className="card__body"><div className="steps">
             <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : "Admitted"} · entered ${s.entrySession}`} />
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"
-              sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Level Adviser" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
+              sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Head of Department" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
             <Step state="todo" title="Examination docket" sub="Available after approval" />
           </div></div>
         </div>

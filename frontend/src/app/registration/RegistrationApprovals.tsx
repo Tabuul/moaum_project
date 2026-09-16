@@ -3,8 +3,8 @@
 /**
  * The department's registration desk (V027): the course registrations
  * students submitted, with the courses and units on each, approved or
- * returned with the reason — the level adviser's and the Head of
- * Department's act, through the endpoints that already served the office.
+ * returned with the reason — the Head of Department's act, through the
+ * endpoints that already served the office.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
