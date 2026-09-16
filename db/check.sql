@@ -277,8 +277,8 @@ DO $$
 DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
-    PERFORM pg_temp.assert('The office register carries all twenty-five offices',
-                           n = 27, n || ' offices (25 staff offices, the applicant V021 and the student V026)');
+    PERFORM pg_temp.assert('The office register carries every office',
+                           n = 28, n || ' offices (26 staff offices incl. the SIWES Coordinator V156, the applicant V021 and the student V026)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
