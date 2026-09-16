@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import ng.edu.moaum.portal.shared.OfficeScope;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -12,22 +14,40 @@ import org.springframework.stereotype.Repository;
 class RefRepository {
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
 
-    RefRepository(JdbcClient jdbc) {
+    RefRepository(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     Structure structure() {
-        List<Structure.College> colleges = jdbc.sql("SELECT code, name, system, url FROM ref.college ORDER BY name")
-                .query(Structure.College.class).list();
-        List<Structure.FacultyRow> faculties = jdbc.sql("SELECT code, name, college_code FROM ref.faculty ORDER BY name")
-                .query(Structure.FacultyRow.class).list();
-        List<Structure.DepartmentRow> departments = jdbc.sql(
-                "SELECT code, name, faculty_code FROM ref.department WHERE ended_on IS NULL ORDER BY name")
-                .query(Structure.DepartmentRow.class).list();
-        List<Structure.ProgrammeRow> programmes = jdbc.sql(
-                "SELECT code, name, dept_code, category, archived FROM ref.programme ORDER BY name")
-                .query(Structure.ProgrammeRow.class).list();
+        // A Head of Department works within one department. When the request is an HOD's,
+        // the ladder is pruned to their department, its faculty and that faculty's college,
+        // so the scope bar's Faculty and Department are fixed to their own and only
+        // Programme, Level and Course remain to choose.
+        String hodDept = scope.actingHod() ? scope.actingHodDept() : null;
+
+        List<Structure.College> colleges = jdbc.sql("""
+                SELECT co.code, co.name, co.system, co.url FROM ref.college co
+                 WHERE (:dept::text IS NULL OR co.code = (
+                         SELECT f.college_code FROM ref.department d JOIN ref.faculty f ON f.code = d.faculty_code
+                          WHERE d.code = :dept))
+                 ORDER BY co.name""")
+                .param("dept", hodDept).query(Structure.College.class).list();
+        List<Structure.FacultyRow> faculties = jdbc.sql("""
+                SELECT f.code, f.name, f.college_code FROM ref.faculty f
+                 WHERE (:dept::text IS NULL OR f.code = (SELECT faculty_code FROM ref.department WHERE code = :dept))
+                 ORDER BY f.name""")
+                .param("dept", hodDept).query(Structure.FacultyRow.class).list();
+        List<Structure.DepartmentRow> departments = jdbc.sql("""
+                SELECT code, name, faculty_code FROM ref.department
+                 WHERE ended_on IS NULL AND (:dept::text IS NULL OR code = :dept) ORDER BY name""")
+                .param("dept", hodDept).query(Structure.DepartmentRow.class).list();
+        List<Structure.ProgrammeRow> programmes = jdbc.sql("""
+                SELECT code, name, dept_code, category, archived FROM ref.programme
+                 WHERE (:dept::text IS NULL OR dept_code = :dept) ORDER BY name""")
+                .param("dept", hodDept).query(Structure.ProgrammeRow.class).list();
 
         Map<String, List<Structure.Programme>> byDept = new LinkedHashMap<>();
         for (Structure.ProgrammeRow p : programmes) {
@@ -54,6 +74,7 @@ class RefRepository {
     }
 
     List<Course> courses(String deptCode, Integer semester, Integer level) {
+        deptCode = scope.scopedDept(deptCode);              // an HOD sees only their department's courses
         return jdbc.sql("""
                 SELECT c.code, c.title, c.units, c.semester, c.level, c.dept_code, d.name AS dept_name, c.kind, c.state, c.ended_on
                   FROM catalogue.course c JOIN ref.department d ON d.code = c.dept_code

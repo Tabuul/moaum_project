@@ -7,6 +7,9 @@ import java.util.UUID;
 
 import jakarta.validation.constraints.NotNull;
 
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.OfficeScope;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,9 +29,11 @@ class AllocationController {
     private static final String ALLOCATORS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
 
-    AllocationController(JdbcClient jdbc) {
+    AllocationController(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     public record Assign(@NotNull UUID lecturer, UUID secondExaminer, Boolean overload) {
@@ -39,6 +44,10 @@ class AllocationController {
     @PreAuthorize("isAuthenticated()")
     @Transactional(readOnly = true)
     List<Map<String, Object>> departments() {
+        if (scope.actingHod()) {                            // an HOD sees only their own department
+            return jdbc.sql("SELECT code, name, faculty_code FROM ref.department WHERE ended_on IS NULL AND code = :d")
+                    .param("d", scope.scopedDept(null)).query().listOfRows();
+        }
         return jdbc.sql("SELECT code, name, faculty_code FROM ref.department WHERE ended_on IS NULL ORDER BY name").query().listOfRows();
     }
 
@@ -47,6 +56,7 @@ class AllocationController {
     @PreAuthorize(ALLOCATORS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> offerings(@RequestParam String dept, @RequestParam String session, @RequestParam(defaultValue = "1") int semester) {
+        dept = scope.scopedDept(dept);                      // an HOD's allocation is limited to their department
         return jdbc.sql("""
                 SELECT o.id, o.course_code, c.title, c.units, o.allocated_on,
                        (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
@@ -78,6 +88,7 @@ class AllocationController {
     List<Map<String, Object>> lecturers(@RequestParam String dept, @RequestParam String session,
                                         @RequestParam(defaultValue = "1") int semester,
                                         @RequestParam(defaultValue = "false") boolean all) {
+        dept = scope.scopedDept(dept);                      // an HOD's own-department list stays within their department
         String live = "a.office_code IN ('lecturer', 'hod') AND a.scope_kind = 'department'"
                 + " AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)";
         String load = "coalesce((SELECT sum(c.units) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code"
@@ -111,6 +122,15 @@ class AllocationController {
     @PreAuthorize(ALLOCATORS)
     @Transactional
     Map<String, Object> assign(@PathVariable UUID offering, @RequestBody Assign body) {
+        if (scope.actingHod()) {                            // an HOD allocates only courses that belong to their department
+            String hodDept = scope.actingHodDept();
+            String offDept = jdbc.sql("SELECT c.dept_code FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.id = :o")
+                    .param("o", offering).query(String.class).optional().orElse(null);
+            if (hodDept == null || !hodDept.equals(offDept)) {
+                throw new DomainRuleViolation("ALLOC_DEPT", "A Head of Department allocates only courses that belong to their own department.",
+                        new DomainRuleViolation.Remedy("Choose a course in your department; another department allocates its own.", "Head of Department"));
+            }
+        }
         jdbc.sql("SELECT catalogue.allocate_offering(:o, :lec, :sec, :ov)")
                 .param("o", offering).param("lec", body.lecturer())
                 .param("sec", body.secondExaminer(), Types.OTHER)

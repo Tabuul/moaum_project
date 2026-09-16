@@ -35,10 +35,28 @@ class CatalogueController {
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    CatalogueController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
+    CatalogueController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
         this.json = json;
+        this.scope = scope;
+    }
+
+    /** the department an HOD request is confined to, or null for any other office (no confinement) */
+    private String hodDept() {
+        return scope.actingHod() ? scope.scopedDept(null) : null;
+    }
+
+    /** a course/department write is refused when an HOD reaches outside their own department */
+    private void assertHodOwns(String dept) {
+        String hd = hodDept();
+        if (hd != null && !hd.equalsIgnoreCase(dept == null ? "" : dept)) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_DEPT",
+                    "A Head of Department manages the catalogue of their own department only.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy(
+                            "Work within your department; another department manages its own courses.", "Head of Department"));
+        }
     }
 
     public record NewCourse(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 120) String title,
@@ -74,8 +92,10 @@ class CatalogueController {
                 SELECT f.code, f.name,
                        (SELECT count(*) FROM ref.department d WHERE d.faculty_code = f.code) AS departments,
                        (SELECT count(*) FROM ref.programme p WHERE p.faculty_code = f.code AND NOT p.archived) AS programmes
-                  FROM ref.faculty f ORDER BY f.name
-                """).query().listOfRows();
+                  FROM ref.faculty f
+                 WHERE (:hod::text IS NULL OR f.code = (SELECT faculty_code FROM ref.department WHERE code = :hod))
+                 ORDER BY f.name
+                """).param("hod", hodDept()).query().listOfRows();
     }
 
     @PostMapping("/faculties")
@@ -106,14 +126,16 @@ class CatalogueController {
                        (SELECT count(*) FROM catalogue.course c WHERE c.dept_code = d.code) AS courses
                   FROM ref.department d
                   JOIN ref.faculty f ON f.code = d.faculty_code
+                 WHERE (:hod::text IS NULL OR d.code = :hod)
                  ORDER BY f.name, d.name
-                """).query().listOfRows();
+                """).param("hod", hodDept()).query().listOfRows();
     }
 
     @PostMapping("/departments")
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> newDepartment(@Valid @RequestBody DepartmentIn body) {
+        assertHodOwns(body.code());                         // an HOD cannot create or rename another department
         return jdbc.sql("SELECT code, name, faculty_code FROM ref.upsert_department(:c, :n, :f)")
                 .param("c", body.code()).param("n", body.name()).param("f", body.faculty()).query().singleRow();
     }
@@ -147,8 +169,9 @@ class CatalogueController {
                   FROM ref.programme p
                   JOIN ref.faculty f ON f.code = p.faculty_code
                   LEFT JOIN ref.department d ON d.code = p.dept_code
+                 WHERE (:hod::text IS NULL OR p.dept_code = :hod)
                  ORDER BY f.name, p.name
-                """).query().listOfRows();
+                """).param("hod", hodDept()).query().listOfRows();
     }
 
     @PostMapping("/programmes")
@@ -231,6 +254,7 @@ class CatalogueController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@RequestParam String dept) {
+        dept = scope.scopedDept(dept);                      // an HOD sees only their own department's courses
         return jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
                 SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on,
@@ -314,6 +338,7 @@ class CatalogueController {
     @PreAuthorize(OWNERS)
     @Transactional
     Map<String, Object> create(@Valid @RequestBody NewCourse body) {
+        assertHodOwns(body.dept());                         // an HOD creates courses in their own department only
         String code = jdbc.sql("SELECT catalogue.create_course(:c, :t, :u, :s, :l, :d, :k)")
                 .param("c", body.code()).param("t", body.title()).param("u", body.units()).param("s", body.semester())
                 .param("l", body.level()).param("d", body.dept()).param("k", body.kind())
