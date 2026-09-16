@@ -18,10 +18,11 @@ export default async function AllocatePage({ searchParams }: { searchParams: Pro
   const dept = typeof p.dept === "string" ? p.dept : deptList[0]?.code ?? "";
   const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? sessionList[0] ?? "2026/2027";
   const semester = typeof p.sem === "string" ? Number(p.sem) || 1 : 1;
+  const level = typeof p.level === "string" && /^[1-6]00$/.test(p.level) ? Number(p.level) : null;
 
   const [offerings, lecturers] = dept
     ? await Promise.all([
-        api<Offering[]>(`/api/v1/allocation?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}&semester=${semester}`),
+        api<Offering[]>(`/api/v1/allocation?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}&semester=${semester}${level ? `&level=${level}` : ""}`),
         api<Lecturer[]>(`/api/v1/allocation/lecturers?dept=${encodeURIComponent(dept)}&session=${encodeURIComponent(session)}&semester=${semester}`),
       ])
     : [null, null];
@@ -37,6 +38,7 @@ export default async function AllocatePage({ searchParams }: { searchParams: Pro
           dept={dept}
           session={session}
           semester={semester}
+          level={level}
           offerings={offerings && offerings.ok ? offerings.data : []}
           lecturers={lecturers && lecturers.ok ? lecturers.data : []}
           problem={offerings && !offerings.ok ? offerings.problem : null}

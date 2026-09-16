@@ -55,10 +55,12 @@ class AllocationController {
     @GetMapping
     @PreAuthorize(ALLOCATORS)
     @Transactional(readOnly = true)
-    List<Map<String, Object>> offerings(@RequestParam String dept, @RequestParam String session, @RequestParam(defaultValue = "1") int semester) {
+    List<Map<String, Object>> offerings(@RequestParam String dept, @RequestParam String session,
+                                        @RequestParam(defaultValue = "1") int semester,
+                                        @RequestParam(required = false) Integer level) {
         dept = scope.scopedDept(dept);                      // an HOD's allocation is limited to their department
         return jdbc.sql("""
-                SELECT o.id, o.course_code, c.title, c.units, o.allocated_on,
+                SELECT o.id, o.course_code, c.title, c.units, c.level, o.allocated_on,
                        (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                          WHERE e.offering_id = o.id AND r.status = 'APPROVED') AS registered,
                        o.lecturer_id,
@@ -71,8 +73,11 @@ class AllocationController {
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
                  WHERE o.session = :session AND o.semester = :semester AND c.dept_code = :dept
-                 ORDER BY o.course_code
-                """).param("session", session).param("semester", semester).param("dept", dept).query().listOfRows();
+                   AND c.semester = :semester                 -- only courses actually offered in this semester
+                   AND (:level::int IS NULL OR c.level = :level)
+                 ORDER BY c.level, o.course_code
+                """).param("session", session).param("semester", semester).param("dept", dept)
+                .param("level", level, java.sql.Types.INTEGER).query().listOfRows();
     }
 
     /**

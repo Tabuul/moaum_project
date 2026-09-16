@@ -15,14 +15,14 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Lecturer { id: string; name: string; staff_number: string | null; load: number; department?: string | null }
 export interface Offering {
-  id: string; course_code: string; title: string; units: number; allocated_on: string | null; registered: number;
+  id: string; course_code: string; title: string; units: number; level: number; allocated_on: string | null; registered: number;
   lecturer_id: string | null; lecturer: string | null; second_examiner_id: string | null; second_examiner: string | null; sheet: boolean;
 }
 
 const MAX_UNITS = 12;
 
-export function Allocate({ depts, sessions, dept, session, semester, offerings, lecturers, problem }: {
-  depts: Dept[]; sessions: string[]; dept: string; session: string; semester: number;
+export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem }: {
+  depts: Dept[]; sessions: string[]; dept: string; session: string; semester: number; level: number | null;
   offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null;
 }) {
   const router = useRouter();
@@ -50,11 +50,13 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
   const unassigned = offerings.filter((o) => !o.lecturer_id).length;
   const noSecond = offerings.filter((o) => o.lecturer_id && !o.second_examiner_id).length;
 
-  function go(next: { dept?: string; session?: string; sem?: number }) {
+  function go(next: { dept?: string; session?: string; sem?: number; level?: number | null }) {
     const q = new URLSearchParams();
     q.set("dept", next.dept ?? dept);
     q.set("session", next.session ?? session);
     q.set("sem", String(next.sem ?? semester));
+    const lv = next.level !== undefined ? next.level : level;
+    if (lv) q.set("level", String(lv));
     router.push(`/allocate?${q.toString()}`);
   }
 
@@ -108,6 +110,11 @@ export function Allocate({ depts, sessions, dept, session, semester, offerings, 
         <div className="field" style={{ minWidth: 130 }}><label htmlFor="al-sem">Semester</label>
           <select id="al-sem" className="ctl" value={semester} onChange={(e) => go({ sem: Number(e.target.value) })}>
             <option value={1}>First</option><option value={2}>Second</option>
+          </select></div>
+        <div className="field" style={{ minWidth: 120 }}><label htmlFor="al-level">Level</label>
+          <select id="al-level" className="ctl" value={level ?? ""} onChange={(e) => go({ level: e.target.value ? Number(e.target.value) : null })}>
+            <option value="">All levels</option>
+            {[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={l}>{l} Level</option>)}
           </select></div>
       </div></div>
 
