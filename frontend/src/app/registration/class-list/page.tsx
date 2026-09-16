@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ClassListPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
-  const { scope, structure, sessions } = await loadScope(params);
+  const { scope, structure, sessions, ceiling } = await loadScope(params);
   const [me, courses] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<{ code: string; title: string; semester: number }[]>(`/api/v1/ref/courses${scope.dept ? `?dept=${encodeURIComponent(scope.dept)}` : ""}`),
@@ -30,7 +30,7 @@ export default async function ClassListPage({ searchParams }: { searchParams: Pr
   }
   return (
     <Shell route="r/classlist" me={me.ok ? me.data : null}>
-      <ClassListScreen scope={scope} structure={structure} sessions={sessions} courses={courses.ok ? courses.data : []} roll={roll && roll.ok ? roll.data : null} problem={roll && !roll.ok ? roll.problem : null} />
+      <ClassListScreen scope={scope} structure={structure} sessions={sessions} courses={courses.ok ? courses.data : []} roll={roll && roll.ok ? roll.data : null} problem={roll && !roll.ok ? roll.problem : null} ceiling={ceiling} />
       {roll && roll.ok && desk ? <OfferingDesk roll={roll.data} desk={desk} actingOffice={me.ok ? me.data.activeOffice : null} /> : null}
     </Shell>
   );

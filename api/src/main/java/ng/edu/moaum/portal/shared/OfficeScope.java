@@ -31,14 +31,29 @@ public class OfficeScope {
         return AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
     }
 
-    /** the department the acting HOD heads, or null (not acting as HOD, or no HOD grant) */
+    /**
+     * The department the acting HOD heads, or null (not acting as HOD, or no department can be
+     * resolved). The department is taken, in order of authority, from: the 'hod' grant's own
+     * department scope; failing that, the person's home department as a lecturer (every HOD is on
+     * the establishment as a lecturer scoped to their department, V135/V137); failing that, the
+     * home department on their staff record. The fallbacks mean an HOD whose 'hod' grant was
+     * created without a department still works, bounded to their own department all the same.
+     */
     public String actingHodDept() {
         return AuditContextHolder.current().flatMap(c -> "hod".equals(c.actorOffice())
                 ? jdbc.sql("""
-                        SELECT scope_id FROM iam.office_assignment
-                         WHERE person_id = :p AND office_code = 'hod' AND scope_kind = 'department'
-                           AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
-                         LIMIT 1
+                        SELECT COALESCE(
+                          (SELECT scope_id FROM iam.office_assignment
+                            WHERE person_id = :p AND office_code = 'hod' AND scope_kind = 'department' AND scope_id IS NOT NULL
+                              AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                            ORDER BY valid_from DESC LIMIT 1),
+                          (SELECT scope_id FROM iam.office_assignment
+                            WHERE person_id = :p AND office_code = 'lecturer' AND scope_kind = 'department' AND scope_id IS NOT NULL
+                              AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                            ORDER BY valid_from DESC LIMIT 1),
+                          (SELECT home_department FROM hrm.staff_record
+                            WHERE person_id = :p AND home_department IS NOT NULL LIMIT 1)
+                        )
                         """).param("p", c.actorId()).query(String.class).optional()
                 : Optional.empty()).orElse(null);
     }

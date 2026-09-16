@@ -2,13 +2,21 @@ import "server-only";
 import { cookies } from "next/headers";
 import { api } from "./api";
 import { readScope, SCOPE_COOKIE, type Scope } from "./scope";
-import type { ScopeStructure } from "@/components/proto/ScopeBar";
+import type { Ceiling, ScopeStructure } from "@/components/proto/ScopeBar";
 
-/** what every scoped page needs before it can draw the bar: the scope asked for, the structure and the sessions */
+/**
+ * What every scoped page needs before it can draw the bar: the scope asked for, the structure,
+ * the sessions, and the ceiling the office is bound to. The API scopes /ref/structure to the
+ * office — a Head of Department gets back only their own faculty and department — so when the
+ * structure carries a single faculty (and a single department under it) the office is bound to
+ * it: the scope is fixed there and the bar locks those selectors, leaving only programme, level
+ * and course to choose. For any office that sees the whole University this does nothing.
+ */
 export async function loadScope(params: Record<string, string | string[] | undefined>): Promise<{
   scope: Scope;
   structure: ScopeStructure;
   sessions: string[];
+  ceiling: Ceiling;
 }> {
   let cookie: string | null = null;
   try {
@@ -21,10 +29,27 @@ export async function loadScope(params: Record<string, string | string[] | undef
     api<ScopeStructure>("/api/v1/ref/structure"),
     api<{ name: string }[]>("/api/v1/ref/sessions"),
   ]);
+  const struct: ScopeStructure = structure.ok ? structure.data : { faculties: [] };
+
+  const ceiling: Ceiling = {};
+  if (struct.faculties.length === 1) {
+    const fac = struct.faculties[0];
+    ceiling.fac = fac.code;
+    scope.fac = fac.code;
+    if (fac.departments.length === 1) {
+      ceiling.dept = fac.departments[0].code;
+      scope.dept = fac.departments[0].code;
+      ceiling.why = "Your department bounds this scope.";
+    } else {
+      ceiling.why = "Your faculty bounds this scope.";
+    }
+  }
+
   return {
     scope,
-    structure: structure.ok ? structure.data : { faculties: [] },
+    structure: struct,
     sessions: sessions.ok ? sessions.data.map((s) => s.name) : [scope.session],
+    ceiling,
   };
 }
 

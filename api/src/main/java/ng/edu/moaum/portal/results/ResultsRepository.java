@@ -59,13 +59,27 @@ class ResultsRepository {
         return jdbc.sql(SHEET_SELECT + " WHERE s.id = :id").param("id", id).query(Sheets.Row.class).optional();
     }
 
-    /** the department a person holds an office over (e.g. 'hod'), or null — used to scope a HOD to their own */
+    /**
+     * The department a person holds an office over (e.g. 'hod'), or null — used to scope a HOD to
+     * their own. Resolved, in order of authority, from the office's own department scope, then the
+     * person's home department as a lecturer, then their staff record — so a HOD whose 'hod' grant
+     * carries no department still scopes to their own department (V135/V137 put the home department
+     * on the lecturer grant and the staff record).
+     */
     String officeDepartment(UUID person, String office) {
         return jdbc.sql("""
-                SELECT scope_id FROM iam.office_assignment
-                 WHERE person_id = :p AND office_code = :o AND scope_kind = 'department'
-                   AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
-                 ORDER BY valid_from DESC LIMIT 1
+                SELECT COALESCE(
+                  (SELECT scope_id FROM iam.office_assignment
+                    WHERE person_id = :p AND office_code = :o AND scope_kind = 'department' AND scope_id IS NOT NULL
+                      AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                    ORDER BY valid_from DESC LIMIT 1),
+                  (SELECT scope_id FROM iam.office_assignment
+                    WHERE person_id = :p AND office_code = 'lecturer' AND scope_kind = 'department' AND scope_id IS NOT NULL
+                      AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                    ORDER BY valid_from DESC LIMIT 1),
+                  (SELECT home_department FROM hrm.staff_record
+                    WHERE person_id = :p AND home_department IS NOT NULL LIMIT 1)
+                )
                 """).param("p", person).param("o", office).query(String.class).optional().orElse(null);
     }
 

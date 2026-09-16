@@ -1,9 +1,8 @@
-import { cookies } from "next/headers";
 import { api } from "@/lib/api";
-import { readScope, scopeQuery, SCOPE_COOKIE } from "@/lib/scope";
-import type { Register, RefSession } from "@/lib/student";
+import { scopeQuery } from "@/lib/scope";
+import { loadScope } from "@/lib/scope-data";
+import type { Register } from "@/lib/student";
 import { Shell, type Me } from "@/components/proto/Shell";
-import type { ScopeStructure } from "@/components/proto/ScopeBar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Students } from "./Students";
 
@@ -15,14 +14,14 @@ export default async function StudentsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const scope = readScope(params, (await cookies()).get(SCOPE_COOKIE)?.value);
+  // loadScope pins the scope to the office's own faculty/department (a HOD is bound to theirs)
+  // before the register is read, so the register comes back within that scope.
+  const { scope, structure, sessions, ceiling } = await loadScope(params);
   const q = typeof params.q === "string" ? params.q : "";
 
-  const [me, register, structure, sessions] = await Promise.all([
+  const [me, register] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Register>(`/api/v1/student/students?${scopeQuery(scope)}&q=${encodeURIComponent(q)}`),
-    api<ScopeStructure>("/api/v1/ref/structure"),
-    api<RefSession[]>("/api/v1/ref/sessions"),
   ]);
 
   return (
@@ -34,8 +33,9 @@ export default async function StudentsPage({
           scope={scope}
           q={q}
           register={register.data}
-          structure={structure.ok ? structure.data : { faculties: [] }}
-          sessions={sessions.ok ? sessions.data.map((s) => s.name) : [scope.session]}
+          structure={structure}
+          sessions={sessions}
+          ceiling={ceiling}
         />
       )}
     </Shell>

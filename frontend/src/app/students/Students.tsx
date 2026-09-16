@@ -14,7 +14,7 @@ import { fullName, statusLabel, statusPill } from "@/lib/student";
 import type { Scope } from "@/lib/scope";
 import { Note, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
 
 export function Students({
   scope,
@@ -22,12 +22,14 @@ export function Students({
   register,
   structure,
   sessions,
+  ceiling,
 }: {
   scope: Scope;
   q: string;
   register: Register;
   structure: ScopeStructure;
   sessions: string[];
+  ceiling?: Ceiling;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -71,6 +73,7 @@ export function Students({
         what="students"
         count={register.rows.length}
         of={register.total}
+        ceiling={ceiling}
       />
 
       <div className="card">

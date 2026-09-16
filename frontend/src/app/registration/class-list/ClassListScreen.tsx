@@ -4,18 +4,19 @@
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { csv, download, type ClassList } from "@/lib/results";
-import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-export function ClassListScreen({ scope, structure, sessions, courses, roll, problem }: {
+export function ClassListScreen({ scope, structure, sessions, courses, roll, problem, ceiling }: {
   scope: Scope;
   structure: ScopeStructure;
   sessions: string[];
   courses: { code: string; title: string; semester: number }[];
   roll: ClassList | null;
   problem: Problem | null;
+  ceiling?: Ceiling;
 }) {
   const notCleared = roll ? roll.rows.filter((r) => !r.cleared) : [];
   const head = roll ? `${roll.courseCode} — ${roll.courseTitle}` : "";
@@ -28,7 +29,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
 
   return (
     <>
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} courses={courses} what="students" count={roll?.all ?? 0} of={roll?.all ?? 0} withCourse />
+      <ScopeBar scope={scope} structure={structure} sessions={sessions} courses={courses} what="students" count={roll?.all ?? 0} of={roll?.all ?? 0} withCourse ceiling={ceiling} />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!roll ? (
         <Note kind="info" title="Choose a course in the scope bar">
