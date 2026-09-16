@@ -22,13 +22,6 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   const open = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session) ?? null;
   const justPaid = paid ? fees.references.find((r) => r.reference === paid) ?? null : null;
   const noCharge = fees.due === 0;
-  // the session charge splits into two instalments; the first (half) is the first-semester payment
-  const firstSem = Math.ceil(fees.due / 2);
-  const secondSem = fees.due - firstSem;
-  const firstPaid = Math.min(fees.paid, firstSem);
-  const firstOut = Math.max(0, firstSem - fees.paid);
-  const secondPaid = Math.max(0, fees.paid - firstSem);
-  const secondOut = Math.max(0, secondSem - secondPaid);
   return (
     <>
       {justPaid && !justPaid.confirmed_at ? (
@@ -50,7 +43,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       ) : fees.clearsRegistration ? (
         <Note kind="ok" title="Your payment so far releases course registration">{fees.paidInFull ? "Your charges are settled in full." : `${naira(fees.balance)} remains, and the examination docket waits on it.`}</Note>
       ) : (
-        <Note kind="bad" title="Course registration waits on the Bursary’s clearance">{fees.hasArrears ? "Arrears from an earlier session stand against you, and the scheme blocks everything while they do." : "Under the scheme in force, the first instalment — half the charge — opens registration; the balance opens the examination."}</Note>
+        <Note kind="bad" title="Course registration waits on this semester’s school fees">{fees.hasArrears ? "Arrears from an earlier session stand against you, and block everything while they do." : "Course registration for a semester opens once that semester’s school fees are paid in full; the examination waits on the session paid in full."}</Note>
       )}
       <Panel title="The charge" right={`${fees.session} · as the Bursar stated it`}>
         <DTable cols={["Item", "Amount|num"]} rows={[
@@ -58,22 +51,6 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           [<strong key="t">Total</strong>, <strong className="tnum" key="a" style={{ fontSize: 15 }}>{naira(fees.due)}</strong>],
         ]} />
       </Panel>
-      {!noCharge ? (
-        <Panel title="Summary by semester" right="The session charge, in two instalments">
-          <DTable cols={["Period", "Charge|num", "Paid|num", "Outstanding|num"]} rows={[
-            [<span key="p">First semester <span className="sub2">· instalment 1</span></span>, <span className="tnum" key="c">{naira(firstSem)}</span>,
-             <span className="tnum" key="pd" style={{ color: firstPaid ? "var(--green-ink)" : undefined }}>{naira(firstPaid)}</span>,
-             <span className="tnum" key="o" style={{ color: firstOut > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(firstOut)}</span>],
-            [<span key="p">Second semester <span className="sub2">· instalment 2</span></span>, <span className="tnum" key="c">{naira(secondSem)}</span>,
-             <span className="tnum" key="pd" style={{ color: secondPaid ? "var(--green-ink)" : undefined }}>{naira(secondPaid)}</span>,
-             <span className="tnum" key="o" style={{ color: secondOut > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(secondOut)}</span>],
-            [<strong key="p">Session total</strong>, <strong className="tnum" key="c">{naira(fees.due)}</strong>,
-             <strong className="tnum" key="pd" style={{ color: "var(--green-ink)" }}>{naira(fees.paid)}</strong>,
-             <strong className="tnum" key="o" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</strong>],
-          ]} />
-          <PBody><div className="sub2">Pay a semester at a time or the whole session. The first instalment (half) opens course registration; the balance opens the examination. Outstanding is zero once the session is paid in full.</div></PBody>
-        </Panel>
-      ) : null}
       {!noCharge && fees.balance > 0 ? (
         <Panel title="Pay" right="Against a reference this portal generates">
           <PBody>
@@ -86,10 +63,9 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
               </>
             ) : (
               <>
-                <div className="sub2">Pay a semester or the whole session — or type any amount. Pick an option, then generate the reference.</div>
+                <div className="sub2">Pay the outstanding balance — or type any amount. Pick an option, then generate the reference.</div>
                 <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
-                  {firstOut > 0 ? <Btn kind={amount === String(firstOut) ? "primary" : "ghost"} disabled={busy !== null} onClick={() => setAmount(String(firstOut))}>First semester · {naira(firstOut)}</Btn> : null}
-                  <Btn kind={amount === String(fees.balance) ? "primary" : "ghost"} disabled={busy !== null} onClick={() => setAmount(String(fees.balance))}>Whole session · {naira(fees.balance)}</Btn>
+                  <Btn kind={amount === String(fees.balance) ? "primary" : "ghost"} disabled={busy !== null} onClick={() => setAmount(String(fees.balance))}>Pay the outstanding · {naira(fees.balance)}</Btn>
                 </div>
                 <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
                   <input className="tnum ws__in" style={{ width: 140 }} value={amount} placeholder={String(fees.balance)} inputMode="numeric" onChange={(e) => setAmount(e.target.value)} aria-label="Amount to pay" />
