@@ -53,6 +53,8 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [problem, setProblem] = useState<Problem | null>(null);
   const [open, setOpen] = useState<Application | null>(null);
   const [openCand, setOpenCand] = useState<Candidate | null>(null);
+  const [candLoading, setCandLoading] = useState(false);
+  const [candErr, setCandErr] = useState<Problem | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [newBatch, setNewBatch] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -101,11 +103,17 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   }
 
   async function viewCandidate(jambKey: string) {
-    setProblem(null);
-    const r = await fetch(`${base}/candidates/${encodeURIComponent(jambKey)}`, { cache: "no-store" });
-    const j = await r.json().catch(() => null);
-    if (r.ok) setOpenCand(j as Candidate);
-    else setProblem(j ?? { status: r.status, title: r.statusText });
+    setCandErr(null); setOpenCand(null); setCandLoading(true);
+    try {
+      const r = await fetch(`${base}/candidates/${encodeURIComponent(jambKey)}`, { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (r.ok) setOpenCand(j as Candidate);
+      else setCandErr(j ?? { status: r.status, title: r.statusText || "This candidate could not be loaded." });
+    } catch {
+      setCandErr({ status: 0, title: "The network dropped the request.", detail: "Try again in a moment." });
+    } finally {
+      setCandLoading(false);
+    }
   }
 
   async function exportTemplate(programme: string) {
@@ -484,6 +492,12 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <div className="sub2" style={{ marginTop: 6 }}>Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
             </PBody>
           </Panel>
+        </Modal>
+      ) : null}
+      {candLoading || candErr ? (
+        <Modal title="Applicant details" onClose={() => { setCandLoading(false); setCandErr(null); }}
+          foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => { setCandLoading(false); setCandErr(null); }}>Close</Btn></>}>
+          {candLoading ? <PBody><div className="sub2">Loading the candidate…</div></PBody> : <ProblemNotice problem={candErr!} />}
         </Modal>
       ) : null}
       {openCand ? (
