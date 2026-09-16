@@ -1080,6 +1080,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Cash office & assets"
           },
           {
+            "id": "t/accounts",
+            "icon": "chart",
+            "label": "Accounting & books"
+          },
+          {
             "id": "t/ledger",
             "icon": "swap",
             "label": "Transactions & accounts"
@@ -2121,6 +2126,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/putme",
             "icon": "doc",
             "label": "Post-UTME scores"
+          },
+          {
+            "id": "t/accounts",
+            "icon": "chart",
+            "label": "Accounting & books"
           },
           {
             "id": "t/ledger",

@@ -332,6 +332,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Payment gateways",
     "Providers, keys, routing and webhooks"
   ],
+  "t/accounts": [
+    "Accounting & books",
+    "The general ledger: chart of accounts, trial balance, income & expenditure, balance sheet"
+  ],
   "t/ledger": [
     "Transactions & accounts",
     "Payment history and the ledger"

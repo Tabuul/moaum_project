@@ -111,6 +111,7 @@ export const ROUTES: Record<string, string> = {
   "t/mail": "/platform/mail",
   "t/sms": "/platform/sms",
   "t/ledger": "/finance/ledger",
+  "t/accounts": "/finance/accounting",
   "t/payments": "/finance/payments",
   "t/paymenthistory": "/finance/payments-history",
   "t/hanging": "/finance/hanging",
