@@ -2,7 +2,6 @@
 
 /** t/postutme — the Academic Office's computed Post-UTME for candidates who did not sit it (V090):
  *  the O'Level aggregate blended with the UTME, for Direct Entry and non-exam programmes. Read-only. */
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -22,13 +21,12 @@ export function ComputedPostUtme({ rows, session, sessions }: { rows: Computed[]
 
   return (
     <>
-      <Note kind="info" title="Computed Post-UTME for candidates who did not sit it"
-        action={<Link href={`/admissions/screening?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">Full screening register</Link>}>
+      <Note kind="info" title="Computed Post-UTME for candidates who did not sit it">
         Direct Entry entrants and candidates in programmes not screened by examination never sit the Post-UTME. This is a
         <b> computed</b> screening figure for them, for the Academic Office: the O&rsquo;Level aggregate scaled to 100 under
         the session&rsquo;s grading, blended with the UTME (also out of 100) where the candidate has one; a Direct Entry
-        candidate with no UTME shows the O&rsquo;Level figure alone. It is a report — it does not change the sat score or the
-        merit engine. The <b>Screening register</b> lists everyone, including those who sat the Post-UTME.
+        candidate with no UTME shows the O&rsquo;Level figure alone. It lists the non-index programmes only, for applicants
+        who applied and paid. It is a report — it does not change the sat score or the merit engine.
       </Note>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="pu-s">Session</label>
