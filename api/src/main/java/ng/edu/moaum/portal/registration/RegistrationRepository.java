@@ -107,6 +107,16 @@ class RegistrationRepository {
                 """).param("id", id).query(RegistrationRow.class).optional();
     }
 
+    /** the SIWES / industrial-training units for a registration's semester, or empty when it is a normal
+     *  semester — the industrial-training semester carries exactly this many units, not the level range */
+    Optional<Integer> siwesUnits(UUID id) {
+        return jdbc.sql("""
+                SELECT registration.siwes_units(s.programme_code, r.level, r.semester)
+                  FROM registration.course_registration r JOIN people.student s ON s.id = r.student_id
+                 WHERE r.id = :id
+                """).param("id", id).query(Integer.class).optional();
+    }
+
     /** the department a registration belongs to, via the student's programme — for department scoping */
     Optional<String> deptOf(UUID id) {
         return jdbc.sql("""

@@ -129,13 +129,24 @@ public class RegistrationService {
                     new DomainRuleViolation.Remedy("Only an admitted, active or probation student may register.", "Academic Office"));
         }
         int units = repo.units(id);
-        RegistrationRepository.Limit limit = repo.limit(r.level()).orElse(null);
-        if (limit != null && (units < limit.minUnits() || units > limit.maxUnits())) {
-            throw new DomainRuleViolation("REG_UNITS_OUT_OF_RANGE",
-                    "The registration carries " + units + " units; at " + r.level() + " level the range is "
-                            + limit.minUnits() + " to " + limit.maxUnits() + ".",
-                    new DomainRuleViolation.Remedy("Add or drop courses to bring it within the range, or obtain an overload approval.",
-                            "Head of Department"));
+        Integer siwes = repo.siwesUnits(id).orElse(null);
+        if (siwes != null) {
+            // the SIWES / industrial-training semester carries exactly the industrial-training units,
+            // not the level's normal 18–24 range (e.g. 300-level science second semester)
+            if (units != siwes) {
+                throw new DomainRuleViolation("REG_UNITS_OUT_OF_RANGE",
+                        "The industrial-training semester carries exactly " + siwes + " units; this registration carries " + units + ".",
+                        new DomainRuleViolation.Remedy("This is the SIWES semester — only the industrial-training course is registered.", "Head of Department"));
+            }
+        } else {
+            RegistrationRepository.Limit limit = repo.limit(r.level()).orElse(null);
+            if (limit != null && (units < limit.minUnits() || units > limit.maxUnits())) {
+                throw new DomainRuleViolation("REG_UNITS_OUT_OF_RANGE",
+                        "The registration carries " + units + " units; at " + r.level() + " level the range is "
+                                + limit.minUnits() + " to " + limit.maxUnits() + ".",
+                        new DomainRuleViolation.Remedy("Add or drop courses to bring it within the range, or obtain an overload approval.",
+                                "Head of Department"));
+            }
         }
         repo.setStatus(id, "APPROVED", AuditContextHolder.required().actorId());
         return Map.of("id", id, "status", "APPROVED", "units", units);

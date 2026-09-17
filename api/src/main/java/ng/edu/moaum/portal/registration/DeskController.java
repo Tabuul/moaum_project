@@ -67,7 +67,8 @@ class DeskController {
                        (SELECT string_agg(c.code || ' (' || e.units || CASE WHEN e.entry_type = 'CARRYOVER' THEN ', carryover' ELSE '' END || ')', ', ' ORDER BY c.code)
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                          WHERE e.registration_id = r.id) AS courses,
-                       (SELECT min_units || '–' || max_units FROM policy.level_limit l WHERE l.level = r.level) AS range
+                       coalesce(registration.siwes_units(s.programme_code, r.level, r.semester)::text,
+                                (SELECT min_units || '–' || max_units FROM policy.level_limit l WHERE l.level = r.level)) AS range
                   FROM registration.course_registration r
                   JOIN people.student s ON s.id = r.student_id
                   JOIN ref.programme p ON p.code = s.programme_code
