@@ -74,6 +74,22 @@ export interface Graduation {
 }
 export interface Receipt extends PaymentRef { name: string; matricNo: string; programme: string; level: number }
 
+/** the semester a fee receipt is for, parsed from its purpose ("… · semester 1") or reference ("…-S1") */
+export function receiptSemester(r: { purpose?: string | null; reference?: string | null }): number | null {
+  const m = (r.purpose ?? "").match(/semester\s*([123])/i) ?? (r.reference ?? "").match(/-S([123])\b/i);
+  return m ? Number(m[1]) : null;
+}
+
+/** the semester named in words, or null when there is none (e.g. an acceptance fee) */
+export function semesterLabel(n: number | null): string | null {
+  return n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? "Third semester" : null;
+}
+
+/** the purpose with any trailing "· semester N" removed — the semester is shown as its own field */
+export function receiptPurpose(purpose: string | null | undefined): string {
+  return (purpose ?? "").replace(/\s*[·,-]?\s*semester\s*[0-9]+\s*$/i, "").trim();
+}
+
 /* ── the services (V027) ── */
 export interface Queryable { sheet_id: string; course_code: string; title: string; session: string; semester: number; published_at: string; window_until: string; ca: number | null; exam: number | null; total: number | null; grade: string | null; outcome: string | null }
 export interface ResultQuery { id: string; ref: string; part: string; said: string; routed_dept: string; dept_name: string; raised_at: string; state: string; answer: string | null; answered_at: string | null; course_code: string; title: string }

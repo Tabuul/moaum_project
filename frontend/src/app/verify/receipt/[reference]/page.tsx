@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { receiptSemester, semesterLabel, receiptPurpose } from "@/lib/student-portal";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,9 @@ export default async function Page({ params, searchParams }: {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <tbody>
                 {[["Received from", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
-                  ["Being payment for", v.purpose], ["Session", v.session], ["Amount", naira(v.amount)],
+                  ["Being payment for", receiptPurpose(v.purpose)], ["Session", v.session],
+                  ...(semesterLabel(receiptSemester({ purpose: v.purpose })) ? [["Semester", semesterLabel(receiptSemester({ purpose: v.purpose }))]] : []),
+                  ["Amount", naira(v.amount)],
                   ["Channel", v.channel ?? "—"], ["Confirmed on", day(v.confirmedOn)], ["Receipt number", v.receiptNo ?? "—"]].map(([k, val], i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #eef1f4" }}>
                     <td style={{ padding: "9px 8px 9px 0", color: "#5d6b79", whiteSpace: "nowrap", verticalAlign: "top", fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</td>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
-import type { Receipt } from "@/lib/student-portal";
+import { type Receipt, receiptSemester, semesterLabel, receiptPurpose } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
@@ -35,7 +35,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
     y -= 17;
   }
   y -= 6;
-  for (const [k, v] of [["Received from", x.name], ["Matriculation number", x.matricNo ?? ""], ["Programme", `${x.programme} · ${x.level} Level`], ["Session", x.session]]) {
+  const semLabel = semesterLabel(receiptSemester(x));
+  const bio: [string, string][] = [["Received from", x.name], ["Matriculation number", x.matricNo ?? ""], ["Programme", `${x.programme} · ${x.level} Level`], ["Session", x.session]];
+  if (semLabel) bio.push(["Semester", semLabel]);
+  for (const [k, v] of bio) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 130, y, v, 10.5);
     y -= 18;
@@ -45,7 +48,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   p.text(L + 8, y, "BEING PAYMENT FOR", 8, true, [1, 1, 1]);
   p.text(A4.w - L - 100, y, "AMOUNT", 8, true, [1, 1, 1]);
   y -= 24;
-  p.text(L + 8, y, x.purpose, 10.5);
+  p.text(L + 8, y, receiptPurpose(x.purpose), 10.5);
   p.text(L + 8, y - 12, `Against reference ${x.reference}`, 8, false, [0.4, 0.4, 0.4]);
   p.text(A4.w - L - 140, y, naira(x.amount), 10.5, true);
   y -= 34;
