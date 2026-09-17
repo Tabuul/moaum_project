@@ -32,8 +32,13 @@ class WaitingRepository {
                   (SELECT count(*) FROM admissions.candidate c, cur
                      WHERE c.session = cur.name AND c.offer_state IN ('ADMITTED','ACCEPTED')
                        AND NOT EXISTS (SELECT 1 FROM people.student st WHERE st.candidate_id = c.id)) AS admissions,
-                  EXISTS (SELECT 1 FROM cur WHERE NOT EXISTS (SELECT 1 FROM admissions.session_policy p
-                     WHERE p.session = cur.name AND p.in_force IS NOT NULL)) AS settings_wanted,
+                  -- admission settings belong to the intake session (the next planned one), not the
+                  -- current session: students are admitted INTO the coming session while the current
+                  -- one runs. Flag when that intake session has no policy in force yet.
+                  (SELECT NOT EXISTS (SELECT 1 FROM admissions.session_policy p
+                                       WHERE p.session = nx.name AND p.in_force IS NOT NULL)
+                     FROM (SELECT name FROM policy.academic_session
+                            WHERE state = 'PLANNED' ORDER BY starts_on LIMIT 1) nx) AS settings_wanted,
                   EXISTS (SELECT 1 FROM people.student st, cur
                      WHERE st.entry_session = cur.name AND st.matric_no IS NULL AND st.status = 'ADMITTED') AS matriculation_wanted,
                   (SELECT count(*) FROM credentials.transcript_request WHERE stage = 'HELD_AT_CLEARANCE') AS clearance,
