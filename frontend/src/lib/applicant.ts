@@ -62,6 +62,7 @@ export interface Application {
   feeReferences: FeeReference[];
   feeConfirmedAt: string | null;
   documents: ApplicationDocument[];
+  jambPassport?: string | null;
   submittedAt: string | null;
   screeningSlip: ScreeningSlip | null;
   scoreReleasedAt: string | null;

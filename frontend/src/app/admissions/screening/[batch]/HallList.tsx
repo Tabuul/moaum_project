@@ -14,7 +14,7 @@ import { Passport } from "@/components/proto/blocks";
 export interface HallListData {
   session: string;
   batch: { id: string; label: string; held_on: string; starts_at: string; ends_at: string; venue: string; capacity: number };
-  seats: { id: string; seat: string; application_no: string; surname: string; other_names: string; jamb_key: string; programme: string; entry_mode: string; passport_id: string | null }[];
+  seats: { id: string; seat: string; application_no: string; candidate_id: string; surname: string; other_names: string; jamb_key: string; programme: string; entry_mode: string; passport_id: string | null; has_jamb_passport: boolean }[];
 }
 
 export function HallList({ data }: { data: HallListData }) {
@@ -50,7 +50,7 @@ export function HallList({ data }: { data: HallListData }) {
             cols={["Seat|mid", "Photograph|mid", "Candidate", "Application|mid", "JAMB|mid", "Programme", "Present|mid"]}
             rows={data.seats.map((s) => [
               <b className="tnum" key="s">{s.seat}</b>,
-              <Passport key="p" w={42} h={52} src={s.passport_id ? `/api/bff/api/v1/admissions/sessions/${data.session}/applications/${s.id}/documents/${s.passport_id}/content` : null} alt={`${s.surname} ${s.other_names}`} />,
+              <Passport key="p" w={42} h={52} src={s.passport_id ? `/api/bff/api/v1/admissions/sessions/${data.session}/applications/${s.id}/documents/${s.passport_id}/content` : s.has_jamb_passport ? `/api/bff/api/v1/admissions/sessions/${data.session}/candidate-data/passport/${s.candidate_id}/image` : null} alt={`${s.surname} ${s.other_names}`} />,
               <span key="n"><strong>{s.surname}</strong>, {s.other_names}</span>,
               <span className="tnum sub2" key="a">{s.application_no}</span>,
               <span className="tnum sub2" key="j">{s.jamb_key}</span>,

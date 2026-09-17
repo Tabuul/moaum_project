@@ -173,6 +173,16 @@ class ApplicantsController {
         if (!(session + "/" + year).equals(v.get("session"))) {
             throw new NotFound("application in " + session + "/" + year, id);
         }
+        // JAMB's downloaded passport (V007) as a fallback for the detail view: an applicant admitted from
+        // CAPS has no uploaded application document, but the photograph JAMB sent may be on record, matched
+        // on the registration number. Small enough to keep, it is a data URL in the attachment payload.
+        String jambPassport = jdbc.sql("""
+                SELECT payload ->> 'dataUrl' FROM admissions.attachment
+                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND jsonb_exists(payload, 'dataUrl')
+                 ORDER BY arrived_at DESC LIMIT 1
+                """).param("s", session + "/" + year).param("k", String.valueOf(v.get("jambKey")))
+                .query(String.class).optional().orElse(null);
+        v.put("jambPassport", jambPassport);
         return v;
     }
 
@@ -1051,8 +1061,9 @@ class ApplicantsController {
         Map<String, Object> batch = jdbc.sql("SELECT id, label, held_on, starts_at, ends_at, venue, capacity FROM admissions.screening_batch WHERE id = :id AND session = :s")
                 .param("id", id).param("s", s).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("screening batch", id));
         List<Map<String, Object>> seats = jdbc.sql("""
-                SELECT a.id, a.seat, a.application_no, c.surname, c.other_names, c.jamb_reg_no AS jamb_key, c.programme, c.entry_mode,
-                       (SELECT d.id FROM admissions.application_document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL) AS passport_id
+                SELECT a.id, a.seat, a.application_no, c.id AS candidate_id, c.surname, c.other_names, c.jamb_reg_no AS jamb_key, c.programme, c.entry_mode,
+                       (SELECT d.id FROM admissions.application_document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL) AS passport_id,
+                       EXISTS (SELECT 1 FROM admissions.attachment at WHERE at.candidate_id = c.id AND at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')) AS has_jamb_passport
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
                  WHERE a.screening_batch_id = :id ORDER BY a.seat
                 """).param("id", id).query().listOfRows();

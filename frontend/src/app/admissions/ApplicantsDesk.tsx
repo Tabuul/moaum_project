@@ -417,9 +417,10 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 {(() => {
                   const p = open.documents.find((d) => d.kind === "PASSPORT");
-                  return p ? (
+                  const src = p ? `${base}/applications/${open.id}/documents/${p.id}/content` : open.jambPassport ?? null;
+                  return src ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`${base}/applications/${open.id}/documents/${p.id}/content`} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+                    <img src={src} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
                   ) : (
                     <div className="sub2" style={{ width: 96, height: 120, borderRadius: 8, border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: 6 }}>No passport yet</div>
                   );
