@@ -274,16 +274,18 @@ class CatalogueController {
        level, semester and title; the cleanest code is the keeper, the rest are duplicates. */
     private static final String DUPLICATES_CTE = """
             WITH offered AS (
-                SELECT c.code, c.title, c.level, c.semester,
+                SELECT c.code, c.title, c.level, c.semester, coalesce(c.curriculum, '') AS curr,
                        lower(regexp_replace(btrim(c.title), '\\s+', ' ', 'g')) AS norm_title,
                        (c.code LIKE '%/%' OR c.code LIKE '%-%')::int AS messy,
                        (c.code ~ '^[A-Z]{2,4} [0-9]{3}$')::int AS clean
                   FROM catalogue.course c
                  WHERE c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %' AND c.dept_code = :dept),
             grp AS (
+                -- partition by curriculum too: a BMAS course and its CCMAS counterpart are two
+                -- curricula, not a duplicate to end (V116/V160), so they never group together
                 SELECT o.*,
-                       count(*) OVER (PARTITION BY level, semester, norm_title) AS n,
-                       row_number() OVER (PARTITION BY level, semester, norm_title
+                       count(*) OVER (PARTITION BY level, semester, norm_title, curr) AS n,
+                       row_number() OVER (PARTITION BY level, semester, norm_title, curr
                                           ORDER BY messy ASC, clean DESC, length(code) ASC, code ASC) AS rnk
                   FROM offered o)
             """;
