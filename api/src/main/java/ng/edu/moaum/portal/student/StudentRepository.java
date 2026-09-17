@@ -209,6 +209,12 @@ class StudentRepository {
                 .query().singleRow();
     }
 
+    /** correct a student's current level (the reason travels on the audit spine via the request's X-Reason) */
+    void correctLevel(UUID student, int level) {
+        jdbc.sql("UPDATE people.student SET current_level = :lvl WHERE id = :id")
+                .param("lvl", level).param("id", student).update();
+    }
+
     /** The Academic Office brings a session's admitted candidates onto the register. */
     int intake(String session) {
         return jdbc.sql("SELECT people.intake(:s)").param("s", session).query(Integer.class).single();

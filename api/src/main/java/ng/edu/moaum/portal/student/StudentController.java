@@ -79,6 +79,13 @@ class StudentController {
         return students.changeStatus(id, body, blankToNull(session));
     }
 
+    @PutMapping("/students/{id}/level")
+    @PreAuthorize(WRITERS)
+    StudentRecord level(@PathVariable UUID id, @Valid @RequestBody StudentService.LevelIn body,
+                        @RequestParam(required = false) String session) {
+        return students.correctLevel(id, body, blankToNull(session));
+    }
+
     @GetMapping("/biodata-changes")
     @PreAuthorize(READERS)
     BiodataChangeRow.Queue queue(@RequestParam(required = false) String state) {

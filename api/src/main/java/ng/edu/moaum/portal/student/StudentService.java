@@ -38,6 +38,9 @@ public class StudentService {
                            @Size(max = 2000) String reason) {
     }
 
+    public record LevelIn(@NotNull Integer level, @Size(max = 2000) String reason) {
+    }
+
     /** What a write to one field did: the value it wrote, or the request it raised. */
     public record BiodataWritten(String field, String tier, String value, UUID changeId, boolean pending) {
     }
@@ -99,6 +102,26 @@ public class StudentService {
         students.student(id).orElseThrow(() -> new NotFound("student", id));
         students.changeStatus(id, in.to().trim(), in.instrument().trim(),
                 in.effectiveOn() == null ? LocalDate.now() : in.effectiveOn(), blankToNull(in.reason()));
+        return record(id, session);
+    }
+
+    /** Correct a student's current level — e.g. an over-promotion by a session roll-over. The change is
+     *  recorded on the audit spine in the officer's name with the reason they gave. */
+    @Transactional
+    StudentRecord correctLevel(UUID id, LevelIn in, String session) {
+        students.student(id).orElseThrow(() -> new NotFound("student", id));
+        int level = in.level() == null ? 0 : in.level();
+        if (level < 100 || level > 800 || level % 100 != 0) {
+            throw new DomainRuleViolation("STU_LEVEL",
+                    "A level is 100, 200, 300 … in hundreds, up to the programme's final year.",
+                    new DomainRuleViolation.Remedy("Choose a level in hundreds.", "Registry"));
+        }
+        if (blankToNull(in.reason()) == null) {
+            throw new DomainRuleViolation("STU_LEVEL_REASON",
+                    "Correcting a level records why it was wrong.",
+                    new DomainRuleViolation.Remedy("Give the reason for the correction.", "Registry"));
+        }
+        students.correctLevel(id, level);
         return record(id, session);
     }
 

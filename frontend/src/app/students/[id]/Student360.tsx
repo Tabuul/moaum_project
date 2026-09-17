@@ -76,6 +76,9 @@ export function Student360({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [levelling, setLevelling] = useState(false);
+  const [newLevel, setNewLevel] = useState(String(s.currentLevel ?? 100));
+  const [levelReason, setLevelReason] = useState("");
 
   const cleared = record.convocationClearance.filter((c) => c.state === "CLEARED").length;
   const thisSession = record.registrations.filter((r) => r.session === session);
@@ -107,6 +110,28 @@ export function Student360({
     }
   }
 
+  async function correctLevel() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const response = await fetch(`/api/bff/api/v1/student/students/${s.id}/level?session=${encodeURIComponent(session)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Level corrected to ${newLevel}: ${levelReason}`) },
+        body: JSON.stringify({ level: Number(newLevel), reason: levelReason || null }),
+      });
+      if (response.ok) {
+        setLevelling(false);
+        setLevelReason("");
+        router.refresh();
+        return;
+      }
+      const json = await response.json().catch(() => null);
+      setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -125,6 +150,9 @@ export function Student360({
             <Pil kind={statusPill(s.status)}>{statusLabel(s.status)}</Pil>
             <Btn kind="ghost" disabled={!may} onClick={() => setChanging(true)}>
               Change status
+            </Btn>
+            <Btn kind="ghost" disabled={!may} title="Correct the student's current level — e.g. an over-promotion by a session roll-over" onClick={() => { setNewLevel(String(s.currentLevel ?? 100)); setLevelReason(""); setProblem(null); setLevelling(true); }}>
+              Correct level
             </Btn>
             <Btn kind="ghost" disabled={!may || !s.matricNo} title={s.matricNo ? "Open or reset the student's portal account with a first password they must change" : "A portal account is opened on the matriculation number"}
               onClick={async () => {
@@ -289,6 +317,38 @@ export function Student360({
       </div>
 
       <Biodata record={record} may={may} />
+
+      {levelling ? (
+        <Modal
+          title="Correct the level"
+          sub={fullName(s)}
+          onClose={() => setLevelling(false)}
+          foot={
+            <>
+              <Btn kind="ghost" onClick={() => setLevelling(false)}>Cancel</Btn>
+              <Btn kind="primary" disabled={busy || !levelReason.trim() || Number(newLevel) === (s.currentLevel ?? 0)} onClick={correctLevel}>
+                Correct the level
+              </Btn>
+            </>
+          }
+        >
+          <Note kind="info" title="This sets the student's current level">
+            Use this to fix a wrong level — for example an over-promotion by a session roll-over. It changes only the
+            current level; the reason is recorded on the audit trail in your name. It does not change registrations or
+            enrolments already made.
+          </Note>
+          <Field id="lvl" label="Current level" full>
+            <select id="lvl" className="ctl" value={newLevel} onChange={(e) => setNewLevel(e.target.value)}>
+              {[100, 200, 300, 400, 500, 600].map((x) => (
+                <option key={x} value={x}>{x} Level{x === (s.currentLevel ?? 0) ? " (current)" : ""}</option>
+              ))}
+            </select>
+          </Field>
+          <Field id="lvl-reason" label="Reason" hint="Why the level was wrong — recorded on the audit trail" full>
+            <input id="lvl-reason" className="ctl" value={levelReason} onChange={(e) => setLevelReason(e.target.value)} placeholder="e.g. Over-promoted by the 2026/2027 roll-over; should be 200 Level" />
+          </Field>
+        </Modal>
+      ) : null}
 
       {changing ? (
         <Modal
