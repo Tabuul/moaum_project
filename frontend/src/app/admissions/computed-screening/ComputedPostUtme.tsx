@@ -22,11 +22,14 @@ export function ComputedPostUtme({ rows, session, sessions }: { rows: Computed[]
 
   // export: the whole computed list, not just the page, with the crest, title and a serial
   const XCOLS = ["JAMB No", "Candidate", "Programme", "Mode", "O'Level /100", "O'Level total", "UTME", "Computed", "Basis"];
-  const xrows = (): (string | number | null)[][] => rows.map((r) => [
-    r.jamb_reg_no, r.name, r.programme, r.entry_mode === "DIRECT_ENTRY" ? "Direct Entry" : r.entry_mode,
-    r.olevel_scaled, r.olevel_total != null && r.olevel_ceiling ? `${r.olevel_total}/${r.olevel_ceiling}` : "",
-    r.utme, r.computed, r.source,
-  ]);
+  // the export is grouped by programme, and within each programme the highest computed score first
+  const xrows = (): (string | number | null)[][] => [...rows]
+    .sort((a, b) => (a.programme ?? "").localeCompare(b.programme ?? "") || (b.computed ?? -1) - (a.computed ?? -1) || (a.name ?? "").localeCompare(b.name ?? ""))
+    .map((r) => [
+      r.jamb_reg_no, r.name, r.programme, r.entry_mode === "DIRECT_ENTRY" ? "Direct Entry" : r.entry_mode,
+      r.olevel_scaled, r.olevel_total != null && r.olevel_ceiling ? `${r.olevel_total}/${r.olevel_ceiling}` : "",
+      r.utme, r.computed, r.source,
+    ]);
   const title = `Computed Post-UTME · ${session}`;
   function toExcel() {
     const serial = docSerial("CPU");
