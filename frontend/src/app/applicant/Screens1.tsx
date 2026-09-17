@@ -85,7 +85,7 @@ export function Apply({ a }: { a: Application }) {
         <Note kind="ok" title={`Your application was submitted on ${when(a.submittedAt)}`}>
           It can no longer be edited. If something on it is wrong, write to the Registry quoting your application number &mdash; do not create a second account, which will invalidate both.
         </Note>
-        <Panel title="What you submitted" right={a.applicationNo}>
+        <Panel title="What you submitted" right={<a href="/applicant/apply/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Print / Download (PDF)</a>}>
           <DTable cols={["Section", "Detail"]} rows={[
             [<Two key="s" a="Biodata" b="From your JAMB record" />, `${a.name} · ${a.biodata.sex === "F" ? "Female" : a.biodata.sex === "M" ? "Male" : "—"} · ${a.biodata.lga ?? "—"} LGA, ${a.biodata.stateOfOrigin ?? "—"} State`],
             [<Two key="s" a="O’Level" b={sittings.length === 1 ? "One sitting" : `${sittings.length} sittings`} />, sittings.length ? sittings.map((s) => `${BODY[s.body] ?? s.body} ${s.year ?? ""} · ${s.subjects.map((g) => `${g.subject} ${g.grade}`).join(", ")}`).join(" | ") : "No result has reached the University from JAMB yet"],
@@ -216,8 +216,8 @@ export function Fee({ a }: { a: Application }) {
             ["Confirmed", <span className="tnum" key="p">{when(paid.confirmedAt)}</span>],
             ["Channel", paid.channel ?? "—"],
             ["Amount", <strong className="tnum" key="a">{money(Number(paid.amount))}</strong>],
-            ["Confirmed by", "The Bursary, against the bank’s record, not by this page"],
-            ["Status", <Pil kind="ok" key="s">Settled</Pil>],
+            ["Confirmed by", <Pil kind="ok" key="c">✓ Confirmed</Pil>],
+            ["Status", <Pil kind="ok" key="s">Paid</Pil>],
           ]} />
         </Panel>
       </>

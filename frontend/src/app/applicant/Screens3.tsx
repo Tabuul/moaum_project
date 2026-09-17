@@ -49,7 +49,7 @@ export function Accept({ a }: { a: Application }) {
             ["Channel", paid.channel ?? "—"],
             ["Amount", <strong className="tnum" key="a">{money(Number(paid.amount))}</strong>],
             ["Non-refundable", "Yes — the acceptance fee is not refunded if you later withdraw"],
-            ["Status", <Pil kind="ok" key="s">Settled</Pil>],
+            ["Status", <Pil kind="ok" key="s">Paid</Pil>],
           ]} />
         </Panel>
       </>
