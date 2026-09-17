@@ -72,7 +72,7 @@ export interface Graduation {
   held_reason: string | null; verification_code: string | null; issued_on: string | null;
   name?: string; matricNo?: string | null; programme?: string; level?: number; clearance?: ClearanceUnit[];
 }
-export interface Receipt extends PaymentRef { name: string; matricNo: string; programme: string; level: number }
+export interface Receipt extends PaymentRef { name: string; matricNo: string; programme: string; level: number; term?: string | null }
 
 /** the semester a fee receipt is for, parsed from its purpose ("… · semester 1") or reference ("…-S1") */
 export function receiptSemester(r: { purpose?: string | null; reference?: string | null }): number | null {

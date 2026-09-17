@@ -51,6 +51,7 @@ class VerifyController {
     Map<String, Object> receipt(@PathVariable String reference, @RequestParam(required = false) String c) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT pr.reference, pr.receipt_no, pr.amount, pr.purpose, pr.session, pr.channel, pr.confirmed_at,
+                       finance.payment_term(pr.id) AS term,
                        trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
                        coalesce(
                          (SELECT e.level FROM people.enrolment e WHERE e.student_id = pr.student_id AND e.session = pr.session LIMIT 1),
@@ -82,6 +83,7 @@ class VerifyController {
         out.put("amount", row.get("amount"));
         out.put("purpose", row.get("purpose"));
         out.put("session", row.get("session"));
+        out.put("term", row.get("term"));
         out.put("channel", row.get("channel"));
         out.put("confirmedOn", row.get("confirmed_at"));
         out.put("receiptNo", row.get("receipt_no"));

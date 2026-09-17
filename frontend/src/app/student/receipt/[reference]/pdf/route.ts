@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
-import { type Receipt, receiptTerm, receiptPurpose } from "@/lib/student-portal";
+import { type Receipt, receiptPurpose } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
@@ -35,7 +35,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
     y -= 17;
   }
   y -= 6;
-  const semLabel = receiptTerm(x);
+  const semLabel = x.term;
   const bio: [string, string][] = [["Received from", x.name], ["Matriculation number", x.matricNo ?? ""], ["Programme", `${x.programme} · ${x.level} Level`], ["Session", x.session]];
   if (semLabel) bio.push(["Semester", semLabel]);
   for (const [k, v] of bio) {
@@ -80,7 +80,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   }
   p.text(L, qy, "SCAN TO VERIFY", 8, true, [0.4, 0.4, 0.4]);
   const textW = qx - L - 16;
-  let ty = p.paragraph(L, qy - 14, "This receipt is valid without a signature. It is verified against the Bursary's ledger, not by its appearance. Scan the code to confirm the payer, amount and date shown here.", textW, 9);
+  let ty = p.paragraph(L, qy - 14, "Scan the QR code to verify this payment, or use the check code to confirm the authenticity of this receipt against the Bursary's ledger.", textW, 9);
   ty -= 6;
   // just the host, small — the QR carries the full address, so the long path is not printed
   p.text(L, ty, `Verify at ${url.replace(/^https?:\/\//, "").split("/")[0]}`, 7, false, [0.4, 0.4, 0.4]); ty -= 12;

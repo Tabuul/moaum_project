@@ -1,12 +1,12 @@
 import { api } from "@/lib/api";
-import { receiptTerm, receiptPurpose } from "@/lib/student-portal";
+import { receiptPurpose } from "@/lib/student-portal";
 
 export const dynamic = "force-dynamic";
 
 interface VerifyResult {
   genuine: boolean;
   name?: string; matricNo?: string | null; programme?: string | null; level?: number | null;
-  amount?: number; purpose?: string; session?: string; channel?: string | null;
+  amount?: number; purpose?: string; session?: string; term?: string | null; channel?: string | null;
   confirmedOn?: string | null; receiptNo?: string | null; passport?: string | null;
 }
 
@@ -63,7 +63,7 @@ export default async function Page({ params, searchParams }: {
                 {[["Received from", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
                   ...(v.level ? [["Level", `${v.level} Level`]] : []),
                   ["Being payment for", receiptPurpose(v.purpose)], ["Session", v.session],
-                  ...(receiptTerm({ purpose: v.purpose }) ? [["Semester", receiptTerm({ purpose: v.purpose })]] : []),
+                  ...(v.term ? [["Semester", v.term]] : []),
                   ["Amount", naira(v.amount)],
                   ["Channel", v.channel ?? "—"], ["Confirmed on", day(v.confirmedOn)], ["Receipt number", v.receiptNo ?? "—"]].map(([k, val], i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #eef1f4" }}>

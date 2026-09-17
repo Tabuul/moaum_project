@@ -182,14 +182,16 @@ class StudentPortalRepository {
 
     List<Map<String, Object>> references(UUID student) {
         return jdbc.sql("""
-                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no
+                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no,
+                       CASE WHEN confirmed_at IS NOT NULL THEN finance.payment_term(id) END AS term
                   FROM finance.payment_reference WHERE student_id = :s ORDER BY generated_at DESC
                 """).param("s", student).query().listOfRows();
     }
 
     Optional<Map<String, Object>> reference(UUID student, String reference) {
         return jdbc.sql("""
-                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no
+                SELECT id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, channel, note, receipt_no,
+                       CASE WHEN confirmed_at IS NOT NULL THEN finance.payment_term(id) END AS term
                   FROM finance.payment_reference WHERE student_id = :s AND reference = upper(btrim(:r))
                 """).param("s", student).param("r", reference).query().listOfRows().stream().findFirst();
     }
