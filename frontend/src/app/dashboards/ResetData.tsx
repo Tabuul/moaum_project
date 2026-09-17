@@ -24,8 +24,31 @@ export function ResetData({ office }: { office: string | null }) {
   const [demoConfirm, setDemoConfirm] = useState("");
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoDone, setDemoDone] = useState<string | null>(null);
+  const [courseOpen, setCourseOpen] = useState(false);
+  const [courseConfirm, setCourseConfirm] = useState("");
+  const [courseBusy, setCourseBusy] = useState(false);
 
   if (!may) return null;
+
+  async function removeDemoCourses() {
+    setCourseBusy(true);
+    setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/platform/remove-demo-courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Demo courses removed from the catalogue") },
+        body: JSON.stringify({ confirm: courseConfirm.trim() }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      const c = j as Record<string, number>;
+      setDemoDone(`Removed ${c.demo_courses ?? 0} demo course(s) and ${c.demo_offerings ?? 0} demo offering(s) from the catalogue. No student, candidate or real course was touched.`);
+      setCourseOpen(false); setCourseConfirm("");
+      router.refresh();
+    } finally {
+      setCourseBusy(false);
+    }
+  }
 
   async function removeDemo() {
     setDemoBusy(true);
@@ -86,7 +109,14 @@ export function ResetData({ office }: { office: string | null }) {
           (demo.bursar, demo.hod &hellip;) and every real record you have uploaded. Use this instead of the full reset
           when your real data should stay.
         </Note>
+        <Note kind="info" title="Only stray demo courses left? Remove just those">
+          <b>Remove demo courses only</b> deletes the walkthrough courses in the catalogue — those coded
+          &ldquo;DMO&rdquo; or &ldquo;DMC&rdquo;, or titled &ldquo;Demo &hellip;&rdquo; — with their offerings,
+          materials, score sheets and any registration entries on them. It touches <b>no</b> student, candidate or real
+          course. Use this when the only demo left over is courses like <b>DMC 301 — Demo DMC 301</b>.
+        </Note>
         <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn kind="primary" onClick={() => { setCourseOpen(true); setCourseConfirm(""); setProblem(null); setDemoDone(null); }}>Remove demo courses only…</Btn>
           <Btn kind="primary" onClick={() => { setDemoOpen(true); setDemoConfirm(""); setProblem(null); setDemoDone(null); }}>Remove demo data only…</Btn>
           <Btn kind="urgent" onClick={() => { setOpen(true); setConfirm(""); setReason(""); setProblem(null); setDone(null); }}>Reset ALL uploaded data…</Btn>
         </div>
@@ -101,6 +131,18 @@ export function ResetData({ office }: { office: string | null }) {
           </Note>
           <Field id="rd-confirm" label="Type RESET to confirm" hint="In capitals"><input id="rd-confirm" className="ctl tnum" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="RESET" autoComplete="off" /></Field>
           <Field id="rd-reason" label="Reason" hint="Recorded on the audit trail in your name"><input id="rd-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Clearing the test load before go-live" /></Field>
+        </Modal>
+      ) : null}
+      {courseOpen ? (
+        <Modal title="Remove demo courses only" sub="Keeps every student, candidate and real course" onClose={() => setCourseOpen(false)}
+          foot={<><Btn kind="ghost" onClick={() => setCourseOpen(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+            <Btn kind="primary" disabled={courseBusy || courseConfirm.trim().toUpperCase() !== "REMOVE DEMO"} onClick={() => void removeDemoCourses()}>{courseBusy ? "Removing…" : "Remove demo courses"}</Btn></>}>
+          <Note kind="info" title="What this removes">
+            Only the demo courses in the catalogue — those coded &ldquo;DMO&rdquo; or &ldquo;DMC&rdquo;, or titled
+            &ldquo;Demo &hellip;&rdquo; — with their offerings, materials, assignments, score sheets and any registration
+            entries on them. No student, candidate or real course is touched. It runs in one transaction.
+          </Note>
+          <Field id="dc-confirm" label="Type REMOVE DEMO to confirm" hint="In capitals"><input id="dc-confirm" className="ctl tnum" value={courseConfirm} onChange={(e) => setCourseConfirm(e.target.value)} placeholder="REMOVE DEMO" autoComplete="off" /></Field>
         </Modal>
       ) : null}
       {demoOpen ? (

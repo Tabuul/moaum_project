@@ -75,6 +75,17 @@ class PlatformController {
         return json.readValue(result, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
+    /** Remove only the demo courses left in the catalogue — those coded DMO/DMC or titled 'Demo …' — with
+     *  their offerings, materials, score sheets and registration entries. Touches no student or candidate.
+     *  Guarded by the words REMOVE DEMO; the database function runs it in one transaction. */
+    @PostMapping("/remove-demo-courses")
+    @PreAuthorize("hasAnyAuthority('OFFICE_super','OFFICE_ict')")
+    @Transactional
+    Map<String, Object> removeDemoCourses(@Valid @RequestBody ConfirmIn body) {
+        String result = jdbc.sql("SELECT platform.remove_demo_courses(:c)").param("c", body.confirm()).query(String.class).single();
+        return json.readValue(result, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
     @GetMapping("/status")
     Map<String, Object> status() {
         Map<String, Object> body = new LinkedHashMap<>();
