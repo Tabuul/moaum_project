@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { api } from "@/lib/api";
-import { type Receipt, receiptPurpose } from "@/lib/student-portal";
-import { A4, Page, pdf } from "@/lib/pdf-write";
+import { api, API_URL } from "@/lib/api";
+import { sessionToken } from "@/lib/session";
+import { type Receipt, type Me, receiptPurpose } from "@/lib/student-portal";
+import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
 
@@ -25,9 +26,29 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
   const x = r.data;
   if (!x.confirmed_at) return NextResponse.json({ status: 409, title: "Not confirmed", detail: "A receipt is issued when the payment is confirmed." }, { status: 409 });
+  // the student's passport captured at admission, embedded as JPEG (blank box when none)
+  let photo: { width: number; height: number; data: Uint8Array } | null = null;
+  const me = await api<Me>("/api/v1/me");
+  const passportId = me.ok ? me.data.passportDocumentId : null;
+  if (passportId) {
+    try {
+      const tok = await sessionToken();
+      const res = await fetch(`${API_URL}/api/v1/applicant/me/documents/${passportId}/content`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
+      if (res.ok) {
+        const buf = new Uint8Array(await res.arrayBuffer());
+        const dim = jpegSize(buf);
+        if (dim) photo = { width: dim.width, height: dim.height, data: buf };
+      }
+    } catch { /* leave the box blank */ }
+  }
+
   const p = new Page();
   const L = 64;
   let y = brandHeader(p, L, "Official Payment Receipt · Bursary Department");
+  // passport at the top-right, aligned with the header
+  const pw = 58, ph = 71, px = A4.w - L - pw, ptop = y + 4;
+  if (photo) p.jpeg(px, ptop - ph, pw, ph, photo);
+  else { p.rule(px, ptop, px + pw, ptop, 0.6, 0.7); p.rule(px, ptop - ph, px + pw, ptop - ph, 0.6, 0.7); p.rule(px, ptop, px, ptop - ph, 0.6, 0.7); p.rule(px + pw, ptop, px + pw, ptop - ph, 0.6, 0.7); p.text(px + 10, ptop - ph / 2, "PHOTO", 7.5, false, [0.6, 0.6, 0.6]); }
   // receipt numbers can be long (legacy ones especially), so keep them small and on their own line
   for (const [k, v, sz] of [["Receipt number", x.receipt_no ?? "", 9], ["Date", day(x.confirmed_at), 10.5]] as [string, string, number][]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);

@@ -11,6 +11,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { type Fees, type Me, type Receipt, receiptPurpose } from "@/lib/student-portal";
 import { Btn, Note, Panel, PBody, Pil, Tick, Two } from "@/components/proto/ui";
+import { Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -94,7 +95,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   );
 }
 
-export function ReceiptScreen({ r, qr, verifyUrl, token }: { r: Receipt; qr?: string | null; verifyUrl?: string | null; token?: string | null }) {
+export function ReceiptScreen({ r, qr, verifyUrl, token, passportDocumentId }: { r: Receipt; qr?: string | null; verifyUrl?: string | null; token?: string | null; passportDocumentId?: string | null }) {
   if (!r.confirmed_at) {
     return <Note kind="info" title="This payment is not confirmed yet">A receipt is issued the moment the Bursary or the gateway confirms it. Reference {r.reference}.</Note>;
   }
@@ -112,7 +113,8 @@ export function ReceiptScreen({ r, qr, verifyUrl, token }: { r: Receipt; qr?: st
           <div className="kv"><span className="k">Receipt number</span><span className="v tnum" style={{ fontSize: 13, overflowWrap: "anywhere" }}>{r.receipt_no}</span></div>
           <div className="kv"><span className="k">Date</span><span className="v tnum">{onDay(r.confirmed_at)}</span></div>
         </div>
-        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 18 }}>
+        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 18, alignItems: "flex-start" }}>
+          <Passport w={62} h={77} radius={3} src={passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${passportDocumentId}/content` : null} />
           <div className="kv"><span className="k">Received from</span><span className="v">{r.name}</span></div>
           <div className="kv"><span className="k">Matriculation number</span><span className="v tnum">{r.matricNo}</span></div>
           <div className="kv"><span className="k">Programme</span><span className="v">{r.programme} · {r.level} Level</span></div>

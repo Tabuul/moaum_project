@@ -27,7 +27,7 @@ export default async function Page({ params }: { params: Promise<{ reference: st
   }
   return (
     <Shell route="s/receipt" me={loaded.me}>
-      {r.ok ? <ReceiptScreen r={r.data} qr={qr} verifyUrl={verifyUrl} token={token} /> : <ProblemNotice problem={r.problem} />}
+      {r.ok ? <ReceiptScreen r={r.data} qr={qr} verifyUrl={verifyUrl} token={token} passportDocumentId={loaded.student.passportDocumentId} /> : <ProblemNotice problem={r.problem} />}
     </Shell>
   );
 }
