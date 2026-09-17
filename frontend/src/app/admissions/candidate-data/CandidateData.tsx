@@ -37,6 +37,9 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
   const [gq, setGq] = useState("");
   const [gprog, setGprog] = useState("");
   const [gshow, setGshow] = useState(60);
+  const [streaming, setStreaming] = useState(false);
+  const [stream, setStream] = useState<{ read: number; recorded: number; attached: number; unreadable: number; total: number } | null>(null);
+  const [streamSample, setStreamSample] = useState<Pas[]>([]);
   const may = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
 
   /* V038: a file attaches only to a candidate on a committed list, so the matcher sees only committed candidates */
@@ -62,6 +65,54 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
       rd.onerror = () => { out.push({ num: got.num, file: f.name, how: got.how, size: f.size, w: 0, h: 0, url: "" }); done(); };
       rd.readAsDataURL(f);
     });
+  }
+
+  /* read one file to a data URL and its image dimensions (resolves even on a bad image) */
+  function readOne(f: File): Promise<Pas> {
+    return new Promise((resolve) => {
+      const got = jambNumFromName(f.name);
+      const rd = new FileReader();
+      rd.onload = () => {
+        const img = new Image();
+        img.onload = () => resolve({ num: got.num, file: f.name, how: got.how, size: f.size, w: img.width, h: img.height, url: String(rd.result) });
+        img.onerror = () => resolve({ num: got.num, file: f.name, how: got.how, size: f.size, w: 0, h: 0, url: "" });
+        img.src = String(rd.result);
+      };
+      rd.onerror = () => resolve({ num: got.num, file: f.name, how: got.how, size: f.size, w: 0, h: 0, url: "" });
+      rd.readAsDataURL(f);
+    });
+  }
+
+  /* stream a whole folder: read → record → discard, one batch at a time, so a folder of thousands never
+     sits in memory at once (the read-everything path crashes the tab at ~16k). Idempotent and resumable. */
+  async function streamUpload(files: FileList | null) {
+    if (!files || !files.length || !may) return;
+    setErr(null); setProblem(null); setStreaming(true); setStreamSample([]);
+    const list = Array.from(files);
+    setStream({ read: 0, recorded: 0, attached: 0, unreadable: 0, total: list.length });
+    const B = 150;
+    let read = 0, recorded = 0, attached = 0, unreadable = 0;
+    const sample: Pas[] = [];
+    try {
+      for (let i = 0; i < list.length; i += B) {
+        const items = await Promise.all(list.slice(i, i + B).map(readOne));
+        read += items.length;
+        unreadable += items.filter((p) => !p.num).length;
+        for (const p of items) if (sample.length < 24 && p.url && p.num) sample.push({ ...p });
+        const payload = items.map((p) => ({ sourceName: p.file, jambKey: p.num || null, readAs: p.num ? (p.how ? "EMBEDDED" : "EXACT") : "UNREADABLE", payload: p.url && p.size <= 65536 ? { dataUrl: p.url } : {}, bytes: p.size, widthPx: p.w || undefined, heightPx: p.h || undefined }));
+        const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PASSPORT download recorded for ${state.session} (streamed)`) }, body: JSON.stringify({ kind: "PASSPORT", items: payload }) });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+        recorded += (j.recorded as number) ?? 0;
+        for (const a of (j.attached as { kind: string; newly_attached: number }[] | undefined) ?? []) if (a.kind === "PASSPORT") attached += a.newly_attached;
+        setStream({ read, recorded, attached, unreadable, total: list.length });
+        // `items` (and its data URLs) fall out of scope here, so the batch is reclaimed before the next
+      }
+      setStreamSample(sample);
+      router.refresh();
+    } finally {
+      setStreaming(false);
+    }
   }
 
   async function readSheet(file: File | undefined, which: "dob" | "ol") {
@@ -205,6 +256,35 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
           </label>
           {busy ? <div className="sub2">Reading…</div> : null}
           <div className="sub2">Nothing leaves this browser until you record what was read; a photograph over 64 KB is recorded by name, size and dimensions only.</div>
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+            <div className="eyebrow">Thousands of photographs? Stream the folder</div>
+            <div className="sub2" style={{ marginBottom: 8 }}>
+              For a large folder (a whole intake), choosing it above reads every image into the browser at once and can crash the tab.
+              This reads and records the folder <b>a batch at a time</b>, so any size goes through. It records as it reads — no separate
+              &ldquo;Record&rdquo; step — and it is safe to run again; already-recorded files are skipped.
+            </div>
+            <label className={`btn btn--primary${streaming || !may ? " btn--disabled" : ""}`} htmlFor="cd-pas-stream" style={{ cursor: streaming || !may ? "default" : "pointer" }} aria-disabled={streaming || !may}>
+              {streaming ? "Streaming…" : "Stream & record a whole folder"}
+              <input type="file" id="cd-pas-stream" accept="image/*" multiple hidden disabled={streaming || !may} onChange={(e) => void streamUpload(e.target.files)} />
+            </label>
+            {stream ? (
+              <div style={{ marginTop: 10 }}>
+                <div className="sub2 tnum">Read {stream.read.toLocaleString()} of {stream.total.toLocaleString()} · recorded {stream.recorded.toLocaleString()} · attached to a candidate {stream.attached.toLocaleString()} · no number in the name {stream.unreadable.toLocaleString()}</div>
+                {!streaming ? <div className="sub2" style={{ color: "var(--green-ink)", marginTop: 4 }}>Done. {stream.recorded.toLocaleString()} newly recorded; the rest were already on record.</div> : null}
+                {streamSample.length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                    {streamSample.map((p) => (
+                      <div key={p.file} style={{ width: 72 }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.url} alt="" style={{ width: 72, height: 82, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 5 }} />
+                        <div className="sub2 tnum" style={{ marginTop: 2, fontSize: 10 }}>{p.num}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div></div>
         {!m ? (
           <Note kind="info" title={held("PASSPORT").length ? `${held("PASSPORT").length} photographs already recorded for ${state.session}` : "No photographs uploaded yet"}>{held("PASSPORT").length ? `${held("PASSPORT").filter((a) => a.matched).length} attached to a candidate, ${held("PASSPORT").filter((a) => !a.matched && a.jambKey).length} held for nobody yet, ${held("PASSPORT").filter((a) => a.readAs === "UNREADABLE").length} unreadable.${uncommitted ? ` ${uncommitted} candidate${uncommitted === 1 ? " is" : "s are"} on a list not yet committed — their files stay held until it is.` : ""} Choose the folder above to record more.` : "Choose the folder above."}</Note>
