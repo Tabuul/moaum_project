@@ -800,6 +800,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Upload Passport, DOB & O’Level"
           },
           {
+            "id": "t/migrate",
+            "icon": "box",
+            "label": "Migrate Old-Portal Applicants"
+          },
+          {
             "id": "t/postutme",
             "icon": "chart",
             "label": "Compute PUTME Score"

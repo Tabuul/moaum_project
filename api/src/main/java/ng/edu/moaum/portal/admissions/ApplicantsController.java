@@ -5,6 +5,7 @@ import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -174,6 +175,51 @@ class ApplicantsController {
             throw new NotFound("application in " + session + "/" + year, id);
         }
         return v;   // view() already carries jambPassport (V007) for the detail modal
+    }
+
+    /* ── migrating paid applicants from the old portal (V167) ── */
+
+    private static final String IMPORTERS =
+            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')";
+
+    public record ImportRow(@NotBlank @Size(max = 40) String jambKey, @Size(max = 120) String surname,
+                            @Size(max = 200) String otherNames, @Size(max = 200) String programme,
+                            @Size(max = 40) String entryMode, @Size(max = 200) String email, @Size(max = 40) String phone) {
+    }
+
+    public record ImportBatch(@NotNull List<ImportRow> rows) {
+    }
+
+    /** Import one chunk of paid applicants migrated from the old portal. Each row runs through
+     *  admissions.import_applicant, which is idempotent — a number that already has an account is counted
+     *  as 'exists', a bad row as 'skip: …', so a chunk never fails as a whole. Small chunks: the initial
+     *  password is bcrypt cost-12 (slow by design). */
+    @PostMapping("/import-applicants")
+    @PreAuthorize(IMPORTERS)
+    @Transactional
+    Map<String, Object> importApplicants(@PathVariable String session, @PathVariable String year, @Valid @RequestBody ImportBatch batch) {
+        String s = session + "/" + year;
+        int imported = 0;
+        int existed = 0;
+        int skipped = 0;
+        List<Map<String, Object>> problems = new ArrayList<>();
+        for (ImportRow r : batch.rows()) {
+            String status = jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph)")
+                    .param("s", s).param("j", r.jambKey()).param("sn", r.surname()).param("on", r.otherNames())
+                    .param("pr", r.programme()).param("em", r.entryMode()).param("ma", r.email()).param("ph", r.phone())
+                    .query(String.class).single();
+            if ("imported".equals(status)) {
+                imported++;
+            } else if ("exists".equals(status)) {
+                existed++;
+            } else {
+                skipped++;
+                problems.add(Map.of("jambKey", r.jambKey() == null ? "" : r.jambKey(),
+                        "name", ((r.surname() == null ? "" : r.surname()) + " " + (r.otherNames() == null ? "" : r.otherNames())).trim(),
+                        "status", status));
+            }
+        }
+        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "problems", problems);
     }
 
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS
