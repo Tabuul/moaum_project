@@ -674,6 +674,8 @@
   .scope__f label { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .4px;
     text-transform: uppercase; color: var(--faint); margin-bottom: 4px; }
   .scope__f select { width: 100%; }
+  /* the scope-bar controls read a touch smaller than a form field — more refined at a glance */
+  .scope__f .ctl, .scope__f select { font-size: 12.5px; min-height: 42px; padding-top: 9px; padding-bottom: 9px; }
   .scope__f select:disabled { background: var(--disabled); color: var(--faint); cursor: not-allowed; }
   .scope__sum { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
     padding: 10px 16px; border-top: 1px solid var(--line-2); background: var(--bg);

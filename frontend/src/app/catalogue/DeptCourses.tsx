@@ -79,32 +79,39 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: 
         A course belongs to exactly one department &mdash; the one that teaches it, sets its score sheet and answers a query about a mark in it. What the department cannot do is make it live on its own: a new course is a curriculum change the Faculty Board sees and Senate approves, because the NUC accredits a programme on the courses it says it teaches.
       </Note>
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        {depts.length > 1 ? (
-          <div className="field" style={{ minWidth: 240 }}><label htmlFor="dc-dept">Department</label>
-            <SearchSelect id="dc-dept" value={dept} placeholder="Search a department…"
-              options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go(v)} /></div>
-        ) : (
-          // a Head of Department owns one department — show it, do not ask them to pick it
-          <div className="field" style={{ minWidth: 240 }}><label>Department</label>
-            <div className="ctl" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{depts[0]?.name ?? "—"}</div></div>
-        )}
-        <div className="field" style={{ minWidth: 120 }}><label htmlFor="dc-level">Level</label>
-          <select id="dc-level" className="ctl" value={fLevel} onChange={(e) => setFLevel(e.target.value)}>
-            <option value="">All levels</option>{LEVELS.map((l) => <option key={l} value={l}>{l} Level</option>)}
-          </select></div>
-        <div className="field" style={{ minWidth: 130 }}><label htmlFor="dc-sem">Semester</label>
-          <select id="dc-sem" className="ctl" value={fSem} onChange={(e) => setFSem(e.target.value)}>
-            <option value="">All semesters</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option>
-          </select></div>
-        <div className="field" style={{ minWidth: 140 }}><label htmlFor="dc-kind">Kind</label>
-          <select id="dc-kind" className="ctl" value={fKind} onChange={(e) => setFKind(e.target.value)}>
-            <option value="">All kinds</option>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select></div>
-        {filtered ? <Btn kind="ghost" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); }}>Clear</Btn> : null}
-        <div style={{ flexGrow: 1 }} />
-        <button className="btn btn--primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" }); setErr(null); setAdd(true); }}>+ New course</button>
-      </div></div>
+      <div className="scope">
+        <div className="scope__row">
+          <div className="scope__f"><label htmlFor="dc-dept">Department</label>
+            {depts.length > 1 ? (
+              <SearchSelect id="dc-dept" value={dept} placeholder="Search a department…"
+                options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go(v)} />
+            ) : (
+              // a Head of Department owns one department — show it, do not ask them to pick it
+              <div className="ctl" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{depts[0]?.name ?? "—"}</div>
+            )}
+          </div>
+          <div className="scope__f"><label htmlFor="dc-level">Level</label>
+            <select id="dc-level" className="ctl" value={fLevel} onChange={(e) => setFLevel(e.target.value)}>
+              <option value="">All levels</option>{LEVELS.map((l) => <option key={l} value={l}>{l} Level</option>)}
+            </select></div>
+          <div className="scope__f"><label htmlFor="dc-sem">Semester</label>
+            <select id="dc-sem" className="ctl" value={fSem} onChange={(e) => setFSem(e.target.value)}>
+              <option value="">All semesters</option><option value="1">First</option><option value="2">Second</option><option value="3">Third</option>
+            </select></div>
+          <div className="scope__f"><label htmlFor="dc-kind">Kind</label>
+            <select id="dc-kind" className="ctl" value={fKind} onChange={(e) => setFKind(e.target.value)}>
+              <option value="">All kinds</option>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select></div>
+        </div>
+        <div className="scope__sum">
+          <span className="trail">{depts.find((d) => d.code === dept)?.name ?? dept}</span>
+          <span className="count"><b>{shown.length}</b> {filtered ? `of ${courses.length}` : `course${courses.length === 1 ? "" : "s"}`} shown</span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            {filtered ? <button className="btn btn--ghost btn--sm" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); }}>Clear filters</button> : null}
+            <button className="btn btn--primary btn--sm" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" }); setErr(null); setAdd(true); }}>+ New course</button>
+          </div>
+        </div>
+      </div>
 
       {said ? <Note kind="ok" title={said}>It goes to the Faculty Board, then to Senate &mdash; the department cannot make it live. Until Senate resolves it, no student can register for it and no score sheet exists.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
