@@ -5,7 +5,7 @@
  *  its source. JAMB number included, ordered by programme. Read-only. */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 export interface RegisterRow {
@@ -55,30 +55,35 @@ export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterR
         report; it does not change the sat score or the merit engine.
       </Note>
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <div className="field" style={{ minWidth: 150, margin: 0 }}><label htmlFor="sr-s">Session</label>
-          <select id="sr-s" className="ctl" value={session} onChange={(e) => router.push(`/admissions/screening?session=${encodeURIComponent(e.target.value)}`)}>
-            {(sessions.includes(session) ? sessions : [session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
-          </select>
+      <div className="scope">
+        <div className="scope__row">
+          <div className="scope__f"><label htmlFor="sr-s">Session</label>
+            <select id="sr-s" className="ws__select" value={session} onChange={(e) => router.push(`/admissions/screening?session=${encodeURIComponent(e.target.value)}`)}>
+              {(sessions.includes(session) ? sessions : [session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
+          <div className="scope__f"><label htmlFor="sr-p">Programme</label>
+            <select id="sr-p" className="ws__select" value={prog} onChange={(e) => setProg(e.target.value)}>
+              <option value="">All programmes</option>
+              {programmes.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
+          <div className="scope__f"><label htmlFor="sr-src">Screened by</label>
+            <select id="sr-src" className="ws__select" value={src} onChange={(e) => setSrc(e.target.value)}>
+              <option value="">Any source</option>
+              <option value="Post-UTME">Post-UTME (sat)</option>
+              <option value="O'Level + UTME">O&rsquo;Level + UTME</option>
+              <option value="O'Level">O&rsquo;Level</option>
+              <option value="UTME">UTME</option>
+              <option value="Awaiting Post-UTME">Awaiting Post-UTME</option>
+            </select>
+          </div>
         </div>
-        <div className="field" style={{ minWidth: 240, margin: 0 }}><label htmlFor="sr-p">Programme</label>
-          <select id="sr-p" className="ctl" value={prog} onChange={(e) => setProg(e.target.value)}>
-            <option value="">All programmes</option>
-            {programmes.map((x) => <option key={x} value={x}>{x}</option>)}
-          </select>
+        <div className="scope__sum">
+          <span className="count">Showing <b className="tnum">{shown.length.toLocaleString()}</b> of <span className="tnum">{rows.length.toLocaleString()}</span> candidates{prog ? ` · ${prog}` : " · by programme"}</span>
+          <button className="scope__clear" disabled={!shown.length} onClick={download}>Download CSV</button>
         </div>
-        <div className="field" style={{ minWidth: 170, margin: 0 }}><label htmlFor="sr-src">Screened by</label>
-          <select id="sr-src" className="ctl" value={src} onChange={(e) => setSrc(e.target.value)}>
-            <option value="">Any source</option>
-            <option value="Post-UTME">Post-UTME (sat)</option>
-            <option value="O'Level + UTME">O&rsquo;Level + UTME</option>
-            <option value="O'Level">O&rsquo;Level</option>
-            <option value="UTME">UTME</option>
-            <option value="Awaiting Post-UTME">Awaiting Post-UTME</option>
-          </select>
-        </div>
-        <div style={{ marginLeft: "auto" }}><Btn kind="ghost" disabled={!shown.length} onClick={download}>Download CSV</Btn></div>
-      </div></div>
+      </div>
 
       <Tiles items={[
         ["Candidates", String(rows.length), null, `${session} · submitted applications`],

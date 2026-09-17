@@ -132,34 +132,38 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   const overloaded = after > MAX_UNITS;
   const coCandidates = list.filter((l) => l.id !== lecturer && !co.some((c) => c.id === l.id));
 
-  const fld = { flex: "1 1 170px", minWidth: 150 } as const;
-
   return (
     <>
       {/* the scope bar: a department office is bound to its own department, then session, semester, level */}
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="field" style={fld}><label htmlFor="al-dept">Department</label>
-          {depts.length > 1 ? (
-            <SearchSelect id="al-dept" value={dept} placeholder="Search a department…"
-              options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v })} />
-          ) : (
-            <div className="ctl" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{deptName}</div>
-          )}
+      <div className="scope">
+        <div className="scope__row">
+          <div className="scope__f"><label htmlFor="al-dept">Department</label>
+            {depts.length > 1 ? (
+              <SearchSelect id="al-dept" value={dept} placeholder="Search a department…"
+                options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v })} />
+            ) : (
+              <div className="ws__select" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{deptName}</div>
+            )}
+          </div>
+          <div className="scope__f"><label htmlFor="al-session">Session</label>
+            <select id="al-session" className="ws__select" value={session} onChange={(e) => go({ session: e.target.value })}>
+              {(sessions.includes(session) ? sessions : [session, ...sessions]).map((s) => <option key={s} value={s}>{s}</option>)}
+            </select></div>
+          <div className="scope__f"><label htmlFor="al-sem">Semester</label>
+            <select id="al-sem" className="ws__select" value={semester} onChange={(e) => go({ sem: Number(e.target.value) })}>
+              <option value={1}>First semester</option><option value={2}>Second semester</option>
+            </select></div>
+          <div className="scope__f"><label htmlFor="al-level">Level</label>
+            <select id="al-level" className="ws__select" value={level ?? ""} onChange={(e) => go({ level: e.target.value ? Number(e.target.value) : null })}>
+              <option value="">All levels</option>
+              {LEVELS.map((l) => <option key={l} value={l}>{l} Level</option>)}
+            </select></div>
         </div>
-        <div className="field" style={fld}><label htmlFor="al-session">Session</label>
-          <select id="al-session" className="ctl" value={session} onChange={(e) => go({ session: e.target.value })}>
-            {(sessions.includes(session) ? sessions : [session, ...sessions]).map((s) => <option key={s} value={s}>{s}</option>)}
-          </select></div>
-        <div className="field" style={fld}><label htmlFor="al-sem">Semester</label>
-          <select id="al-sem" className="ctl" value={semester} onChange={(e) => go({ sem: Number(e.target.value) })}>
-            <option value={1}>First semester</option><option value={2}>Second semester</option>
-          </select></div>
-        <div className="field" style={fld}><label htmlFor="al-level">Level</label>
-          <select id="al-level" className="ctl" value={level ?? ""} onChange={(e) => go({ level: e.target.value ? Number(e.target.value) : null })}>
-            <option value="">All levels</option>
-            {LEVELS.map((l) => <option key={l} value={l}>{l} Level</option>)}
-          </select></div>
-      </div></div>
+        <div className="scope__sum">
+          <span className="trail">{deptName}{level ? ` › ${level} Level` : ""} › {session} › {semester === 1 ? "First" : "Second"} semester</span>
+          <span className="count">Showing <b className="tnum">{offerings.length.toLocaleString()}</b> course{offerings.length === 1 ? "" : "s"}</span>
+        </div>
+      </div>
 
       {said ? <Note kind="ok" title={said}>The score sheet opens in the lead lecturer&rsquo;s name once the examination session is open; co-lecturers enter scores on the same sheet, and the second examiner verifies.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
