@@ -58,9 +58,16 @@ class VerifyController {
                          CASE WHEN pr.session ~ '^[0-9]{4}/[0-9]{4}$'
                               THEN least(600, greatest(100, s.entry_level + (left(pr.session, 4)::int - left(s.entry_session, 4)::int) * 100))
                               ELSE s.current_level END) AS level,
-                       (SELECT at.payload->>'dataUrl' FROM admissions.attachment at
-                         WHERE at.candidate_id = s.candidate_id AND at.kind = 'PASSPORT'
-                           AND jsonb_exists(at.payload, 'dataUrl') LIMIT 1) AS passport
+                       coalesce(
+                         (SELECT 'data:' || d.content_type || ';base64,' || encode(b.content, 'base64')
+                            FROM admissions.application_document d
+                            JOIN admissions.application ap ON ap.id = d.application_id
+                            JOIN admissions.application_document_blob b ON b.document_id = d.id
+                           WHERE ap.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                           ORDER BY d.id LIMIT 1),
+                         (SELECT at.payload->>'dataUrl' FROM admissions.attachment at
+                           WHERE at.candidate_id = s.candidate_id AND at.kind = 'PASSPORT'
+                             AND jsonb_exists(at.payload, 'dataUrl') LIMIT 1)) AS passport
                   FROM finance.payment_reference pr
                   JOIN people.student s ON s.id = pr.student_id
                   LEFT JOIN ref.programme pg ON pg.code = s.programme_code
