@@ -243,6 +243,7 @@ class CapsRepository {
                   FROM app
                   JOIN ref.programme pr ON pr.code = app.code
                   LEFT JOIN ref.faculty fa ON fa.code = pr.faculty_code
+                 WHERE admissions.screened_by_exam(:s, pr.code)   -- only exam-screened (index) programmes need Post-UTME scores
                  GROUP BY pr.code, pr.name, fa.name
                  ORDER BY count(*) FILTER (WHERE app.screening_score IS NULL) DESC, fa.name, pr.name
                 """).param("s", session).query().listOfRows();
