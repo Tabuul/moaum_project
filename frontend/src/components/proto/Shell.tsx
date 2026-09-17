@@ -192,6 +192,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/support": ["Help & requests", "What students have put to this office, the oldest open first"],
   "t/reports": ["Reports & returns", "The University's statutory returns, read off the register and branded for print"],
   "t/sms": ["SMS gateway", "The eBulkSMS account the portal sends text messages from"],
+  "r/lecturer": ["Lecturer dashboard", "Your courses, marks and staff profile this session"],
+  "r/hod": ["Head of Department", "Your department's desk — approvals, allocation and results"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };
