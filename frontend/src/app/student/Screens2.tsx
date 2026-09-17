@@ -41,7 +41,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       ) : fees.schemeProblem ? (
         <Note kind="info" title="What a payment releases is not yet stated">{fees.schemeProblem}</Note>
       ) : fees.clearsRegistration ? (
-        <Note kind="ok" title="Your payment so far releases course registration">{fees.paidInFull ? "Your charges are settled in full." : `${naira(fees.balance)} remains, and the examination docket waits on it.`}</Note>
+        <Note kind="ok" title="Payment confirmed">{fees.paidInFull ? "Proceed and register your semester courses." : `Proceed and register your semester courses. ${naira(fees.balance)} of the session's charge still remains.`}</Note>
       ) : (
         <Note kind="bad" title="Course registration waits on this semester’s school fees">{fees.hasArrears ? "Arrears from an earlier session stand against you, and block everything while they do." : "Course registration for a semester opens once that semester’s school fees are paid in full; the examination waits on the session paid in full."}</Note>
       )}
