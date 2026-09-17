@@ -812,7 +812,7 @@ export const MENUS: Record<string, Menu> = {
           {
             "id": "t/putme",
             "icon": "doc",
-            "label": "PUTME Score"
+            "label": "Upload PUTME Score"
           },
           {
             "id": "t/merit",
