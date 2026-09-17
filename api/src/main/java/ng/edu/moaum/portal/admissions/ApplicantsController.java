@@ -529,6 +529,35 @@ class ApplicantsController {
         return Map.of("released", n);
     }
 
+    public record ClearScores(@Size(max = 40) String programmeCode, @NotBlank @Size(max = 20) String confirm) {
+    }
+
+    /** Clear uploaded Post-UTME scores for a session (optionally one programme) — for when scores were
+     *  uploaded in error, so the register falls back to the O'Level+UTME computation. Nulls the score, its
+     *  entry and its release. Guarded by the words CLEAR SCORES. */
+    @PostMapping("/screening-scores/clear")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> clearScores(@PathVariable String session, @PathVariable String year, @Valid @RequestBody ClearScores body) {
+        if (!"CLEAR SCORES".equals(body.confirm() == null ? "" : body.confirm().trim().toUpperCase())) {
+            throw new DomainRuleViolation("SCORES_CLEAR",
+                    "Type CLEAR SCORES to confirm removing the uploaded Post-UTME scores.",
+                    new DomainRuleViolation.Remedy("Type CLEAR SCORES.", "Academic Office"));
+        }
+        String s = session + "/" + year;
+        String prog = body.programmeCode() == null || body.programmeCode().isBlank() ? null : body.programmeCode().trim();
+        int n = jdbc.sql("""
+                UPDATE admissions.application a
+                   SET screening_score = NULL, score_entered_at = NULL, score_released_at = NULL
+                 WHERE a.session = :s AND a.screening_score IS NOT NULL
+                   AND (:prog::text IS NULL OR a.candidate_id IN (
+                        SELECT c.id FROM admissions.candidate c
+                          JOIN ref.programme p ON p.name = c.programme
+                         WHERE upper(p.code) = upper(:prog)))
+                """).param("s", s).param("prog", prog, Types.VARCHAR).update();
+        return Map.of("cleared", n, "programme", prog == null ? "all programmes" : prog);
+    }
+
     /* ── the Board ── */
 
     @PutMapping("/applications/{id}/decision")

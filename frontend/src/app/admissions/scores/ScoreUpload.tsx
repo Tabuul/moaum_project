@@ -38,6 +38,9 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
   const [problem, setProblem] = useState<Problem | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [released, setReleased] = useState<number | null>(null);
+  const [clearProg, setClearProg] = useState("");
+  const [clearConfirm, setClearConfirm] = useState("");
+  const [cleared, setCleared] = useState<number | null>(null);
   const file = useRef<HTMLInputElement | null>(null);
   const rows = parse(text);
   const mayRelease = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
@@ -59,6 +62,25 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
   }
 
   function pick(s: string) { router.push(`/admissions/scores?session=${encodeURIComponent(s)}`); }
+
+  async function clearScores() {
+    setBusy(true);
+    setProblem(null);
+    setCleared(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/clear`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Post-UTME scores cleared for ${session}${clearProg ? ` · ${clearProg}` : ""}`) },
+        body: JSON.stringify({ programmeCode: clearProg || null, confirm: clearConfirm.trim() }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setCleared(Number((j as { cleared: number }).cleared));
+      setClearConfirm("");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function loadFile(f: File) {
     const t = await f.text();
@@ -170,6 +192,30 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
           {released !== null ? <Note kind="ok" title={`${released} score${released === 1 ? "" : "s"} released for ${session}`}>They are no longer held; the Board can now decide, and each applicant has been notified.</Note> : null}
           <Btn kind="primary" disabled={!mayRelease || busy} onClick={() => void release()}>{busy ? "Releasing…" : "Release scores"}</Btn>
           {!mayRelease ? <div className="sub2" style={{ marginTop: 6 }}>Releasing is the Academic Office&rsquo;s act; ask them to release, or release from the Applicants desk.</div> : null}
+        </PBody>
+      </Panel>
+
+      <Panel title="Clear uploaded Post-UTME scores" right="For scores uploaded in error">
+        <PBody>
+          <Note kind="bad" title="Remove uploaded Post-UTME scores">
+            Use this only when Post-UTME scores were uploaded in error — for a programme that is not exam-screened, or a
+            wrong file. It removes the score, its entry and its release for {session}, so the register falls back to the
+            O&rsquo;Level + UTME computation. It <b>cannot be undone</b>; re-upload the correct scores if needed.
+          </Note>
+          {cleared !== null ? <Note kind="ok" title={`${cleared} score${cleared === 1 ? "" : "s"} cleared`}>Those candidates no longer carry a Post-UTME score for {session}.</Note> : null}
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="field" style={{ minWidth: 260, margin: 0 }}><label htmlFor="cs-prog">Programme</label>
+              <select id="cs-prog" className="ctl" value={clearProg} onChange={(e) => { setClearProg(e.target.value); setCleared(null); }}>
+                <option value="">All programmes ({session})</option>
+                {(postUtme?.programmes ?? []).filter((p) => Number(p.scored) > 0).map((p) => <option key={p.programme_code} value={p.programme_code}>{p.programme} — {p.scored} scored</option>)}
+              </select>
+            </div>
+            <div className="field" style={{ minWidth: 180, margin: 0 }}><label htmlFor="cs-confirm">Type CLEAR SCORES</label>
+              <input id="cs-confirm" className="ctl tnum" value={clearConfirm} onChange={(e) => setClearConfirm(e.target.value)} placeholder="CLEAR SCORES" autoComplete="off" />
+            </div>
+            <Btn kind="urgent" disabled={!mayRelease || busy || clearConfirm.trim().toUpperCase() !== "CLEAR SCORES"} onClick={() => void clearScores()}>{busy ? "Clearing…" : "Clear scores"}</Btn>
+          </div>
+          {!mayRelease ? <div className="sub2" style={{ marginTop: 6 }}>Only the Academic Office or Registry may clear scores.</div> : null}
         </PBody>
       </Panel>
     </>
