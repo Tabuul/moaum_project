@@ -15,6 +15,8 @@ export interface HodHome {
   offeringsTotal?: number;
   deptStudents?: number;
   deptCourses?: number;
+  sheetsPending?: number;
+  siwesUnsupervised?: number;
   needLecturer?: { code: string; title: string; level: number; semester: number }[];
 }
 
@@ -30,6 +32,8 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
   const approvals = home.approvals ?? 0;
   const needLect = home.offeringsNeedLecturer ?? 0;
   const allocated = (home.offeringsTotal ?? 0) - needLect;
+  const siwesGap = home.siwesUnsupervised ?? 0;
+  const sheets = home.sheetsPending ?? 0;
   return (
     <>
       {approvals ? (
@@ -44,6 +48,12 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
           A score sheet opens only once a lecturer is allocated. Allocate the remaining {home.session} offerings so teaching
           and assessment can begin.
         </Note>
+      ) : siwesGap ? (
+        <Note kind="info" title={`${siwesGap} SIWES student${siwesGap === 1 ? " has" : "s have"} no supervisor assigned`}
+          action={<Link href="/siwes" className="btn btn--primary btn--sm">Assign supervisors</Link>}>
+          The industrial-training students on your register need a supervisor each to be assessed. Assign the remaining
+          supervisors on the SIWES supervision desk.
+        </Note>
       ) : (
         <Note kind="ok" title={`${home.deptName} is set up for ${home.session}`}
           action={<Link href="/allocate" className="btn btn--ghost btn--sm">Teaching allocation</Link>}>
@@ -54,8 +64,11 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
       <Tiles items={[
         ["Registrations to approve", String(approvals), approvals ? "var(--red-ink)" : "var(--green-ink)", `${home.deptName} · ${home.session}`],
         ["Offerings without a lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${allocated} of ${home.offeringsTotal ?? 0} allocated`],
+        ["SIWES without a supervisor", String(siwesGap), siwesGap ? "var(--red-ink)" : "var(--green-ink)", "Industrial-training students"],
+        ["Result sheets in progress", String(sheets), null, "Not yet published"],
         ["Students", String(home.deptStudents ?? 0), null, "Active in the department"],
         ["Courses", String(home.deptCourses ?? 0), null, "In the department catalogue"],
+        ...(requestsOpen ? [["Student requests", String(requestsOpen), "var(--chrome)", "Open, to your office"] as [string, string, string, string]] : []),
       ]} />
 
       <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>

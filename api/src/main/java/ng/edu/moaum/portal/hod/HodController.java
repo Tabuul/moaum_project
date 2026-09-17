@@ -73,6 +73,27 @@ class HodController {
         out.put("deptCourses", jdbc.sql("SELECT count(*) FROM catalogue.course WHERE dept_code = :d AND state <> 'ENDED'")
                 .param("d", dept).query(Long.class).single());
 
+        out.put("sheetsPending", jdbc.sql("""
+                SELECT count(*) FROM assessment.score_sheet ss
+                  JOIN catalogue.offering o ON o.id = ss.offering_id
+                  JOIN catalogue.course c ON c.code = o.course_code
+                 WHERE o.session = :s AND c.dept_code = :d AND ss.stage <> 'PUBLISHED'
+                """).param("s", s).param("d", dept).query(Long.class).single());
+
+        out.put("siwesUnsupervised", jdbc.sql("""
+                SELECT count(*) FROM (
+                    SELECT e.offering_id, r.student_id
+                      FROM registration.entry e
+                      JOIN registration.course_registration r ON r.id = e.registration_id
+                      JOIN catalogue.offering o ON o.id = e.offering_id
+                      JOIN catalogue.course c ON c.code = o.course_code
+                     WHERE o.session = :s AND c.dept_code = :d AND c.industrial_training
+                       AND r.status IN ('APPROVED', 'LOCKED') AND e.status IN ('REGISTERED', 'APPROVED')
+                ) reg
+                LEFT JOIN assessment.siwes_supervisor sv ON sv.offering_id = reg.offering_id AND sv.student_id = reg.student_id
+                 WHERE sv.supervisor_id IS NULL
+                """).param("s", s).param("d", dept).query(Long.class).single());
+
         out.put("needLecturer", jdbc.sql("""
                 SELECT c.code, c.title, c.level, o.semester
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code

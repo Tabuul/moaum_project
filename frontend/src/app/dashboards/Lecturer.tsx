@@ -67,6 +67,19 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
         ["Signed in as", me?.name ?? "Lecturer", null, me?.staffNumber ?? ""],
       ]} />
 
+      <Panel title="Your teaching desks" right="Everything for your courses">
+        <PBody>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <Link href="/me/teaching" className="btn btn--ghost btn--sm">My teaching & timetable</Link>
+            <Link href="/results/sheets" className="btn btn--ghost btn--sm">All score sheets{open.length ? ` (${open.length})` : ""}</Link>
+            <Link href="/lms" className="btn btn--ghost btn--sm">Course spaces</Link>
+            <Link href="/registration/class-list" className="btn btn--ghost btn--sm">Registered students</Link>
+            <Link href="/exams/question-bank" className="btn btn--ghost btn--sm">CBT question bank</Link>
+            <Link href="/me/profile" className="btn btn--ghost btn--sm">My staff profile</Link>
+          </div>
+        </PBody>
+      </Panel>
+
       <Panel title="My courses this session" right={`${session} · every course can be typed or uploaded`}>
         {sheets.length === 0 ? <div className="card__body sub2">Nothing allocated to you in {session}.</div> : (
           <DTable cols={["Course", "Units|mid", "Registered|mid", "Marks entered|mid", "Result stage", "Enter marks|num"]}
