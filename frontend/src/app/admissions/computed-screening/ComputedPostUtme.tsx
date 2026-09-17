@@ -3,8 +3,9 @@
 /** t/postutme — the Academic Office's computed Post-UTME for candidates who did not sit it (V090):
  *  the O'Level aggregate blended with the UTME, for Direct Entry and non-exam programmes. Read-only. */
 import { useRouter } from "next/navigation";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 
 export interface Computed {
   jamb_reg_no: string; name: string; programme: string; entry_mode: string;
@@ -18,6 +19,23 @@ export function ComputedPostUtme({ rows, session, sessions }: { rows: Computed[]
   const router = useRouter();
   const withUtme = rows.filter((r) => r.utme != null).length;
   const de = rows.filter((r) => r.entry_mode === "DIRECT_ENTRY").length;
+
+  // export: the whole computed list, not just the page, with the crest, title and a serial
+  const XCOLS = ["JAMB No", "Candidate", "Programme", "Mode", "O'Level /100", "O'Level total", "UTME", "Computed", "Basis"];
+  const xrows = (): (string | number | null)[][] => rows.map((r) => [
+    r.jamb_reg_no, r.name, r.programme, r.entry_mode === "DIRECT_ENTRY" ? "Direct Entry" : r.entry_mode,
+    r.olevel_scaled, r.olevel_total != null && r.olevel_ceiling ? `${r.olevel_total}/${r.olevel_ceiling}` : "",
+    r.utme, r.computed, r.source,
+  ]);
+  const title = `Computed Post-UTME · ${session}`;
+  function toExcel() {
+    const serial = docSerial("CPU");
+    void brandedXlsx(title, XCOLS, xrows(), { sheetName: "Computed Post-UTME", serial, sub: session })
+      .then((blob) => downloadBlob(blob, `computed-post-utme-${session.replace(/[^0-9]+/g, "-")}.xlsx`));
+  }
+  function toPrint() {
+    brandedPrint(title, `${session} · non-index programmes, applied and paid`, XCOLS, xrows(), docSerial("CPU"));
+  }
 
   return (
     <>
@@ -41,7 +59,11 @@ export function ComputedPostUtme({ rows, session, sessions }: { rows: Computed[]
         ["Direct Entry", String(de), null, "O'Level basis (no UTME)"],
         ["O'Level only", String(rows.length - withUtme), null, "No UTME on record"],
       ]} />
-      <Panel title="Computed Post-UTME" right={`${rows.length} candidate${rows.length === 1 ? "" : "s"}`}>
+      <Panel title="Computed Post-UTME" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+        <span className="sub2">{rows.length} candidate{rows.length === 1 ? "" : "s"}</span>
+        <Btn kind="ghost" disabled={!rows.length} onClick={toExcel}>Download Excel</Btn>
+        <Btn kind="ghost" disabled={!rows.length} onClick={toPrint}>Print / PDF</Btn>
+      </span>}>
         {rows.length ? (
           <DTable
             cols={["Candidate", "JAMB no|mid", "Programme", "Mode|mid", "O’Level|num", "UTME|num", "Computed|num", "Basis|mid"]}
