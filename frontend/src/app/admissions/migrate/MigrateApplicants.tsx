@@ -53,6 +53,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const may = ["academic", "registrar", "dregistrar", "ict", "super"].includes(actingOffice ?? "");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [nameOrder, setNameOrder] = useState<NameOrder>("first");
+  const [parallel, setParallel] = useState(6);
   const [fileName, setFileName] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -110,31 +111,60 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
 
   async function run() {
     if (!rows) return;
+    const all = rows;
+    const total = all.length;
     setBusy(true); setErr(null); setResult(null);
+    // build every chunk up front (names already split for the chosen order)
+    const chunks: { jambKey: string; surname: string; otherNames: string; programme: string; entryMode: string; email: string; phone: string }[][] = [];
+    for (let i = 0; i < total; i += CHUNK) {
+      chunks.push(all.slice(i, i + CHUNK).map((r) => {
+        const { surname, otherNames } = names(r, nameOrder);
+        return { jambKey: r.jambKey, surname, otherNames, programme: r.programme, entryMode: r.entryMode, email: r.email, phone: r.phone };
+      }));
+    }
     const tally = { imported: 0, existed: 0, skipped: 0, placeholders: 0, passportsLinked: 0, problems: [] as Problem[] };
-    try {
-      for (let i = 0; i < rows.length; i += CHUNK) {
-        const slice = rows.slice(i, i + CHUNK).map((r) => {
-          const { surname, otherNames } = names(r, nameOrder);
-          return { jambKey: r.jambKey, surname, otherNames, programme: r.programme, entryMode: r.entryMode, email: r.email, phone: r.phone };
-        });
-        setProgress({ done: i, of: rows.length });
+    let next = 0;
+    let done = 0;
+    let stopped = false;
+    // a pool of workers, each pulling the next chunk — several chunks in flight at once
+    async function worker() {
+      while (!stopped) {
+        const my = next++;
+        if (my >= chunks.length) break;
+        const slice = chunks[my];
         const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/import-applicants`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old-portal applicants imported for ${session}: rows ${i + 1}–${i + slice.length}`) },
+          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old-portal applicants imported for ${session}: chunk ${my + 1} of ${chunks.length}`) },
           body: JSON.stringify({ rows: slice }),
-        });
-        const j = await r.json().catch(() => null);
-        if (!r.ok) { setErr((j && (j.detail || j.title)) || `The import stopped at row ${i + 1}. ${r.status} ${r.statusText}. What was imported before this is kept — you can run the file again and it will skip them.`); return; }
+        }).catch(() => null);
+        const j = r ? await r.json().catch(() => null) : null;
+        if (!r || !r.ok) {
+          stopped = true;
+          setErr((j && (j.detail || j.title)) || `A chunk failed (${r ? `${r.status} ${r.statusText}` : "network"}). What imported so far is kept — run the file again and it skips them.`);
+          return;
+        }
         tally.imported += j.imported ?? 0;
         tally.existed += j.existed ?? 0;
         tally.skipped += j.skipped ?? 0;
         tally.placeholders += j.placeholders ?? 0;
-        tally.passportsLinked += j.passportsLinked ?? 0;
         for (const p of (j.problems as Problem[] | undefined) ?? []) tally.problems.push(p);
+        done += slice.length;
+        setProgress({ done, of: total });
         setResult({ ...tally });
       }
-      setProgress({ done: rows.length, of: rows.length });
+    }
+    try {
+      await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, chunks.length)) }, worker));
+      if (!stopped) {
+        // one final sweep so any passports held for these candidates link on
+        const lr = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/import-applicants/link-held`, {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Link held passports after import for ${session}`) }, body: "{}",
+        }).catch(() => null);
+        const lj = lr && lr.ok ? await lr.json().catch(() => null) : null;
+        tally.passportsLinked = lj?.passportsLinked ?? 0;
+        setProgress({ done: total, of: total });
+        setResult({ ...tally });
+      }
     } finally {
       setBusy(false);
     }
@@ -221,10 +251,19 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
             <PBody>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <Btn kind="primary" disabled={busy || !may} onClick={() => void run()}>{busy ? "Importing…" : `Import ${rows.length} applicant${rows.length === 1 ? "" : "s"}`}</Btn>
+                <div className="field" style={{ minWidth: 150, margin: 0 }}><label htmlFor="mig-par">Parallel uploads</label>
+                  <select id="mig-par" className="ctl" value={parallel} disabled={busy} onChange={(e) => setParallel(Number(e.target.value))}>
+                    {[2, 4, 6, 8, 10, 12].map((n) => <option key={n} value={n}>{n} at a time</option>)}
+                  </select>
+                </div>
                 {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may import.</span> : null}
-                {busy ? <span className="sub2">The initial passwords are securely hashed, so this is deliberately slow — leave it running.</span> : null}
               </div>
-              {progress ? <div className="sub2" style={{ marginTop: 8 }}>Sent {Math.min(progress.done, progress.of)} of {progress.of}…</div> : null}
+              <div className="sub2" style={{ marginTop: 8 }}>
+                The slow part is securely hashing each initial password (bcrypt), which the server does one row at a time —
+                so more <b>parallel uploads</b> use more of the server at once and finish sooner. If you see timeouts or errors,
+                lower it. It is safe to leave running, and safe to re-run: rows already imported are skipped.
+              </div>
+              {progress ? <div className="sub2" style={{ marginTop: 6 }}>Imported {Math.min(progress.done, progress.of).toLocaleString()} of {progress.of.toLocaleString()}…</div> : null}
             </PBody>
           </Panel>
         </>

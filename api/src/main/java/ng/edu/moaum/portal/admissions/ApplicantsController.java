@@ -203,7 +203,6 @@ class ApplicantsController {
         int existed = 0;
         int skipped = 0;
         int placeholders = 0;
-        int passportsLinked = 0;
         List<Map<String, Object>> problems = new ArrayList<>();
         for (ImportRow r : batch.rows()) {
             String status = jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph)")
@@ -224,15 +223,19 @@ class ApplicantsController {
                         "status", status == null ? "unknown" : status));
             }
         }
-        // a passport, DOB or O'Level uploaded earlier was held for nobody until its candidate existed;
-        // now that this chunk created candidates, re-match everything held so the passports link on.
-        if (imported > 0) {
-            Long linked = jdbc.sql("SELECT coalesce(sum(newly_attached), 0) FROM admissions.attach_pending(:s) WHERE kind = 'PASSPORT'")
-                    .param("s", s).query(Long.class).single();
-            passportsLinked = linked == null ? 0 : linked.intValue();
-        }
-        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "placeholders", placeholders,
-                "passportsLinked", passportsLinked, "problems", problems);
+        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "placeholders", placeholders, "problems", problems);
+    }
+
+    /** Re-match everything held (passports, DOB, O'Level uploaded before their candidate existed) to the
+     *  candidates the import created. Called once after the whole import, so the sweep runs a single time
+     *  rather than on every chunk — and never concurrently with itself. */
+    @PostMapping("/import-applicants/link-held")
+    @PreAuthorize(IMPORTERS)
+    @Transactional
+    Map<String, Object> linkHeld(@PathVariable String session, @PathVariable String year) {
+        Long linked = jdbc.sql("SELECT coalesce(sum(newly_attached), 0) FROM admissions.attach_pending(:s) WHERE kind = 'PASSPORT'")
+                .param("s", session + "/" + year).query(Long.class).single();
+        return Map.of("passportsLinked", linked == null ? 0 : linked.intValue());
     }
 
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS
