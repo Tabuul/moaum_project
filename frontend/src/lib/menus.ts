@@ -287,6 +287,11 @@ export const MENUS: Record<string, Menu> = {
         "name": "Staff",
         "items": [
           {
+            "id": "t/deptstaff",
+            "icon": "user",
+            "label": "Department staff"
+          },
+          {
             "id": "t/leave",
             "icon": "cal",
             "label": "Leave requests",

@@ -82,4 +82,31 @@ class HodController {
 
         return out;
     }
+
+    /** the department's academic staff, scoped to the acting HOD's own department — names and ranks only,
+     *  no payroll. For the HOD to see who is on the establishment of their department. */
+    @GetMapping("/staff")
+    @PreAuthorize("hasAuthority('OFFICE_hod')")
+    @Transactional(readOnly = true)
+    Map<String, Object> staff() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String dept = scope.actingDept();
+        if (dept == null || dept.isBlank() || "__none__".equals(dept)) {
+            out.put("resolved", false);
+            return out;
+        }
+        out.put("resolved", true);
+        out.put("dept", dept);
+        out.put("deptName", jdbc.sql("SELECT name FROM ref.department WHERE code = :d").param("d", dept).query(String.class).optional().orElse(dept));
+        out.put("staff", jdbc.sql("""
+                SELECT p.surname || ', ' || p.given_names AS name, sr.pno, sr.present_rank, sr.sex,
+                       (SELECT status FROM hrm.employment e WHERE e.person_id = sr.person_id ORDER BY (status = 'ACTIVE') DESC LIMIT 1) AS employment,
+                       EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = sr.person_id AND a.office_code = 'lecturer'
+                                AND (a.valid_to IS NULL OR a.valid_to > current_date)) AS teaches
+                  FROM hrm.staff_record sr JOIN iam.person p ON p.id = sr.person_id
+                 WHERE sr.home_department = :d
+                 ORDER BY p.surname, p.given_names
+                """).param("d", dept).query().listOfRows());
+        return out;
+    }
 }
