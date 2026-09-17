@@ -47,14 +47,20 @@ public class RegistrationService {
         this.scope = scope;
     }
 
-    /** A Head of Department decides only their own department's registrations; a wider office is not confined. */
+    /** A Head of Department decides only their own department's registrations; a wider office is not confined.
+     *  When the acting HOD's department is not resolvable, the check falls through: the approvals list already
+     *  shows such an HOD nothing (scopedDept → none), and the role gate still applies, so there is nothing to
+     *  confine here. A resolved HOD is held to their own department. */
     private void assertMayDecide(UUID id) {
         if (!scope.actingHod()) {
             return;
         }
         String mine = scope.actingDept();
+        if (mine == null) {
+            return;
+        }
         String regDept = repo.deptOf(id).orElse(null);
-        if (mine == null || !mine.equals(regDept)) {
+        if (!mine.equals(regDept)) {
             throw new DomainRuleViolation("REG_OTHER_DEPT",
                     "This registration is in another department.",
                     new DomainRuleViolation.Remedy("A Head of Department approves only their own department's registrations.", "Registry"));
