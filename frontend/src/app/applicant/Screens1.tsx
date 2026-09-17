@@ -11,7 +11,7 @@ import Link from "next/link";
 import { at, confirmedReference, dob, openReference, BODY, NEXT, STAGES, type Application } from "@/lib/applicant";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Gate, Gates, money } from "@/components/proto/blocks";
+import { Gate, Gates, money, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, Rail, TwoCol, useAct, when } from "./common";
 
@@ -20,8 +20,19 @@ import { PayByCard, Rail, TwoCol, useAct, when } from "./common";
 export function Dashboard({ a }: { a: Application }) {
   const nx = NEXT[Math.min(a.stage, 9)];
   const open = openReference(a, "APPLICATION");
+  const uploaded = a.documents.find((d) => d.kind === "PASSPORT");
+  const photoSrc = uploaded ? `/api/bff/api/v1/applicant/me/documents/${uploaded.id}/content` : a.jambPassport ?? null;
   return (
     <>
+      <div className="card"><div className="card__body" style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <Passport w={72} h={90} radius={6} src={photoSrc} alt="Your passport photograph" />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div>
+          <div className="sub2">{a.programme ?? "—"}{a.faculty ? ` · Faculty of ${a.faculty}` : ""}</div>
+          <div className="sub2 tnum">JAMB {a.jambKey} · {a.applicationNo}</div>
+          {!photoSrc ? <div className="sub2" style={{ color: "var(--chrome)" }}>Your passport is not on record yet — it appears here once JAMB’s photograph is uploaded or you add one.</div> : null}
+        </div>
+      </div></div>
       <Tiles items={[
         ["Application number", a.applicationNo.split("/").slice(-1)[0], null, a.applicationNo],
         ["Programme applied for", a.programme ?? "—", null, `${a.faculty ? `Faculty of ${a.faculty} · ` : ""}as JAMB recorded it`],

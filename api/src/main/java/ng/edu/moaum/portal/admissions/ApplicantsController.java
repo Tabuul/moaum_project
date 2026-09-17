@@ -173,17 +173,7 @@ class ApplicantsController {
         if (!(session + "/" + year).equals(v.get("session"))) {
             throw new NotFound("application in " + session + "/" + year, id);
         }
-        // JAMB's downloaded passport (V007) as a fallback for the detail view: an applicant admitted from
-        // CAPS has no uploaded application document, but the photograph JAMB sent may be on record, matched
-        // on the registration number. Small enough to keep, it is a data URL in the attachment payload.
-        String jambPassport = jdbc.sql("""
-                SELECT payload ->> 'dataUrl' FROM admissions.attachment
-                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND jsonb_exists(payload, 'dataUrl')
-                 ORDER BY arrived_at DESC LIMIT 1
-                """).param("s", session + "/" + year).param("k", String.valueOf(v.get("jambKey")))
-                .query(String.class).optional().orElse(null);
-        v.put("jambPassport", jambPassport);
-        return v;
+        return v;   // view() already carries jambPassport (V007) for the detail modal
     }
 
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS

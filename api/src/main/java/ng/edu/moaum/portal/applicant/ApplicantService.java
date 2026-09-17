@@ -312,6 +312,7 @@ public class ApplicantService {
         v.put("feeReferences", repo.feeReferences(applicationId));
         v.put("feeConfirmedAt", a.get("fee_confirmed_at"));
         v.put("documents", repo.documents(applicationId));
+        v.put("jambPassport", repo.jambPassport(session, key).orElse(null));
         v.put("submittedAt", a.get("submitted_at"));
 
         if (a.get("screening_batch_id") != null) {

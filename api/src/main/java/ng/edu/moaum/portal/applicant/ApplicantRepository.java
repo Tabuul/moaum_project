@@ -132,6 +132,16 @@ class ApplicantRepository {
                 """).param("id", applicationId).query().listOfRows();
     }
 
+    /** JAMB's downloaded passport (V007) as a data URL, matched on the registration number — shown to the
+     *  applicant when they have not uploaded one of their own. Small photographs only; null otherwise. */
+    Optional<String> jambPassport(String session, String jambKey) {
+        return jdbc.sql("""
+                SELECT payload ->> 'dataUrl' FROM admissions.attachment
+                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND jsonb_exists(payload, 'dataUrl')
+                 ORDER BY arrived_at DESC LIMIT 1
+                """).param("s", session).param("k", jambKey).query(String.class).optional();
+    }
+
     List<Map<String, Object>> clearance(UUID applicationId) {
         return jdbc.sql("SELECT item, state, note, decided_at AS \"decidedAt\" FROM admissions.clearance_document WHERE application_id = :id")
                 .param("id", applicationId).query().listOfRows();

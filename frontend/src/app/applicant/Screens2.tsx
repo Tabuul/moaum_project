@@ -37,7 +37,7 @@ export function Screening({ a }: { a: Application }) {
       <Panel title="Post-UTME screening slip" right={a.applicationNo}>
         <PBody>
           <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <Passport w={84} h={104} src={passport ? `/api/bff/api/v1/applicant/me/documents/${passport.id}/content` : null} alt="Your passport photograph" />
+            <Passport w={84} h={104} src={passport ? `/api/bff/api/v1/applicant/me/documents/${passport.id}/content` : a.jambPassport ?? null} alt="Your passport photograph" />
             <div style={{ flexGrow: 1, minWidth: 220 }}>
               <div style={{ fontFamily: "var(--serif)", fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{a.name}</div>
               <div className="sub2">{a.applicationNo} &middot; JAMB {a.jambKey}</div>
