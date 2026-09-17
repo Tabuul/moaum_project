@@ -41,10 +41,11 @@ export function ComputedPostUtme({ rows, session, sessions }: { rows: Computed[]
     <>
       <Note kind="info" title="Computed Post-UTME for candidates who did not sit it">
         Direct Entry entrants and candidates in programmes not screened by examination never sit the Post-UTME. This is a
-        <b> computed</b> screening figure for them, for the Academic Office: the O&rsquo;Level aggregate scaled to 100 under
-        the session&rsquo;s grading, blended with the UTME (also out of 100) where the candidate has one; a Direct Entry
-        candidate with no UTME shows the O&rsquo;Level figure alone. It lists the non-index programmes only, for applicants
-        who applied and paid. It is a report — it does not change the sat score or the merit engine.
+        <b> computed</b> screening figure for them, for the Academic Office: the UTME scaled to 100 and the O&rsquo;Level
+        aggregate scaled to 100 (under the session&rsquo;s grading), combined on the session&rsquo;s admission weights —
+        UTME 70%, O&rsquo;Level 30% by default; a Direct Entry candidate with no UTME shows the O&rsquo;Level figure alone.
+        It lists the non-index programmes only, for applicants who applied and paid. It is a report — it does not change the
+        sat score or the merit engine.
       </Note>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="pu-s">Session</label>
