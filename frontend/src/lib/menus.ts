@@ -2122,6 +2122,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Administrator dashboard"
           },
           {
+            "id": "t/readiness",
+            "icon": "chart",
+            "label": "Go-live readiness"
+          },
+          {
             "id": "t/records",
             "icon": "chart",
             "label": "Records & queries"
