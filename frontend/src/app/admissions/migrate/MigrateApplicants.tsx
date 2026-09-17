@@ -14,11 +14,11 @@ import { DTable } from "@/components/proto/DTable";
 
 interface Fee { stated: boolean; applicationFee: number; portalCharge: number }
 /** a row carries either a single `name`, or a `surname`/`otherNames` pair, plus the rest */
-interface Row { jambKey: string; name?: string; surname?: string; otherNames?: string; programme: string; entryMode: string; email: string; phone: string }
+interface Row { jambKey: string; name?: string; surname?: string; otherNames?: string; programme: string; entryMode: string; email: string; phone: string; utme: string }
 interface Problem { jambKey: string; name: string; status: string }
 type NameOrder = "first" | "last";
 
-const COLS = ["JAMB Number", "Name", "Programme", "Email", "Phone"];
+const COLS = ["JAMB Number", "Name", "Programme", "UTME", "Email", "Phone"];
 const CHUNK = 100;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -62,7 +62,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const money = (n: number) => `₦${Number(n).toLocaleString("en-NG")}`;
 
   function template() {
-    const blob = buildXlsx(COLS, [["202699168863AH", "AHUMBE Aondofa Kingsley", "B. Sc. ARCHITECTURE", "name@example.com", "08030000000"]], "Applicants");
+    const blob = buildXlsx(COLS, [["202699168863AH", "AHUMBE Aondofa Kingsley", "B. Sc. ARCHITECTURE", "203", "name@example.com", "08030000000"]], "Applicants");
     downloadBlob(blob, "old-portal-applicants-template.xlsx");
   }
 
@@ -82,6 +82,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
       const iM = pick(head, ["entrymode", "entry", "mode"]);
       const iE = pick(head, ["email", "mail"]);
       const iH = pick(head, ["phone", "mobile", "gsm", "telephone", "tel", "msisdn"]);
+      const iA = pick(head, ["aggregate", "aggr", "utme", "score"]);
       const hasSplit = iS >= 0 && iO >= 0;
       if (iK < 0) { setErr("The JAMB / registration number column was not found in the header row."); return; }
       if (!hasSplit && iN < 0) { setErr("No name column was found. Provide either a single “Name” column, or separate “Surname” and “Other Names” columns."); return; }
@@ -99,6 +100,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
           entryMode: iM >= 0 ? (g[iM] ?? "").trim() : "UTME",
           email: iE >= 0 ? (g[iE] ?? "").trim() : "",
           phone: iH >= 0 ? (g[iH] ?? "").trim() : "",
+          utme: iA >= 0 ? (g[iA] ?? "").trim() : "",
         });
       }
       if (!out.length) { setErr("No row carried a JAMB number."); return; }
@@ -115,11 +117,11 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
     const total = all.length;
     setBusy(true); setErr(null); setResult(null);
     // build every chunk up front (names already split for the chosen order)
-    const chunks: { jambKey: string; surname: string; otherNames: string; programme: string; entryMode: string; email: string; phone: string }[][] = [];
+    const chunks: { jambKey: string; surname: string; otherNames: string; programme: string; entryMode: string; email: string; phone: string; utme: string }[][] = [];
     for (let i = 0; i < total; i += CHUNK) {
       chunks.push(all.slice(i, i + CHUNK).map((r) => {
         const { surname, otherNames } = names(r, nameOrder);
-        return { jambKey: r.jambKey, surname, otherNames, programme: r.programme, entryMode: r.entryMode, email: r.email, phone: r.phone };
+        return { jambKey: r.jambKey, surname, otherNames, programme: r.programme, entryMode: r.entryMode, email: r.email, phone: r.phone, utme: r.utme };
       }));
     }
     const tally = { imported: 0, existed: 0, skipped: 0, placeholders: 0, passportsLinked: 0, problems: [] as Problem[] };

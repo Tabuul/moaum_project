@@ -188,7 +188,8 @@ class ApplicantsController {
 
     public record ImportRow(@NotBlank @Size(max = 40) String jambKey, @Size(max = 120) String surname,
                             @Size(max = 200) String otherNames, @Size(max = 200) String programme,
-                            @Size(max = 40) String entryMode, @Size(max = 200) String email, @Size(max = 40) String phone) {
+                            @Size(max = 40) String entryMode, @Size(max = 200) String email, @Size(max = 40) String phone,
+                            @Size(max = 10) String utme) {
     }
 
     public record ImportBatch(@NotNull List<ImportRow> rows) {
@@ -233,10 +234,10 @@ class ApplicantsController {
      *  idempotent, so a retry never double-creates). Returns the function's status string. */
     private String importOne(String s, ImportRow r) {
         for (int attempt = 1; ; attempt++) {
-            String status = tx.execute(st -> jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph)")
+            String status = tx.execute(st -> jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph, :ut)")
                     .param("s", s).param("j", r.jambKey()).param("sn", r.surname()).param("on", r.otherNames())
                     .param("pr", r.programme()).param("em", r.entryMode()).param("ma", r.email()).param("ph", r.phone())
-                    .query(String.class).single());
+                    .param("ut", r.utme()).query(String.class).single());
             boolean contended = status != null && (status.contains("deadlock") || status.contains("could not serialize") || status.contains("concurrent update"));
             if (contended && attempt < 4) {
                 try {
