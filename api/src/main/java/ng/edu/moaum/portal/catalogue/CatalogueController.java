@@ -257,7 +257,7 @@ class CatalogueController {
         dept = scope.scopedDept(dept);                      // an HOD sees only their own department's courses
         return jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
-                SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on,
+                SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum,
                        (SELECT CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END
                           FROM catalogue.offering o LEFT JOIN iam.person p ON p.id = o.lecturer_id
                          WHERE o.course_code = c.code AND o.session = (SELECT name FROM cur)
@@ -267,6 +267,50 @@ class CatalogueController {
                  WHERE c.dept_code = :dept
                  ORDER BY c.level, c.semester, c.code
                 """).param("dept", dept).query().listOfRows();
+    }
+
+    public record CurriculumIn(@Size(max = 8) String curriculum) {
+    }
+
+    private static String cleanCurriculum(String v) {
+        String c = v == null || v.isBlank() ? null : v.trim().toUpperCase();
+        if (c != null && !c.equals("CCMAS") && !c.equals("BMAS")) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_CURRICULUM", "A curriculum is CCMAS or BMAS.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose CCMAS or BMAS, or clear it.", "Head of Department"));
+        }
+        return c;
+    }
+
+    /** tag one course's curriculum (CCMAS / BMAS, or blank to clear) so registration shows it to the
+     *  matching cohort only (V116/V160) */
+    @PostMapping("/courses/{code}/curriculum")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> setCurriculum(@PathVariable String code, @RequestBody CurriculumIn body) {
+        String curr = cleanCurriculum(body.curriculum());
+        String c = code.trim().toUpperCase();
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
+                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
+        assertHodOwns(dept);                                // an HOD tags only their own department's courses
+        jdbc.sql("UPDATE catalogue.course SET curriculum = :curr WHERE code = :c")
+                .param("curr", curr, java.sql.Types.VARCHAR).param("c", c).update();
+        return Map.of("code", c, "curriculum", curr == null ? "" : curr);
+    }
+
+    /** tag a whole department's live courses (optionally one level) with a curriculum in one action —
+     *  e.g. set every 400 level course to BMAS for the outgoing cohort */
+    @PostMapping("/curriculum/bulk")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> bulkCurriculum(@RequestParam String dept, @RequestParam String curriculum, @RequestParam(required = false) Integer level) {
+        String curr = cleanCurriculum(curriculum);
+        String d = scope.scopedDept(dept);
+        int n = jdbc.sql("""
+                UPDATE catalogue.course SET curriculum = :curr
+                 WHERE dept_code = :d AND state <> 'ENDED' AND code NOT LIKE 'DMO %'
+                   AND (:lvl::int IS NULL OR level = :lvl)
+                """).param("curr", curr, java.sql.Types.VARCHAR).param("d", d).param("lvl", level, java.sql.Types.INTEGER).update();
+        return Map.of("dept", d, "curriculum", curr == null ? "" : curr, "updated", n);
     }
 
     /* the same course uploaded under two codes (a clean 'CMP 311' and a messy 'BSU-COS 311' or a

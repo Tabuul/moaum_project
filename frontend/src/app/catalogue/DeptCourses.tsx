@@ -15,7 +15,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Course {
   code: string; title: string; units: number; semester: number; level: number; kind: string;
-  state: string; ended_on: string | null; lecturer: string | null; offered: boolean;
+  state: string; ended_on: string | null; lecturer: string | null; offered: boolean; curriculum: string | null;
 }
 export interface Duplicate { level: number; semester: number; title: string; code: string; keeper: boolean }
 
@@ -140,14 +140,31 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: 
       ) : null}
 
       <Panel title="The department's catalogue" right={filtered ? `${shown.length} of ${courses.length} · filtered` : "Every course this department owns"}>
+        <PBody>
+          <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span>Curriculum decides which cohort sees a course at registration (CCMAS or BMAS; leave a shared course, e.g. GST, blank). Tag {fLevel ? `${fLevel} Level` : "the department's"} courses:</span>
+            {(["CCMAS", "BMAS"] as const).map((cur) => (
+              <Btn key={cur} kind="ghost" disabled={busy} onClick={() => {
+                if (!window.confirm(`Set ${fLevel ? `every ${fLevel} Level` : "every"} course in this department to ${cur}? You can change any course individually afterwards.`)) return;
+                void send(`/curriculum/bulk?dept=${encodeURIComponent(dept)}&curriculum=${cur}${fLevel ? `&level=${fLevel}` : ""}`, {}, `Tagged ${fLevel || "all"} ${dept} courses as ${cur}`).then((j) => { if (j) setSaid(`${String(j.updated ?? "")} course(s) set to ${cur}`); });
+              }}>Set to {cur}</Btn>
+            ))}
+          </div>
+        </PBody>
         {shown.length ? (
-          <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
+          <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Curriculum|mid", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
             <b className="tnum" key="c">{c.code}</b>,
             <span key="t">{c.title}</span>,
             <span className="tnum" key="u">{c.units}</span>,
             <span className="tnum" key="s">{c.semester === 1 ? "First" : c.semester === 2 ? "Second" : "Third"}</span>,
             <span className="tnum" key="l">{c.level}</span>,
             <span className="sub2" key="k">{c.kind}</span>,
+            <select key="cur" className="ctl" style={{ minWidth: 96, padding: "3px 6px", fontSize: 12.5 }} value={c.curriculum ?? ""} disabled={busy || c.state === "ENDED"}
+              onChange={(e) => void send(`/courses/${encodeURIComponent(c.code)}/curriculum`, { curriculum: e.target.value }, `Curriculum of ${c.code} set to ${e.target.value || "none"}`).then((j) => { if (j) setSaid(`${c.code} → ${e.target.value || "no curriculum"}`); })}>
+              <option value="">— (shared)</option>
+              <option value="CCMAS">CCMAS</option>
+              <option value="BMAS">BMAS</option>
+            </select>,
             c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2" key="lec" style={{ color: "var(--red-ink)" }}>Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,
             c.state === "ENDED" ? <span className="sub2" key="a">On old records</span> : <Btn key="a" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>,
