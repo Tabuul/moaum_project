@@ -10,6 +10,7 @@ import type { AttachmentState } from "@/lib/matriculation";
 import { xlsxRows } from "@/lib/xlsx";
 import { CRED, capsMatch, dobParse, jambNumFromName, olParse, type DobRow, type OlRow } from "@/lib/candidate-data";
 import { Btn, Ico, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { OlevelView } from "./OlevelView";
@@ -33,6 +34,9 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
   const [err, setErr] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  const [gq, setGq] = useState("");
+  const [gprog, setGprog] = useState("");
+  const [gshow, setGshow] = useState(60);
   const may = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
 
   /* V038: a file attaches only to a candidate on a committed list, so the matcher sees only committed candidates */
@@ -127,6 +131,60 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
     </Panel>
   ) : null;
 
+  /* ── the passports already on record, for everyone who has one (V007) ── */
+  const pasGallery = () => {
+    const onRecord = state.candidates.filter((c) => c.hasPassport);
+    if (!onRecord.length) return null;
+    const base = `/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`;
+    const progs = Array.from(new Set(onRecord.map((c) => c.programme))).sort();
+    const q = gq.trim().toLowerCase();
+    const shown = onRecord
+      .filter((c) => !gprog || c.programme === gprog)
+      .filter((c) => !q || `${c.surname} ${c.otherNames} ${c.jambKey}`.toLowerCase().includes(q))
+      .sort((a, b) => a.programme.localeCompare(b.programme) || a.surname.localeCompare(b.surname) || a.otherNames.localeCompare(b.otherNames));
+    const page = shown.slice(0, gshow);
+    const noImage = onRecord.filter((c) => !c.hasPassportImage).length;
+    return (
+      <Panel title="Passports on record" right={`${onRecord.length} of ${state.candidates.length} candidates`}>
+        <PBody>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
+            <div className="field" style={{ minWidth: 220, margin: 0 }}><label htmlFor="pg-q">Search</label>
+              <input id="pg-q" className="ctl" value={gq} onChange={(e) => { setGq(e.target.value); setGshow(60); }} placeholder="Surname, other names or JAMB number" autoComplete="off" />
+            </div>
+            <div className="field" style={{ minWidth: 200, margin: 0 }}><label htmlFor="pg-p">Programme</label>
+              <select id="pg-p" className="ctl" value={gprog} onChange={(e) => { setGprog(e.target.value); setGshow(60); }}>
+                <option value="">All programmes</option>
+                {progs.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <span className="sub2">{shown.length} shown</span>
+          </div>
+          {noImage ? (
+            <Note kind="info" title={`${noImage} candidate${noImage === 1 ? " has" : "s have"} a passport recorded without a stored image`}>
+              A photograph over <b>64 KB</b> is recorded by name, size and dimensions only — the image itself was not kept in the browser, so there is nothing to show here for it. JAMB’s passports are tiny and almost always stored; a large one can be re-uploaded from the folder above to store the image.
+            </Note>
+          ) : null}
+          {shown.length ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              {page.map((c) => (
+                <div key={c.id} style={{ width: 104 }}>
+                  <Passport w={104} h={119} radius={6} src={c.hasPassportImage ? `${base}/passport/${c.id}/image` : null} alt={`${c.surname} ${c.otherNames}`} />
+                  <div className="sub2" style={{ fontWeight: 600, marginTop: 4, lineHeight: 1.25 }}>{c.surname.toUpperCase()}</div>
+                  <div className="sub2" style={{ lineHeight: 1.25 }}>{c.otherNames}</div>
+                  <div className="sub2 tnum">{c.jambKey}</div>
+                  <div className="sub2" style={{ lineHeight: 1.2 }}>{c.programme}</div>
+                </div>
+              ))}
+            </div>
+          ) : <div className="sub2">No candidate on record matches your search.</div>}
+          {shown.length > gshow ? (
+            <div style={{ marginTop: 12 }}><Btn kind="ghost" onClick={() => setGshow(gshow + 120)}>Show more — {shown.length - gshow} more</Btn></div>
+          ) : null}
+        </PBody>
+      </Panel>
+    );
+  };
+
   /* ── passports ── */
   const pasBody = () => {
     const all = pas ?? [];
@@ -199,6 +257,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
             {missing(m, "photograph")}
           </>
         )}
+        {pasGallery()}
       </>
     );
   };

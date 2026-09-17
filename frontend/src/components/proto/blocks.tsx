@@ -106,7 +106,7 @@ export function Passport({ w, h, radius = 4, src, alt }: { w: number; h: number;
     <div style={{ width: w, height: h, borderRadius: radius, overflow: "hidden", border: "1px solid var(--line)", flexShrink: 0, background: "#DCE6EC" }}>
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={alt ?? "Passport photograph"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={src} alt={alt ?? "Passport photograph"} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
         <svg viewBox="0 0 100 124" width="100%" height="100%" role="img" aria-label="Student passport photograph">
           <rect width="100" height="124" fill="#DCE6EC" />

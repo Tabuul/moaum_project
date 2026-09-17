@@ -11,7 +11,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.NotFound;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +51,7 @@ class CandidateDataController {
     }
 
     public record Candidate(UUID id, String jambKey, String surname, String otherNames, String programme, String entryMode,
-                            boolean hasPassport, boolean hasDob, boolean hasOlevel, boolean committed) {
+                            boolean hasPassport, boolean hasPassportImage, boolean hasDob, boolean hasOlevel, boolean committed) {
     }
 
     public record State(String session, List<Finding> findings, List<Attachment> attachments, List<Candidate> candidates) {
@@ -68,7 +72,10 @@ class CandidateDataController {
         String s = session + "/" + year;
         List<Attachment> attachments = jdbc.sql("""
                 SELECT id, kind, source_name, jamb_key, read_as, candidate_id IS NOT NULL AS matched,
-                       payload::text AS payload_text, bytes, width_px, height_px, arrived_at
+                       -- a passport's base64 image can be tens of KB each; it is served lazily by the
+                       -- /passport/{id}/image endpoint, not shipped in this list. Keep the rest of the payload.
+                       (CASE WHEN kind = 'PASSPORT' THEN payload - 'dataUrl' ELSE payload END)::text AS payload_text,
+                       bytes, width_px, height_px, arrived_at
                   FROM admissions.attachment WHERE session = :s ORDER BY kind, source_name
                 """).param("s", s).query((rs, i) -> new Attachment(UUID.fromString(rs.getString("id")), rs.getString("kind"),
                         rs.getString("source_name"), rs.getString("jamb_key"), rs.getString("read_as"), rs.getBoolean("matched"),
@@ -77,12 +84,45 @@ class CandidateDataController {
         List<Candidate> candidates = jdbc.sql("""
                 SELECT c.id, c.jamb_key, c.surname, c.other_names, c.programme, c.entry_mode,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT') AS has_passport,
+                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT' AND jsonb_exists(a.payload, 'dataUrl')) AS has_passport_image,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'DATE_OF_BIRTH') AS has_dob,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'OLEVEL') AS has_olevel,
                        admissions.candidate_is_committed(c.session, c.jamb_key) AS committed
                   FROM admissions.candidate c WHERE c.session = :s ORDER BY c.surname, c.other_names
                 """).param("s", s).query(Candidate.class).list();
         return new State(s, intake.attachmentState(s), attachments, candidates);
+    }
+
+    /** The candidate's screening passport as an image, decoded from the attachment payload — for the
+     *  gallery and any &lt;img&gt;. Photographs over 64 KB were recorded by metadata only, so they have
+     *  no stored image and this is a 404: the gallery shows the placeholder for them. */
+    @GetMapping("/passport/{candidateId}/image")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> passportImage(@PathVariable String session, @PathVariable String year, @PathVariable UUID candidateId) {
+        String s = session + "/" + year;
+        String dataUrl = jdbc.sql("""
+                SELECT a.payload ->> 'dataUrl'
+                  FROM admissions.attachment a
+                 WHERE a.session = :s AND a.candidate_id = :c AND a.kind = 'PASSPORT'
+                   AND jsonb_exists(a.payload, 'dataUrl')
+                 ORDER BY a.arrived_at DESC LIMIT 1
+                """).param("s", s).param("c", candidateId).query(String.class).optional().orElse(null);
+        if (dataUrl == null || dataUrl.isBlank()) {
+            throw new NotFound("passport image", candidateId);
+        }
+        int comma = dataUrl.indexOf(',');
+        String meta = comma > 0 ? dataUrl.substring(dataUrl.startsWith("data:") ? 5 : 0, comma) : "image/jpeg;base64";
+        String b64 = comma > 0 ? dataUrl.substring(comma + 1) : dataUrl;
+        String ct = meta.contains(";") ? meta.substring(0, meta.indexOf(';')) : meta;
+        if (ct.isBlank()) {
+            ct = "image/jpeg";
+        }
+        byte[] bytes = java.util.Base64.getDecoder().decode(b64.replaceAll("\\s", ""));
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(ct))
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(bytes);
     }
 
     /** Records what was read, as it was read, then re-matches everything held. */
