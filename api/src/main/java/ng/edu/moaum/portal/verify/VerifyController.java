@@ -51,7 +51,15 @@ class VerifyController {
     Map<String, Object> receipt(@PathVariable String reference, @RequestParam(required = false) String c) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT pr.reference, pr.receipt_no, pr.amount, pr.purpose, pr.session, pr.channel, pr.confirmed_at,
-                       trim(s.other_names || ' ' || s.surname) AS name, s.matric_no, pg.name AS programme
+                       trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
+                       coalesce(
+                         (SELECT e.level FROM people.enrolment e WHERE e.student_id = pr.student_id AND e.session = pr.session LIMIT 1),
+                         CASE WHEN pr.session ~ '^[0-9]{4}/[0-9]{4}$'
+                              THEN least(600, greatest(100, s.entry_level + (left(pr.session, 4)::int - left(s.entry_session, 4)::int) * 100))
+                              ELSE s.current_level END) AS level,
+                       (SELECT at.payload->>'dataUrl' FROM admissions.attachment at
+                         WHERE at.candidate_id = s.candidate_id AND at.kind = 'PASSPORT'
+                           AND jsonb_exists(at.payload, 'dataUrl') LIMIT 1) AS passport
                   FROM finance.payment_reference pr
                   JOIN people.student s ON s.id = pr.student_id
                   LEFT JOIN ref.programme pg ON pg.code = s.programme_code
@@ -70,12 +78,14 @@ class VerifyController {
         out.put("name", row.get("name"));
         out.put("matricNo", row.get("matric_no"));
         out.put("programme", row.get("programme"));
+        out.put("level", row.get("level"));
         out.put("amount", row.get("amount"));
         out.put("purpose", row.get("purpose"));
         out.put("session", row.get("session"));
         out.put("channel", row.get("channel"));
         out.put("confirmedOn", row.get("confirmed_at"));
         out.put("receiptNo", row.get("receipt_no"));
+        out.put("passport", row.get("passport"));
         return out;
     }
 

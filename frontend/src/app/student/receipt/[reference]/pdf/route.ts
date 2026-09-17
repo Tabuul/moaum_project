@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
-import { type Receipt, receiptSemester, semesterLabel, receiptPurpose } from "@/lib/student-portal";
+import { type Receipt, receiptTerm, receiptPurpose } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
@@ -35,7 +35,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
     y -= 17;
   }
   y -= 6;
-  const semLabel = semesterLabel(receiptSemester(x));
+  const semLabel = receiptTerm(x);
   const bio: [string, string][] = [["Received from", x.name], ["Matriculation number", x.matricNo ?? ""], ["Programme", `${x.programme} · ${x.level} Level`], ["Session", x.session]];
   if (semLabel) bio.push(["Semester", semLabel]);
   for (const [k, v] of bio) {
@@ -80,9 +80,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   }
   p.text(L, qy, "SCAN TO VERIFY", 8, true, [0.4, 0.4, 0.4]);
   const textW = qx - L - 16;
-  let ty = p.paragraph(L, qy - 14, "This receipt is valid without a signature. It is verified against the Bursary's ledger, not by its appearance. Scan the code, or open the address below, and confirm the payer, amount and date shown there against this receipt.", textW, 9);
-  ty -= 4;
-  p.text(L, ty, url.replace(/^https?:\/\//, ""), 8, false, [0.1, 0.25, 0.4]); ty -= 13;
+  let ty = p.paragraph(L, qy - 14, "This receipt is valid without a signature. It is verified against the Bursary's ledger, not by its appearance. Scan the code to confirm the payer, amount and date shown here.", textW, 9);
+  ty -= 6;
+  // just the host, small — the QR carries the full address, so the long path is not printed
+  p.text(L, ty, `Verify at ${url.replace(/^https?:\/\//, "").split("/")[0]}`, 7, false, [0.4, 0.4, 0.4]); ty -= 12;
   p.text(L, ty, `Check code  ${token}`, 8.5, true);
   y = Math.min(ty, qy - qDim) - 22;
 

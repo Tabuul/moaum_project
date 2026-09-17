@@ -138,7 +138,7 @@ public class StudentPortalService {
         Map<String, Object> r = repo.reference(id, reference).orElseThrow(() -> new NotFound("payment reference", reference));
         StudentPortalRepository.Student s = student(id);
         Map<String, Object> out = new LinkedHashMap<>(r);
-        out.put("name", s.surname() + ", " + s.otherNames());
+        out.put("name", s.surname().toUpperCase() + ", " + s.otherNames());
         out.put("matricNo", s.matricNo());
         out.put("programme", s.programme());
         // the level the student was at when they paid this session's fee, not today's level
@@ -193,7 +193,7 @@ public class StudentPortalService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("matricNo", s.matricNo());
         out.put("admissionNo", s.admissionNo());
-        out.put("name", s.surname() + ", " + s.otherNames());
+        out.put("name", s.surname().toUpperCase() + ", " + s.otherNames());
         out.put("programme", s.programme());
         out.put("history", history);
         return out;
@@ -255,7 +255,7 @@ public class StudentPortalService {
         BigDecimal cgpa = gpa.isEmpty() ? null : (BigDecimal) gpa.get(gpa.size() - 1).get("cgpa");
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("name", s.surname() + ", " + s.otherNames());
+        out.put("name", s.surname().toUpperCase() + ", " + s.otherNames());
         out.put("matricNo", s.matricNo());
         out.put("programme", s.programme());
         out.put("level", s.currentLevel());
@@ -392,7 +392,7 @@ public class StudentPortalService {
     public Map<String, Object> graduation(UUID id) {
         StudentPortalRepository.Student s = student(id);
         Map<String, Object> out = new LinkedHashMap<>(repo.graduation(id));
-        out.put("name", s.surname() + ", " + s.otherNames());
+        out.put("name", s.surname().toUpperCase() + ", " + s.otherNames());
         out.put("matricNo", s.matricNo());
         out.put("programme", s.programme());
         out.put("level", s.currentLevel());

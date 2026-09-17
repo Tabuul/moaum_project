@@ -1,13 +1,13 @@
 import { api } from "@/lib/api";
-import { receiptSemester, semesterLabel, receiptPurpose } from "@/lib/student-portal";
+import { receiptTerm, receiptPurpose } from "@/lib/student-portal";
 
 export const dynamic = "force-dynamic";
 
 interface VerifyResult {
   genuine: boolean;
-  name?: string; matricNo?: string | null; programme?: string | null;
+  name?: string; matricNo?: string | null; programme?: string | null; level?: number | null;
   amount?: number; purpose?: string; session?: string; channel?: string | null;
-  confirmedOn?: string | null; receiptNo?: string | null;
+  confirmedOn?: string | null; receiptNo?: string | null; passport?: string | null;
 }
 
 const naira = (n: number | undefined) => (n == null ? "—" : `NGN ${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`);
@@ -51,11 +51,19 @@ export default async function Page({ params, searchParams }: {
           </div>
 
           {ok ? (
+           <>
+            {v.passport ? (
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={v.passport} alt="Student passport" style={{ width: 96, height: 112, objectFit: "cover", borderRadius: 8, border: "1px solid #d8cfbc" }} />
+              </div>
+            ) : null}
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <tbody>
                 {[["Received from", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
+                  ...(v.level ? [["Level", `${v.level} Level`]] : []),
                   ["Being payment for", receiptPurpose(v.purpose)], ["Session", v.session],
-                  ...(semesterLabel(receiptSemester({ purpose: v.purpose })) ? [["Semester", semesterLabel(receiptSemester({ purpose: v.purpose }))]] : []),
+                  ...(receiptTerm({ purpose: v.purpose }) ? [["Semester", receiptTerm({ purpose: v.purpose })]] : []),
                   ["Amount", naira(v.amount)],
                   ["Channel", v.channel ?? "—"], ["Confirmed on", day(v.confirmedOn)], ["Receipt number", v.receiptNo ?? "—"]].map(([k, val], i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #eef1f4" }}>
@@ -65,6 +73,7 @@ export default async function Page({ params, searchParams }: {
                 ))}
               </tbody>
             </table>
+           </>
           ) : null}
 
           <p style={{ fontSize: 11.5, color: "#8a97a3", marginTop: 18, lineHeight: 1.5 }}>

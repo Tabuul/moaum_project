@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { type Fees, type Me, type Receipt, receiptSemester, semesterLabel, receiptPurpose } from "@/lib/student-portal";
+import { type Fees, type Me, type Receipt, receiptTerm, receiptPurpose } from "@/lib/student-portal";
 import { Btn, Note, Panel, PBody, Pil, Tick, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
@@ -117,7 +117,7 @@ export function ReceiptScreen({ r, qr, verifyUrl, token }: { r: Receipt; qr?: st
           <div className="kv"><span className="k">Matriculation number</span><span className="v tnum">{r.matricNo}</span></div>
           <div className="kv"><span className="k">Programme</span><span className="v">{r.programme} · {r.level} Level</span></div>
           <div className="kv"><span className="k">Session</span><span className="v tnum">{r.session}</span></div>
-          {semesterLabel(receiptSemester(r)) ? <div className="kv"><span className="k">Semester</span><span className="v">{semesterLabel(receiptSemester(r))}</span></div> : null}
+          {receiptTerm(r) ? <div className="kv"><span className="k">Semester</span><span className="v">{receiptTerm(r)}</span></div> : null}
         </div>
         <div className="tablewrap"><table style={{ minWidth: 400 }}>
           <thead><tr><th style={{ background: "var(--chrome)", color: "#fff" }}>Being payment for</th><th className="num" style={{ background: "var(--chrome)", color: "#fff" }}>Amount</th></tr></thead>

@@ -85,6 +85,14 @@ export function semesterLabel(n: number | null): string | null {
   return n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? "Third semester" : null;
 }
 
+/** the term a fee receipt covers: a named semester, or "Full session" when a school-fees payment
+ *  names no semester (paid for the whole session), else null (an acceptance/application fee). */
+export function receiptTerm(r: { purpose?: string | null; reference?: string | null }): string | null {
+  const named = semesterLabel(receiptSemester(r));
+  if (named) return named;
+  return /school\s*fee/i.test(r.purpose ?? "") ? "Full session" : null;
+}
+
 /** the purpose with any trailing "· semester N" removed — the semester is shown as its own field */
 export function receiptPurpose(purpose: string | null | undefined): string {
   return (purpose ?? "").replace(/\s*[·,-]?\s*semester\s*[0-9]+\s*$/i, "").trim();
