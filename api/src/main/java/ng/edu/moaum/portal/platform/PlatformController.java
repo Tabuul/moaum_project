@@ -141,6 +141,25 @@ class PlatformController {
         checks.add(chk("exam_programmes", "Exam-screened programmes set", "ok",
                 examProg + " programme(s) screened by Post-UTME examination for " + s + " — the rest screen on O'Level", "/admissions/settings"));
 
+        // ── institution-level gates (not session-scoped) ──
+        Map<String, Object> gw = jdbc.sql("""
+                SELECT count(*) FILTER (WHERE secret_enc IS NOT NULL) AS any,
+                       count(*) FILTER (WHERE secret_enc IS NOT NULL AND mode = 'LIVE') AS live
+                  FROM finance.gateway_credential
+                """).query().singleRow();
+        long gwAny = ((Number) gw.get("any")).longValue();
+        long gwLive = ((Number) gw.get("live")).longValue();
+        checks.add(chk("gateway", "Payment gateway configured", gwLive > 0 ? "ok" : gwAny > 0 ? "warn" : "bad",
+                gwLive > 0 ? "A live payment gateway key is set" : gwAny > 0 ? "Only a TEST gateway key is set — no live payments" : "No payment gateway key set — online payments cannot be taken", "/finance/gateways"));
+
+        boolean mail = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM platform.mail_settings WHERE coalesce(smtp_host,'') <> '')").query(Boolean.class).single());
+        checks.add(chk("email", "Email (SMTP) configured", mail ? "ok" : "warn",
+                mail ? "Outgoing email is set up" : "No SMTP host set — receipts and notices reach applicants in-portal only, not by email", "/platform/mail"));
+
+        boolean sms = Boolean.TRUE.equals(jdbc.sql("SELECT coalesce(bool_or(enabled AND api_key_enc IS NOT NULL), false) FROM platform.sms_settings").query(Boolean.class).single());
+        checks.add(chk("sms", "SMS configured", sms ? "ok" : "warn",
+                sms ? "The SMS gateway is enabled and keyed" : "SMS is not enabled — applicants and students get no text alerts", "/platform/sms"));
+
         long bad = checks.stream().filter(c -> "bad".equals(c.get("status"))).count();
         long warn = checks.stream().filter(c -> "warn".equals(c.get("status"))).count();
         Map<String, Object> out = new LinkedHashMap<>();
