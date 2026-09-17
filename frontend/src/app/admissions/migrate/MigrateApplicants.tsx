@@ -57,7 +57,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; of: number } | null>(null);
-  const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; problems: Problem[] } | null>(null);
+  const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; passportsLinked: number; problems: Problem[] } | null>(null);
   const money = (n: number) => `₦${Number(n).toLocaleString("en-NG")}`;
 
   function template() {
@@ -111,7 +111,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   async function run() {
     if (!rows) return;
     setBusy(true); setErr(null); setResult(null);
-    const tally = { imported: 0, existed: 0, skipped: 0, placeholders: 0, problems: [] as Problem[] };
+    const tally = { imported: 0, existed: 0, skipped: 0, placeholders: 0, passportsLinked: 0, problems: [] as Problem[] };
     try {
       for (let i = 0; i < rows.length; i += CHUNK) {
         const slice = rows.slice(i, i + CHUNK).map((r) => {
@@ -130,6 +130,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         tally.existed += j.existed ?? 0;
         tally.skipped += j.skipped ?? 0;
         tally.placeholders += j.placeholders ?? 0;
+        tally.passportsLinked += j.passportsLinked ?? 0;
         for (const p of (j.problems as Problem[] | undefined) ?? []) tally.problems.push(p);
         setResult({ ...tally });
       }
@@ -238,6 +239,11 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
               ["On placeholder contacts", String(result.placeholders), result.placeholders ? "var(--chrome)" : null, "Imported; no email/phone yet"],
               ["Not imported", String(result.skipped), result.skipped ? "var(--red-ink)" : null, "Bad or unusable rows"],
             ]} />
+            {result.passportsLinked ? (
+              <Note kind="ok" title={`${result.passportsLinked} held passport${result.passportsLinked === 1 ? "" : "s"} linked to the imported applicants`}>
+                Passports uploaded earlier that had no candidate to attach to have now snapped onto the applicants this import created, matched on the JAMB number.
+              </Note>
+            ) : null}
             {result.problems.length ? (
               <>
                 <div style={{ margin: "8px 0" }}><Btn kind="ghost" onClick={downloadProblems}>Download the rows not imported</Btn></div>

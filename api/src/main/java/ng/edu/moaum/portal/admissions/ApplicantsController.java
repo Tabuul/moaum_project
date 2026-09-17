@@ -203,6 +203,7 @@ class ApplicantsController {
         int existed = 0;
         int skipped = 0;
         int placeholders = 0;
+        int passportsLinked = 0;
         List<Map<String, Object>> problems = new ArrayList<>();
         for (ImportRow r : batch.rows()) {
             String status = jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph)")
@@ -223,7 +224,15 @@ class ApplicantsController {
                         "status", status == null ? "unknown" : status));
             }
         }
-        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "placeholders", placeholders, "problems", problems);
+        // a passport, DOB or O'Level uploaded earlier was held for nobody until its candidate existed;
+        // now that this chunk created candidates, re-match everything held so the passports link on.
+        if (imported > 0) {
+            Long linked = jdbc.sql("SELECT coalesce(sum(newly_attached), 0) FROM admissions.attach_pending(:s) WHERE kind = 'PASSPORT'")
+                    .param("s", s).query(Long.class).single();
+            passportsLinked = linked == null ? 0 : linked.intValue();
+        }
+        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "placeholders", placeholders,
+                "passportsLinked", passportsLinked, "problems", problems);
     }
 
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS
