@@ -805,6 +805,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Compute PUTME Score"
           },
           {
+            "id": "t/screening",
+            "icon": "chart",
+            "label": "Screening register"
+          },
+          {
             "id": "t/putme",
             "icon": "doc",
             "label": "PUTME Score"

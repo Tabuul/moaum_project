@@ -1,3 +1,4 @@
+import { intakeSession } from "@/lib/sessions";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -19,7 +20,7 @@ export default async function ApplicantsPage({ searchParams }: { searchParams: P
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
     api<ProgrammeOption[]>("/api/v1/admissions/programmes"),
   ]);
-  const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? "2026/2027";
+  const session = typeof p.session === "string" ? p.session : intakeSession(sessions.ok ? sessions.data : []);
   const qs = new URLSearchParams({ session });
   if (q) qs.set("q", q);
   if (faculty) qs.set("faculty", faculty);

@@ -1,3 +1,4 @@
+import { intakeSession } from "@/lib/sessions";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -13,9 +14,7 @@ export default async function ScreenedPage({ searchParams }: { searchParams: Pro
     api<Me>("/api/v1/iam/me"),
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
-  const session = typeof p.session === "string"
-    ? p.session
-    : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? "2026/2027";
+  const session = typeof p.session === "string" ? p.session : intakeSession(sessions.ok ? sessions.data : []);
   // session is YYYY/YYYY — two raw path segments, no encodeURIComponent
   const summary = await api<ScreenedRow[]>(`/api/v1/admissions/sessions/${session}/screened-summary`);
 

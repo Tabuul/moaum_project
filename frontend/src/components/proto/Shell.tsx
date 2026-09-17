@@ -53,6 +53,7 @@ export const ROUTES: Record<string, string> = {
   "t/applicants": "/admissions/applicants",
   "t/merit": "/admissions/merit",
   "t/postutme": "/admissions/computed-screening",
+  "t/screening": "/admissions/screening",
   "t/putme": "/admissions/scores",
   "t/candidatedata": "/admissions/candidate-data",
   "t/matriculation": "/matriculation",

@@ -149,6 +149,15 @@ class ApplicantsController {
                 .param("s", session + "/" + year).query().listOfRows();
     }
 
+    /** the whole screening register: every submitted candidate, the mark they were screened by and its source */
+    @GetMapping("/screening-register")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> screeningRegister(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT * FROM admissions.screening_register(:s)")
+                .param("s", session + "/" + year).query().listOfRows();
+    }
+
     private List<Map<String, Object>> batches(String session) {
         return jdbc.sql("""
                 SELECT b.id, b.label, b.held_on, b.starts_at, b.ends_at, b.venue, b.capacity,

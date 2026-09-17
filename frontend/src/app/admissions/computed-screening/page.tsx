@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { intakeSession } from "@/lib/sessions";
 import { ComputedPostUtme, type Computed } from "./ComputedPostUtme";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export default async function ComputedScreeningPage({ searchParams }: { searchPa
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
   const list = sessions.ok ? sessions.data : [];
-  const session = typeof p.session === "string" ? p.session : (list.find((s) => s.state === "CURRENT")?.name ?? "2026/2027");
+  const session = typeof p.session === "string" ? p.session : intakeSession(list);
   // session-scoped route: two raw path segments {session}/{year} (the session carries the slash)
   const view = await api<Computed[]>(`/api/v1/admissions/sessions/${session}/post-utme-computed`);
   return (

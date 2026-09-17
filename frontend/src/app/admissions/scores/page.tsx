@@ -1,3 +1,4 @@
+import { intakeSession } from "@/lib/sessions";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ScoreUpload, type PostUtme } from "./ScoreUpload";
@@ -11,7 +12,7 @@ export default async function ScoresPage({ searchParams }: { searchParams: Promi
     api<Me>("/api/v1/iam/me"),
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
   ]);
-  const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? "2026/2027";
+  const session = typeof p.session === "string" ? p.session : intakeSession(sessions.ok ? sessions.data : []);
   const postUtme = await api<PostUtme>(`/api/v1/admissions/post-utme-programmes?session=${encodeURIComponent(session)}`);
   return (
     <Shell route="t/putme" me={me.ok ? me.data : null}>

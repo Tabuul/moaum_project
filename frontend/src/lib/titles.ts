@@ -448,6 +448,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Computed Post-UTME",
     "For candidates who did not sit it — O’Level blended with UTME · Academic Office"
   ],
+  "t/screening": [
+    "Screening register",
+    "Every screened candidate — the mark and where it came from · Academic Office"
+  ],
   "t/transcripts": [
     "Transcript requests",
     "Exams & Records · production queue"

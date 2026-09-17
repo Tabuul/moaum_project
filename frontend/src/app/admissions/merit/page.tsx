@@ -1,3 +1,4 @@
+import { intakeSession } from "@/lib/sessions";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { Merit, type MeritView, type ProgrammeOption } from "./Merit";
@@ -13,7 +14,7 @@ export default async function MeritPage({ searchParams }: { searchParams: Promis
     api<{ name: string; state: string }[]>("/api/v1/ref/sessions"),
     api<ProgrammeOption[]>("/api/v1/admissions/programmes"),
   ]);
-  const session = typeof p.session === "string" ? p.session : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? "2026/2027";
+  const session = typeof p.session === "string" ? p.session : intakeSession(sessions.ok ? sessions.data : []);
   const view = programme
     ? await api<MeritView>(`/api/v1/admissions/merit?session=${encodeURIComponent(session)}&programme=${encodeURIComponent(programme)}`)
     : null;
