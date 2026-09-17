@@ -28,9 +28,11 @@ class AppraisalController {
     private static final String OFFICERS = "hasAnyAuthority('OFFICE_hrm','OFFICE_registrar','OFFICE_dean','OFFICE_hod','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    AppraisalController(JdbcClient jdbc) {
+    AppraisalController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     public record Record(@NotBlank @Size(max = 40) String number, String cycle, Integer selfScore, Integer supervisorScore,
@@ -49,7 +51,13 @@ class AppraisalController {
     @Transactional(readOnly = true)
     Map<String, Object> view(@RequestParam(required = false) String cycle) {
         String c = cycle(cycle);
-        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM hrm.promotion_view(:c)").param("c", c).query().listOfRows();
+        // a Head of Department sees only their own department's staff; a wider office sees all
+        String dept = scope.actingHodDept();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT * FROM hrm.promotion_view(:c) v
+                 WHERE :dept::text IS NULL
+                    OR EXISTS (SELECT 1 FROM hrm.staff_record sr WHERE sr.person_id = v.person_id AND sr.home_department = :dept)
+                """).param("c", c).param("dept", dept, Types.VARCHAR).query().listOfRows();
         return Map.of("cycle", c, "rows", rows);
     }
 
@@ -63,6 +71,15 @@ class AppraisalController {
                 """).param("n", body.number().trim()).query().listOfRows().stream().findFirst()
                 .map(r -> (UUID) r.get("id")).orElseThrow(() -> new NotFound("staff", body.number()));
         UUID person = jdbc.sql("SELECT person_id FROM hrm.employment WHERE id = :e").param("e", emp).query(UUID.class).single();
+        // a Head of Department records appraisals only for their own department's staff
+        String dept = scope.actingHodDept();
+        if (dept != null) {
+            boolean owned = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM hrm.staff_record sr WHERE sr.person_id = :p AND sr.home_department = :d)")
+                    .param("p", person).param("d", dept).query(Boolean.class).single());
+            if (!owned) {
+                throw new NotFound("staff", body.number());
+            }
+        }
         String c = cycle(body.cycle());
         jdbc.sql("""
                 INSERT INTO hrm.appraisal (employment_id, person_id, cycle, self_score, supervisor_score, aper_grade, publications, note, state, updated_at)

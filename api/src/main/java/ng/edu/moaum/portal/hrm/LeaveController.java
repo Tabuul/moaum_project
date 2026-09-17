@@ -33,8 +33,11 @@ class LeaveController {
 
     private final JdbcClient jdbc;
 
-    LeaveController(JdbcClient jdbc) {
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
+
+    LeaveController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     public record Request(@NotBlank @Size(max = 20) String type, @NotNull LocalDate from, @NotNull LocalDate to, @Size(max = 200) String cover, @Size(max = 600) String note) {
@@ -100,8 +103,15 @@ class LeaveController {
     @PreAuthorize(APPROVERS)
     @Transactional(readOnly = true)
     Map<String, Object> list(@RequestParam(required = false) String state) {
-        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM hrm.leave_list(:st)")
-                .param("st", state == null || state.isBlank() ? null : state.toUpperCase(), Types.VARCHAR).query().listOfRows();
+        // a Head of Department sees only their own department's staff; a wider approver (HR, Registry) sees all
+        String dept = scope.actingHodDept();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT * FROM hrm.leave_list(:st) l
+                 WHERE :dept::text IS NULL
+                    OR EXISTS (SELECT 1 FROM hrm.staff_record sr WHERE sr.person_id = l.person_id AND sr.home_department = :dept)
+                """)
+                .param("st", state == null || state.isBlank() ? null : state.toUpperCase(), Types.VARCHAR)
+                .param("dept", dept, Types.VARCHAR).query().listOfRows();
         return Map.of("rows", rows);
     }
 
@@ -109,6 +119,17 @@ class LeaveController {
     @PreAuthorize(APPROVERS)
     @Transactional
     Map<String, Object> decide(@PathVariable UUID id, @RequestBody Decide body) {
+        // a Head of Department decides leave only for their own department's staff
+        String dept = scope.actingHodDept();
+        if (dept != null) {
+            boolean owned = Boolean.TRUE.equals(jdbc.sql("""
+                    SELECT EXISTS (SELECT 1 FROM hrm.leave_request lr JOIN hrm.staff_record sr ON sr.person_id = lr.person_id
+                                    WHERE lr.id = :id AND sr.home_department = :d)
+                    """).param("id", id).param("d", dept).query(Boolean.class).single());
+            if (!owned) {
+                throw new NotFound("leave request", id.toString());
+            }
+        }
         jdbc.sql("SELECT hrm.decide_leave(:id, :ap, :n)").param("id", id).param("ap", body.approve()).param("n", body.note(), Types.VARCHAR).query().singleRow();
         return Map.of("id", id, "state", body.approve() ? "APPROVED" : "DECLINED");
     }
