@@ -29,7 +29,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -83,10 +85,12 @@ class ApplicantsController {
 
     private final JdbcClient jdbc;
     private final ApplicantService applicants;
+    private final TransactionTemplate tx;
 
-    ApplicantsController(JdbcClient jdbc, ApplicantService applicants) {
+    ApplicantsController(JdbcClient jdbc, ApplicantService applicants, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.applicants = applicants;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     /* ── the list ── */
@@ -196,7 +200,6 @@ class ApplicantsController {
      *  password is bcrypt cost-12 (slow by design). */
     @PostMapping("/import-applicants")
     @PreAuthorize(IMPORTERS)
-    @Transactional
     Map<String, Object> importApplicants(@PathVariable String session, @PathVariable String year, @Valid @RequestBody ImportBatch batch) {
         String s = session + "/" + year;
         int imported = 0;
@@ -205,10 +208,10 @@ class ApplicantsController {
         int placeholders = 0;
         List<Map<String, Object>> problems = new ArrayList<>();
         for (ImportRow r : batch.rows()) {
-            String status = jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph)")
-                    .param("s", s).param("j", r.jambKey()).param("sn", r.surname()).param("on", r.otherNames())
-                    .param("pr", r.programme()).param("em", r.entryMode()).param("ma", r.email()).param("ph", r.phone())
-                    .query(String.class).single();
+            // each applicant in its OWN attributed transaction, so the shared numbering locks are held
+            // for milliseconds, not for the whole chunk — that is what lets parallel chunks run at once
+            // instead of blocking (and occasionally deadlocking) on one another.
+            String status = importOne(s, r);
             if (status != null && status.startsWith("imported")) {
                 imported++;
                 if (!status.equals("imported")) {
@@ -224,6 +227,28 @@ class ApplicantsController {
             }
         }
         return Map.of("imported", imported, "existed", existed, "skipped", skipped, "placeholders", placeholders, "problems", problems);
+    }
+
+    /** import one applicant in its own attributed transaction; retry a brief lock deadlock (import is
+     *  idempotent, so a retry never double-creates). Returns the function's status string. */
+    private String importOne(String s, ImportRow r) {
+        for (int attempt = 1; ; attempt++) {
+            String status = tx.execute(st -> jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph)")
+                    .param("s", s).param("j", r.jambKey()).param("sn", r.surname()).param("on", r.otherNames())
+                    .param("pr", r.programme()).param("em", r.entryMode()).param("ma", r.email()).param("ph", r.phone())
+                    .query(String.class).single());
+            boolean contended = status != null && (status.contains("deadlock") || status.contains("could not serialize") || status.contains("concurrent update"));
+            if (contended && attempt < 4) {
+                try {
+                    Thread.sleep(15L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return status;
+                }
+                continue;
+            }
+            return status;
+        }
     }
 
     /** Re-match everything held (passports, DOB, O'Level uploaded before their candidate existed) to the
