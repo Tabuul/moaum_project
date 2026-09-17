@@ -107,6 +107,16 @@ class RegistrationRepository {
                 """).param("id", id).query(RegistrationRow.class).optional();
     }
 
+    /** the department a registration belongs to, via the student's programme — for department scoping */
+    Optional<String> deptOf(UUID id) {
+        return jdbc.sql("""
+                SELECT p.dept_code FROM registration.course_registration r
+                  JOIN people.student s ON s.id = r.student_id
+                  JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE r.id = :id
+                """).param("id", id).query(String.class).optional();
+    }
+
     int units(UUID registration) {
         return jdbc.sql("SELECT registration.units_of(:id)").param("id", registration).query(Integer.class).single();
     }

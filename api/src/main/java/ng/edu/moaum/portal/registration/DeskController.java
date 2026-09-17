@@ -45,9 +45,11 @@ class DeskController {
     }
 
     private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    DeskController(JdbcClient jdbc) {
+    DeskController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     /** the registrations students submitted, in a session and semester, for the department to approve or return */
@@ -55,7 +57,10 @@ class DeskController {
     @PreAuthorize(DEPARTMENT)
     @Transactional(readOnly = true)
     List<Map<String, Object>> registrations(@RequestParam String session, @RequestParam(defaultValue = "1") int semester,
-                                            @RequestParam(required = false) String dept, @RequestParam(defaultValue = "SUBMITTED") String status) {
+                                            @RequestParam(required = false) String deptParam, @RequestParam(defaultValue = "SUBMITTED") String status) {
+        // a Head of Department (or lecturer) is confined to their own department server-side; a wider office
+        // keeps the requested filter. This is the scoping, not the frontend's dept param, so it cannot be widened.
+        String dept = scope.scopedDept(deptParam);
         return jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        s.matric_no, s.admission_no, s.surname, s.other_names, p.name AS programme, p.dept_code, d.name AS dept_name,

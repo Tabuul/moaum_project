@@ -40,9 +40,25 @@ public class RegistrationService {
     private static final Set<String> MAY_GO_LIVE = Set.of("academic", "registrar", "dregistrar", "super");
 
     private final RegistrationRepository repo;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    RegistrationService(RegistrationRepository repo) {
+    RegistrationService(RegistrationRepository repo, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.repo = repo;
+        this.scope = scope;
+    }
+
+    /** A Head of Department decides only their own department's registrations; a wider office is not confined. */
+    private void assertMayDecide(UUID id) {
+        if (!scope.actingHod()) {
+            return;
+        }
+        String mine = scope.actingDept();
+        String regDept = repo.deptOf(id).orElse(null);
+        if (mine == null || !mine.equals(regDept)) {
+            throw new DomainRuleViolation("REG_OTHER_DEPT",
+                    "This registration is in another department.",
+                    new DomainRuleViolation.Remedy("A Head of Department approves only their own department's registrations.", "Registry"));
+        }
     }
 
     @Transactional
@@ -100,6 +116,7 @@ public class RegistrationService {
     @Transactional
     public Map<String, Object> approve(UUID id) {
         RegistrationRepository.RegistrationRow r = repo.registration(id).orElseThrow(() -> new NotFound("course registration", id));
+        assertMayDecide(id);
         if (!Set.of("ADMITTED", "ACTIVE", "PROBATION").contains(r.studentStatus())) {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE",
                     "A student who is " + r.studentStatus().toLowerCase() + " does not register (I-STU-2).",
@@ -121,6 +138,7 @@ public class RegistrationService {
     @Transactional
     public Map<String, Object> giveBack(UUID id, String comment) {
         repo.registration(id).orElseThrow(() -> new NotFound("course registration", id));
+        assertMayDecide(id);
         if (comment == null || comment.isBlank()) {
             throw new DomainRuleViolation("REG_RETURN_SAYS_WHY", "A registration is returned with the reason on the record.",
                     new DomainRuleViolation.Remedy("Say what the student must change.", "Head of Department"));
