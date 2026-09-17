@@ -71,9 +71,9 @@ export const MENUS: Record<string, Menu> = {
             "label": "Upload material"
           },
           {
-            "id": "s/timetable",
+            "id": "t/teaching",
             "icon": "cal",
-            "label": "Teaching timetable"
+            "label": "My teaching & timetable"
           }
         ]
       },
@@ -277,9 +277,9 @@ export const MENUS: Record<string, Menu> = {
             "label": "Upload material"
           },
           {
-            "id": "s/timetable",
+            "id": "t/teaching",
             "icon": "cal",
-            "label": "Teaching timetable"
+            "label": "My teaching & timetable"
           }
         ]
       },
