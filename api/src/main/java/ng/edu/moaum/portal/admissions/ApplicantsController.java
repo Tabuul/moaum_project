@@ -202,24 +202,28 @@ class ApplicantsController {
         int imported = 0;
         int existed = 0;
         int skipped = 0;
+        int placeholders = 0;
         List<Map<String, Object>> problems = new ArrayList<>();
         for (ImportRow r : batch.rows()) {
             String status = jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph)")
                     .param("s", s).param("j", r.jambKey()).param("sn", r.surname()).param("on", r.otherNames())
                     .param("pr", r.programme()).param("em", r.entryMode()).param("ma", r.email()).param("ph", r.phone())
                     .query(String.class).single();
-            if ("imported".equals(status)) {
+            if (status != null && status.startsWith("imported")) {
                 imported++;
+                if (!status.equals("imported")) {
+                    placeholders++;   // imported, but a placeholder email/phone stood in
+                }
             } else if ("exists".equals(status)) {
                 existed++;
             } else {
                 skipped++;
                 problems.add(Map.of("jambKey", r.jambKey() == null ? "" : r.jambKey(),
                         "name", ((r.surname() == null ? "" : r.surname()) + " " + (r.otherNames() == null ? "" : r.otherNames())).trim(),
-                        "status", status));
+                        "status", status == null ? "unknown" : status));
             }
         }
-        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "problems", problems);
+        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "placeholders", placeholders, "problems", problems);
     }
 
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS

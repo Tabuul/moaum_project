@@ -37,7 +37,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; of: number } | null>(null);
-  const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; problems: Problem[] } | null>(null);
+  const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; problems: Problem[] } | null>(null);
   const money = (n: number) => `₦${Number(n).toLocaleString("en-NG")}`;
 
   function template() {
@@ -59,8 +59,8 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
       const iM = pick(head, ["entrymode", "entry", "mode"]);
       const iE = pick(head, ["email", "mail"]);
       const iH = pick(head, ["phone", "mobile", "gsm", "telephone", "tel", "msisdn"]);
-      const missing = [["JAMB Number", iK], ["Surname", iS], ["Other Names", iO], ["Email", iE], ["Phone", iH]].filter(([, i]) => (i as number) < 0).map(([n]) => n);
-      if (missing.length) { setErr(`These columns were not found in the header row: ${missing.join(", ")}. Use the template so the columns are named as the importer expects.`); return; }
+      const missing = [["JAMB Number", iK], ["Surname", iS], ["Other Names", iO]].filter(([, i]) => (i as number) < 0).map(([n]) => n);
+      if (missing.length) { setErr(`These required columns were not found in the header row: ${missing.join(", ")}. Use the template so the columns are named as the importer expects. Email and Phone are optional.`); return; }
       const out: Row[] = [];
       for (let r = 1; r < grid.length; r++) {
         const g = grid[r];
@@ -87,7 +87,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   async function run() {
     if (!rows) return;
     setBusy(true); setErr(null); setResult(null);
-    const tally = { imported: 0, existed: 0, skipped: 0, problems: [] as Problem[] };
+    const tally = { imported: 0, existed: 0, skipped: 0, placeholders: 0, problems: [] as Problem[] };
     try {
       for (let i = 0; i < rows.length; i += CHUNK) {
         const slice = rows.slice(i, i + CHUNK);
@@ -102,6 +102,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         tally.imported += j.imported ?? 0;
         tally.existed += j.existed ?? 0;
         tally.skipped += j.skipped ?? 0;
+        tally.placeholders += j.placeholders ?? 0;
         for (const p of (j.problems as Problem[] | undefined) ?? []) tally.problems.push(p);
         setResult({ ...tally });
       }
@@ -122,10 +123,13 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   return (
     <>
       <Note kind="info" title="Migrate the applicants who already applied and paid on the old portal">
-        Upload the spreadsheet of applicants from the previous portal. Each one is created here as a full applicant
-        account, their application is marked <b>paid and submitted</b>, and a confirmed application-fee receipt is written.
-        Their <b>initial password is their JAMB number</b> — they change it on first sign-in. It is safe to run the same
-        file more than once: an applicant who already has an account is skipped, not duplicated.
+        Upload the spreadsheet of applicants from the previous portal. Each one is created here as an applicant account,
+        their application is marked <b>paid and submitted</b>, and a confirmed application-fee receipt is written. Their
+        <b> initial password is their JAMB number</b> — they change it on first sign-in. Only the <b>JAMB number, surname
+        and other names</b> are required. <b>Email and phone are optional</b>: where a row has none, a placeholder stands
+        in and the applicant signs in with their JAMB number, then adds their real email and phone in their profile — no
+        message is sent to a placeholder. It is safe to run the same file more than once: an applicant who already has an
+        account is skipped, not duplicated.
       </Note>
 
       {fee.stated ? (
@@ -189,8 +193,8 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
             <Tiles items={[
               ["Imported", String(result.imported), "var(--green-ink)", "New accounts created"],
               ["Already existed", String(result.existed), null, "Skipped — not duplicated"],
+              ["On placeholder contacts", String(result.placeholders), result.placeholders ? "var(--chrome)" : null, "Imported; no email/phone yet"],
               ["Not imported", String(result.skipped), result.skipped ? "var(--red-ink)" : null, "Bad or unusable rows"],
-              ["Total handled", String(result.imported + result.existed + result.skipped), null, "Rows processed"],
             ]} />
             {result.problems.length ? (
               <>
