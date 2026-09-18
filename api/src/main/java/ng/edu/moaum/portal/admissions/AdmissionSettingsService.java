@@ -82,10 +82,12 @@ public class AdmissionSettingsService {
                 settings.programmeRules(session), caps.policyFindings(session), settings.catchmentLgas(session));
     }
 
-    /** The catchment local governments, stated for the Locality basis; replaces the set. */
+    /** The catchment local governments, stated for the Locality basis; replaces the set. This is the
+     *  operational list the merit engine reads live for the Locality basis, so it may be set (and
+     *  corrected) even while the settings are in force — unlike the weights and quotas the Committee fixed. */
     @Transactional
     public AdmissionPolicy saveCatchment(String session, List<String> lgas) {
-        UUID id = draftId(session);
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
         List<String> clean = (lgas == null ? List.<String>of() : lgas).stream()
                 .map(s -> s == null ? "" : s.trim()).filter(s -> !s.isEmpty()).distinct().toList();
         settings.saveCatchment(id, clean);
