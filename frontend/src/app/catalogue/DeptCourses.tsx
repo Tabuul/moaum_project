@@ -16,8 +16,10 @@ export interface Dept { code: string; name: string; faculty_code: string }
 export interface Course {
   code: string; title: string; units: number; semester: number; level: number; kind: string;
   state: string; ended_on: string | null; lecturer: string | null; offered: boolean; curriculum: string | null;
+  programmes: string[];
 }
 export interface Duplicate { level: number; semester: number; title: string; code: string; keeper: boolean }
+export interface Programme { code: string; name: string }
 
 const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
   LIVE: ["ok", "Live"], BOARD: ["warn", "At the Faculty Board"], SENATE: ["info", "At Senate"], ENDED: ["grey", "Ended"],
@@ -25,7 +27,7 @@ const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> =
 const KINDS = ["Compulsory", "Required", "Elective", "GST"];
 const LEVELS = [100, 200, 300, 400, 500, 600];
 
-export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; problem: Problem | null }) {
+export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null }) {
   const router = useRouter();
   const [add, setAdd] = useState(false);
   const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" });
@@ -35,6 +37,14 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: 
   const [fLevel, setFLevel] = useState("");
   const [fSem, setFSem] = useState("");
   const [fKind, setFKind] = useState("");
+  const [fProg, setFProg] = useState("");
+
+  // the programmes to offer in the filter: those that actually offer any of this department's courses,
+  // named from the programmes list where it has the name, otherwise the code
+  const progName = new Map(programmes.map((p) => [p.code, p.name]));
+  const progOptions = Array.from(new Set(courses.flatMap((c) => c.programmes ?? [])))
+    .map((code) => ({ code, name: progName.get(code) ?? code }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const live = courses.filter((c) => c.state === "LIVE").length;
   const waiting = courses.filter((c) => c.state === "BOARD" || c.state === "SENATE").length;
@@ -48,12 +58,13 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: 
     return acc;
   }, {} as Record<string, { level: number; semester: number; title: string; codes: Duplicate[] }>));
 
-  /* level, semester and kind filter the already-loaded department list, client-side */
+  /* level, semester, kind and programme filter the already-loaded department list, client-side */
   const shown = courses.filter((c) =>
     (!fLevel || c.level === Number(fLevel)) &&
     (!fSem || c.semester === Number(fSem)) &&
-    (!fKind || c.kind === fKind));
-  const filtered = Boolean(fLevel || fSem || fKind);
+    (!fKind || c.kind === fKind) &&
+    (!fProg || (c.programmes ?? []).includes(fProg)));
+  const filtered = Boolean(fLevel || fSem || fKind || fProg);
 
   function go(nextDept: string) {
     router.push(`/catalogue?dept=${encodeURIComponent(nextDept)}`);
@@ -102,12 +113,16 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: 
             <select id="dc-kind" className="ctl" value={fKind} onChange={(e) => setFKind(e.target.value)}>
               <option value="">All kinds</option>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
             </select></div>
+          <div className="scope__f"><label htmlFor="dc-prog">Programme</label>
+            <select id="dc-prog" className="ctl" value={fProg} onChange={(e) => setFProg(e.target.value)} disabled={!progOptions.length}>
+              <option value="">All programmes</option>{progOptions.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
+            </select></div>
         </div>
         <div className="scope__sum">
           <span className="trail">{depts.find((d) => d.code === dept)?.name ?? dept}</span>
           <span className="count"><b>{shown.length}</b> {filtered ? `of ${courses.length}` : `course${courses.length === 1 ? "" : "s"}`} shown</span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-            {filtered ? <button className="btn btn--ghost btn--sm" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); }}>Clear filters</button> : null}
+            {filtered ? <button className="btn btn--ghost btn--sm" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); setFProg(""); }}>Clear filters</button> : null}
             <button className="btn btn--primary btn--sm" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" }); setErr(null); setAdd(true); }}>+ New course</button>
           </div>
         </div>
@@ -174,7 +189,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], problem }: 
             </select>,
             c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2" key="lec" style={{ color: "var(--red-ink)" }}>Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,
-            c.state === "ENDED" ? <span className="sub2" key="a">On old records</span> : <Btn key="a" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>,
+            c.state === "ENDED" ? <Btn key="a" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live and re-enters next session's registration.`)) void send(`/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} restored — Live again`); }); }}>Restore</Btn> : <Btn key="a" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>,
           ])} texts={shown.map((c) => `${c.code} ${c.title} ${c.kind}`)} />
         ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board."}</div></PBody>}
       </Panel>

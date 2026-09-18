@@ -255,18 +255,26 @@ class CatalogueController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@RequestParam String dept) {
         dept = scope.scopedDept(dept);                      // an HOD sees only their own department's courses
-        return jdbc.sql("""
+        List<Map<String, Object>> rows = jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
                 SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum,
                        (SELECT CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END
                           FROM catalogue.offering o LEFT JOIN iam.person p ON p.id = o.lecturer_id
                          WHERE o.course_code = c.code AND o.session = (SELECT name FROM cur)
                          ORDER BY o.semester LIMIT 1) AS lecturer,
-                       EXISTS (SELECT 1 FROM catalogue.offering o2 WHERE o2.course_code = c.code AND o2.session = (SELECT name FROM cur)) AS offered
+                       EXISTS (SELECT 1 FROM catalogue.offering o2 WHERE o2.course_code = c.code AND o2.session = (SELECT name FROM cur)) AS offered,
+                       coalesce((SELECT jsonb_agg(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code), '[]'::jsonb) AS programmes
                   FROM catalogue.course c
                  WHERE c.dept_code = :dept
                  ORDER BY c.level, c.semester, c.code
                 """).param("dept", dept).query().listOfRows();
+        // programmes comes back as a jsonb string over JDBC; parse it to a real array of codes
+        for (Map<String, Object> row : rows) {
+            Object pr = row.get("programmes");
+            row.put("programmes", json.readValue(pr == null ? "[]" : pr.toString(),
+                    new tools.jackson.core.type.TypeReference<List<String>>() { }));
+        }
+        return rows;
     }
 
     public record CurriculumIn(@Size(max = 8) String curriculum) {
@@ -442,6 +450,19 @@ class CatalogueController {
     Map<String, Object> end(@PathVariable String code) {
         jdbc.sql("SELECT catalogue.end_course(:c)").param("c", code).query().singleRow();
         return Map.of("code", code, "state", "ENDED");
+    }
+
+    /** reverse an end: an ended course returns to LIVE and re-enters next session's registration */
+    @PostMapping("/courses/{code}/restore")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> restore(@PathVariable String code) {
+        String c = code.trim().toUpperCase();
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
+                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
+        assertHodOwns(dept);                                // an HOD restores only their own department's courses
+        jdbc.sql("SELECT catalogue.restore_course(:c)").param("c", c).query().singleRow();
+        return Map.of("code", c, "state", "LIVE");
     }
 
     /** how far course-structure upload has got: programmes with a structure loaded vs. still to upload,
