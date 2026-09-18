@@ -293,9 +293,10 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
                 {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may import.</span> : null}
               </div>
               <div className="sub2" style={{ marginTop: 8 }}>
-                The slow part is securely hashing each initial password (bcrypt), which the server does one row at a time —
-                so more <b>parallel uploads</b> use more of the server at once and finish sooner. If you see timeouts or errors,
-                lower it. It is safe to leave running, and safe to re-run: rows already imported are skipped.
+                The initial password is not hashed at import — the JAMB number is the initial password, and the applicant&rsquo;s
+                real password is hashed when they set it on first sign-in — so the import is fast. <b>Parallel uploads</b> can
+                be raised to finish sooner; lower it only if you see timeouts. It is safe to leave running, and safe to re-run:
+                rows already imported are skipped.
               </div>
               {progress ? <div className="sub2" style={{ marginTop: 6 }}>Imported {Math.min(progress.done, progress.of).toLocaleString()} of {progress.of.toLocaleString()}…</div> : null}
             </PBody>

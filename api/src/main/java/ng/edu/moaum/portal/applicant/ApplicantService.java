@@ -223,7 +223,13 @@ public class ApplicantService {
                         + a.lockedUntil().toLocalTime().withNano(0) + ".",
                         new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
             }
-            if (!encoder.matches(password == null ? "" : password, a.passwordHash())) {
+            // a migrated account holds the sentinel until first login: its initial password is the JAMB
+            // number, verified directly (the JAMB number is already stored in plain text as jamb_key, so
+            // hashing it added no protection). The real password the applicant then sets is hashed normally.
+            boolean ok = "SET_ON_FIRST_LOGIN".equals(a.passwordHash())
+                    ? a.jambKey() != null && a.jambKey().equalsIgnoreCase(password == null ? "" : password.trim())
+                    : encoder.matches(password == null ? "" : password, a.passwordHash());
+            if (!ok) {
                 int attempts = a.failedAttempts() + 1;
                 repo.failed(a.id(), attempts, attempts >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null);
                 repo.event(identifier, a.id(), "BAD_PASSWORD", ip);
