@@ -944,9 +944,12 @@ class ApplicantsController {
             row.put("suggestions", suggestions);
             out.add(row);
         }
-        Map<String, Object> fees = jdbc.sql("SELECT count(*) AS n FROM admissions.application WHERE session = :s AND (:p::text IS NULL OR candidate_id IN (SELECT id FROM admissions.candidate WHERE programme = :p))")
-                .param("s", s).param("p", programme, Types.VARCHAR).query().singleRow();
-        long onCaps = jdbc.sql("SELECT count(*) FROM admissions.caps_row_live r JOIN ref.programme p ON p.code = r.jamb_code WHERE r.session = :s AND (:p::text IS NULL OR p.name = :p)")
+        // UTME only for now — Direct Entry is set aside this cycle, so the summary counts it out too
+        Map<String, Object> fees = jdbc.sql("""
+                SELECT count(*) AS n FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                 WHERE a.session = :s AND c.entry_mode = 'UTME' AND (:p::text IS NULL OR c.programme = :p)
+                """).param("s", s).param("p", programme, Types.VARCHAR).query().singleRow();
+        long onCaps = jdbc.sql("SELECT count(*) FROM admissions.caps_row_live r JOIN ref.programme p ON p.code = r.jamb_code WHERE r.session = :s AND r.entry_mode = 'UTME' AND (:p::text IS NULL OR p.name = :p)")
                 .param("s", s).param("p", programme, Types.VARCHAR).query(Long.class).single();
         // the quota is per programme (admissions.programme_rule.quota), the same figure the merit engine fills to
         Integer quota = programme == null ? null : jdbc.sql("""
@@ -961,12 +964,13 @@ class ApplicantsController {
                  WHERE p.session = :s LIMIT 1
                 """).param("s", s).param("p", programme).query(Integer.class).optional().orElse(null);
         Integer utmeQuota = (quota == null || ratioUtme == null) ? null : (int) Math.round(quota * ratioUtme / 100.0);
-        long onMerit = out.stream().filter(x -> "OFFERED".equals(x.get("decision"))).count();
+        // UTME only for now: count UTME candidates' decisions, so the summary matches the UTME merit list
+        long onMerit = out.stream().filter(x -> "OFFERED".equals(x.get("decision")) && "UTME".equals(x.get("entryMode"))).count();
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("totalApplicants", onCaps);
         summary.put("registeredApplicants", ((Number) fees.get("n")).longValue());
-        summary.put("qualifiedCases", out.stream().filter(x -> "OFFERED".equals(x.get("decision")) || "WAITING".equals(x.get("decision"))).count());
-        summary.put("nonQualifiedCases", out.stream().filter(x -> "NOT_OFFERED".equals(x.get("decision"))).count());
+        summary.put("qualifiedCases", out.stream().filter(x -> ("OFFERED".equals(x.get("decision")) || "WAITING".equals(x.get("decision"))) && "UTME".equals(x.get("entryMode"))).count());
+        summary.put("nonQualifiedCases", out.stream().filter(x -> "NOT_OFFERED".equals(x.get("decision")) && "UTME".equals(x.get("entryMode"))).count());
         summary.put("totalQuota", quota);
         summary.put("utmeQuota", utmeQuota);
         summary.put("numberOnMeritList", onMerit);
