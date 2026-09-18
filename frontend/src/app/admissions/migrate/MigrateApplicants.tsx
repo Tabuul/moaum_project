@@ -60,7 +60,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; of: number } | null>(null);
-  const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; passportsLinked: number; problems: Problem[] } | null>(null);
+  const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; passportsLinked: number; problems: Problem[]; capsRows?: number; capsSample?: string[] } | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetInfo, setResetInfo] = useState<{ candidates: number; applications: number; accounts: number; passports_kept: number } | null>(null);
   const money = (n: number) => `₦${Number(n).toLocaleString("en-NG")}`;
@@ -145,7 +145,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         return { jambKey: r.jambKey, surname, otherNames, programme: r.programme, entryMode: r.entryMode, email: r.email, phone: r.phone, utme: r.utme };
       }));
     }
-    const tally = { imported: 0, existed: 0, skipped: 0, placeholders: 0, passportsLinked: 0, problems: [] as Problem[] };
+    const tally = { imported: 0, existed: 0, skipped: 0, placeholders: 0, passportsLinked: 0, problems: [] as Problem[], capsRows: 0, capsSample: [] as string[] };
     let next = 0;
     let done = 0;
     let stopped = false;
@@ -170,6 +170,8 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         tally.existed += j.existed ?? 0;
         tally.skipped += j.skipped ?? 0;
         tally.placeholders += j.placeholders ?? 0;
+        tally.capsRows = j.capsRows ?? tally.capsRows;
+        if (Array.isArray(j.capsSample) && j.capsSample.length) tally.capsSample = j.capsSample;
         for (const p of (j.problems as Problem[] | undefined) ?? []) tally.problems.push(p);
         done += slice.length;
         setProgress({ done, of: total });
@@ -310,6 +312,18 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
               ["On placeholder contacts", String(result.placeholders), result.placeholders ? "var(--chrome)" : null, "Imported; no email/phone yet"],
               ["Not imported", String(result.skipped), result.skipped ? "var(--red-ink)" : null, "Bad or unusable rows"],
             ]} />
+            {result.skipped > 0 && result.problems.some((p) => (p.status ?? "").includes("not on the JAMB CAPS list")) ? (
+              result.capsRows === 0 ? (
+                <Note kind="bad" title={`No JAMB CAPS rows exist for ${session}`}>
+                  The importer verifies each JAMB number against the CAPS list for <b>{session}</b>, and there are <b>0</b> CAPS rows under that session — so every row is skipped. The CAPS list was uploaded under a <b>different session</b>, or not committed. Upload/commit the CAPS list for {session}, then re-run.
+                </Note>
+              ) : (
+                <Note kind="bad" title={`${result.capsRows?.toLocaleString()} CAPS rows on file, but the JAMB numbers are not matching`}>
+                  CAPS rows exist for <b>{session}</b>, so this is a <b>number-format mismatch</b> — the JAMB numbers in your file do not equal the CAPS registration numbers. Compare the format:
+                  {result.capsSample?.length ? <> the CAPS numbers look like <b className="tnum">{result.capsSample.join(", ")}</b>.</> : null} Make the file&rsquo;s JAMB column match that exactly (no extra characters, not the application number), then re-run.
+                </Note>
+              )
+            ) : null}
             {result.passportsLinked ? (
               <Note kind="ok" title={`${result.passportsLinked} held passport${result.passportsLinked === 1 ? "" : "s"} linked to the imported applicants`}>
                 Passports uploaded earlier that had no candidate to attach to have now snapped onto the applicants this import created, matched on the JAMB number.

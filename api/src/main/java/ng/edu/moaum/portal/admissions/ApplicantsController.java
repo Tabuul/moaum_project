@@ -252,7 +252,22 @@ class ApplicantsController {
                         "status", status == null ? "unknown" : status));
             }
         }
-        return Map.of("imported", imported, "existed", existed, "skipped", skipped, "placeholders", placeholders, "problems", problems);
+        // diagnostics: how many CAPS rows exist for THIS session, and a few sample JAMB numbers, so a
+        // wave of "not on the JAMB CAPS list" is legible — 0 means CAPS is under a different session;
+        // a non-zero count with samples lets the office compare the number format to their file.
+        long capsRows = jdbc.sql("SELECT count(*) FROM admissions.caps_row_live WHERE session = :s").param("s", s).query(Long.class).single();
+        List<String> capsSample = jdbc.sql("SELECT jamb_reg_no FROM admissions.caps_row_live WHERE session = :s ORDER BY jamb_reg_no LIMIT 3")
+                .param("s", s).query(String.class).list();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("imported", imported);
+        out.put("existed", existed);
+        out.put("skipped", skipped);
+        out.put("placeholders", placeholders);
+        out.put("problems", problems);
+        out.put("capsRows", capsRows);
+        out.put("capsSample", capsSample);
+        out.put("session", s);
+        return out;
     }
 
     /** import one applicant in its own attributed transaction; retry a brief lock deadlock (import is
