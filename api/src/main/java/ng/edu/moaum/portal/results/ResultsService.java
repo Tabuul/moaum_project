@@ -236,6 +236,7 @@ public class ResultsService {
      *  metadata and do not undo any generated sheet). The academic session, semester and type may be changed
      *  only while NO score sheet has been generated — once sheets exist they belong to that session/semester,
      *  so those are then fixed. A closed session is fixed entirely. */
+    @Transactional
     public Sheets.ExamSession editExamSession(UUID id, ExamEditIn in) {
         Sheets.ExamSession cur = repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
         if ("CLOSED".equals(cur.state())) {
