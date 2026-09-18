@@ -30,6 +30,27 @@ export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterR
   const de = rows.filter((r) => r.entry_mode === "DIRECT_ENTRY").length;
   const awaiting = rows.filter((r) => r.source === "Awaiting Post-UTME").length;
 
+  // the non-index programmes: their candidates are screened on a computed figure, not a sat Post-UTME
+  const isNonIndex = (r: RegisterRow) => r.source !== "Post-UTME" && r.source !== "Awaiting Post-UTME";
+
+  // two-column export for every non-index candidate: JAMB number + the generated Post-UTME score
+  // (the O'Level scaled to 100 — the figure that stands in for the Post-UTME). Uploadable as-is.
+  function downloadNonIndex() {
+    const cell = (v: string | number | null) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const body = rows.filter(isNonIndex).filter((r) => r.olevel_scaled != null)
+      .map((r) => [r.jamb_reg_no, r.olevel_scaled ?? ""]);
+    const csv = "﻿" + [["JAMB Number", "Post-UTME Score"], ...body].map((row) => row.map(cell).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `non-index-post-utme-scores-${session.replace(/[^0-9]+/g, "-")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function download() {
     const head = ["JAMB no", "Name", "Programme", "Programme code", "Mode", "UTME", "O'Level /100", "Post-UTME", "Screening", "Source"];
     const cell = (v: string | number | null) => {
@@ -82,6 +103,7 @@ export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterR
         <div className="scope__sum">
           <span className="count">Showing <b className="tnum">{shown.length.toLocaleString()}</b> of <span className="tnum">{rows.length.toLocaleString()}</span> candidates{prog ? ` · ${prog}` : " · by programme"}</span>
           <button className="scope__clear" disabled={!shown.length} onClick={download}>Download CSV</button>
+          <button className="scope__clear" disabled={!rows.some(isNonIndex)} onClick={downloadNonIndex} title="Every non-index candidate: JAMB number and the generated Post-UTME score (O'Level /100)">Non-index Post-UTME scores</button>
         </div>
       </div>
 
