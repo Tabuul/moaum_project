@@ -154,6 +154,22 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
     downloadBlob(blob, `awaiting-scores-${label.replace(/[^a-z0-9]+/gi, "-")}-${session.replace("/", "-")}.xlsx`);
   }
 
+  // score every remaining unscored applicant as zero — the deliberate finalising step for stragglers
+  async function zeroMissing(code: string | null, label: string, count: number) {
+    if (!window.confirm(`Score the ${count.toLocaleString()} remaining applicant${count === 1 ? "" : "s"} in ${label} with no Post-UTME score as ZERO? Do this only once you have finished uploading real scores — it decides the stragglers as non-qualified. A real score uploaded later still overrides (until it is released).`)) return;
+    setBusy(true); setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/zero-missing${code ? `?programme=${encodeURIComponent(code)}` : ""}`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Remaining unscored applicants scored zero for ${session}${code ? ` · ${label}` : ""}`) }, body: "{}",
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <Note kind="info" title="Upload the Post-UTME scores and reconcile them against the applicants">
@@ -163,7 +179,10 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
       {postUtme ? (
         <Panel title="Programmes whose Post-UTME scores must be uploaded" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
           <span className="sub2">{postUtme.counts.awaitingScores ? `${postUtme.counts.awaitingScores} still awaiting` : "All scored"}</span>
-          {postUtme.programmes.some((r) => Number(r.awaiting) > 0) ? <Btn kind="ghost" onClick={() => void downloadAwaiting(null, "all")}>Download all awaiting</Btn> : null}
+          {postUtme.programmes.some((r) => Number(r.awaiting) > 0) ? <>
+            <Btn kind="ghost" disabled={busy} onClick={() => void downloadAwaiting(null, "all")}>Download all awaiting</Btn>
+            <Btn kind="ghost" disabled={busy} onClick={() => void zeroMissing(null, "all programmes", postUtme.programmes.reduce((n, r) => n + Number(r.awaiting), 0))}>Score remaining as zero</Btn>
+          </> : null}
         </span>}>
           <div className="card__body" style={{ paddingBottom: 0 }}>
             <div className="sub2">These are the programmes whose applicants have registered for Post-UTME for {session}. Every one must have its screening scores uploaded and released before the admission process (merit list, offers) proceeds for it. A programme still awaiting scores is highlighted.</div>

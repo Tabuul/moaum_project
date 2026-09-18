@@ -556,6 +556,41 @@ class ApplicantsController {
                 """).param("s", session + "/" + year).param("p", programme, Types.VARCHAR).query().listOfRows();
     }
 
+    /** Score the remaining applicants who have no Post-UTME score as zero — the deliberate finalising
+     *  step for the stragglers who never sat / whose score never came, so they are decided (not left in
+     *  limbo). Only submitted, exam-screened, not-yet-scored, not-yet-released applicants; a real score
+     *  uploaded later still overrides (until it is released). Per-row with deadlock retry. */
+    @PostMapping("/screening-scores/zero-missing")
+    @PreAuthorize(SCORE_UPLOADERS)
+    Map<String, Object> zeroMissing(@PathVariable String session, @PathVariable String year,
+                                    @RequestParam(required = false) String programme) {
+        String s = session + "/" + year;
+        List<Map<String, Object>> awaiting = jdbc.sql("""
+                SELECT a.id FROM admissions.application a
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  JOIN ref.programme pr ON pr.code = (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.screening_score IS NULL AND a.score_released_at IS NULL
+                   AND admissions.screened_by_exam(:s, pr.code)
+                   AND (:p::text IS NULL OR pr.code = :p)
+                """).param("s", s).param("p", programme, Types.VARCHAR).query().listOfRows();
+        int zeroed = 0;
+        for (Map<String, Object> a : awaiting) {
+            Object id = a.get("id");
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    tx.execute(st -> jdbc.sql("UPDATE admissions.application SET screening_score = 0, score_entered_at = now() WHERE id = :id AND screening_score IS NULL AND score_released_at IS NULL")
+                            .param("id", id).update());
+                    zeroed++;
+                    break;
+                } catch (org.springframework.dao.TransientDataAccessException e) {
+                    if (attempt >= 4) throw e;
+                    try { Thread.sleep(40L * attempt); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw e; }
+                }
+            }
+        }
+        return Map.of("zeroed", zeroed);
+    }
+
     public record ScoreRow(String key, java.math.BigDecimal score) {
     }
 
