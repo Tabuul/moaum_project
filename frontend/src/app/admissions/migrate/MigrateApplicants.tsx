@@ -18,7 +18,9 @@ interface Row { jambKey: string; name?: string; surname?: string; otherNames?: s
 interface Problem { jambKey: string; name: string; status: string }
 type NameOrder = "first" | "last";
 
-const COLS = ["JAMB Number", "Name", "Programme", "UTME", "Email", "Phone"];
+// the migration only verifies against CAPS and confirms payment, so the template is the JAMB number
+// alone; email/phone are still read if a file happens to carry them (for the login/contact)
+const COLS = ["JAMB Number"];
 const CHUNK = 100;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -100,7 +102,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   }
 
   function template() {
-    const blob = buildXlsx(COLS, [["202699168863AH", "AHUMBE Aondofa Kingsley", "B. Sc. ARCHITECTURE", "203", "name@example.com", "08030000000"]], "Applicants");
+    const blob = buildXlsx(COLS, [["202699168863AH"], ["202699168864BC"]], "Applicants");
     downloadBlob(blob, "old-portal-applicants-template.xlsx");
   }
 
@@ -312,21 +314,15 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
               <span className="sub2">A name written &ldquo;Surname, Other names&rdquo; is split on the comma either way. Check the split below before importing.</span>
             </div></div>
           ) : null}
-          <Panel title="First rows, as read" right={`${rows.length} to import`}>
+          <Panel title="First rows, as read" right={`${rows.length} to verify & confirm`}>
+            <PBody><div className="sub2" style={{ marginBottom: 6 }}>Each JAMB number is verified against the CAPS list; the name, programme, sex, state, LGA and UTME come from CAPS. Email and phone (if the file carries them) are used for the login and contact, otherwise a placeholder stands in.</div></PBody>
             <DTable
-              cols={["JAMB no|mid", "Surname", "Other names", "Programme", "Mode|mid", "Email", "Phone|mid"]}
-              rows={rows.slice(0, 8).map((r) => {
-                const nm = names(r, nameOrder);
-                return [
-                  <span className="tnum sub2" key="j">{r.jambKey}</span>,
-                  <strong key="s">{nm.surname.toUpperCase()}</strong>,
-                  <span className="sub2" key="o">{nm.otherNames}</span>,
-                  <span className="sub2" key="p">{r.programme || "—"}</span>,
-                  <span className="sub2" key="m">{r.entryMode || "UTME"}</span>,
-                  <span className="sub2" key="e">{r.email || <span style={{ color: "var(--chrome)" }}>placeholder</span>}</span>,
-                  <span className="tnum sub2" key="h">{r.phone || <span style={{ color: "var(--chrome)" }}>placeholder</span>}</span>,
-                ];
-              })}
+              cols={["JAMB no|mid", "Email", "Phone|mid"]}
+              rows={rows.slice(0, 8).map((r) => [
+                <span className="tnum sub2" key="j">{r.jambKey}</span>,
+                <span className="sub2" key="e">{r.email || <span style={{ color: "var(--chrome)" }}>placeholder</span>}</span>,
+                <span className="tnum sub2" key="h">{r.phone || <span style={{ color: "var(--chrome)" }}>placeholder</span>}</span>,
+              ])}
             />
             <PBody>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
