@@ -65,10 +65,10 @@ class AllocationController {
                        (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                          WHERE e.offering_id = o.id AND r.status = 'APPROVED') AS registered,
                        o.lecturer_id,
-                       CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END AS lecturer,
+                       CASE WHEN lp.id IS NULL THEN NULL ELSE concat_ws(', ', nullif(btrim(lp.surname), ''), nullif(btrim(lp.given_names), '')) END AS lecturer,
                        o.second_examiner_id,
-                       CASE WHEN sp.id IS NULL THEN NULL ELSE sp.surname || ', ' || sp.given_names END AS second_examiner,
-                       coalesce((SELECT jsonb_agg(jsonb_build_object('id', t.lecturer_id, 'name', tp.surname || ', ' || tp.given_names) ORDER BY tp.surname)
+                       CASE WHEN sp.id IS NULL THEN NULL ELSE concat_ws(', ', nullif(btrim(sp.surname), ''), nullif(btrim(sp.given_names), '')) END AS second_examiner,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('id', t.lecturer_id, 'name', concat_ws(', ', nullif(btrim(tp.surname), ''), nullif(btrim(tp.given_names), ''))) ORDER BY tp.surname)
                                    FROM catalogue.offering_teacher t JOIN iam.person tp ON tp.id = t.lecturer_id
                                   WHERE t.offering_id = o.id), '[]'::jsonb) AS co_lecturers,
                        EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.offering_id = o.id) AS sheet
@@ -113,7 +113,7 @@ class AllocationController {
                 + " WHERE o.lecturer_id = p.id AND o.session = :session AND o.semester = :semester), 0) AS load";
         if (all) {
             return jdbc.sql("""
-                    SELECT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number,
+                    SELECT p.id, concat_ws(', ', nullif(btrim(p.surname), ''), nullif(btrim(p.given_names), '')) AS name, p.staff_number,
                            (SELECT string_agg(DISTINCT a.scope_id, ', ' ORDER BY a.scope_id) FROM iam.office_assignment a
                              WHERE a.person_id = p.id AND %s) AS department,
                            %s
@@ -125,7 +125,7 @@ class AllocationController {
                     .param("session", session).param("semester", semester).query().listOfRows();
         }
         return jdbc.sql("""
-                SELECT DISTINCT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number, :dept AS department,
+                SELECT DISTINCT p.id, concat_ws(', ', nullif(btrim(p.surname), ''), nullif(btrim(p.given_names), '')) AS name, p.staff_number, :dept AS department,
                        %s
                   FROM iam.person p
                   JOIN iam.office_assignment a ON a.person_id = p.id
