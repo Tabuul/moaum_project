@@ -105,13 +105,37 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
     setProblem(null);
     setReport(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/upload`, {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Post-UTME scores uploaded for ${session}`) },
-        body: JSON.stringify({ rows }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      setReport(j as Report);
+      // upload in chunks so no single request is long enough to time out, and a transient failure
+      // (a deploy restart, a blip) retries that chunk instead of failing the whole upload. Re-uploading
+      // is safe — a score is simply re-entered. Results are summed across chunks.
+      const CHUNK = 500;
+      const total: Report = { received: 0, applied: 0, notFound: [], alreadyReleased: [], outOfRange: [] };
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const slice = rows.slice(i, i + CHUNK);
+        let done = false;
+        for (let attempt = 1; attempt <= 5 && !done; attempt++) {
+          const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/upload`, {
+            method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Post-UTME scores uploaded for ${session}: rows ${i + 1}–${i + slice.length}`) },
+            body: JSON.stringify({ rows: slice }),
+          }).catch(() => null);
+          const j = r ? await r.json().catch(() => null) : null;
+          if (r && r.ok && j) {
+            const c = j as Report;
+            total.received += c.received ?? 0;
+            total.applied += c.applied ?? 0;
+            total.notFound.push(...(c.notFound ?? []));
+            total.alreadyReleased.push(...(c.alreadyReleased ?? []));
+            total.outOfRange.push(...(c.outOfRange ?? []));
+            setReport({ ...total });
+            done = true;
+            break;
+          }
+          const transient = !r || r.status >= 500 || r.status === 429;
+          if (!transient) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r ? r.status : 0, title: r ? r.statusText : "network" }); return; }
+          if (attempt < 5) { await new Promise((res) => setTimeout(res, 1500 * attempt)); }
+        }
+        if (!done) { setProblem({ status: 503, title: "The upload kept failing after retries. What uploaded so far is kept — wait a moment and upload again; scores already entered are simply re-entered." } as Problem); return; }
+      }
     } finally {
       setBusy(false);
     }

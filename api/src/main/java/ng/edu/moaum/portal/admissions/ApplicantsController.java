@@ -548,7 +548,6 @@ class ApplicantsController {
      */
     @PostMapping("/screening-scores/upload")
     @PreAuthorize(SCORE_UPLOADERS)
-    @Transactional
     Map<String, Object> uploadScores(@PathVariable String session, @PathVariable String year, @Valid @RequestBody ScoreUpload body) {
         String s = session + "/" + year;
         int applied = 0;
@@ -564,23 +563,15 @@ class ApplicantsController {
                 outOfRange.add(key);
                 continue;
             }
-            Map<String, Object> app = jdbc.sql("""
-                    SELECT a.id, a.score_released_at FROM admissions.application a
-                      JOIN admissions.candidate c ON c.id = a.candidate_id
-                     WHERE a.session = :s AND (upper(c.jamb_reg_no) = :k OR upper(c.jamb_key) = :k OR upper(a.application_no) = :k)
-                     LIMIT 1
-                    """).param("s", s).param("k", key).query().listOfRows().stream().findFirst().orElse(null);
-            if (app == null) {
-                notFound.add(key);
-                continue;
+            // each row in its own short transaction with deadlock-retry, so one big lock-heavy
+            // transaction no longer deadlocks with a running import; the lookup uses the indexed
+            // jamb_key (generated upper(btrim(jamb_reg_no))), not a function on the column
+            String outcome = scoreOne(s, key, row.score());
+            switch (outcome) {
+                case "applied" -> applied++;
+                case "released" -> alreadyReleased.add(key);
+                default -> notFound.add(key);   // "notfound"
             }
-            if (app.get("score_released_at") != null) {
-                alreadyReleased.add(key);
-                continue;
-            }
-            jdbc.sql("UPDATE admissions.application SET screening_score = :v, score_entered_at = now() WHERE id = :id AND score_released_at IS NULL")
-                    .param("v", row.score()).param("id", app.get("id")).update();
-            applied++;
         }
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("received", body.rows().size());
@@ -589,6 +580,41 @@ class ApplicantsController {
         out.put("alreadyReleased", alreadyReleased);
         out.put("outOfRange", outOfRange);
         return out;
+    }
+
+    /** enter one Post-UTME score in its own attributed transaction; retry a transient deadlock. */
+    private String scoreOne(String s, String key, java.math.BigDecimal score) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return tx.execute(st -> {
+                    Map<String, Object> app = jdbc.sql("""
+                            SELECT a.id, a.score_released_at FROM admissions.application a
+                              JOIN admissions.candidate c ON c.id = a.candidate_id
+                             WHERE a.session = :s AND (c.jamb_key = :k OR upper(a.application_no) = :k)
+                             LIMIT 1
+                            """).param("s", s).param("k", key).query().listOfRows().stream().findFirst().orElse(null);
+                    if (app == null) {
+                        return "notfound";
+                    }
+                    if (app.get("score_released_at") != null) {
+                        return "released";
+                    }
+                    jdbc.sql("UPDATE admissions.application SET screening_score = :v, score_entered_at = now() WHERE id = :id AND score_released_at IS NULL")
+                            .param("v", score).param("id", app.get("id")).update();
+                    return "applied";
+                });
+            } catch (org.springframework.dao.TransientDataAccessException e) {   // deadlock / serialization
+                if (attempt >= 4) {
+                    throw e;
+                }
+                try {
+                    Thread.sleep(40L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
     }
 
     @PostMapping("/screening-scores/release")
