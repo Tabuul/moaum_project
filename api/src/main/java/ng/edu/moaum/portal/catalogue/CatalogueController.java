@@ -452,6 +452,22 @@ class CatalogueController {
         return Map.of("code", code, "state", "ENDED");
     }
 
+    /** create the current-session offering for a live course, so it appears in registration at once.
+     *  student_menu lists a course only when a catalogue.offering exists for the session and the
+     *  course's semester; a course made live (or restored) after registration was opened has none. */
+    private void ensureCurrentOffering(String code) {
+        jdbc.sql("""
+                INSERT INTO catalogue.offering (id, course_code, session, semester)
+                SELECT gen_random_uuid(), c.code, cur.name, c.semester
+                  FROM catalogue.course c
+                  CROSS JOIN (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1) cur
+                 WHERE c.code = :c AND c.state <> 'ENDED'
+                   AND EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
+                   AND NOT EXISTS (SELECT 1 FROM catalogue.offering o
+                                    WHERE o.course_code = c.code AND o.session = cur.name AND o.semester = c.semester)
+                """).param("c", code).update();
+    }
+
     /** reverse an end: an ended course returns to LIVE and re-enters next session's registration */
     @PostMapping("/courses/{code}/restore")
     @PreAuthorize(OWNERS)
@@ -462,7 +478,52 @@ class CatalogueController {
                 .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
         assertHodOwns(dept);                                // an HOD restores only their own department's courses
         jdbc.sql("SELECT catalogue.restore_course(:c)").param("c", c).query().singleRow();
+        ensureCurrentOffering(c);                           // so it shows for registration without re-opening
         return Map.of("code", c, "state", "LIVE");
+    }
+
+    /** make one course Live: a BOARD/SENATE course becomes LIVE (an uploaded, approved course) */
+    @PostMapping("/courses/{code}/live")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> makeLive(@PathVariable String code) {
+        String c = code.trim().toUpperCase();
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
+                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
+        assertHodOwns(dept);                                // an HOD acts only within their own department
+        jdbc.sql("SELECT catalogue.make_course_live(:c)").param("c", c).query().singleRow();
+        ensureCurrentOffering(c);                           // so it shows for registration without re-opening
+        return Map.of("code", c, "state", "LIVE");
+    }
+
+    /** make every awaiting-approval course in a department Live in one action (optionally one level) */
+    @PostMapping("/courses/live-all")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> makeDeptLive(@RequestParam String dept, @RequestParam(required = false) Integer level) {
+        String d = scope.scopedDept(dept);                  // an HOD's bulk action stays within their department
+        int n = jdbc.sql("""
+                UPDATE catalogue.course SET state = 'LIVE'
+                 WHERE dept_code = :d AND state IN ('BOARD', 'SENATE')
+                   AND (:lvl::int IS NULL OR level = :lvl)
+                """).param("d", d).param("lvl", level, java.sql.Types.INTEGER).update();
+        // create offerings for the now-live courses so they appear in registration for the current session
+        String session = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1")
+                .query(String.class).optional().orElse(null);
+        int offered = 0;
+        if (session != null && n > 0) {
+            offered = jdbc.sql("""
+                    INSERT INTO catalogue.offering (id, course_code, session, semester)
+                    SELECT gen_random_uuid(), c.code, :ses, c.semester
+                      FROM catalogue.course c
+                     WHERE c.dept_code = :d AND c.state = 'LIVE'
+                       AND (:lvl::int IS NULL OR c.level = :lvl)
+                       AND EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
+                       AND NOT EXISTS (SELECT 1 FROM catalogue.offering o
+                                        WHERE o.course_code = c.code AND o.session = :ses AND o.semester = c.semester)
+                    """).param("d", d).param("ses", session).param("lvl", level, java.sql.Types.INTEGER).update();
+        }
+        return Map.of("dept", d, "made_live", n, "offerings_created", offered);
     }
 
     /** how far course-structure upload has got: programmes with a structure loaded vs. still to upload,

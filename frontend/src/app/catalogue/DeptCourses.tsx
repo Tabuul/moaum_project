@@ -123,6 +123,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           <span className="count"><b>{shown.length}</b> {filtered ? `of ${courses.length}` : `course${courses.length === 1 ? "" : "s"}`} shown</span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
             {filtered ? <button className="btn btn--ghost btn--sm" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); setFProg(""); }}>Clear filters</button> : null}
+            {waiting ? <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => { if (window.confirm(`Make ${waiting} awaiting course${waiting === 1 ? "" : "s"} Live? They enter the current session's registration.`)) void send(`/courses/live-all?dept=${encodeURIComponent(dept)}`, {}, `Make ${waiting} courses live in ${dept}`).then((j) => { if (j) setSaid(`${String(j.made_live ?? waiting)} course(s) made Live`); }); }}>{busy ? "Working…" : `Make ${waiting} Live`}</button> : null}
             <button className="btn btn--primary btn--sm" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" }); setErr(null); setAdd(true); }}>+ New course</button>
           </div>
         </div>
@@ -189,7 +190,18 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             </select>,
             c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2" key="lec" style={{ color: "var(--red-ink)" }}>Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,
-            c.state === "ENDED" ? <Btn key="a" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live and re-enters next session's registration.`)) void send(`/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} restored — Live again`); }); }}>Restore</Btn> : <Btn key="a" kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>,
+            <div key="a" style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              {c.state === "ENDED" ? (
+                <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live and re-enters registration.`)) void send(`/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} restored — Live again`); }); }}>Restore</Btn>
+              ) : (
+                <>
+                  {c.state === "BOARD" || c.state === "SENATE" ? (
+                    <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Make ${c.code} Live? It enters the current session's registration.`)) void send(`/courses/${encodeURIComponent(c.code)}/live`, {}, `Make course ${c.code} live`).then((j) => { if (j) setSaid(`${c.code} is now Live`); }); }}>Make live</Btn>
+                  ) : null}
+                  <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it. It is not deleted.`)) void send(`/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} ended`); }); }}>End</Btn>
+                </>
+              )}
+            </div>,
           ])} texts={shown.map((c) => `${c.code} ${c.title} ${c.kind}`)} />
         ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board."}</div></PBody>}
       </Panel>
