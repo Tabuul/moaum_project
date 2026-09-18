@@ -60,7 +60,7 @@ class AllocationController {
                                         @RequestParam(defaultValue = "1") int semester,
                                         @RequestParam(required = false) Integer level) {
         dept = scope.scopedDept(dept);                      // an HOD's allocation is limited to their department
-        return jdbc.sql("""
+        List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT o.id, o.course_code, c.title, c.units, c.level, o.allocated_on,
                        (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                          WHERE e.offering_id = o.id AND r.status = 'APPROVED') AS registered,
@@ -82,7 +82,16 @@ class AllocationController {
                  ORDER BY c.level, o.course_code
                 """).param("session", session).param("semester", semester).param("dept", dept)
                 .param("level", level, java.sql.Types.INTEGER).query().listOfRows();
+        // co_lecturers comes back as a jsonb string over JDBC; parse it to a real array so the client gets one
+        for (Map<String, Object> row : rows) {
+            Object cl = row.get("co_lecturers");
+            row.put("co_lecturers", CO.readValue(cl == null ? "[]" : cl.toString(),
+                    new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+        }
+        return rows;
     }
+
+    private static final tools.jackson.databind.ObjectMapper CO = new tools.jackson.databind.ObjectMapper();
 
     /**
      * The lecturers a course can be allocated to, with their current teaching load. By default the

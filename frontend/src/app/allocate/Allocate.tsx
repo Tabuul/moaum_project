@@ -53,6 +53,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     } finally { setLoadingPool(false); }
   }
   const list = pool ?? lecturers;
+  // co_lecturers should be an array; coerce defensively so a bad shape never crashes the render
+  const cos = (o: Offering): CoLecturer[] => (Array.isArray(o.co_lecturers) ? o.co_lecturers : []);
 
   const unassigned = offerings.filter((o) => !o.lecturer_id).length;
   const noSecond = offerings.filter((o) => o.lecturer_id && !o.second_examiner_id).length;
@@ -185,16 +187,16 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             o.lecturer ? (
               <span key="l">
                 <strong>{o.lecturer}</strong>
-                {o.co_lecturers?.length ? (
+                {cos(o).length ? (
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 3 }}>
-                    {o.co_lecturers.map((c) => <Pil kind="info" key={c.id}>{c.name}</Pil>)}
+                    {cos(o).map((c) => <Pil kind="info" key={c.id}>{c.name}</Pil>)}
                   </div>
                 ) : null}
               </span>
             ) : <span key="l" style={{ color: "var(--red-ink)", fontWeight: 700 }}>Unassigned</span>,
             o.second_examiner ? <Pil kind="ok" key="s">{o.second_examiner}</Pil> : o.lecturer_id ? <Pil kind="bad" key="s">Not set</Pil> : <span className="sub2" key="s">&mdash;</span>,
             <Btn key="a" kind={o.lecturer_id ? "ghost" : "urgent"} onClick={() => openAssign(o)}>{o.lecturer_id ? "Manage" : "Assign"}</Btn>,
-          ])} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.lecturer ?? ""} ${(o.co_lecturers ?? []).map((c) => c.name).join(" ")}`)} />
+          ])} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.lecturer ?? ""} ${cos(o).map((c) => c.name).join(" ")}`)} />
         ) : <PBody><div className="sub2">No course is offered for {deptName} in {session}, {semName(semester).toLowerCase()} semester{level ? `, ${level} level` : ""}. A course appears here once it is offered to the programme for the session and its registration is opened.</div></PBody>}
       </Panel>
 
