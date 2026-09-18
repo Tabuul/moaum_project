@@ -289,6 +289,18 @@ class ApplicantsController {
         return Map.of("passportsLinked", linked == null ? 0 : linked.intValue());
     }
 
+    /** link candidates to the authoritative JAMB CAPS row by registration number, so a migrated (or any
+     *  unlinked) candidate takes its demographics/UTME/subjects from the CAPS data. Run after the CAPS
+     *  list is uploaded and committed; only fills a missing link, never overrides one. */
+    @PostMapping("/import-applicants/link-caps")
+    @PreAuthorize(IMPORTERS)
+    @Transactional
+    Map<String, Object> linkCaps(@PathVariable String session, @PathVariable String year) {
+        Integer linked = jdbc.sql("SELECT admissions.link_candidates_to_caps(:s)")
+                .param("s", session + "/" + year).query(Integer.class).single();
+        return Map.of("candidatesLinked", linked == null ? 0 : linked);
+    }
+
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS
      *  list and the O'Level JAMB sent, with the O'Level score computed under the session's grading. */
     @GetMapping("/candidates/{jambKey}")

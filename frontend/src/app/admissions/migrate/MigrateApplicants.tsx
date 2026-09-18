@@ -59,7 +59,25 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; of: number } | null>(null);
   const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; passportsLinked: number; problems: Problem[] } | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [linked, setLinked] = useState<number | null>(null);
   const money = (n: number) => `₦${Number(n).toLocaleString("en-NG")}`;
+
+  // reconcile: point every candidate with no CAPS link at its JAMB CAPS row, so its demographics/UTME
+  // come from the authoritative CAPS data (the migration only confirmed the payment)
+  async function linkToCaps() {
+    setLinking(true); setLinked(null); setErr(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/import-applicants/link-caps`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Link ${session} candidates to the JAMB CAPS data`) }, body: "{}",
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j?.detail ?? "The link could not run."); return; }
+      setLinked(Number(j?.candidatesLinked ?? 0));
+    } finally {
+      setLinking(false);
+    }
+  }
 
   function template() {
     const blob = buildXlsx(COLS, [["202699168863AH", "AHUMBE Aondofa Kingsley", "B. Sc. ARCHITECTURE", "203", "name@example.com", "08030000000"]], "Applicants");
@@ -204,6 +222,23 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
           the portal’s <b>fallback</b> amounts. Set the applicant fee first, then import, so every receipt shows the right money.
         </Note>
       )}
+
+      <Panel title="Link applicants to the JAMB CAPS data" right="After the CAPS list is uploaded">
+        <PBody>
+          <div className="sub2" style={{ marginBottom: 8 }}>
+            The uploaded JAMB CAPS admitted list is the authoritative record — it carries each candidate&rsquo;s
+            gender, state, LGA, UTME aggregate and subjects. The old-portal migration only confirms that an applicant
+            <b> applied and paid</b>. This points every {session} candidate that has no CAPS link at its CAPS row,
+            matched on the JAMB registration number, so the merit list, screening and reports read the JAMB data.
+            Run it <b>after</b> the CAPS list is uploaded and committed. It only fills a missing link and never overrides one.
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <Btn kind="primary" disabled={linking || !may} onClick={() => void linkToCaps()}>{linking ? "Linking…" : "Link applicants to CAPS"}</Btn>
+            {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may run this.</span> : null}
+            {linked != null ? <span className="sub2" style={{ color: "var(--green-ink)" }}>{linked.toLocaleString()} candidate{linked === 1 ? "" : "s"} linked to the CAPS data.</span> : null}
+          </div>
+        </PBody>
+      </Panel>
 
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label className="btn btn--ghost" htmlFor="mig-file" style={{ cursor: "pointer" }}>Choose the applicants file (.xlsx or .csv)…
