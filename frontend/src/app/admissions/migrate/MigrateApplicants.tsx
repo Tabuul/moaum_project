@@ -60,20 +60,21 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const [progress, setProgress] = useState<{ done: number; of: number } | null>(null);
   const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; passportsLinked: number; problems: Problem[] } | null>(null);
   const [linking, setLinking] = useState(false);
-  const [linked, setLinked] = useState<number | null>(null);
+  const [linkInfo, setLinkInfo] = useState<{ candidatesLinked: number; capsRows: number; candidates: number; nowLinked: number; stillUnlinked: number } | null>(null);
   const money = (n: number) => `₦${Number(n).toLocaleString("en-NG")}`;
 
   // reconcile: point every candidate with no CAPS link at its JAMB CAPS row, so its demographics/UTME
   // come from the authoritative CAPS data (the migration only confirmed the payment)
   async function linkToCaps() {
-    setLinking(true); setLinked(null); setErr(null);
+    setLinking(true); setLinkInfo(null); setErr(null);
     try {
       const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/import-applicants/link-caps`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Link ${session} candidates to the JAMB CAPS data`) }, body: "{}",
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j?.detail ?? "The link could not run."); return; }
-      setLinked(Number(j?.candidatesLinked ?? 0));
+      setLinkInfo({ candidatesLinked: Number(j?.candidatesLinked ?? 0), capsRows: Number(j?.capsRows ?? 0),
+        candidates: Number(j?.candidates ?? 0), nowLinked: Number(j?.nowLinked ?? 0), stillUnlinked: Number(j?.stillUnlinked ?? 0) });
     } finally {
       setLinking(false);
     }
@@ -235,8 +236,20 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="primary" disabled={linking || !may} onClick={() => void linkToCaps()}>{linking ? "Linking…" : "Link applicants to CAPS"}</Btn>
             {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may run this.</span> : null}
-            {linked != null ? <span className="sub2" style={{ color: "var(--green-ink)" }}>{linked.toLocaleString()} candidate{linked === 1 ? "" : "s"} linked to the CAPS data.</span> : null}
           </div>
+          {linkInfo ? (
+            linkInfo.capsRows === 0 ? (
+              <Note kind="bad" title="No JAMB CAPS list is uploaded for this session yet">
+                There are <b>{linkInfo.candidates.toLocaleString()}</b> candidates but <b>0</b> CAPS rows to link them to, so gender, state, LGA, UTME and subjects stay blank.
+                Upload the JAMB CAPS admitted list first (Upload Applicants/Candidates) and commit it, then run this link. The CAPS list is the source of that data — the migration only confirms payment.
+              </Note>
+            ) : (
+              <Note kind={linkInfo.stillUnlinked ? "info" : "ok"} title={`${linkInfo.candidatesLinked.toLocaleString()} candidate${linkInfo.candidatesLinked === 1 ? "" : "s"} just linked to the CAPS data`}>
+                {linkInfo.nowLinked.toLocaleString()} of {linkInfo.candidates.toLocaleString()} candidates are now linked to a CAPS row ({linkInfo.capsRows.toLocaleString()} CAPS rows on file).
+                {linkInfo.stillUnlinked ? <> <b>{linkInfo.stillUnlinked.toLocaleString()}</b> still have no CAPS match — their JAMB registration number is not on the uploaded CAPS list (a typo, a different tranche, or not admitted by JAMB). Those stay blank until their CAPS row is present.</> : <> Every candidate is linked; the merit list and reports now read the JAMB data.</>}
+              </Note>
+            )
+          ) : null}
         </PBody>
       </Panel>
 

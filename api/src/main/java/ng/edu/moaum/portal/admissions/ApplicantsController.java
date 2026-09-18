@@ -296,9 +296,15 @@ class ApplicantsController {
     @PreAuthorize(IMPORTERS)
     @Transactional
     Map<String, Object> linkCaps(@PathVariable String session, @PathVariable String year) {
-        Integer linked = jdbc.sql("SELECT admissions.link_candidates_to_caps(:s)")
-                .param("s", session + "/" + year).query(Integer.class).single();
-        return Map.of("candidatesLinked", linked == null ? 0 : linked);
+        String s = session + "/" + year;
+        long capsRows = jdbc.sql("SELECT count(*) FROM admissions.caps_row_live WHERE session = :s").param("s", s).query(Long.class).single();
+        long candidates = jdbc.sql("SELECT count(*) FROM admissions.candidate WHERE session = :s").param("s", s).query(Long.class).single();
+        Integer linked = jdbc.sql("SELECT admissions.link_candidates_to_caps(:s)").param("s", s).query(Integer.class).single();
+        long stillUnlinked = jdbc.sql("SELECT count(*) FROM admissions.candidate WHERE session = :s AND admitted_from IS NULL")
+                .param("s", s).query(Long.class).single();
+        long nowLinked = candidates - stillUnlinked;
+        return Map.of("candidatesLinked", linked == null ? 0 : linked, "capsRows", capsRows,
+                "candidates", candidates, "nowLinked", nowLinked, "stillUnlinked", stillUnlinked);
     }
 
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS
