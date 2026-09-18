@@ -78,13 +78,33 @@ class RegistrationController {
     @PostMapping("/course-registrations/{id}/approve")
     @PreAuthorize(HOD_APPROVES)
     Map<String, Object> approve(@PathVariable UUID id) {
-        return service.approve(id);
+        return withDeadlockRetry(() -> service.approve(id));
     }
 
     @PostMapping("/course-registrations/{id}/return")
     @PreAuthorize(HOD_APPROVES)
     Map<String, Object> giveBack(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
-        return service.giveBack(id, body == null ? null : body.get("comment"));
+        return withDeadlockRetry(() -> service.giveBack(id, body == null ? null : body.get("comment")));
+    }
+
+    /** A deadlock (e.g. this approval colliding with a bulk import over the shared audit spine) is transient:
+     *  the transaction rolls back cleanly, so re-running it a few times with a short backoff resolves it. */
+    private <T> T withDeadlockRetry(java.util.function.Supplier<T> op) {
+        org.springframework.dao.TransientDataAccessException last = null;
+        for (int attempt = 1; attempt <= 4; attempt++) {
+            try {
+                return op.get();
+            } catch (org.springframework.dao.TransientDataAccessException e) {   // deadlock / serialization / lock timeout
+                last = e;
+                try {
+                    Thread.sleep(60L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        throw last;
     }
 
     /** The roll of an offering: approved registrations only, and all of them. */
