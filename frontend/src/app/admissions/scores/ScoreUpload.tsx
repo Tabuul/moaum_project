@@ -9,6 +9,8 @@ import { reasonHeader } from "@/lib/reason";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { buildXlsx } from "@/lib/xlsx";
+import { downloadBlob } from "@/lib/exportbrand";
 
 interface Report { received: number; applied: number; notFound: string[]; alreadyReleased: string[]; outOfRange: string[] }
 
@@ -141,6 +143,17 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
     }
   }
 
+  // download the applicants still awaiting a score for a programme (or all), as a fill-in template:
+  // JAMB Number, Name, Programme, Score — fill Score and load it straight back to upload
+  async function downloadAwaiting(code: string | null, label: string) {
+    const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/awaiting${code ? `?programme=${encodeURIComponent(code)}` : ""}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(j)) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+    const rows = (j as { jamb_reg_no: string; name: string; programme: string }[]).map((x) => [x.jamb_reg_no, x.name, x.programme, ""]);
+    const blob = buildXlsx(["JAMB Number", "Name", "Programme", "Score"], rows, "Awaiting scores");
+    downloadBlob(blob, `awaiting-scores-${label.replace(/[^a-z0-9]+/gi, "-")}-${session.replace("/", "-")}.xlsx`);
+  }
+
   return (
     <>
       <Note kind="info" title="Upload the Post-UTME scores and reconcile them against the applicants">
@@ -148,7 +161,10 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
       </Note>
 
       {postUtme ? (
-        <Panel title="Programmes whose Post-UTME scores must be uploaded" right={postUtme.counts.awaitingScores ? `${postUtme.counts.awaitingScores} still awaiting` : "All scored"}>
+        <Panel title="Programmes whose Post-UTME scores must be uploaded" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          <span className="sub2">{postUtme.counts.awaitingScores ? `${postUtme.counts.awaitingScores} still awaiting` : "All scored"}</span>
+          {postUtme.programmes.some((r) => Number(r.awaiting) > 0) ? <Btn kind="ghost" onClick={() => void downloadAwaiting(null, "all")}>Download all awaiting</Btn> : null}
+        </span>}>
           <div className="card__body" style={{ paddingBottom: 0 }}>
             <div className="sub2">These are the programmes whose applicants have registered for Post-UTME for {session}. Every one must have its screening scores uploaded and released before the admission process (merit list, offers) proceeds for it. A programme still awaiting scores is highlighted.</div>
           </div>
@@ -161,7 +177,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
                 <span className="tnum" key="rg">{Number(r.registered).toLocaleString()}</span>,
                 <span className="tnum" key="sc">{Number(r.scored).toLocaleString()}</span>,
                 <span className="tnum" key="rl">{Number(r.released).toLocaleString()}</span>,
-                <span className="tnum" key="aw" style={Number(r.awaiting) ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{Number(r.awaiting).toLocaleString()}</span>,
+                Number(r.awaiting) ? <button key="aw" onClick={() => void downloadAwaiting(r.programme_code, r.programme)} title={`Download the ${Number(r.awaiting).toLocaleString()} applicants awaiting a score`} className="tnum" style={{ background: "none", border: 0, padding: 0, color: "var(--red-ink)", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{Number(r.awaiting).toLocaleString()}</button> : <span className="tnum" key="aw">0</span>,
                 Number(r.awaiting) ? <Pil kind="bad" key="s">Scores due</Pil> : Number(r.released) >= Number(r.registered) ? <Pil kind="ok" key="s">Released</Pil> : <Pil kind="warn" key="s">Uploaded, release</Pil>,
               ])}
               texts={postUtme.programmes.map((r) => `${r.faculty ?? ""} ${r.programme}`)}

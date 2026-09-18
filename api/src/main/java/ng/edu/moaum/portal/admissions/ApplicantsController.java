@@ -38,6 +38,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -533,6 +534,27 @@ class ApplicantsController {
     // the Directorate of ICT and the Super Administrator do it, as well as the Academic Office
     private static final String SCORE_UPLOADERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+
+    /** the applicants of an exam-screened programme whose Post-UTME score is still awaited — submitted,
+     *  no score entered — so the office can see (and download) exactly who is missing a score. */
+    @GetMapping("/screening-scores/awaiting")
+    @PreAuthorize(SCORE_UPLOADERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> awaitingScores(@PathVariable String session, @PathVariable String year,
+                                             @RequestParam(required = false) String programme) {
+        return jdbc.sql("""
+                SELECT c.jamb_reg_no, a.application_no, c.surname || ', ' || c.other_names AS name,
+                       pr.name AS programme, pr.code AS programme_code, fa.name AS faculty
+                  FROM admissions.application a
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  JOIN ref.programme pr ON pr.code = (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)
+                  LEFT JOIN ref.faculty fa ON fa.code = pr.faculty_code
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.screening_score IS NULL
+                   AND admissions.screened_by_exam(:s, pr.code)
+                   AND (:p::text IS NULL OR pr.code = :p)
+                 ORDER BY pr.name, c.surname, c.other_names
+                """).param("s", session + "/" + year).param("p", programme, Types.VARCHAR).query().listOfRows();
+    }
 
     public record ScoreRow(String key, java.math.BigDecimal score) {
     }
