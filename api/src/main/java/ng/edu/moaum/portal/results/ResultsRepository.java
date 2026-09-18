@@ -192,6 +192,14 @@ class ResultsRepository {
         return id;
     }
 
+    /** update the three dates of an examination session that is not closed; returns rows changed (0 = closed or gone) */
+    int updateExamSessionDates(UUID id, java.time.LocalDate from, java.time.LocalDate to, java.time.LocalDate due) {
+        return jdbc.sql("""
+                UPDATE assessment.exam_session SET exams_from = :f, exams_to = :t, sheets_due = :d
+                 WHERE id = :id AND state <> 'CLOSED'
+                """).param("id", id).param("f", from).param("t", to).param("d", due).update();
+    }
+
     record Opened(int sheetsMade, int offeringsWithoutLecturer) {
     }
 

@@ -40,6 +40,21 @@ public class ResultsService {
                                 @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
     }
 
+    public record ExamDatesIn(@NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
+    }
+
+    /** the three dates are ordered: begin ≤ end ≤ sheets due. A clear message beats the raw DB constraint. */
+    private static void checkExamDates(LocalDate from, LocalDate to, LocalDate due) {
+        if (to.isBefore(from)) {
+            throw new DomainRuleViolation("EXAM_DATES", "The examinations end before they begin.",
+                    new DomainRuleViolation.Remedy("Set the end date on or after the begin date.", "Examinations"));
+        }
+        if (due.isBefore(to)) {
+            throw new DomainRuleViolation("EXAM_DATES", "The score sheets are due before the examinations end.",
+                    new DomainRuleViolation.Remedy("Set the sheets-due date on or after the examinations end date.", "Examinations"));
+        }
+    }
+
     public record MigrationIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester,
                               @NotNull List<Map<String, Object>> rows) {
     }
@@ -211,7 +226,21 @@ public class ResultsService {
 
     @Transactional
     public Sheets.ExamSession createExamSession(ExamSessionIn in) {
+        checkExamDates(in.examsFrom(), in.examsTo(), in.sheetsDue());
         UUID id = repo.createExamSession(in);
+        return repo.examSession(id).orElseThrow();
+    }
+
+    /** Edit an examination session's dates. Allowed while it is a draft or open (dates are metadata and do
+     *  not undo any generated sheet); a closed session is fixed. */
+    public Sheets.ExamSession editExamSession(UUID id, ExamDatesIn in) {
+        checkExamDates(in.examsFrom(), in.examsTo(), in.sheetsDue());
+        int n = repo.updateExamSessionDates(id, in.examsFrom(), in.examsTo(), in.sheetsDue());
+        if (n == 0) {
+            repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
+            throw new DomainRuleViolation("EXAM_CLOSED", "A closed examination session's dates cannot be changed.",
+                    new DomainRuleViolation.Remedy("A closed session is a record; open a new session instead.", "Examinations"));
+        }
         return repo.examSession(id).orElseThrow();
     }
 

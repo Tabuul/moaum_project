@@ -135,6 +135,12 @@ class ResultsController {
         return service.createExamSession(body);
     }
 
+    @PutMapping("/exam-sessions/{id}")
+    @PreAuthorize(EXAMS)
+    Sheets.ExamSession editExamSession(@PathVariable UUID id, @Valid @RequestBody ResultsService.ExamDatesIn body) {
+        return service.editExamSession(id, body);
+    }
+
     @PostMapping("/exam-sessions/{id}/open")
     @PreAuthorize(EXAMS)
     Map<String, Object> open(@PathVariable UUID id) {
