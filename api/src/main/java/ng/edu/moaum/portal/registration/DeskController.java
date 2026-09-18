@@ -56,13 +56,15 @@ class DeskController {
     @GetMapping("/course-registrations")
     @PreAuthorize(DEPARTMENT)
     @Transactional(readOnly = true)
-    List<Map<String, Object>> registrations(@RequestParam String session, @RequestParam(defaultValue = "1") int semester,
+    List<Map<String, Object>> registrations(@RequestParam String session, @RequestParam(defaultValue = "0") int semester,
                                             @RequestParam(required = false) String deptParam, @RequestParam(defaultValue = "SUBMITTED") String status) {
         // a Head of Department (or lecturer) is confined to their own department server-side; a wider office
         // keeps the requested filter. This is the scoping, not the frontend's dept param, so it cannot be widened.
         String dept = scope.scopedDept(deptParam);
+        // semester 0 means every semester — the approvals desk shows all pending registrations, so its list
+        // matches the dashboard's session-wide count (a submitted second-semester registration is not hidden)
         return jdbc.sql("""
-                SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
+                SELECT r.id, r.status, r.level, r.semester, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        s.matric_no, s.admission_no, s.surname, s.other_names, p.name AS programme, p.dept_code, d.name AS dept_name,
                        (SELECT string_agg(c.code || ' (' || e.units || CASE WHEN e.entry_type = 'CARRYOVER' THEN ', carryover' ELSE '' END || ')', ', ' ORDER BY c.code)
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
@@ -73,10 +75,10 @@ class DeskController {
                   JOIN people.student s ON s.id = r.student_id
                   JOIN ref.programme p ON p.code = s.programme_code
                   JOIN ref.department d ON d.code = p.dept_code
-                 WHERE r.session = :s AND r.semester = :sem
+                 WHERE r.session = :s AND (:sem = 0 OR r.semester = :sem)
                    AND (:d::text IS NULL OR p.dept_code = :d)
                    AND CASE :st WHEN 'ALL' THEN true ELSE r.status = :st END
-                 ORDER BY r.submitted_at NULLS LAST, s.surname
+                 ORDER BY r.semester, r.submitted_at NULLS LAST, s.surname
                 """).param("s", session).param("sem", semester).param("d", dept, Types.VARCHAR).param("st", status.toUpperCase()).query().listOfRows();
     }
 

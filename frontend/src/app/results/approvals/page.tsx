@@ -19,12 +19,14 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   /* the department's registration desk (V027) sits above the result sets for the offices that approve registrations */
   const office = me.ok ? me.data.activeOffice : null;
   const departmental = ["hod", "lecturer", "dean", "facultyofficer", "academic", "registrar", "dregistrar", "super"].includes(office ?? "");
+  // semester=0 → every semester, so a pending second-semester registration is not hidden behind a
+  // first-semester default (the approvals list then matches the dashboard's session-wide count)
   const registrations = departmental
-    ? await api<RegistrationRow[]>(`/api/v1/registration/course-registrations?session=${encodeURIComponent(scope.session)}&semester=${scope.sem || "1"}${scope.dept ? `&dept=${encodeURIComponent(scope.dept)}` : ""}&status=SUBMITTED`)
+    ? await api<RegistrationRow[]>(`/api/v1/registration/course-registrations?session=${encodeURIComponent(scope.session)}&semester=0${scope.dept ? `&dept=${encodeURIComponent(scope.dept)}` : ""}&status=SUBMITTED`)
     : null;
   return (
     <Shell route="t/approvals" me={me.ok ? me.data : null}>
-      {registrations && registrations.ok ? <RegistrationApprovals rows={registrations.data} session={scope.session} semester={Number(scope.sem || "1")} actingOffice={office} /> : null}
+      {registrations && registrations.ok ? <RegistrationApprovals rows={registrations.data} session={scope.session} semester={0} actingOffice={office} /> : null}
       {listing.ok ? (
         <Approvals
           scope={scope}

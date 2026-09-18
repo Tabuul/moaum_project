@@ -15,10 +15,12 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface RegistrationRow {
-  id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number;
+  id: string; status: string; level: number; semester?: number; submitted_at: string | null; approved_at: string | null; units: number;
   matric_no: string | null; admission_no: string | null; surname: string; other_names: string; programme: string; dept_code: string; dept_name: string;
   courses: string | null; range: string | null;
 }
+
+const SEM = (n?: number) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "—");
 
 export function RegistrationApprovals({ rows, session, semester, actingOffice }: { rows: RegistrationRow[]; session: string; semester: number; actingOffice: string | null }) {
   const router = useRouter();
@@ -41,12 +43,13 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
   }
 
   return (
-    <Panel title="Course registrations submitted by students" right={`${rows.length} waiting · ${session} · semester ${semester}`}>
+    <Panel title="Course registrations submitted by students" right={`${rows.length} waiting · ${session}${semester ? ` · semester ${semester}` : " · all semesters"}`}>
       {problem ? <div className="card__body"><ProblemNotice problem={problem} /></div> : null}
-      <DTable cols={["Student", "Programme", "Level|mid", "Courses", "Units|mid", "Submitted|mid", "|num"]} rows={rows.map((r) => [
+      <DTable cols={["Student", "Programme", "Level|mid", "Semester|mid", "Courses", "Units|mid", "Submitted|mid", "|num"]} rows={rows.map((r) => [
         <Two key="s" a={`${r.surname}, ${r.other_names}`} b={r.matric_no ?? r.admission_no ?? ""} />,
         <span className="sub2" key="p">{r.programme}</span>,
         <span className="tnum" key="l">{r.level}</span>,
+        <span className="sub2" key="sem">{SEM(r.semester)}</span>,
         <span className="sub2" key="c">{r.courses ?? "—"}</span>,
         <span key="u"><b className="tnum">{r.units}</b><div className="sub2">of {r.range ?? "—"}</div></span>,
         <span className="sub2 tnum" key="w">{r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "—"}</span>,

@@ -21,7 +21,7 @@ type NameOrder = "first" | "last";
 // the migration only verifies against CAPS and confirms payment, so the template is the JAMB number
 // alone; email/phone are still read if a file happens to carry them (for the login/contact)
 const COLS = ["JAMB Number"];
-const CHUNK = 100;
+const CHUNK = 50;
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** split a single name field into surname + other names, on a comma or on the chosen order */
@@ -155,24 +155,36 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         const my = next++;
         if (my >= chunks.length) break;
         const slice = chunks[my];
-        const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/import-applicants`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old-portal applicants imported for ${session}: chunk ${my + 1} of ${chunks.length}`) },
-          body: JSON.stringify({ rows: slice }),
-        }).catch(() => null);
-        const j = r ? await r.json().catch(() => null) : null;
+        // resilient: a transient failure (502 during a deploy restart, a network blip) retries with
+        // backoff instead of aborting the whole run — the import is idempotent, so a retried chunk
+        // just re-counts already-imported rows as "existed". Only give up after several tries.
+        let r: Response | null = null;
+        let j: { imported?: number; existed?: number; skipped?: number; placeholders?: number; capsRows?: number; capsSample?: string[]; problems?: Problem[]; detail?: string; title?: string } | null = null;
+        for (let attempt = 1; attempt <= 5 && !stopped; attempt++) {
+          r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/import-applicants`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old-portal applicants imported for ${session}: chunk ${my + 1} of ${chunks.length}`) },
+            body: JSON.stringify({ rows: slice }),
+          }).catch(() => null);
+          j = r ? await r.json().catch(() => null) : null;
+          if (r && r.ok) break;
+          // a 4xx that is a real validation problem should not be retried; a 502/503/504/network is transient
+          const transient = !r || r.status === 502 || r.status === 503 || r.status === 504 || r.status === 429 || r.status >= 500;
+          if (!transient) { break; }
+          if (attempt < 5) { setProgress({ done, of: total }); await new Promise((res) => setTimeout(res, 1500 * attempt)); }
+        }
         if (!r || !r.ok) {
           stopped = true;
-          setErr((j && (j.detail || j.title)) || `A chunk failed (${r ? `${r.status} ${r.statusText}` : "network"}). What imported so far is kept — run the file again and it skips them.`);
+          setErr((j && (j.detail || j.title)) || `A chunk kept failing (${r ? `${r.status} ${r.statusText}` : "network"}) after several retries. What imported so far is kept — wait a minute for the server, then run the file again and it skips them.`);
           return;
         }
-        tally.imported += j.imported ?? 0;
-        tally.existed += j.existed ?? 0;
-        tally.skipped += j.skipped ?? 0;
-        tally.placeholders += j.placeholders ?? 0;
-        tally.capsRows = j.capsRows ?? tally.capsRows;
-        if (Array.isArray(j.capsSample) && j.capsSample.length) tally.capsSample = j.capsSample;
-        for (const p of (j.problems as Problem[] | undefined) ?? []) tally.problems.push(p);
+        tally.imported += j?.imported ?? 0;
+        tally.existed += j?.existed ?? 0;
+        tally.skipped += j?.skipped ?? 0;
+        tally.placeholders += j?.placeholders ?? 0;
+        tally.capsRows = j?.capsRows ?? tally.capsRows;
+        if (Array.isArray(j?.capsSample) && j.capsSample.length) tally.capsSample = j.capsSample;
+        for (const p of (j?.problems as Problem[] | undefined) ?? []) tally.problems.push(p);
         done += slice.length;
         setProgress({ done, of: total });
         setResult({ ...tally });
