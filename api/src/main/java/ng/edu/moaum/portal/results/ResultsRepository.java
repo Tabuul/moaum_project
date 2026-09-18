@@ -192,12 +192,23 @@ class ResultsRepository {
         return id;
     }
 
-    /** update the three dates of an examination session that is not closed; returns rows changed (0 = closed or gone) */
-    int updateExamSessionDates(UUID id, java.time.LocalDate from, java.time.LocalDate to, java.time.LocalDate due) {
+    /** update an examination session (identity + dates) that is not closed; returns rows changed */
+    int updateExamSession(UUID id, String session, int semester, String kind,
+                          java.time.LocalDate from, java.time.LocalDate to, java.time.LocalDate due) {
         return jdbc.sql("""
-                UPDATE assessment.exam_session SET exams_from = :f, exams_to = :t, sheets_due = :d
+                UPDATE assessment.exam_session
+                   SET session = :s, semester = :sem, kind = :k, exams_from = :f, exams_to = :t, sheets_due = :d
                  WHERE id = :id AND state <> 'CLOSED'
-                """).param("id", id).param("f", from).param("t", to).param("d", due).update();
+                """).param("id", id).param("s", session).param("sem", semester).param("k", kind)
+                .param("f", from).param("t", to).param("d", due).update();
+    }
+
+    /** is there another examination session for this academic session, semester and type? */
+    boolean examSessionExists(String session, int semester, String kind, UUID excludeId) {
+        return Boolean.TRUE.equals(jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM assessment.exam_session
+                                WHERE session = :s AND semester = :sem AND kind = :k AND id <> :id)
+                """).param("s", session).param("sem", semester).param("k", kind).param("id", excludeId).query(Boolean.class).single());
     }
 
     record Opened(int sheetsMade, int offeringsWithoutLecturer) {

@@ -40,7 +40,8 @@ public class ResultsService {
                                 @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
     }
 
-    public record ExamDatesIn(@NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
+    public record ExamEditIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester, String kind,
+                             @NotNull LocalDate examsFrom, @NotNull LocalDate examsTo, @NotNull LocalDate sheetsDue) {
     }
 
     /** the three dates are ordered: begin ≤ end ≤ sheets due. A clear message beats the raw DB constraint. */
@@ -231,16 +232,32 @@ public class ResultsService {
         return repo.examSession(id).orElseThrow();
     }
 
-    /** Edit an examination session's dates. Allowed while it is a draft or open (dates are metadata and do
-     *  not undo any generated sheet); a closed session is fixed. */
-    public Sheets.ExamSession editExamSession(UUID id, ExamDatesIn in) {
-        checkExamDates(in.examsFrom(), in.examsTo(), in.sheetsDue());
-        int n = repo.updateExamSessionDates(id, in.examsFrom(), in.examsTo(), in.sheetsDue());
-        if (n == 0) {
-            repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
-            throw new DomainRuleViolation("EXAM_CLOSED", "A closed examination session's dates cannot be changed.",
+    /** Edit an examination session. The dates are always editable while it is a draft or open (they are
+     *  metadata and do not undo any generated sheet). The academic session, semester and type may be changed
+     *  only while NO score sheet has been generated — once sheets exist they belong to that session/semester,
+     *  so those are then fixed. A closed session is fixed entirely. */
+    public Sheets.ExamSession editExamSession(UUID id, ExamEditIn in) {
+        Sheets.ExamSession cur = repo.examSession(id).orElseThrow(() -> new NotFound("examination session", id));
+        if ("CLOSED".equals(cur.state())) {
+            throw new DomainRuleViolation("EXAM_CLOSED", "A closed examination session cannot be changed.",
                     new DomainRuleViolation.Remedy("A closed session is a record; open a new session instead.", "Examinations"));
         }
+        checkExamDates(in.examsFrom(), in.examsTo(), in.sheetsDue());
+        String kind = in.kind() == null || in.kind().isBlank() ? "MAIN" : in.kind();
+        boolean identityChanged = !cur.session().equals(in.session()) || cur.semester() != in.semester() || !cur.kind().equalsIgnoreCase(kind);
+        if (identityChanged) {
+            if (cur.sheets() > 0) {
+                throw new DomainRuleViolation("EXAM_HAS_SHEETS",
+                        "This session already has " + cur.sheets() + " score sheet(s), so its academic session, semester and type are fixed — only the dates can change.",
+                        new DomainRuleViolation.Remedy("Move it before it is opened, or open a new session for the other academic session.", "Examinations"));
+            }
+            if (repo.examSessionExists(in.session(), in.semester(), kind, id)) {
+                throw new DomainRuleViolation("EXAM_DUPLICATE",
+                        "An examination session already exists for that academic session, semester and type.",
+                        new DomainRuleViolation.Remedy("Edit that one instead, or choose a different type.", "Examinations"));
+            }
+        }
+        repo.updateExamSession(id, in.session(), in.semester(), kind, in.examsFrom(), in.examsTo(), in.sheetsDue());
         return repo.examSession(id).orElseThrow();
     }
 

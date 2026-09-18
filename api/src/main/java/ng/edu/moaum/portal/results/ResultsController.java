@@ -137,7 +137,7 @@ class ResultsController {
 
     @PutMapping("/exam-sessions/{id}")
     @PreAuthorize(EXAMS)
-    Sheets.ExamSession editExamSession(@PathVariable UUID id, @Valid @RequestBody ResultsService.ExamDatesIn body) {
+    Sheets.ExamSession editExamSession(@PathVariable UUID id, @Valid @RequestBody ResultsService.ExamEditIn body) {
         return service.editExamSession(id, body);
     }
 

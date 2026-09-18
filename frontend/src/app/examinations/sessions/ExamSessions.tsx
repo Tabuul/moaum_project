@@ -21,11 +21,11 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
   const [f, setF] = useState({ session: scope.session, semester: "1", kind: "MAIN", examsFrom: "", examsTo: "", sheetsDue: "" });
   const [today] = useState(() => Date.now());
   const [edit, setEdit] = useState<ExamSession | null>(null);
-  const [ed, setEd] = useState({ examsFrom: "", examsTo: "", sheetsDue: "" });
+  const [ed, setEd] = useState({ session: "", semester: "1", kind: "MAIN", examsFrom: "", examsTo: "", sheetsDue: "" });
 
   function openEdit(e: ExamSession) {
     setEdit(e);
-    setEd({ examsFrom: (e.examsFrom ?? "").slice(0, 10), examsTo: (e.examsTo ?? "").slice(0, 10), sheetsDue: (e.sheetsDue ?? "").slice(0, 10) });
+    setEd({ session: e.session, semester: String(e.semester), kind: e.kind, examsFrom: (e.examsFrom ?? "").slice(0, 10), examsTo: (e.examsTo ?? "").slice(0, 10), sheetsDue: (e.sheetsDue ?? "").slice(0, 10) });
     setProblem(null);
   }
 
@@ -35,7 +35,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
     setProblem(null);
     try {
       const r = await fetch(`/api/bff/api/v1/results/exam-sessions/${edit.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Examination session ${edit.session} dates edited`) }, body: JSON.stringify(ed),
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Examination session ${ed.session} edited`) }, body: JSON.stringify({ ...ed, semester: Number(ed.semester) }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
@@ -130,7 +130,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
               <span className="tnum" key="o" style={e.outstanding ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{e.outstanding}</span>,
               e.state === "OPEN" ? <Pil kind="ok" key="st">Open</Pil> : e.state === "DRAFT" ? <Pil kind="info" key="st">Draft</Pil> : <Pil kind="grey" key="st">Closed</Pil>,
               <span key="a" style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-                {e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit dates</Btn> : null}
+                {e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit</Btn> : null}
                 {e.state === "DRAFT" ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} offerings have no lecturer.`))}>Open</Btn> : <Link href={`/examinations/sessions?exam=${e.id}`} className="btn btn--ghost btn--sm">Monitor</Link>}
               </span>,
             ])}
@@ -139,15 +139,20 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
       ) : null}
 
       {edit ? (
-        <Modal title="Edit the examination dates" sub={`${edit.session} · ${edit.semester === 1 ? "First" : edit.semester === 2 ? "Second" : "Third"} semester · ${edit.kind === "MAIN" ? "Main" : edit.kind === "RESIT" ? "Re-sit" : "Special"}`} onClose={() => setEdit(null)}
+        <Modal title="Edit the examination session" sub={`${edit.session} · ${edit.semester === 1 ? "First" : edit.semester === 2 ? "Second" : "Third"} semester · ${edit.kind === "MAIN" ? "Main" : edit.kind === "RESIT" ? "Re-sit" : "Special"}`} onClose={() => setEdit(null)}
           foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
             <Btn kind="primary" disabled={busy !== null || !ed.examsFrom || !ed.examsTo || !ed.sheetsDue} onClick={() => void saveDates()}>{busy === "edit" ? "Saving…" : "Save the dates"}</Btn></>}>
-          <Note kind="info" title="Only the dates change">
-            The session, semester and type are fixed once created — they define the score sheets. You can move the
-            examination dates and the sheets-due deadline{edit.state === "OPEN" ? "; the sheets already generated are not affected" : ""}. Score sheets must be due on or after the examinations end.
+          <Note kind={edit.sheets > 0 ? "info" : "info"} title={edit.sheets > 0 ? "Only the dates can change" : "Session, semester, type and dates can all change"}>
+            {edit.sheets > 0
+              ? `This session already has ${edit.sheets} score sheet${edit.sheets === 1 ? "" : "s"} generated, so its academic session, semester and type are fixed — those score sheets belong to them. You can still move the dates.`
+              : "No score sheet has been generated yet, so you can move it to another academic session, semester or type as well as change the dates."}
+            {edit.state === "OPEN" && edit.sheets > 0 ? " The generated sheets are not affected by a date change." : ""} Score sheets must be due on or after the examinations end.
           </Note>
           {problem ? <ProblemNotice problem={problem} /> : null}
           <div className="grid grid--3">
+            <Field id="ee-s" label="Academic session"><select id="ee-s" className="ctl" value={ed.session} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, session: e.target.value })}>{sessions.map((s) => <option key={s}>{s}</option>)}</select></Field>
+            <Field id="ee-m" label="Semester"><select id="ee-m" className="ctl" value={ed.semester} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
+            <Field id="ee-t" label="Type"><select id="ee-t" className="ctl" value={ed.kind} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, kind: e.target.value })}><option value="MAIN">Main examination</option><option value="RESIT">Re-sit</option><option value="SPECIAL">Special</option></select></Field>
             <Field id="ee-f" label="Examinations begin"><input id="ee-f" className="ctl" type="date" value={ed.examsFrom} onChange={(e) => setEd({ ...ed, examsFrom: e.target.value })} /></Field>
             <Field id="ee-e" label="Examinations end"><input id="ee-e" className="ctl" type="date" value={ed.examsTo} onChange={(e) => setEd({ ...ed, examsTo: e.target.value })} /></Field>
             <Field id="ee-d" label="Score sheets due"><input id="ee-d" className="ctl" type="date" value={ed.sheetsDue} onChange={(e) => setEd({ ...ed, sheetsDue: e.target.value })} /></Field>
