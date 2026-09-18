@@ -140,6 +140,13 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM finance.position(:s, :ses)").param("s", student).param("ses", session).query().singleRow();
     }
 
+    /** the cumulative charge up to and including a semester (whole-session items always count) */
+    java.math.BigDecimal dueForSemester(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT finance.due_for_semester(:s, :ses, :sem)")
+                .param("s", student).param("ses", session).param("sem", semester)
+                .query(java.math.BigDecimal.class).single();
+    }
+
     /** whether a clearance scheme is in force today: asked first, because clears() refuses — and aborts the transaction — when none is */
     boolean schemeInForce() {
         return Boolean.TRUE.equals(jdbc.sql("SELECT policy.in_force('clearance', 'UNIVERSITY', current_date) IS NOT NULL").query(Boolean.class).single());

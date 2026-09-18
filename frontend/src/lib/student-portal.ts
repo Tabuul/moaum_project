@@ -15,6 +15,10 @@ export interface Fees {
   due: number;
   paid: number;
   balance: number;
+  /** still owed toward the first semester (whole-session items included); 0 once first semester is cleared */
+  firstSemesterOutstanding: number;
+  /** still owed toward the second semester, after the first is met; 0 once the session is cleared */
+  secondSemesterOutstanding: number;
   instalmentsPaid: number;
   paidInFull: boolean;
   hasArrears: boolean;

@@ -111,6 +111,16 @@ public class StudentPortalService {
         out.put("instalmentsPaid", pos.get("instalments_paid"));
         out.put("paidInFull", pos.get("paid_in_full"));
         out.put("hasArrears", pos.get("has_arrears"));
+        /* per-semester amounts, so the student pays a fixed first / second / full-session figure
+         * rather than typing one. Payments are cumulative (V149): the first semester must clear
+         * before the second, so each figure below is what is still owed toward that milestone. */
+        BigDecimal paid = (BigDecimal) pos.get("paid");
+        BigDecimal balance = (BigDecimal) pos.get("balance");
+        BigDecimal firstDue = repo.dueForSemester(id, session, 1);
+        BigDecimal firstOutstanding = firstDue.subtract(paid).max(BigDecimal.ZERO);
+        BigDecimal secondOutstanding = balance.subtract(firstOutstanding).max(BigDecimal.ZERO);
+        out.put("firstSemesterOutstanding", firstOutstanding);
+        out.put("secondSemesterOutstanding", secondOutstanding);
         /* registration is now gated per semester on that semester's school fees, paid in full (V149) */
         boolean inForce = repo.schemeInForce();
         out.put("clearsRegistration", repo.semesterCleared(id, session, repo.openSemester(session)));
