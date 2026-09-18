@@ -63,12 +63,15 @@ class DeskController {
         String dept = scope.scopedDept(deptParam);
         // semester 0 means every semester — the approvals desk shows all pending registrations, so its list
         // matches the dashboard's session-wide count (a submitted second-semester registration is not hidden)
-        return jdbc.sql("""
+        List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.semester, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        s.matric_no, s.admission_no, s.surname, s.other_names, p.name AS programme, p.dept_code, d.name AS dept_name,
                        (SELECT string_agg(c.code || ' (' || e.units || CASE WHEN e.entry_type = 'CARRYOVER' THEN ', carryover' ELSE '' END || ')', ', ' ORDER BY c.code)
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                          WHERE e.registration_id = r.id) AS courses,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('code', c.code, 'title', c.title, 'units', e.units, 'kind', c.kind, 'type', e.entry_type) ORDER BY c.code)
+                          FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                         WHERE e.registration_id = r.id), '[]'::jsonb) AS entries,
                        coalesce(registration.siwes_units(s.programme_code, r.level, r.semester)::text,
                                 (SELECT min_units || '–' || max_units FROM policy.level_limit l WHERE l.level = r.level)) AS range
                   FROM registration.course_registration r
@@ -80,7 +83,16 @@ class DeskController {
                    AND CASE :st WHEN 'ALL' THEN true ELSE r.status = :st END
                  ORDER BY r.semester, r.submitted_at NULLS LAST, s.surname
                 """).param("s", session).param("sem", semester).param("d", dept, Types.VARCHAR).param("st", status.toUpperCase()).query().listOfRows();
+        // entries comes back as a jsonb string over JDBC; parse it to a real array so the client gets one
+        for (Map<String, Object> row : rows) {
+            Object e = row.get("entries");
+            row.put("entries", ENTRIES.readValue(e == null ? "[]" : e.toString(),
+                    new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+        }
+        return rows;
     }
+
+    private static final tools.jackson.databind.ObjectMapper ENTRIES = new tools.jackson.databind.ObjectMapper();
 
     /** the register of one class on one day, over the class list; marking again on the same day replaces the day's register */
     @PostMapping("/offerings/{offeringId}/attendance")
