@@ -154,6 +154,31 @@ class ApplicantsController {
                 .param("s", session + "/" + year).query().listOfRows();
     }
 
+    /** why a programme does or doesn't appear on the computed Post-UTME: per programme, whether it is
+     *  exam-screened (index), and how many of its applicants are submitted and fee-confirmed. A programme
+     *  is on the computed list only when it is NOT index and has applicants who applied and paid. */
+    @GetMapping("/post-utme-audit")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_super','OFFICE_admin','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar')")
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> postUtmeAudit(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("""
+                WITH app AS (
+                    SELECT a.submitted_at, a.fee_confirmed_at, c.programme AS prog_name,
+                           (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS code
+                      FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                     WHERE a.session = :s
+                )
+                SELECT coalesce(pr.name, app.prog_name) AS programme, app.code AS programme_code,
+                       coalesce(admissions.screened_by_exam(:s, app.code), false) AS index_programme,
+                       count(*) AS applications,
+                       count(*) FILTER (WHERE app.submitted_at IS NOT NULL) AS submitted,
+                       count(*) FILTER (WHERE app.submitted_at IS NOT NULL AND app.fee_confirmed_at IS NOT NULL) AS applied_paid
+                  FROM app LEFT JOIN ref.programme pr ON pr.code = app.code
+                 GROUP BY coalesce(pr.name, app.prog_name), app.code, coalesce(admissions.screened_by_exam(:s, app.code), false)
+                 ORDER BY 1
+                """).param("s", session + "/" + year).query().listOfRows();
+    }
+
     /** the whole screening register: every submitted candidate, the mark they were screened by and its source */
     @GetMapping("/screening-register")
     @PreAuthorize(READERS)

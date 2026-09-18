@@ -12,10 +12,14 @@ export interface Computed {
   olevel_total: number | null; olevel_ceiling: number | null; olevel_scaled: number | null;
   utme: number | null; computed: number | null; source: string;
 }
+export interface ProgAudit {
+  programme: string; programme_code: string | null; index_programme: boolean;
+  applications: number; submitted: number; applied_paid: number;
+}
 
 const SRC: Record<string, "ok" | "info" | "grey"> = { "O'Level + UTME": "ok", "O'Level": "info", UTME: "info", none: "grey" };
 
-export function ComputedPostUtme({ rows, session, sessions }: { rows: Computed[]; session: string; sessions: string[] }) {
+export function ComputedPostUtme({ rows, session, sessions, audit = [] }: { rows: Computed[]; session: string; sessions: string[]; audit?: ProgAudit[] }) {
   const router = useRouter();
   const withUtme = rows.filter((r) => r.utme != null).length;
   const de = rows.filter((r) => r.entry_mode === "DIRECT_ENTRY").length;
@@ -85,6 +89,33 @@ export function ComputedPostUtme({ rows, session, sessions }: { rows: Computed[]
           />
         ) : <PBody><div className="sub2">No candidate in {session} is a non-sitter yet — everyone recorded either sat the Post-UTME or has no submitted application.</div></PBody>}
       </Panel>
+
+      {audit.length ? (
+        <Panel title="Why a programme appears here — or does not" right={`${audit.length} programme${audit.length === 1 ? "" : "s"} with applications`}>
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 8 }}>
+              A programme is on the computed list above when it is <b>not</b> exam-screened (non-index) <b>and</b> has applicants who applied and paid.
+              An <b>index</b> programme is screened by the Post-UTME examination — its scores are uploaded, not computed (remove it from the exam list in Admission settings to make it non-index).
+              A non-index programme with <b>0 applied &amp; paid</b> has no completed applications to compute yet.
+            </div>
+            <DTable
+              cols={["Programme", "Screening|mid", "Applications|num", "Submitted|num", "Applied & paid|num", "On computed list|mid"]}
+              rows={audit.map((a) => {
+                const onList = !a.index_programme && a.applied_paid > 0;
+                return [
+                  <span key="p">{a.programme}{a.programme_code ? <span className="sub2"> · {a.programme_code}</span> : <span className="sub2" style={{ color: "var(--red-ink)" }}> · no programme code matched</span>}</span>,
+                  <Pil kind={a.index_programme ? "warn" : "ok"} key="s">{a.index_programme ? "Index (exam)" : "Non-index"}</Pil>,
+                  <span className="tnum" key="a">{a.applications}</span>,
+                  <span className="tnum" key="su">{a.submitted}</span>,
+                  <span className="tnum" key="ap" style={{ color: a.applied_paid === 0 ? "var(--red-ink)" : undefined }}>{a.applied_paid}</span>,
+                  <Pil kind={onList ? "ok" : "grey"} key="o">{onList ? "Yes" : a.index_programme ? "No — index" : "No — none paid"}</Pil>,
+                ];
+              })}
+              texts={audit.map((a) => `${a.programme} ${a.programme_code ?? ""} ${a.index_programme ? "index" : "non-index"}`)}
+            />
+          </PBody>
+        </Panel>
+      ) : null}
     </>
   );
 }
