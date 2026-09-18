@@ -23,7 +23,7 @@ export default async function ComputedScreeningPage({ searchParams }: { searchPa
   return (
     <Shell route="t/postutme" me={me.ok ? me.data : null}>
       {view.ok ? (
-        <ComputedPostUtme rows={view.data} session={session} sessions={list.map((s) => s.name)} audit={audit.ok ? audit.data : []} />
+        <ComputedPostUtme rows={view.data} session={session} sessions={list.map((s) => s.name)} audit={audit.ok ? audit.data : []} actingOffice={me.ok ? me.data.activeOffice : null} />
       ) : <ProblemNotice problem={view.problem} />}
     </Shell>
   );

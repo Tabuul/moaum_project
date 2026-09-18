@@ -591,6 +591,58 @@ class ApplicantsController {
         return Map.of("zeroed", zeroed);
     }
 
+    /** Enter the computed O'Level figure as the Post-UTME (screening) score for NON-index programmes,
+     *  so those applicants (who never sit the Post-UTME) get a screening figure and enter the merit list.
+     *  The figure is the session's O'Level score scaled to 100 (admissions.screening_component). Only
+     *  submitted, non-exam, not-yet-scored, not-yet-released applicants; per-row with deadlock retry.
+     *  Release the scores afterwards for the merit list to include them. */
+    @PostMapping("/screening-scores/from-olevel")
+    @PreAuthorize(SCORE_UPLOADERS)
+    Map<String, Object> scoreFromOlevel(@PathVariable String session, @PathVariable String year,
+                                        @RequestParam(required = false) String programme) {
+        String s = session + "/" + year;
+        List<Map<String, Object>> targets = jdbc.sql("""
+                SELECT a.id, sc.screening
+                  FROM admissions.application a
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  JOIN ref.programme pr ON pr.code = (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)
+                  CROSS JOIN LATERAL admissions.screening_component(a.id) sc
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NULL AND a.screening_score IS NULL
+                   AND NOT admissions.screened_by_exam(:s, pr.code)
+                   AND sc.screening IS NOT NULL
+                   AND (:p::text IS NULL OR pr.code = :p)
+                """).param("s", s).param("p", programme, Types.VARCHAR).query().listOfRows();
+        int entered = 0;
+        int noOlevel = jdbc.sql("""
+                SELECT count(*) FROM admissions.application a
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  JOIN ref.programme pr ON pr.code = (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)
+                  CROSS JOIN LATERAL admissions.screening_component(a.id) sc
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NULL AND a.screening_score IS NULL
+                   AND NOT admissions.screened_by_exam(:s, pr.code) AND sc.screening IS NULL
+                   AND (:p::text IS NULL OR pr.code = :p)
+                """).param("s", s).param("p", programme, Types.VARCHAR).query(Integer.class).single();
+        for (Map<String, Object> t : targets) {
+            Object id = t.get("id");
+            java.math.BigDecimal sc = t.get("screening") == null ? null : new java.math.BigDecimal(t.get("screening").toString());
+            if (sc == null) {
+                continue;
+            }
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    tx.execute(st -> jdbc.sql("UPDATE admissions.application SET screening_score = :v, score_entered_at = now() WHERE id = :id AND screening_score IS NULL AND score_released_at IS NULL")
+                            .param("v", sc).param("id", id).update());
+                    entered++;
+                    break;
+                } catch (org.springframework.dao.TransientDataAccessException e) {
+                    if (attempt >= 4) throw e;
+                    try { Thread.sleep(40L * attempt); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw e; }
+                }
+            }
+        }
+        return Map.of("entered", entered, "noOlevel", noOlevel);
+    }
+
     public record ScoreRow(String key, java.math.BigDecimal score) {
     }
 

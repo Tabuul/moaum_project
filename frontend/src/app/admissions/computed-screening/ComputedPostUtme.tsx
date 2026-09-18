@@ -2,7 +2,9 @@
 
 /** t/postutme — the Academic Office's computed Post-UTME for candidates who did not sit it (V090):
  *  the O'Level aggregate blended with the UTME, for Direct Entry and non-exam programmes. Read-only. */
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { reasonHeader } from "@/lib/reason";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
@@ -19,10 +21,29 @@ export interface ProgAudit {
 
 const SRC: Record<string, "ok" | "info" | "grey"> = { "O'Level + UTME": "ok", "O'Level": "info", UTME: "info", none: "grey" };
 
-export function ComputedPostUtme({ rows, session, sessions, audit = [] }: { rows: Computed[]; session: string; sessions: string[]; audit?: ProgAudit[] }) {
+export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOffice = null }: { rows: Computed[]; session: string; sessions: string[]; audit?: ProgAudit[]; actingOffice?: string | null }) {
   const router = useRouter();
   const withUtme = rows.filter((r) => r.utme != null).length;
   const de = rows.filter((r) => r.entry_mode === "DIRECT_ENTRY").length;
+  const mayEnter = ["academic", "registrar", "dregistrar", "ict", "admin", "super"].includes(actingOffice ?? "");
+  const [entering, setEntering] = useState(false);
+  const [entered, setEntered] = useState<{ entered: number; noOlevel: number } | null>(null);
+
+  // enter these computed O'Level figures as the Post-UTME (screening) score for the non-index applicants,
+  // so they get a screening figure and enter the merit list (release the scores afterwards)
+  async function enterAsScores() {
+    if (!window.confirm(`Enter the computed O'Level figure as the Post-UTME score for the ${rows.length} non-index applicant(s) shown? They then need the scores released to enter the merit list. A real score is never overwritten.`)) return;
+    setEntering(true); setEntered(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/from-olevel`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`O'Level entered as Post-UTME score for non-index programmes for ${session}`) }, body: "{}",
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j) { setEntered({ entered: Number(j.entered ?? 0), noOlevel: Number(j.noOlevel ?? 0) }); router.refresh(); }
+    } finally {
+      setEntering(false);
+    }
+  }
 
   // export: the whole computed list, not just the page, with the crest, title and a serial
   const XCOLS = ["JAMB No", "Candidate", "Programme", "Mode", "O'Level /100", "O'Level total", "UTME", "Computed", "Basis"];
@@ -51,8 +72,9 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [] }: { rows
         <b> computed</b> screening figure for them, for the Academic Office: the UTME scaled to 100 and the O&rsquo;Level
         aggregate scaled to 100 (under the session&rsquo;s grading), combined on the session&rsquo;s admission weights —
         UTME 70%, O&rsquo;Level 30% by default; a Direct Entry candidate with no UTME shows the O&rsquo;Level figure alone.
-        It lists the non-index programmes only, for applicants who applied and paid. It is a report — it does not change the
-        sat score or the merit engine.
+        It lists the non-index programmes only, for applicants who applied and paid. Use <b>Enter O&rsquo;Level as Post-UTME
+        score</b> to record the O&rsquo;Level figure (scaled to 100) as their screening score, then release the scores — so
+        these applicants enter the merit list. A real Post-UTME score is never overwritten.
       </Note>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="pu-s">Session</label>
@@ -67,8 +89,15 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [] }: { rows
         ["Direct Entry", String(de), null, "O'Level basis (no UTME)"],
         ["O'Level only", String(rows.length - withUtme), null, "No UTME on record"],
       ]} />
+      {entered ? (
+        <Note kind="ok" title={`${entered.entered.toLocaleString()} O'Level figure${entered.entered === 1 ? "" : "s"} entered as the Post-UTME score`}>
+          These non-index applicants now carry their O&rsquo;Level (scaled to 100) as the screening score. <b>Release the scores</b> (Upload PUTME Score → Release, or the Applicants desk) for them to enter the merit list.
+          {entered.noOlevel ? <> {entered.noOlevel.toLocaleString()} still have no O&rsquo;Level on record, so nothing could be computed for them — upload their O&rsquo;Level, or score them zero.</> : null}
+        </Note>
+      ) : null}
       <Panel title="Computed Post-UTME" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
         <span className="sub2">{rows.length} candidate{rows.length === 1 ? "" : "s"}</span>
+        {mayEnter ? <Btn kind="primary" disabled={!rows.length || entering} onClick={() => void enterAsScores()}>{entering ? "Entering…" : "Enter O'Level as Post-UTME score"}</Btn> : null}
         <Btn kind="ghost" disabled={!rows.length} onClick={toExcel}>Download Excel</Btn>
         <Btn kind="ghost" disabled={!rows.length} onClick={toPrint}>Print / PDF</Btn>
       </span>}>
