@@ -78,6 +78,7 @@ class AllocationController {
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
                  WHERE o.session = :session AND o.semester = :semester AND c.dept_code = :dept
                    AND c.semester = :semester                 -- only courses actually offered in this semester
+                   AND c.state <> 'ENDED'                     -- an ended course is not allocated to a lecturer
                    AND (:level::int IS NULL OR c.level = :level)
                  ORDER BY c.level, o.course_code
                 """).param("session", session).param("semester", semester).param("dept", dept)
@@ -149,12 +150,23 @@ class AllocationController {
         }
     }
 
+    /** an ended course is off the catalogue and is not allocated to a lecturer (restore it first) */
+    private void assertOfferingLive(UUID offering) {
+        String state = jdbc.sql("SELECT c.state FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.id = :o")
+                .param("o", offering).query(String.class).optional().orElse(null);
+        if ("ENDED".equals(state)) {
+            throw new DomainRuleViolation("ALLOC_ENDED", "This course has ended, so it cannot be allocated to a lecturer.",
+                    new DomainRuleViolation.Remedy("Restore the course on the Department courses page before allocating it.", "Head of Department"));
+        }
+    }
+
     /** assign the lead lecturer and a second examiner to an offering */
     @PostMapping("/{offering}")
     @PreAuthorize(ALLOCATORS)
     @Transactional
     Map<String, Object> assign(@PathVariable UUID offering, @RequestBody Assign body) {
         assertHodOwnsOffering(offering);
+        assertOfferingLive(offering);
         jdbc.sql("SELECT catalogue.allocate_offering(:o, :lec, :sec, :ov)")
                 .param("o", offering).param("lec", body.lecturer())
                 .param("sec", body.secondExaminer(), Types.OTHER)
@@ -172,6 +184,7 @@ class AllocationController {
     @Transactional
     Map<String, Object> addTeacher(@PathVariable UUID offering, @RequestBody Teacher body) {
         assertHodOwnsOffering(offering);
+        assertOfferingLive(offering);
         Integer n = jdbc.sql("""
                 INSERT INTO catalogue.offering_teacher (offering_id, lecturer_id, added_by)
                 SELECT :o, :lec, :by
