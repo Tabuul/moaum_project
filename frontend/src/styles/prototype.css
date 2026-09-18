@@ -860,6 +860,10 @@
   .mdl__x:hover { color: var(--ink); }
   .mdl__body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px;
     overflow-y: auto; min-height: 0; }
+  /* a .tablewrap sets overflow-x:auto, which forces overflow-y to auto too, making it a scroll
+     container; as a flex item in this column it would then shrink below its content and hide the rows.
+     Keep it at content height and let the modal body scroll instead. */
+  .mdl__body .tablewrap { flex-shrink: 0; }
   .mdl__foot { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
     padding: 13px 18px; border-top: 1px solid var(--line-2); background: var(--bg);
     border-radius: 0 0 12px 12px; }
