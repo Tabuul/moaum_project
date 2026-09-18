@@ -59,7 +59,7 @@ class VerifyController {
                               THEN least(600, greatest(100, s.entry_level + (left(pr.session, 4)::int - left(s.entry_session, 4)::int) * 100))
                               ELSE s.current_level END) AS level,
                        coalesce(
-                         (SELECT 'data:' || d.content_type || ';base64,' || encode(b.content, 'base64')
+                         (SELECT 'data:' || coalesce(nullif(btrim(d.content_type), ''), 'image/jpeg') || ';base64,' || encode(b.content, 'base64')
                             FROM admissions.application_document d
                             JOIN admissions.application ap ON ap.id = d.application_id
                             JOIN admissions.application_document_blob b ON b.document_id = d.id
