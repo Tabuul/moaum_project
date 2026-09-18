@@ -38,8 +38,17 @@ export default async function DashboardPage() {
   const requestsOpen = asks && asks.ok ? asks.data.filter((r) => r.state === "OPEN" || r.state === "WITH_OFFICE").length : null;
   /* the Head of Department's dashboard, scoped to their own department */
   const hodHome = office === "hod" ? await api<HodHome>(`/api/v1/hod/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
+  let sub: string | undefined;
+  if (office === "lecturer" && mine && mine.ok) {
+    const n = mine.data.length;
+    sub = `${me.ok ? me.data.name : "Lecturer"} · ${n} course${n === 1 ? "" : "s"} this session`;
+  } else if (office === "hod" && hodHome && hodHome.ok && hodHome.data.resolved) {
+    const h = hodHome.data;
+    sub = `${h.deptName} · ${h.approvals ?? 0} to approve · ${h.deptStudents ?? 0} students`;
+  }
   return (
-    <Shell route="r/academic" me={me.ok ? me.data : null}>
+    <Shell route="r/academic" me={me.ok ? me.data : null} sub={sub}>
       {!me.ok ? <ProblemNotice problem={me.problem} /> : null}
       {office && PLATFORM.has(office) ? (
         <PlatformDashboard me={me.ok ? me.data : null} />
