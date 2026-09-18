@@ -259,10 +259,11 @@ class ApplicantsController {
      *  idempotent, so a retry never double-creates). Returns the function's status string. */
     private String importOne(String s, ImportRow r) {
         for (int attempt = 1; ; attempt++) {
-            String status = tx.execute(st -> jdbc.sql("SELECT admissions.import_applicant(:s, :j, :sn, :on, :pr, :em, :ma, :ph, :ut)")
-                    .param("s", s).param("j", r.jambKey()).param("sn", r.surname()).param("on", r.otherNames())
-                    .param("pr", r.programme()).param("em", r.entryMode()).param("ma", r.email()).param("ph", r.phone())
-                    .param("ut", r.utme()).query(String.class).single());
+            // CAPS-driven (V174): the candidate's name/programme/UTME come from the JAMB CAPS row;
+            // the old-portal file supplies only the JAMB number, email and phone, and the paid flag.
+            String status = tx.execute(st -> jdbc.sql("SELECT admissions.import_applicant(:s, :j, :ma, :ph)")
+                    .param("s", s).param("j", r.jambKey()).param("ma", r.email()).param("ph", r.phone())
+                    .query(String.class).single());
             boolean contended = status != null && (status.contains("deadlock") || status.contains("could not serialize") || status.contains("concurrent update"));
             if (contended && attempt < 4) {
                 try {
@@ -305,6 +306,17 @@ class ApplicantsController {
         long nowLinked = candidates - stillUnlinked;
         return Map.of("candidatesLinked", linked == null ? 0 : linked, "capsRows", capsRows,
                 "candidates", candidates, "nowLinked", nowLinked, "stillUnlinked", stillUnlinked);
+    }
+
+    /** Clear only the old-portal migration's records for a session — candidate, account, application —
+     *  so the migration can be re-run against the CAPS list. Keeps the CAPS rows, O'Level and passports
+     *  (a passport is unlinked, not deleted, and re-attaches by JAMB number). */
+    @PostMapping("/import-applicants/reset-migrated")
+    @PreAuthorize(IMPORTERS)
+    @Transactional
+    Map<String, Object> resetMigrated(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT * FROM admissions.reset_migrated_applicants(:s)")
+                .param("s", session + "/" + year).query().singleRow();
     }
 
     /** an admitted candidate who has not registered for Post-UTME — read from the committed CAPS

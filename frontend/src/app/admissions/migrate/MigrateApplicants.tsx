@@ -61,7 +61,26 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   const [result, setResult] = useState<{ imported: number; existed: number; skipped: number; placeholders: number; passportsLinked: number; problems: Problem[] } | null>(null);
   const [linking, setLinking] = useState(false);
   const [linkInfo, setLinkInfo] = useState<{ candidatesLinked: number; capsRows: number; candidates: number; nowLinked: number; stillUnlinked: number } | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetInfo, setResetInfo] = useState<{ candidates: number; applications: number; accounts: number; passports_kept: number } | null>(null);
   const money = (n: number) => `₦${Number(n).toLocaleString("en-NG")}`;
+
+  // clear only the old-portal migration's records (candidate/account/application), so it can be re-run
+  // against the CAPS list — keeps the CAPS rows, O'Level and passports (passports re-link by JAMB number)
+  async function resetMigrated() {
+    if (!window.confirm("Clear the migrated applicants for " + session + "? This removes only the migrated candidate/account/application records so you can re-run the migration against the CAPS list. The CAPS list, O'Level results and passports are kept (passports re-link by JAMB number). Proceed?")) return;
+    setResetting(true); setResetInfo(null); setErr(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/import-applicants/reset-migrated`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Reset migrated applicants for ${session} to re-run against CAPS`) }, body: "{}",
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j?.detail ?? "The reset could not run."); return; }
+      setResetInfo({ candidates: Number(j?.candidates ?? 0), applications: Number(j?.applications ?? 0), accounts: Number(j?.accounts ?? 0), passports_kept: Number(j?.passports_kept ?? 0) });
+    } finally {
+      setResetting(false);
+    }
+  }
 
   // reconcile: point every candidate with no CAPS link at its JAMB CAPS row, so its demographics/UTME
   // come from the authoritative CAPS data (the migration only confirmed the payment)
@@ -104,7 +123,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
       const iA = pick(head, ["aggregate", "aggr", "utme", "score"]);
       const hasSplit = iS >= 0 && iO >= 0;
       if (iK < 0) { setErr("The JAMB / registration number column was not found in the header row."); return; }
-      if (!hasSplit && iN < 0) { setErr("No name column was found. Provide either a single “Name” column, or separate “Surname” and “Other Names” columns."); return; }
+      // names/programme are no longer required — they come from the JAMB CAPS list; only the JAMB number is needed
       const out: Row[] = [];
       for (let r = 1; r < grid.length; r++) {
         const g = grid[r];
@@ -202,14 +221,14 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
   return (
     <>
       <Note kind="info" title="Migrate the applicants who already applied and paid on the old portal">
-        Upload the spreadsheet of applicants from the previous portal. Each one is created here as an applicant account,
-        their application is marked <b>paid and submitted</b>, and a confirmed application-fee receipt is written. Their
-        <b> initial password is their JAMB number</b> — they change it on first sign-in. Only the <b>JAMB number</b> and the
-        applicant&rsquo;s <b>name</b> are required — the name may be one <b>Name</b> column (split into surname and other
-        names) or separate <b>Surname</b> and <b>Other Names</b> columns. <b>Email and phone are optional</b>: where a row has none, a placeholder stands
-        in and the applicant signs in with their JAMB number, then adds their real email and phone in their profile — no
-        message is sent to a placeholder. It is safe to run the same file more than once: an applicant who already has an
-        account is skipped, not duplicated.
+        The <b>JAMB CAPS list is the source of the applicant&rsquo;s data</b> — name, programme, sex, state, LGA, UTME and
+        subjects all come from it, so <b>upload and commit the CAPS list first</b>. This migration only <b>confirms the
+        payment and creates the login</b>: for each row it finds the applicant on the CAPS list by <b>JAMB number</b>,
+        creates their account (initial password = their JAMB number), and writes a confirmed application-fee receipt marked
+        paid and submitted. So the file needs only the <b>JAMB number</b> (email and phone are optional, for the login and
+        contact — a placeholder stands in where a row has none; any name/programme columns are ignored, CAPS is used). A
+        JAMB number <b>not on the CAPS list is skipped and reported</b>. It is safe to run the same file more than once —
+        an applicant who already has an account is skipped, not duplicated.
       </Note>
 
       {fee.stated ? (
@@ -236,6 +255,17 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="primary" disabled={linking || !may} onClick={() => void linkToCaps()}>{linking ? "Linking…" : "Link applicants to CAPS"}</Btn>
             {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may run this.</span> : null}
+          </div>
+          <div style={{ borderTop: "1px solid var(--line)", marginTop: 12, paddingTop: 12 }}>
+            <div className="sub2" style={{ marginBottom: 8 }}>
+              <b>Re-run from scratch?</b> If applicants were migrated before the CAPS list was uploaded, clear the migration and re-run it against CAPS.
+              This removes only the migrated <b>candidate / account / application</b> records — the CAPS list, O&rsquo;Level results and passports are kept
+              (passports re-link by JAMB number). Then import the file again, and the applicants are rebuilt from CAPS.
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <Btn kind="urgent" disabled={resetting || !may} onClick={() => void resetMigrated()}>{resetting ? "Clearing…" : "Reset migrated applicants"}</Btn>
+              {resetInfo ? <span className="sub2" style={{ color: "var(--green-ink)" }}>Cleared {resetInfo.candidates.toLocaleString()} candidate{resetInfo.candidates === 1 ? "" : "s"}, {resetInfo.applications.toLocaleString()} application{resetInfo.applications === 1 ? "" : "s"}; {resetInfo.passports_kept.toLocaleString()} passport{resetInfo.passports_kept === 1 ? "" : "s"} kept for re-linking.</span> : null}
+            </div>
           </div>
           {linkInfo ? (
             linkInfo.capsRows === 0 ? (
