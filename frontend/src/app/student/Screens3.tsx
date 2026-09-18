@@ -130,7 +130,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       ) : null}
       {locked ? (
         <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"} title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? `Approved on ${onDay(reg!.approved_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Head of Department`}
-          action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <Link href="/student/form" className="btn btn--primary btn--sm">Course form</Link> : null}>
+          action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <Link href={`/student/form?session=${encodeURIComponent(v.session)}&semester=${v.semester}`} className="btn btn--primary btn--sm">Course form</Link> : null}>
           {reg!.units} units. {reg!.status === "SUBMITTED" ? "It goes to your Head of Department for approval; a return comes back here with the reason." : "The register carries these courses; the class lists and the score sheets are drawn from them."}
         </Note>
       ) : reg?.status === "RETURNED" ? (
