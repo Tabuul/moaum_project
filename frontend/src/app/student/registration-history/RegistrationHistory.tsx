@@ -27,6 +27,13 @@ function courseType(e: Entry): string {
   return "Core";
 }
 
+/** display order: carryover first, then GST, then Core, then Elective */
+function orderRank(e: Entry): number {
+  if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
+  const t = courseType(e);
+  return t === "GST" ? 1 : t === "Core" ? 2 : 3;
+}
+
 function RegPanel({ r }: { r: Reg }) {
   return (
     <Panel
@@ -36,7 +43,7 @@ function RegPanel({ r }: { r: Reg }) {
         <Pil kind={REG_PILL[r.status] ?? "grey"}>{r.status}</Pil>
       </span>}>
       {r.entries.length ? (
-        <DTable cols={["Course code", "Course title", "Lecturer", "Unit|mid", "Type|mid", "Status|mid"]} rows={r.entries.map((e) => {
+        <DTable cols={["Course code", "Course title", "Lecturer", "Unit|mid", "Type|mid", "Status|mid"]} rows={[...r.entries].sort((a, b) => orderRank(a) - orderRank(b) || a.courseCode.localeCompare(b.courseCode)).map((e) => {
           const co = e.entryType === "CARRYOVER";
           return [
             <b className="tnum" key="c">{e.courseCode}</b>,
