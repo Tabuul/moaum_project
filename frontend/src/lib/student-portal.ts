@@ -32,7 +32,7 @@ export interface Semester { session: string; semester: number; units: number; gp
   cur: number; cue: number; wgp: number; tcr: number; tce: number; twgp: number; lcgpa: number | null }
 export interface Carryover { course_code: string; title: string; units: number; failed_in: string }
 export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number }
-export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[] }
+export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[]; returned_comment?: string | null }
 export interface MenuItem {
   offering_id: string; course_code: string; title: string; units: number; kind: string; basis: string; owner_dept: string;
   carryover: boolean; failed_in: string | null; lecturer: string | null;

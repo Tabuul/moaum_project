@@ -139,6 +139,12 @@ class RegistrationRepository {
                 .query(Limit.class).optional();
     }
 
+    /** return a registration to the student with the reason they must act on */
+    void returnWithComment(UUID id, String comment) {
+        jdbc.sql("UPDATE registration.course_registration SET status = 'RETURNED', returned_comment = :c WHERE id = :id")
+                .param("c", comment).param("id", id).update();
+    }
+
     void setStatus(UUID id, String status, UUID approvedBy) {
         jdbc.sql("""
                 UPDATE registration.course_registration

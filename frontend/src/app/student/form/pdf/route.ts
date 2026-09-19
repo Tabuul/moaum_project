@@ -12,6 +12,13 @@ const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "..." : s);
 
 /** GST / Elective / Core (Compulsory/Required → Core) */
+/** display order: carryover first, then GST, then Core, then Elective */
+function orderRank(e: Entry): number {
+  if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
+  const t = courseType(e);
+  return t === "GST" ? 1 : t === "Core" ? 2 : 3;
+}
+
 function courseType(e: Entry): string {
   const k = (e.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";
@@ -73,7 +80,7 @@ export async function GET(request: NextRequest) {
   p.text(unitX, y, "UNIT", 8, true, [1, 1, 1]);
   p.text(typeX, y, "TYPE", 8, true, [1, 1, 1]);
   y -= 22;
-  for (const e of reg.entries) {
+  for (const e of [...reg.entries].sort((a, b) => orderRank(a) - orderRank(b) || (a.courseCode ?? "").localeCompare(b.courseCode ?? ""))) {
     const co = e.entryType === "CARRYOVER";
     p.text(L + 8, y, clean(e.courseCode), 9, true, co ? [0.72, 0.11, 0.11] : [0, 0, 0]);
     p.text(L + 8 + Math.min(clean(e.courseCode).length * 5.6 + 8, 74), y, cut(clean(e.title), 34), 9, false, [0.2, 0.2, 0.2]);

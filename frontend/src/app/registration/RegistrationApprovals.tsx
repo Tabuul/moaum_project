@@ -24,6 +24,13 @@ export interface RegistrationRow {
 
 const SEM = (n?: number) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "—");
 
+/** display order: carryover first, then GST, then Core, then Elective */
+function entryRank(e: RegEntry): number {
+  if ((e.type ?? "").toUpperCase() === "CARRYOVER") return 0;
+  const k = (e.kind ?? "").toLowerCase();
+  return k === "gst" ? 1 : (k === "compulsory" || k === "required") ? 2 : 3;
+}
+
 export function RegistrationApprovals({ rows, session, semester, actingOffice }: { rows: RegistrationRow[]; session: string; semester: number; actingOffice: string | null }) {
   const router = useRouter();
   // approval is one step and it is the Head of Department's (super is system break-glass)
@@ -77,7 +84,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
           <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${open.id}`, `${open.id}/return`, { comment }, `Registration of ${open.matric_no ?? open.admission_no} returned: ${comment}`).then(() => setOpen(null)); }}>Return</Btn>
           <Btn kind="go" disabled={!may || busy !== null} onClick={() => void act(`ok-${open.id}`, `${open.id}/approve`, {}, `Registration of ${open.matric_no ?? open.admission_no} approved`).then(() => setOpen(null))}>{busy === `ok-${open.id}` ? "Approving…" : "Approve"}</Btn>
         </>}>
-        <DTable cols={["Code|mid", "Course title", "Units|num", "Kind|mid", "Basis|mid"]} rows={(open.entries ?? []).map((e) => [
+        <DTable cols={["Code|mid", "Course title", "Units|num", "Kind|mid", "Basis|mid"]} rows={[...(open.entries ?? [])].sort((a, b) => entryRank(a) - entryRank(b) || a.code.localeCompare(b.code)).map((e) => [
           <b className="tnum" key="c">{e.code}</b>,
           <span key="t">{e.title}</span>,
           <span className="tnum" key="u">{e.units}</span>,

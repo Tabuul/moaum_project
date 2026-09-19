@@ -257,7 +257,7 @@ class StudentPortalRepository {
 
     Optional<Map<String, Object>> registration(UUID student, String session, int semester) {
         return jdbc.sql("""
-                SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
+                SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', c.title, 'units', e.units,
                                'kind', c.kind, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,

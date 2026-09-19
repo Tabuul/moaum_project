@@ -28,6 +28,16 @@ function courseType(e: { kind?: string; entryType?: string }): string {
   return "Core";
 }
 
+/** display order: carryover first, then GST, then Core, then Elective */
+function orderRank(e: { kind?: string; entryType?: string }): number {
+  if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
+  const t = courseType(e);
+  return t === "GST" ? 1 : t === "Core" ? 2 : 3;
+}
+function byOrder<T extends { kind?: string; entryType?: string; courseCode?: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => orderRank(a) - orderRank(b) || (a.courseCode ?? "").localeCompare(b.courseCode ?? ""));
+}
+
 export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
@@ -134,12 +144,15 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           {reg!.units} units. {reg!.status === "SUBMITTED" ? "It goes to your Head of Department for approval; a return comes back here with the reason." : "The register carries these courses; the class lists and the score sheets are drawn from them."}
         </Note>
       ) : reg?.status === "RETURNED" ? (
-        <Note kind="bad" title="Returned to you">Your Head of Department returned this registration. Change it and submit again.</Note>
+        <Note kind="bad" title="Returned to you">
+          {reg.returned_comment ? <><b>Your Head of Department&rsquo;s reason:</b> {reg.returned_comment}<br /></> : null}
+          Change your registration and submit it again.
+        </Note>
       ) : null}
 
       {locked && v.addDropOpen ? (() => {
         const activeIds = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
-        const droppable = (reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.entryType !== "CARRYOVER");
+        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.entryType !== "CARRYOVER"));
         const addable = v.menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
         return (
           <div className="card"><div className="card__head"><span className="card__title">Add or drop courses</span><span className="sub2">the add/drop window is open</span></div>
@@ -237,7 +250,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
             <th className="num" style={{ background: "var(--chrome)", color: "#fff" }}>Type</th>
           </tr></thead>
           <tbody>
-            {reg.entries.map((e) => { const co = e.entryType === "CARRYOVER"; return (
+            {byOrder(reg.entries).map((e) => { const co = e.entryType === "CARRYOVER"; return (
               <tr key={e.offeringId}>
                 <td className="tnum" style={{ fontWeight: 600 }}>{e.courseCode}{co ? <span style={{ color: "var(--red-ink)", fontWeight: 700 }}> · C/O</span> : null}</td>
                 <td>{e.title}</td>

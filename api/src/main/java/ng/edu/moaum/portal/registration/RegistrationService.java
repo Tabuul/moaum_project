@@ -160,7 +160,7 @@ public class RegistrationService {
             throw new DomainRuleViolation("REG_RETURN_SAYS_WHY", "A registration is returned with the reason on the record.",
                     new DomainRuleViolation.Remedy("Say what the student must change.", "Head of Department"));
         }
-        repo.setStatus(id, "RETURNED", null);
+        repo.returnWithComment(id, comment.trim());
         return Map.of("id", id, "status", "RETURNED");
     }
 
