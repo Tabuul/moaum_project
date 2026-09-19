@@ -162,12 +162,9 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       const other = t.rows.filter((x) => x.decision === "WAITING");
       const non = t.rows.filter((x) => x.decision === "NOT_OFFERED");
       const s = t.summary;
-      // registered = qualified + non-qualified + pending (not yet scored/decided); the line makes the figures reconcile
-      const pending = Math.max(Number(s.registeredApplicants ?? 0) - Number(s.qualifiedCases ?? 0) - Number(s.nonQualifiedCases ?? 0), 0);
       const summary: Cell[][] = [...head("SUMMARY OF UTME ADMISSION"), ["SN", "ITEM", "COUNT"],
         [1, "Total Applicants", s.totalApplicants], [2, "Registered Applicants", s.registeredApplicants], [3, "Qualified Cases", s.qualifiedCases],
-        [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Pending Evaluation (not yet scored)", pending],
-        [6, "Total Quota (100%)", s.totalQuota], [7, "UTME Quota (80%)", s.utmeQuota], [8, "Number On Merit List", s.numberOnMeritList]];
+        [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Total Quota (100%)", s.totalQuota], [6, "UTME Quota (80%)", s.utmeQuota], [7, "Number On Merit List", s.numberOnMeritList]];
       if (t.quotaDistribution.length) {
         summary.push([], [null, "QUOTA DISTRIBUTION"], ["SN", "ADMISSION CRITERIA", "(%)", "QUOTA", "ADMITTED", "S/FALLS", "REMARK"]);
         t.quotaDistribution.forEach((q, i) => summary.push([i + 1, q.criterion, q.percent, q.quota, q.admitted, q.shortfall, q.shortfall ? `${q.admitted} of ${q.quota}` : ""]));
