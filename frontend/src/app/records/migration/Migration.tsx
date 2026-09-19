@@ -12,7 +12,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterText } from "@/lib/student-portal";
 
 type Tab = "biodata" | "students" | "registration" | "results" | "passports";
-const MIGRATE = ["exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
+const MIGRATE = ["ict", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
 /* the matric shapes the biography/students importers accept — the University's own, or a legacy old-portal number */
 const MATRIC_OK = /^(MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}|[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7})$/i;
 /** a semester cell — "First"/"Second"/"Third" or 1/2/3 — to its number */
@@ -364,7 +364,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         course code &mdash; nothing is typed. A past result is imported as final under a legacy minute, so it counts on
         the transcript and the GPA exactly as one entered here. Every import is your act.
       </Note>
-      {!may ? <Note kind="bad" title="This desk is for the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
+      {!may ? <Note kind="bad" title="This desk is for the ICT Directorate, the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
 
       <div className="card"><div className="card__body">
         <div className="role-tabs" role="tablist">

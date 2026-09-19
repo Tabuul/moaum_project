@@ -41,7 +41,7 @@ class ResultsController {
     }
 
     private static final String MIGRATE =
-            "hasAnyAuthority('OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_records',"
+            "hasAnyAuthority('OFFICE_ict','OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_records',"
             + "'OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     /** the students exported from the old portal — the first migration step, so results and registration can match */
