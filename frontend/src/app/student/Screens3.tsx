@@ -217,8 +217,23 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   );
 }
 
+/** print the branded course-form PDF (a proper print sheet) rather than window.print() of the web page,
+ *  which the print stylesheet blanks. Loads the PDF in a hidden iframe and prints it; opens it if blocked. */
+function printPdf(url: string) {
+  const f = document.createElement("iframe");
+  f.style.position = "fixed"; f.style.right = "0"; f.style.bottom = "0"; f.style.width = "0"; f.style.height = "0"; f.style.border = "0";
+  f.src = url;
+  f.onload = () => {
+    try { f.contentWindow?.focus(); f.contentWindow?.print(); }
+    catch { window.open(url, "_blank", "noopener"); }
+    window.setTimeout(() => { try { document.body.removeChild(f); } catch { /* already gone */ } }, 60000);
+  };
+  document.body.appendChild(f);
+}
+
 export function Form({ s, v }: { s: Me; v: RegistrationView }) {
   const reg = v.registration;
+  const pdfUrl = `/student/form/pdf?session=${encodeURIComponent(v.session)}&semester=${v.semester}`;
   if (!reg || !(reg.status === "APPROVED" || reg.status === "LOCKED")) {
     return (
       <Note kind="info" title="The course form is issued when your registration is approved" action={<Link href="/student/register" className="btn btn--primary btn--sm">Course registration</Link>}>
@@ -266,8 +281,8 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
         </div>
       </div>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-        <a href={`/student/form/pdf?session=${encodeURIComponent(v.session)}&semester=${v.semester}`} target="_blank" rel="noopener" className="btn btn--primary">Download PDF</a>
-        <Btn kind="ghost" onClick={() => window.print()}>Print</Btn>
+        <a href={pdfUrl} target="_blank" rel="noopener" className="btn btn--primary">Download PDF</a>
+        <Btn kind="ghost" onClick={() => printPdf(pdfUrl)}>Print</Btn>
       </div>
     </>
   );
