@@ -167,7 +167,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Total Quota (100%)", s.totalQuota], [6, "UTME Quota (80%)", s.utmeQuota], [7, "Number On Merit List", s.numberOnMeritList]];
       if (t.quotaDistribution.length) {
         summary.push([], [null, "QUOTA DISTRIBUTION"], ["SN", "ADMISSION CRITERIA", "(%)", "QUOTA", "ADMITTED", "S/FALLS", "REMARK"]);
-        t.quotaDistribution.forEach((q, i) => summary.push([i + 1, q.criterion, q.percent, q.quota, q.admitted, q.shortfall, q.shortfall ? `${q.admitted} of ${q.quota}` : ""]));
+        t.quotaDistribution.forEach((q, i) => summary.push([i + 1, q.criterion, q.percent, q.quota, q.admitted || "", q.shortfall, q.shortfall ? `${q.admitted} of ${q.quota}` : ""]));
       }
       if (t.lgaAnalysis.length) {
         summary.push([], [null, "NATIONAL/STATE/LOCAL GOVERNMENT ANALYSIS"], ["SN", "LGA NAME", "ELG", "SM", "NM", "TOTAL"]);
