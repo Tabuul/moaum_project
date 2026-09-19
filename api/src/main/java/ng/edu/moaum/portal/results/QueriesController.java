@@ -46,15 +46,20 @@ class QueriesController {
     }
 
     private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    QueriesController(JdbcClient jdbc) {
+    QueriesController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     @GetMapping("/queries")
     @PreAuthorize(DEPARTMENT)
     @Transactional(readOnly = true)
     List<Map<String, Object>> queries(@RequestParam(required = false) String dept, @RequestParam(defaultValue = "open") String state) {
+        // a Head of Department sees only their own department's queries unless they pick one explicitly;
+        // a wider office (records, academic, registrar, super) sees them all and may filter by department
+        String d = (dept == null || dept.isBlank()) ? scope.actingHodDept() : dept;
         return jdbc.sql("""
                 SELECT q.id, q.ref, q.part, q.said, q.routed_dept, d.name AS dept_name, q.raised_at, q.state, q.answer, q.answered_at,
                        s.matric_no, s.surname, s.other_names, c.code AS course_code, c.title, o.session, o.semester,
@@ -69,7 +74,7 @@ class QueriesController {
                  WHERE (:d::text IS NULL OR q.routed_dept = :d)
                    AND CASE :st WHEN 'open' THEN q.state = 'RAISED' WHEN 'answered' THEN q.state <> 'RAISED' ELSE true END
                  ORDER BY q.raised_at DESC LIMIT 500
-                """).param("d", dept, Types.VARCHAR).param("st", state).query().listOfRows();
+                """).param("d", d, Types.VARCHAR).param("st", state).query().listOfRows();
     }
 
     @PostMapping("/queries/{id}/answer")

@@ -211,6 +211,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Departmental approvals"
           },
           {
+            "id": "t/queries",
+            "icon": "bell",
+            "label": "Result queries"
+          },
+          {
             "id": "t/pipeline",
             "icon": "swap",
             "label": "Result pipeline"
@@ -736,6 +741,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/approvals",
             "icon": "check",
             "label": "Verification queue"
+          },
+          {
+            "id": "t/queries",
+            "icon": "bell",
+            "label": "Result queries"
           }
         ]
       },
