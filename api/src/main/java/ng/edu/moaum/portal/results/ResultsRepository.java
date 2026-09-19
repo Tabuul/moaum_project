@@ -407,4 +407,55 @@ class ResultsRepository {
         return jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, :sem, :j::jsonb, :wr)")
                 .param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).query().singleRow();
     }
+
+    /**
+     * Store one migrated passport photo, matched to a candidate by JAMB reg no (the picture's file name).
+     * When the candidate has an application and the image is an acceptable type/size, it goes into the
+     * document store (visible everywhere, incl. the exam card and the dashboard's passportDocumentId);
+     * otherwise it goes into the candidate's attachment store (visible on the dashboard, printouts and
+     * the receipt). Returns "STORED", "ATTACHED", or "NOT_FOUND" when no candidate matches (the caller skips it).
+     */
+    String storePassport(String key, String tok, String filename, String contentType, byte[] content, String base64, boolean docOk) {
+        if (docOk) {
+            List<java.util.Map<String, Object>> app = jdbc.sql("""
+                    SELECT a.id AS app_id
+                      FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                     WHERE c.jamb_key = :key OR (:tok::text IS NOT NULL AND c.jamb_key = :tok)
+                     ORDER BY a.session DESC LIMIT 1
+                    """).param("key", key).param("tok", tok, Types.VARCHAR).query().listOfRows();
+            if (!app.isEmpty()) {
+                UUID appId = (UUID) app.get(0).get("app_id");
+                UUID docId = UUID.randomUUID();
+                jdbc.sql("UPDATE admissions.application_document SET superseded_at = now() WHERE application_id = :a AND kind = 'PASSPORT' AND superseded_at IS NULL")
+                        .param("a", appId).update();
+                jdbc.sql("""
+                        INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes, status)
+                        VALUES (:id, :a, 'PASSPORT', :f, :t, :b, 'ACCEPTED')
+                        """).param("id", docId).param("a", appId).param("f", filename).param("t", contentType).param("b", content.length).update();
+                jdbc.sql("INSERT INTO admissions.application_document_blob (document_id, content) VALUES (:id, :c)")
+                        .param("id", docId).param("c", content).update();
+                return "STORED";
+            }
+        }
+        List<java.util.Map<String, Object>> cand = jdbc.sql("""
+                SELECT id, session, jamb_key FROM admissions.candidate
+                 WHERE jamb_key = :key OR (:tok::text IS NOT NULL AND jamb_key = :tok) LIMIT 1
+                """).param("key", key).param("tok", tok, Types.VARCHAR).query().listOfRows();
+        if (cand.isEmpty()) {
+            return "NOT_FOUND";
+        }
+        UUID cid = (UUID) cand.get(0).get("id");
+        String ses = String.valueOf(cand.get(0).get("session"));
+        String candKey = String.valueOf(cand.get(0).get("jamb_key"));
+        String dataUrl = "data:" + contentType + ";base64," + base64;
+        jdbc.sql("""
+                INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at, payload, bytes)
+                VALUES (gen_random_uuid(), :ses, 'PASSPORT', :src, :key, 'EXACT', :cid, now(), jsonb_build_object('dataUrl', :url::text), :b)
+                ON CONFLICT (session, kind, source_name) DO UPDATE
+                   SET payload = EXCLUDED.payload, candidate_id = EXCLUDED.candidate_id, matched_at = now(),
+                       bytes = EXCLUDED.bytes, jamb_key = EXCLUDED.jamb_key, read_as = 'EXACT'
+                """).param("ses", ses).param("src", filename).param("key", candKey).param("cid", cid, Types.OTHER)
+                .param("url", dataUrl).param("b", content.length).update();
+        return "ATTACHED";
+    }
 }

@@ -63,6 +63,13 @@ public class ResultsService {
     public record StudentsIn(@NotNull List<Map<String, Object>> rows) {
     }
 
+    /** one migrated passport photo: the file name (the JAMB reg no), its type, and its base64 bytes */
+    public record PassportItem(@NotBlank String filename, String contentType, @NotBlank String contentBase64) {
+    }
+
+    public record PassportsIn(@NotNull List<PassportItem> items) {
+    }
+
     private final ResultsRepository repo;
     private final TransactionTemplate eachInItsOwn;
     private final tools.jackson.databind.ObjectMapper json;
@@ -103,6 +110,94 @@ public class ResultsService {
     public Map<String, Object> importResults(String session, int semester, List<Map<String, Object>> rows) {
         requireRows(rows);
         return repo.importLegacy(session, semester, json.writeValueAsString(rows), true);
+    }
+
+    /* ── bulk passport photos from the old portal (matched by JAMB reg no in the file name) ── */
+
+    private static final java.util.Set<String> IMG_OK = java.util.Set.of("image/jpeg", "image/png", "application/pdf");
+    private static final int DOC_MAX = 2_097_152; // the document store's 2 MB cap
+    private static final java.util.regex.Pattern JAMB_TOKEN = java.util.regex.Pattern.compile("(\\d{6,}[A-Za-z]{0,3})");
+
+    /** store many passport photos, each matched to a student by the JAMB reg no in its file name; a file with
+     *  no matching candidate is skipped (counted, and its number listed). Each photo is its own transaction, so
+     *  one bad image does not lose the batch. */
+    public Map<String, Object> importPassports(List<PassportItem> items) {
+        if (items == null || items.isEmpty()) {
+            throw new DomainRuleViolation("RES_PASSPORT_NONE", "No image was uploaded.",
+                    new DomainRuleViolation.Remedy("Select the passport image files exported from the old portal.", "Records"));
+        }
+        int stored = 0, attached = 0, notFound = 0, skipped = 0;
+        List<String> notFoundList = new ArrayList<>();
+        for (PassportItem it : items) {
+            String status;
+            try {
+                status = eachInItsOwn.execute(tx -> storeOnePassport(it));
+            } catch (RuntimeException e) {
+                status = "SKIPPED";
+            }
+            switch (status == null ? "SKIPPED" : status) {
+                case "STORED" -> stored++;
+                case "ATTACHED" -> attached++;
+                case "NOT_FOUND" -> { notFound++; if (notFoundList.size() < 500) notFoundList.add(passportKey(it.filename())); }
+                default -> skipped++;
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", items.size());
+        out.put("stored", stored);
+        out.put("attached", attached);
+        out.put("notFound", notFound);
+        out.put("skipped", skipped);
+        out.put("notFoundList", notFoundList);
+        return out;
+    }
+
+    private String storeOnePassport(PassportItem it) {
+        String raw = stripDataUrl(it.contentBase64());
+        byte[] content;
+        try {
+            content = java.util.Base64.getDecoder().decode(raw);
+        } catch (RuntimeException e) {
+            return "SKIPPED";
+        }
+        if (content.length == 0) {
+            return "SKIPPED";
+        }
+        String ct = normPassportType(it.contentType(), it.filename());
+        String base = passportKey(it.filename());
+        String key = base.toUpperCase();
+        java.util.regex.Matcher m = JAMB_TOKEN.matcher(base);
+        String tok = m.find() ? m.group(1).toUpperCase() : null;
+        boolean docOk = IMG_OK.contains(ct) && content.length <= DOC_MAX;
+        return repo.storePassport(key, tok, it.filename(), ct, content, raw, docOk);
+    }
+
+    /** the file name without any path or extension, trimmed — the JAMB reg no as the old portal named the file */
+    private static String passportKey(String filename) {
+        String n = filename == null ? "" : filename.trim();
+        int slash = Math.max(n.lastIndexOf('/'), n.lastIndexOf('\\'));
+        if (slash >= 0) n = n.substring(slash + 1);
+        int dot = n.lastIndexOf('.');
+        if (dot > 0) n = n.substring(0, dot);
+        return n.trim();
+    }
+
+    /** the base64, with any "data:...;base64," prefix removed */
+    private static String stripDataUrl(String b64) {
+        if (b64 == null) return "";
+        int comma = b64.indexOf(',');
+        return b64.startsWith("data:") && comma >= 0 ? b64.substring(comma + 1) : b64;
+    }
+
+    /** a servable image type for the document store — from the given type, else the file extension, else JPEG */
+    private static String normPassportType(String contentType, String filename) {
+        String t = contentType == null ? "" : contentType.trim().toLowerCase();
+        if (t.equals("image/jpg") || t.equals("image/pjpeg")) return "image/jpeg";
+        if (IMG_OK.contains(t)) return t;
+        String f = (filename == null ? "" : filename).toLowerCase();
+        if (f.endsWith(".png")) return "image/png";
+        if (f.endsWith(".pdf")) return "application/pdf";
+        return "image/jpeg";
     }
 
     private static void requireRows(List<Map<String, Object>> rows) {

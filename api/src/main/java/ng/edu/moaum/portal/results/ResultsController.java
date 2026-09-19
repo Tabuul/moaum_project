@@ -72,6 +72,14 @@ class ResultsController {
         return service.importResults(body.session(), body.semester(), body.rows());
     }
 
+    /** bulk passport photos from the old portal, each named by the student's JAMB reg no; a photo whose
+     *  number matches no candidate is skipped and reported. Same offices as the rest of the migration desk. */
+    @PostMapping("/legacy/passports")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importPassports(@Valid @RequestBody ResultsService.PassportsIn body) {
+        return service.importPassports(body.items());
+    }
+
     /** set a first password (the student's own number) for migrated accounts still on the random import
      *  password; must_change stays on, so the student replaces it at first sign-in. Same offices as the rest
      *  of the migration desk (MIGRATE), so the button works wherever the desk is shown. */

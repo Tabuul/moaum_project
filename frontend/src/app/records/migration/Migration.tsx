@@ -11,7 +11,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterText } from "@/lib/student-portal";
 
-type Tab = "biodata" | "students" | "registration" | "results";
+type Tab = "biodata" | "students" | "registration" | "results" | "passports";
 const MIGRATE = ["exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
 /* the matric shapes the biography/students importers accept — the University's own, or a legacy old-portal number */
 const MATRIC_OK = /^(MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}|[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7})$/i;
@@ -28,6 +28,62 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null } | null>(null);
   const [progress, setProgress] = useState<{ label: string; sent: number; of: number } | null>(null);
   const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
+  const [pResult, setPResult] = useState<{ total: number; stored: number; attached: number; notFound: number; skipped: number; notFoundList: string[] } | null>(null);
+
+  /** bulk passport photos: each file is named by the student's JAMB reg no; matched and stored, or skipped */
+  async function uploadPassports(files: File[]) {
+    setBusy(true); setProblem(null); setPResult(null); setProgress(null);
+    try {
+      const fileToBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => { const s = String(r.result); const i = s.indexOf(","); resolve(i >= 0 ? s.slice(i + 1) : s); };
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const CHUNK = 12;
+      const totals = { total: 0, stored: 0, attached: 0, notFound: 0, skipped: 0 };
+      const notFoundList: string[] = [];
+      let sent = 0;
+      setProgress({ label: "Uploading photos", sent: 0, of: files.length });
+      for (let i = 0; i < files.length; i += CHUNK) {
+        const slice = files.slice(i, i + CHUNK);
+        const items = await Promise.all(slice.map(async (f) => ({ filename: f.name, contentType: f.type || "", contentBase64: await fileToBase64(f) })));
+        const r = await fetch("/api/bff/api/v1/results/legacy/passports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy passport photos imported: ${sent + 1} to ${sent + slice.length} of ${files.length}`) },
+          body: JSON.stringify({ items }),
+        });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
+          setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${sent.toLocaleString()} of ${files.length.toLocaleString()} photos were processed before this batch was refused.` });
+          if (totals.total) setPResult({ ...totals, notFoundList });
+          return;
+        }
+        const c = (j ?? {}) as Record<string, unknown>;
+        totals.total += Number(c.total ?? 0); totals.stored += Number(c.stored ?? 0); totals.attached += Number(c.attached ?? 0);
+        totals.notFound += Number(c.notFound ?? 0); totals.skipped += Number(c.skipped ?? 0);
+        if (Array.isArray(c.notFoundList)) for (const n of c.notFoundList) if (notFoundList.length < 2000 && typeof n === "string") notFoundList.push(n);
+        sent += slice.length;
+        setProgress({ label: "Uploading photos", sent, of: files.length });
+      }
+      setPResult({ ...totals, notFoundList });
+    } catch {
+      setProblem({ status: 400, title: "The photos could not be read.", detail: "Select image files (JPEG or PNG) named by the student's JAMB registration number." });
+    } finally {
+      setBusy(false); setProgress(null);
+    }
+  }
+
+  function downloadNotFound() {
+    if (!pResult?.notFoundList.length) return;
+    const blob = buildXlsx(["JAMB Number (no matching student)"], pResult.notFoundList.map((n) => [n]), "Skipped photos");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "passports — no matching student.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
 
   async function upload(kind: Tab, file: File) {
     setBusy(true);
@@ -153,6 +209,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       headers: ["Matriculation Number", "Course Code", "Level", "Session", "Semester", "CA", "Exam", "Total", "Outcome"],
       example: ["MOAUM/CSC/22/0001", "CSC 301", "300", "2024/2025", "First", "25", "55", "80", "GRADED"],
     },
+    passports: { name: "Passport photos", headers: [], example: [] }, // no spreadsheet — image files, handled separately
   };
 
   function downloadTemplate(kind: Tab) {
@@ -183,7 +240,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  const needScope = tab !== "students" && tab !== "biodata";
+  const needScope = tab === "registration" || tab === "results";
   /* the file now carries Session and Semester per row; the fields below are only a fallback for a file
      that has neither column, so the upload is never gated on them */
   const scopeReady = true;
@@ -192,6 +249,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     registration: [["rows", "Rows read"], ["students", "Students"], ["offerings", "Courses"], ["registrations", "Registrations"], ["no_student", "No such student"], ["no_course", "No such course"]],
     results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["no_student", "No such student"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
+    passports: [], // photos have their own summary
   };
 
   /* map an old-portal export's own column names onto the keys the importer reads, so a real file
@@ -310,14 +368,36 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
 
       <div className="card"><div className="card__body">
         <div className="role-tabs" role="tablist">
-          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["registration", "2 · Course registration"], ["results", "3 · Past results"]] as [Tab, string][]).map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => { setTab(k); setResult(null); setProblem(null); }}>{l}</button>
+          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["passports", "4 · Passport photos"]] as [Tab, string][]).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => { setTab(k); setResult(null); setProblem(null); setPResult(null); }}>{l}</button>
           ))}
         </div>
       </div></div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
 
+      {tab === "passports" ? (
+        <Panel title="Passport photos exported from the old portal" right="Matched by JAMB reg no in the file name">
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 8 }}>
+              Select the passport image files. Each file must be named by the student&rsquo;s <b>JAMB registration number</b>
+              (for example <span className="tnum">202412345AB.jpg</span>); the number is read from the file name and matched
+              to the student. A photo whose number matches no student on the portal is <b>skipped</b> and listed, not
+              guessed at. JPEG or PNG; the photo then shows on the student&rsquo;s dashboard, course form and receipts.
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
+                {busy
+                  ? (progress ? `${progress.label} — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}…` : "Uploading…")
+                  : "Upload passport photos"}
+                <input type="file" accept="image/*" multiple style={{ display: "none" }} disabled={!may || busy}
+                       onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) void uploadPassports(fs); e.target.value = ""; }} />
+              </label>
+              <span className="sub2">You can select many files at once.</span>
+            </div>
+          </PBody>
+        </Panel>
+      ) : (
       <Panel title={tab === "biodata" ? "Student biography exported from the old portal" : tab === "students" ? "Students exported from the old portal" : tab === "registration" ? "Course registration of a past semester" : "Past results of a semester"}
              right={tab === "students" || tab === "biodata" ? "The first step" : `${session || "session"} · ${semesterText(Number(semester))}`}>
         <PBody>
@@ -353,6 +433,25 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           <div className="sub2" style={{ marginTop: 8 }}>Download the template, fill it from the old-portal export (delete the example row), and upload it. Column names are matched flexibly, so an export that already has these columns can be uploaded as-is.</div>
         </PBody>
       </Panel>
+      )}
+
+      {tab === "passports" && pResult ? (
+        <>
+          <Tiles items={[
+            ["Photos uploaded", String(pResult.total), null, ""],
+            ["Stored on record", String(pResult.stored + pResult.attached), (pResult.stored + pResult.attached) > 0 ? "var(--green-ink)" : null, "matched and saved"],
+            ["No matching student", String(pResult.notFound), pResult.notFound > 0 ? "var(--red-ink)" : null, "skipped"],
+            ["Could not read", String(pResult.skipped), pResult.skipped > 0 ? "var(--red-ink)" : null, "not an image"],
+          ]} />
+          <Note kind={pResult.notFound || pResult.skipped ? "info" : "ok"} title="Photos processed"
+                action={pResult.notFoundList.length ? <Btn kind="ghost" onClick={downloadNotFound}>Download the skipped numbers</Btn> : undefined}>
+            {pResult.stored + pResult.attached} photo{pResult.stored + pResult.attached === 1 ? "" : "s"} matched a student and were saved.
+            {pResult.notFound > 0 ? <> {pResult.notFound} file{pResult.notFound === 1 ? "" : "s"} matched no student on the portal and were skipped — download the list to see which numbers.</> : null}
+            {pResult.skipped > 0 ? <> {pResult.skipped} file{pResult.skipped === 1 ? "" : "s"} could not be read as an image.</> : null}
+            {" "}Uploading the same photo again replaces it, so this is safe to re-run.
+          </Note>
+        </>
+      ) : null}
 
       {result && result.tab === tab ? (
         <>
