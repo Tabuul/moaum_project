@@ -43,15 +43,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: 409, title: "Not cleared for examinations", detail: "The card is issued when the Bursary clears you for the examination. Settle the fees the scheme requires." }, { status: 409 });
   }
 
-  // the passport — the invigilator checks the face against it (anti-impersonation)
+  // the passport — the invigilator checks the face against it (anti-impersonation); from /me/passport,
+  // which resolves the document store OR the JAMB/attachment store, so a migrated / JAMB-loaded photo also prints
   let photo: { width: number; height: number; data: Uint8Array } | null = null;
-  if (s.passportDocumentId) {
-    try {
-      const tok = await sessionToken();
-      const res = await fetch(`${API_URL}/api/v1/applicant/me/documents/${s.passportDocumentId}/content`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
-      if (res.ok) { const buf = new Uint8Array(await res.arrayBuffer()); const dim = jpegSize(buf); if (dim) photo = { width: dim.width, height: dim.height, data: buf }; }
-    } catch { /* blank box */ }
-  }
+  try {
+    const tok = await sessionToken();
+    const res = await fetch(`${API_URL}/api/v1/me/passport`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
+    if (res.ok) { const buf = new Uint8Array(await res.arrayBuffer()); const dim = jpegSize(buf); if (dim) photo = { width: dim.width, height: dim.height, data: buf }; }
+  } catch { /* blank box */ }
 
   const p = new Page();
   const L = 56;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
-import { type Receipt, type Me, receiptPurpose } from "@/lib/student-portal";
+import { type Receipt, receiptPurpose } from "@/lib/student-portal";
 import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
@@ -26,21 +26,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
   const x = r.data;
   if (!x.confirmed_at) return NextResponse.json({ status: 409, title: "Not confirmed", detail: "A receipt is issued when the payment is confirmed." }, { status: 409 });
-  // the student's passport captured at admission, embedded as JPEG (blank box when none)
+  // the student's passport, embedded as JPEG (blank box when none) — from /me/passport, which resolves
+  // the document store OR the JAMB/attachment store, so a migrated / JAMB-loaded photo also prints
   let photo: { width: number; height: number; data: Uint8Array } | null = null;
-  const me = await api<Me>("/api/v1/me");
-  const passportId = me.ok ? me.data.passportDocumentId : null;
-  if (passportId) {
-    try {
-      const tok = await sessionToken();
-      const res = await fetch(`${API_URL}/api/v1/applicant/me/documents/${passportId}/content`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
-      if (res.ok) {
-        const buf = new Uint8Array(await res.arrayBuffer());
-        const dim = jpegSize(buf);
-        if (dim) photo = { width: dim.width, height: dim.height, data: buf };
-      }
-    } catch { /* leave the box blank */ }
-  }
+  try {
+    const tok = await sessionToken();
+    const res = await fetch(`${API_URL}/api/v1/me/passport`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
+    if (res.ok) {
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const dim = jpegSize(buf);
+      if (dim) photo = { width: dim.width, height: dim.height, data: buf };
+    }
+  } catch { /* leave the box blank */ }
 
   const p = new Page();
   const L = 64;

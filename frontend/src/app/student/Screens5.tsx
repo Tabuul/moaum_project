@@ -213,7 +213,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
     blood: "—",
     expiresShort: onDay(live.valid_to),
     kinPhone: "—",
-    photoSrc: s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null,
+    photoSrc: s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null,
     state: new Date(live.valid_to).getTime() < now ? "expired" : "issued",
   } : null;
   return (
@@ -236,7 +236,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
         </Panel>
       ) : null}
       <div className="card"><div className="card__body" style={{ flexDirection: "row", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <Passport w={112} h={139} radius={5} src={s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null} />
+        <Passport w={112} h={139} radius={5} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
         <div style={{ flexGrow: 1, minWidth: 220 }}>
           <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
           <div className="sub2 tnum">{s.matricNo ?? s.admissionNo} &middot; {s.programme} &middot; {s.level} Level</div>

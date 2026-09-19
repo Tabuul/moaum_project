@@ -253,7 +253,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="eyebrow">Course Registration Form</div>
         </div>
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 16, alignItems: "flex-start" }}>
-          <Passport w={62} h={77} radius={3} src={s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null} />
+          <Passport w={62} h={77} radius={3} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
           <div className="kv"><span className="k">Name</span><span className="v">{s.name}</span></div>
           <div className="kv"><span className="k">Matriculation number</span><span className="v tnum">{s.matricNo ?? s.admissionNo}</span></div>
           <div className="kv"><span className="k">Level</span><span className="v">{reg.level}</span></div>
