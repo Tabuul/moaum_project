@@ -68,7 +68,7 @@ function StudentDetails({ s }: { s: Me }) {
     <Panel title="Student details" right="Your record on the register">
       <PBody>
         <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <Passport w={104} h={128} radius={6} src={s.hasPhoto ? "/api/bff/api/v1/me/passport" : null} />
+          <Passport w={104} h={128} radius={6} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
           <div style={{ flexGrow: 1, minWidth: 240 }}>
             <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
             <div className="sub2 tnum" style={{ marginTop: 2 }}>{s.matricNo ?? s.admissionNo}</div>
@@ -153,7 +153,7 @@ export function Dashboard({ s }: { s: Me }) {
       <div className="grid grid--2">
         <div className="card"><div className="card__body">
           <div style={{ display: "flex", gap: 13, alignItems: "flex-start" }}>
-            <Passport w={52} h={64} radius={6} src={s.hasPhoto ? "/api/bff/api/v1/me/passport" : null} />
+            <Passport w={52} h={64} radius={6} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
             <div>
               <div style={{ fontSize: 16, fontWeight: 600 }}>{s.name}</div>
               <div className="sub2 tnum">{s.matricNo ?? s.admissionNo}</div>
@@ -227,7 +227,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
     <>
       {change ? <Note kind="bad" title="Choose your own password before you go on">The Registry gave you a first password. Change it below; it is yours alone from then on.</Note> : null}
       <div className="card"><div className="card__body" style={{ flexDirection: "row", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <Passport w={112} h={139} radius={5} src={s.hasPhoto ? "/api/bff/api/v1/me/passport" : null} />
+        <Passport w={112} h={139} radius={5} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
         <div style={{ display: "flex", flexDirection: "column", gap: 9, flexGrow: 1, minWidth: 230 }}>
           <div><div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
             <div className="sub2 tnum">{s.matricNo ?? s.admissionNo} &middot; {s.programme} &middot; {s.level} Level</div></div>

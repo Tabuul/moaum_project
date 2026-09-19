@@ -178,7 +178,9 @@ class MeController {
         return portal.passportImage(id(auth))
                 .map(img -> org.springframework.http.ResponseEntity.ok()
                         .contentType(org.springframework.http.MediaType.IMAGE_JPEG)
-                        .cacheControl(org.springframework.http.CacheControl.noCache())
+                        // never cache: the URL is the same for every student, so a cached image would show the
+                        // previous person who signed in on this browser until a refresh
+                        .cacheControl(org.springframework.http.CacheControl.noStore().cachePrivate())
                         .body(img))
                 .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
     }
