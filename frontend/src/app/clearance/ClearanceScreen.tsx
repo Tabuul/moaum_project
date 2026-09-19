@@ -2,6 +2,7 @@
 
 /** tClearance — proto/part18.html: independent sign-offs, not a form that travels. */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -69,6 +70,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
       for (const id of selected) {
         if (!(await post(`/api/bff/api/v1/clearance/students/${id}/${unit}/clear`, { purpose: listing.purpose }, `${unit} clearance signed`))) break;
       }
+      if (selected.size) notify(`${unit} clearance signed for ${selected.size} student${selected.size === 1 ? "" : "s"}`);
       setSelected(new Set());
       router.refresh();
     } finally {
@@ -135,7 +137,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
                 {myUnits.length > 1
                   ? <select className="ws__select" value={unit} onChange={(e) => setUnit(e.target.value)}>{listing.units.filter((u) => myUnits.includes(u.code)).map((u) => <option key={u.code} value={u.code}>{u.label}</option>)}</select>
                   : <span className="sub2">{listing.units.find((u) => u.code === unit)?.label}</span>}
-                <Btn kind="go" disabled={busy} onClick={async () => { setBusy(true); if (await post(`/api/bff/api/v1/clearance/students/${me.id}/${unit}/clear`, { purpose: listing.purpose }, `${unit} clearance signed for ${me.number}`)) router.refresh(); setBusy(false); }}>Clear</Btn>
+                <Btn kind="go" disabled={busy} onClick={async () => { setBusy(true); if (await post(`/api/bff/api/v1/clearance/students/${me.id}/${unit}/clear`, { purpose: listing.purpose }, `${unit} clearance signed for ${me.number}`)) { notify(`${unit} clearance signed for ${me.number}`); router.refresh(); } setBusy(false); }}>Clear</Btn>
                 <Btn kind="urgent" onClick={() => { setHold(me.id); setItem(""); }}>Hold</Btn>
               </div>
             ) : null}
@@ -167,7 +169,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
 
       {hold ? (
         <Modal title="Hold this candidate" sub="Name the item outstanding" onClose={() => setHold(null)}
-          foot={<><Btn kind="ghost" onClick={() => setHold(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="urgent" disabled={!item.trim() || busy} onClick={async () => { setBusy(true); if (await post(`/api/bff/api/v1/clearance/students/${hold}/${unit}/hold`, { purpose: listing.purpose, item }, `${unit} hold: ${item}`)) { setHold(null); router.refresh(); } setBusy(false); }}>Hold</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setHold(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="urgent" disabled={!item.trim() || busy} onClick={async () => { setBusy(true); if (await post(`/api/bff/api/v1/clearance/students/${hold}/${unit}/hold`, { purpose: listing.purpose, item }, `${unit} hold: ${item}`)) { notify(`${unit} hold placed`); setHold(null); router.refresh(); } setBusy(false); }}>Hold</Btn></>}>
           <Field id="hold-item" label="What is outstanding" hint="The candidate sees this on their own portal, with the unit, the officer and the date.">
             <input id="hold-item" className="ctl" value={item} onChange={(e) => setItem(e.target.value)} autoComplete="off" />
           </Field>

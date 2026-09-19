@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { OUTCOMES, RS_STAGES, STAGE_LABEL, csv, download, type RollRow, type SheetDetail } from "@/lib/results";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Modal, Steps } from "@/components/proto/blocks";
@@ -80,6 +81,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       }
       const j = await r.json();
       setSaved(`${j.written} mark${j.written === 1 ? "" : "s"} written`);
+      notify(`${j.written} mark${j.written === 1 ? "" : "s"} written`);
       router.refresh();
       return true;
     } finally {
@@ -98,6 +100,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         return;
       }
       setAsk(null);
+      notify(`${s.courseCode} submitted`);
       router.refresh();
     } finally {
       setBusy(false);

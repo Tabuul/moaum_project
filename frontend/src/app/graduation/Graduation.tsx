@@ -2,6 +2,7 @@
 
 /** rGraduation — proto/part9.html: the degree audit, computed, and the list Senate approves. */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -36,6 +37,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
       if (j && "audited" in j) setSaid(`${j.audited} finalists audited: ${j.passed} passed, ${j.outstanding} with an unmet requirement.`);
       if (j && "approved" in j) setSaid(`${j.approved} awards approved under ${j.senateMinute}.`);
       setMinute(null);
+      notify(reason);
       router.refresh();
     } finally {
       setBusy(false);

@@ -2,6 +2,7 @@
 
 /** staffChain — proto/part15.html: one sheet, every desk it passes, and the marks as they stand. */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -39,6 +40,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
         setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
         return false;
       }
+      notify(reason);
       router.refresh();
       return true;
     } finally {

@@ -7,6 +7,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
@@ -77,6 +78,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j?.detail ?? "The reset could not run."); return; }
       setResetInfo({ candidates: Number(j?.candidates ?? 0), applications: Number(j?.applications ?? 0), accounts: Number(j?.accounts ?? 0), passports_kept: Number(j?.passports_kept ?? 0) });
+      notify(`Migrated applicants reset for ${session}`);
     } finally {
       setResetting(false);
     }
@@ -201,6 +203,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         tally.passportsLinked = lj?.passportsLinked ?? 0;
         setProgress({ done: total, of: total });
         setResult({ ...tally });
+        notify(`${tally.imported} imported · ${tally.existed} already on record`);
       }
     } finally {
       setBusy(false);

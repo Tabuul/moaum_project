@@ -12,6 +12,7 @@
  *   · one code, two names — the University's programmes and JAMB's aliases
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -164,6 +165,7 @@ export function CapsIntake({
       if (r.ok) {
         const b = (r.body ?? {}) as Record<string, number>;
         setResetMsg(`Reset complete for ${session}: ${b.candidates ?? 0} candidates, ${b.applications ?? 0} applications, ${b.olevel ?? 0} O'Level sittings and ${b.caps_rows ?? 0} CAPS rows deleted; ${b.students_detached ?? 0} students on the register were kept. You can upload a fresh list now.`);
+        notify(`JAMB list reset for ${session}`);
         router.refresh();
       } else {
         setProblem(asProblem(r.status, r.body));
@@ -295,6 +297,7 @@ export function CapsIntake({
         setProgress({ sent, of: rows.length });
       }
       setLoaded({ ...loaded, [kind]: result });
+      notify(`${sent} CAPS row${sent === 1 ? "" : "s"} loaded`);
       router.refresh();
     } finally {
       setWorking(null);
@@ -311,6 +314,7 @@ export function CapsIntake({
         setWithdrawn({ ...withdrawn, [b.id]: why.trim() });
         setWithdrawing(null);
         setWhy("");
+        notify(`CAPS list ${b.filename ?? b.id} withdrawn`);
         router.refresh();
       } else {
         setProblem(asProblem(r.status, r.body));
@@ -329,6 +333,7 @@ export function CapsIntake({
         const outcome = String((r.body as { outcome?: string })?.outcome ?? "committed");
         setCommitted({ ...committed, [id]: outcome });
         if (fromScreen && done) setLoaded({ ...loaded, [kind]: { ...done, outcome } });
+        notify(`CAPS list ${outcome}`);
         router.refresh();
       } else {
         setProblem(asProblem(r.status, r.body));

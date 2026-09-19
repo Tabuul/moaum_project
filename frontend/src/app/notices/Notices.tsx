@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -34,6 +35,7 @@ export function Notices({ d, actingOffice }: { d: Outbox; actingOffice: string |
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`${(j as { requeued?: number })?.requeued ?? 0} notice(s) put back in the queue`);
+      notify(`${(j as { requeued?: number })?.requeued ?? 0} notice(s) requeued`);
       router.refresh();
     } finally {
       setBusy(false);
