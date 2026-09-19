@@ -15,6 +15,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterText } from "@/lib/student-portal";
+import { notify } from "@/components/proto/Toast";
 
 export interface RegEntry { code: string; title: string; units: number; kind: string | null; type: string }
 export interface RegistrationRow {
@@ -47,6 +48,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
       const r = await fetch(`/api/bff/api/v1/registration/course-registrations/${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      notify(reason);
       router.refresh();
     } finally {
       setBusy(null);
