@@ -399,6 +399,10 @@ class ResultsRepository {
         return jdbc.sql("SELECT iam.set_migrated_default_passwords() AS updated").query().singleRow();
     }
 
+    java.util.Map<String, Object> setJambNumbers(String rowsJson) {
+        return jdbc.sql("SELECT * FROM people.set_jamb_numbers(:j::jsonb)").param("j", rowsJson).query().singleRow();
+    }
+
     java.util.Map<String, Object> importBiography(String rowsJson) {
         return jdbc.sql("SELECT * FROM people.import_biography(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
@@ -437,25 +441,50 @@ class ResultsRepository {
                 return "STORED";
             }
         }
+        // a candidate matched by JAMB number (CAPS/applicant-migrated) → candidate-keyed attachment
         List<java.util.Map<String, Object>> cand = jdbc.sql("""
                 SELECT id, session, jamb_key FROM admissions.candidate
                  WHERE jamb_key = :key OR (:tok::text IS NOT NULL AND jamb_key = :tok) LIMIT 1
                 """).param("key", key).param("tok", tok, Types.VARCHAR).query().listOfRows();
-        if (cand.isEmpty()) {
+        if (!cand.isEmpty()) {
+            UUID cid = (UUID) cand.get(0).get("id");
+            String ses = String.valueOf(cand.get(0).get("session"));
+            String candKey = String.valueOf(cand.get(0).get("jamb_key"));
+            attach(ses, filename, candKey, cid, contentType, base64, content.length, true);
+            return "ATTACHED";
+        }
+        // a student matched by their own JAMB number (a legacy student with no candidate) → jamb-keyed attachment,
+        // read back by the student's jamb_reg_no; no candidate is required
+        List<java.util.Map<String, Object>> stu = jdbc.sql("""
+                SELECT s.candidate_id, s.entry_session, upper(btrim(s.jamb_reg_no)) AS jkey
+                  FROM people.student s
+                 WHERE s.jamb_reg_no IS NOT NULL
+                   AND (upper(btrim(s.jamb_reg_no)) = :key OR (:tok::text IS NOT NULL AND upper(btrim(s.jamb_reg_no)) = :tok))
+                 LIMIT 1
+                """).param("key", key).param("tok", tok, Types.VARCHAR).query().listOfRows();
+        if (stu.isEmpty()) {
             return "NOT_FOUND";
         }
-        UUID cid = (UUID) cand.get(0).get("id");
-        String ses = String.valueOf(cand.get(0).get("session"));
-        String candKey = String.valueOf(cand.get(0).get("jamb_key"));
+        UUID cid = (UUID) stu.get(0).get("candidate_id");
+        String ses = String.valueOf(stu.get(0).get("entry_session"));
+        String jkey = String.valueOf(stu.get(0).get("jkey"));
+        attach(ses, filename, jkey, cid, contentType, base64, content.length, cid != null);
+        return "ATTACHED";
+    }
+
+    /** upsert one PASSPORT attachment (a base64 data URL), keyed by (session, source_name); the jamb_key lets a
+     *  student without a candidate still read it by their own JAMB number. matched_at is set only with a candidate. */
+    private void attach(String session, String filename, String jambKey, UUID candidateId, String contentType, String base64, int bytes, boolean matched) {
         String dataUrl = "data:" + contentType + ";base64," + base64;
         jdbc.sql("""
                 INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at, payload, bytes)
-                VALUES (gen_random_uuid(), :ses, 'PASSPORT', :src, :key, 'EXACT', :cid, now(), jsonb_build_object('dataUrl', :url::text), :b)
+                VALUES (gen_random_uuid(), :ses, 'PASSPORT', :src, :key, 'EXACT', :cid, CASE WHEN :m THEN now() ELSE NULL END,
+                        jsonb_build_object('dataUrl', :url::text), :b)
                 ON CONFLICT (session, kind, source_name) DO UPDATE
-                   SET payload = EXCLUDED.payload, candidate_id = EXCLUDED.candidate_id, matched_at = now(),
+                   SET payload = EXCLUDED.payload, candidate_id = EXCLUDED.candidate_id,
+                       matched_at = CASE WHEN :m THEN now() ELSE admissions.attachment.matched_at END,
                        bytes = EXCLUDED.bytes, jamb_key = EXCLUDED.jamb_key, read_as = 'EXACT'
-                """).param("ses", ses).param("src", filename).param("key", candKey).param("cid", cid, Types.OTHER)
-                .param("url", dataUrl).param("b", content.length).update();
-        return "ATTACHED";
+                """).param("ses", session).param("src", filename).param("key", jambKey).param("cid", candidateId, Types.OTHER)
+                .param("m", matched).param("url", dataUrl).param("b", bytes).update();
     }
 }

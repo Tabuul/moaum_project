@@ -72,6 +72,14 @@ class ResultsController {
         return service.importResults(body.session(), body.semester(), body.rows());
     }
 
+    /** set students' JAMB registration numbers from a matric → JAMB upload, so passport photos named by the
+     *  JAMB number can match a legacy student who carries no candidate. Same offices as the rest of the desk. */
+    @PostMapping("/legacy/jamb-numbers")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importJambNumbers(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.importJambNumbers(body.rows());
+    }
+
     /** bulk passport photos from the old portal, each named by the student's JAMB reg no; a photo whose
      *  number matches no candidate is skipped and reported. Same offices as the rest of the migration desk. */
     @PostMapping("/legacy/passports")

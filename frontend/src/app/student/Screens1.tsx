@@ -68,7 +68,7 @@ function StudentDetails({ s }: { s: Me }) {
     <Panel title="Student details" right="Your record on the register">
       <PBody>
         <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <Passport w={104} h={128} radius={6} src={s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null} />
+          <Passport w={104} h={128} radius={6} src={s.hasPhoto ? "/api/bff/api/v1/me/passport" : null} />
           <div style={{ flexGrow: 1, minWidth: 240 }}>
             <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
             <div className="sub2 tnum" style={{ marginTop: 2 }}>{s.matricNo ?? s.admissionNo}</div>
@@ -153,7 +153,7 @@ export function Dashboard({ s }: { s: Me }) {
       <div className="grid grid--2">
         <div className="card"><div className="card__body">
           <div style={{ display: "flex", gap: 13, alignItems: "flex-start" }}>
-            <Passport w={52} h={64} radius={6} src={s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null} />
+            <Passport w={52} h={64} radius={6} src={s.hasPhoto ? "/api/bff/api/v1/me/passport" : null} />
             <div>
               <div style={{ fontSize: 16, fontWeight: 600 }}>{s.name}</div>
               <div className="sub2 tnum">{s.matricNo ?? s.admissionNo}</div>
@@ -227,15 +227,15 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
     <>
       {change ? <Note kind="bad" title="Choose your own password before you go on">The Registry gave you a first password. Change it below; it is yours alone from then on.</Note> : null}
       <div className="card"><div className="card__body" style={{ flexDirection: "row", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <Passport w={112} h={139} radius={5} src={s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null} />
+        <Passport w={112} h={139} radius={5} src={s.hasPhoto ? "/api/bff/api/v1/me/passport" : null} />
         <div style={{ display: "flex", flexDirection: "column", gap: 9, flexGrow: 1, minWidth: 230 }}>
           <div><div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
             <div className="sub2 tnum">{s.matricNo ?? s.admissionNo} &middot; {s.programme} &middot; {s.level} Level</div></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: "var(--green)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
-            <Pil kind={s.passportDocumentId ? "info" : "grey"}>{s.passportDocumentId ? "Photograph on file" : "No photograph on file"}</Pil>
+            <Pil kind={s.hasPhoto ? "info" : "grey"}>{s.hasPhoto ? "Photograph on file" : "No photograph on file"}</Pil>
           </div>
-          <div className="sub2" style={{ maxWidth: "52ch", lineHeight: 1.55 }}>{s.passportDocumentId ? "This is the photograph you uploaded at application. It is the one printed on your identity card and shown to the invigilator, so it must remain a true likeness." : "No photograph reached the register with you. The Registry captures one at matriculation."}</div>
+          <div className="sub2" style={{ maxWidth: "52ch", lineHeight: 1.55 }}>{s.hasPhoto ? "This is the photograph on your record. It is the one printed on your identity card and shown to the invigilator, so it must remain a true likeness." : "No photograph reached the register with you. The Registry captures one at matriculation."}</div>
           <div className="sub2">A change needs Registry approval &mdash; students cannot replace it themselves after matriculation.</div>
         </div>
       </div></div>

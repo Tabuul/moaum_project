@@ -130,27 +130,49 @@ class StudentPortalRepository {
                 """).param("c", candidateId).query(UUID.class).optional();
     }
 
-    /** the student's passport image bytes, from the document store OR the JAMB/attachment store (a migrated
-     *  or JAMB-loaded passport lives in admissions.attachment as a base64 data URL) — for the course form. */
-    Optional<byte[]> passportImage(UUID candidateId) {
-        if (candidateId == null) {
+    /** the student's passport image bytes: the document store (via their candidate), else the attachment store —
+     *  matched by their candidate OR by their own JAMB number (a legacy student loaded by matric → JAMB, whose
+     *  photo was uploaded named by JAMB number, carries no candidate). Keyed on the student, not the candidate. */
+    Optional<byte[]> passportImage(UUID studentId) {
+        if (studentId == null) {
             return Optional.empty();
         }
         Optional<byte[]> doc = jdbc.sql("""
-                SELECT b.content FROM admissions.application_document d
-                  JOIN admissions.application a ON a.id = d.application_id
+                SELECT b.content FROM people.student s
+                  JOIN admissions.application a ON a.candidate_id = s.candidate_id
+                  JOIN admissions.application_document d ON d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
                   JOIN admissions.application_document_blob b ON b.document_id = d.id
-                 WHERE a.candidate_id = :c AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
-                 ORDER BY d.id LIMIT 1
-                """).param("c", candidateId).query(byte[].class).optional();
+                 WHERE s.id = :s ORDER BY d.id LIMIT 1
+                """).param("s", studentId).query(byte[].class).optional();
         if (doc.isPresent()) {
             return doc;
         }
         return jdbc.sql("""
-                SELECT at.payload->>'dataUrl' FROM admissions.attachment at
-                 WHERE at.candidate_id = :c AND at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl') LIMIT 1
-                """).param("c", candidateId).query(String.class).optional()
+                SELECT at.payload->>'dataUrl' FROM people.student s
+                  JOIN admissions.attachment at ON at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')
+                     AND (at.candidate_id = s.candidate_id
+                          OR (s.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(s.jamb_reg_no))))
+                 WHERE s.id = :s LIMIT 1
+                """).param("s", studentId).query(String.class).optional()
                 .map(u -> { int i = u.indexOf(','); return java.util.Base64.getDecoder().decode(i >= 0 ? u.substring(i + 1) : u); });
+    }
+
+    /** whether a passport photo exists for the student, in either store — so the UI shows the photo without a broken image */
+    boolean hasPassport(UUID studentId) {
+        if (studentId == null) {
+            return false;
+        }
+        return Boolean.TRUE.equals(jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM people.student s
+                          JOIN admissions.application a ON a.candidate_id = s.candidate_id
+                          JOIN admissions.application_document d ON d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                         WHERE s.id = :s)
+                    OR EXISTS (SELECT 1 FROM people.student s
+                          JOIN admissions.attachment at ON at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')
+                             AND (at.candidate_id = s.candidate_id
+                                  OR (s.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(s.jamb_reg_no))))
+                         WHERE s.id = :s)
+                """).param("s", studentId).query(Boolean.class).single());
     }
 
     /* ── the fees ── */

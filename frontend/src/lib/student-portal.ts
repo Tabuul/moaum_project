@@ -66,6 +66,8 @@ export interface Me {
   entryLevel: number; level: number; status: string; curriculumVersion: string | null; session: string;
   contact: { phone: string | null; email: string | null; address: string | null; reach_email: string | null; reach_phone: string | null };
   passportDocumentId: string | null;
+  /** whether a passport photo exists in any store (document, or JAMB/attachment) — use with /api/v1/me/passport */
+  hasPhoto?: boolean;
   fees: Fees; gpa: Semester[]; cgpa: number | null; standing: string | null; carryovers: Carryover[];
   registration: Registration | null; notices: Notice[]; graduation?: Graduation | null;
 }

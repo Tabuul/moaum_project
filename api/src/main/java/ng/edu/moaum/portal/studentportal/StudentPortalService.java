@@ -35,7 +35,7 @@ public class StudentPortalService {
     /** the student's passport image bytes, from the document store or the JAMB/attachment store */
     @Transactional(readOnly = true)
     public java.util.Optional<byte[]> passportImage(UUID id) {
-        return repo.passportImage(student(id).candidateId());
+        return repo.passportImage(id);
     }
 
     /** the current session, or the latest one the Bursar has charged for */
@@ -69,6 +69,7 @@ public class StudentPortalService {
         v.put("session", session);
         v.put("contact", repo.contact(id));
         v.put("passportDocumentId", repo.passportDocument(s.candidateId()).orElse(null));
+        v.put("hasPhoto", repo.hasPassport(id));
         v.put("fees", fees(id, session));
         List<Map<String, Object>> gpa = repo.gpa(id);
         v.put("gpa", gpa);
