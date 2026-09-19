@@ -17,6 +17,7 @@ import { DTable } from "@/components/proto/DTable";
 import { semesterText } from "@/lib/student-portal";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { notify } from "@/components/proto/Toast";
 
 export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number; spillover: boolean }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
@@ -266,6 +267,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       const r = await fetch(`/api/bff/api/v1/finance${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return false; }
+      notify(reason);
       router.refresh();
       return true;
     } finally {

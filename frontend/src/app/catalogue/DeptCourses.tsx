@@ -11,6 +11,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { notify } from "@/components/proto/Toast";
 
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Course {
@@ -77,6 +78,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j as Record<string, unknown>;
     } finally {

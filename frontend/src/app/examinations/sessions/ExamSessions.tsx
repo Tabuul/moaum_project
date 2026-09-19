@@ -12,6 +12,7 @@ import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, day, Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { notify } from "@/components/proto/Toast";
 
 export function ExamSessions({ sessions, scope, list, monitor }: { sessions: string[]; scope: Scope; list: ExamSession[]; monitor: Monitor | null }) {
   const router = useRouter();
@@ -61,6 +62,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
         setProblem(j ?? { status: r.status, title: r.statusText });
         return null;
       }
+      notify(reason);
       router.refresh();
       return j;
     } finally {

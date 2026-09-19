@@ -20,6 +20,7 @@ import { Btn, IcoBtn, KvGrid, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } fr
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { notify } from "@/components/proto/Toast";
 
 export interface DeskRow {
   id: string | null; application_no: string | null; surname: string; other_names: string; jamb_key: string; programme: string; entry_mode: string;
@@ -82,6 +83,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       const r = await fetch(`${base}${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return (j ?? {}) as Record<string, unknown>;
     } finally {
