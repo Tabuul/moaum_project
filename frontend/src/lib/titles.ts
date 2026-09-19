@@ -289,7 +289,7 @@ export const TITLES: Record<string, [string, string]> = {
     "Applications, the committee, Senate and the register"
   ],
   "s/transfer": [
-    "Departmental transfer",
+    "Inter-Departmental Transfer",
     "Apply to move to another department"
   ],
   "t/matlist": [
