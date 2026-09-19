@@ -279,7 +279,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           </tbody>
         </table></div>
         <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 18, flexWrap: "wrap" }}>
-          <div className="kv"><span className="k">Verification</span><span className="v tnum" style={{ letterSpacing: ".5px" }}>{reg.id.slice(0, 8).toUpperCase()}</span><span className="sub2">The register is the thing; this form is a view of it</span></div>
+          <div className="kv"><span className="k">Verification</span><span className="v tnum" style={{ letterSpacing: ".5px" }}>{reg.id.slice(0, 8).toUpperCase()}</span></div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
