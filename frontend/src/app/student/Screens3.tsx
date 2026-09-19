@@ -109,7 +109,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
                   <div style={{ display: "flex", justifyContent: "space-between" }}><strong>Outstanding</strong><strong className="tnum" style={{ fontSize: 15, color: "var(--red-ink)" }}>{naira(fees.balance)}</strong></div>
                 </div>
               ) : null}
-              <div><Link href="/student/fees" className="btn btn--urgent">{fees.due > 0 ? `Pay towards ${naira(fees.balance)}` : "See fees & payments"}</Link></div>
+              <div><Link href="/student/fees" className="btn btn--urgent">{fees.due > 0 ? `Pay ${naira(fees.balance)}` : "See fees & payments"}</Link></div>
               <div className="sub2">Responsible office: <strong style={{ color: "var(--ink)" }}>Bursary Department</strong>. Payments are confirmed against the bank&rsquo;s record, not by this page.</div>
             </div>
           </div>
