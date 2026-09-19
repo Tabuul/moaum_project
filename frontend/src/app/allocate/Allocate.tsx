@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -86,6 +87,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     });
     const j = await r.json().catch(() => null);
     if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
+    notify(reason);
     return (j ?? {}) as Record<string, unknown>;
   }
 

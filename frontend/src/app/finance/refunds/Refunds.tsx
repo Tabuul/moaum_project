@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -94,6 +95,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
       const r = await fetch(`/api/bff/api/v1/finance/refunds${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j as Record<string, unknown>;
     } finally {

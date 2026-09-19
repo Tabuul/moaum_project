@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -57,6 +58,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setReleased(Number((j as { released: number }).released));
+      notify(`${Number((j as { released: number }).released)} screening scores released`);
       router.refresh();
     } finally {
       setBusy(false);
@@ -77,6 +79,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setCleared(Number((j as { cleared: number }).cleared));
+      notify(`${Number((j as { cleared: number }).cleared)} scores cleared`);
       setClearConfirm("");
       router.refresh();
     } finally {
@@ -138,6 +141,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
         }
         if (!done) { setProblem({ status: 503, title: "The upload kept failing after retries. What uploaded so far is kept — wait a moment and upload again; scores already entered are simply re-entered." } as Problem); return; }
       }
+      notify(`${total.applied} score${total.applied === 1 ? "" : "s"} applied`);
     } finally {
       setBusy(false);
     }

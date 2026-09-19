@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -32,6 +33,7 @@ export function LoadCutoff({ session, cutoff, may }: { session: string; cutoff: 
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      notify(`Cut-off set to ${n}`);
       router.refresh();
     } finally {
       setBusy(false);

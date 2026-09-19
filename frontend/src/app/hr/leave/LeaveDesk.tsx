@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/components/proto/blocks";
@@ -41,6 +42,7 @@ export function LeaveDesk({ rows, actingOffice }: { rows: LeaveRow[]; actingOffi
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`${who}'s leave ${approve ? "approved" : "declined"}`);
+      notify(`${who}'s leave ${approve ? "approved" : "declined"}`);
       router.refresh();
     } finally {
       setBusy(false);

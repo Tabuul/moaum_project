@@ -8,6 +8,7 @@
  * stands in the way and a minute is cited. Settings in force are not edited.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -173,6 +174,7 @@ export function AdmissionSettings({
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (response.ok) {
+        notify(reason);
         router.refresh();
         return true;
       }

@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -37,6 +38,7 @@ export function Appraisal({ cycle, rows, actingOffice }: { cycle: string; rows: 
       const j = await res.json().catch(() => null);
       if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); return; }
       setSaid(`Appraisal recorded for ${r.number.trim()}`);
+      notify(`Appraisal recorded for ${r.number.trim()}`);
       setR({ number: "", aperGrade: "", publications: "", selfScore: "", supervisorScore: "", note: "" });
       router.refresh();
     } finally {

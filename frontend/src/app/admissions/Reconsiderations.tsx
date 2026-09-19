@@ -5,6 +5,7 @@
  *  that programme, and the choice is recorded. Nobody is suggested a programme they do not qualify for. */
 import { useEffect, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -68,6 +69,7 @@ export function Reconsiderations({ session, actingOffice }: { session: string; a
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSent(`${programme?.name ?? code} suggested to ${c.name}${j.emailed ? " — emailed" : " — recorded (no email on file)"}.`);
+      notify(`${programme?.name ?? code} suggested to ${c.name}`);
       await load();
     } finally {
       setRowBusy(null);

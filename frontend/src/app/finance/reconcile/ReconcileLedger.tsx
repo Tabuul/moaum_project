@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { when } from "@/lib/bursary";
 import { money } from "@/lib/format";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -58,6 +59,7 @@ export function ReconcileLedger({ canCheck }: { canCheck: boolean }) {
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`${reference} recorded as ${result === "MATCHED" ? "matched to the bank" : "a discrepancy"}`);
+      notify(`${reference} recorded as ${result === "MATCHED" ? "matched" : "a discrepancy"}`);
       setNonce((n) => n + 1);
     } finally {
       setBusy(false);
