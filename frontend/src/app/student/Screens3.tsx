@@ -46,8 +46,10 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const chosenNow = new Set((reg?.entries ?? []).filter((e) => e.entryType !== "CARRYOVER").map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
   const carry = v.menu.filter((m) => m.carryover);
-  // GST (General Studies) is a University requirement — compulsory, not an elective
-  const core = v.menu.filter((m) => !m.carryover && (m.kind === "Compulsory" || m.kind === "Required" || m.kind === "GST" || m.basis === "Core" || m.basis === "GST"));
+  // Group by the PER-PROGRAMME offer basis, not the course's global kind: a course can be Compulsory for
+  // its own department yet Elective for this programme (course_offer.basis). Core/GST are required here;
+  // everything else is an elective. GST (General Studies) is a University requirement.
+  const core = v.menu.filter((m) => !m.carryover && (m.basis === "Core" || m.basis === "GST"));
   const elec = v.menu.filter((m) => !m.carryover && !core.includes(m));
   const total = carry.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
   const min = v.limit.min_units;
