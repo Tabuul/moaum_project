@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, RoleLine, Tiles } from "@/components/proto/ui";
@@ -41,6 +42,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
       const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j;
     } finally { setBusy(false); }
@@ -54,7 +56,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
       const r = await fetch(`/api/bff/api/v1/catalogue/departments/${encodeURIComponent(d.code)}`, { method: "DELETE", headers: { "X-Reason": reasonHeader(`Department ${d.code} removed`) } });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setMsg(`Department ${d.code} removed.`); router.refresh();
+      setMsg(`Department ${d.code} removed.`); notify(`Department ${d.code} removed`); router.refresh();
     } finally { setBusy(false); }
   }
 
@@ -87,7 +89,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
       }));
       if (!rows.length) { setProblem({ status: 400, title: "No departments found in the file." }); return; }
       const j = await post("/departments/import", { rows }, `${rows.length} departments uploaded`);
-      if (j) setMsg(`${j.saved ?? 0} departments saved${(j.bad_code ?? 0) ? ` · ${j.bad_code} rows had no name` : ""}${(j.no_faculty ?? 0) ? ` · ${j.no_faculty} with no matching faculty` : ""}.`);
+      if (j) { setMsg(`${j.saved ?? 0} departments saved${(j.bad_code ?? 0) ? ` · ${j.bad_code} rows had no name` : ""}${(j.no_faculty ?? 0) ? ` · ${j.no_faculty} with no matching faculty` : ""}.`); notify(`${j.saved ?? 0} departments saved`); }
     } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
   }
 

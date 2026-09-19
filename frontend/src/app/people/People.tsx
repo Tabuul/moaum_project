@@ -6,6 +6,7 @@
  * with a start and an end, and the credential that signs each one in.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -82,6 +83,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
         return false;
       }
       setModal(null);
+      notify(reason);
       router.refresh();
       return true;
     } finally {

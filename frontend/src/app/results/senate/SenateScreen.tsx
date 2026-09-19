@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { Senate } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
@@ -41,6 +42,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
         return;
       }
       setOutcome(j);
+      notify(`Senate minute ${minute} recorded`);
       setMinute("");
       router.refresh();
     } finally {

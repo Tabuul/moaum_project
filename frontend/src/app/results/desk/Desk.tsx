@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { STAGE_LABEL, type SheetListing, type SheetListed } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Note, Panel, PBody, Pil, Tiles, Two, Tick } from "@/components/proto/ui";
@@ -63,6 +64,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
         n++;
       }
       setSaid(n ? `${n} set${n === 1 ? "" : "s"} sent on to ${d.next}` : null);
+      if (n) notify(`${n} set${n === 1 ? "" : "s"} sent on to ${d.next}`);
       router.refresh();
     } finally {
       setBusy(false);

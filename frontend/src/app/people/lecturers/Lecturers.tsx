@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -87,6 +88,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
       }
       setForm(null);
       setSaveMsg(edit ? "Staff member updated." : "Staff member added.");
+      notify(edit ? "Staff member updated" : "Staff member added");
       router.refresh();
     } finally { setBusy(false); }
   }
@@ -124,6 +126,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setDelMsg(`${j.deleted ?? 0} lecturer(s) removed${j.skipped ? ` · ${j.skipped} kept (already teaching or on record)` : ""}.`);
+      notify(`${j.deleted ?? 0} lecturer(s) removed`);
       setSel(new Set());
       router.refresh();
     } finally { setBusy(false); }
@@ -198,6 +201,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         setProgress((p) => (p ? { done: Math.min(p.done + chunk.length, p.total), total: p.total } : p));
         setTally({ ...sum, missing: [...sum.missing] });
       }
+      notify(`${sum.created} staff added · ${sum.existing} already on record`);
     } finally {
       setBusy(false);
       setProgress(null);

@@ -2,6 +2,7 @@
 
 /** staffApprovals — proto/part5.html: the desk's queue, with its refusals on the row. */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -46,6 +47,7 @@ export function Approvals({
         setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
         return false;
       }
+      notify(reason);
       router.refresh();
       return true;
     } finally {
