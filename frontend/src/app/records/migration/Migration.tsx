@@ -186,11 +186,11 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const TEMPLATES: Record<Tab, { name: string; headers: string[]; example: string[] }> = {
     biodata: {
       name: "Student biography",
-      headers: ["Matriculation Number", "Surname", "Other Names", "Sex", "Date of Birth", "Programme", "Level",
+      headers: ["Matriculation Number", "JAMB Registration Number", "Surname", "Other Names", "Sex", "Date of Birth", "Programme", "Level",
         "Entry Mode", "Entry Session", "Phone", "Email", "Address", "Nationality", "State", "LGA",
         "Guardian Name", "Guardian Address", "Sponsor Name", "Sponsor Address", "Next of Kin Name", "Next of Kin Address",
         "Extracurricular", "Application No", "School Id"],
-      example: ["MOAUM/CSC/22/0001", "Doe", "John Ada (example — delete this row)", "M", "2003-05-14", "Computer Science", "300",
+      example: ["MOAUM/CSC/22/0001", "202441922663AF", "Doe", "John Ada (example — delete this row)", "M", "2003-05-14", "Computer Science", "300",
         "UTME", "2022/2023", "08030000000", "john.doe@example.com", "12 Example Street, Makurdi", "Nigeria", "Benue", "Makurdi",
         "Mr Doe Senior", "12 Example Street, Makurdi", "Mr Doe Senior", "12 Example Street, Makurdi", "Jane Doe", "12 Example Street, Makurdi",
         "Football, Debate", "10000000AA", "S001"],
@@ -299,6 +299,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     const add = (key: string, idx: number, norm?: (s: string) => string) => { if (idx >= 0) cols.push({ key, idx, norm }); };
     add("matric", at(/matric/, /reg\.?\s*(no|number)/, /registration/, /mat\.?\s*no/, /matno/));
     if (kind === "biodata") {
+      add("jamb", at(/jamb/, /utme\s*reg/));
       add("surname", at(/surname/, /last\s*name/));
       add("otherNames", at(/other\s*name/, /first\s*name/, /given/));
       add("name", at(/full\s*name/, /^name$/, /student\s*name/, /^names$/));
@@ -418,7 +419,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             </div>
           ) : null}
           <div className="sub2" style={{ marginBottom: 8 }}>
-            {tab === "biodata" ? "Columns read: matriculation number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
+            {tab === "biodata" ? "Columns read: matriculation number, JAMB registration number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
               : tab === "jamb" ? "Columns read: matriculation number and JAMB registration number. The student is matched by matriculation number and their JAMB number is set on the register. Do this before uploading passport photos named by JAMB number, so a legacy student (who carries no JAMB number yet) can be matched. The application number is NOT the JAMB number — upload the real JAMB registration number."
               : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
