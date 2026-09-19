@@ -36,6 +36,9 @@ export default async function DashboardPage() {
   /* the requests students put to this office (V036), for the offices that answer them */
   const asks = office && ["registrar", "dregistrar", "bursar", "library", "services", "academic", "hod", "housing"].includes(office) ? await api<{ state: string }[]>("/api/v1/support/requests") : null;
   const requestsOpen = asks && asks.ok ? asks.data.filter((r) => r.state === "OPEN" || r.state === "WITH_OFFICE").length : null;
+  /* open result queries for the Exams Officer's desk (the HOD gets its own count on the HOD dashboard) */
+  const rq = office && ["exams", "facultyexams"].includes(office) ? await api<unknown[]>("/api/v1/results/queries?state=open") : null;
+  const openQueries = rq && rq.ok ? rq.data.length : null;
   /* the Head of Department's dashboard, scoped to their own department */
   const hodHome = office === "hod" ? await api<HodHome>(`/api/v1/hod/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
@@ -63,7 +66,7 @@ export default async function DashboardPage() {
       ) : office === "hod" ? (
         <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} />
       ) : (
-        <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} />
+        <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}
     </Shell>
   );

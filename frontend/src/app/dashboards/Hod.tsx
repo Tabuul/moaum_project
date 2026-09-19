@@ -12,6 +12,7 @@ export interface HodHome {
   deptName?: string;
   session?: string;
   approvals?: number;
+  openQueries?: number;
   offeringsNeedLecturer?: number;
   offeringsTotal?: number;
   deptStudents?: number;
@@ -69,6 +70,7 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
         ["Result sheets in progress", String(sheets), null, "Not yet published"],
         ["Students", String(home.deptStudents ?? 0), null, "Active in the department"],
         ["Courses", String(home.deptCourses ?? 0), null, "In the department catalogue"],
+        ...(home.openQueries ? [["Result queries", String(home.openQueries), "var(--chrome)", "Awaiting your department", "/results/queries"] as [string, string, string, string, string]] : []),
         ...(requestsOpen ? [["Student requests", String(requestsOpen), "var(--chrome)", "Open, to your office"] as [string, string, string, string]] : []),
       ]} />
 

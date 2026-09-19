@@ -163,6 +163,18 @@ class VerifyController {
                     .param("d", pid).query().listOfRows();
             if (!b.isEmpty() && b.get(0).get("b64") != null) photo = "data:image/jpeg;base64," + b.get(0).get("b64");
         }
+        if (photo == null) {
+            // fall back to the JAMB/attachment store — a migrated or JAMB-loaded photo (no candidate document),
+            // matched by the student's candidate or their own JAMB number, so it also shows at the exam hall
+            List<Map<String, Object>> at = jdbc.sql("""
+                    SELECT at.payload->>'dataUrl' AS url FROM people.student s
+                      JOIN admissions.attachment at ON at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')
+                         AND (at.candidate_id = s.candidate_id
+                              OR (s.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(s.jamb_reg_no))))
+                     WHERE s.id = :s LIMIT 1
+                    """).param("s", sid).query().listOfRows();
+            if (!at.isEmpty() && at.get(0).get("url") != null) photo = String.valueOf(at.get(0).get("url"));
+        }
 
         out.put("genuine", true);
         out.put("name", row.get("name"));

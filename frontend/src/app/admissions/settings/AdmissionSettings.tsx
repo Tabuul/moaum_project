@@ -549,8 +549,8 @@ export function AdmissionSettings({
             <Field id="pr-subj" label="Relevant O’Level subjects" hint="Comma-separated, as JAMB names them · the screening counts the best of these" full>
               <textarea id="pr-subj" className="ctl" rows={2} value={"pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-subj": e.target.value })} placeholder="English Language, Mathematics, Physics, Chemistry, Biology" />
             </Field>
-            <Field id="pr-usubj" label="Required UTME subjects (checked)" hint="Comma-separated · a candidate must offer ALL of these UTME subjects to be admitted (English is always counted) · leave blank to not check" full>
-              <textarea id="pr-usubj" className="ctl" rows={2} value={"pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-usubj": e.target.value })} placeholder="Mathematics, Economics" />
+            <Field id="pr-usubj" label="Required UTME subjects (checked)" hint="Comma = all required · use “/” for any-one-of, e.g. “Mathematics, Government/History” = Maths and (Government or History) · English is always counted · blank = not checked" full>
+              <textarea id="pr-usubj" className="ctl" rows={2} value={"pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-usubj": e.target.value })} placeholder="Mathematics, Government/History" />
             </Field>
             <Field id="pr-allow" label="Compulsory-credit exceptions" hint="A credit in English and Mathematics is compulsory for all programmes; tick where this programme accepts a pass instead" full>
               {(() => {

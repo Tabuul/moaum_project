@@ -3,13 +3,18 @@ import { KvGrid, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { officeLabel, roleUnit } from "@/lib/offices";
 
 /** An office whose dashboard arrives with its module: what the portal can say, and no invented figure. */
-export function OfficeDashboard({ me, requestsOpen = null }: { me: Me | null; requestsOpen?: number | null }) {
+export function OfficeDashboard({ me, requestsOpen = null, openQueries = null }: { me: Me | null; requestsOpen?: number | null; openQueries?: number | null }) {
   const label = officeLabel(me?.activeOffice);
   return (
     <>
       <Note kind="info" title={`The ${label}'s dashboard arrives with its module`}>
         The menu on the left is this office&rsquo;s, exactly as designed; the screens it can already reach are the portal&rsquo;s, and the rest say so when pressed. The figures this dashboard will carry come from modules not yet on the portal, so none are shown here.
       </Note>
+      {openQueries !== null ? (
+        <Note kind={openQueries ? "bad" : "ok"} title={openQueries ? `${openQueries} result quer${openQueries === 1 ? "y" : "ies"} awaiting an answer` : "No result query is waiting"}>
+          {openQueries ? "A student has questioned a mark. Answer it on the record — the student sees your reply." : "Result queries students raise arrive on the queries desk."} <a href="/results/queries">Open result queries</a>.
+        </Note>
+      ) : null}
       <Tiles items={[
         ["Signed in as", me?.name ?? label, null, me?.staffNumber ?? ""],
         ["Acting as", label, null, roleUnit(me?.activeOffice) || "The University"],

@@ -55,6 +55,9 @@ class HodController {
                  WHERE r.session = :s AND r.status = 'SUBMITTED' AND p.dept_code = :d
                 """).param("s", s).param("d", dept).query(Long.class).single());
 
+        out.put("openQueries", jdbc.sql("SELECT count(*) FROM assessment.result_query WHERE routed_dept = :d AND state = 'RAISED'")
+                .param("d", dept).query(Long.class).single());
+
         out.put("offeringsNeedLecturer", jdbc.sql("""
                 SELECT count(*) FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
                  WHERE o.session = :s AND c.dept_code = :d AND o.lecturer_id IS NULL
