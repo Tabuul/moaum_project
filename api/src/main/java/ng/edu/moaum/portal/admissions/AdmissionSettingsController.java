@@ -115,6 +115,14 @@ class AdmissionSettingsController {
         return service.setProgrammeOlevelSubjects(session + "/" + year, code, body.subjects());
     }
 
+    /** a programme's required UTME subjects the merit list checks, editable in force — a correction to
+     *  which subjects the gate reads, not the cut-off or weighting a candidate is ranked by */
+    @PutMapping("/sessions/{session}/{year}/policy/programmes/{code}/utme-subjects")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy programmeUtmeSubjects(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody OlevelSubjectsIn body) {
+        return service.setProgrammeUtmeSubjects(session + "/" + year, code, body.subjects());
+    }
+
     public record Catchment(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> lgas) {
     }
 

@@ -61,7 +61,9 @@ public class AdmissionSettingsService {
                                   /** the programme's own carrying capacity (V054); null leaves it unset */
                                   @Min(0) Integer quota,
                                   /** compulsory O'Level subjects this programme accepts a pass in (V053); null leaves them as they are */
-                                  List<String> olevelAllowances) {
+                                  List<String> olevelAllowances,
+                                  /** the required UTME subjects the merit list checks (V189); null leaves them as they are */
+                                  List<String> utmeSubjects) {
     }
 
     public record Instrument(@NotBlank @Size(max = 200) String instrument) {
@@ -218,6 +220,19 @@ public class AdmissionSettingsService {
             throw new NotFound("programme", code);
         }
         settings.setProgrammeOlevelSubjects(id, code, subjects);
+        return policy(session);
+    }
+
+    /** the required UTME subjects the merit list checks — a data correction like the O'Level subjects,
+     *  editable whether the policy is a draft or in force (it names which subjects the gate reads). */
+    @Transactional
+    public AdmissionPolicy setProgrammeUtmeSubjects(String session, String programmeCode, List<String> subjects) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        settings.setProgrammeUtmeSubjects(id, code, subjects);
         return policy(session);
     }
 

@@ -65,6 +65,10 @@ class AdmissionSettingsRepository {
                           FROM admissions.rule_subject rs
                           JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
                          WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'OLEVEL') AS olevel_subjects,
+                       (SELECT string_agg(DISTINCT rs.subject, E'\n' ORDER BY rs.subject)
+                          FROM admissions.rule_subject rs
+                          JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
+                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'UTME') AS utme_subjects,
                        (SELECT string_agg(a.subject, E'\n' ORDER BY a.subject)
                           FROM admissions.programme_olevel_allowance a
                          WHERE a.policy_id = r.policy_id AND a.programme_code = r.programme_code) AS olevel_allowances,
@@ -87,6 +91,7 @@ class AdmissionSettingsRepository {
                         rs.getObject("olevel_credits", Integer.class), rs.getObject("olevel_sittings", Integer.class),
                         rs.getBoolean("stated"), lines(rs.getString("olevel_subjects")),
                         lines(rs.getString("olevel_allowances")),
+                        lines(rs.getString("utme_subjects")),
                         rs.getBoolean("closed"), rs.getString("closed_reason")))
                 .list();
     }
@@ -180,6 +185,28 @@ class AdmissionSettingsRepository {
 
     /** Replace a programme's relevant O'Level subjects (the OLEVEL group the screening counts). Editable
      *  in force: it corrects which subjects the score reads, and the tables are audit-exempt (V008). */
+    void setProgrammeUtmeSubjects(UUID policyId, String code, java.util.List<String> subjects) {
+        jdbc.sql("""
+                DELETE FROM admissions.rule_subject WHERE group_id IN (
+                    SELECT id FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'UTME')
+                """).param("id", policyId).param("code", code).update();
+        jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'UTME'")
+                .param("id", policyId).param("code", code).update();
+        java.util.List<String> subs = subjects == null ? java.util.List.of()
+                : subjects.stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+        if (subs.isEmpty()) {
+            return;
+        }
+        UUID group = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose)
+                VALUES (:g, :id, :code, 'UTME', :choose)
+                """).param("g", group).param("id", policyId).param("code", code).param("choose", subs.size()).update();
+        for (String subject : subs) {
+            jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
+        }
+    }
+
     void setProgrammeOlevelSubjects(UUID policyId, String code, java.util.List<String> subjects) {
         jdbc.sql("""
                 DELETE FROM admissions.rule_subject WHERE group_id IN (
@@ -240,6 +267,26 @@ class AdmissionSettingsRepository {
                         VALUES (:g, :id, :code, 'OLEVEL', :choose, 'C6')
                         """).param("g", group).param("id", policyId).param("code", code)
                         .param("choose", Math.min(subjects.size(), r.olevelCredits() == null ? 5 : r.olevelCredits())).update();
+                for (String subject : subjects) {
+                    jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
+                }
+            }
+        }
+        if (r.utmeSubjects() != null) {
+            /* the required UTME subjects the merit list checks (V189, scope 'UTME'): one group, replaced whole */
+            jdbc.sql("""
+                    DELETE FROM admissions.rule_subject WHERE group_id IN (
+                        SELECT id FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'UTME')
+                    """).param("id", policyId).param("code", code).update();
+            jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'UTME'")
+                    .param("id", policyId).param("code", code).update();
+            List<String> subjects = r.utmeSubjects().stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+            if (!subjects.isEmpty()) {
+                UUID group = UUID.randomUUID();
+                jdbc.sql("""
+                        INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose)
+                        VALUES (:g, :id, :code, 'UTME', :choose)
+                        """).param("g", group).param("id", policyId).param("code", code).param("choose", subjects.size()).update();
                 for (String subject : subjects) {
                     jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
                 }

@@ -39,6 +39,8 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
                                 Integer olevelSittings, boolean stated, List<String> olevelSubjects,
                                 /** compulsory O'Level subjects this programme accepts a pass in / waives (V053) */
                                 List<String> olevelAllowances,
+                                /** the required UTME subjects the merit list checks (V189); empty = not gated */
+                                List<String> utmeSubjects,
                                 /** closed for the session (V023): not admitted into, needs no rule */
                                 boolean closed, String closedReason) {
     }

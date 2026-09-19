@@ -62,6 +62,8 @@ export interface AdmissionPolicy {
   olevelSubjects?: string[];
   /** compulsory O'Level subjects this programme accepts a pass in / waives (V053) */
   olevelAllowances?: string[];
+  /** the required UTME subjects the merit list checks (V189) */
+  utmeSubjects?: string[];
   /** closed for the session (V023): not admitted into, needs no rule */
   closed?: boolean;
   closedReason?: string | null;
@@ -492,10 +494,13 @@ export function AdmissionSettings({
                   const ok = await send("PUT", `${base}/programmes/${editingProgramme.code}/olevel-subjects`, {
                     subjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                   }, `Relevant O’Level subjects corrected for ${editingProgramme.name} (${session})`, "pr");
-                  if (ok) { setEditing(null); setEdits({}); }
+                  const ok2 = ok && await send("PUT", `${base}/programmes/${editingProgramme.code}/utme-subjects`, {
+                    subjects: ("pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+                  }, `Required UTME subjects set for ${editingProgramme.name} (${session})`, "pr");
+                  if (ok2) { setEditing(null); setEdits({}); }
                 }}
               >
-                {busy === "pr" ? "Saving…" : "Save O’Level subjects"}
+                {busy === "pr" ? "Saving…" : "Save O’Level & UTME subjects"}
               </Btn>
             ) : (
               <Btn
@@ -510,6 +515,7 @@ export function AdmissionSettings({
                     deText: "pr-de" in edits ? edits["pr-de"] : editingProgramme.deText ?? "",
                     olevelSubjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                     olevelAllowances: ("pr-allow" in edits ? edits["pr-allow"] : (editingProgramme.olevelAllowances ?? []).join(",")).split(",").map((s) => s.trim()).filter(Boolean),
+                    utmeSubjects: ("pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                   }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
                   if (ok) { setEditing(null); setEdits({}); }
                 }}
@@ -542,6 +548,9 @@ export function AdmissionSettings({
             ))}
             <Field id="pr-subj" label="Relevant O’Level subjects" hint="Comma-separated, as JAMB names them · the screening counts the best of these" full>
               <textarea id="pr-subj" className="ctl" rows={2} value={"pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-subj": e.target.value })} placeholder="English Language, Mathematics, Physics, Chemistry, Biology" />
+            </Field>
+            <Field id="pr-usubj" label="Required UTME subjects (checked)" hint="Comma-separated · a candidate must offer ALL of these UTME subjects to be admitted (English is always counted) · leave blank to not check" full>
+              <textarea id="pr-usubj" className="ctl" rows={2} value={"pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-usubj": e.target.value })} placeholder="Mathematics, Economics" />
             </Field>
             <Field id="pr-allow" label="Compulsory-credit exceptions" hint="A credit in English and Mathematics is compulsory for all programmes; tick where this programme accepts a pass instead" full>
               {(() => {
