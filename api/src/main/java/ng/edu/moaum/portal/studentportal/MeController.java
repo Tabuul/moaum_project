@@ -170,4 +170,16 @@ class MeController {
     Map<String, Object> graduation(Authentication auth) {
         return portal.graduation(id(auth));
     }
+
+    /** the student's passport image — resolved from the document store or the JAMB/attachment store, so a
+     *  migrated or JAMB-loaded photo also appears on the course form and identity documents. */
+    @GetMapping("/passport")
+    org.springframework.http.ResponseEntity<byte[]> passport(Authentication auth) {
+        return portal.passportImage(id(auth))
+                .map(img -> org.springframework.http.ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.IMAGE_JPEG)
+                        .cacheControl(org.springframework.http.CacheControl.noCache())
+                        .body(img))
+                .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
+    }
 }

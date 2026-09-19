@@ -32,6 +32,12 @@ public class StudentPortalService {
         return repo.byId(id).orElseThrow(() -> new NotFound("student", id));
     }
 
+    /** the student's passport image bytes, from the document store or the JAMB/attachment store */
+    @Transactional(readOnly = true)
+    public java.util.Optional<byte[]> passportImage(UUID id) {
+        return repo.passportImage(student(id).candidateId());
+    }
+
     /** the current session, or the latest one the Bursar has charged for */
     public String session() {
         return repo.currentSession().orElseGet(() -> repo.sessionsWithCharges().stream().findFirst().orElse("2026/2027"));

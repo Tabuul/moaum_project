@@ -130,6 +130,29 @@ class StudentPortalRepository {
                 """).param("c", candidateId).query(UUID.class).optional();
     }
 
+    /** the student's passport image bytes, from the document store OR the JAMB/attachment store (a migrated
+     *  or JAMB-loaded passport lives in admissions.attachment as a base64 data URL) — for the course form. */
+    Optional<byte[]> passportImage(UUID candidateId) {
+        if (candidateId == null) {
+            return Optional.empty();
+        }
+        Optional<byte[]> doc = jdbc.sql("""
+                SELECT b.content FROM admissions.application_document d
+                  JOIN admissions.application a ON a.id = d.application_id
+                  JOIN admissions.application_document_blob b ON b.document_id = d.id
+                 WHERE a.candidate_id = :c AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                 ORDER BY d.id LIMIT 1
+                """).param("c", candidateId).query(byte[].class).optional();
+        if (doc.isPresent()) {
+            return doc;
+        }
+        return jdbc.sql("""
+                SELECT at.payload->>'dataUrl' FROM admissions.attachment at
+                 WHERE at.candidate_id = :c AND at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl') LIMIT 1
+                """).param("c", candidateId).query(String.class).optional()
+                .map(u -> { int i = u.indexOf(','); return java.util.Base64.getDecoder().decode(i >= 0 ? u.substring(i + 1) : u); });
+    }
+
     /* ── the fees ── */
 
     List<Map<String, Object>> charges(UUID student, String session) {

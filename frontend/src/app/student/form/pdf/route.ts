@@ -36,19 +36,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: 409, title: "Not approved", detail: "The form is issued when the registration is approved." }, { status: 409 });
   }
 
-  // the passport captured at admission, embedded as JPEG (blank box when none)
+  // the passport, embedded as JPEG (blank box when none) — resolved from the document store OR the
+  // JAMB/attachment store, so a migrated / JAMB-loaded student's photo also prints
   let photo: { width: number; height: number; data: Uint8Array } | null = null;
-  if (s.passportDocumentId) {
-    try {
-      const tok = await sessionToken();
-      const res = await fetch(`${API_URL}/api/v1/applicant/me/documents/${s.passportDocumentId}/content`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
-      if (res.ok) {
-        const buf = new Uint8Array(await res.arrayBuffer());
-        const dim = jpegSize(buf);
-        if (dim) photo = { width: dim.width, height: dim.height, data: buf };
-      }
-    } catch { /* leave the box blank */ }
-  }
+  try {
+    const tok = await sessionToken();
+    const res = await fetch(`${API_URL}/api/v1/me/passport`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
+    if (res.ok) {
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const dim = jpegSize(buf);
+      if (dim) photo = { width: dim.width, height: dim.height, data: buf };
+    }
+  } catch { /* leave the box blank */ }
 
   const p = new Page();
   const L = 64;
