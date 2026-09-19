@@ -5,13 +5,19 @@ import type { Me, RegistrationView, Entry } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
-import { qrMatrix } from "@/lib/qr";
+import { qrMatrix, regToken, regVerifyPath } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "..." : s);
+function originOf(req: Request): string {
+  const h = req.headers;
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
+}
 
 /** GST / Elective / Core (Compulsory/Required → Core) */
 /** display order: carryover first, then GST, then Core, then Elective */
@@ -97,27 +103,18 @@ export async function GET(request: NextRequest) {
   p.text(unitX, y - 8, String(reg.units), 12, true);
   y -= 48;
 
-  // ── verification QR (bottom-left): the whole form, not just a summary ──
-  const ordered = [...reg.entries].sort((a, b) => orderRank(a) - orderRank(b) || (a.courseCode ?? "").localeCompare(b.courseCode ?? ""));
-  const qrText = [
-    "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",
-    "Course Registration Form",
-    `Name: ${clean(s.name)}`,
-    `Matric: ${s.matricNo ?? s.admissionNo ?? ""}`,
-    `Programme: ${clean(s.programme)}`,
-    `Level: ${reg.level} | Session: ${session} | Semester: ${semesterName(semester)}`,
-    `Registered: ${regDate}`,
-    "Courses (Code | Title | Units | Type):",
-    ...ordered.map((e) => `${clean(e.courseCode)} | ${clean(e.title)} | ${e.units} | ${courseType(e)}${e.entryType === "CARRYOVER" ? " (Carryover)" : ""}`),
-    `Total: ${reg.units} credit units, ${reg.entries.length} course(s)`,
-    `Ref: ${reg.id.slice(0, 8).toUpperCase()}`,
-  ].join("\n");
-  const { size, dark } = qrMatrix(qrText);
-  // keep the printed QR a steady size whatever the data length (cap the cell so a small code isn't huge)
-  const qDim = Math.min(size * 3, 172), cell = qDim / size, qx = L, qy = y;
+  // ── verification QR (bottom-left): opens the University's OWN record, so a forged or altered
+  //    form is exposed. The QR carries only a link to the portal plus a check code — the courses,
+  //    units and approval date shown on scan come from the database, not from this sheet. ──
+  const matric = s.matricNo ?? s.admissionNo ?? "";
+  const verifyUrl = originOf(request) + regVerifyPath(matric, session, semester);
+  const code = regToken(matric, session, semester);
+  const { size, dark } = qrMatrix(verifyUrl);
+  const qDim = Math.min(size * 2.6, 96), cell = qDim / size, qx = L, qy = y;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
   p.text(qx, qy - qDim - 12, "SCAN TO VERIFY", 7.5, true, [0.4, 0.4, 0.4]);
-  p.text(qx, qy - qDim - 24, `Ref ${reg.id.slice(0, 8).toUpperCase()}`, 8, false, [0.3, 0.3, 0.3]);
+  p.text(qx, qy - qDim - 23, verifyUrl.replace(/^https?:\/\//, ""), 6.5, false, [0.1, 0.25, 0.4]);
+  p.text(qx, qy - qDim - 34, `Check code  ${code}`, 8, true, [0.3, 0.3, 0.3]);
 
   // ── signatures: Head of Department / Level Coordinator, and Dean of Faculty ──
   const sigW = 264, sigX2 = A4.w - L - sigW, dateX = sigX2 + sigW - 54;

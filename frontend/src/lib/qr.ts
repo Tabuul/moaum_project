@@ -28,6 +28,24 @@ export function examVerifyPath(matricNo: string, session: string, semester: numb
   return `/verify/exam?m=${encodeURIComponent(matricNo)}&s=${encodeURIComponent(session)}&sem=${semester}&c=${c}`;
 }
 
+/** the course registration form's check token and the public path its QR opens */
+export function regToken(matricNo: string, session: string, semester: number): string {
+  return createHash("sha256").update(`REG|${matricNo}|${session}|${semester}`).digest("hex").slice(0, 12).toUpperCase();
+}
+export function regVerifyPath(matricNo: string, session: string, semester: number): string {
+  const c = regToken(matricNo, session, semester);
+  return `/verify/registration?m=${encodeURIComponent(matricNo)}&s=${encodeURIComponent(session)}&sem=${semester}&c=${c}`;
+}
+
+/** the semester results statement's check token and the public path its QR opens */
+export function resultToken(matricNo: string, session: string, semester: number): string {
+  return createHash("sha256").update(`RESULT|${matricNo}|${session}|${semester}`).digest("hex").slice(0, 12).toUpperCase();
+}
+export function resultVerifyPath(matricNo: string, session: string, semester: number): string {
+  const c = resultToken(matricNo, session, semester);
+  return `/verify/results?m=${encodeURIComponent(matricNo)}&s=${encodeURIComponent(session)}&sem=${semester}&c=${c}`;
+}
+
 /** the QR as a monochrome module grid, for drawing into a PDF as filled squares */
 export function qrMatrix(text: string): { size: number; dark: boolean[] } {
   const qr = QRCode.create(text, { errorCorrectionLevel: "M" });

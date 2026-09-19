@@ -98,16 +98,28 @@ class VerifyController {
         return out;
     }
 
-    private static String examToken(String matric, String session, int semester) {
+    /** sha256(payload), hex, upper-cased, first 12 — the stateless check token every QR carries */
+    private static String digest12(String payload) {
         try {
-            byte[] d = MessageDigest.getInstance("SHA-256")
-                    .digest(("EXAM|" + matric + "|" + session + "|" + semester).getBytes(StandardCharsets.UTF_8));
+            byte[] d = MessageDigest.getInstance("SHA-256").digest(payload.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(d.length * 2);
             for (byte b : d) sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
             return sb.substring(0, 12).toUpperCase();
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private static String examToken(String matric, String session, int semester) {
+        return digest12("EXAM|" + matric + "|" + session + "|" + semester);
+    }
+
+    private static String regToken(String matric, String session, int semester) {
+        return digest12("REG|" + matric + "|" + session + "|" + semester);
+    }
+
+    private static String resultToken(String matric, String session, int semester) {
+        return digest12("RESULT|" + matric + "|" + session + "|" + semester);
     }
 
     /**
@@ -162,6 +174,112 @@ class VerifyController {
         out.put("cleared", row.get("cleared"));
         out.put("photo", photo);
         out.put("courses", courses);
+        return out;
+    }
+
+    /**
+     * Verify a course registration form. The form's QR opens the public page, which asks this for the
+     * University's own record: the student, the approved courses, the units and the approval date. The
+     * record is the truth; the printed form is a view of it, so a form whose courses, units or approval
+     * date do not match here is exposed. The stateless check token (sha256 of matric|session|semester)
+     * gates enumeration, and only an approved registration is returned.
+     */
+    @GetMapping("/registration")
+    @Transactional(readOnly = true)
+    Map<String, Object> registration(@RequestParam String matric, @RequestParam String session,
+                                     @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT r.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
+                       r.level, r.status, r.approved_at, r.submitted_at, registration.units_of(r.id) AS units
+                  FROM registration.course_registration r
+                  JOIN people.student s ON s.id = r.student_id
+                  LEFT JOIN ref.programme pg ON pg.code = s.programme_code
+                 WHERE upper(s.matric_no) = upper(:m) AND r.session = :session AND r.semester = :sem
+                   AND r.status IN ('APPROVED','LOCKED')
+                 ORDER BY r.approved_at DESC NULLS LAST LIMIT 1
+                """).param("m", matric).param("session", session).param("sem", semester).query().listOfRows();
+        if (rows.isEmpty()) { out.put("genuine", false); return out; }
+        Map<String, Object> row = rows.get(0);
+        if (c == null || !regToken(String.valueOf(row.get("matric_no")), session, semester).equalsIgnoreCase(c.trim())) {
+            out.put("genuine", false); return out;
+        }
+        java.util.UUID rid = (java.util.UUID) row.get("id");
+        List<Map<String, Object>> courses = jdbc.sql("""
+                SELECT c.code AS course_code, c.title, e.units, e.entry_type, c.kind
+                  FROM registration.entry e
+                  JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                 WHERE e.registration_id = :r AND e.status IN ('REGISTERED','APPROVED')
+                 ORDER BY (e.entry_type = 'CARRYOVER') DESC, c.code
+                """).param("r", rid).query().listOfRows();
+        out.put("genuine", true);
+        out.put("name", row.get("name"));
+        out.put("matricNo", row.get("matric_no"));
+        out.put("programme", row.get("programme"));
+        out.put("level", row.get("level"));
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("status", row.get("status"));
+        out.put("approvedOn", row.get("approved_at"));
+        out.put("units", row.get("units"));
+        out.put("courses", courses);
+        return out;
+    }
+
+    /**
+     * Verify a semester results statement. The statement's QR opens the public page, which asks this for
+     * the University's own record: the published grades, the semester and cumulative GPA, the class of
+     * standing and the Senate approval date. Only published results are returned, and only when the
+     * stateless check token (sha256 of matric|session|semester) matches — so a statement whose grades or
+     * GPA do not match here is exposed, and the records cannot be enumerated.
+     */
+    @GetMapping("/results")
+    @Transactional(readOnly = true)
+    Map<String, Object> results(@RequestParam String matric, @RequestParam String session,
+                                @RequestParam(defaultValue = "1") int semester, @RequestParam(required = false) String c) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> stu = jdbc.sql("""
+                SELECT s.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
+                       coalesce((SELECT e.level FROM people.enrolment e WHERE e.student_id = s.id AND e.session = :session LIMIT 1),
+                                s.current_level) AS level
+                  FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
+                 WHERE upper(s.matric_no) = upper(:m) LIMIT 1
+                """).param("m", matric).param("session", session).query().listOfRows();
+        if (stu.isEmpty()) { out.put("genuine", false); return out; }
+        Map<String, Object> s = stu.get(0);
+        if (c == null || !resultToken(String.valueOf(s.get("matric_no")), session, semester).equalsIgnoreCase(c.trim())) {
+            out.put("genuine", false); return out;
+        }
+        java.util.UUID sid = (java.util.UUID) s.get("id");
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT course_code, title, units, total, grade, points, outcome, published_at, senate_minute
+                  FROM assessment.student_results(:s)
+                 WHERE session = :session AND semester = :sem AND published
+                 ORDER BY course_code
+                """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
+        if (rows.isEmpty()) { out.put("genuine", false); return out; }
+        List<Map<String, Object>> g = jdbc.sql("""
+                SELECT gpa, cgpa FROM assessment.student_gpa(:s) WHERE session = :session AND semester = :sem LIMIT 1
+                """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
+        Object gpa = g.isEmpty() ? null : g.get(0).get("gpa");
+        Object cgpa = g.isEmpty() ? null : g.get(0).get("cgpa");
+        String standing = null;
+        if (cgpa != null) {
+            standing = jdbc.sql("SELECT policy.class_of(:c)").param("c", cgpa).query(String.class).optional().orElse(null);
+        }
+        out.put("genuine", true);
+        out.put("name", s.get("name"));
+        out.put("matricNo", s.get("matric_no"));
+        out.put("programme", s.get("programme"));
+        out.put("level", s.get("level"));
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("gpa", gpa);
+        out.put("cgpa", cgpa);
+        out.put("standing", standing);
+        out.put("approvedOn", rows.get(0).get("published_at"));
+        out.put("senateMinute", rows.get(0).get("senate_minute"));
+        out.put("rows", rows);
         return out;
     }
 }

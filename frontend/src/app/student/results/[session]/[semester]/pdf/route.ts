@@ -4,7 +4,7 @@ import type { Results } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
-import { qrMatrix } from "@/lib/qr";
+import { qrMatrix, resultToken, resultVerifyPath } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +15,15 @@ const clean = (s: string | null | undefined) => (s ?? "").replace(/[\u00A0\u2007
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…".replace("…", "...") : s);
 const scoreOf = (c: { outcome: string | null; total: number | null | undefined }) =>
   c.outcome === "GRADED" ? (c.total == null ? "—" : String(c.total)) : (c.outcome ? c.outcome.charAt(0) + c.outcome.slice(1).toLowerCase() : "—");
+function originOf(req: Request): string {
+  const h = req.headers;
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
+}
 
 /** the statement of results as a PDF: one semester, the published grades and nothing else */
-export async function GET(_: Request, { params }: { params: Promise<{ session: string; semester: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ session: string; semester: string }> }) {
   const p0 = await params;
   const session = decodeURIComponent(p0.session);
   const semester = Number(p0.semester);
@@ -122,24 +128,19 @@ export async function GET(_: Request, { params }: { params: Promise<{ session: s
   p.text(L + 78, y, `Approved by Senate on ${approvedOn}${rows[0].senate_minute ? ` · minute ${clean(rows[0].senate_minute)}` : ""}`, 9.5, true, [0.06, 0.15, 0.22]);
   y -= 26;
 
-  // ── verification QR and its details ────────────────────────────────────────
-  const qrText = [
-    "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",
-    "Semester Results Statement",
-    clean(x.name),
-    x.matricNo ?? "",
-    `${clean(x.programme)} · ${x.level} Level`,
-    `${session} · ${semesterName(semester)} semester`,
-    `GPA ${sem?.gpa ?? "-"} · CGPA ${sem?.cgpa ?? "-"} · ${clean(x.standing ?? "-")}`,
-    `Approved ${approvedOn}${rows[0].senate_minute ? ` · minute ${clean(rows[0].senate_minute)}` : ""}`,
-  ].join("\n");
-  const { size, dark } = qrMatrix(qrText);
-  const cell = 2.4, qDim = size * cell, qx = L, qy = y;
+  // ── verification QR and its details: the QR opens the University's OWN record on the portal, so an
+  //    altered statement is exposed. The grades and GPA shown on scan come from the register, not this sheet.
+  const matric = x.matricNo ?? "";
+  const verifyUrl = originOf(request) + resultVerifyPath(matric, session, semester);
+  const code = resultToken(matric, session, semester);
+  const { size, dark } = qrMatrix(verifyUrl);
+  const qDim = Math.min(size * 2.6, 96), cell = qDim / size, qx = L, qy = y;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
   p.text(qx, qy - qDim - 12, "SCAN TO VERIFY", 7.5, true, [0.4, 0.4, 0.4]);
   const dx = qx + qDim + 20;
   p.text(dx, qy - 4, "DETAILS OF THE QR CODE", 7, false, [0.42, 0.42, 0.42]);
-  p.paragraph(dx, qy - 18, "The code carries this statement's own record: the candidate's name and matriculation number, the programme and level, the session and semester, the semester GPA and cumulative GPA, the class of standing, and the Senate approval date. A statement is verified against the register, not by its appearance; a grade that is not on a published sheet is not on this statement.", R - dx, 8.5);
+  const ty = p.paragraph(dx, qy - 18, "Scanning opens the University's own record for this statement on the portal: the candidate, the published grades, the semester and cumulative GPA, the class of standing and the Senate approval date. The result is verified against the register, not by the appearance of this sheet; a grade that is not on a published sheet is not on this statement.", R - dx, 8.5);
+  p.text(dx, ty - 2, `${verifyUrl.replace(/^https?:\/\//, "")}   ·   Check code ${code}`, 7.5, false, [0.1, 0.25, 0.4]);
 
   p.rule(L, 44, R, 44, 0.5, 0.8);
   p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())}`, 7.5, false, [0.45, 0.45, 0.45]);
