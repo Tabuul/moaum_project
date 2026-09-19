@@ -97,31 +97,36 @@ export async function GET(request: NextRequest) {
   p.text(unitX, y - 8, String(reg.units), 12, true);
   y -= 48;
 
-  // ── verification QR (bottom-left) ──
+  // ── verification QR (bottom-left): the whole form, not just a summary ──
+  const ordered = [...reg.entries].sort((a, b) => orderRank(a) - orderRank(b) || (a.courseCode ?? "").localeCompare(b.courseCode ?? ""));
   const qrText = [
     "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",
-    "Course Registration",
-    clean(s.name),
-    s.matricNo ?? s.admissionNo ?? "",
-    clean(s.programme),
-    `${reg.level} Level · ${session} · ${semesterName(semester)} semester`,
-    `${reg.units} credit units · ${reg.entries.length} course(s)`,
-    `Registered ${regDate} · Ref ${reg.id.slice(0, 8).toUpperCase()}`,
+    "Course Registration Form",
+    `Name: ${clean(s.name)}`,
+    `Matric: ${s.matricNo ?? s.admissionNo ?? ""}`,
+    `Programme: ${clean(s.programme)}`,
+    `Level: ${reg.level} | Session: ${session} | Semester: ${semesterName(semester)}`,
+    `Registered: ${regDate}`,
+    "Courses (Code | Title | Units | Type):",
+    ...ordered.map((e) => `${clean(e.courseCode)} | ${clean(e.title)} | ${e.units} | ${courseType(e)}${e.entryType === "CARRYOVER" ? " (Carryover)" : ""}`),
+    `Total: ${reg.units} credit units, ${reg.entries.length} course(s)`,
+    `Ref: ${reg.id.slice(0, 8).toUpperCase()}`,
   ].join("\n");
   const { size, dark } = qrMatrix(qrText);
-  const cell = 2.5, qDim = size * cell, qx = L, qy = y;
+  // keep the printed QR a steady size whatever the data length (cap the cell so a small code isn't huge)
+  const qDim = Math.min(size * 3, 172), cell = qDim / size, qx = L, qy = y;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
   p.text(qx, qy - qDim - 12, "SCAN TO VERIFY", 7.5, true, [0.4, 0.4, 0.4]);
   p.text(qx, qy - qDim - 24, `Ref ${reg.id.slice(0, 8).toUpperCase()}`, 8, false, [0.3, 0.3, 0.3]);
 
   // ── signatures: Head of Department / Level Coordinator, and Dean of Faculty ──
-  const sigW = 200, sigX2 = A4.w - L - sigW;
+  const sigW = 264, sigX2 = A4.w - L - sigW, dateX = sigX2 + sigW - 54;
   let sy = qy - 8;
   for (const role of ["Head of Department / Level Coordinator", "Dean of Faculty"]) {
-    p.rule(sigX2, sy, sigX2 + sigW - 70, sy, 0.6, 0.55);
-    p.rule(sigX2 + sigW - 60, sy, sigX2 + sigW, sy, 0.6, 0.55);
-    p.text(sigX2, sy - 11, role, 8, true, [0.25, 0.25, 0.25]);
-    p.text(sigX2 + sigW - 60, sy - 11, "Date", 7.5, false, [0.45, 0.45, 0.45]);
+    p.rule(sigX2, sy, dateX - 12, sy, 0.6, 0.55);
+    p.rule(dateX, sy, sigX2 + sigW, sy, 0.6, 0.55);
+    p.text(sigX2, sy - 11, role, 7.5, true, [0.25, 0.25, 0.25]);
+    p.text(dateX, sy - 11, "Date", 7.5, false, [0.45, 0.45, 0.45]);
     sy -= 40;
   }
 
