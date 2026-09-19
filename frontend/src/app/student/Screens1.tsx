@@ -151,7 +151,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
           <div className="field"><label htmlFor="em">Personal email</label><input id="em" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" /></div>
           <div className="field"><label htmlFor="ad">Contact address</label><input id="ad" value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="off" /></div>
           {problem && busy !== "pw" ? <ProblemNotice problem={problem} /> : null}
-          <Btn kind="primary" disabled={busy !== null} onClick={() => void act("contact", "PUT", "/me/contact", { phone, email, address }, "Contact details changed by the student")}>{busy === "contact" ? "Saving…" : "Save changes"}</Btn>
+          <Btn kind="primary" disabled={busy !== null} onClick={() => void act("contact", "PUT", "/me/contact", { phone, email, address }, "Contact details changed by the student", "Contact details saved")}>{busy === "contact" ? "Saving…" : "Save changes"}</Btn>
           <div style={{ height: 1, background: "var(--line-2)" }} />
           <div style={{ fontWeight: 600 }}>Password</div>
           <div className="field"><label htmlFor="pw0">Current password</label><input id="pw0" type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" /></div>

@@ -5,12 +5,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 
 export function useAct() {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
-  async function act(key: string, method: "POST" | "PUT", path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
+  // `success` is the popup shown when the act succeeds (default "Saved"); pass "" to suppress it.
+  async function act(key: string, method: "POST" | "PUT", path: string, body: unknown, reason: string, success = "Saved"): Promise<Record<string, unknown> | null> {
     setBusy(key);
     setProblem(null);
     try {
@@ -21,10 +23,15 @@ export function useAct() {
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
+        const p = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText };
+        setProblem(p);
+        notify(p.detail || p.title || "That did not go through", "bad");
         return null;
       }
       router.refresh();
+      if (success) {
+        notify(success);
+      }
       return (j ?? {}) as Record<string, unknown>;
     } finally {
       setBusy(null);
