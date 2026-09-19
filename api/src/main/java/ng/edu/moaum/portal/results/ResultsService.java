@@ -138,7 +138,7 @@ public class ResultsService {
             switch (status == null ? "SKIPPED" : status) {
                 case "STORED" -> stored++;
                 case "ATTACHED" -> attached++;
-                case "NOT_FOUND" -> { notFound++; if (notFoundList.size() < 500) notFoundList.add(passportKey(it.filename())); }
+                case "NOT_FOUND" -> { notFound++; if (notFoundList.size() < 500) notFoundList.add(jambFromName(it.filename())); }
                 default -> skipped++;
             }
         }
@@ -165,9 +165,9 @@ public class ResultsService {
         }
         String ct = normPassportType(it.contentType(), it.filename());
         String base = passportKey(it.filename());
-        String key = base.toUpperCase();
-        java.util.regex.Matcher m = JAMB_TOKEN.matcher(base);
-        String tok = m.find() ? m.group(1).toUpperCase() : null;
+        String key = jambFromName(it.filename());              // the JAMB number, with " _Face"/"_photo" etc. dropped
+        String cleaned = base.replaceAll("(?i)[\\s_\\-]*(face|photo|passport|pix|pic|image)\\s*$", "").trim().toUpperCase();
+        String tok = (!cleaned.isEmpty() && !cleaned.equals(key)) ? cleaned : null;  // a lenient fallback
         boolean docOk = IMG_OK.contains(ct) && content.length <= DOC_MAX;
         return repo.storePassport(key, tok, it.filename(), ct, content, raw, docOk);
     }
@@ -180,6 +180,19 @@ public class ResultsService {
         int dot = n.lastIndexOf('.');
         if (dot > 0) n = n.substring(0, dot);
         return n.trim();
+    }
+
+    /** the JAMB registration number carried by a photo's file name: the leading run of digits with up to three
+     *  trailing letters, upper-cased. This drops a " _Face" / "_photo" suffix and any spaces, so
+     *  "202441922663AF _Face.jpg" yields "202441922663AF" — exactly what the register stores. Falls back to the
+     *  cleaned base name when the name has no JAMB-shaped token. */
+    private static String jambFromName(String filename) {
+        String base = passportKey(filename);
+        java.util.regex.Matcher m = JAMB_TOKEN.matcher(base);
+        if (m.find()) {
+            return m.group(1).toUpperCase();
+        }
+        return base.replaceAll("(?i)[\\s_\\-]*(face|photo|passport|pix|pic|image)\\s*$", "").trim().toUpperCase();
     }
 
     /** the base64, with any "data:...;base64," prefix removed */
