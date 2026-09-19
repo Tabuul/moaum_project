@@ -285,8 +285,8 @@ export const TITLES: Record<string, [string, string]> = {
     "2026/2027 · numbers issued over the confirmed register"
   ],
   "t/transfers": [
-    "Inter-departmental transfer",
-    "Applications, the committee, Senate and the register"
+    "Inter-Departmental Transfer",
+    "The pipeline: current department, new department, Registrar, Academic office"
   ],
   "s/transfer": [
     "Inter-Departmental Transfer",

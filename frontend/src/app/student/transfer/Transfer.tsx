@@ -12,7 +12,7 @@ import { naira, PayByCard, useAct } from "../common";
 
 interface App {
   id: string; from_programme: string; from_level: number; to_programme: string; reason: string; state: string;
-  recommended_level: number | null; committee_note: string | null; senate_note: string | null;
+  recommended_level: number | null; committee_note: string | null; senate_note: string | null; decline_note: string | null;
   fee_reference: string | null; fee_confirmed_at: string | null; applied_at: string;
 }
 export interface MyTransfer {
@@ -23,19 +23,23 @@ export interface MyTransfer {
 }
 
 const STAGES: [string, string][] = [
-  ["Applied", "Your application is with the office"],
-  ["Committee", "The committee considers the case"],
-  ["Senate", "The recommended case goes to Senate"],
+  ["Applied", "Your application is submitted"],
+  ["Current department", "Your current department approves"],
+  ["New department", "The department you applied to accepts"],
+  ["Registrar", "The Registrar approves"],
+  ["Academic office", "The Academic office approves"],
   ["Approved", "Pay the non-refundable fee"],
-  ["Effected", "Moved on the register"],
+  ["Completed", "Moved on the register"],
 ];
-// map a state to how many stages are complete
+// the index of the stage currently in progress (earlier stages are done)
 function stageOf(state: string): number {
   switch (state) {
     case "APPLIED": return 1;
-    case "RECOMMENDED": return 2;
-    case "APPROVED": return 3;
-    case "EFFECTED": return 5;
+    case "FROM_OK": return 2;
+    case "TO_OK": return 3;
+    case "REG_OK": return 4;
+    case "APPROVED": return 5;
+    case "EFFECTED": return 7;
     default: return 1;
   }
 }
@@ -48,7 +52,7 @@ export function Transfer({ d }: { d: MyTransfer }) {
   const [feeRef, setFeeRef] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
 
-  const live = d.applications.find((a) => ["APPLIED", "RECOMMENDED", "APPROVED"].includes(a.state)) ?? null;
+  const live = d.applications.find((a) => ["APPLIED", "FROM_OK", "TO_OK", "REG_OK", "APPROVED"].includes(a.state)) ?? null;
   const last = d.applications[0] ?? null;
   const canApply = !live && d.student.matric_no && ["ACTIVE", "PROBATION"].includes(d.student.status);
   const paidRef = live?.fee_reference ?? feeRef;
@@ -73,14 +77,15 @@ export function Transfer({ d }: { d: MyTransfer }) {
             ))}
           </div>
           <PBody>
-            {live.state === "NOT_RECOMMENDED" || live.state === "DECLINED" ? (
-              <Note kind="bad" title={live.state === "NOT_RECOMMENDED" ? "The committee did not recommend your case" : "Senate did not approve your case"}>{live.committee_note ?? live.senate_note ?? "No reason was recorded."}</Note>
+            {["APPLIED", "FROM_OK", "TO_OK", "REG_OK"].includes(live.state) ? (
+              <Note kind="info" title={`In progress — ${STAGES[stageOf(live.state)]?.[0] ?? "under review"}`}>
+                Your request to move to {live.to_programme} is with the {STAGES[stageOf(live.state)]?.[0]?.toLowerCase()}. Each office approves in turn; watch it advance above.
+              </Note>
             ) : null}
-            {live.state === "RECOMMENDED" ? <Note kind="info" title="Recommended — awaiting Senate">The committee recommended your transfer to {live.to_programme}{live.recommended_level ? ` at ${live.recommended_level} Level` : ""}. It now goes to Senate for approval.</Note> : null}
             {live.state === "APPROVED" ? (
               <>
                 <Note kind="ok" title="Approved — pay the processing fee to complete your transfer">
-                  Senate approved your transfer to {live.to_programme}{live.recommended_level ? ` at ${live.recommended_level} Level` : ""}. Pay the non-refundable {naira(d.fee)} fee to process it, then the registry moves you on the register.
+                  All approvals are complete for your transfer to {live.to_programme}. Pay the non-refundable {naira(d.fee)} fee to process it, then the registry moves you on the register.
                 </Note>
                 {!paidRef ? (
                   <div style={{ marginTop: 10 }}><Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fee", "POST", `/me/transfer/${live.id}/fee`, {}, "Transfer fee reference"); if (r) { setFeeRef(String(r.reference)); setSaid(`Reference ${r.reference} generated — pay it by card below.`); } }}>Generate the payment reference</Btn></div>
@@ -106,13 +111,16 @@ export function Transfer({ d }: { d: MyTransfer }) {
           You have been moved to {last.to_programme}{last.recommended_level ? ` at ${last.recommended_level} Level` : ""}. Register your courses under your department for the session.
         </Note>
       ) : null}
+      {last && last.state === "DECLINED" ? (
+        <Note kind="bad" title="Your transfer application was not approved">{last.decline_note ?? "No reason was recorded."} You may apply again if your circumstances change.</Note>
+      ) : null}
 
       {canApply ? (
         <Panel title="Apply to transfer" right="One application at a time">
           <PBody>
             <Field id="ap-prog" label="Course applied for"><SearchSelect id="ap-prog" value={prog} placeholder="Search a programme…" options={d.programmes.map((p) => ({ value: p.code, label: `${p.name} — ${p.faculty}` }))} onChange={(v) => setProg(v)} /></Field>
-            <Field id="ap-reason" label="Reason for seeking transfer" hint="The committee reads this."><textarea id="ap-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-            <Field id="ap-utme" label="Your UTME score" hint="Optional — helps the committee weigh the case."><input id="ap-utme" className="ctl tnum" inputMode="numeric" value={utme} onChange={(e) => setUtme(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
+            <Field id="ap-reason" label="Reason for seeking transfer" hint="Each approving office reads this."><textarea id="ap-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+            <Field id="ap-utme" label="Your UTME score" hint="Optional — helps the offices weigh the case."><input id="ap-utme" className="ctl tnum" inputMode="numeric" value={utme} onChange={(e) => setUtme(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
             <div><Btn kind="primary" disabled={busy !== null || !prog || !reason.trim()} onClick={async () => { const r = await act("apply", "POST", "/me/transfer", { toProgramme: prog, reason: reason.trim(), utme: utme ? Number(utme) : null }, "Apply for departmental transfer"); if (r) { setSaid("Your application is with the office."); setProg(""); setReason(""); setUtme(""); } }}>Submit the application</Btn></div>
             <div className="sub2" style={{ marginTop: 6 }}>The {naira(d.fee)} fee is paid only if your case is approved, and it is non-refundable. The University sells nothing at the gate.</div>
           </PBody>

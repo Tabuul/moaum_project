@@ -163,6 +163,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Department clearance"
           },
           {
+            "id": "t/transfers",
+            "icon": "swap",
+            "label": "Inter-Departmental Transfer"
+          },
+          {
             "id": "t/records",
             "icon": "chart",
             "label": "Records & queries"

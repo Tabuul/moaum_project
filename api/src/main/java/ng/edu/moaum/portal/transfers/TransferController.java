@@ -28,16 +28,59 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class TransferController {
 
-    private static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String SAIC = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_super')";
     private static final String SENATE = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_dvc','OFFICE_super')";
     private static final String OFFICERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
     private static final String EFFECT = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')";
+    /** the offices in the approval chain: the department HODs, the Registrar and the Academic office */
+    private static final String APPROVERS = "hasAnyAuthority('OFFICE_hod','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    TransferController(JdbcClient jdbc) {
+    TransferController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
+    }
+
+    private static String actingOffice() {
+        return AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
+    }
+
+    /** the human-readable stage: which desk the application is sitting with (or its terminal state) */
+    private static String stageLabel(String state) {
+        return switch (state == null ? "" : state) {
+            case "APPLIED" -> "With current department";
+            case "FROM_OK" -> "With new department";
+            case "TO_OK" -> "With Registrar";
+            case "REG_OK" -> "With Academic office";
+            case "APPROVED" -> "Approved — awaiting fee";
+            case "EFFECTED" -> "Completed";
+            case "DECLINED" -> "Declined";
+            case "WITHDRAWN" -> "Withdrawn";
+            case "RECOMMENDED" -> "Recommended";
+            case "NOT_RECOMMENDED" -> "Not recommended";
+            default -> state;
+        };
+    }
+
+    private static boolean live(String state) {
+        return "APPLIED".equals(state) || "FROM_OK".equals(state) || "TO_OK".equals(state) || "REG_OK".equals(state);
+    }
+
+    /** whether the acting office (and department, for an HOD) may approve an application at this stage */
+    private static boolean mayApprove(String office, String myDept, String state, String fromDept, String toDept) {
+        if ("super".equals(office)) {
+            return live(state);
+        }
+        return switch (state == null ? "" : state) {
+            case "APPLIED" -> "hod".equals(office) && fromDept != null && fromDept.equalsIgnoreCase(myDept);
+            case "FROM_OK" -> "hod".equals(office) && toDept != null && toDept.equalsIgnoreCase(myDept);
+            case "TO_OK" -> "registrar".equals(office) || "dregistrar".equals(office);
+            case "REG_OK" -> "academic".equals(office);
+            default -> false;
+        };
     }
 
     public record Apply(@NotBlank @Size(max = 6) String toProgramme, @NotBlank @Size(max = 600) String reason, Integer utme) {
@@ -129,7 +172,19 @@ class TransferController {
                 .param("s", session == null || session.isBlank() ? null : session, Types.VARCHAR)
                 .param("st", state == null || state.isBlank() ? null : state.toUpperCase(), Types.VARCHAR)
                 .query().listOfRows();
+        String office = actingOffice();
+        String myDept = scope.actingDept();
+        for (Map<String, Object> r : rows) {
+            String st = String.valueOf(r.get("state"));
+            r.put("stageLabel", stageLabel(st));
+            r.put("canApprove", mayApprove(office, myDept,
+                    st, str(r.get("from_dept")), str(r.get("to_dept"))));
+        }
         return Map.of("rows", rows);
+    }
+
+    private static String str(Object o) {
+        return o == null ? null : String.valueOf(o);
     }
 
     @GetMapping("/api/v1/transfers/programmes")
@@ -148,6 +203,54 @@ class TransferController {
                 .param("s", student).param("p", body.toProgramme()).param("r", body.reason()).param("u", body.utme(), Types.INTEGER)
                 .query(UUID.class).single();
         return Map.of("id", id, "state", "APPLIED");
+    }
+
+    /** one desk's Approve, moving the application to the next office in the chain. The stage decides which
+     *  office may act: the current-department HOD, then the new-department HOD, then the Registrar, then
+     *  the Academic office. */
+    private Map<String, Object> stageOf(UUID id) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT t.state, fp.dept_code AS from_dept, tp.dept_code AS to_dept
+                  FROM people.transfer_application t
+                  LEFT JOIN ref.programme fp ON fp.code = t.from_programme_code
+                  LEFT JOIN ref.programme tp ON tp.code = t.to_programme_code
+                 WHERE t.id = :id
+                """).param("id", id).query().listOfRows();
+        if (rows.isEmpty()) {
+            throw new NotFound("transfer application", id.toString());
+        }
+        return rows.get(0);
+    }
+
+    @PostMapping("/api/v1/transfers/{id}/approve")
+    @PreAuthorize(APPROVERS)
+    @Transactional
+    Map<String, Object> approve(@PathVariable UUID id) {
+        Map<String, Object> row = stageOf(id);
+        String state = str(row.get("state"));
+        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")))) {
+            throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
+                    "This application is not at your desk. " + stageLabel(state) + ".",
+                    new DomainRuleViolation.Remedy("Only the office holding the application at this stage may approve it.", "Registry"));
+        }
+        String next = jdbc.sql("SELECT people.approve_transfer(:id)").param("id", id).query(String.class).single();
+        return Map.of("id", id, "state", next);
+    }
+
+    /** any desk currently holding the application may decline it, with the reason on the record */
+    @PostMapping("/api/v1/transfers/{id}/decline")
+    @PreAuthorize(APPROVERS)
+    @Transactional
+    Map<String, Object> decline(@PathVariable UUID id, @Valid @RequestBody Why body) {
+        Map<String, Object> row = stageOf(id);
+        String state = str(row.get("state"));
+        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")))) {
+            throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
+                    "This application is not at your desk. " + stageLabel(state) + ".",
+                    new DomainRuleViolation.Remedy("Only the office holding the application at this stage may decline it.", "Registry"));
+        }
+        jdbc.sql("SELECT people.decline_transfer(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();
+        return Map.of("id", id, "state", "DECLINED");
     }
 
     @PostMapping("/api/v1/transfers/{id}/review")

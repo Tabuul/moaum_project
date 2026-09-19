@@ -7,7 +7,7 @@
  * Bursar's; a student's charge is computed from what is stated here, never
  * typed against the student.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -228,6 +228,21 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   });
 
   // the applicant fees live under admissions, not finance, so they have their own save
+  // the inter-departmental transfer processing fee (Bursary-set; defaults to ₦10,000 when unset)
+  const [tf, setTf] = useState("");
+  const [tfStated, setTfStated] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/bff/api/v1/finance/transfer-fee").then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (alive && j) { setTf(String(j.amount ?? "")); setTfStated(!!j.stated); }
+    }).catch(() => { /* leave blank */ });
+    return () => { alive = false; };
+  }, []);
+  async function saveTransferFee(): Promise<void> {
+    const ok = await send("tf", "PUT", "/transfer-fee", { amount: Number(tf) || 0 }, `Inter-departmental transfer fee set to ${tf}`);
+    if (ok) setTfStated(true);
+  }
+
   async function saveApplicantFees(): Promise<void> {
     setBusy("af");
     setProblem(null);
@@ -505,6 +520,19 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
             <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim()} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : "State the applicant fees"}</Btn>
             <span className="sub2">Applying costs the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))}. Accepting an offer costs the acceptance fee plus the checking fee &mdash; {naira((Number(af.acceptanceFee) || 0) + (Number(af.checkingFee) || 0))}.</span>
+          </div>
+        </PBody>
+      </Panel>
+      <Panel title="Inter-departmental transfer · processing fee" right={tfStated ? "Set by the Bursary" : "Default (₦10,000, not yet set)"}>
+        <PBody>
+          <div className="sub2" style={{ marginBottom: 10 }}>
+            The non-refundable fee a student pays after an inter-departmental transfer is approved. It is set here by the
+            Bursary and read by the transfer desk and the student&rsquo;s page; until it is set, the portal uses ₦10,000.
+          </div>
+          <div style={{ display: "flex", gap: 9, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Field id="tf-amt" label="Transfer processing fee"><input id="tf-amt" className="ctl tnum" inputMode="numeric" value={tf} onChange={(e) => setTf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>
+            <Btn kind="primary" disabled={!may || busy !== null || !tf.trim()} onClick={() => void saveTransferFee()}>{busy === "tf" ? "Saving…" : "Set the transfer fee"}</Btn>
+            <span className="sub2">A student who transfers will pay {naira(Number(tf) || 0)}.</span>
           </div>
         </PBody>
       </Panel>

@@ -49,6 +49,9 @@ class FinanceController {
     public record Confirmation(@NotBlank @Size(max = 60) String channel, @Size(max = 400) String note) {
     }
 
+    public record TransferFee(@NotNull @DecimalMin("0") BigDecimal amount) {
+    }
+
     public record FeeRows(@NotNull List<Map<String, Object>> rows) {
     }
 
@@ -228,6 +231,25 @@ class FinanceController {
                     new DomainRuleViolation.Remedy("Refresh the schedule.", "Bursary"));
         }
         return schedule(session, year);
+    }
+
+    /* ── the inter-departmental transfer processing fee (Bursary-set) ── */
+
+    @GetMapping("/transfer-fee")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> transferFee() {
+        BigDecimal amount = jdbc.sql("SELECT people.transfer_fee()").query(BigDecimal.class).single();
+        Boolean stated = jdbc.sql("SELECT transfer_fee IS NOT NULL FROM finance.fee_setting WHERE id = 1").query(Boolean.class).optional().orElse(false);
+        return Map.of("amount", amount, "stated", stated);
+    }
+
+    @PutMapping("/transfer-fee")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> setTransferFee(@Valid @RequestBody TransferFee body) {
+        jdbc.sql("UPDATE finance.fee_setting SET transfer_fee = :a WHERE id = 1").param("a", body.amount()).update();
+        return Map.of("amount", body.amount(), "stated", true);
     }
 
     /* ── the scheme ── */

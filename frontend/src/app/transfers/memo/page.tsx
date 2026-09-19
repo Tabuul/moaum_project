@@ -40,7 +40,7 @@ export default async function TransferMemoPage({ searchParams }: { searchParams:
     ? "Recommended List of Inter-Departmental Transfer Candidates"
     : "Non-Recommended / Withdrawn Inter-Departmental Transfer Cases";
   const note = type === "recommended"
-    ? "The Special Admissions and Admission Irregularities Committee considered and recommended the cases of inter-departmental transfer of the underlisted students for the approval of Senate. Successful applicants are to pay the non-refundable processing fee of ₦10,000 against the reference generated on the portal, print their approval letters, and proceed for registration."
+    ? "The Special Admissions and Admission Irregularities Committee considered and recommended the cases of inter-departmental transfer of the underlisted students for the approval of Senate. Successful applicants are to pay the non-refundable processing fee set by the Bursary against the reference generated on the portal, print their approval letters, and proceed for registration."
     : "The Special Admissions and Admission Irregularities Committee did not recommend, or has withdrawn, the underlisted cases. The Directorate of ICT is requested to withdraw any affected names from the recommended cases earlier sent, please.";
 
   return (
