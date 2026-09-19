@@ -6,7 +6,7 @@
  * position under the scheme in force, the registration's stage, the
  * results published, and the contact details the student may change.
  */
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import type { Me } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
@@ -121,6 +121,8 @@ export function Dashboard({ s }: { s: Me }) {
   );
 }
 
+const pwToggle: CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: 0, color: "var(--chrome, #0e3f55)", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4 };
+
 export function Profile({ s, change }: { s: Me; change: boolean }) {
   const { act, busy, problem } = useAct();
   const [phone, setPhone] = useState(s.contact.phone ?? s.contact.reach_phone ?? "");
@@ -129,6 +131,9 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const [saidPw, setSaidPw] = useState(false);
+  const [showCur, setShowCur] = useState(false);
+  const [showNext, setShowNext] = useState(false);
+  const [errFor, setErrFor] = useState<string | null>(null);
   return (
     <>
       {change ? <Note kind="bad" title="Choose your own password before you go on">The Registry gave you a first password. Change it below; it is yours alone from then on.</Note> : null}
@@ -150,14 +155,26 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
           <div className="field"><label htmlFor="ph">Phone</label><input id="ph" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off" /></div>
           <div className="field"><label htmlFor="em">Personal email</label><input id="em" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" /></div>
           <div className="field"><label htmlFor="ad">Contact address</label><input id="ad" value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="off" /></div>
-          {problem && busy !== "pw" ? <ProblemNotice problem={problem} /> : null}
-          <Btn kind="primary" disabled={busy !== null} onClick={() => void act("contact", "PUT", "/me/contact", { phone, email, address }, "Contact details changed by the student", "Contact details saved")}>{busy === "contact" ? "Saving…" : "Save changes"}</Btn>
+          <Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("contact", "PUT", "/me/contact", { phone, email, address }, "Contact details changed by the student", "Contact details saved"); setErrFor(r ? null : "contact"); }}>{busy === "contact" ? "Saving…" : "Save changes"}</Btn>
+          {problem && errFor === "contact" ? <ProblemNotice problem={problem} /> : null}
           <div style={{ height: 1, background: "var(--line-2)" }} />
           <div style={{ fontWeight: 600 }}>Password</div>
-          <div className="field"><label htmlFor="pw0">Current password</label><input id="pw0" type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" /></div>
-          <div className="field"><label htmlFor="pw1">New password</label><input id="pw1" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" /><div className="hint">Eight characters at the very least.</div></div>
+          <div className="field"><label htmlFor="pw0">Current password</label>
+            <div style={{ position: "relative" }}>
+              <input id="pw0" type={showCur ? "text" : "password"} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ paddingRight: 62 }} />
+              <button type="button" aria-label={showCur ? "Hide password" : "Show password"} onClick={() => setShowCur((v) => !v)} style={pwToggle}>{showCur ? "Hide" : "Show"}</button>
+            </div>
+          </div>
+          <div className="field"><label htmlFor="pw1">New password</label>
+            <div style={{ position: "relative" }}>
+              <input id="pw1" type={showNext ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" style={{ paddingRight: 62 }} />
+              <button type="button" aria-label={showNext ? "Hide password" : "Show password"} onClick={() => setShowNext((v) => !v)} style={pwToggle}>{showNext ? "Hide" : "Show"}</button>
+            </div>
+            <div className="hint">Eight characters at the very least.</div>
+          </div>
+          <Btn kind="ghost" disabled={busy !== null || !cur || next.length < 8} onClick={async () => { const ok = await act("pw", "POST", "/student-auth/change-password", { current: cur, next }, "Password changed by the student", "Password changed"); if (ok) { setSaidPw(true); setCur(""); setNext(""); setErrFor(null); } else { setErrFor("pw"); } }}>{busy === "pw" ? "Changing…" : "Change the password"}</Btn>
           {saidPw ? <Note kind="ok" title="Password changed">Sign in with the new one from now on.</Note> : null}
-          <Btn kind="ghost" disabled={busy !== null || !cur || next.length < 8} onClick={async () => { const ok = await act("pw", "POST", "/student-auth/change-password", { current: cur, next }, "Password changed by the student"); if (ok) { setSaidPw(true); setCur(""); setNext(""); } }}>{busy === "pw" ? "Changing…" : "Change the password"}</Btn>
+          {problem && errFor === "pw" ? <ProblemNotice problem={problem} /> : null}
         </div></div>
         <div className="card"><div className="card__head"><span className="card__title">Only Registry can change these</span></div><div className="card__body">
           <KvGrid cls="grid--2" pairs={[

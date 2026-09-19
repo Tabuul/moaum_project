@@ -27,14 +27,6 @@ export function ProblemNotice({ problem }: { problem: Problem }) {
           ))}
         </>
       )}
-      {problem.correlationId && (
-        <>
-          {" "}
-          <span className="sub2">
-            Quote <span className="tnum">{problem.correlationId}</span> when reporting this.
-          </span>
-        </>
-      )}
     </Note>
   );
 }
