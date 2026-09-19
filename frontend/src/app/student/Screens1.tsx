@@ -6,15 +6,102 @@
  * position under the scheme in force, the registration's stage, the
  * results published, and the contact details the student may change.
  */
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import type { Me } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
+import type { StudentRecord } from "@/lib/student";
 import { Btn, Ico, KvGrid, Note, Panel, PBody, Pil, Tick, Two, WarnIcon } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Passport, Step } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct, when } from "./common";
+
+/** the student's bio-data as a clean, read-only profile card on the dashboard. The full record
+ *  (personal, origin, contact, family, next-of-kin) is read from /me/biodata; the JAMB registration
+ *  number shows for returning students who carry one. Editing lives on the biodata page. */
+function StudentDetails({ s }: { s: Me }) {
+  const [rec, setRec] = useState<StudentRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/bff/api/v1/me/biodata")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive) { setRec(j); setLoading(false); } })
+      .catch(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  const bio = rec?.biodata ?? [];
+  const v = (field: string) => bio.find((b) => b.field === field)?.value?.trim() || null;
+  const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : null);
+  const sex = rec?.student.sex === "M" ? "Male" : rec?.student.sex === "F" ? "Female" : null;
+  const dob = fmtDate(rec?.student.dateOfBirth);
+  const jamb = rec?.student.jambRegNo?.trim() || null;
+
+  // one section = a heading and the fields under it that actually have a value (empties are hidden for a clean look)
+  const sections: { title: string; pairs: [string, ReactNode][] }[] = [];
+  const push = (title: string, pairs: ([string, ReactNode | null | undefined])[]) => {
+    const kept = pairs.filter((p) => p[1]) as [string, ReactNode][];
+    if (kept.length) sections.push({ title, pairs: kept });
+  };
+  push("Personal", [
+    ["Sex", sex], ["Date of birth", dob], ["Marital status", v("marital_status")],
+    ["Religion", v("religion")], ["Blood group", v("blood_group")], ["Genotype", v("genotype")],
+  ]);
+  push("Origin", [
+    ["Nationality", v("nationality")], ["State of origin", v("state_of_origin")],
+    ["Local government", v("lga")], ["Place of birth", v("place_of_birth")], ["Ethnic group", v("ethnic_group")],
+  ]);
+  push("Contact", [
+    ["Phone", s.contact.phone ?? s.contact.reach_phone], ["Email", s.contact.email ?? s.contact.reach_email],
+    ["Contact address", s.contact.address], ["Permanent address", v("permanent_address") ?? v("home_address")],
+  ]);
+  push("Family & next of kin", [
+    ["Guardian", v("guardian_name")], ["Guardian address", v("guardian_address")],
+    ["Sponsor", v("sponsor_name")], ["Sponsor address", v("sponsor_address")],
+    ["Next of kin", v("kin_name")], ["Relationship", v("kin_relationship")],
+    ["Next-of-kin phone", v("kin_mobile")], ["Next-of-kin address", v("kin_address")],
+  ]);
+
+  return (
+    <Panel title="Student details" right="Your record on the register">
+      <PBody>
+        <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <Passport w={104} h={128} radius={6} src={s.passportDocumentId ? `/api/bff/api/v1/applicant/me/documents/${s.passportDocumentId}/content` : null} />
+          <div style={{ flexGrow: 1, minWidth: 240 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
+            <div className="sub2 tnum" style={{ marginTop: 2 }}>{s.matricNo ?? s.admissionNo}</div>
+            <div className="sub2" style={{ marginTop: 2 }}>{s.programme} &middot; {s.department}</div>
+            <div className="sub2">{s.faculty}</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
+              <Pil kind="info">{s.level} Level</Pil>
+              <Pil kind="grey">{s.entryMode} · {s.entrySession}</Pil>
+            </div>
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "2px 18px" }}>
+              {([["Matriculation number", s.matricNo], ["Admission number", s.admissionNo], jamb ? ["JAMB registration number", jamb] : null, ["CGPA", s.cgpa != null ? String(s.cgpa) : null]].filter(Boolean) as [string, string | null][]).map(([k, val]) => val ? (
+                <div key={k} className="kv"><span className="k">{k}</span><span className="v tnum">{val}</span></div>
+              ) : null)}
+            </div>
+          </div>
+        </div>
+
+        {loading ? <div className="sub2" style={{ marginTop: 14 }}>Loading your details…</div> : null}
+        {sections.map((sec) => (
+          <div key={sec.title} style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 8 }}>{sec.title}</div>
+            <KvGrid cls="grid--2" pairs={sec.pairs} />
+          </div>
+        ))}
+        <div className="sub2" style={{ marginTop: 14 }}>
+          Names, programme and JAMB details are held by the Registry and JAMB. You can update your contact and other open
+          details on the <Link href="/student/biodata">bio-data page</Link>.
+        </div>
+      </PBody>
+    </Panel>
+  );
+}
 
 function Quick({ icon, title, sub, href }: { icon: string; title: string; sub: string; href: string | null }) {
   const inner = (
@@ -89,6 +176,8 @@ export function Dashboard({ s }: { s: Me }) {
           </div></div>
         </div>
       </div>
+
+      <StudentDetails s={s} />
 
       <div className="grid grid--4">
         <Quick icon="cap" title="My results" sub={published ? `${published} semester${published === 1 ? "" : "s"} published` : "Nothing published yet"} href="/student/results" />
