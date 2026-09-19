@@ -136,7 +136,17 @@ public class StudentAuthService {
     @Transactional
     public Map<String, Object> changePassword(UUID student, String current, String next) {
         StudentPortalRepository.Account a = repo.account(student).orElseThrow(() -> new NotFound("student account", student));
-        if (!encoder.matches(current == null ? "" : current, a.passwordHash())) {
+        boolean ok = encoder.matches(current == null ? "" : current, a.passwordHash());
+        if (!ok && a.mustChange()) {
+            // the default first password is the student's own number (matric, or admission before it is
+            // issued) — the same default sign-in grants, so changing from it here must accept it too
+            StudentPortalRepository.Student s = repo.byId(student).orElse(null);
+            String c = current == null ? "" : current.trim();
+            ok = !c.isEmpty() && s != null
+                 && ((s.matricNo() != null && c.equalsIgnoreCase(s.matricNo().trim()))
+                     || (s.admissionNo() != null && c.equalsIgnoreCase(s.admissionNo().trim())));
+        }
+        if (!ok) {
             throw badCredentials();
         }
         if (next == null || next.length() < MIN_PASSWORD) {
