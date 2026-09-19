@@ -48,10 +48,11 @@ class TransferController {
         return AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
     }
 
-    /** the human-readable stage: which desk the application is sitting with (or its terminal state) */
-    private static String stageLabel(String state) {
+    /** the human-readable stage: which desk the application is sitting with (or its terminal state).
+     *  While it is APPLIED it is with the current department once paid, or awaiting the student's payment. */
+    private static String stageLabel(String state, boolean paid) {
         return switch (state == null ? "" : state) {
-            case "APPLIED" -> "With current department";
+            case "APPLIED" -> paid ? "With current department" : "Awaiting payment";
             case "FROM_OK" -> "With new department";
             case "TO_OK" -> "With Registrar";
             case "REG_OK" -> "With Academic office";
@@ -65,20 +66,15 @@ class TransferController {
         };
     }
 
-    private static boolean live(String state) {
-        return "APPLIED".equals(state) || "FROM_OK".equals(state) || "TO_OK".equals(state) || "REG_OK".equals(state);
-    }
-
-    /** whether the acting office (and department, for an HOD) may approve an application at this stage */
-    private static boolean mayApprove(String office, String myDept, String state, String fromDept, String toDept) {
-        if ("super".equals(office)) {
-            return live(state);
-        }
+    /** whether the acting office (and department, for an HOD) may approve an application at this stage.
+     *  The current department cannot approve until the fee is paid (pay-first). */
+    private static boolean mayApprove(String office, String myDept, String state, String fromDept, String toDept, boolean paid) {
+        boolean isSuper = "super".equals(office);
         return switch (state == null ? "" : state) {
-            case "APPLIED" -> "hod".equals(office) && fromDept != null && fromDept.equalsIgnoreCase(myDept);
-            case "FROM_OK" -> "hod".equals(office) && toDept != null && toDept.equalsIgnoreCase(myDept);
-            case "TO_OK" -> "registrar".equals(office) || "dregistrar".equals(office);
-            case "REG_OK" -> "academic".equals(office);
+            case "APPLIED" -> paid && (isSuper || ("hod".equals(office) && fromDept != null && fromDept.equalsIgnoreCase(myDept)));
+            case "FROM_OK" -> isSuper || ("hod".equals(office) && toDept != null && toDept.equalsIgnoreCase(myDept));
+            case "TO_OK" -> isSuper || "registrar".equals(office) || "dregistrar".equals(office);
+            case "REG_OK" -> isSuper || "academic".equals(office);
             default -> false;
         };
     }
@@ -176,9 +172,10 @@ class TransferController {
         String myDept = scope.actingDept();
         for (Map<String, Object> r : rows) {
             String st = String.valueOf(r.get("state"));
-            r.put("stageLabel", stageLabel(st));
+            boolean paid = r.get("fee_confirmed_at") != null;
+            r.put("stageLabel", stageLabel(st, paid));
             r.put("canApprove", mayApprove(office, myDept,
-                    st, str(r.get("from_dept")), str(r.get("to_dept"))));
+                    st, str(r.get("from_dept")), str(r.get("to_dept")), paid));
         }
         return Map.of("rows", rows);
     }
@@ -210,7 +207,9 @@ class TransferController {
      *  the Academic office. */
     private Map<String, Object> stageOf(UUID id) {
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT t.state, fp.dept_code AS from_dept, tp.dept_code AS to_dept
+                SELECT t.state, fp.dept_code AS from_dept, tp.dept_code AS to_dept,
+                       CASE WHEN t.fee_reference IS NULL THEN false
+                            ELSE (SELECT fs.confirmed_at IS NOT NULL FROM finance.reference_state(t.fee_reference) fs) END AS paid
                   FROM people.transfer_application t
                   LEFT JOIN ref.programme fp ON fp.code = t.from_programme_code
                   LEFT JOIN ref.programme tp ON tp.code = t.to_programme_code
@@ -228,25 +227,27 @@ class TransferController {
     Map<String, Object> approve(@PathVariable UUID id) {
         Map<String, Object> row = stageOf(id);
         String state = str(row.get("state"));
-        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")))) {
+        boolean paid = Boolean.TRUE.equals(row.get("paid"));
+        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")), paid)) {
             throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
-                    "This application is not at your desk. " + stageLabel(state) + ".",
-                    new DomainRuleViolation.Remedy("Only the office holding the application at this stage may approve it.", "Registry"));
+                    "This application is not ready at your desk. " + stageLabel(state, paid) + ".",
+                    new DomainRuleViolation.Remedy("The current department approves only after the student has paid; each later office approves in turn.", "Registry"));
         }
         String next = jdbc.sql("SELECT people.approve_transfer(:id)").param("id", id).query(String.class).single();
         return Map.of("id", id, "state", next);
     }
 
-    /** any desk currently holding the application may decline it, with the reason on the record */
+    /** any desk currently holding the application may decline it, with the reason on the record (payment not required) */
     @PostMapping("/api/v1/transfers/{id}/decline")
     @PreAuthorize(APPROVERS)
     @Transactional
     Map<String, Object> decline(@PathVariable UUID id, @Valid @RequestBody Why body) {
         Map<String, Object> row = stageOf(id);
         String state = str(row.get("state"));
-        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")))) {
+        boolean paid = Boolean.TRUE.equals(row.get("paid"));
+        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")), true)) {
             throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
-                    "This application is not at your desk. " + stageLabel(state) + ".",
+                    "This application is not at your desk. " + stageLabel(state, paid) + ".",
                     new DomainRuleViolation.Remedy("Only the office holding the application at this stage may decline it.", "Registry"));
         }
         jdbc.sql("SELECT people.decline_transfer(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();

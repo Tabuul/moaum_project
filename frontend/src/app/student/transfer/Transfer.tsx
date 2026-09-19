@@ -24,21 +24,20 @@ export interface MyTransfer {
 
 const STAGES: [string, string][] = [
   ["Applied", "Your application is submitted"],
+  ["Payment", "Pay the non-refundable fee online"],
   ["Current department", "Your current department approves"],
   ["New department", "The department you applied to accepts"],
   ["Registrar", "The Registrar approves"],
   ["Academic office", "The Academic office approves"],
-  ["Approved", "Pay the non-refundable fee"],
   ["Completed", "Moved on the register"],
 ];
-// the index of the stage currently in progress (earlier stages are done)
-function stageOf(state: string): number {
+// the index of the stage currently in progress (earlier stages are done). Payment comes right after applying.
+function stageOf(state: string, paid: boolean): number {
   switch (state) {
-    case "APPLIED": return 1;
-    case "FROM_OK": return 2;
-    case "TO_OK": return 3;
-    case "REG_OK": return 4;
-    case "APPROVED": return 5;
+    case "APPLIED": return paid ? 2 : 1;
+    case "FROM_OK": return 3;
+    case "TO_OK": return 4;
+    case "REG_OK": return 5;
     case "EFFECTED": return 7;
     default: return 1;
   }
@@ -52,16 +51,17 @@ export function Transfer({ d }: { d: MyTransfer }) {
   const [feeRef, setFeeRef] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
 
-  const live = d.applications.find((a) => ["APPLIED", "FROM_OK", "TO_OK", "REG_OK", "APPROVED"].includes(a.state)) ?? null;
+  const live = d.applications.find((a) => ["APPLIED", "FROM_OK", "TO_OK", "REG_OK"].includes(a.state)) ?? null;
   const last = d.applications[0] ?? null;
   const canApply = !live && d.student.matric_no && ["ACTIVE", "PROBATION"].includes(d.student.status);
   const paidRef = live?.fee_reference ?? feeRef;
+  const paid = !!live?.fee_confirmed_at;
 
   return (
     <>
       <Tiles items={[
         ["Your department", d.student.programme, null, `${d.student.current_level} Level · ${d.student.entry_mode}`],
-        ["Processing fee", naira(d.fee), null, "Non-refundable, paid only if approved"],
+        ["Processing fee", naira(d.fee), null, "Non-refundable · paid online after you apply"],
         ["Applications", String(d.applications.length), null, live ? "One in progress" : "None in progress"],
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -72,36 +72,30 @@ export function Transfer({ d }: { d: MyTransfer }) {
           <div style={{ padding: "4px 0" }}>
             {STAGES.map((s, i) => (
               <div key={s[0]} style={{ padding: "9px 16px", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
-                <Step state={stageOf(live.state) > i ? "done" : stageOf(live.state) === i ? "now" : "todo"} title={s[0]} sub={s[1]} />
+                <Step state={stageOf(live.state, paid) > i ? "done" : stageOf(live.state, paid) === i ? "now" : "todo"} title={s[0]} sub={s[1]} />
               </div>
             ))}
           </div>
           <PBody>
-            {["APPLIED", "FROM_OK", "TO_OK", "REG_OK"].includes(live.state) ? (
-              <Note kind="info" title={`In progress — ${STAGES[stageOf(live.state)]?.[0] ?? "under review"}`}>
-                Your request to move to {live.to_programme} is with the {STAGES[stageOf(live.state)]?.[0]?.toLowerCase()}. Each office approves in turn; watch it advance above.
-              </Note>
-            ) : null}
-            {live.state === "APPROVED" ? (
+            {!live.fee_confirmed_at ? (
               <>
-                <Note kind="ok" title="Approved — pay the processing fee to complete your transfer">
-                  All approvals are complete for your transfer to {live.to_programme}. Pay the non-refundable {naira(d.fee)} fee to process it, then the registry moves you on the register.
+                <Note kind="info" title="Pay the non-refundable processing fee to start your transfer">
+                  Your application to move to {live.to_programme} is submitted. Pay the {naira(d.fee)} fee online now; once it is confirmed, your current department begins the approvals.
                 </Note>
                 {!paidRef ? (
-                  <div style={{ marginTop: 10 }}><Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fee", "POST", `/me/transfer/${live.id}/fee`, {}, "Transfer fee reference"); if (r) { setFeeRef(String(r.reference)); setSaid(`Reference ${r.reference} generated — pay it by card below.`); } }}>Generate the payment reference</Btn></div>
+                  <div style={{ marginTop: 10 }}><Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fee", "POST", `/me/transfer/${live.id}/fee`, {}, "Transfer fee reference"); if (r) { setFeeRef(String(r.reference)); setSaid(`Reference ${r.reference} generated — pay it below.`); } }}>Pay the fee online</Btn></div>
                 ) : (
                   <div style={{ marginTop: 10 }}>
-                    {live.fee_confirmed_at ? <Note kind="ok" title="Fee received">Your payment is confirmed. The registry will effect your transfer.</Note> : (
-                      <>
-                        <div className="sub2" style={{ marginBottom: 6 }}>Reference <span className="tnum">{paidRef}</span> for {naira(d.fee)}. Pay it by card or USSD.</div>
-                        <PayByCard reference={paidRef} amount={d.fee} />
-                      </>
-                    )}
-                    <div style={{ marginTop: 8 }}><Link href={`/student/transfer/letter/${live.id}`} className="btn btn--ghost btn--sm">Print approval letter</Link></div>
+                    <div className="sub2" style={{ marginBottom: 6 }}>Reference <span className="tnum">{paidRef}</span> for {naira(d.fee)}. Pay it by card or USSD.</div>
+                    <PayByCard reference={paidRef} amount={d.fee} />
                   </div>
                 )}
               </>
-            ) : null}
+            ) : (
+              <Note kind="info" title={`In progress — ${STAGES[stageOf(live.state, true)]?.[0] ?? "under review"}`}>
+                Your fee is paid. Your request to move to {live.to_programme} is with the {STAGES[stageOf(live.state, true)]?.[0]?.toLowerCase()}. Each office approves in turn; watch it advance above.
+              </Note>
+            )}
           </PBody>
         </Panel>
       ) : null}
@@ -122,7 +116,7 @@ export function Transfer({ d }: { d: MyTransfer }) {
             <Field id="ap-reason" label="Reason for seeking transfer" hint="Each approving office reads this."><textarea id="ap-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
             <Field id="ap-utme" label="Your UTME score" hint="Optional — helps the offices weigh the case."><input id="ap-utme" className="ctl tnum" inputMode="numeric" value={utme} onChange={(e) => setUtme(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
             <div><Btn kind="primary" disabled={busy !== null || !prog || !reason.trim()} onClick={async () => { const r = await act("apply", "POST", "/me/transfer", { toProgramme: prog, reason: reason.trim(), utme: utme ? Number(utme) : null }, "Apply for departmental transfer"); if (r) { setSaid("Your application is with the office."); setProg(""); setReason(""); setUtme(""); } }}>Submit the application</Btn></div>
-            <div className="sub2" style={{ marginTop: 6 }}>The {naira(d.fee)} fee is paid only if your case is approved, and it is non-refundable. The University sells nothing at the gate.</div>
+            <div className="sub2" style={{ marginTop: 6 }}>After you apply, you pay the non-refundable {naira(d.fee)} fee online; your current department and the offices after it then approve in turn. The University sells nothing at the gate.</div>
           </PBody>
         </Panel>
       ) : !live ? (

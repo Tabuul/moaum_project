@@ -41,7 +41,6 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
   const router = useRouter();
   const o = actingOffice ?? "";
   const mayRecord = ["academic", "registrar", "dregistrar", "super"].includes(o);
-  const mayEffect = ["academic", "registrar", "dregistrar", "ict", "super"].includes(o);
 
   const [tab, setTab] = useState("APPLIED");
   const [rec, setRec] = useState({ number: "", programme: "", reason: "", utme: "" });
@@ -69,7 +68,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
   return (
     <>
       <RoleLine allowed={["hod", "registrar", "dregistrar", "academic"]} actingOffice={actingOffice}
-        canAct={mayRecord || mayEffect || o === "hod"}
+        canAct={mayRecord || o === "hod"}
         action="Approving inter-departmental transfers" />
       <Note kind="info" title="One application, four approvals — each a single Approve">
         A matriculated student applies to move to another department. It goes to the <b>current department</b>, then the
@@ -89,7 +88,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
 
       <div className="card"><div className="card__body">
         <div className="role-tabs" role="tablist">
-          {[["APPLIED", "Current dept"], ["FROM_OK", "New dept"], ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["APPROVED", "Approved"], ["EFFECTED", "Completed"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => (
+          {[["APPLIED", "Current dept"], ["FROM_OK", "New dept"], ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["EFFECTED", "Completed"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => setTab(k)}>{l}{k !== "ALL" && count(k) ? ` (${count(k)})` : ""}</button>
           ))}
         </div>
@@ -106,7 +105,6 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
             <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
               {r.canApprove ? <Btn kind="go" disabled={busy} onClick={() => { if (window.confirm(`Approve ${r.name}'s transfer at this stage? It moves to the next office.`)) void send(`/${r.id}/approve`, {}, `Approve transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} approved — ${LABEL[String(j.state)] ?? "advanced"}`); }); }}>Approve</Btn> : null}
               {r.canApprove ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Decline this application — why? The reason is recorded and shown to the student."); if (w && w.trim()) void send(`/${r.id}/decline`, { why: w.trim() }, `Decline transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} declined`); }); }}>Decline</Btn> : null}
-              {mayEffect && r.state === "APPROVED" ? <Btn kind="primary" disabled={busy || !r.fee_confirmed_at} onClick={() => { if (window.confirm(`Effect the transfer? ${r.name} moves to ${r.to_programme}.`)) void send(`/${r.id}/effect`, {}, `Effect transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} moved to ${r.to_programme}`); }); }}>{r.fee_confirmed_at ? "Effect" : "Awaiting fee"}</Btn> : null}
             </span>,
           ])} texts={shown.map((r) => `${r.name} ${r.matric_no ?? ""} ${r.from_programme} ${r.to_programme} ${r.state}`)} />
         ) : <PBody><div className="sub2">No application in this stage.</div></PBody>}
