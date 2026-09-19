@@ -67,14 +67,8 @@ export function ResultsScreen({ r }: { r: Results }) {
               })} />
               <div style={{ padding: "0 16px 16px", display: "flex", gap: 9, flexWrap: "wrap" }}>
                 {live.length ? <Link href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`} className="btn btn--primary">Semester Results</Link> : null}
-                <Btn kind="ghost" disabled title="Arrives with the results desk">Query a mark</Btn>
                 <Btn kind="ghost" disabled title="Arrives with the credentials module">Official transcript</Btn>
               </div>
-            </Panel>
-          ) : null}
-          {waiting.length ? (
-            <Panel title="What is holding each one" right="The office, not a department name">
-              <DTable cols={["Course", "On the desk of", "What that desk does"]} rows={waiting.map((c) => { const st = STAGE_LABEL[c.stage] ?? [c.stage, ""]; return [<b className="tnum" key="c">{c.course_code}</b>, <span className="sub2" key="d">{st[1]}</span>, <span className="sub2" key="w">{st[0]}</span>]; })} />
             </Panel>
           ) : null}
           <Panel title="Academic summary" right="Senate-approved results only · CUR·CUE·WGP·GPA per semester, TCR·TCE·TWGP·CGPA cumulative">
