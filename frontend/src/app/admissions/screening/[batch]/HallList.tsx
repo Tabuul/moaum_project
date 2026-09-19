@@ -6,7 +6,9 @@
  * order. Printed from the browser; the print sheet drops the shell.
  */
 import Link from "next/link";
+import { useRef } from "react";
 import { docSerial } from "@/lib/exportbrand";
+import { printNode } from "@/lib/print";
 import { Btn, KvGrid, Note, Panel, PBody } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Passport } from "@/components/proto/blocks";
@@ -20,8 +22,9 @@ export interface HallListData {
 export function HallList({ data }: { data: HallListData }) {
   const b = data.batch;
   const day = new Date(b.held_on).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const sheet = useRef<HTMLDivElement>(null);
   return (
-    <>
+    <div ref={sheet}>
       <style>{`.hall-mast { display: none; } @media print { .nav, .topbar, .no-print { display: none !important; } .main { padding: 0 !important; } .card { break-inside: avoid; } .hall-mast { display: block !important; text-align: center; margin-bottom: 14px; } .hall-mast img { height: 54px; } }`}</style>
       <div className="hall-mast">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -32,7 +35,7 @@ export function HallList({ data }: { data: HallListData }) {
       </div>
       <div className="no-print" style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
         <Link href={`/admissions?session=${encodeURIComponent(data.session)}`} className="btn btn--ghost btn--sm">Back to the Admissions desk</Link>
-        <Btn kind="primary" onClick={() => window.print()}>Print the hall list</Btn>
+        <Btn kind="primary" onClick={() => printNode(sheet.current, `Hall list · batch ${b.label}`)}>Print the hall list</Btn>
       </div>
       <Panel title={`Post-UTME screening · batch ${b.label}`} right={`${data.seats.length} of ${b.capacity} seats · ${data.session}`}>
         <PBody>
@@ -66,6 +69,6 @@ export function HallList({ data }: { data: HallListData }) {
       <Note kind="info" title="A candidate with no photograph on file is checked against the JAMB slip and photo identification">
         The photograph is the one the applicant uploaded; where none is, the box is grey and the door relies on identification. A candidate not on this list is not seated in this batch, whatever they say at the door.
       </Note>
-    </>
+    </div>
   );
 }

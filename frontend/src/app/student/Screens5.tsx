@@ -19,6 +19,7 @@ import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { IdCardPair, type IdCardData } from "@/components/proto/idcard";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
+import { printNode } from "@/lib/print";
 
 /* ── result query ── */
 
@@ -132,7 +133,7 @@ export function Exams({ d }: { d: Docket; s: Me }) {
           ])} />
           {cleared ? <div className="card__body" style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
             <a href={`/student/exams/card/pdf?session=${encodeURIComponent(x.session)}&semester=${x.semester}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download exam card</a>
-            <Btn kind="ghost" onClick={() => window.print()}>Print the docket</Btn>
+            <Btn kind="ghost" onClick={(e) => { const card = (e.currentTarget as HTMLElement).closest(".card") as HTMLElement | null; printNode(card, card?.querySelector(".card__title")?.textContent ?? "Examination docket"); }}>Print the docket</Btn>
             <span className="sub2">The card carries your photograph and a QR the invigilator scans to verify it — it cannot be cloned.</span>
           </div> : null}
         </Panel>

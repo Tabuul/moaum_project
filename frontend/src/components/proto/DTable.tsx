@@ -11,6 +11,51 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 const PAGE = 10;
 
+/**
+ * Print one table cleanly. The app's print stylesheet hides `.shell` (the whole page chrome),
+ * so a plain window.print() from inside a panel prints a blank page. Instead we clone the table,
+ * unhide every row (print the full list, not just the current page), and print it on its own in a
+ * hidden same-origin iframe with its own minimal stylesheet — so the button works everywhere.
+ */
+function printTable(tableEl: HTMLTableElement | null) {
+  if (!tableEl) { window.print(); return; }
+  const clone = tableEl.cloneNode(true) as HTMLTableElement;
+  clone.classList.remove("tbl--stack");
+  clone.removeAttribute("style");
+  clone.querySelectorAll("tr[hidden]").forEach((tr) => tr.removeAttribute("hidden"));
+  const heading = (tableEl.closest(".card")?.querySelector(".card__title")?.textContent
+    ?? tableEl.getAttribute("data-title") ?? document.title ?? "").trim();
+  const esc = (s: string) => s.replace(/[&<>]/g, (ch) => (ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : "&gt;"));
+  const when = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  const css = `
+    * { box-sizing: border-box; }
+    body { margin: 24px; font: 12px/1.4 -apple-system, Segoe UI, Roboto, sans-serif; color: #16273a; }
+    h1 { font-size: 15px; margin: 0 0 2px; }
+    .meta { color: #6b7784; font-size: 11px; margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #dfe4ea; vertical-align: top; }
+    th { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: #5d6b79; border-bottom: 1.5px solid #16273a; }
+    td.num, th.num { text-align: right; } td.mid, th.mid { text-align: center; }
+    .sub2 { color: #6b7784; font-size: 11px; }
+    a { color: inherit; text-decoration: none; }
+    button, .btn, input, .srch__x { display: none !important; }
+    @page { margin: 14mm; }
+  `;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(heading)}</title><style>${css}</style></head>`
+    + `<body>${heading ? `<h1>${esc(heading)}</h1>` : ""}<div class="meta">Rev. Fr. Moses Orshio Adasu University, Makurdi · printed ${when}</div>${clone.outerHTML}</body></html>`;
+  const f = document.createElement("iframe");
+  f.style.position = "fixed"; f.style.right = "0"; f.style.bottom = "0"; f.style.width = "0"; f.style.height = "0"; f.style.border = "0";
+  document.body.appendChild(f);
+  const doc = f.contentWindow?.document;
+  if (!doc) { document.body.removeChild(f); window.print(); return; }
+  const go = () => {
+    try { f.contentWindow?.focus(); f.contentWindow?.print(); } catch { /* pop-up blocked; nothing to do */ }
+    window.setTimeout(() => { try { document.body.removeChild(f); } catch { /* already gone */ } }, 60000);
+  };
+  doc.open(); doc.write(html); doc.close();
+  window.setTimeout(go, 120);
+}
+
 export interface DTableProps {
   /** "Header" or "Header|num" / "Header|mid" */
   cols: string[];
@@ -172,7 +217,7 @@ export function DTable({ cols, rows, texts, title }: DTableProps) {
             ) : null}
           </div>
         )}
-        <button className="btn btn--ghost btn--sm tfoot__x" title="Print this table" onClick={() => window.print()}>
+        <button className="btn btn--ghost btn--sm tfoot__x" title="Print this table" onClick={() => printTable(table.current)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z" />
           </svg>

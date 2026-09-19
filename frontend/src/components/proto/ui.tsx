@@ -4,7 +4,7 @@
  * prototype's stylesheet styles them identically. Names are the prototype's
  * names: note, btn, pil, two, tiles, panel, pbody, dtable, kvGrid, ico.
  */
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import Link from "next/link";
 import { roleLabel } from "@/lib/offices";
 
@@ -105,7 +105,7 @@ export function Btn({
 }: {
   kind: BtnKind;
   children: ReactNode;
-  onClick?: () => void;
+  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   title?: string;
   type?: "button" | "submit";
