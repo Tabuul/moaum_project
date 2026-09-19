@@ -5,6 +5,7 @@ import type { SpaceRow } from "@/lib/lms";
 import { loadStudent } from "../load";
 import { Courses } from "./Courses";
 import { RegistrationHistory, type RegHistory } from "../registration-history/RegistrationHistory";
+import { semesterText } from "@/lib/student-portal";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,16 @@ export default async function Page() {
         api<RegHistory>("/api/v1/me/registration-history"),
       ])
     : [null, null];
+  // the real session and semester of the spaces on show, not a fixed prototype label;
+  // one semester → "2025/2026 · Semester: Second", a mix or none → just the session
+  const sub = c && c.ok
+    ? (() => {
+        const sems = Array.from(new Set(c.data.spaces.map((s) => s.semester)));
+        return sems.length === 1 ? `${c.data.session} · ${semesterText(sems[0])}` : c.data.session;
+      })()
+    : undefined;
   return (
-    <Shell route="s/courses" me={loaded.me}>
+    <Shell route="s/courses" me={loaded.me} sub={sub}>
       {loaded.student && c && c.ok ? <Courses session={c.data.session} spaces={c.data.spaces} /> : <ProblemNotice problem={c && !c.ok ? c.problem : loaded.student ? { status: 500, title: "Unreadable" } : loaded.problem} />}
       {loaded.student && h && h.ok ? (
         <div style={{ marginTop: 22 }}>
