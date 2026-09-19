@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { stageOf, type MySheet } from "@/lib/results";
 import { Note, Panel, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { semesterText } from "@/lib/student-portal";
 
 export { stageOf };
 
@@ -47,7 +48,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
               const st = stageOf(s);
               const short = s.entered < s.candidates;
               return [
-                <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle} · {s.units} units{s.session !== session ? ` · ${s.session}` : ""} · semester {s.semester}</div></span>,
+                <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle} · {s.units} units{s.session !== session ? ` · ${s.session}` : ""} · {semesterText(s.semester)}</div></span>,
                 <span className="tnum" key="n">{s.candidates}</span>,
                 <span key="e"><span className="tnum" style={short ? { color: "var(--red-ink)", fontWeight: 600 } : undefined}>{s.entered}</span><span className="sub2 tnum"> of {s.candidates}</span></span>,
                 <span key="s"><Pil kind={st.pill}>{st.text}</Pil>{s.daysLate ? <div className="sub2" style={{ color: "var(--red-ink)" }}>{s.daysLate} days overdue</div> : null}{s.returnedTimes ? <div className="sub2">Returned {s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}</div> : null}</span>,

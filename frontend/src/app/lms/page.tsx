@@ -4,6 +4,7 @@ import { loadScope } from "@/lib/scope-data";
 import type { TeachingRow } from "@/lib/lms";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { semesterText } from "@/lib/student-portal";
 import { Note, Panel, PBody } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
@@ -23,7 +24,7 @@ export default async function LmsPage({ searchParams }: { searchParams: Promise<
           <Panel title={`Your course spaces — ${t.data.session}`} right={`${t.data.spaces.length}`}>
             {t.data.spaces.length ? (
               <DTable cols={["Course", "Enrolled|mid", "Materials|mid", "Assignments|mid", "|num"]} rows={t.data.spaces.map((s) => [
-                <span key="c"><strong className="tnum">{s.course_code}</strong><div className="sub2">{s.title} · {s.units} units · semester {s.semester}</div></span>,
+                <span key="c"><strong className="tnum">{s.course_code}</strong><div className="sub2">{s.title} · {s.units} units · {semesterText(s.semester)}</div></span>,
                 <span className="tnum" key="e">{s.enrolled}</span>, <span className="tnum" key="m">{s.materials}</span>, <span className="tnum" key="a">{s.assignments}</span>,
                 <Link key="o" href={`/lms/${s.offering_id}${upload ? "?tab=upload" : ""}`} className="btn btn--primary btn--sm">{upload ? "Upload material" : "Open the space"}</Link>,
               ])} />

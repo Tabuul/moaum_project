@@ -13,6 +13,7 @@ import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { semesterText } from "@/lib/student-portal";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
 interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string; programmeCode?: string; category?: string }
@@ -42,7 +43,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       const r = await fetch(`/api/bff/api/v1/catalogue/open-registration?session=${encodeURIComponent(openSession.trim())}&semester=${openSem}`, { method: "POST", headers: { "X-Reason": reasonHeader(`Open course registration for ${openSession.trim()} semester ${openSem}`) } });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setOpenMsg(`${Number(j?.opened ?? 0).toLocaleString()} course offering${Number(j?.opened ?? 0) === 1 ? "" : "s"} opened for ${openSession.trim()} · semester ${openSem}. Students now see the real courses at registration.`);
+      setOpenMsg(`${Number(j?.opened ?? 0).toLocaleString()} course offering${Number(j?.opened ?? 0) === 1 ? "" : "s"} opened for ${openSession.trim()} · ${semesterText(Number(openSem))}. Students now see the real courses at registration.`);
     } finally { setBusy(false); }
   }
 

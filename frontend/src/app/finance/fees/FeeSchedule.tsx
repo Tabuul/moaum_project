@@ -14,6 +14,7 @@ import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { semesterText } from "@/lib/student-portal";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -166,7 +167,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [page, setPage] = useState(0);
   const val = (k: string, d = "") => edits[k] ?? d;
 
-  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, i.semester ? `Semester ${i.semester}` : null].filter(Boolean).join(" · ") || "Every student";
+  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
 
   const filteredItems = schedule.items.filter((i) =>
     (!filterFac || i.faculty_code === filterFac || (filterFac === "__none__" && !i.faculty_code)) &&

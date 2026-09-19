@@ -217,7 +217,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
           ) : null}
           <Panel title={`Broadsheet — ${programme?.name ?? sheet.programme}, ${sheet.level} Level, ${semester} semester`} right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
             {sheet.rows.length === 0 ? (
-              <div className="card__body sub2">No approved registration at this level in {sheet.session} semester {sheet.semester} for this programme. The broadsheet has nobody to compute.</div>
+              <div className="card__body sub2">No approved registration at this level in {sheet.session} {semester.toLowerCase()} semester for this programme. The broadsheet has nobody to compute.</div>
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table className="bsheet">

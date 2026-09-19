@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { semesterName } from "@/lib/student-portal";
 
 interface Slot { weekday: number; starts_at: string; ends_at: string; venue: string; kind: string }
 export interface Offering { id: string; code: string; title: string; units: number; level: number; semester: number; role: string; dept_name: string; roll: number; slots: Slot[] }
@@ -45,13 +46,13 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
           ]} />
           <Panel title="Your teaching this session" right={`${data.offerings.length} course${data.offerings.length === 1 ? "" : "s"}`}>
             <DTable
-              cols={["Course|mid", "Title", "Role|mid", "Level|num", "Sem|num", "Roll|num", "Timetable"]}
+              cols={["Course|mid", "Title", "Role|mid", "Level|num", "Semester|mid", "Roll|num", "Timetable"]}
               rows={data.offerings.map((o) => [
                 <Link key="c" href={`/lms/${o.id}`} className="tnum" style={{ fontWeight: 600 }}>{o.code}</Link>,
                 <span className="sub2" key="t">{o.title}</span>,
                 <Pil kind={ROLE[o.role] ?? "grey"} key="r">{o.role}</Pil>,
                 <span className="tnum" key="l">{o.level}</span>,
-                <span className="tnum" key="s">{o.semester}</span>,
+                <span key="s">{semesterName(o.semester)}</span>,
                 <span className="tnum" key="n">{o.roll}</span>,
                 <span className="sub2" key="tt">{o.slots.length
                   ? o.slots.map((s) => `${DAY[s.weekday]} ${hhmm(s.starts_at)}–${hhmm(s.ends_at)} · ${s.venue}${s.kind !== "LECTURE" ? ` (${s.kind.toLowerCase()})` : ""}`).join("  ·  ")

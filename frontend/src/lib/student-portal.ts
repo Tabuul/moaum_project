@@ -53,6 +53,7 @@ export interface ResultRow {
   session: string; semester: number; course_code: string; title: string; units: number; entry_type: string; stage: string;
   published: boolean; published_at: string | null; senate_minute: string | null;
   ca: number | null; exam: number | null; total: number | null; grade: string | null; points: number | null; outcome: string | null;
+  lecturer?: string | null;
 }
 export interface Results {
   name: string; matricNo: string; programme: string; level: number; rows: ResultRow[]; semesters: Semester[];
@@ -119,7 +120,7 @@ export const WEEKDAY = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 
 /** the desks a sheet passes, as the results chain names them, for "where it is" */
 export const STAGE_LABEL: Record<string, [string, string]> = {
-  NO_SHEET: ["No sheet yet", "The examination session has not been opened for this offering"],
+  NO_SHEET: ["Scores not Uploaded", "The examination session has not been opened for this offering"],
   ENTRY: ["With the lecturer", "Marks being entered"],
   VERIFICATION: ["Verification", "Examinations Officer"],
   DEPT_BOARD: ["Departmental board", "Head of Department"],
@@ -135,4 +136,10 @@ export const GRADE_COLOUR: Record<string, string> = { A: "var(--green)", B: "var
 
 export function semesterName(n: number): string {
   return n === 1 ? "First" : n === 2 ? "Second" : "Third";
+}
+
+/** the portal-wide way to show a semester to a person: "Semester: First" / "Semester: Second" —
+ *  never the bare number. Use this for labels, fields and subtitles. */
+export function semesterText(n: number): string {
+  return `Semester: ${semesterName(n)}`;
 }

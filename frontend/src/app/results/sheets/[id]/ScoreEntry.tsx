@@ -15,6 +15,7 @@ import { OUTCOMES, RS_STAGES, STAGE_LABEL, csv, download, type RollRow, type She
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Modal, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { semesterName } from "@/lib/student-portal";
 
 interface Draft { ca: string; exam: string; outcome: string; reason: string }
 
@@ -185,7 +186,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       ]} />
 
       <Note kind="info" title={borrowed ? "This roll is every registered candidate, not this department’s students" : "This roll is every registered candidate"}>
-        {s.courseCode} — {s.courseTitle}, {s.units} units, {s.session} semester {s.semester}. {roll.length} candidate{roll.length === 1 ? "" : "s"} registered and approved{borrowed ? `; ${borrowed} from ${Array.from(new Set(roll.filter((r) => r.programmeCode !== programmes[0]).map((r) => r.programmeName))).join(", ")}` : ownProgramme ? `, all ${ownProgramme.programmeName}` : ""}. They registered the course the ordinary way and they sat the same paper. Mark them the same way.
+        {s.courseCode} — {s.courseTitle}, {s.units} units, {s.session} {semesterName(s.semester).toLowerCase()} semester. {roll.length} candidate{roll.length === 1 ? "" : "s"} registered and approved{borrowed ? `; ${borrowed} from ${Array.from(new Set(roll.filter((r) => r.programmeCode !== programmes[0]).map((r) => r.programmeName))).join(", ")}` : ownProgramme ? `, all ${ownProgramme.programmeName}` : ""}. They registered the course the ordinary way and they sat the same paper. Mark them the same way.
       </Note>
 
       <Panel title={`${s.courseCode} — ${s.courseTitle}`} right={`${entered} of ${roll.length} entered · Enter or ↓ moves down the column`}>

@@ -4,6 +4,7 @@ import type { Results } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
+import { qrMatrix } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
@@ -115,7 +116,30 @@ export async function GET(_: Request, { params }: { params: Promise<{ session: s
   p.text(L + 60, y, "A 70-100 (5)   B 60-69 (4)   C 50-59 (3)   D 45-49 (2)   E 40-44 (1)   F 0-39 (0)", 8.5, false, [0.25, 0.25, 0.25]);
   y -= 24;
 
-  y = p.paragraph(L, y, `Published ${day(rows[0].published_at)} after Senate approval${rows[0].senate_minute ? ` under minute ${clean(rows[0].senate_minute)}` : ""}. A grade that is not on a published sheet is not on this statement. The register is the thing; this statement is a view of it and is verified against it, not by its appearance.`, W, 8.5);
+  // ── approval date ──────────────────────────────────────────────────────────
+  const approvedOn = day(rows[0].published_at);
+  p.text(L, y, "APPROVAL DATE", 7, false, [0.42, 0.42, 0.42]);
+  p.text(L + 78, y, `Approved by Senate on ${approvedOn}${rows[0].senate_minute ? ` · minute ${clean(rows[0].senate_minute)}` : ""}`, 9.5, true, [0.06, 0.15, 0.22]);
+  y -= 26;
+
+  // ── verification QR and its details ────────────────────────────────────────
+  const qrText = [
+    "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",
+    "Semester Results Statement",
+    clean(x.name),
+    x.matricNo ?? "",
+    `${clean(x.programme)} · ${x.level} Level`,
+    `${session} · ${semesterName(semester)} semester`,
+    `GPA ${sem?.gpa ?? "-"} · CGPA ${sem?.cgpa ?? "-"} · ${clean(x.standing ?? "-")}`,
+    `Approved ${approvedOn}${rows[0].senate_minute ? ` · minute ${clean(rows[0].senate_minute)}` : ""}`,
+  ].join("\n");
+  const { size, dark } = qrMatrix(qrText);
+  const cell = 2.4, qDim = size * cell, qx = L, qy = y;
+  for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
+  p.text(qx, qy - qDim - 12, "SCAN TO VERIFY", 7.5, true, [0.4, 0.4, 0.4]);
+  const dx = qx + qDim + 20;
+  p.text(dx, qy - 4, "DETAILS OF THE QR CODE", 7, false, [0.42, 0.42, 0.42]);
+  p.paragraph(dx, qy - 18, "The code carries this statement's own record: the candidate's name and matriculation number, the programme and level, the session and semester, the semester GPA and cumulative GPA, the class of standing, and the Senate approval date. A statement is verified against the register, not by its appearance; a grade that is not on a published sheet is not on this statement.", R - dx, 8.5);
 
   p.rule(L, 44, R, 44, 0.5, 0.8);
   p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())}`, 7.5, false, [0.45, 0.45, 0.45]);

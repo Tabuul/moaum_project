@@ -4,6 +4,7 @@ import { ReportDoc } from "@/components/proto/ReportDoc";
 import { ReportToolbar } from "@/components/proto/ReportToolbar";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { type ReportColumn, officeLabel, reportFor, sessionSlug } from "@/lib/report";
+import { semesterName, semesterText } from "@/lib/student-portal";
 
 export const dynamic = "force-dynamic";
 
@@ -42,20 +43,20 @@ export default async function RegistrationReport({ searchParams }: { searchParam
 
   const t = d.totals;
   const note = d.schemeInForce
-    ? `${t.not_registered.toLocaleString()} of ${t.expected.toLocaleString()} not registered for ${session} semester ${semester}: ${t.fee_blocked.toLocaleString()} fee-blocked (the Bursary has not cleared them — a payment plan, not a longer window, is the lever) and ${t.cleared_idle.toLocaleString()} cleared but idle (a reminder or a short window extension helps these). Expected is the active, matriculated cohort.`
+    ? `${t.not_registered.toLocaleString()} of ${t.expected.toLocaleString()} not registered for ${session} ${semesterName(semester).toLowerCase()} semester: ${t.fee_blocked.toLocaleString()} fee-blocked (the Bursary has not cleared them — a payment plan, not a longer window, is the lever) and ${t.cleared_idle.toLocaleString()} cleared but idle (a reminder or a short window extension helps these). Expected is the active, matriculated cohort.`
     : `No clearance scheme is in force, so nobody can be cleared for registration — that is why the figures are low. All ${t.not_registered.toLocaleString()} non-registrants show as fee-blocked. The Bursar putting a clearance scheme in force will move the whole cohort at once; that is the first fix, before reading these figures per faculty.`;
 
   return (
     <ReportDoc
       title={spec.title}
-      subtitle={`${spec.subtitle} · ${session} semester ${semester}`}
+      subtitle={`${spec.subtitle} · ${session} · ${semesterText(semester)}`}
       session={session}
       columns={columns}
       rows={rows}
       totals={{ ...t, pct: t.expected ? `${Math.round((100 * t.registered) / t.expected)}%` : "—" }}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={note}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`registration-return-${sessionSlug(session)}-${semester}`} title={`${spec.title} · ${session} semester ${semester}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`registration-return-${sessionSlug(session)}-${semester}`} title={`${spec.title} · ${session} · ${semesterText(semester)}`} />}
     />
   );
 }

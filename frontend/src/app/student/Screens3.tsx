@@ -11,6 +11,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Me, RegistrationView } from "@/lib/student-portal";
+import { semesterName, semesterText } from "@/lib/student-portal";
 import { Btn, Note, Pil, Tick, WarnIcon } from "@/components/proto/ui";
 import { Gate, Gates, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -112,7 +113,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
               <div className="sub2">Responsible office: <strong style={{ color: "var(--ink)" }}>Bursary Department</strong>. Payments are confirmed against the bank&rsquo;s record, not by this page.</div>
             </div>
           </div>
-          <Gates><Gate state="todo" title="Registration window" sub={`${v.session} · semester ${v.semester}`} last /></Gates>
+          <Gates><Gate state="todo" title="Registration window" sub={`${v.session} · ${semesterText(v.semester)}`} last /></Gates>
         </div></div>
       </>
     );
@@ -256,7 +257,8 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="kv"><span className="k">Name</span><span className="v">{s.name}</span></div>
           <div className="kv"><span className="k">Matriculation number</span><span className="v tnum">{s.matricNo ?? s.admissionNo}</span></div>
           <div className="kv"><span className="k">Level</span><span className="v">{reg.level}</span></div>
-          <div className="kv"><span className="k">Session</span><span className="v tnum">{v.session} · semester {v.semester}</span></div>
+          <div className="kv"><span className="k">Session</span><span className="v tnum">{v.session}</span></div>
+          <div className="kv"><span className="k">Semester</span><span className="v">{semesterName(v.semester)}</span></div>
         </div>
         <div className="tablewrap"><table style={{ minWidth: 520 }}>
           <thead><tr>

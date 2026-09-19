@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Entry } from "@/lib/student-portal";
+import { semesterName } from "@/lib/student-portal";
 import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
+import { qrMatrix } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
@@ -65,38 +67,64 @@ export async function GET(request: NextRequest) {
   if (photo) p.jpeg(px, ptop - ph, pw, ph, photo);
   else { p.rule(px, ptop, px + pw, ptop, 0.6, 0.7); p.rule(px, ptop - ph, px + pw, ptop - ph, 0.6, 0.7); p.rule(px, ptop, px, ptop - ph, 0.6, 0.7); p.rule(px + pw, ptop, px + pw, ptop - ph, 0.6, 0.7); p.text(px + 12, ptop - ph / 2, "PHOTO", 7.5, false, [0.6, 0.6, 0.6]); }
 
-  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", s.matricNo ?? s.admissionNo ?? ""], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", `${session} · semester ${semester}`]]) {
+  const regDate = day(reg.submitted_at ?? reg.approved_at);
+  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", s.matricNo ?? s.admissionNo ?? ""], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester)], ["Date of registration", regDate]]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 150, y, val, 10.5);
     y -= 17;
   }
   y = Math.min(y, ptop - ph) - 10;
 
-  // ── table: course · lecturer · unit · type, carryovers first ──
-  const lecX = A4.w - L - 200, unitX = A4.w - L - 92, typeX = A4.w - L - 46;
+  // ── table: code · course title · unit · type, carryovers first ──
+  const codeX = L + 8, titleX = L + 104, unitX = A4.w - L - 92, typeX = A4.w - L - 46;
   p.fill(L, y - 4, A4.w - 2 * L, 18, 0.2);
-  p.text(L + 8, y, "COURSE", 8, true, [1, 1, 1]);
-  p.text(lecX, y, "LECTURER", 8, true, [1, 1, 1]);
+  p.text(codeX, y, "CODE", 8, true, [1, 1, 1]);
+  p.text(titleX, y, "COURSE TITLE", 8, true, [1, 1, 1]);
   p.text(unitX, y, "UNIT", 8, true, [1, 1, 1]);
   p.text(typeX, y, "TYPE", 8, true, [1, 1, 1]);
   y -= 22;
   for (const e of [...reg.entries].sort((a, b) => orderRank(a) - orderRank(b) || (a.courseCode ?? "").localeCompare(b.courseCode ?? ""))) {
     const co = e.entryType === "CARRYOVER";
-    p.text(L + 8, y, clean(e.courseCode), 9, true, co ? [0.72, 0.11, 0.11] : [0, 0, 0]);
-    p.text(L + 8 + Math.min(clean(e.courseCode).length * 5.6 + 8, 74), y, cut(clean(e.title), 34), 9, false, [0.2, 0.2, 0.2]);
-    p.text(lecX, y, cut(clean(e.lecturer) || "—", 22), 8.5, false, [0.3, 0.3, 0.3]);
+    p.text(codeX, y, clean(e.courseCode), 9, true, co ? [0.72, 0.11, 0.11] : [0, 0, 0]);
+    p.text(titleX, y, cut(clean(e.title), 44), 9, false, [0.2, 0.2, 0.2]);
     p.text(unitX, y, String(e.units), 9);
     p.text(typeX, y, courseType(e), 8.5, true, [0.35, 0.35, 0.35]);
-    if (co) p.text(lecX, y - 8, "carryover", 6.5, false, [0.72, 0.11, 0.11]);
+    if (co) p.text(codeX, y - 8, "carryover", 6.5, false, [0.72, 0.11, 0.11]);
     y -= co ? 19 : 16;
   }
   p.rule(L, y + 6, A4.w - L, y + 6);
-  p.text(L + 8, y - 8, "TOTAL CREDIT UNITS", 10.5, true);
+  p.text(codeX, y - 8, "TOTAL CREDIT UNITS", 10.5, true);
   p.text(unitX, y - 8, String(reg.units), 12, true);
-  y -= 40;
-  p.text(L, y, `Approved by the Head of Department on ${day(reg.approved_at)}`, 10, true, [0.1, 0.4, 0.2]);
-  y -= 24;
-  y = p.paragraph(L, y, "The register is the thing; this form is a view of it. The class lists, the attendance register, the examination roll and the score sheets are drawn from the approved entries above and nothing else. A carryover is a course failed earlier and repeated this semester.", A4.w - 2 * L, 9);
+  y -= 48;
+
+  // ── verification QR (bottom-left) ──
+  const qrText = [
+    "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",
+    "Course Registration",
+    clean(s.name),
+    s.matricNo ?? s.admissionNo ?? "",
+    clean(s.programme),
+    `${reg.level} Level · ${session} · ${semesterName(semester)} semester`,
+    `${reg.units} credit units · ${reg.entries.length} course(s)`,
+    `Registered ${regDate} · Ref ${reg.id.slice(0, 8).toUpperCase()}`,
+  ].join("\n");
+  const { size, dark } = qrMatrix(qrText);
+  const cell = 2.5, qDim = size * cell, qx = L, qy = y;
+  for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
+  p.text(qx, qy - qDim - 12, "SCAN TO VERIFY", 7.5, true, [0.4, 0.4, 0.4]);
+  p.text(qx, qy - qDim - 24, `Ref ${reg.id.slice(0, 8).toUpperCase()}`, 8, false, [0.3, 0.3, 0.3]);
+
+  // ── signatures: Head of Department / Level Coordinator, and Dean of Faculty ──
+  const sigW = 200, sigX2 = A4.w - L - sigW;
+  let sy = qy - 8;
+  for (const role of ["Head of Department / Level Coordinator", "Dean of Faculty"]) {
+    p.rule(sigX2, sy, sigX2 + sigW - 70, sy, 0.6, 0.55);
+    p.rule(sigX2 + sigW - 60, sy, sigX2 + sigW, sy, 0.6, 0.55);
+    p.text(sigX2, sy - 11, role, 8, true, [0.25, 0.25, 0.25]);
+    p.text(sigX2 + sigW - 60, sy - 11, "Date", 7.5, false, [0.45, 0.45, 0.45]);
+    sy -= 40;
+  }
+
   p.text(L, 50, `Issued by the portal on ${day(new Date().toISOString())} · ${reg.id.slice(0, 8).toUpperCase()}`, 7.5, false, [0.4, 0.4, 0.4]);
   const bytes = pdf([p], `Course form ${s.matricNo ?? ""}`);
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="course-form-${session.replace("/", "-")}-${semester}.pdf"` } });

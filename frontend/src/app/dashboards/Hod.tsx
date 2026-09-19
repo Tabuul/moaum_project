@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { semesterName } from "@/lib/student-portal";
 
 export interface HodHome {
   resolved: boolean;
@@ -75,12 +76,12 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
         <Panel title="Offerings still needing a lecturer" right={needLect ? `${needLect} to allocate` : "All allocated"}>
           {home.needLecturer && home.needLecturer.length ? (
             <DTable
-              cols={["Course|mid", "Title", "Level|num", "Semester|num"]}
+              cols={["Course|mid", "Title", "Level|num", "Semester|mid"]}
               rows={home.needLecturer.map((o) => [
                 <span className="tnum" key="c">{o.code}</span>,
                 <span className="sub2" key="t">{o.title}</span>,
                 <span className="tnum" key="l">{o.level}</span>,
-                <span className="tnum" key="s">{o.semester}</span>,
+                <span key="s">{semesterName(o.semester)}</span>,
               ])}
             />
           ) : <PBody><div className="sub2">Every offering this session has a lecturer. There is nothing to allocate.</div></PBody>}

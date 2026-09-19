@@ -14,6 +14,7 @@ import { Btn, Panel, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { semesterText } from "@/lib/student-portal";
 
 export interface RegEntry { code: string; title: string; units: number; kind: string | null; type: string }
 export interface RegistrationRow {
@@ -54,7 +55,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
 
   return (
     <>
-    <Panel title="Course registrations submitted by students" right={`${rows.length} waiting · ${session}${semester ? ` · semester ${semester}` : " · all semesters"}`}>
+    <Panel title="Course registrations submitted by students" right={`${rows.length} waiting · ${session}${semester ? ` · ${semesterText(semester)}` : " · all semesters"}`}>
       {problem ? <div className="card__body"><ProblemNotice problem={problem} /></div> : null}
       <DTable cols={["Student", "Programme", "Level|mid", "Semester|mid", "Courses", "Units|mid", "Submitted|mid", "|num"]} rows={rows.map((r) => [
         <button key="s" onClick={() => setOpen(r)} title="View the full course registration" style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}>

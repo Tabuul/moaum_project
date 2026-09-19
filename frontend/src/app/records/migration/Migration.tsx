@@ -9,6 +9,7 @@ import { xlsxRowsAsync, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { semesterText } from "@/lib/student-portal";
 
 type Tab = "biodata" | "students" | "registration" | "results";
 const MIGRATE = ["exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
@@ -318,7 +319,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Panel title={tab === "biodata" ? "Student biography exported from the old portal" : tab === "students" ? "Students exported from the old portal" : tab === "registration" ? "Course registration of a past semester" : "Past results of a semester"}
-             right={tab === "students" || tab === "biodata" ? "The first step" : `${session || "session"} · semester ${semester}`}>
+             right={tab === "students" || tab === "biodata" ? "The first step" : `${session || "session"} · ${semesterText(Number(semester))}`}>
         <PBody>
           {needScope ? (
             <div className="grid grid--3">

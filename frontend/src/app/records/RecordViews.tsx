@@ -14,6 +14,7 @@ import type { Scope } from "@/lib/scope";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/components/proto/blocks";
+import { semesterText } from "@/lib/student-portal";
 
 type Row = Record<string, unknown>;
 
@@ -195,7 +196,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
             rows={rows.map((r) => [
               <span key="k">
                 <strong>{statusLabel(str(r, "kind"))}</strong>
-                <div className="sub2">Semester {str(r, "semester")}</div>
+                <div className="sub2">{semesterText(Number(str(r, "semester")))}</div>
               </span>,
               <span className="sub2 tnum" key="w">
                 {day(str(r, "examsFrom"), false)} &ndash; {day(str(r, "examsTo"))}

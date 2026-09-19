@@ -5,6 +5,7 @@ import type { Me, RegistrationView, Docket } from "@/lib/student-portal";
 import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, examToken, examVerifyPath } from "@/lib/qr";
+import { semesterName } from "@/lib/student-portal";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
   else { for (const [a, b, cc, d] of [[px, ptop, px + pw, ptop], [px, ptop - ph, px + pw, ptop - ph], [px, ptop, px, ptop - ph], [px + pw, ptop, px + pw, ptop - ph]]) p.rule(a, b, cc, d, 0.6, 0.7); p.text(px + 22, ptop - ph / 2, "PHOTO", 8, false, [0.6, 0.6, 0.6]); }
   p.text(px, ptop - ph - 10, "Photograph on file", 7, false, [0.5, 0.5, 0.5]);
 
-  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", `${session} · semester ${semester}`]]) {
+  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester)]]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 150, y, val, 10.5, true);
     y -= 18;
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
 
   const strip = ` REV. FR. MOSES ORSHIO ADASU UNIVERSITY · EXAMINATION CARD · ${matric} · ${session} · VERIFY ONLINE ·`;
   for (const my of [y + 4, 46]) p.text(L, my, strip.repeat(5), 3.2, false, [0.82, 0.82, 0.82]);
-  p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())} · valid for ${session} semester ${semester} only`, 7.5, false, [0.45, 0.45, 0.45]);
+  p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`, 7.5, false, [0.45, 0.45, 0.45]);
 
   const bytes = pdf([p], `Exam card ${matric}`);
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="exam-card-${session.replace("/", "-")}-${semester}.pdf"` } });

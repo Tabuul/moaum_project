@@ -15,6 +15,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClearanceRow, StudentRecord } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
+import { semesterText } from "@/lib/student-portal";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Pil, Tick, WarnIcon } from "@/components/proto/ui";
 import { Field, Modal, Passport, Row, day } from "@/components/proto/blocks";
@@ -256,7 +257,7 @@ export function Student360({
             thisSession.map((r) => (
               <Row
                 key={r.id}
-                k={`Semester ${r.semester} · ${statusLabel(r.status)}`}
+                k={`${semesterText(r.semester)} · ${statusLabel(r.status)}`}
                 v={`${r.units} units${r.submittedAt ? ` · submitted ${day(r.submittedAt)}` : ""}`}
               />
             ))

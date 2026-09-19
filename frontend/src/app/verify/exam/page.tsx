@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { semesterName } from "@/lib/student-portal";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                 ) : <div style={{ width: 96, height: 118, border: "1px dashed #c3c3c3", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9aa", fontSize: 11 }}>No photo</div>}
                 <div style={{ flex: 1, minWidth: 220 }}>
                   {[["Name", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
-                    ["Level", v.level ? `${v.level} Level` : "—"], ["Session", `${v.session} · semester ${v.semester}`],
+                    ["Level", v.level ? `${v.level} Level` : "—"], ["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"],
                     ["Cleared for examinations", v.cleared ? "Yes" : "No"]].map(([k, val], i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid #eef1f4", fontSize: 13.5 }}>
                       <span style={{ color: "#5d6b79", fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</span>

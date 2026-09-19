@@ -8,6 +8,7 @@ import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/
 import { Btn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { semesterName } from "@/lib/student-portal";
 
 export function ClassListScreen({ scope, structure, sessions, courses, roll, problem, ceiling }: {
   scope: Scope;
@@ -60,7 +61,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
               ])}
               texts={roll.rows.map((r) => `${r.number} ${r.surname} ${r.otherNames} ${r.programmeName}`)}
             />
-            {!roll.rows.length ? <div className="card__body"><div className="sub2">Nobody has an approved registration for this course in {roll.session}, semester {roll.semester}.</div></div> : null}
+            {!roll.rows.length ? <div className="card__body"><div className="sub2">Nobody has an approved registration for this course in {roll.session}, {semesterName(roll.semester).toLowerCase()} semester.</div></div> : null}
           </Panel>
           {notCleared.length ? (
             <Note kind="bad" title={`${notCleared.length} registered student${notCleared.length === 1 ? " is" : "s are"} not cleared to sit the examination`}>

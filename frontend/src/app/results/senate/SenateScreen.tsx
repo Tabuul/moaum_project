@@ -85,7 +85,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
         ["Minute", latest ? latest.minute : "Not yet", latest ? "var(--green-ink)" : "var(--chrome)", latest ? when(latest.firstPublishedAt) : "When Senate has risen"],
       ]} />
       <Panel title={`Senate schedule — ${senate.session} ${semester} semester`} right="Prepared from the sheets, by faculty">
-        {senate.faculties.length === 0 ? <div className="card__body sub2">No score sheet exists for {senate.session} semester {senate.semester}. The schedule is empty until an examination session is opened and the sheets move.</div> : (
+        {senate.faculties.length === 0 ? <div className="card__body sub2">No score sheet exists for {senate.session} {semester.toLowerCase()} semester. The schedule is empty until an examination session is opened and the sheets move.</div> : (
           <DTable cols={["Faculty", "Sets|mid", "Candidates|mid", "At Senate|mid", "Published|mid", "Outstanding|mid", "Recommendation|num"]}
             rows={senate.faculties.map((f) => [
               <strong key="f">{f.facultyName}</strong>,
