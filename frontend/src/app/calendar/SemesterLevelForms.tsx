@@ -85,7 +85,7 @@ export function SemesterModal({
           <RecDay k="due" draft={draft} set={set} />
         </Field>
         <Field id="rf_query" label="Result query window" full>
-          <RecText k="query" draft={draft} set={set} ph="5 working days from release" />
+          <RecText k="query" draft={draft} set={set} ph="seven days from release" />
         </Field>
       </div>
       <Note kind="bad" title="Moving a closing date backwards after it has passed does not un-register anybody">

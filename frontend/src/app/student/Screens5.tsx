@@ -34,10 +34,10 @@ export function Query({ q }: { q: Queries }) {
     <>
       {open ? (
         <Note kind="info" title={`The query window is open until ${onDay(q.queryable.map((x) => x.window_until).sort().slice(-1)[0])}`}>
-          Five working days from release. A query is against <b>one mark in one course</b>, is routed automatically to the department that owns that course, and is answered on the record &mdash; you will see the answer here, not be told to come back next week.
+          Seven days from release &mdash; five working days and a weekend. A query is against <b>one mark in one course</b>, is routed automatically to the department that owns that course, and is answered on the record &mdash; you will see the answer here, not be told to come back next week.
         </Note>
       ) : (
-        <Note kind="bad" title="The query window is not open">It opens when results are released and runs for five working days. {q.queries.length ? "Your earlier queries are below." : "There is nothing to query yet, because nothing has been published in the last five working days."}</Note>
+        <Note kind="bad" title="The query window is not open">It opens when results are released and runs for seven days. {q.queries.length ? "Your earlier queries are below." : "There is nothing to query yet, because nothing has been published in the last seven days."}</Note>
       )}
       <Tiles items={[
         ["Window", open ? "Open" : "Closed", open ? "var(--green-ink)" : "var(--red-ink)", open ? `${q.queryable.length} course${q.queryable.length === 1 ? "" : "s"} may be queried` : "Opens on release"],

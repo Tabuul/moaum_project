@@ -108,7 +108,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
               [senate.published ? "done" : "todo", "The results become visible to their candidates", "Grade, GPA, CGPA and standing. A withheld set shows as withheld, with the reason the Board recorded."],
               [senate.published ? "done" : "todo", "Statements of results become issuable", "With the minute number, stating on the face that it is not a transcript."],
               [senate.published ? "done" : "todo", "The transcript compiler can see the set", "A transcript is compiled from Senate-approved sets only. Before the minute, the set does not exist to it."],
-              [senate.published ? "done" : "todo", "The result-query window opens for seven days", "A query is against a mark, routed to the department that owns the course, and answered on the record."],
+              [senate.published ? "done" : "todo", "The result-query window opens for seven days", "Five working days and a weekend. A query is against a mark, routed to the department that owns the course, and answered on the record."],
             ]} />
           </PBody>
         </Panel>
