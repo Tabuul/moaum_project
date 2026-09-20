@@ -72,11 +72,16 @@ class GraduationIT {
                     INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (:r, :o, 15, 'APPROVED')
                     ON CONFLICT (registration_id, offering_id) DO NOTHING
                     """).param("r", reg).param("o", offering).update();
+            UUID examSession = jdbc.sql("""
+                    INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, state, opened_at)
+                    VALUES (gen_random_uuid(), :sess, 1, 'MAIN', DATE '2094-12-08', DATE '2094-12-19', DATE '2095-01-16', 'OPEN', now())
+                    ON CONFLICT (session, semester, kind) DO UPDATE SET state = 'OPEN' RETURNING id
+                    """).param("sess", SESSION).query(UUID.class).single();
             UUID sheet = jdbc.sql("""
-                    INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at)
-                    VALUES (gen_random_uuid(), :o, 'PUBLISHED', 'SEN/2094/01', now(), now())
-                    ON CONFLICT (offering_id) DO UPDATE SET stage = 'PUBLISHED' RETURNING id
-                    """).param("o", offering).query(UUID.class).single();
+                    INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, stage, senate_minute, published_at, submitted_at)
+                    VALUES (gen_random_uuid(), :o, :es, 'PUBLISHED', 'SEN/2094/01', now(), now())
+                    ON CONFLICT (offering_id, exam_session_id) DO UPDATE SET stage = 'PUBLISHED' RETURNING id
+                    """).param("o", offering).param("es", examSession).query(UUID.class).single();
             jdbc.sql("""
                     INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (:sh, :s, 30, 45)
                     ON CONFLICT (sheet_id, student_id, version) DO NOTHING
