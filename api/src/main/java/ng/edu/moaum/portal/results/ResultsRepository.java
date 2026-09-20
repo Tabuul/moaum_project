@@ -15,10 +15,9 @@ class ResultsRepository {
     private static final String SHEET_SELECT = """
             SELECT s.id, o.course_code, c.title AS course_title, c.units, c.dept_code, d.name AS dept_name,
                    d.faculty_code, f.name AS faculty_name, o.session, o.semester, s.stage, s.due_on, s.submitted_at,
-                   s.returned_times, o.lecturer_id,
+                   s.returned_times, o.lecturer_id, coalesce(es.kind, 'MAIN') AS sitting,
                    CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
-                   (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
-                     WHERE e.offering_id = o.id AND e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED')) AS candidates,
+                   (SELECT count(*) FROM assessment.sheet_candidates(s.id)) AS candidates,
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED') AS graded,
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED' AND points = 0) AS failed,
                    (SELECT dd.actor_id FROM assessment.decision dd WHERE dd.sheet_id = s.id AND dd.kind IN ('SUBMIT','ADVANCE')
@@ -28,6 +27,7 @@ class ResultsRepository {
               JOIN catalogue.course c ON c.code = o.course_code
               JOIN ref.department d ON d.code = c.dept_code
               JOIN ref.faculty f ON f.code = d.faculty_code
+              LEFT JOIN assessment.exam_session es ON es.id = s.exam_session_id
               LEFT JOIN iam.person p ON p.id = o.lecturer_id
             """;
 

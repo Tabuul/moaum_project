@@ -72,7 +72,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
   }
 
   const row = (s: SheetListed) => [
-    <Two key="c" a={<span className="tnum">{s.courseCode}</span>} b={s.courseTitle} />,
+    <Two key="c" a={<span className="tnum">{s.courseCode}{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}</span>} b={s.courseTitle} />,
     <span className="sub2" key="d">{s.deptName}</span>,
     <span className="tnum" key="n">{s.candidates}</span>,
     s.failRate === null ? <span className="sub2" key="f">—</span> : <span className="tnum" key="f" style={s.failRate > 50 ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.failRate}%</span>,

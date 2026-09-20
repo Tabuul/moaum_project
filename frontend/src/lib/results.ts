@@ -20,6 +20,7 @@ export interface SheetListed {
   semester: number;
   stage: string;
   spineStage: number;
+  sitting: string;
   dueOn: string | null;
   daysLate: number | null;
   returnedTimes: number;

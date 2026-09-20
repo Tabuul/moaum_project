@@ -91,7 +91,7 @@ export function Approvals({
                 const high = s.failRate !== null && s.failRate > 50;
                 return (
                   <tr key={s.id} style={high ? { background: "var(--red-wash)" } : undefined}>
-                    <td><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}</div></td>
+                    <td><strong className="tnum">{s.courseCode}</strong>{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}<div className="sub2">{s.courseTitle}</div></td>
                     <td className="sub2">{s.deptName}</td>
                     <td className="mid tnum">{s.candidates}</td>
                     <td className="mid">{s.failRate === null ? <span style={{ color: "var(--faint)" }}>—</span> : high ? <span className="pill pill--bad tnum">{s.failRate}%</span> : <span className="tnum">{s.failRate}%</span>}</td>

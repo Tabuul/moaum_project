@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 132
+\set EXPECTED 135
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2773,6 +2773,83 @@ BEGIN
         'The session roll-over promotes an active continuing student one level and enrols them, and leaves a final-year and a withdrawn student where they are',
         ran AND lvl_active = 300 AND enrolled AND lvl_final = 400 AND lvl_wd = 200,
         format('ran=%s active=%s enrolled=%s final=%s withdrawn=%s', ran, lvl_active, enrolled, lvl_final, lvl_wd));
+END $$;
+
+-- ── 133. a re-sit replaces a failed Main capped at the pass mark; a Special is uncapped (V197–V199) ──
+DO $$
+DECLARE
+    a uuid := gen_random_uuid();
+    stu1 uuid := gen_random_uuid();   -- fails the Main, passes the re-sit
+    stu2 uuid := gen_random_uuid();   -- absent in the Main, sits the Special
+    prog text; dept text; sess text := '2093/2094';
+    offR uuid := gen_random_uuid(); offS uuid := gen_random_uuid();
+    regR uuid := gen_random_uuid(); regS uuid := gen_random_uuid();
+    esMain uuid := gen_random_uuid(); esResit uuid := gen_random_uuid(); esSpecial uuid := gen_random_uuid();
+    shRmain uuid := gen_random_uuid(); shSmain uuid := gen_random_uuid();
+    shRresit uuid := gen_random_uuid(); shSspecial uuid := gen_random_uuid();
+    v_pts numeric; v_out text; v_tot int; v_on_roll boolean; v_pts2 numeric; v_tot2 int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check: resit/special', true);
+    SELECT code, dept_code INTO prog, dept FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
+        ('ZZR 401', 'Re-sit Test', 3, 1, 400, dept, 'ACTIVE'),
+        ('ZZS 401', 'Special Test', 3, 1, 400, dept, 'ACTIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES
+        (offR, 'ZZR 401', sess, 1), (offS, 'ZZS 401', sess, 1);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (stu1, 'MOAUM/ADM/20/RES1', 'MOAUM/XX/20/RES1', 'RESITONE', 'Invented', prog, 'UTME', '2020/2021', 100, 400, 'ACTIVE', now()),
+        (stu2, 'MOAUM/ADM/20/SPE1', 'MOAUM/XX/20/SPE1', 'SPECIALTWO', 'Invented', prog, 'UTME', '2020/2021', 100, 400, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES
+        (regR, stu1, sess, 1, 400, 'APPROVED', now()), (regS, stu2, sess, 1, 400, 'APPROVED', now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES
+        (regR, offR, 3, 'APPROVED'), (regS, offS, 3, 'APPROVED');
+    INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, state, opened_at) VALUES
+        (esMain, sess, 1, 'MAIN', DATE '2094-01-08', DATE '2094-01-19', DATE '2094-02-16', 'OPEN', now()),
+        (esResit, sess, 1, 'RESIT', DATE '2094-03-08', DATE '2094-03-19', DATE '2094-04-16', 'OPEN', now()),
+        (esSpecial, sess, 1, 'SPECIAL', DATE '2094-03-08', DATE '2094-03-19', DATE '2094-04-16', 'OPEN', now());
+
+    -- Main sittings published: stu1 fails ZZR 401 (25), stu2 absent in ZZS 401
+    INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, stage, senate_minute, published_at, submitted_at) VALUES
+        (shRmain, offR, esMain, 'PUBLISHED', 'SEN/2094/01', now(), now()),
+        (shSmain, offS, esMain, 'PUBLISHED', 'SEN/2094/01', now(), now());
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES
+        (shRmain, stu1, 10, 15, 'GRADED'), (shSmain, stu2, NULL, NULL, 'ABSENT');
+
+    -- before the re-sit, the failed course is a fail on the record
+    SELECT points, outcome INTO v_pts, v_out FROM assessment.student_results(stu1) WHERE course_code = 'ZZR 401';
+    PERFORM pg_temp.assert('A failed Main sitting shows as a fail (0 points) before any re-sit',
+        v_out = 'GRADED' AND coalesce(v_pts, -1) = 0, format('points=%s outcome=%s', v_pts, v_out));
+
+    -- the re-sit sheet: its roster is the failed candidate, and a pass replaces the fail capped at the pass mark
+    INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, stage, senate_minute, published_at, submitted_at)
+        VALUES (shRresit, offR, esResit, 'ENTRY', NULL, NULL, NULL);
+    SELECT EXISTS (SELECT 1 FROM assessment.sheet_candidates(shRresit) WHERE student_id = stu1) INTO v_on_roll;
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (shRresit, stu1, 30, 35, 'GRADED');  -- 65, a clear pass
+    UPDATE assessment.score_sheet SET stage = 'PUBLISHED', senate_minute = 'SEN/2094/07', published_at = now(), submitted_at = now() WHERE id = shRresit;
+    SELECT points, total INTO v_pts, v_tot FROM assessment.student_results(stu1) WHERE course_code = 'ZZR 401';
+    PERFORM pg_temp.assert('A passed re-sit is on the failed candidate''s roster and replaces the Main, capped at the pass mark (E/40/1.0)',
+        v_on_roll AND coalesce(v_pts, -1) = 1.0 AND v_tot = 40, format('on_roll=%s points=%s total=%s', v_on_roll, v_pts, v_tot));
+
+    -- the Special sitting: an absent candidate sits it, and the mark counts uncapped
+    INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, stage, senate_minute, published_at, submitted_at)
+        VALUES (shSspecial, offS, esSpecial, 'PUBLISHED', 'SEN/2094/08', now(), now());
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (shSspecial, stu2, 30, 35, 'GRADED');  -- 65
+    SELECT points, total INTO v_pts2, v_tot2 FROM assessment.student_results(stu2) WHERE course_code = 'ZZS 401';
+    PERFORM pg_temp.assert('A Special sitting replaces an absence uncapped (65 -> B/4.0)',
+        coalesce(v_pts2, -1) = 4.0 AND v_tot2 = 65, format('points=%s total=%s', v_pts2, v_tot2));
+
+    -- cleanup
+    DELETE FROM assessment.score WHERE sheet_id IN (shRmain, shSmain, shRresit, shSspecial);
+    DELETE FROM assessment.score_sheet WHERE id IN (shRmain, shSmain, shRresit, shSspecial);
+    DELETE FROM assessment.exam_session WHERE id IN (esMain, esResit, esSpecial);
+    DELETE FROM registration.entry WHERE registration_id IN (regR, regS);
+    DELETE FROM registration.course_registration WHERE id IN (regR, regS);
+    DELETE FROM people.student WHERE id IN (stu1, stu2);
+    DELETE FROM catalogue.offering WHERE id IN (offR, offS);
+    DELETE FROM catalogue.course WHERE code IN ('ZZR 401', 'ZZS 401');
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

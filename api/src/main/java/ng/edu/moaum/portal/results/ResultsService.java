@@ -235,7 +235,7 @@ public class ResultsService {
         boolean mayAct = ctx != null && Sheets.DESK.getOrDefault(r.stage(), List.of()).contains(ctx.actorOffice());
         boolean blocked = ctx != null && r.lastActor() != null && r.lastActor().equals(ctx.actorId());
         return new Sheets.Listed(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.deptName(), r.facultyName(),
-                r.session(), r.semester(), r.stage(), Sheets.spine(r.stage()), r.dueOn(), daysLate, r.returnedTimes(),
+                r.session(), r.semester(), r.stage(), Sheets.spine(r.stage()), r.sitting(), r.dueOn(), daysLate, r.returnedTimes(),
                 r.lecturer(), r.candidates(), failRate, mayAct, blocked);
     }
 
