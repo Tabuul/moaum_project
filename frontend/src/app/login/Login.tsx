@@ -117,8 +117,8 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
           </div>
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <button type="button" className="btn btn--ghost btn--sm" style={{ width: "100%" }} disabled title="Arrives with the public verification screen">Verify a certificate or transcript</button>
-            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed</div>
+            <Link href="/verify" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Verify a payment or receipt</Link>
+            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
           </div>
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
             <button type="button" className="btn btn--ghost btn--sm" style={{ width: "100%" }} disabled title="No address recorded for CHS-AMS yet">College of Health Sciences → CHS-AMS</button>
