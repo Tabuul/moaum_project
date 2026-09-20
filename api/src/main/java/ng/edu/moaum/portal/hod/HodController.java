@@ -104,6 +104,62 @@ class HodController {
                  ORDER BY c.level, c.code LIMIT 12
                 """).param("s", s).param("d", dept).query().listOfRows());
 
+        // the result-sheet pipeline, so the HOD sees where sheets are stuck (all sittings)
+        out.put("pipeline", jdbc.sql("""
+                SELECT count(*) FILTER (WHERE ss.stage = 'ENTRY') AS entry,
+                       count(*) FILTER (WHERE ss.stage IN
+                           ('VERIFICATION','DEPT_BOARD','FACULTY_SCRUTINY','FACULTY_COMPILATION','FACULTY_BOARD','RECORDS')) AS workflow,
+                       count(*) FILTER (WHERE ss.stage = 'SENATE') AS senate,
+                       count(*) FILTER (WHERE ss.stage = 'PUBLISHED') AS published
+                  FROM assessment.score_sheet ss
+                  JOIN catalogue.offering o ON o.id = ss.offering_id
+                  JOIN catalogue.course c ON c.code = o.course_code
+                 WHERE o.session = :s AND c.dept_code = :d
+                """).param("s", s).param("d", dept).query().singleRow());
+
+        // at-risk: students on probation, and a count of those carrying a failed course into this session
+        out.put("atRisk", jdbc.sql("""
+                SELECT st.surname || ', ' || st.other_names AS name, coalesce(st.matric_no, st.admission_no) AS number,
+                       st.current_level AS level, st.status
+                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                 WHERE p.dept_code = :d AND st.status = 'PROBATION'
+                 ORDER BY st.current_level, st.surname LIMIT 12
+                """).param("d", dept).query().listOfRows());
+        out.put("probation", jdbc.sql("""
+                SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                 WHERE p.dept_code = :d AND st.status = 'PROBATION'
+                """).param("d", dept).query(Long.class).single());
+        out.put("carryoverStudents", jdbc.sql("""
+                SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                 WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
+                   AND EXISTS (SELECT 1 FROM registration.carryovers(st.id))
+                """).param("d", dept).query(Long.class).single());
+
+        // the department's lecturers and their teaching load this session
+        out.put("lecturers", jdbc.sql("""
+                SELECT pr.surname || ', ' || pr.given_names AS name,
+                       count(DISTINCT o.id) AS courses,
+                       count(*) FILTER (WHERE e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED')) AS candidates
+                  FROM catalogue.offering o
+                  JOIN catalogue.course c ON c.code = o.course_code
+                  JOIN iam.person pr ON pr.id = o.lecturer_id
+                  LEFT JOIN registration.entry e ON e.offering_id = o.id
+                  LEFT JOIN registration.course_registration r ON r.id = e.registration_id
+                 WHERE o.session = :s AND c.dept_code = :d
+                 GROUP BY pr.id, pr.surname, pr.given_names
+                 ORDER BY count(DISTINCT o.id) DESC, name LIMIT 20
+                """).param("s", s).param("d", dept).query().listOfRows());
+
+        // fees: how many of the department's students are cleared for registration this session, and how many owe
+        Map<String, Object> fees = jdbc.sql("""
+                SELECT count(*) FILTER (WHERE finance.clears(st.id, :s, 'REGISTRATION')) AS cleared,
+                       count(*) FILTER (WHERE NOT finance.clears(st.id, :s, 'REGISTRATION')) AS owing
+                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                 WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
+                """).param("s", s).param("d", dept).query().singleRow();
+        out.put("feesCleared", fees.get("cleared"));
+        out.put("feesOwing", fees.get("owing"));
+
         return out;
     }
 

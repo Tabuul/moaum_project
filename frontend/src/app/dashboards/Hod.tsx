@@ -20,6 +20,13 @@ export interface HodHome {
   sheetsPending?: number;
   siwesUnsupervised?: number;
   needLecturer?: { code: string; title: string; level: number; semester: number }[];
+  pipeline?: { entry: number; workflow: number; senate: number; published: number };
+  atRisk?: { name: string; number: string; level: number; status: string }[];
+  probation?: number;
+  carryoverStudents?: number;
+  lecturers?: { name: string; courses: number; candidates: number }[];
+  feesCleared?: number;
+  feesOwing?: number;
 }
 
 export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: HodHome | null; requestsOpen: number | null }) {
@@ -36,6 +43,12 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
   const allocated = (home.offeringsTotal ?? 0) - needLect;
   const siwesGap = home.siwesUnsupervised ?? 0;
   const sheets = home.sheetsPending ?? 0;
+  const pipe = home.pipeline ?? { entry: 0, workflow: 0, senate: 0, published: 0 };
+  const atRisk = home.atRisk ?? [];
+  const lecturers = home.lecturers ?? [];
+  const feesCleared = home.feesCleared ?? 0;
+  const feesOwing = home.feesOwing ?? 0;
+  const carryovers = home.carryoverStudents ?? 0;
   return (
     <>
       {approvals ? (
@@ -69,6 +82,7 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
         ["SIWES without a supervisor", String(siwesGap), siwesGap ? "var(--red-ink)" : "var(--green-ink)", "Industrial-training students"],
         ["Result sheets in progress", String(sheets), null, "Not yet published"],
         ["Students", String(home.deptStudents ?? 0), null, "Active in the department"],
+        ["Cleared for registration", String(feesCleared), feesOwing ? "var(--chrome)" : "var(--green-ink)", `${feesOwing} still owing for ${home.session}`],
         ["Courses", String(home.deptCourses ?? 0), null, "In the department catalogue"],
         ...(home.openQueries ? [["Result queries", String(home.openQueries), "var(--chrome)", "Awaiting your department", "/results/queries"] as [string, string, string, string, string]] : []),
         ...(requestsOpen ? [["Student requests", String(requestsOpen), "var(--chrome)", "Open, to your office"] as [string, string, string, string]] : []),
@@ -104,6 +118,45 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
             </div>
             <div className="sub2" style={{ marginTop: 10 }}>You are acting as Head of {home.deptName}. Every screen above shows only your department.</div>
           </PBody>
+        </Panel>
+      </div>
+
+      <Panel title="Result pipeline" right={`${sheets} sheet${sheets === 1 ? "" : "s"} not yet published`}>
+        <Tiles cls="grid--4" items={[
+          ["With lecturers (Entry)", String(pipe.entry), pipe.entry ? "var(--red-ink)" : "var(--green-ink)", "Marks not yet submitted", "/results/desk"],
+          ["In the approval chain", String(pipe.workflow), pipe.workflow ? "var(--chrome)" : null, "Dept → Faculty → Records", "/results/desk"],
+          ["Awaiting Senate", String(pipe.senate), pipe.senate ? "var(--chrome)" : null, "Ready for the minute"],
+          ["Published", String(pipe.published), "var(--green-ink)", "Released to students"],
+        ]} />
+      </Panel>
+
+      <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>
+        <Panel title="At-risk students" right={`${home.probation ?? 0} on probation · ${carryovers} carrying a course`}>
+          {atRisk.length ? (
+            <DTable cols={["Student", "Number|mid", "Level|num", "Standing|mid"]}
+              rows={atRisk.map((a) => [
+                <span key="n">{a.name}</span>,
+                <span className="tnum" key="m">{a.number}</span>,
+                <span className="tnum" key="l">{a.level}</span>,
+                <span className="pill pill--bad" key="s">Probation</span>,
+              ])} />
+          ) : (
+            <PBody><div className="sub2">No student in {home.deptName} is on probation.{carryovers ? ` ${carryovers} student${carryovers === 1 ? "" : "s"} carry a failed course into ${home.session}.` : ""}</div></PBody>
+          )}
+          {atRisk.length && carryovers ? <PBody><div className="sub2">Also {carryovers} student{carryovers === 1 ? "" : "s"} carrying a failed course. <Link href="/results/broadsheet">See the broadsheet</Link>.</div></PBody> : null}
+        </Panel>
+
+        <Panel title="Lecturers & teaching load" right={lecturers.length ? `${lecturers.length} teaching this session` : "None allocated yet"}>
+          {lecturers.length ? (
+            <DTable cols={["Lecturer", "Courses|num", "Candidates|num"]}
+              rows={lecturers.map((l) => [
+                <span key="n">{l.name}</span>,
+                <span className="tnum" key="c">{l.courses}</span>,
+                <span className="tnum" key="s">{l.candidates}</span>,
+              ])} />
+          ) : (
+            <PBody><div className="sub2">No lecturer is allocated a {home.session} offering yet. Allocate teaching so load appears here.</div></PBody>
+          )}
         </Panel>
       </div>
     </>
