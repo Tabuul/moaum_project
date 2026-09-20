@@ -13,15 +13,17 @@ export interface DeanHome {
   atRisk?: { name: string; number: string; programme: string; level: number }[];
 }
 
-/** The faculty home, scoped to one faculty: registration by department, the result pipeline, offerings
- *  without a lecturer, and the students at risk. Serves the Dean (academic head) and the Faculty Officer
- *  (administrative head) — same faculty view, labelled by `role`. */
-export function DeanDashboard({ me, home, role = "Dean" }: { me: Me | null; home: DeanHome | null; role?: string }) {
+/** The faculty (or College) home, scoped to one unit: registration by department, the result pipeline,
+ *  offerings without a lecturer, and the students at risk. Serves the Dean and Faculty Officer at faculty
+ *  scope, and the Provost and College Secretary at College scope — same view, labelled by `role` and
+ *  `scopeNoun`. When `scopeNoun` is "college", the `faculty`/`facultyName` fields carry the College. */
+export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }: { me: Me | null; home: DeanHome | null; role?: string; scopeNoun?: string }) {
+  const Scope = scopeNoun.charAt(0).toUpperCase() + scopeNoun.slice(1);
   if (!home || !home.resolved) {
     return (
-      <Note kind="bad" title={`Your ${role} office is not tied to a faculty yet`}>
-        This dashboard is scoped to your faculty, and the portal cannot tell which one this office holds. Ask the
-        Registry to set the faculty on your {role} assignment, then this fills in.
+      <Note kind="bad" title={`Your ${role} office is not tied to a ${scopeNoun} yet`}>
+        This dashboard is scoped to your {scopeNoun}, and the portal cannot tell which one this office holds. Ask the
+        Registry to set the {scopeNoun} on your {role} assignment, then this fills in.
       </Note>
     );
   }
@@ -38,16 +40,16 @@ export function DeanDashboard({ me, home, role = "Dean" }: { me: Me | null; home
           A score sheet opens only once a lecturer is allocated. The departments below carry the gaps; a Head of Department allocates within each.
         </Note>
       ) : (
-        <Note kind="ok" title={`${home.facultyName} is staffed for ${home.session}`} action={<Link href="/results/broadsheet" className="btn btn--ghost btn--sm">Faculty broadsheet</Link>}>
+        <Note kind="ok" title={`${home.facultyName} is staffed for ${home.session}`} action={<Link href="/results/broadsheet" className="btn btn--ghost btn--sm">{Scope} broadsheet</Link>}>
           Every offering has a lecturer. Registration and results progress by department below.
         </Note>
       )}
 
       <Tiles items={[
-        ["Students in the faculty", students.toLocaleString(), null, `${dept.length} department${dept.length === 1 ? "" : "s"}`],
+        [`Students in the ${scopeNoun}`, students.toLocaleString(), null, `${dept.length} department${dept.length === 1 ? "" : "s"}`],
         ["Registered this session", registered.toLocaleString(), null, students ? `${Math.round((100 * registered) / students)}% · ${home.session}` : String(home.session)],
         ["Offerings without a lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${(home.offeringsTotal ?? 0) - needLect} of ${home.offeringsTotal ?? 0} allocated`],
-        ["On probation", String(home.probation ?? 0), (home.probation ?? 0) ? "var(--red-ink)" : "var(--green-ink)", "Across the faculty"],
+        ["On probation", String(home.probation ?? 0), (home.probation ?? 0) ? "var(--red-ink)" : "var(--green-ink)", `Across the ${scopeNoun}`],
       ]} />
 
       <Panel title="Registration, by department" right={String(home.session)}>
@@ -83,7 +85,7 @@ export function DeanDashboard({ me, home, role = "Dean" }: { me: Me | null; home
           ) : <PBody><div className="sub2">No student in {home.facultyName} is on probation.</div></PBody>}
         </Panel>
 
-        <Panel title="Faculty desks" right="Scoped to your faculty">
+        <Panel title={`${Scope} desks`} right={`Scoped to your ${scopeNoun}`}>
           <PBody>
             <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
               <Link href="/results/broadsheet" className="btn btn--ghost btn--sm">Broadsheet</Link>

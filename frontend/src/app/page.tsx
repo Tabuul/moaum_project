@@ -64,6 +64,8 @@ export default async function DashboardPage() {
   const hr = office === "hrm" ? await api<HrHome>("/api/v1/hr/dashboard") : null;
   /* the Dean's and the Faculty Officer's home is their faculty: registration, pipeline and at-risk by department */
   const dean = office && ["dean", "facultyofficer"].includes(office) ? await api<DeanHome>(`/api/v1/dean/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the Provost's and College Secretary's home is their College — the Dean view one scope higher */
+  const provost = office && ["provost", "collegesecretary"].includes(office) ? await api<DeanHome>(`/api/v1/provost/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* the Chief Security Officer and Internal Audit read the same posture (V002) */
   const posture = office && ["security", "audit"].includes(office) ? await api<Posture>("/api/v1/governance/security") : null;
   const auditFeed = office === "audit" ? await api<{ entries: AuditEntry[] }>("/api/v1/audit/entries?limit=12") : null;
@@ -107,6 +109,10 @@ export default async function DashboardPage() {
         <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} />
       ) : office === "facultyofficer" ? (
         <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} role="Faculty Officer" />
+      ) : office === "provost" ? (
+        <DeanDashboard me={me.ok ? me.data : null} home={provost && provost.ok ? provost.data : null} role="Provost" scopeNoun="college" />
+      ) : office === "collegesecretary" ? (
+        <DeanDashboard me={me.ok ? me.data : null} home={provost && provost.ok ? provost.data : null} role="College Secretary" scopeNoun="college" />
       ) : office === "security" ? (
         <SecurityDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} />
       ) : office === "audit" ? (
