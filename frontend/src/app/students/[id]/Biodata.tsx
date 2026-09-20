@@ -9,6 +9,7 @@
  * and nationality are chosen from lists, not typed.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import type { BiodataField, StudentRecord, Tier } from "@/lib/student";
 import { statusLabel } from "@/lib/student";
@@ -151,7 +152,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
     setBusy(false);
     if (raised) setAsked(true);
     setSaved(n ? `${n} change${n === 1 ? "" : "s"} saved` : "Nothing to save on this section");
-    if (n) router.refresh();
+    if (n) { notify("Biodata updated"); router.refresh(); }
     if (advance) {
       const i = BIO_SECTIONS.findIndex((x) => x[0] === section);
       const next = BIO_SECTIONS.slice(i + 1).find((x) => EDITABLE.includes(x[0]) || x[0] === "docs" || x[0] === "history");

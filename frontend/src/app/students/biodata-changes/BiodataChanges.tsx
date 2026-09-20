@@ -10,6 +10,7 @@
  * the modal.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -55,6 +56,7 @@ export function BiodataChanges({
       if (response.ok) {
         setDeciding(null);
         setDecision("");
+        notify(`Biodata change ${action}`);
         router.refresh();
         return;
       }

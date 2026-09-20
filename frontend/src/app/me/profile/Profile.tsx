@@ -12,6 +12,7 @@
  * sections are edited one entry per line, and saved as arrays.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -124,6 +125,7 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
         return;
       }
       setSaved(true);
+      notify("Profile updated");
       router.refresh();
     } finally {
       setBusy(false);

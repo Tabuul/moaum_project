@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { ServiceRequest } from "@/app/student/support/Support";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -50,6 +51,7 @@ export function SupportDesk({ requests }: { requests: ServiceRequest[] }) {
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setOpen(null);
       setAnswer("");
+      notify(`Request ${open.ref} answered`);
       router.refresh();
     } finally {
       setBusy(false);

@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Programme } from "@/lib/caps";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -46,6 +47,7 @@ export function ProgrammeEditor({ programme, departments, onClose }: { programme
       });
       const body = await response.json().catch(() => null);
       if (response.ok) {
+        notify(`${programme.code} updated`);
         router.refresh();
         onClose();
       } else {

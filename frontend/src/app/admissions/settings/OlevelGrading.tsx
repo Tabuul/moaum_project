@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -85,6 +86,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
         setGrading(json as Grading);
         setEdits({});
         setExam(null);
+        notify(`O’Level grading saved for ${session}`);
         router.refresh();
       } else {
         setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: r.status, title: r.statusText });

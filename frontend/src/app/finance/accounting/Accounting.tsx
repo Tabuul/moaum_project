@@ -11,6 +11,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -71,6 +72,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reasonText) }, body: JSON.stringify(body ?? {}),
       });
       if (!r.ok) { setProblem(await r.json().catch(() => ({ status: r.status, title: "The request was refused." }))); return false; }
+      notify(reasonText);
       router.refresh();
       return true;
     } catch { setProblem({ status: 0, title: "The network dropped the request." }); return false; }

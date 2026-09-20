@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
@@ -39,7 +40,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`O'Level entered as Post-UTME score for non-index programmes for ${session}`) }, body: "{}",
       });
       const j = await r.json().catch(() => null);
-      if (r.ok && j) { setEntered({ entered: Number(j.entered ?? 0), noOlevel: Number(j.noOlevel ?? 0) }); router.refresh(); }
+      if (r.ok && j) { setEntered({ entered: Number(j.entered ?? 0), noOlevel: Number(j.noOlevel ?? 0) }); notify(`${Number(j.entered ?? 0)} O’Level scores entered`); router.refresh(); }
     } finally {
       setEntering(false);
     }

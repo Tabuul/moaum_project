@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -84,6 +85,7 @@ export function Support({ requests }: { requests: ServiceRequest[] }) {
             let attached = 0;
             if (files.length && typeof r.id === "string") { setUploading(true); try { attached = await attachAll(r.id, String(r.ref)); } finally { setUploading(false); } router.refresh(); }
             setSaid(`Request ${r.ref} is with ${OFFICES.find((o) => o[0] === office)?.[1]}${attached ? ` — ${attached} document${attached === 1 ? "" : "s"} attached` : ""}`);
+            notify(`Request ${r.ref} submitted`);
             setSubject(""); setDetail(""); setFiles([]);
           }}>{uploading ? "Attaching…" : "Submit request"}</Btn></div>
           <div className="sub2">Each office answers on the record; the answer appears against the reference above. A document you attach is visible only to you and the office you asked.</div>

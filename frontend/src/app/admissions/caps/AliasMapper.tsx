@@ -7,6 +7,7 @@
  * because it decides what degree those candidates are admitted to.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Programme } from "@/lib/caps";
@@ -64,6 +65,7 @@ export function AliasMapper({
       const body = await response.json().catch(() => null);
       if (response.ok) {
         setDone({ ...done, [jambName]: (body as Programme).name });
+        notify(`${code} mapped to “${jambName}”`);
         router.refresh();
       } else {
         setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: response.status, title: response.statusText });
