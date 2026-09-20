@@ -2,6 +2,7 @@
 
 /** tCandidateData — proto/part54.html: three downloads, matched on the registration number, both ways. */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -109,6 +110,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
         // `items` (and its data URLs) fall out of scope here, so the batch is reclaimed before the next
       }
       setStreamSample(sample);
+      notify(`${recorded} passport${recorded === 1 ? "" : "s"} recorded · ${attached} attached`);
       router.refresh();
     } finally {
       setStreaming(false);
@@ -152,6 +154,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
       }
       const attached = Object.entries(tally).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k.toLowerCase().replace("_", " ")}`).join(", ");
       setSaid(`${recorded} recorded; ${attached || "nothing newly"} attached to a candidate.`);
+      notify(`${recorded} recorded · ${attached || 0} attached`);
       router.refresh();
     } finally {
       setBusy(false);

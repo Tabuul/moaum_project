@@ -2,6 +2,7 @@
 
 /** rAdmissions — proto/part9.html: the cycle as the register shows it. */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -34,6 +35,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setRecorded(`${j.programmes} programme${j.programmes === 1 ? "" : "s"} recorded — ${j.offered} offered, ${j.waited} waiting, ${j.notOffered} not offered${j.skipped ? `, ${j.skipped} left untouched (already released)` : ""}. Release the decisions from the Applicants desk when the Board is ready.`);
+      notify(`${j.programmes} programme${j.programmes === 1 ? "" : "s"} recorded`);
       router.refresh();
     } finally {
       setRecording(false);
@@ -51,6 +53,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
         return;
       }
       setSaid(`${j.broughtOnto} candidate${j.broughtOnto === 1 ? "" : "s"} brought onto the register, each with an admission number.`);
+      notify(`${j.broughtOnto} candidate${j.broughtOnto === 1 ? "" : "s"} brought onto the register`);
       router.refresh();
     } finally {
       setBusy(false);

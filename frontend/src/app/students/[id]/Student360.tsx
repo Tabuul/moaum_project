@@ -11,6 +11,7 @@
  * record.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClearanceRow, StudentRecord } from "@/lib/student";
@@ -97,6 +98,7 @@ export function Student360({
         setChanging(false);
         setInstrument("");
         setReason("");
+        notify(`Status changed to ${to}`);
         router.refresh();
         return;
       }
@@ -123,6 +125,7 @@ export function Student360({
       if (response.ok) {
         setLevelling(false);
         setLevelReason("");
+        notify(`Level corrected to ${newLevel}`);
         router.refresh();
         return;
       }

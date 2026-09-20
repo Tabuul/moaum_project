@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { OUTCOME, when, type PaymentsDesk } from "@/lib/bursary";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -29,6 +30,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`${reference}: ${j.outcome}${j.said ? ` (${j.said})` : ""}`);
+      notify(`${reference}: ${j.outcome}`);
       router.refresh();
     } finally {
       setBusy(null);
@@ -69,7 +71,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
             <span className="tnum sub2" key="r">{e.reference ?? "—"}</span>,
             <span className="tnum" key="a">{e.amount === null ? "—" : money(Number(e.amount))}</span>,
             <span key="o"><Pil kind={OUTCOME[e.outcome]?.[1] ?? "grey"}>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</Pil><div className="sub2">{e.outcome === "UNKNOWN_REFERENCE" ? "Generated and abandoned, paid against another institution's code, or forged — the desk officer chooses; the portal does not guess." : e.outcome === "SHORT_PAID" ? "Less than the reference asks; applied as nothing, left open. A part payment needs a reference for the part." : "The gateway did not answer for this reference."}</div></span>,
-            may ? <Btn key="x" kind="ghost" disabled={busy !== null} onClick={async () => { const why = window.prompt("How was it resolved? It goes on the record."); if (!why) return; const r = await fetch(`/api/bff/api/v1/payments/events/${e.id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Gateway event resolved: ${why}`) }, body: JSON.stringify({ resolution: why }) }); if (r.ok) { setSaid("Resolved"); router.refresh(); } }}>Resolve</Btn> : <span className="sub2" key="x">—</span>,
+            may ? <Btn key="x" kind="ghost" disabled={busy !== null} onClick={async () => { const why = window.prompt("How was it resolved? It goes on the record."); if (!why) return; const r = await fetch(`/api/bff/api/v1/payments/events/${e.id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Gateway event resolved: ${why}`) }, body: JSON.stringify({ resolution: why }) }); if (r.ok) { setSaid("Resolved"); notify("Gateway event resolved"); router.refresh(); } }}>Resolve</Btn> : <span className="sub2" key="x">—</span>,
           ])} />
         ) : <PBody><div className="sub2">Nothing waits on a person.</div></PBody>}
       </Panel>
