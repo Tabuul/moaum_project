@@ -11,6 +11,7 @@
 import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import type { CalendarData, LevelLimitRow, SemesterRow, SessionRow } from "@/lib/calendar";
 import { SEMESTER_NAMES, d, daysBetween, semesterName, span, withThousands, within } from "@/lib/calendar";
@@ -335,6 +336,27 @@ export function SessionSetup({
             + New semester
           </Btn>
           <span className="sub2">Every date on that form changes what a student can do today.</span>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Open the examination session"
+        right={<Link href="/examinations/sessions" className="btn btn--primary btn--sm">Examinations → Sessions</Link>}
+      >
+        <div className="card__body sub2">
+          Setting the examination dates above is <b>not</b> the same as opening the examination session. Until the
+          Examinations Office opens it, students see &ldquo;No examination session is open&rdquo; and no papers appear.
+          To open it:
+          <ol style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+            <li>Sign in as the <b>Examinations Office</b> role.</li>
+            <li>Go to <b>Examinations → Sessions</b> (the button on the right, route <code>/examinations/sessions</code>).</li>
+            <li>
+              Under <b>Create an examination session</b>, pick the session and semester, fill the exam dates and the
+              score-sheets-due date, then click <b>Open the session</b> &mdash; or click <b>Open</b> next to one you saved as a
+              draft. Opening it generates every score sheet at once and reveals the papers to students over their approved
+              registration.
+            </li>
+          </ol>
         </div>
       </Panel>
 
