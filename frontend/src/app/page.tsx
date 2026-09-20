@@ -14,6 +14,12 @@ import { LibraryDashboard } from "./dashboards/Library";
 import { ExamsDashboard } from "./dashboards/Exams";
 import { HrDashboard, type HrHome } from "./dashboards/Hr";
 import { DeanDashboard, type DeanHome } from "./dashboards/Dean";
+import { SecurityDashboard } from "./dashboards/Security";
+import { HousingDashboard } from "./dashboards/Housing";
+import { SiwesDashboard, type SiwesOffering } from "./dashboards/Siwes";
+import { AuditDashboard, type AuditEntry } from "./dashboards/Audit";
+import type { Posture } from "./security/Security";
+import type { HostelDeskData } from "@/lib/hostel";
 import type { MySheet, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
 import type { LibraryDeskData } from "@/lib/library";
@@ -58,6 +64,13 @@ export default async function DashboardPage() {
   const hr = office === "hrm" ? await api<HrHome>("/api/v1/hr/dashboard") : null;
   /* the Dean's home is their faculty: registration, pipeline and at-risk by department */
   const dean = office === "dean" ? await api<DeanHome>(`/api/v1/dean/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the Chief Security Officer and Internal Audit read the same posture (V002) */
+  const posture = office && ["security", "audit"].includes(office) ? await api<Posture>("/api/v1/governance/security") : null;
+  const auditFeed = office === "audit" ? await api<{ entries: AuditEntry[] }>("/api/v1/audit/entries?limit=12") : null;
+  /* Housing/Welfare: the accommodation draw (V038) */
+  const hostel = office === "housing" ? await api<HostelDeskData>(`/api/v1/hostel/sessions/${encodeURIComponent(session)}`) : null;
+  /* the SIWES Coordinator's department offerings this second semester (V156) */
+  const siwes = office === "siwes" ? await api<SiwesOffering[]>(`/api/v1/siwes/offerings?session=${encodeURIComponent(session)}&semester=2`) : null;
   /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
   let sub: string | undefined;
   if (office === "lecturer" && mine && mine.ok) {
@@ -92,6 +105,14 @@ export default async function DashboardPage() {
         <HrDashboard me={me.ok ? me.data : null} home={hr && hr.ok ? hr.data : null} />
       ) : office === "dean" ? (
         <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} />
+      ) : office === "security" ? (
+        <SecurityDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} />
+      ) : office === "audit" ? (
+        <AuditDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} feed={auditFeed && auditFeed.ok ? auditFeed.data.entries : []} />
+      ) : office === "housing" ? (
+        <HousingDashboard me={me.ok ? me.data : null} desk={hostel && hostel.ok ? hostel.data : null} />
+      ) : office === "siwes" ? (
+        <SiwesDashboard me={me.ok ? me.data : null} offerings={siwes && siwes.ok ? siwes.data : []} semester={2} />
       ) : (
         <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}

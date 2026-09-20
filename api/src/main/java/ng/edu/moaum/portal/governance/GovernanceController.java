@@ -126,7 +126,7 @@ class GovernanceController {
     /* ── security posture, from the audit spine and the sign-in record ── */
 
     @GetMapping("/api/v1/governance/security")
-    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_audit','OFFICE_deputyaudit','OFFICE_registrar','OFFICE_vc','OFFICE_dvc','OFFICE_admin','OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_audit','OFFICE_deputyaudit','OFFICE_security','OFFICE_registrar','OFFICE_vc','OFFICE_dvc','OFFICE_admin','OFFICE_super')")
     @Transactional(readOnly = true)
     Map<String, Object> security() {
         Map<String, Object> audit = jdbc.sql("""
