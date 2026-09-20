@@ -66,8 +66,10 @@ class VerifyController {
                            WHERE ap.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
                            ORDER BY d.id LIMIT 1),
                          (SELECT at.payload->>'dataUrl' FROM admissions.attachment at
-                           WHERE at.candidate_id = s.candidate_id AND at.kind = 'PASSPORT'
-                             AND jsonb_exists(at.payload, 'dataUrl') LIMIT 1)) AS passport
+                           WHERE at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')
+                             AND (at.candidate_id = s.candidate_id
+                                  OR (s.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(s.jamb_reg_no))))
+                           LIMIT 1)) AS passport
                   FROM finance.payment_reference pr
                   JOIN people.student s ON s.id = pr.student_id
                   LEFT JOIN ref.programme pg ON pg.code = s.programme_code
