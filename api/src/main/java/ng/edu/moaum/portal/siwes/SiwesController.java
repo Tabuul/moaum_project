@@ -80,6 +80,7 @@ class SiwesController {
                   JOIN catalogue.course c ON c.code = o.course_code AND c.industrial_training
                   JOIN ref.department dp ON dp.code = c.dept_code
                   LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
+                       AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = sh.exam_session_id), 'MAIN') = 'MAIN'
                  WHERE o.session = :session AND o.semester = :semester AND (:dept::text IS NULL OR c.dept_code = :dept)
                  ORDER BY dp.name, o.course_code
                 """).param("session", session).param("semester", semester).param("dept", d).query().listOfRows();
@@ -108,6 +109,7 @@ class SiwesController {
                         SELECT sc.ca, sc.exam, sc.outcome FROM assessment.score sc
                           JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id
                          WHERE sh.offering_id = :off AND sc.student_id = st.id
+                           AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = sh.exam_session_id), 'MAIN') = 'MAIN'
                          ORDER BY sc.version DESC LIMIT 1) latest ON true
                  WHERE e.offering_id = :off
                  ORDER BY st.surname, st.other_names
@@ -162,6 +164,7 @@ class SiwesController {
                   JOIN people.student st ON st.id = sup.student_id
                   LEFT JOIN ref.programme pr ON pr.code = st.programme_code
                   LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
+                       AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = sh.exam_session_id), 'MAIN') = 'MAIN'
                   LEFT JOIN LATERAL (
                         SELECT sc.ca, sc.exam FROM assessment.score sc
                          WHERE sc.sheet_id = sh.id AND sc.student_id = st.id
@@ -202,7 +205,7 @@ class SiwesController {
      * A reason is required only when the writer changes a part they had already entered.
      */
     private Map<String, Object> record(UUID offering, UUID student, boolean supervisorPart, int mark, String reason, String office) {
-        Map<String, Object> sheet = jdbc.sql("SELECT id, stage FROM assessment.score_sheet WHERE offering_id = :o")
+        Map<String, Object> sheet = jdbc.sql("SELECT id, stage FROM assessment.score_sheet WHERE offering_id = :o AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = exam_session_id), 'MAIN') = 'MAIN' LIMIT 1")
                 .param("o", offering).query().listOfRows().stream().findFirst().orElse(null);
         if (sheet == null) {
             throw new DomainRuleViolation("SIWES_NO_SHEET", "The SIWES score sheet is not open yet.",

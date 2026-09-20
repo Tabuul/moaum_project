@@ -58,6 +58,7 @@ class ReportingController {
                   JOIN ref.department d ON d.code = c.dept_code
                   JOIN ref.faculty f ON f.code = d.faculty_code
                  WHERE o.session = :s AND o.semester = :sem
+                   AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = sh.exam_session_id), 'MAIN') = 'MAIN'
                  GROUP BY f.code, f.name ORDER BY f.name
                 """).param("s", s).param("sem", semester).query().listOfRows();
 
@@ -72,6 +73,7 @@ class ReportingController {
                       JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id
                       JOIN catalogue.offering o ON o.id = sh.offering_id
                      WHERE o.session = :s AND o.semester = :sem AND sh.stage = 'PUBLISHED'
+                       AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = sh.exam_session_id), 'MAIN') = 'MAIN'
                      ORDER BY sc.sheet_id, sc.student_id, sc.version DESC)
                 SELECT CASE WHEN ca + exam >= 70 THEN 'A' WHEN ca + exam >= 60 THEN 'B'
                             WHEN ca + exam >= 50 THEN 'C' WHEN ca + exam >= 45 THEN 'D'
@@ -88,7 +90,8 @@ class ReportingController {
                     SELECT s.submitted_at, s.published_at
                       FROM assessment.score_sheet s
                       JOIN catalogue.offering o ON o.id = s.offering_id
-                     WHERE o.session = :s AND o.semester = :sem),
+                     WHERE o.session = :s AND o.semester = :sem
+                       AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = s.exam_session_id), 'MAIN') = 'MAIN'),
                 b AS (
                     SELECT min(submitted_at) AS t0,
                            greatest(coalesce(max(published_at), max(submitted_at)), now()) AS t1

@@ -48,15 +48,14 @@ class GraduationRepository {
                       JOIN catalogue.offering o ON o.id = e.offering_id
                      WHERE r.student_id = :s AND e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED')),
                 graded AS (
-                    SELECT rg.units, l.points
+                    SELECT rg.units, cf.points
                       FROM regs rg
-                      JOIN assessment.score_sheet sh ON sh.offering_id = rg.offering_id AND sh.stage = 'PUBLISHED'
-                      JOIN LATERAL assessment.latest_scores(sh.id) l ON l.student_id = :s)
+                      JOIN LATERAL assessment.course_final(:s, rg.offering_id) cf ON cf.stage = 'PUBLISHED')
                 SELECT CASE WHEN coalesce(sum(units), 0) = 0 THEN NULL
                             ELSE round(sum(coalesce(points, 0) * units) / sum(units), 2) END AS cgpa,
                        (SELECT rg.course_code FROM regs rg
-                         WHERE NOT EXISTS (SELECT 1 FROM assessment.score_sheet sh
-                                            WHERE sh.offering_id = rg.offering_id AND sh.stage = 'PUBLISHED')
+                         WHERE NOT EXISTS (SELECT 1 FROM assessment.course_final(:s, rg.offering_id) cf
+                                            WHERE cf.stage = 'PUBLISHED')
                          ORDER BY rg.course_code LIMIT 1) AS ungraded
                   FROM graded
                 """).param("s", student).query(Standing.class).single();

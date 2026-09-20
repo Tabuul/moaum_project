@@ -107,8 +107,7 @@ class ReportsController {
                       JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED','APPROVED')
                       JOIN catalogue.offering o ON o.id = e.offering_id
                       JOIN catalogue.course c ON c.code = o.course_code
-                      JOIN assessment.score_sheet sh ON sh.offering_id = o.id AND sh.stage = 'PUBLISHED'
-                      JOIN LATERAL assessment.latest_scores(sh.id) ls ON ls.student_id = r.student_id
+                      JOIN LATERAL assessment.course_final(r.student_id, o.id) ls ON ls.stage = 'PUBLISHED'
                       JOIN people.student s ON s.id = r.student_id AND s.status IN ('ACTIVE','PROBATION')
                       JOIN ref.programme p ON p.code = s.programme_code
                       JOIN ref.faculty f ON f.code = p.faculty_code

@@ -75,7 +75,9 @@ class LmsRepository {
         return jdbc.sql("""
                 SELECT o.id AS offering_id, o.course_code, c.title, c.units, o.session, o.semester, lms.roll_size(o.id) AS enrolled,
                        CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
-                       (SELECT sh.stage FROM assessment.score_sheet sh WHERE sh.offering_id = o.id) AS sheet_stage
+                       (SELECT sh.stage FROM assessment.score_sheet sh
+                          LEFT JOIN assessment.exam_session es ON es.id = sh.exam_session_id
+                         WHERE sh.offering_id = o.id AND coalesce(es.kind, 'MAIN') = 'MAIN' LIMIT 1) AS sheet_stage
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code LEFT JOIN iam.person p ON p.id = o.lecturer_id
                  WHERE o.id = :o
                 """).param("o", id).query().singleRow();

@@ -290,14 +290,13 @@ class ResultsRepository {
     List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem) {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names,
-                       o.course_code, c.title, e.units, coalesce(c.kind, 'Compulsory') AS kind, coalesce(sh.stage, 'NO_SHEET') AS stage, l.total, l.grade, l.points, l.outcome
+                       o.course_code, c.title, e.units, coalesce(c.kind, 'Compulsory') AS kind, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome
                   FROM registration.course_registration r
                   JOIN people.student st ON st.id = r.student_id
                   JOIN registration.entry e ON e.registration_id = r.id AND e.status = 'APPROVED'
                   JOIN catalogue.offering o ON o.id = e.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code
-                  LEFT JOIN assessment.score_sheet sh ON sh.offering_id = o.id
-                  LEFT JOIN LATERAL (SELECT * FROM assessment.latest_scores(sh.id) x WHERE x.student_id = st.id) l ON sh.id IS NOT NULL
+                  LEFT JOIN LATERAL assessment.course_final(st.id, o.id) cf ON true
                  WHERE st.programme_code = :prog AND r.level = :level AND r.session = :session AND r.semester = :sem
                    AND r.status IN ('APPROVED','LOCKED')
                  ORDER BY st.surname, st.other_names, o.course_code
