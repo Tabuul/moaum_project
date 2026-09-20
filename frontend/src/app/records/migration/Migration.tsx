@@ -4,6 +4,7 @@
  *  spreadsheet's own columns (matriculation number, course code, marks…) and matches on them; nothing is typed. */
 import { useState } from "react";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { xlsxRowsAsync, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -68,6 +69,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         setProgress({ label: "Uploading photos", sent, of: files.length });
       }
       setPResult({ ...totals, notFoundList });
+      notify(`${files.length} passport photo${files.length === 1 ? "" : "s"} processed`);
     } catch {
       setProblem({ status: 400, title: "The photos could not be read.", detail: "Select image files (JPEG or PNG) named by the student's JAMB registration number." });
     } finally {
@@ -174,6 +176,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         }
       }
       setResult({ tab: kind, counts: totals, firstError: firstErr });
+      notify(`Legacy ${kind} import complete`);
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
     } finally {
