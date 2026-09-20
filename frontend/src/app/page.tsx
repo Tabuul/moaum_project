@@ -12,6 +12,7 @@ import { HodDashboard, type HodHome } from "./dashboards/Hod";
 import { ClinicDashboard } from "./dashboards/Clinic";
 import { LibraryDashboard } from "./dashboards/Library";
 import { ExamsDashboard } from "./dashboards/Exams";
+import { HrDashboard, type HrHome } from "./dashboards/Hr";
 import type { MySheet, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
 import type { LibraryDeskData } from "@/lib/library";
@@ -52,6 +53,8 @@ export default async function DashboardPage() {
   const library = office === "library" ? await api<LibraryDeskData>("/api/v1/library/desk") : null;
   /* the Exams Officer's home is the result-sheet pipeline in their scope (V013) */
   const examSheets = office && ["exams", "facultyexams"].includes(office) ? await api<SheetListing>(`/api/v1/results/sheets?session=${encodeURIComponent(session)}`) : null;
+  /* the Director of HR's home is the establishment and what waits on the directorate (V071-V076) */
+  const hr = office === "hrm" ? await api<HrHome>("/api/v1/hr/dashboard") : null;
   /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
   let sub: string | undefined;
   if (office === "lecturer" && mine && mine.ok) {
@@ -82,6 +85,8 @@ export default async function DashboardPage() {
         <LibraryDashboard me={me.ok ? me.data : null} desk={library && library.ok ? library.data : null} />
       ) : (office === "exams" || office === "facultyexams") ? (
         <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} />
+      ) : office === "hrm" ? (
+        <HrDashboard me={me.ok ? me.data : null} home={hr && hr.ok ? hr.data : null} />
       ) : (
         <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}
