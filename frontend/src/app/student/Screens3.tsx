@@ -17,8 +17,14 @@ import { Gate, Gates, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
 
-/** the academic type shown on the form: GST, Elective or Core (Compulsory/Required → Core) */
-function courseType(e: { kind?: string; entryType?: string }): string {
+/** the academic type shown on the form: GST, Elective or Core (Compulsory/Required → Core).
+ *  Prefer the per-programme offer basis (an elective borrowed from another department that owns
+ *  it as Compulsory is still an Elective here); fall back to the course's global kind. */
+function courseType(e: { kind?: string; basis?: string; entryType?: string }): string {
+  const b = (e.basis ?? "").toLowerCase();
+  if (b === "gst") return "GST";
+  if (b === "elective") return "Elective";
+  if (b === "core" || b === "compulsory" || b === "required") return "Core";
   const k = (e.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";
   if (k === "elective") return "Elective";
@@ -30,7 +36,7 @@ function courseType(e: { kind?: string; entryType?: string }): string {
 }
 
 /** display order: carryover first, then GST, then Core, then Elective */
-function orderRank(e: { kind?: string; entryType?: string }): number {
+function orderRank(e: { kind?: string; basis?: string; entryType?: string }): number {
   if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
   const t = courseType(e);
   return t === "GST" ? 1 : t === "Core" ? 2 : 3;
@@ -127,7 +133,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       onClick={() => { if (fixed || locked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else n.add(m.offering_id); setChosen(n); }}>
       <div className="pick__box" style={on ? { background: red ? "var(--red)" : "var(--chrome)", borderColor: red ? "var(--red)" : "var(--chrome)" } : undefined}>{on ? <Tick size={12} colour="#fff" /> : null}</div>
       <div style={{ flexGrow: 1 }}><div className="pick__t tnum">{m.course_code} — {m.title}</div>
-        <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.kind === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
+        <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
       <div className="tnum" style={{ fontWeight: 700, color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>

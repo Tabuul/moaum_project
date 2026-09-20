@@ -137,7 +137,8 @@ class VerifyController {
                 SELECT s.id, trim(s.other_names || ' ' || s.surname) AS name, s.matric_no, s.current_level, pg.name AS programme,
                        finance.clears(s.id, :session, 'EXAMINATION') AS cleared,
                        (SELECT d.id FROM admissions.application_document d JOIN admissions.application a ON a.id = d.application_id
-                         WHERE a.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL) AS passport_id
+                         WHERE a.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                         ORDER BY d.id LIMIT 1) AS passport_id
                   FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
                  WHERE upper(s.matric_no) = upper(:m) LIMIT 1
                 """).param("m", matric).param("session", session).query().listOfRows();

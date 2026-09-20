@@ -107,6 +107,8 @@ export function Approvals({
                         <><button className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Reminder for ${s.courseCode}`, s.id)}>Remind</button> <button className="btn btn--urgent btn--sm" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Escalation for ${s.courseCode}`, s.id)}>Escalate</button></>
                       ) : s.stage === "PUBLISHED" ? (
                         <Link href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Chain</Link>
+                      ) : s.stage === "SENATE" ? (
+                        <><Link href="/results/senate" className="btn btn--primary btn--sm">Record Senate minute</Link> <Link href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Review</Link></>
                       ) : s.blockedForYou || !s.mayAct ? (
                         <><button className="btn btn--sm" disabled>Not available to you</button> <Link href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Review</Link></>
                       ) : high ? (

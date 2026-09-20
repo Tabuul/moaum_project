@@ -2391,11 +2391,14 @@ BEGIN
     PERFORM set_config('moaum.actor_office', 'registrar', true);
     PERFORM people.senate_transfer(v_app, true, NULL);
     SELECT state INTO v_state FROM people.transfer_application WHERE id = v_app;
+    -- the fee has no default: the Bursary sets it, then the reference carries that amount
+    UPDATE finance.fee_setting SET transfer_fee = 10000 WHERE id = 1;
     v_ref := people.transfer_fee_reference(v_app);
-    PERFORM pg_temp.assert('An inter-departmental transfer reaches Senate approval, guards one live case, and raises the non-refundable fee',
+    PERFORM pg_temp.assert('An inter-departmental transfer reaches Senate approval, guards one live case, and raises the Bursary-set fee',
         v_state = 'APPROVED' AND ok_guard AND v_ref IS NOT NULL
         AND (SELECT amount FROM finance.payment_reference WHERE reference = v_ref) = 10000,
         format('state=%s guard=%s ref=%s', v_state, ok_guard, v_ref));
+    UPDATE finance.fee_setting SET transfer_fee = NULL WHERE id = 1;
     DELETE FROM finance.payment_reference WHERE reference = v_ref;
     DELETE FROM people.transfer_application WHERE student_id = stu;
     DELETE FROM people.student WHERE id = stu;

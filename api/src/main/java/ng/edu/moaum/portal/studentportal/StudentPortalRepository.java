@@ -127,6 +127,7 @@ class StudentPortalRepository {
         return jdbc.sql("""
                 SELECT d.id FROM admissions.application_document d JOIN admissions.application a ON a.id = d.application_id
                  WHERE a.candidate_id = :c AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                 ORDER BY d.id LIMIT 1
                 """).param("c", candidateId).query(UUID.class).optional();
     }
 
@@ -281,13 +282,15 @@ class StudentPortalRepository {
         return jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', c.title, 'units', e.units,
-                               'kind', c.kind, 'courseSemester', c.semester,
+                               'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
+                          LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = st.programme_code AND co.level = r.level
                          WHERE e.registration_id = r.id) AS entries
-                  FROM registration.course_registration r WHERE r.student_id = :s AND r.session = :ses AND r.semester = :sem
+                  FROM registration.course_registration r JOIN people.student st ON st.id = r.student_id
+                 WHERE r.student_id = :s AND r.session = :ses AND r.semester = :sem
                 """).param("s", student).param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst();
     }
 
@@ -296,13 +299,15 @@ class StudentPortalRepository {
         return jdbc.sql("""
                 SELECT r.id, r.session, r.semester, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('courseCode', c.code, 'title', c.title, 'units', e.units,
-                               'kind', c.kind, 'courseSemester', c.semester,
+                               'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
+                          LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = st.programme_code AND co.level = r.level
                          WHERE e.registration_id = r.id) AS entries
-                  FROM registration.course_registration r WHERE r.student_id = :s
+                  FROM registration.course_registration r JOIN people.student st ON st.id = r.student_id
+                 WHERE r.student_id = :s
                  ORDER BY r.session DESC, r.semester
                 """).param("s", student).query().listOfRows();
     }
