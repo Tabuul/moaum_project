@@ -35,7 +35,38 @@ public class StudentPortalService {
     /** the student's passport image bytes, from the document store or the JAMB/attachment store */
     @Transactional(readOnly = true)
     public java.util.Optional<byte[]> passportImage(UUID id) {
-        return repo.passportImage(id);
+        return repo.passportImage(id).map(StudentPortalService::toJpeg);
+    }
+
+    /** Serve the passport as JPEG whatever it was stored as. The exam card, course form and receipt PDFs embed
+     *  only JPEG (DCTDecode), so a PNG — which the bulk passport upload accepts — would otherwise print a blank
+     *  photo box, defeating the invigilator's face check. Already-JPEG bytes pass straight through. */
+    private static byte[] toJpeg(byte[] img) {
+        if (img == null || img.length < 2) {
+            return img;
+        }
+        if ((img[0] & 0xFF) == 0xFF && (img[1] & 0xFF) == 0xD8) {
+            return img;   // JPEG SOI marker — already JPEG
+        }
+        try {
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(img));
+            if (src == null) {
+                return img;   // not a decodable raster (e.g. already-unknown bytes) — serve as-is
+            }
+            // JPEG has no alpha, so flatten any transparency onto white
+            java.awt.image.BufferedImage rgb = new java.awt.image.BufferedImage(
+                    src.getWidth(), src.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = rgb.createGraphics();
+            g.drawImage(src, 0, 0, java.awt.Color.WHITE, null);
+            g.dispose();
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            if (!javax.imageio.ImageIO.write(rgb, "jpg", out)) {
+                return img;
+            }
+            return out.toByteArray();
+        } catch (java.io.IOException e) {
+            return img;   // decode/encode failed — serve the original bytes rather than nothing
+        }
     }
 
     /** the current session, or the latest one the Bursar has charged for */
