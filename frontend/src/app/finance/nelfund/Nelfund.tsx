@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { parseRows, type NelfundDesk, type FundingReport } from "@/lib/wallet";
 import { buildXlsx, xlsxRows } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -46,6 +47,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
       const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j;
     } finally {

@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -54,6 +55,7 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return false; }
+      notify(reason);
       router.refresh();
       return true;
     } finally {

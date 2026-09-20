@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { STAGES, type Application } from "@/lib/applicant";
 import { Panel } from "@/components/proto/ui";
 import { Step } from "@/components/proto/blocks";
@@ -63,6 +64,7 @@ export function useAct() {
         setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
         return null;
       }
+      notify(reason);
       router.refresh();
       return (j ?? {}) as Record<string, unknown>;
     } finally {

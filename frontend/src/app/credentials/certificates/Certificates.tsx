@@ -2,6 +2,7 @@
 
 /** rCertificates — proto/part9.html: the register, and the stock it is printed on. */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -33,6 +34,7 @@ export function Certificates({ register, actingOffice }: { register: Certificate
         setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
         return false;
       }
+      notify(reason);
       router.refresh();
       setModal(null);
       return true;

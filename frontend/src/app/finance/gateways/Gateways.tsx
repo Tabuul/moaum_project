@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { OUTCOME, when, type GatewayConfig, type PaymentsDesk, type PaydirectDesk } from "@/lib/bursary";
 import { parseRows } from "@/lib/wallet";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -41,6 +42,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
       const r = await fetch(`/api/bff/api/v1/payments${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j;
     } finally {

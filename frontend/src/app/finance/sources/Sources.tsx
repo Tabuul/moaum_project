@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { FundingSource } from "@/lib/wallet";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -34,6 +35,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
       const r = await fetch("/api/bff/api/v1/funding/sources", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return false; }
+      notify(reason);
       router.refresh();
       return true;
     } finally {

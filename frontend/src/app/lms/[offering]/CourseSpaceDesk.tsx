@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { KINDS, fileBase64, size, type Desk, type Submission } from "@/lib/lms";
 import { Btn, Ico, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -32,6 +33,7 @@ export function CourseSpaceDesk({ d, upload }: { d: Desk; upload: boolean }) {
       const r = await fetch(`/api/bff/api/v1/lms/offerings/${d.offering_id}${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j;
     } finally {

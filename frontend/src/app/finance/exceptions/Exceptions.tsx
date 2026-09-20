@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { BankCredit } from "@/lib/bursary";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -30,6 +31,7 @@ export function Exceptions({ credits, state, gatewayExceptions, actingOffice }: 
       const r = await fetch(`/api/bff/api/v1/finance${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j;
     } finally {

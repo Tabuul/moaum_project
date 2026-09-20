@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { CATEGORIES, type HostelDeskData } from "@/lib/hostel";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -45,6 +46,7 @@ export function HostelDesk({ d, sessions, actingOffice }: { d: HostelDeskData; s
         setProblem(j ?? { status: r.status, title: r.statusText });
         return null;
       }
+      notify(reason);
       router.refresh();
       return j;
     } finally {

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import type { LibraryDeskData, Loan } from "@/lib/library";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -32,6 +33,7 @@ export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData
       const r = await fetch(path, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j;
     } finally {

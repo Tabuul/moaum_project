@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { Btn, Ico, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
@@ -53,6 +54,7 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
       const r = await fetch(`/api/bff/api/v1/payroll${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
+      notify(reason);
       router.refresh();
       return j as Record<string, unknown>;
     } finally {
