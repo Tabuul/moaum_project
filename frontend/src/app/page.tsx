@@ -9,7 +9,9 @@ import { OfficeDashboard } from "./dashboards/Office";
 import { LecturerDashboard } from "./dashboards/Lecturer";
 import { BursarDashboard } from "./dashboards/Bursar";
 import { HodDashboard, type HodHome } from "./dashboards/Hod";
+import { ClinicDashboard } from "./dashboards/Clinic";
 import type { MySheet } from "@/lib/results";
+import type { ClinicDesk } from "@/lib/health";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,8 @@ export default async function DashboardPage() {
   const openQueries = rq && rq.ok ? rq.data.length : null;
   /* the Head of Department's dashboard, scoped to their own department */
   const hodHome = office === "hod" ? await api<HodHome>(`/api/v1/hod/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the Support Services office's home is the clinic: its figures and the queue (V032) */
+  const clinic = office === "services" ? await api<ClinicDesk>("/api/v1/health/desk") : null;
   /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
   let sub: string | undefined;
   if (office === "lecturer" && mine && mine.ok) {
@@ -65,6 +69,8 @@ export default async function DashboardPage() {
         <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} />
       ) : office === "hod" ? (
         <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} />
+      ) : office === "services" ? (
+        <ClinicDashboard me={me.ok ? me.data : null} desk={clinic && clinic.ok ? clinic.data : null} />
       ) : (
         <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}
