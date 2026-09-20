@@ -9,6 +9,7 @@
  * overlapping — so this screen lets them refuse and shows the refusal.
  */
 import { reasonHeader } from "@/lib/reason";
+import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -76,6 +77,7 @@ export function SessionSetup({
       });
       if (response.ok) {
         setOpen(null);
+        notify(reason);
         router.refresh();
         return true;
       }
@@ -149,6 +151,7 @@ export function SessionSetup({
       const j = await r.json().catch(() => null);
       if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); return; }
       setRolled(`${j.promoted} continuing student${j.promoted === 1 ? "" : "s"} promoted into ${looking}${j.created_session ? " — the session was opened as planned" : ""}. Fresh, final-year and inactive students were left as they are.`);
+      notify(`${j.promoted} student${j.promoted === 1 ? "" : "s"} promoted into ${looking}`);
       router.refresh();
     } finally {
       setBusy(false);
@@ -167,6 +170,7 @@ export function SessionSetup({
       const j = await r.json().catch(() => null);
       if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); return; }
       setEnrolled(`${j.enrolled} student${j.enrolled === 1 ? "" : "s"} enrolled into ${looking}${j.already ? ` · ${j.already} already were` : ""} · ${j.eligible} currently studying.`);
+      notify(`${j.enrolled} student${j.enrolled === 1 ? "" : "s"} enrolled into ${looking}`);
       router.refresh();
     } finally {
       setBusy(false);
