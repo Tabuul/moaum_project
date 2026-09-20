@@ -2801,8 +2801,8 @@ BEGIN
     INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES
         (offR, 'ZZR 401', sess, 1), (offS, 'ZZS 401', sess, 1);
     INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
-        (stu1, 'MOAUM/ADM/20/RES1', 'MOAUM/XX/20/RES1', 'RESITONE', 'Invented', prog, 'UTME', '2020/2021', 100, 400, 'ACTIVE', now()),
-        (stu2, 'MOAUM/ADM/20/SPE1', 'MOAUM/XX/20/SPE1', 'SPECIALTWO', 'Invented', prog, 'UTME', '2020/2021', 100, 400, 'ACTIVE', now());
+        (stu1, 'MOAUM/ADM/20/990001', 'MOAUM/XX/20/9001', 'RESITONE', 'Invented', prog, 'UTME', '2020/2021', 100, 400, 'ACTIVE', now()),
+        (stu2, 'MOAUM/ADM/20/990002', 'MOAUM/XX/20/9002', 'SPECIALTWO', 'Invented', prog, 'UTME', '2020/2021', 100, 400, 'ACTIVE', now());
     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES
         (regR, stu1, sess, 1, 400, 'APPROVED', now()), (regS, stu2, sess, 1, 400, 'APPROVED', now());
     INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES
