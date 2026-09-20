@@ -2794,6 +2794,9 @@ BEGIN
     PERFORM set_config('moaum.reason', 'check: resit/special', true);
     SELECT code INTO prog FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
     SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+    -- the session an offering hangs on (a far-future range so it cannot overlap another)
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+    VALUES (gen_random_uuid(), sess, DATE '2093-10-01', DATE '2094-08-31') ON CONFLICT (name) DO NOTHING;
 
     INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
         ('ZZR 401', 'Re-sit Test', 3, 1, 400, dept, 'LIVE'),
@@ -2851,6 +2854,7 @@ BEGIN
     DELETE FROM people.student WHERE id IN (stu1, stu2);
     DELETE FROM catalogue.offering WHERE id IN (offR, offS);
     DELETE FROM catalogue.course WHERE code IN ('ZZR 401', 'ZZS 401');
+    DELETE FROM policy.academic_session WHERE name = sess;
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
