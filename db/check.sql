@@ -2792,11 +2792,12 @@ BEGIN
     PERFORM set_config('moaum.actor_id', a::text, true);
     PERFORM set_config('moaum.actor_office', 'academic', true);
     PERFORM set_config('moaum.reason', 'check: resit/special', true);
-    SELECT code, dept_code INTO prog, dept FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+    SELECT code INTO prog FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+    SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
 
     INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES
-        ('ZZR 401', 'Re-sit Test', 3, 1, 400, dept, 'ACTIVE'),
-        ('ZZS 401', 'Special Test', 3, 1, 400, dept, 'ACTIVE');
+        ('ZZR 401', 'Re-sit Test', 3, 1, 400, dept, 'LIVE'),
+        ('ZZS 401', 'Special Test', 3, 1, 400, dept, 'LIVE');
     INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES
         (offR, 'ZZR 401', sess, 1), (offS, 'ZZS 401', sess, 1);
     INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
