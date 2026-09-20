@@ -66,9 +66,9 @@ export default async function DashboardPage() {
   const dean = office && ["dean", "facultyofficer"].includes(office) ? await api<DeanHome>(`/api/v1/dean/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* the Provost's and College Secretary's home is their College — the Dean view one scope higher */
   const provost = office && ["provost", "collegesecretary"].includes(office) ? await api<DeanHome>(`/api/v1/provost/dashboard?session=${encodeURIComponent(session)}`) : null;
-  /* the Chief Security Officer and Internal Audit read the same posture (V002) */
-  const posture = office && ["security", "audit"].includes(office) ? await api<Posture>("/api/v1/governance/security") : null;
-  const auditFeed = office === "audit" ? await api<{ entries: AuditEntry[] }>("/api/v1/audit/entries?limit=12") : null;
+  /* the Chief Security Officer and Internal Audit (Director and Deputy) read the same posture (V002) */
+  const posture = office && ["security", "audit", "deputyaudit"].includes(office) ? await api<Posture>("/api/v1/governance/security") : null;
+  const auditFeed = office && ["audit", "deputyaudit"].includes(office) ? await api<{ entries: AuditEntry[] }>("/api/v1/audit/entries?limit=12") : null;
   /* Housing/Welfare: the accommodation draw (V038) */
   const hostel = office === "housing" ? await api<HostelDeskData>(`/api/v1/hostel/sessions/${encodeURIComponent(session)}`) : null;
   /* the SIWES Coordinator's department offerings this second semester (V156) */
@@ -115,7 +115,7 @@ export default async function DashboardPage() {
         <DeanDashboard me={me.ok ? me.data : null} home={provost && provost.ok ? provost.data : null} role="College Secretary" scopeNoun="college" />
       ) : office === "security" ? (
         <SecurityDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} />
-      ) : office === "audit" ? (
+      ) : (office === "audit" || office === "deputyaudit") ? (
         <AuditDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} feed={auditFeed && auditFeed.ok ? auditFeed.data.entries : []} />
       ) : office === "housing" ? (
         <HousingDashboard me={me.ok ? me.data : null} desk={hostel && hostel.ok ? hostel.data : null} />
