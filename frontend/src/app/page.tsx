@@ -62,8 +62,8 @@ export default async function DashboardPage() {
   const examSheets = office && ["exams", "facultyexams"].includes(office) ? await api<SheetListing>(`/api/v1/results/sheets?session=${encodeURIComponent(session)}`) : null;
   /* the Director of HR's home is the establishment and what waits on the directorate (V071-V076) */
   const hr = office === "hrm" ? await api<HrHome>("/api/v1/hr/dashboard") : null;
-  /* the Dean's home is their faculty: registration, pipeline and at-risk by department */
-  const dean = office === "dean" ? await api<DeanHome>(`/api/v1/dean/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the Dean's and the Faculty Officer's home is their faculty: registration, pipeline and at-risk by department */
+  const dean = office && ["dean", "facultyofficer"].includes(office) ? await api<DeanHome>(`/api/v1/dean/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* the Chief Security Officer and Internal Audit read the same posture (V002) */
   const posture = office && ["security", "audit"].includes(office) ? await api<Posture>("/api/v1/governance/security") : null;
   const auditFeed = office === "audit" ? await api<{ entries: AuditEntry[] }>("/api/v1/audit/entries?limit=12") : null;
@@ -105,6 +105,8 @@ export default async function DashboardPage() {
         <HrDashboard me={me.ok ? me.data : null} home={hr && hr.ok ? hr.data : null} />
       ) : office === "dean" ? (
         <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} />
+      ) : office === "facultyofficer" ? (
+        <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} role="Faculty Officer" />
       ) : office === "security" ? (
         <SecurityDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} />
       ) : office === "audit" ? (

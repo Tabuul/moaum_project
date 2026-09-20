@@ -13,14 +13,15 @@ export interface DeanHome {
   atRisk?: { name: string; number: string; programme: string; level: number }[];
 }
 
-/** The Dean's home, scoped to their faculty: registration by department, the result pipeline, offerings
- *  without a lecturer, and the students at risk. */
-export function DeanDashboard({ me, home }: { me: Me | null; home: DeanHome | null }) {
+/** The faculty home, scoped to one faculty: registration by department, the result pipeline, offerings
+ *  without a lecturer, and the students at risk. Serves the Dean (academic head) and the Faculty Officer
+ *  (administrative head) — same faculty view, labelled by `role`. */
+export function DeanDashboard({ me, home, role = "Dean" }: { me: Me | null; home: DeanHome | null; role?: string }) {
   if (!home || !home.resolved) {
     return (
-      <Note kind="bad" title="Your Dean office is not tied to a faculty yet">
+      <Note kind="bad" title={`Your ${role} office is not tied to a faculty yet`}>
         This dashboard is scoped to your faculty, and the portal cannot tell which one this office holds. Ask the
-        Registry to set the faculty on your Dean assignment, then this fills in.
+        Registry to set the faculty on your {role} assignment, then this fills in.
       </Note>
     );
   }
@@ -92,7 +93,7 @@ export function DeanDashboard({ me, home }: { me: Me | null; home: DeanHome | nu
               <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>
               <Link href="/catalogue" className="btn btn--ghost btn--sm">Courses</Link>
             </div>
-            <div className="sub2" style={{ marginTop: 8 }}>You are acting as Dean of {home.facultyName}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
+            <div className="sub2" style={{ marginTop: 8 }}>You are acting as {role} of {home.facultyName}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
           </PBody>
         </Panel>
       </div>

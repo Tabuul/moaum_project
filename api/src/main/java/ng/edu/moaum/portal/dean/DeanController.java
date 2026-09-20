@@ -33,7 +33,7 @@ class DeanController {
                 WITH raw AS (
                   SELECT COALESCE(
                     (SELECT scope_id FROM iam.office_assignment
-                      WHERE person_id = :p AND office_code = 'dean' AND scope_kind = 'faculty'
+                      WHERE person_id = :p AND office_code IN ('dean','facultyofficer') AND scope_kind = 'faculty'
                         AND nullif(btrim(scope_id), '') IS NOT NULL
                         AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
                       ORDER BY valid_from DESC LIMIT 1),
@@ -48,7 +48,7 @@ class DeanController {
     }
 
     @GetMapping("/api/v1/dean/dashboard")
-    @PreAuthorize("hasAnyAuthority('OFFICE_dean','OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_dean','OFFICE_facultyofficer','OFFICE_super')")
     @Transactional(readOnly = true)
     Map<String, Object> dashboard(@RequestParam(required = false) String session) {
         Map<String, Object> out = new LinkedHashMap<>();
