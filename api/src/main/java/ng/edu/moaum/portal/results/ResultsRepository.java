@@ -242,7 +242,8 @@ class ResultsRepository {
     /* ── the lecturer's own sheets (proto/part5 staffScores) ── */
 
     record MineRow(UUID id, String courseCode, String courseTitle, int units, String session, int semester, String stage,
-                   LocalDate dueOn, int returnedTimes, long candidates, long entered, long graded, String secondExaminer, UUID lecturerId) {
+                   LocalDate dueOn, int returnedTimes, long candidates, long entered, long graded, String secondExaminer, UUID lecturerId,
+                   long openQueries, long bankQuestions, long caEntered) {
     }
 
     List<MineRow> mine(UUID person, String session, Integer sem, boolean all) {
@@ -253,7 +254,10 @@ class ResultsRepository {
                        (SELECT count(*) FROM assessment.latest_scores(s.id)) AS entered,
                        (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED') AS graded,
                        CASE WHEN x.id IS NULL THEN NULL ELSE x.surname || ', ' || x.given_names END AS second_examiner,
-                       o.lecturer_id
+                       o.lecturer_id,
+                       (SELECT count(*) FROM assessment.result_query rq WHERE rq.sheet_id = s.id AND rq.state = 'RAISED') AS open_queries,
+                       (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.active) AS bank_questions,
+                       (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE ca IS NOT NULL) AS ca_entered
                   FROM assessment.score_sheet s
                   JOIN catalogue.offering o ON o.id = s.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code

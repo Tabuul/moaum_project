@@ -408,9 +408,10 @@ public class ResultsService {
             if ("ENTRY".equals(r.stage()) && r.dueOn() != null && r.dueOn().isBefore(LocalDate.now())) {
                 daysLate = (int) ChronoUnit.DAYS.between(r.dueOn(), LocalDate.now());
             }
+            Integer daysToDue = r.dueOn() == null ? null : (int) ChronoUnit.DAYS.between(LocalDate.now(), r.dueOn());
             out.add(new Sheets.MySheet(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.session(), r.semester(), r.stage(),
-                    Sheets.spine(r.stage()), r.dueOn(), daysLate, r.returnedTimes(), r.candidates(), r.entered(), r.graded(),
-                    r.secondExaminer(), me != null && me.equals(r.lecturerId())));
+                    Sheets.spine(r.stage()), r.dueOn(), daysLate, daysToDue, r.returnedTimes(), r.candidates(), r.entered(), r.graded(),
+                    r.secondExaminer(), me != null && me.equals(r.lecturerId()), r.openQueries(), r.bankQuestions(), r.caEntered()));
         }
         return out;
     }

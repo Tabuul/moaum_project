@@ -171,8 +171,9 @@ export function download(name: string, data: string | SheetData) {
 /* ── the lecturer's own sheets, the roll, the broadsheet and Senate (V013 results module, second cut) ── */
 export interface MySheet {
   id: string; courseCode: string; courseTitle: string; units: number; session: string; semester: number; stage: string;
-  spineStage: number; dueOn: string | null; daysLate: number | null; returnedTimes: number; candidates: number; entered: number;
+  spineStage: number; dueOn: string | null; daysLate: number | null; daysToDue: number | null; returnedTimes: number; candidates: number; entered: number;
   graded: number; secondExaminer: string | null; mine: boolean;
+  openQueries: number; bankQuestions: number; caEntered: number;
 }
 export interface RollRow {
   studentId: string; number: string; surname: string; otherNames: string; programmeCode: string; programmeName: string; level: number;

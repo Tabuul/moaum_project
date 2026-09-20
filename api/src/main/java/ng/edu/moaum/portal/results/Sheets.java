@@ -86,8 +86,8 @@ public final class Sheets {
     /* ── the lecturer's own sheets, the roll under one, the broadsheet and Senate (proto/part5, 28, 26) ── */
 
     public record MySheet(UUID id, String courseCode, String courseTitle, int units, String session, int semester, String stage,
-                          int spineStage, LocalDate dueOn, Integer daysLate, int returnedTimes, long candidates, long entered,
-                          long graded, String secondExaminer, boolean mine) {
+                          int spineStage, LocalDate dueOn, Integer daysLate, Integer daysToDue, int returnedTimes, long candidates, long entered,
+                          long graded, String secondExaminer, boolean mine, long openQueries, long bankQuestions, long caEntered) {
     }
 
     /** every approved registration on the sheet, with the latest mark where one exists */

@@ -10,6 +10,11 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
   const open = sheets.filter((s) => s.stage === "ENTRY");
   const first = owed[0] ?? open[0] ?? sheets[0] ?? null;
   const candidates = sheets.reduce((n, s) => n + s.candidates, 0);
+  const queries = sheets.reduce((n, s) => n + (s.openQueries ?? 0), 0);
+  const overdue = open.filter((s) => (s.daysLate ?? 0) > 0);
+  const dueSoon = open.filter((s) => s.daysToDue != null && s.daysToDue >= 0 && s.daysToDue <= 7);
+  const noBank = open.filter((s) => (s.bankQuestions ?? 0) === 0);
+  const dueLabel = (s: MySheet) => { const d = s.daysToDue; if (d == null) return "No date set"; if (d < 0) return `${-d} day${d === -1 ? "" : "s"} overdue`; return d === 0 ? "Due today" : `${d} day${d === 1 ? "" : "s"} to go`; };
   return (
     <>
       {sheets.length === 0 ? (
@@ -29,6 +34,30 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
           All {sheets.length} of your sheets carry a mark or an outcome against every registered candidate. Nothing is waiting on you for this Senate.
         </Note>
       )}
+
+      {queries ? (
+        <Note kind="info" title={`${queries} result quer${queries === 1 ? "y" : "ies"} raised on your courses`}>
+          A student has questioned a mark in a course you teach. Result queries are routed to and answered by your department on the record; a corrected mark flows back through the chain.
+        </Note>
+      ) : null}
+
+      {open.length ? (
+        <Panel title="Score-sheet deadlines" right={overdue.length ? `${overdue.length} overdue` : dueSoon.length ? `${dueSoon.length} due within a week` : "On track"}>
+          <DTable cols={["Course", "Registered|mid", "Entered|mid", "Due|mid", "Deadline|num"]}
+            rows={[...open].sort((a, b) => (a.daysToDue ?? 9999) - (b.daysToDue ?? 9999)).map((s) => {
+              const late = (s.daysLate ?? 0) > 0;
+              const soon = !late && dueSoon.includes(s);
+              return [
+                <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}</div></span>,
+                <span className="tnum" key="r">{s.candidates}</span>,
+                <span className="tnum" key="e" style={s.entered < s.candidates ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.entered}</span>,
+                <span className="tnum sub2" key="d">{s.dueOn ? new Date(s.dueOn).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—"}</span>,
+                <Pil key="l" kind={late ? "bad" : soon ? "info" : "grey"}>{dueLabel(s)}</Pil>,
+              ];
+            })} texts={open.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
+          <PBody><div className="sub2">A sheet still at entry after its due date is overdue; a sheet that misses Senate waits for the next sitting, and its candidates carry an incomplete result.</div></PBody>
+        </Panel>
+      ) : null}
 
       <Panel title="Submitting your marks" right={first ? `${first.courseCode} — other courses under All score sheets` : "Two ways in — they meet at the same score sheet"}>
         <PBody>
@@ -82,13 +111,14 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
 
       <Panel title="My courses this session" right={`${session} · every course can be typed or uploaded`}>
         {sheets.length === 0 ? <div className="card__body sub2">Nothing allocated to you in {session}.</div> : (
-          <DTable cols={["Course", "Units|mid", "Registered|mid", "Marks entered|mid", "Result stage", "Enter marks|num"]}
+          <DTable cols={["Course", "Units|mid", "Registered|mid", "CA entered|mid", "Marks entered|mid", "Result stage", "Enter marks|num"]}
             rows={sheets.map((s) => {
               const st = stageOf(s);
               return [
                 <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}{s.mine ? "" : " · second examiner"}</div></span>,
                 <span className="tnum" key="u">{s.units}</span>,
                 <span className="tnum" key="n">{s.candidates}</span>,
+                <span className="tnum sub2" key="ca">{s.caEntered}/{s.candidates}</span>,
                 <span className="tnum" key="e" style={s.entered < s.candidates ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.entered}</span>,
                 <Pil key="p" kind={st.pill}>{st.text}</Pil>,
                 <Link key="a" href={`/results/sheets/${s.id}`} className={`btn btn--sm btn--${st.kind}`}>{st.act}</Link>,
@@ -96,6 +126,18 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
             })}
             texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
         )}
+      </Panel>
+
+      <Panel title="CBT question bank" right={noBank.length ? `${noBank.length} course${noBank.length === 1 ? "" : "s"} with no questions` : "Your current courses have questions"}>
+        {sheets.length ? (
+          <DTable cols={["Course", "Questions in bank|mid", "Readiness|num"]}
+            rows={sheets.map((s) => [
+              <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}</div></span>,
+              <span className="tnum" key="q" style={(s.bankQuestions ?? 0) === 0 ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.bankQuestions ?? 0}</span>,
+              (s.bankQuestions ?? 0) === 0 ? <Pil kind="bad" key="s">None yet</Pil> : (s.bankQuestions ?? 0) < 20 ? <Pil kind="info" key="s">Thin</Pil> : <Pil kind="ok" key="s">Ready</Pil>,
+            ])} texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
+        ) : <div className="card__body sub2">No course to check.</div>}
+        <PBody><div className="sub2">A computer-based test draws a fresh paper per candidate from the bank, so a course with too few questions cannot randomise. Add questions on the <Link href="/exams/question-bank">CBT question bank</Link>.</div></PBody>
       </Panel>
 
       <div className="grid grid--2">
