@@ -132,7 +132,13 @@ class TransferController {
                 SELECT p.code, p.name, f.name AS faculty FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
                  WHERE NOT p.archived AND p.code <> (SELECT programme_code FROM people.student WHERE id = :s) ORDER BY f.name, p.name
                 """).param("s", student).query().listOfRows();
-        return Map.of("student", me, "applications", apps, "programmes", programmes, "fee", jdbc.sql("SELECT people.transfer_fee()").query(java.math.BigDecimal.class).single());
+        java.math.BigDecimal fee = jdbc.sql("SELECT people.transfer_fee()").query(java.math.BigDecimal.class).optional().orElse(null);
+        java.util.Map<String, Object> out = new java.util.HashMap<>();
+        out.put("student", me);
+        out.put("applications", apps);
+        out.put("programmes", programmes);
+        out.put("fee", fee);   // null until the Bursary sets the transfer fee
+        return out;
     }
 
     @PostMapping("/api/v1/me/transfer")

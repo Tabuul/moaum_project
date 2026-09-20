@@ -525,11 +525,12 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           </div>
         </PBody>
       </Panel>
-      <Panel title="Inter-departmental transfer · processing fee" right={tfStated ? "Set by the Bursary" : "Default (₦10,000, not yet set)"}>
+      <Panel title="Inter-departmental transfer · processing fee" right={tfStated ? "Set by the Bursary" : "Not set yet — required before any transfer"}>
         <PBody>
           <div className="sub2" style={{ marginBottom: 10 }}>
-            The non-refundable fee a student pays after an inter-departmental transfer is approved. It is set here by the
-            Bursary and read by the transfer desk and the student&rsquo;s page; until it is set, the portal uses ₦10,000.
+            The non-refundable fee a student pays to process an inter-departmental transfer. It is set here by the
+            Bursary and read by the transfer desk and the student&rsquo;s page. There is no default: until you set it, a
+            student can apply but cannot pay, so no transfer can proceed.
           </div>
           <div style={{ display: "flex", gap: 9, alignItems: "flex-end", flexWrap: "wrap" }}>
             <Field id="tf-amt" label="Transfer processing fee"><input id="tf-amt" className="ctl tnum" inputMode="numeric" value={tf} onChange={(e) => setTf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>

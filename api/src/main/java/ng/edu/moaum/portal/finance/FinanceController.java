@@ -239,9 +239,12 @@ class FinanceController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> transferFee() {
-        BigDecimal amount = jdbc.sql("SELECT people.transfer_fee()").query(BigDecimal.class).single();
+        BigDecimal amount = jdbc.sql("SELECT people.transfer_fee()").query(BigDecimal.class).optional().orElse(null);
         Boolean stated = jdbc.sql("SELECT transfer_fee IS NOT NULL FROM finance.fee_setting WHERE id = 1").query(Boolean.class).optional().orElse(false);
-        return Map.of("amount", amount, "stated", stated);
+        java.util.Map<String, Object> out = new java.util.HashMap<>();
+        out.put("amount", amount);   // null until the Bursary sets it (no default)
+        out.put("stated", stated);
+        return out;
     }
 
     @PutMapping("/transfer-fee")

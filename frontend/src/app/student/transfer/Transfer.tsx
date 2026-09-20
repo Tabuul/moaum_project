@@ -19,7 +19,7 @@ export interface MyTransfer {
   student: { name: string; matric_no: string | null; current_level: number; entry_mode: string; status: string; programme: string; programme_code: string };
   applications: App[];
   programmes: { code: string; name: string; faculty: string }[];
-  fee: number;
+  fee: number | null;
 }
 
 const STAGES: [string, string][] = [
@@ -53,7 +53,9 @@ export function Transfer({ d }: { d: MyTransfer }) {
 
   const live = d.applications.find((a) => ["APPLIED", "FROM_OK", "TO_OK", "REG_OK"].includes(a.state)) ?? null;
   const last = d.applications[0] ?? null;
-  const canApply = !live && d.student.matric_no && ["ACTIVE", "PROBATION"].includes(d.student.status);
+  const fee = d.fee;
+  const feeSet = fee != null;
+  const canApply = !live && feeSet && d.student.matric_no && ["ACTIVE", "PROBATION"].includes(d.student.status);
   const paidRef = live?.fee_reference ?? feeRef;
   const paid = !!live?.fee_confirmed_at;
 
@@ -61,7 +63,7 @@ export function Transfer({ d }: { d: MyTransfer }) {
     <>
       <Tiles items={[
         ["Your department", d.student.programme, null, `${d.student.current_level} Level · ${d.student.entry_mode}`],
-        ["Processing fee", naira(d.fee), null, "Non-refundable · paid online after you apply"],
+        ["Processing fee", feeSet ? naira(fee) : "Not set yet", null, feeSet ? "Non-refundable · paid online after you apply" : "The Bursary has not set it yet"],
         ["Applications", String(d.applications.length), null, live ? "One in progress" : "None in progress"],
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -77,21 +79,25 @@ export function Transfer({ d }: { d: MyTransfer }) {
             ))}
           </div>
           <PBody>
-            {!live.fee_confirmed_at ? (
+            {!live.fee_confirmed_at ? (!feeSet ? (
+              <Note kind="bad" title="The transfer fee has not been set yet">
+                Your application is submitted, but the Bursary has not set the transfer processing fee. You will be able to pay once it is set — the approvals begin after payment.
+              </Note>
+            ) : (
               <>
                 <Note kind="info" title="Pay the non-refundable processing fee to start your transfer">
-                  Your application to move to {live.to_programme} is submitted. Pay the {naira(d.fee)} fee online now; once it is confirmed, your current department begins the approvals.
+                  Your application to move to {live.to_programme} is submitted. Pay the {naira(fee)} fee online now; once it is confirmed, your current department begins the approvals.
                 </Note>
                 {!paidRef ? (
                   <div style={{ marginTop: 10 }}><Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fee", "POST", `/me/transfer/${live.id}/fee`, {}, "Transfer fee reference"); if (r) { setFeeRef(String(r.reference)); setSaid(`Reference ${r.reference} generated — pay it below.`); } }}>Pay the fee online</Btn></div>
                 ) : (
                   <div style={{ marginTop: 10 }}>
-                    <div className="sub2" style={{ marginBottom: 6 }}>Reference <span className="tnum">{paidRef}</span> for {naira(d.fee)}. Pay it by card or USSD.</div>
-                    <PayByCard reference={paidRef} amount={d.fee} />
+                    <div className="sub2" style={{ marginBottom: 6 }}>Reference <span className="tnum">{paidRef}</span> for {naira(fee)}. Pay it by card or USSD.</div>
+                    <PayByCard reference={paidRef} amount={fee} />
                   </div>
                 )}
               </>
-            ) : (
+            )) : (
               <Note kind="info" title={`In progress — ${STAGES[stageOf(live.state, true)]?.[0] ?? "under review"}`}>
                 Your fee is paid. Your request to move to {live.to_programme} is with the {STAGES[stageOf(live.state, true)]?.[0]?.toLowerCase()}. Each office approves in turn; watch it advance above.
               </Note>
@@ -116,11 +122,15 @@ export function Transfer({ d }: { d: MyTransfer }) {
             <Field id="ap-reason" label="Reason for seeking transfer" hint="Each approving office reads this."><textarea id="ap-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
             <Field id="ap-utme" label="Your UTME score" hint="Optional — helps the offices weigh the case."><input id="ap-utme" className="ctl tnum" inputMode="numeric" value={utme} onChange={(e) => setUtme(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
             <div><Btn kind="primary" disabled={busy !== null || !prog || !reason.trim()} onClick={async () => { const r = await act("apply", "POST", "/me/transfer", { toProgramme: prog, reason: reason.trim(), utme: utme ? Number(utme) : null }, "Apply for departmental transfer"); if (r) { setSaid("Your application is with the office."); setProg(""); setReason(""); setUtme(""); } }}>Submit the application</Btn></div>
-            <div className="sub2" style={{ marginTop: 6 }}>After you apply, you pay the non-refundable {naira(d.fee)} fee online; your current department and the offices after it then approve in turn. The University sells nothing at the gate.</div>
+            <div className="sub2" style={{ marginTop: 6 }}>After you apply, you pay the non-refundable {naira(fee ?? 0)} fee online; your current department and the offices after it then approve in turn. The University sells nothing at the gate.</div>
           </PBody>
         </Panel>
       ) : !live ? (
-        <Note kind="info" title="You cannot apply to transfer right now">Only a matriculated student in good standing may apply. If you have just matriculated, check back after your first results are published.</Note>
+        !feeSet ? (
+          <Note kind="info" title="Transfers are not open yet">The Bursary has not set the transfer processing fee. Once it is set, you can apply to transfer here.</Note>
+        ) : (
+          <Note kind="info" title="You cannot apply to transfer right now">Only a matriculated student in good standing may apply. If you have just matriculated, check back after your first results are published.</Note>
+        )
       ) : null}
     </>
   );
