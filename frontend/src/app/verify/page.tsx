@@ -4,6 +4,7 @@
  *  receipt number) and the check code printed on the receipt; it opens the authoritative record. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Scanner } from "./Scanner";
 
 export default function VerifyLanding() {
   const router = useRouter();
@@ -47,8 +48,9 @@ export default function VerifyLanding() {
           <button type="submit" disabled={!ref.trim()} style={{ width: "100%", padding: "12px 14px", fontSize: 15, fontWeight: 700, color: "#fff", background: ref.trim() ? "#0e3f55" : "#9fb0bc", border: "none", borderRadius: 9, cursor: ref.trim() ? "pointer" : "not-allowed" }}>
             Verify payment
           </button>
+          <Scanner onResult={(path) => router.push(path)} />
           <p style={{ fontSize: 11.5, color: "#8a97a3", marginTop: 16, lineHeight: 1.5 }}>
-            Or scan the QR code on the receipt, which opens this check with the details filled in.
+            Scan the QR on the receipt with the camera above, or open it with your phone&rsquo;s camera app &mdash; either way it opens this check with the details filled in.
           </p>
         </form>
       </div>
