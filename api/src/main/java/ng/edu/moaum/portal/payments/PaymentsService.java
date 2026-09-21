@@ -610,7 +610,7 @@ public class PaymentsService {
      */
     public Map<String, Object> verify(String referenceIn, String source) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference))
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (r.confirmedAt() != null) {
             return Map.of("outcome", "already confirmed", "reference", reference);

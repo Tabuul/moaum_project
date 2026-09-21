@@ -71,7 +71,29 @@ export function PgPortal() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const paidRef = new URLSearchParams(window.location.search).get("paid");
+    void (async () => {
+      /* returned from a gateway: ask the gateway whether it settled before reading the application,
+         so a dropped webhook still resolves itself */
+      if (paidRef) {
+        try { await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: paidRef }) }); } catch { /* ignore */ }
+      }
+      await load();
+    })();
+  }, [load]);
+
+  const [checking, setChecking] = useState(false);
+  async function checkNow() {
+    if (!reference) return;
+    setChecking(true);
+    try {
+      await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
+      await load();
+    } finally {
+      setChecking(false);
+    }
+  }
 
   async function signOut() {
     try { await fetch("/api/bff/api/v1/pg/sign-out", { method: "POST" }); } catch { /* ignore */ }
@@ -133,6 +155,10 @@ export function PgPortal() {
         <Card title="Application fee">
           <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University.</div>
           <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+            <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
+            <span className="sub2">Already paid? This asks the gateway to confirm it.</span>
+          </div>
           <div className="sub2" style={{ marginTop: 8 }}>Payment reference: <b className="tnum">{reference}</b></div>
         </Card>
       ) : (

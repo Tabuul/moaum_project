@@ -67,7 +67,7 @@ class PaymentsRepository {
                   FROM admissions.pg_fee_reference fr
                   JOIN admissions.pg_application a ON a.id = fr.application_id
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
-                 WHERE fr.reference = btrim(:r)
+                 WHERE upper(fr.reference) = upper(btrim(:r))
                 """).param("r", reference).query(Reference.class).optional();
     }
 
