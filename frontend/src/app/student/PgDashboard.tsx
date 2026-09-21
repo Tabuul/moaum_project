@@ -43,15 +43,9 @@ export function PgDashboard({ s }: { s: Me }) {
         </PBody>
       </Panel>
 
-      {!registered ? (
-        <Note kind="info" title={`Register your courses for ${f.session}`} action={<Link href="/student/registration" className="btn btn--primary btn--sm">Course registration</Link>}>
-          {f.paidInFull || f.balance === 0 ? "Your fees are in order — register the courses your programme carries this semester." : `${feeLine} Registration for a semester opens once its fees are met.`}
-        </Note>
-      ) : (
-        <Note kind="ok" title={`Registered for ${f.session}`} action={<Link href="/student/results" className="btn btn--ghost btn--sm">My results</Link>}>
-          {feeLine}
-        </Note>
-      )}
+      <Note kind={f.paidInFull || f.balance === 0 ? "info" : "info"} title={`Course registration for ${f.session}`} action={<Link href="/student/pg-courses" className="btn btn--primary btn--sm">Course registration &amp; results</Link>}>
+        {f.paidInFull || f.balance === 0 ? "Register the courses your programme carries this semester, and see your results and CGPA there." : `${feeLine} Register once the semester's fees are met.`}
+      </Note>
 
       <Tiles items={[
         ["Programme", stage, null, s.programme],
@@ -63,10 +57,9 @@ export function PgDashboard({ s }: { s: Me }) {
       <Panel title="Postgraduate desks" right={s.name}>
         <PBody>
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+            <Link href="/student/pg-courses" className="btn btn--ghost btn--sm">Course registration &amp; results</Link>
             <Link href="/student/research" className="btn btn--ghost btn--sm">Research &amp; thesis</Link>
-            <Link href="/student/registration" className="btn btn--ghost btn--sm">Course registration</Link>
             <Link href="/student/fees" className="btn btn--ghost btn--sm">Fees &amp; payments</Link>
-            <Link href="/student/results" className="btn btn--ghost btn--sm">My results</Link>
             <Link href="/student/exams" className="btn btn--ghost btn--sm">Examinations</Link>
             <Link href="/student/biodata" className="btn btn--ghost btn--sm">Bio-data</Link>
             <Link href="/student/transcript" className="btn btn--ghost btn--sm">Transcript</Link>
