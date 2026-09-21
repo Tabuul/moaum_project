@@ -1,17 +1,17 @@
 "use client";
 
 /**
- * The postgraduate applicant's dashboard. After applying (V205) the applicant signs in on the email they
- * applied with (or their PG application number) and works from here through a small menu: an overview, the
- * full application (bio-data, the degree(s) it rests on, proposal, referees), their credentials document,
- * the application fee (paid online), and the progress of the application through the School's pipeline.
- * Every call is scoped to the signed-in applicant.
+ * The postgraduate applicant's dashboard, laid out to match the prototype's pgApplicantDash: a branded
+ * top bar, an at-a-glance tile row, the application beside its progress, then bio-data, the degree(s) the
+ * admission rests on, the proposal, the referees, the credentials document and the fee — all with the
+ * portal's own components (Panel, Tiles, KvGrid), stacked as one page. Every call is scoped to the
+ * signed-in applicant.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import { Note } from "@/components/proto/ui";
+import { Note, Panel, PBody, Tiles, KvGrid } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 
@@ -39,14 +39,16 @@ const STATE_LABEL: Record<string, string> = {
   DEPT_DECLINED: "Not recommended by the department", OFFERED: "Offered a place", NOT_OFFERED: "Not offered",
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
 };
+const STATE_SHORT: Record<string, string> = {
+  DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Recommended", DEPT_DECLINED: "Declined",
+  OFFERED: "Offered", NOT_OFFERED: "Not offered", ACCEPTED: "Accepted", ADMITTED: "Admitted",
+};
 function fmtDate(v: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
 }
 const val = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : String(v));
-type Tab = "overview" | "application" | "documents" | "payment" | "progress";
-const TABS: [Tab, string][] = [["overview", "Overview"], ["application", "Application"], ["documents", "Documents"], ["payment", "Application fee"], ["progress", "Progress"]];
 
 export function PgPortal() {
   const router = useRouter();
@@ -54,7 +56,6 @@ export function PgPortal() {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [reference, setReference] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("overview");
   const [checking, setChecking] = useState(false);
 
   const load = useCallback(async () => {
@@ -71,9 +72,7 @@ export function PgPortal() {
         const fj = await fr.json().catch(() => null);
         if (fr.ok && fj && typeof fj === "object" && "reference" in fj) setReference(String((fj as { reference: string }).reference));
       }
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -102,143 +101,139 @@ export function PgPortal() {
     router.refresh();
   }
 
-  if (loading) return <Wrap subtitle="Loading…"><Note kind="info" title="Loading your application…">One moment.</Note></Wrap>;
+  if (loading) return <Frame><Note kind="info" title="Loading your application…">One moment.</Note></Frame>;
 
   if (!me) {
     return (
-      <Wrap subtitle="Sign in">
+      <Frame>
         <Note kind="info" title="Sign in to see your application">Sign in with the email you applied with (or your PG application number) and the password you chose when you applied.</Note>
-        <div style={{ textAlign: "center", marginTop: 12 }}><Link href="/login?next=/pg/portal" className="btn btn--primary">Sign in</Link></div>
-      </Wrap>
+        <div style={{ marginTop: 12 }}><Link href="/login?next=/pg/portal" className="btn btn--primary btn--sm">Sign in</Link></div>
+      </Frame>
     );
   }
 
   const paid = !!me.feeConfirmedAt;
   const credentials = me.documents.find((d) => d.kind === "CREDENTIALS") ?? null;
+  const degrees = me.priorDegrees.length ? me.priorDegrees : [{ kind: "FIRST", ...me.prior, class_of_degree: me.prior.classOfDegree } as unknown as PriorDegree];
+  const steps: [string, boolean, string | null][] = [
+    ["Application submitted", !!me.submittedAt, me.submittedAt],
+    ["Application fee paid", paid, me.feeConfirmedAt],
+    ["Department decision", !!me.deptDecidedAt, me.deptDecidedAt],
+    ["School decision", !!me.spgsDecidedAt, me.spgsDecidedAt],
+    ["Offer accepted", !!me.acceptedAt, me.acceptedAt],
+    ["Admitted to the register", !!me.admittedAt, me.admittedAt],
+  ];
 
   return (
-    <Wrap subtitle={`${me.applicationNo}`}>
+    <Frame sub={me.applicationNo}>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      <nav className="pg-tabs">
-        {TABS.map(([t, label]) => (
-          <button key={t} className={t === tab ? "pg-tab pg-tab--on" : "pg-tab"} onClick={() => setTab(t)}>
-            {label}
-            {t === "documents" && !credentials ? <span className="pg-dot" title="No credentials uploaded" /> : null}
-            {t === "payment" && !paid ? <span className="pg-dot" title="Fee not paid" /> : null}
-          </button>
-        ))}
-      </nav>
+      <Note kind={paid ? "ok" : "info"} title={`${me.name} · ${me.applicationNo}`}>
+        Your postgraduate application is <b>{STATE_LABEL[me.state] ?? me.state}</b>.
+        {me.state === "OFFERED" ? " You have an offer of admission." : ""}
+        {!paid ? " Pay the application fee below to have it screened." : ""}
+      </Note>
 
-      {tab === "overview" ? (
-        <>
-          <Note kind={paid ? "ok" : "info"} title={`${me.name} · ${me.applicationNo}`}>
-            Your postgraduate application is <b>{STATE_LABEL[me.state] ?? me.state}</b>.
-            {me.state === "OFFERED" ? " You have an offer of admission." : ""}
-            {!paid ? " Pay the application fee to have it screened." : ""}
-          </Note>
-          <Card title="At a glance">
-            <KV rows={[
-              ["Programme", me.programme],
-              ["Award", me.award ?? "—"],
-              ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
-              ["Department", me.department],
-              ["Faculty", me.faculty],
-              ["Status", STATE_LABEL[me.state] ?? me.state],
-              ["Application fee", paid ? "Paid" : `${naira(me.applicationFee)} — unpaid`],
-              ["Credentials", credentials ? "Uploaded" : "Not uploaded yet"],
-            ]} />
-          </Card>
-          {!credentials ? <Note kind="info" title="Upload your credentials">Scan your O&rsquo;Level, A&rsquo;Level and birth certificate / declaration of age into one PDF and upload it under <b>Documents</b>.</Note> : null}
-        </>
-      ) : null}
+      <Tiles items={[
+        ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
+        ["Application fee", paid ? "Paid" : naira(me.applicationFee), paid ? "var(--green-ink)" : "var(--chrome)", paid ? "confirmed" : "unpaid"],
+        ["Credentials", credentials ? "1 PDF" : "None", credentials ? null : "var(--chrome)", "O’/A’Level, birth cert."],
+        ["Stage", STATE_SHORT[me.state] ?? me.state, me.state === "ADMITTED" ? "var(--green-ink)" : null, me.department],
+      ]} />
 
-      {tab === "application" ? (
-        <>
-          <Card title="Application">
-            <KV rows={[
+      <div className="grid grid--2" style={{ alignItems: "start" }}>
+        <Panel title="Application">
+          <PBody>
+            <KvGrid cls="grid--1" pairs={[
               ["Application number", me.applicationNo], ["Session", me.session], ["Programme", me.programme],
               ["Award", me.award ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
               ["Faculty", me.faculty], ["Department", me.department], ["Submitted", fmtDate(me.submittedAt)],
             ]} />
-          </Card>
-          <Card title="Bio-data">
-            <KV rows={[
-              ["Surname", me.surname], ["Other names", me.otherNames],
-              ["Sex", me.biodata.sex === "F" ? "Female" : me.biodata.sex === "M" ? "Male" : "—"],
-              ["Date of birth", fmtDate(me.biodata.dateOfBirth)], ["State of origin", val(me.biodata.stateOfOrigin)],
-              ["LGA", val(me.biodata.lga)], ["Email", me.email], ["Phone", val(me.phone)],
+          </PBody>
+        </Panel>
+        <Panel title="Progress">
+          <PBody>
+            <ol className="pg-steps">
+              {steps.map(([label, done, when]) => (
+                <li key={label} className={done ? "pg-step pg-step--done" : "pg-step"}>
+                  <span className="pg-step__dot" aria-hidden />
+                  <span className="pg-step__label">{label}</span>
+                  <span className="sub2">{when ? fmtDate(when) : (done ? "" : "pending")}</span>
+                </li>
+              ))}
+            </ol>
+          </PBody>
+        </Panel>
+      </div>
+
+      <Panel title="Bio-data">
+        <PBody>
+          <KvGrid cls="grid--2" pairs={[
+            ["Surname", me.surname], ["Other names", me.otherNames],
+            ["Sex", me.biodata.sex === "F" ? "Female" : me.biodata.sex === "M" ? "Male" : "—"],
+            ["Date of birth", fmtDate(me.biodata.dateOfBirth)], ["State of origin", val(me.biodata.stateOfOrigin)],
+            ["LGA", val(me.biodata.lga)], ["Email", me.email], ["Phone", val(me.phone)],
+          ]} />
+        </PBody>
+      </Panel>
+
+      {degrees.map((pd, i) => (
+        <Panel key={i} title={pd.kind === "MASTERS" ? "Master’s degree" : "First degree"}>
+          <PBody>
+            <KvGrid cls="grid--2" pairs={[
+              ["Institution", val(pd.institution)], ["Award", val(pd.award)],
+              ["Class of degree", val(pd.class_of_degree)], ["CGPA", val(pd.cgpa)], ["Year", val(pd.year)],
             ]} />
-          </Card>
-          {(me.priorDegrees.length ? me.priorDegrees : [{ kind: "FIRST", ...me.prior, class_of_degree: me.prior.classOfDegree } as unknown as PriorDegree]).map((pd, i) => (
-            <Card key={i} title={pd.kind === "MASTERS" ? "Master’s degree" : "First degree"}>
-              <KV rows={[
-                ["Institution", val(pd.institution)], ["Award", val(pd.award)],
-                ["Class of degree", val(pd.class_of_degree)], ["CGPA", val(pd.cgpa)], ["Year", val(pd.year)],
-              ]} />
-            </Card>
-          ))}
-          {me.research || me.proposal.title || me.proposal.text ? (
-            <Card title="Research proposal">
-              <KV rows={[["Title", val(me.proposal.title)]]} />
-              {me.proposal.text ? <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
-            </Card>
-          ) : null}
-          {me.referees.length ? (
-            <Card title="Referees">
-              <div style={{ display: "grid", gap: 12 }}>
-                {me.referees.map((rf, i) => (
-                  <div key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
-                    <KV rows={[["Name", val(rf.name)], ["Position", val(rf.position)], ["Institution", val(rf.institution)], ["Email", val(rf.email)]]} />
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ) : null}
-        </>
+          </PBody>
+        </Panel>
+      ))}
+
+      {me.research || me.proposal.title || me.proposal.text ? (
+        <Panel title="Research proposal">
+          <PBody>
+            <KvGrid cls="grid--1" pairs={[["Title", val(me.proposal.title)]]} />
+            {me.proposal.text ? <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
+          </PBody>
+        </Panel>
       ) : null}
 
-      {tab === "documents" ? <Documents credentials={credentials} onDone={load} /> : null}
+      {me.referees.length ? (
+        <Panel title="Referees">
+          <PBody style={{ display: "grid", gap: 12 }}>
+            {me.referees.map((rf, i) => (
+              <div key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
+                <KvGrid cls="grid--2" pairs={[["Name", val(rf.name)], ["Position", val(rf.position)], ["Institution", val(rf.institution)], ["Email", val(rf.email)]]} />
+              </div>
+            ))}
+          </PBody>
+        </Panel>
+      ) : null}
 
-      {tab === "payment" ? (
-        paid ? (
-          <Note kind="ok" title="Application fee paid">Confirmed on {fmtDate(me.feeConfirmedAt)}. The School will screen your application.</Note>
-        ) : reference ? (
-          <Card title="Pay the application fee">
+      <Documents credentials={credentials} onDone={load} />
+
+      {paid ? (
+        <Note kind="ok" title="Application fee paid">Confirmed on {fmtDate(me.feeConfirmedAt)}. The School will screen your application; its progress shows above.</Note>
+      ) : reference ? (
+        <Panel title="Application fee">
+          <PBody>
             <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University.</div>
             <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
               <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
               <span className="sub2">Already paid? This asks the gateway to confirm it.</span>
             </div>
-            <div className="sub2" style={{ marginTop: 8 }}>Payment reference: <b className="tnum">{reference}</b> · Acceptance later: {naira(me.acceptanceFee)} + checking {naira(me.checkingFee)}.</div>
-          </Card>
-        ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>
-      ) : null}
+            <div className="sub2" style={{ marginTop: 8 }}>Reference: <b className="tnum">{reference}</b> · Acceptance later: {naira(me.acceptanceFee)} + checking {naira(me.checkingFee)}.</div>
+          </PBody>
+        </Panel>
+      ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
 
-      {tab === "progress" ? <Progress me={me} /> : null}
+      {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => void load()}>Refresh</button>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => void signOut()}>Sign out</button>
       </div>
-
-      <style>{`
-        .pg-tabs { display: flex; gap: 4px; flex-wrap: wrap; background: var(--surface-2, #eef1f4); padding: 4px; border-radius: 10px; }
-        .pg-tab { position: relative; border: 0; background: transparent; padding: 8px 14px; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 600; color: var(--chrome-dim); cursor: pointer; }
-        .pg-tab--on { background: var(--surface, #fff); color: var(--ink, #10233b); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-        .pg-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--chrome); margin-left: 6px; vertical-align: middle; }
-        .pg-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-        .pg-step { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 10px; padding: 7px 0; }
-        .pg-step__dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-2); background: transparent; margin-left: 2px; }
-        .pg-step--done .pg-step__dot { background: var(--green-ink); border-color: var(--green-ink); }
-        .pg-step--done .pg-step__label { font-weight: 600; }
-        .pg-kv { display: grid; grid-template-columns: minmax(130px, 34%) 1fr; gap: 6px 14px; }
-        .pg-kv dt { color: var(--chrome-dim); font-size: 13px; }
-        .pg-kv dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
-        @media (max-width: 460px) { .pg-kv { grid-template-columns: 1fr; gap: 2px 0; } .pg-kv dd { margin-bottom: 6px; } }
-      `}</style>
-    </Wrap>
+    </Frame>
   );
 }
 
@@ -266,95 +261,50 @@ function Documents({ credentials, onDone }: { credentials: DocMeta | null; onDon
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      setOk("Credentials uploaded.");
-      await onDone();
+      setOk("Credentials uploaded."); await onDone();
     } finally { setBusy(false); }
   }
 
   return (
-    <Card title="Credentials">
-      <div className="sub2" style={{ marginBottom: 10 }}>
-        Scan your <b>O&rsquo;Level</b>, <b>A&rsquo;Level</b> and <b>birth certificate / declaration of age</b> into a single PDF and upload it here. Bring the originals for screening.
-      </div>
-      {err ? <ProblemNotice problem={err} /> : null}
-      {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
-      {credentials ? (
-        <div className="sub2" style={{ marginBottom: 8 }}>On record: <b>{credentials.filename}</b> — uploaded {fmtDate(credentials.uploaded_at)}. Uploading again replaces it.</div>
-      ) : <div className="sub2" style={{ marginBottom: 8 }}>No credentials uploaded yet.</div>}
-      <input ref={inputRef} type="file" accept="application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
-      <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : credentials ? "Replace the PDF" : "Upload the PDF"}</button>
-    </Card>
-  );
-}
-
-function Progress({ me }: { me: Me }) {
-  const steps = [
-    { label: "Application submitted", done: !!me.submittedAt, when: me.submittedAt },
-    { label: "Application fee paid", done: !!me.feeConfirmedAt, when: me.feeConfirmedAt },
-    { label: "Department decision", done: !!me.deptDecidedAt, when: me.deptDecidedAt },
-    { label: "School decision", done: !!me.spgsDecidedAt, when: me.spgsDecidedAt },
-    { label: "Offer accepted", done: !!me.acceptedAt, when: me.acceptedAt },
-    { label: "Admitted to the register", done: !!me.admittedAt, when: me.admittedAt },
-  ];
-  return (
-    <>
-      <Card title="Progress">
-        <ol className="pg-steps">
-          {steps.map((s) => (
-            <li key={s.label} className={s.done ? "pg-step pg-step--done" : "pg-step"}>
-              <span className="pg-step__dot" aria-hidden />
-              <span className="pg-step__label">{s.label}</span>
-              <span className="pg-step__when sub2">{s.when ? fmtDate(s.when) : (s.done ? "" : "pending")}</span>
-            </li>
-          ))}
-        </ol>
-      </Card>
-      {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
-      {me.deptNote ? <Note kind="info" title="A note from the department">{me.deptNote}</Note> : null}
-    </>
-  );
-}
-
-function KV({ rows }: { rows: [string, string][] }) {
-  return (
-    <dl className="pg-kv">
-      {rows.map(([k, v]) => (
-        <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>
-      ))}
-    </dl>
-  );
-}
-
-function Card({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="card"><div className="card__body">
-      <div style={{ fontWeight: 700, marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--line-2)" }}>{title}</div>
-      {children}
-    </div></div>
-  );
-}
-
-function Wrap({ children, subtitle }: { children: ReactNode; subtitle?: string }) {
-  return (
-    <div className="login-wrap">
-      <div className="login-brand">
-        <div>
-          <div className="login-brand__top">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>School of Postgraduate Studies</span></div>
-          </div>
-          <div style={{ height: 26 }} />
-          <h1>Your postgraduate application</h1>
-          <p>Everything the University holds on your application — bio-data, the degree(s) it rests on, your credentials, referees and proposal — with its progress and the fee to pay. This account becomes your student account on the day you are admitted.</p>
-          {subtitle ? <p className="sub2" style={{ marginTop: 8 }}>{subtitle}</p> : null}
+    <Panel title="Credentials">
+      <PBody>
+        <div className="sub2" style={{ marginBottom: 10 }}>
+          Scan your <b>O&rsquo;Level</b>, <b>A&rsquo;Level</b> and <b>birth certificate / declaration of age</b> into a single PDF and upload it here. Bring the originals for screening.
         </div>
-      </div>
-      <div className="login-panel">
-        <div style={{ width: "100%", maxWidth: 660, display: "grid", gap: 14, paddingBlock: 24 }}>
-          {children}
+        {err ? <ProblemNotice problem={err} /> : null}
+        {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
+        {credentials ? (
+          <div className="sub2" style={{ marginBottom: 8 }}>On record: <b>{credentials.filename}</b> — uploaded {fmtDate(credentials.uploaded_at)}. Uploading again replaces it.</div>
+        ) : <div className="sub2" style={{ marginBottom: 8 }}>No credentials uploaded yet.</div>}
+        <input ref={inputRef} type="file" accept="application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
+        <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : credentials ? "Replace the PDF" : "Upload the PDF"}</button>
+      </PBody>
+    </Panel>
+  );
+}
+
+function Frame({ children, sub }: { children: React.ReactNode; sub?: string }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <header style={{ background: "var(--chrome-deep, #0b1f3a)", color: "#fff", padding: "16px 22px", display: "flex", alignItems: "center", gap: 14 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
+        <div style={{ flexGrow: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, letterSpacing: ".6px", textTransform: "uppercase", opacity: .7 }}>School of Postgraduate Studies</div>
+          <h1 style={{ fontFamily: "var(--serif, Georgia)", fontSize: 20, fontWeight: 700, margin: "2px 0 0" }}>Your postgraduate application</h1>
         </div>
+        {sub ? <span className="tnum" style={{ fontSize: 13, opacity: .85 }}>{sub}</span> : null}
+      </header>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "18px 16px 56px", display: "grid", gap: 14 }}>
+        {children}
       </div>
+      <style>{`
+        .pg-steps { list-style:none; margin:0; padding:0; display:grid; gap:2px; }
+        .pg-step { display:grid; grid-template-columns:20px 1fr auto; align-items:center; gap:10px; padding:7px 0; }
+        .pg-step__dot { width:12px; height:12px; border-radius:50%; border:2px solid var(--line-2); background:transparent; margin-left:2px; }
+        .pg-step--done .pg-step__dot { background:var(--green-ink); border-color:var(--green-ink); }
+        .pg-step--done .pg-step__label { font-weight:600; }
+      `}</style>
     </div>
   );
 }
