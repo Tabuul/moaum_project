@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 135
+\set EXPECTED 136
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
