@@ -66,6 +66,14 @@ class ResultsController {
         return service.importPostgraduate(body.rows());
     }
 
+    /** post every past result held for a student who was not on the register when the results were
+     *  uploaded, but has since been loaded — run after a student/biography upload (V204) */
+    @PostMapping("/legacy/reconcile-results")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> reconcileResults() {
+        return service.reconcileHolding();
+    }
+
     /** the course registration of a past semester, from the old portal */
     @PostMapping("/legacy/registration")
     @PreAuthorize(MIGRATE)

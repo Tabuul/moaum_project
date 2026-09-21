@@ -106,6 +106,12 @@ public class ResultsService {
         return repo.importPostgraduate(json.writeValueAsString(rows));
     }
 
+    /** post every past result held for a student who has since been loaded (V204) */
+    @Transactional
+    public Map<String, Object> reconcileHolding() {
+        return repo.reconcileHolding();
+    }
+
     @Transactional
     public Map<String, Object> importJambNumbers(List<Map<String, Object>> rows) {
         requireRows(rows);

@@ -178,6 +178,15 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       }
       setResult({ tab: kind, counts: totals, firstError: firstErr });
       notify(`Legacy ${kind} import complete`);
+      /* a student upload may satisfy results that were held earlier for a student not on the register
+         yet — reconcile them now, so results and biodata can be uploaded in either order (V204) */
+      if (kind === "biodata" || kind === "pgstudents" || kind === "students") {
+        try {
+          const rr = await fetch("/api/bff/api/v1/results/legacy/reconcile-results", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Reconcile held past results after a student upload") }, body: "{}" });
+          const rj = (await rr.json().catch(() => null)) as { reconciled?: number } | null;
+          if (rr.ok && rj && (rj.reconciled ?? 0) > 0) notify(`${rj.reconciled} held past result${rj.reconciled === 1 ? "" : "s"} now matched to the newly loaded students`);
+        } catch { /* reconcile is best-effort; a manual re-upload of the results also reconciles */ }
+      }
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
     } finally {
@@ -268,7 +277,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     pgstudents: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     registration: [["rows", "Rows read"], ["students", "Students"], ["offerings", "Courses"], ["registrations", "Registrations"], ["no_student", "No such student"], ["no_course", "No such course"]],
-    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["no_student", "No such student"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
+    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["held", "Held (student not loaded yet)"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
     jamb: [["rows", "Rows read"], ["updated", "JAMB numbers set"], ["no_student", "No such student"]],
     passports: [], // photos have their own summary
   };
@@ -438,7 +447,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
               : tab === "jamb" ? "Columns read: matriculation number and JAMB registration number. The student is matched by matriculation number and their JAMB number is set on the register. Do this before uploading passport photos named by JAMB number, so a legacy student (who carries no JAMB number yet) can be matched. The application number is NOT the JAMB number — upload the real JAMB registration number."
               : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
-              : "Columns read: matriculation number, course code, level, session, semester, and the mark. The unit is taken from the course record, not the file — any “Units” column in the export (a 1/2/3 status code) is ignored. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Session and semester are read per row; outcome is read when present."}
+              : "Columns read: matriculation number, course code, level, session, semester, and the mark. The unit is taken from the course record, not the file — any “Units” column in the export (a 1/2/3 status code) is ignored. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Session and semester are read per row; outcome is read when present. A row whose student is not on the register yet is HELD, not lost — it posts automatically once that student is uploaded (in either order)."}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
@@ -491,7 +500,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "students" ? `${result.counts.created ?? 0} students created, ${result.counts.updated ?? 0} updated.`
               : tab === "jamb" ? `${result.counts.updated ?? 0} JAMB number${result.counts.updated === 1 ? "" : "s"} set on the register. You can now upload passport photos named by JAMB number.`
               : tab === "registration" ? `${result.counts.registrations ?? 0} registrations across ${result.counts.offerings ?? 0} courses.`
-              : `${result.counts.results ?? 0} results posted.`}
+              : `${result.counts.results ?? 0} results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}.`}
             {" "}Rows that did not match are counted above; fix them at source and re-upload — the import is idempotent.
             {(result.counts.no_student ?? 0) > 0 ? <> <b>Import the students first</b> if a number was not found.</> : null}
             {(result.counts.skipped ?? 0) > 0 ? <> <b>{result.counts.skipped} row{result.counts.skipped === 1 ? "" : "s"} were skipped by an error</b> and are not on the register; the first was — <span className="tnum">{result.firstError ?? "no detail"}</span>. Fix those rows and re-upload.</> : null}

@@ -1,0 +1,170 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V204 — past results are HELD when the student is not on the register yet
+--
+--   The legacy results import skipped a row whose matriculation number matched no
+--   student ("no_student"), so results had to wait until every student was loaded
+--   first. Now such a row is HELD: kept, verbatim, in a holding store keyed by the
+--   matriculation number, and posted automatically the moment that student is
+--   loaded (the biography / postgraduate / core-students import triggers a
+--   reconcile). So results and student biodata can be uploaded in either order.
+--
+--   The holding store is migration scratch, re-derivable from the uploaded file,
+--   so it is exempt from the audit spine like the other import artifacts.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS assessment.legacy_result_holding (
+    session     text NOT NULL,
+    semester    int  NOT NULL,
+    matric      text NOT NULL,
+    course_code text NOT NULL,
+    raw         jsonb NOT NULL,          -- the original row, replayed once the student exists
+    loaded_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (session, semester, matric, course_code)
+);
+CREATE INDEX IF NOT EXISTS ix_legacy_holding_matric ON assessment.legacy_result_holding (matric);
+SELECT audit.exempt('assessment.legacy_result_holding',
+    'Migration scratch: results whose student is not loaded yet, kept verbatim and replayed on reconcile; re-derivable from the uploaded file.');
+
+-- the importer, V123 verbatim, with two changes: a missing student HOLDS the row
+-- (results only) instead of skipping it, and a held row is cleared once its result posts
+DROP FUNCTION IF EXISTS assessment.import_legacy_semester(text, int, jsonb, boolean);
+CREATE FUNCTION assessment.import_legacy_semester(p_session text, p_semester int, p_rows jsonb, p_with_results boolean)
+RETURNS TABLE (rows int, students int, offerings int, registrations int, results int,
+               no_student int, held int, no_course int, no_mark int, skipped int, first_error text)
+LANGUAGE plpgsql AS $$
+DECLARE r jsonb; v_actor uuid := nullif(current_setting('moaum.actor_id', true), '')::uuid;
+        v_matric text; v_code text; v_units int; v_level int; v_ca int; v_exam int; v_total int; v_outcome text;
+        v_student uuid; v_offering uuid; v_sheet uuid; v_reg uuid; v_have_mark boolean;
+        n int := 0; n_off int := 0; n_reg int := 0; n_res int := 0; nns int := 0; n_held int := 0; nnc int := 0; nnm int := 0;
+        ns int := 0; v_firsterr text := NULL;
+        seen_students uuid[] := '{}'; seen_offerings uuid[] := '{}';
+BEGIN
+    IF v_actor IS NULL THEN RAISE EXCEPTION 'a migration is loaded by a person' USING ERRCODE = '23514'; END IF;
+    IF p_semester NOT IN (1, 2, 3) THEN RAISE EXCEPTION 'a semester is 1, 2 or 3' USING ERRCODE = '23514'; END IF;
+    IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' OR jsonb_array_length(p_rows) = 0 THEN
+        RAISE EXCEPTION 'the file is rows: matriculation number, course, units and the mark' USING ERRCODE = '23514';
+    END IF;
+    PERFORM assessment.ensure_session(p_session);
+
+    FOR r IN SELECT * FROM jsonb_array_elements(p_rows) LOOP
+        v_matric := upper(btrim(coalesce(r->>'matric', r->>'matricNo', r->>'matric_no', r->>'regNo', r->>'reg_no', '')));
+        v_code := upper(btrim(coalesce(r->>'course', r->>'courseCode', r->>'course_code', r->>'code', '')));
+        v_code := regexp_replace(v_code, '^([A-Z]{2,4})\s*([0-9]{3})$', '\1 \2');
+        IF v_matric = '' OR v_code = '' THEN CONTINUE; END IF;
+        n := n + 1;
+
+        BEGIN   -- one savepoint per row: any unexpected error sets the row aside, the batch survives
+            SELECT id INTO v_student FROM people.student WHERE upper(matric_no) = v_matric;
+            IF v_student IS NULL THEN
+                -- the student is not on the register yet: HOLD the result row, to be posted on reconcile
+                IF p_with_results THEN
+                    INSERT INTO assessment.legacy_result_holding (session, semester, matric, course_code, raw)
+                    VALUES (p_session, p_semester, v_matric, v_code, r)
+                    ON CONFLICT (session, semester, matric, course_code) DO UPDATE SET raw = EXCLUDED.raw, loaded_at = now();
+                    n_held := n_held + 1;
+                ELSE
+                    nns := nns + 1;
+                END IF;
+                CONTINUE;
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = v_code) THEN nnc := nnc + 1; CONTINUE; END IF;
+            -- the unit is the course's, from the catalogue — the file's "Units" column is a status code, not a credit unit
+            SELECT units, level INTO v_units, v_level FROM catalogue.course WHERE code = v_code;
+            v_level := coalesce(nullif(regexp_replace(coalesce(r->>'level', ''), '[^0-9]', '', 'g'), '')::int, v_level);
+
+            SELECT id INTO v_offering FROM catalogue.offering WHERE course_code = v_code AND session = p_session AND semester = p_semester;
+            IF v_offering IS NULL THEN
+                v_offering := gen_random_uuid();
+                INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (v_offering, v_code, p_session, p_semester);
+            END IF;
+            IF NOT (v_offering = ANY(seen_offerings)) THEN n_off := n_off + 1; seen_offerings := seen_offerings || v_offering; END IF;
+
+            INSERT INTO people.enrolment (id, student_id, session, level)
+            VALUES (gen_random_uuid(), v_student, p_session, v_level) ON CONFLICT (student_id, session) DO NOTHING;
+            SELECT id INTO v_reg FROM registration.course_registration WHERE student_id = v_student AND session = p_session AND semester = p_semester;
+            IF v_reg IS NULL THEN
+                v_reg := gen_random_uuid();
+                INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by)
+                VALUES (v_reg, v_student, p_session, p_semester, v_level, 'APPROVED', now(), now(), v_actor);
+                n_reg := n_reg + 1;
+            END IF;
+            INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+            VALUES (v_reg, v_offering, v_units, 'CURRENT', 'APPROVED')
+            ON CONFLICT (registration_id, offering_id) DO UPDATE SET units = EXCLUDED.units, status = 'APPROVED';
+            IF NOT (v_student = ANY(seen_students)) THEN seen_students := seen_students || v_student; END IF;
+
+            IF NOT p_with_results THEN CONTINUE; END IF;
+
+            v_ca := nullif(regexp_replace(coalesce(r->>'ca', r->>'CA', ''), '[^0-9]', '', 'g'), '')::int;
+            v_exam := nullif(regexp_replace(coalesce(r->>'exam', r->>'EXAM', ''), '[^0-9]', '', 'g'), '')::int;
+            v_total := nullif(regexp_replace(coalesce(r->>'total', r->>'TOTAL', r->>'score', r->>'SCORE', r->>'mark', ''), '[^0-9]', '', 'g'), '')::int;
+            v_outcome := upper(btrim(coalesce(r->>'outcome', 'GRADED')));
+            IF v_outcome NOT IN ('GRADED','ABSENT','WITHHELD','INCOMPLETE','MALPRACTICE','EXEMPTED') THEN v_outcome := 'GRADED'; END IF;
+            v_have_mark := (v_ca IS NOT NULL AND v_exam IS NOT NULL) OR v_total IS NOT NULL;
+            IF v_outcome = 'GRADED' AND NOT v_have_mark THEN nnm := nnm + 1; CONTINUE; END IF;
+            IF v_ca IS NOT NULL AND v_exam IS NULL AND v_total IS NULL THEN v_total := v_ca; v_ca := NULL; END IF;
+
+            IF v_outcome = 'GRADED' AND (
+                   (v_exam IS NOT NULL AND ((v_ca IS NULL OR v_ca < 0 OR v_ca > 40) OR (v_exam < 0 OR v_exam > 60)))
+                OR (v_exam IS NULL AND (v_total IS NULL OR v_total < 0 OR v_total > 100))
+               ) THEN
+                nnm := nnm + 1; CONTINUE;
+            END IF;
+
+            SELECT id INTO v_sheet FROM assessment.score_sheet WHERE offering_id = v_offering;
+            IF v_sheet IS NULL THEN
+                v_sheet := gen_random_uuid();
+                INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at)
+                VALUES (v_sheet, v_offering, 'PUBLISHED', 'Migrated from the legacy portal', now());
+            ELSIF (SELECT stage FROM assessment.score_sheet WHERE id = v_sheet) <> 'PUBLISHED' THEN
+                UPDATE assessment.score_sheet SET stage = 'PUBLISHED', senate_minute = coalesce(senate_minute, 'Migrated from the legacy portal'),
+                       published_at = coalesce(published_at, now()) WHERE id = v_sheet;
+            END IF;
+            INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, total, outcome, imported, reason)
+            VALUES (v_sheet, v_student,
+                    coalesce((SELECT max(version) + 1 FROM assessment.score WHERE sheet_id = v_sheet AND student_id = v_student), 1),
+                    CASE WHEN v_outcome = 'GRADED' AND v_exam IS NOT NULL THEN v_ca END,
+                    CASE WHEN v_outcome = 'GRADED' AND v_exam IS NOT NULL THEN v_exam END,
+                    CASE WHEN v_outcome = 'GRADED' AND v_exam IS NULL THEN v_total END,
+                    v_outcome, true,
+                    CASE WHEN (SELECT count(*) FROM assessment.score WHERE sheet_id = v_sheet AND student_id = v_student) > 0
+                         THEN 'Re-imported from the legacy portal' END);
+            n_res := n_res + 1;
+            -- the result is posted: clear any hold for this student/course
+            DELETE FROM assessment.legacy_result_holding
+             WHERE session = p_session AND semester = p_semester AND matric = v_matric AND course_code = v_code;
+        EXCEPTION WHEN OTHERS THEN
+            ns := ns + 1;
+            IF v_firsterr IS NULL THEN v_firsterr := left(v_matric || ' ' || v_code || ': ' || SQLSTATE || ' ' || SQLERRM, 300); END IF;
+        END;
+    END LOOP;
+    RETURN QUERY SELECT n, cardinality(seen_students), n_off, n_reg, n_res, nns, n_held, nnc, nnm, ns, v_firsterr;
+END $$;
+
+-- post every held result whose student is now on the register (replayed through the importer, which
+-- clears each hold as its result posts). Called after a student upload; also runnable on its own.
+CREATE OR REPLACE FUNCTION assessment.reconcile_legacy_holding()
+RETURNS TABLE (reconciled int, still_held int)
+LANGUAGE plpgsql AS $$
+DECLARE grp record; v_before int; v_after int;
+BEGIN
+    SELECT count(*) INTO v_before FROM assessment.legacy_result_holding h
+     WHERE EXISTS (SELECT 1 FROM people.student s WHERE upper(s.matric_no) = h.matric);
+    FOR grp IN
+        SELECT h.session, h.semester, jsonb_agg(h.raw) AS rows
+          FROM assessment.legacy_result_holding h
+         WHERE EXISTS (SELECT 1 FROM people.student s WHERE upper(s.matric_no) = h.matric)
+         GROUP BY h.session, h.semester
+    LOOP
+        PERFORM assessment.import_legacy_semester(grp.session, grp.semester, grp.rows, true);
+    END LOOP;
+    SELECT count(*) INTO v_after FROM assessment.legacy_result_holding h
+     WHERE EXISTS (SELECT 1 FROM people.student s WHERE upper(s.matric_no) = h.matric);
+    RETURN QUERY SELECT greatest(v_before - v_after, 0),
+                        (SELECT count(*)::int FROM assessment.legacy_result_holding);
+END $$;
+
+COMMIT;

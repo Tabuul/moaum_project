@@ -2583,13 +2583,29 @@ BEGIN
     -- 3. a past result imported as final (creating the registration), plus a number that is not a student
     SELECT * INTO g FROM assessment.import_legacy_semester('9994/9995', 1,
         '[{"matric":"MOAUM/MIG/22/0001","course":"ARC 999","units":"3","ca":"30","exam":"45"},{"matric":"MOAUM/NOPE/22/0009","course":"ARC 999","total":"50"}]'::jsonb, true);
-    PERFORM pg_temp.assert('The legacy migration creates the student, an approved registration, and a PUBLISHED result the transcript and GPA read',
+    PERFORM pg_temp.assert('The legacy migration creates the student, an approved registration, and a PUBLISHED result the transcript and GPA read (a row for a student not loaded yet is HELD)',
         r.created = 1 AND stu IS NOT NULL
-        AND g.results = 1 AND g.no_student = 1 AND g.registrations = 1
+        AND g.results = 1 AND g.held = 1 AND g.registrations = 1
         AND (SELECT total FROM assessment.student_results(stu) WHERE course_code = 'ARC 999') = 75
         AND (SELECT published FROM assessment.student_results(stu) WHERE course_code = 'ARC 999')
         AND (SELECT gpa FROM assessment.student_gpa(stu) WHERE session = '9994/9995' AND semester = 1) IS NOT NULL,
-        format('created=%s results=%s no_student=%s regs=%s', r.created, g.results, g.no_student, g.registrations));
+        format('created=%s results=%s held=%s regs=%s', r.created, g.results, g.held, g.registrations));
+END $$;
+
+-- ── 123b. a held result posts once its student is loaded, and reconcile clears the hold (V204) ──
+DO $$
+DECLARE h record; stu2 uuid;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM people.import_students('[{"matric":"MOAUM/NOPE/22/0009","name":"CHECKHOLD, Invented","programme":"C00023","level":"100","sex":"F"}]'::jsonb);
+    SELECT * INTO h FROM assessment.reconcile_legacy_holding();
+    SELECT id INTO stu2 FROM people.student WHERE matric_no = 'MOAUM/NOPE/22/0009';
+    PERFORM pg_temp.assert('A past result held for a student not loaded yet posts on reconcile, and the hold is cleared',
+        h.reconciled >= 1 AND stu2 IS NOT NULL
+        AND (SELECT total FROM assessment.student_results(stu2) WHERE course_code = 'ARC 999') = 50
+        AND NOT EXISTS (SELECT 1 FROM assessment.legacy_result_holding WHERE matric = 'MOAUM/NOPE/22/0009'),
+        format('reconciled=%s', h.reconciled));
 END $$;
 
 -- ── 124. the approved fees import charges by faculty, level and indigeneship (V083) ──

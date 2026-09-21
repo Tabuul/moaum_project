@@ -410,6 +410,10 @@ class ResultsRepository {
         return jdbc.sql("SELECT * FROM people.import_postgraduate(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
 
+    java.util.Map<String, Object> reconcileHolding() {
+        return jdbc.sql("SELECT * FROM assessment.reconcile_legacy_holding()").query().singleRow();
+    }
+
     java.util.Map<String, Object> importBiography(String rowsJson) {
         return jdbc.sql("SELECT * FROM people.import_biography(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
