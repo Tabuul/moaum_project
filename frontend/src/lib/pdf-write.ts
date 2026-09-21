@@ -44,6 +44,25 @@ export class Page {
     return yy;
   }
 
+  /** centred text about the point x; width is approximated from the character count (Helvetica) */
+  textCenter(cx: number, y: number, s: string, size = 10, bold = false, colour: [number, number, number] = [0, 0, 0]): this {
+    const w = s.length * size * (bold ? 0.54 : 0.5);
+    return this.text(cx - w / 2, y, s, size, bold, colour);
+  }
+
+  /** a faint image (e.g. the crest) as a big centred watermark, via the /GSW alpha state; call it FIRST */
+  imageWatermark(x: number, y: number, w: number, h: number, img: Image): this {
+    const name = `Im${this.images.length + 1}`;
+    this.images.push({ name, img });
+    const scale = Math.min(w / img.width, h / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    const dx = x + (w - dw) / 2;
+    const dy = y + (h - dh) / 2;
+    this.ops.push(`q /GSW gs ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)} cm /${name} Do Q`);
+    return this;
+  }
+
   /** a faint 45°-rotated text tiled across the whole page as a security watermark (e.g. the matric
    *  number). Call it FIRST so the content is drawn on top and the mark shows only in the whitespace. */
   watermark(s: string, size = 12, grey = 0.9, stepX = 200, stepY = 120): this {
@@ -156,7 +175,7 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
   obj(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
   for (const b of built) {
     const xobjects = b.images.map((im) => `/${im.name} ${im.id} 0 R`).join(" ");
-    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4.w} ${A4.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
+    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4.w} ${A4.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
     const stream = enc.encode(b.page.ops.join("\n"));
     obj(b.content, [enc.encode(`<< /Length ${stream.length} >>\nstream\n`), stream, enc.encode("\nendstream")]);
     for (const im of b.images) {

@@ -3,7 +3,7 @@ import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Docket } from "@/lib/student-portal";
 import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
-import { brandHeader } from "@/lib/pdf-crest";
+import { crestImage } from "@/lib/pdf-crest";
 import { qrMatrix, examToken, examVerifyPath } from "@/lib/qr";
 import { semesterName } from "@/lib/student-portal";
 
@@ -81,8 +81,20 @@ export async function GET(request: NextRequest) {
 
   const p = new Page();
   const L = 56;
+  const crest = crestImage();
+  if (crest) p.imageWatermark((A4.w - 340) / 2, (A4.h - 360) / 2, 340, 340, crest);   // big faint centred crest
   p.watermark(matric);   // the matric number, tiled faint at 45°, as a security watermark
-  let y = brandHeader(p, L, "Examination Card");
+
+  // ── centred header ──
+  const cx = A4.w / 2;
+  const htop = A4.h - 38;
+  if (crest) p.jpeg(cx - 21, htop - 42, 42, 42, crest);
+  p.textCenter(cx, htop - 55, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
+  p.textCenter(cx, htop - 68, "Office of the Registrar", 9, false, [0.35, 0.35, 0.35]);
+  p.textCenter(cx, htop - 84, "EXAMINATION CARD", 12, true, [0.1, 0.25, 0.4]);
+  let y = htop - 96;
+  p.rule(L, y, A4.w - L, y, 1, 0.2);
+  y -= 22;
 
   // photo top-right
   const pw = 74, ph = 88, px = A4.w - L - pw, ptop = y + 8;
@@ -97,16 +109,19 @@ export async function GET(request: NextRequest) {
   }
   y = Math.min(y, ptop - ph - 18) - 4;
 
+  const titleX = L + 92, unitX = A4.w - L - 150, signX = A4.w - L - 92;
   p.fill(L, y - 4, A4.w - 2 * L, 16, 0.16);
-  p.text(L + 8, y, "COURSES TO SIT", 8, true, [1, 1, 1]);
-  p.text(A4.w - L - 150, y, "UNIT", 8, true, [1, 1, 1]);
-  p.text(A4.w - L - 92, y, "SIGN / INVIGILATOR", 8, true, [1, 1, 1]);
+  p.text(L + 8, y, "COURSE CODE", 8, true, [1, 1, 1]);
+  p.text(titleX, y, "COURSE TITLE", 8, true, [1, 1, 1]);
+  p.text(unitX, y, "UNIT", 8, true, [1, 1, 1]);
+  p.text(signX, y, "SIGN / INVIGILATOR", 8, true, [1, 1, 1]);
   y -= 19;
+  const titleMax = Math.floor((unitX - titleX - 6) / 4.6);   // chars that fit the title column at 8.5pt
   for (const e of reg.entries) {
     p.text(L + 8, y, clean(e.courseCode), 9, true);
-    p.text(L + 8 + Math.min(clean(e.courseCode).length * 6 + 8, 74), y, cut(clean(e.title), 42), 8.5);
-    p.text(A4.w - L - 148, y, String(e.units), 9);
-    p.rule(A4.w - L - 92, y - 2, A4.w - L - 8, y - 2, 0.4, 0.75);   // a signature line per paper
+    p.text(titleX, y, cut(clean(e.title), titleMax), 8.5);
+    p.text(unitX + 2, y, String(e.units), 9);
+    p.rule(signX, y - 2, A4.w - L - 8, y - 2, 0.4, 0.75);   // a signature line per paper
     y -= 16;
   }
   p.rule(L, y + 7, A4.w - L, y + 7, 0.8, 0.55);
