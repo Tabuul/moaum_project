@@ -227,6 +227,39 @@ class PgAdmissionsController {
         return out;
     }
 
+    /** the external examiners of the School (Policy 18) */
+    @GetMapping("/examiners")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> examiners() {
+        return jdbc.sql("""
+                SELECT id, name, institution, field, tenure_from, tenure_to, active FROM admissions.pg_examiner
+                 ORDER BY active DESC, name
+                """).query().listOfRows();
+    }
+
+    public record ExaminerIn(@jakarta.validation.constraints.NotBlank @Size(max = 200) String name,
+                             @jakarta.validation.constraints.NotBlank @Size(max = 200) String institution,
+                             @Size(max = 160) String field, String tenureFrom, String tenureTo) {
+    }
+
+    /** appoint an external examiner (the School, on the Board's approval) */
+    @PostMapping("/examiners")
+    @PreAuthorize(SPGS)
+    @Transactional
+    Map<String, Object> addExaminer(@Valid @RequestBody ExaminerIn body) {
+        jdbc.sql("""
+                INSERT INTO admissions.pg_examiner (name, institution, field, tenure_from, tenure_to)
+                VALUES (:n, :i, :f, :tf::date, :tt::date)
+                """)
+                .param("n", body.name().trim()).param("i", body.institution().trim())
+                .param("f", body.field() == null || body.field().isBlank() ? null : body.field().trim(), Types.VARCHAR)
+                .param("tf", body.tenureFrom() == null || body.tenureFrom().isBlank() ? null : body.tenureFrom().trim(), Types.VARCHAR)
+                .param("tt", body.tenureTo() == null || body.tenureTo().isBlank() ? null : body.tenureTo().trim(), Types.VARCHAR)
+                .update();
+        return Map.of("ok", true);
+    }
+
     /** one application in full: the applicant, the first degree, the proposal, its referees and documents */
     @GetMapping("/applications/{id}")
     @PreAuthorize(READERS)
