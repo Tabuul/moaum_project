@@ -18,6 +18,7 @@ import { SecurityDashboard } from "./dashboards/Security";
 import { HousingDashboard } from "./dashboards/Housing";
 import { SiwesDashboard, type SiwesOffering } from "./dashboards/Siwes";
 import { AuditDashboard, type AuditEntry } from "./dashboards/Audit";
+import { PgSchoolDashboard, type PgHome } from "./dashboards/PgSchool";
 import type { Posture } from "./security/Security";
 import type { HostelDeskData } from "@/lib/hostel";
 import type { MySheet, SheetListing } from "@/lib/results";
@@ -73,6 +74,8 @@ export default async function DashboardPage() {
   const hostel = office === "housing" ? await api<HostelDeskData>(`/api/v1/hostel/sessions/${encodeURIComponent(session)}`) : null;
   /* the SIWES Coordinator's department offerings this second semester (V156) */
   const siwes = office === "siwes" ? await api<SiwesOffering[]>(`/api/v1/siwes/offerings?session=${encodeURIComponent(session)}&semester=2`) : null;
+  /* the School of Postgraduate Studies' home: what waits on the School, the register, the pipeline (V202) */
+  const pg = office && ["pgschool", "pgsecretary"].includes(office) ? await api<PgHome>(`/api/v1/pg/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
   let sub: string | undefined;
   if (office === "lecturer" && mine && mine.ok) {
@@ -121,6 +124,8 @@ export default async function DashboardPage() {
         <HousingDashboard me={me.ok ? me.data : null} desk={hostel && hostel.ok ? hostel.data : null} />
       ) : office === "siwes" ? (
         <SiwesDashboard me={me.ok ? me.data : null} offerings={siwes && siwes.ok ? siwes.data : []} semester={2} />
+      ) : (office === "pgschool" || office === "pgsecretary") ? (
+        <PgSchoolDashboard me={me.ok ? me.data : null} home={pg && pg.ok ? pg.data : null} role={office === "pgsecretary" ? "Secretary, School of Postgraduate Studies" : "Dean, School of Postgraduate Studies"} />
       ) : (
         <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}

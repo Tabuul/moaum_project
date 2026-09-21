@@ -90,6 +90,41 @@ class PgAdmissionsController {
         return out;
     }
 
+    /** the School of Postgraduate Studies' home: what waits on the School, the register, and the pipeline by programme */
+    @GetMapping("/dashboard")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> dashboard(@RequestParam String session) {
+        Map<String, Object> counts = jdbc.sql("""
+                SELECT count(*) AS total,
+                       count(*) FILTER (WHERE state = 'SUBMITTED') AS submitted,
+                       count(*) FILTER (WHERE state = 'DEPT_RECOMMENDED') AS recommended,
+                       count(*) FILTER (WHERE state = 'OFFERED') AS offered,
+                       count(*) FILTER (WHERE state = 'ACCEPTED') AS accepted,
+                       count(*) FILTER (WHERE state = 'ADMITTED') AS admitted
+                  FROM admissions.pg_application WHERE session = :s
+                """).param("s", session).query().singleRow();
+        long students = jdbc.sql("SELECT count(*) FROM people.student WHERE entry_mode = 'POSTGRADUATE'")
+                .query(Long.class).single();
+        List<Map<String, Object>> byProgramme = jdbc.sql("""
+                SELECT g.name AS programme_name, g.pg_award,
+                       count(*) AS applications,
+                       count(*) FILTER (WHERE a.state IN ('SUBMITTED','DEPT_RECOMMENDED')) AS in_progress,
+                       count(*) FILTER (WHERE a.state = 'OFFERED') AS offered,
+                       count(*) FILTER (WHERE a.state IN ('ACCEPTED','ADMITTED')) AS taken
+                  FROM admissions.pg_application a
+                  JOIN ref.programme g ON g.code = a.programme_code
+                 WHERE a.session = :s
+                 GROUP BY g.name, g.pg_award ORDER BY g.name
+                """).param("s", session).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("counts", counts);
+        out.put("pgStudents", students);
+        out.put("byProgramme", byProgramme);
+        return out;
+    }
+
     /** one application in full: the applicant, the first degree, the proposal, its referees and documents */
     @GetMapping("/applications/{id}")
     @PreAuthorize(READERS)
