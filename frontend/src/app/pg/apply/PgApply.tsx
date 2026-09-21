@@ -66,13 +66,14 @@ export function PgApply() {
     return (
       <Wrap>
         <Note kind="ok" title={`Application received — ${applied.application_no}`}>
-          Save your application number. Pay the application fee of <b>{naira(applied.amount)}</b> with the reference below, then track your application with your application number and email.
+          Save your application number. <b>Sign in to pay the application fee of {naira(applied.amount)} online</b> — with the email and password you just chose — and to follow your application. You can also track it with your application number and email below.
         </Note>
         <div className="card"><div className="card__body">
           <Row k="Application number" v={applied.application_no} />
           <Row k="Payment reference" v={applied.reference} />
           <Row k="Amount" v={naira(applied.amount)} />
         </div></div>
+        <div style={{ textAlign: "center" }}><Link href="/login?next=/pg/portal" className="btn btn--primary">Sign in to pay &amp; track</Link></div>
         <StatusCheck initialNo={applied.application_no} />
         <div style={{ textAlign: "center", marginTop: 12 }}><Link href="/login">Back to sign in</Link></div>
       </Wrap>

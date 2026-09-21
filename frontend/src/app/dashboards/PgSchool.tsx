@@ -8,6 +8,22 @@ export interface PgHome {
   counts: { total: number; submitted: number; recommended: number; offered: number; accepted: number; admitted: number };
   pgStudents: number;
   byProgramme: { programme_name: string; pg_award: string | null; applications: number; in_progress: number; offered: number; taken: number }[];
+  recent?: {
+    application_no: string; session: string; state: string; entry_level: number;
+    surname: string; other_names: string; email: string; phone: string | null;
+    programme_name: string; pg_award: string | null; submitted_at: string | null; fee_confirmed_at: string | null;
+  }[];
+}
+
+const STATE_LABEL: Record<string, string> = {
+  DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Recommended", DEPT_DECLINED: "Declined by dept",
+  OFFERED: "Offered", NOT_OFFERED: "Not offered", ACCEPTED: "Accepted", ADMITTED: "Admitted",
+};
+
+function shortDate(v: string | null): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 /** The School of Postgraduate Studies' home (V202): what waits on the School, the postgraduate register,
@@ -20,6 +36,7 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
   const recommended = Number(c.recommended);
   const toAdmit = Number(c.accepted);
   const progs = home.byProgramme ?? [];
+  const recent = home.recent ?? [];
   return (
     <>
       {recommended ? (
@@ -55,6 +72,21 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
               <span className="tnum" key="t">{p.taken}</span>,
             ])} texts={progs.map((p) => p.programme_name)} />
         ) : <PBody><div className="sub2">No postgraduate application has been submitted for {home.session} yet.</div></PBody>}
+      </Panel>
+
+      <Panel title="Latest applications" right={<Link href="/admissions/postgraduate" className="btn btn--ghost btn--sm">Open admissions desk</Link>}>
+        {recent.length ? (
+          <DTable cols={["Applicant", "Programme", "Session|mid", "Fee|mid", "Status|mid", "Applied|num"]}
+            rows={recent.map((a) => [
+              <span key="n"><span>{a.surname}, {a.other_names}</span><div className="sub2">{a.application_no} · {a.email}</div></span>,
+              <span key="p"><span>{a.programme_name}</span><div className="sub2">{a.pg_award ?? ""}</div></span>,
+              <span key="s" className="tnum">{a.session}</span>,
+              <span key="f">{a.fee_confirmed_at ? <span style={{ color: "var(--green-ink)" }}>Paid</span> : <span className="sub2">Unpaid</span>}</span>,
+              <span key="st">{STATE_LABEL[a.state] ?? a.state}</span>,
+              <span key="d" className="tnum">{shortDate(a.submitted_at)}</span>,
+            ])}
+            texts={recent.map((a) => `${a.surname} ${a.other_names} ${a.application_no} ${a.email} ${a.programme_name}`)} />
+        ) : <PBody><div className="sub2">No postgraduate application has been submitted yet.</div></PBody>}
       </Panel>
 
       <Panel title="Postgraduate desks" right={me?.name ? `Signed in as ${me.name}` : role}>

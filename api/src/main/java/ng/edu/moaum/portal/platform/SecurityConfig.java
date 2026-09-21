@@ -52,6 +52,7 @@ class SecurityConfig {
                                 "/api/v1/payments/webhook/quickteller", "/api/v1/payments/quickteller/start",
                                 "/api/v1/student-auth/sign-in",
                                 "/api/v1/pg/apply", "/api/v1/pg/programmes", "/api/v1/pg/status", "/api/v1/pg/accept",
+                                "/api/v1/pg/sign-in",
                                 "/api/v1/verify/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))

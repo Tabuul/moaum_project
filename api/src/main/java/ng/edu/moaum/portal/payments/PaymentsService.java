@@ -228,6 +228,7 @@ public class PaymentsService {
         /* an applicant's fee reference, or a student's (V026): the account is the applicant's account or the student's own id */
         PaymentsRepository.Reference r = repo.byReference(reference)
                 .or(() -> repo.studentReference(reference))
+                .or(() -> repo.pgReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (!r.accountId().equals(account)) {
             throw new NotFound("fee reference", reference);
@@ -241,7 +242,7 @@ public class PaymentsService {
                     new DomainRuleViolation.Remedy("Generate a new one; it is free of charge.", "You"));
         }
         String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller" : "") : gateway.trim().toLowerCase();
-        String back = portalUrl + ("FEES".equals(r.kind()) ? "/student/fees" : "ACCEPTANCE".equals(r.kind()) ? "/applicant/accept" : "/applicant/fee") + "?paid=" + r.reference();
+        String back = portalUrl + backPath(r.kind()) + "?paid=" + r.reference();
         String url;
         if ("paystack".equals(g) && paystackOn()) {
             url = paystackInitialize(r, back);
@@ -355,15 +356,25 @@ public class PaymentsService {
                 : "https://webpay.interswitchng.com/collections/api/v1/gettransaction.json";
     }
 
+    /** where the gateway returns the payer after this kind of fee: the page that shows it paid */
+    private static String backPath(String kind) {
+        return switch (kind) {
+            case "FEES" -> "/student/fees";
+            case "ACCEPTANCE" -> "/applicant/accept";
+            case "PG_APPLICATION" -> "/pg/portal";
+            default -> "/applicant/fee";
+        };
+    }
+
     private String backUrl(String kind, String reference) {
-        return portalUrl + ("FEES".equals(kind) ? "/student/fees" : "ACCEPTANCE".equals(kind) ? "/applicant/accept" : "/applicant/fee") + "?paid=" + reference;
+        return portalUrl + backPath(kind) + "?paid=" + reference;
     }
 
     /** the self-submitting form that carries the payment to Interswitch's hosted page */
     public String quicktellerStartPage(String referenceIn) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
         Quickteller q = quickteller();
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElse(null);
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).orElse(null);
         if (q == null || r == null) {
             return notice("This payment could not be started", "The reference is not one this portal is waiting on, or Quickteller is not configured.");
         }
@@ -516,7 +527,7 @@ public class PaymentsService {
     /** the one settlement, whichever path reached it, with the gateway's own words kept beside what the portal did (V037) */
     Map<String, Object> settle(String gateway, String source, String event, String reference, BigDecimal paid, String status, boolean success,
                                String providerRef, String payload) {
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElse(null);
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).orElse(null);
         String outcome;
         Map<String, Object> answer;
         if (r == null) {
@@ -531,13 +542,15 @@ public class PaymentsService {
             outcome = "SHORT_PAID";
             answer = Map.of("outcome", "short paid", "paid", paid, "owed", r.amount());
         } else {
-            final boolean student = "FEES".equals(r.kind());
             String channel = gateway.equals("paydirect") ? "Quickteller PayDirect"
                     : "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
+            String note = gateway + " " + providerRef + " · " + paid.toPlainString();
             String settled = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " " + providerRef, null, null),
-                    () -> tx.execute(st -> student
-                            ? repo.confirmStudent(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())
-                            : repo.confirm(reference, channel, gateway + " " + providerRef + " · " + paid.toPlainString())));
+                    () -> tx.execute(st -> switch (r.kind()) {
+                        case "FEES" -> repo.confirmStudent(reference, channel, note);
+                        case "PG_APPLICATION" -> repo.confirmPg(reference, channel);
+                        default -> repo.confirm(reference, channel, note);
+                    }));
             outcome = "already confirmed".equals(settled) ? "ALREADY_SETTLED" : "SETTLED";
             answer = Map.of("outcome", settled, "reference", reference);
         }

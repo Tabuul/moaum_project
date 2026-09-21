@@ -58,6 +58,27 @@ class PaymentsRepository {
                 .param("r", reference).param("c", channel).param("n", note, Types.VARCHAR).query(String.class).single();
     }
 
+    /* ── a postgraduate applicant's fee reference (V202): the same shape, a separate confirm ── */
+
+    Optional<Reference> pgReference(String reference) {
+        return jdbc.sql("""
+                SELECT fr.id, fr.application_id, p.id AS account_id, 'PG_APPLICATION' AS kind, fr.reference, fr.amount,
+                       fr.expires_at, fr.confirmed_at, p.email, a.application_no
+                  FROM admissions.pg_fee_reference fr
+                  JOIN admissions.pg_application a ON a.id = fr.application_id
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                 WHERE fr.reference = btrim(:r)
+                """).param("r", reference).query(Reference.class).optional();
+    }
+
+    /** confirms a postgraduate application-fee reference; idempotent (a second call finds it already confirmed) */
+    String confirmPg(String reference, String channel) {
+        boolean already = Boolean.TRUE.equals(jdbc.sql("SELECT confirmed_at IS NOT NULL FROM admissions.pg_fee_reference WHERE reference = :r")
+                .param("r", reference).query(Boolean.class).optional().orElse(false));
+        jdbc.sql("SELECT admissions.pg_confirm_fee(:r, :c)").param("r", reference).param("c", channel).query().singleRow();
+        return already ? "already confirmed" : "confirmed";
+    }
+
     /* ── V037: the gateway's words kept, the attempts, what stands for a reference ── */
 
     UUID logEvent(String gateway, String source, String event, String reference, String gatewayRef, BigDecimal amount, String status,

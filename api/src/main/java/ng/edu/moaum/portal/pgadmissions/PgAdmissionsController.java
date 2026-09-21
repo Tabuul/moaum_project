@@ -156,11 +156,25 @@ class PgAdmissionsController {
                  WHERE a.session = :s
                  GROUP BY g.name, g.pg_award ORDER BY g.name
                 """).param("s", session).query().listOfRows();
+        /* the latest applicants themselves, so the School sees who has applied without leaving the home;
+           newest first, and across sessions so a just-submitted application is never hidden by a session default */
+        List<Map<String, Object>> recent = jdbc.sql("""
+                SELECT a.application_no, a.session, a.state, a.entry_level,
+                       p.surname, p.other_names, p.email, p.phone,
+                       g.name AS programme_name, g.pg_award,
+                       a.submitted_at, a.fee_confirmed_at
+                  FROM admissions.pg_application a
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                  JOIN ref.programme g ON g.code = a.programme_code
+                 ORDER BY a.submitted_at DESC NULLS LAST, a.created_at DESC
+                 LIMIT 50
+                """).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
         out.put("counts", counts);
         out.put("pgStudents", students);
         out.put("byProgramme", byProgramme);
+        out.put("recent", recent);
         return out;
     }
 

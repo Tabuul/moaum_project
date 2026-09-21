@@ -18,12 +18,14 @@ const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
 const ADMISSION = /^MOAUM\/ADM\/[0-9]{2}\/[0-9]{6}$/i;
 const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
 const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
+/* a postgraduate application number: PG/YY/NNNNNN — the PG applicant's own door (they also sign in on their email) */
+const PG_APPLICATION = /^PG\/[0-9]{2}\/[0-9]{6}$/i;
 /* a legacy old-portal matriculation number carried over from the old portal — BSU/…, MOAU/…, and the
    like: two-to-six letters, one to four more segments, then digits. It opens the student door too, so a
    migrated student signs in; a rare staff number of the same shape falls back to the staff door. */
 const LEGACY_MATRIC = /^[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7}$/i;
 
-type Kind = "staff" | "student" | "applicant";
+type Kind = "staff" | "student" | "applicant" | "pgapplicant";
 
 async function upstream(path: string, body: unknown, request: NextRequest): Promise<Response | null> {
   return fetch(`${API_URL}${path}`, {
@@ -44,13 +46,17 @@ export async function POST(request: NextRequest) {
   const password = typeof body?.password === "string" ? body.password : "";
   const preferredOffice = typeof body?.office === "string" ? body.office : undefined;
 
-  let kind: Kind = MATRIC.test(identifier) || ADMISSION.test(identifier) ? "student" : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
+  let kind: Kind = MATRIC.test(identifier) || ADMISSION.test(identifier) ? "student"
+    : PG_APPLICATION.test(identifier) ? "pgapplicant"
+    : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
   /* a legacy old-portal matric was not matched above (only MOAUM/… is) — route it to the student door,
      and fall back to staff if it turns out to be a staff number of the same shape */
   const legacyMatric = kind === "staff" && !identifier.includes("@") && LEGACY_MATRIC.test(identifier);
   let r: Response | null;
   if (kind === "student") {
     r = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
+  } else if (kind === "pgapplicant") {
+    r = await upstream("/api/v1/pg/sign-in", { identifier, password }, request);
   } else if (legacyMatric) {
     const asStudent = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
     if (asStudent && asStudent.ok) {
@@ -72,12 +78,19 @@ export async function POST(request: NextRequest) {
     }
   } else {
     r = await upstream("/api/v1/auth/sign-in", { username: identifier, password, office: preferredOffice }, request);
-    /* an email address is also how an applicant signs in: the same wrong answer either way, so try the other door */
+    /* an email address is also how an applicant signs in: the same wrong answer either way, so try the other doors */
     if (r && r.status === 422 && identifier.includes("@")) {
       const again = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
       if (again && again.ok) {
         r = again;
         kind = "applicant";
+      } else {
+        /* and, last, the postgraduate applicant's door — they sign in on the email they applied with */
+        const pg = await upstream("/api/v1/pg/sign-in", { identifier, password }, request);
+        if (pg && pg.ok) {
+          r = pg;
+          kind = "pgapplicant";
+        }
       }
     }
   }
@@ -100,6 +113,10 @@ export async function POST(request: NextRequest) {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;
     home = "/applicant";
+  } else if (kind === "pgapplicant") {
+    office = "applicant";
+    name = `${signed.surname}, ${signed.otherNames}`;
+    home = "/pg/portal";
   } else {
     const offices = (signed.offices as { code: string }[] | undefined) ?? [];
     office = preferredOffice && offices.some((o) => o.code === preferredOffice) ? preferredOffice : offices[0]?.code ?? "";
