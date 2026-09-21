@@ -201,8 +201,8 @@ class PgPortalController {
                 SELECT name, email, institution, position FROM admissions.pg_referee
                  WHERE application_id = :app ORDER BY id
                 """).param("app", a.get("application_id")).query().listOfRows();
-        Number appFee = jdbc.sql("SELECT application_fee FROM admissions.pg_fee_rule(:s)")
-                .param("s", String.valueOf(a.get("session"))).query(Number.class).optional().orElse(null);
+        Map<String, Object> feeRule = jdbc.sql("SELECT application_fee, acceptance_fee, checking_fee FROM admissions.pg_fee_rule(:s)")
+                .param("s", String.valueOf(a.get("session"))).query().singleRow();
         Map<String, Object> live = firstOrNull(jdbc.sql("""
                 SELECT reference, amount, expires_at FROM admissions.pg_fee_reference
                  WHERE application_id = (SELECT id FROM admissions.pg_application WHERE applicant_id = :me)
@@ -228,7 +228,9 @@ class PgPortalController {
         out.put("submittedAt", a.get("submitted_at"));
         out.put("createdAt", a.get("created_at"));
         out.put("feeConfirmedAt", a.get("fee_confirmed_at"));
-        out.put("applicationFee", appFee);
+        out.put("applicationFee", feeRule.get("application_fee"));
+        out.put("acceptanceFee", feeRule.get("acceptance_fee"));
+        out.put("checkingFee", feeRule.get("checking_fee"));
         out.put("liveReference", live == null ? null : live.get("reference"));
         out.put("deptNote", a.get("dept_note"));
         out.put("deptDecidedAt", a.get("dept_decided_at"));

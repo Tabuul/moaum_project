@@ -245,12 +245,12 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   }
 
   // the postgraduate application/acceptance fees (admissions.pg_fee), read by the PG apply page
-  const [pgf, setPgf] = useState({ applicationFee: "", acceptanceFee: "" });
+  const [pgf, setPgf] = useState({ applicationFee: "", acceptanceFee: "", checkingFee: "" });
   const [pgfStated, setPgfStated] = useState(false);
   useEffect(() => {
     let alive = true;
     fetch(`/api/bff/api/v1/pg/sessions/${session}/fees`).then((r) => (r.ok ? r.json() : null)).then((j) => {
-      if (alive && j) { setPgf({ applicationFee: String(j.application_fee ?? ""), acceptanceFee: String(j.acceptance_fee ?? "") }); setPgfStated(!!j.stated); }
+      if (alive && j) { setPgf({ applicationFee: String(j.application_fee ?? ""), acceptanceFee: String(j.acceptance_fee ?? ""), checkingFee: String(j.checking_fee ?? "") }); setPgfStated(!!j.stated); }
     }).catch(() => { /* leave blank */ });
     return () => { alive = false; };
   }, [session]);
@@ -259,7 +259,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     try {
       const r = await fetch(`/api/bff/api/v1/pg/sessions/${session}/fees`, {
         method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Postgraduate fees stated for ${session}`) },
-        body: JSON.stringify({ applicationFee: Number(pgf.applicationFee) || 0, acceptanceFee: Number(pgf.acceptanceFee) || 0 }),
+        body: JSON.stringify({ applicationFee: Number(pgf.applicationFee) || 0, acceptanceFee: Number(pgf.acceptanceFee) || 0, checkingFee: Number(pgf.checkingFee) || 0 }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
@@ -556,10 +556,11 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div className="grid grid--2">
             <Field id="pgf-app" label="PG application fee" hint="What a postgraduate applicant pays to apply"><input id="pgf-app" className="ctl tnum" inputMode="numeric" value={pgf.applicationFee} onChange={(e) => setPgf({ ...pgf, applicationFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="20000" disabled={!may} /></Field>
             <Field id="pgf-acc" label="PG acceptance fee" hint="Paid on an offer"><input id="pgf-acc" className="ctl tnum" inputMode="numeric" value={pgf.acceptanceFee} onChange={(e) => setPgf({ ...pgf, acceptanceFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="50000" disabled={!may} /></Field>
+            <Field id="pgf-chk" label="PG checking fee" hint="Paid on acceptance, with the acceptance fee"><input id="pgf-chk" className="ctl tnum" inputMode="numeric" value={pgf.checkingFee} onChange={(e) => setPgf({ ...pgf, checkingFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="3000" disabled={!may} /></Field>
           </div>
           <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
             <Btn kind="primary" disabled={!may || busy !== null || !pgf.applicationFee.trim()} onClick={() => void savePgFees()}>{busy === "pgf" ? "Saving…" : "State the postgraduate fees"}</Btn>
-            <span className="sub2">A postgraduate applicant pays {naira(Number(pgf.applicationFee) || 0)} to apply.</span>
+            <span className="sub2">A postgraduate applicant pays {naira(Number(pgf.applicationFee) || 0)} to apply; accepting an offer costs {naira((Number(pgf.acceptanceFee) || 0) + (Number(pgf.checkingFee) || 0))} (acceptance {naira(Number(pgf.acceptanceFee) || 0)} + checking {naira(Number(pgf.checkingFee) || 0)}).</span>
           </div>
         </PBody>
       </Panel>

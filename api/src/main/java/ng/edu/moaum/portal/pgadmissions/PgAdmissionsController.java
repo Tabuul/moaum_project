@@ -57,7 +57,7 @@ class PgAdmissionsController {
     @Transactional(readOnly = true)
     Map<String, Object> fees(@PathVariable String session, @PathVariable String year) {
         String s = session + "/" + year;
-        Map<String, Object> rule = jdbc.sql("SELECT application_fee, acceptance_fee FROM admissions.pg_fee_rule(:s)")
+        Map<String, Object> rule = jdbc.sql("SELECT application_fee, acceptance_fee, checking_fee FROM admissions.pg_fee_rule(:s)")
                 .param("s", s).query().singleRow();
         boolean stated = jdbc.sql("SELECT count(*) FROM admissions.pg_fee WHERE session = :s")
                 .param("s", s).query(Long.class).single() > 0;
@@ -66,7 +66,7 @@ class PgAdmissionsController {
         return out;
     }
 
-    public record FeesIn(java.math.BigDecimal applicationFee, java.math.BigDecimal acceptanceFee) {
+    public record FeesIn(java.math.BigDecimal applicationFee, java.math.BigDecimal acceptanceFee, java.math.BigDecimal checkingFee) {
     }
 
     /** the Bursary states the postgraduate fees for a session */
@@ -76,13 +76,15 @@ class PgAdmissionsController {
     Map<String, Object> setFees(@PathVariable String session, @PathVariable String year, @Valid @RequestBody FeesIn body) {
         String s = session + "/" + year;
         jdbc.sql("""
-                INSERT INTO admissions.pg_fee (session, application_fee, acceptance_fee)
-                VALUES (:s, :a, :c)
-                ON CONFLICT (session) DO UPDATE SET application_fee = EXCLUDED.application_fee, acceptance_fee = EXCLUDED.acceptance_fee
+                INSERT INTO admissions.pg_fee (session, application_fee, acceptance_fee, checking_fee)
+                VALUES (:s, :a, :c, :k)
+                ON CONFLICT (session) DO UPDATE SET application_fee = EXCLUDED.application_fee,
+                    acceptance_fee = EXCLUDED.acceptance_fee, checking_fee = EXCLUDED.checking_fee
                 """)
                 .param("s", s)
                 .param("a", body.applicationFee() == null ? java.math.BigDecimal.ZERO : body.applicationFee())
                 .param("c", body.acceptanceFee() == null ? java.math.BigDecimal.ZERO : body.acceptanceFee())
+                .param("k", body.checkingFee() == null ? new java.math.BigDecimal("3000") : body.checkingFee())
                 .update();
         return fees(session, year);
     }

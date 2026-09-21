@@ -2440,5 +2440,91 @@ export const MENUS: Record<string, Menu> = {
         ]
       }
     ]
+  },
+  "pgschool": {
+    "label": "Dean, Postgraduate School",
+    "home": "r/academic",
+    "groups": [
+      {
+        "name": "Postgraduate School",
+        "items": [
+          { "id": "r/academic", "icon": "home", "label": "Dashboard" },
+          { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
+          { "id": "t/students", "icon": "user", "label": "PG students" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Board & awards",
+        "items": [
+          { "id": "t/pgboard", "icon": "check", "label": "School Board" },
+          { "id": "t/pgexaminers", "icon": "shield", "label": "External examiners" },
+          { "id": "t/pgpanels", "icon": "doc", "label": "Examination panels" },
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
+          { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" }
+        ]
+      },
+      {
+        "name": "Research & thesis",
+        "items": [
+          { "id": "t/pgsupervision", "icon": "swap", "label": "Supervisors" },
+          { "id": "t/pgproposals", "icon": "doc", "label": "Research proposals" },
+          { "id": "t/pgseminars", "icon": "book", "label": "Research seminars" },
+          { "id": "t/pgtheses", "icon": "flask", "label": "Theses & dissertations" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+        ]
+      }
+    ]
+  },
+  "pgsecretary": {
+    "label": "Secretary, Postgraduate School",
+    "home": "r/academic",
+    "groups": [
+      {
+        "name": "Postgraduate School",
+        "items": [
+          { "id": "r/academic", "icon": "home", "label": "Dashboard" },
+          { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
+          { "id": "t/students", "icon": "user", "label": "PG students" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Registration & records",
+        "items": [
+          { "id": "t/pgregistration", "icon": "book", "label": "Registration" },
+          { "id": "t/matriculation", "icon": "user", "label": "Matriculation" },
+          { "id": "t/feesetup", "icon": "card", "label": "Fees" }
+        ]
+      },
+      {
+        "name": "Examinations & research",
+        "items": [
+          { "id": "t/pgexams", "icon": "cap", "label": "Course examinations" },
+          { "id": "t/pgseminars", "icon": "book", "label": "Research seminars" },
+          { "id": "t/pgpanels", "icon": "doc", "label": "Panels & viva" },
+          { "id": "t/pgexaminers", "icon": "shield", "label": "External examiners" },
+          { "id": "t/pgclearance", "icon": "check", "label": "Thesis clearance" }
+        ]
+      },
+      {
+        "name": "Results & awards",
+        "items": [
+          { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation list" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+        ]
+      }
+    ]
   }
 };
