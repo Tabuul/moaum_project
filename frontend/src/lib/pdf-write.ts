@@ -44,6 +44,19 @@ export class Page {
     return yy;
   }
 
+  /** a faint 45°-rotated text tiled across the whole page as a security watermark (e.g. the matric
+   *  number). Call it FIRST so the content is drawn on top and the mark shows only in the whitespace. */
+  watermark(s: string, size = 12, grey = 0.9, stepX = 200, stepY = 120): this {
+    const cos = 0.7071, sin = 0.7071; // 45 degrees
+    const label = escapePdf(s);
+    for (let yy = 30; yy < A4.h; yy += stepY) {
+      for (let xx = -30; xx < A4.w; xx += stepX) {
+        this.ops.push(`BT /F1 ${size} Tf ${grey.toFixed(3)} g ${cos} ${sin} ${-sin} ${cos} ${xx.toFixed(2)} ${yy.toFixed(2)} Tm (${label}) Tj ET 0 g`);
+      }
+    }
+    return this;
+  }
+
   rule(x1: number, y1: number, x2: number, y2: number, width = 0.6, grey = 0.75): this {
     this.ops.push(`${grey} G ${width} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
     return this;
