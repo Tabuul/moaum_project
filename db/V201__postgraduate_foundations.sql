@@ -24,6 +24,12 @@
 
 BEGIN;
 
+-- the audit spine refuses a write with no actor, and ref.office, ref.programme and
+-- policy.level_limit are on it; attribute this migration's seed rows to the system actor.
+SELECT set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+SELECT set_config('moaum.actor_office', 'academic', true);
+SELECT set_config('moaum.reason', 'Postgraduate foundations: levels, offices, awards, PG programmes (V201)', true);
+
 -- ── 1 · widen the study-level enums to admit 700/800/900 ────────────────────
 ALTER TABLE people.student      DROP CONSTRAINT ck_student_level;
 ALTER TABLE people.student      ADD  CONSTRAINT ck_student_level
