@@ -63,6 +63,7 @@ export function PgDashboard({ s }: { s: Me }) {
       <Panel title="Postgraduate desks" right={s.name}>
         <PBody>
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+            <Link href="/student/research" className="btn btn--ghost btn--sm">Research &amp; thesis</Link>
             <Link href="/student/registration" className="btn btn--ghost btn--sm">Course registration</Link>
             <Link href="/student/fees" className="btn btn--ghost btn--sm">Fees &amp; payments</Link>
             <Link href="/student/results" className="btn btn--ghost btn--sm">My results</Link>
@@ -71,7 +72,7 @@ export function PgDashboard({ s }: { s: Me }) {
             <Link href="/student/transcript" className="btn btn--ghost btn--sm">Transcript</Link>
           </div>
           <div className="sub2" style={{ marginTop: 8 }}>
-            Supervision, seminars and the thesis examination will appear here as the postgraduate studies module is added.
+            Supervision, the proposal, the research seminar and the thesis examination are tracked under Research &amp; thesis.
           </div>
         </PBody>
       </Panel>

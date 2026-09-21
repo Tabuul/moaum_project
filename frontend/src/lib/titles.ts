@@ -16,6 +16,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Results",
     "Published semesters"
   ],
+  "s/research": [
+    "Research & thesis",
+    "Your postgraduate research"
+  ],
   "s/broadsheet": [
     "Result broadsheet",
     "Every published semester, with the CUR/CUE/WGP/GPA and cumulative CGPA"
