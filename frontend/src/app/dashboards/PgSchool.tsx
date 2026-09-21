@@ -91,14 +91,43 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
 
       <Panel title="Postgraduate desks" right={me?.name ? `Signed in as ${me.name}` : role}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
-            <Link href="/admissions/postgraduate" className="btn btn--ghost btn--sm">Postgraduate admissions</Link>
-            <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>
-            <Link href="/results/broadsheet" className="btn btn--ghost btn--sm">Broadsheet</Link>
-          </div>
-          <div className="sub2" style={{ marginTop: 8 }}>You are acting for the {role}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
+          {DESK_GROUPS.map((g) => (
+            <div key={g.name} style={{ marginBottom: 12 }}>
+              <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".5px", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>{g.name}</div>
+              <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}>
+                {g.items.map((it) => (
+                  <Link key={it.href} href={it.href} className="btn btn--ghost btn--sm" style={{ justifyContent: "flex-start", textAlign: "left" }}>{it.label}</Link>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="sub2" style={{ marginTop: 2 }}>You are acting for the {role}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
         </PBody>
       </Panel>
     </>
   );
 }
+
+const DESK_GROUPS: { name: string; items: { href: string; label: string }[] }[] = [
+  { name: "Admissions & register", items: [
+    { href: "/admissions/postgraduate", label: "Postgraduate admissions" },
+    { href: "/admissions/postgraduate/students", label: "PG register" },
+    { href: "/matriculation", label: "Matriculation" },
+  ]},
+  { name: "Coursework", items: [
+    { href: "/admissions/postgraduate/courses", label: "Course catalogue" },
+    { href: "/admissions/postgraduate/results", label: "Registrations & results" },
+  ]},
+  { name: "Research & examination", items: [
+    { href: "/admissions/postgraduate/research", label: "Research & thesis desk" },
+    { href: "/admissions/postgraduate/examiners", label: "External examiners" },
+  ]},
+  { name: "Awards", items: [
+    { href: "/admissions/postgraduate/board", label: "School Board & awards" },
+    { href: "/graduation", label: "Graduation list" },
+    { href: "/results/broadsheet", label: "Results broadsheet" },
+  ]},
+  { name: "Fees", items: [
+    { href: "/finance/fees", label: "Fee schedule" },
+  ]},
+];
