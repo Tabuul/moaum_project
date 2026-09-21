@@ -26,6 +26,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -201,6 +202,14 @@ class PgPortalController {
                 SELECT name, email, institution, position FROM admissions.pg_referee
                  WHERE application_id = :app ORDER BY id
                 """).param("app", a.get("application_id")).query().listOfRows();
+        List<Map<String, Object>> priorDegrees = jdbc.sql("""
+                SELECT kind, institution, award, class_of_degree, cgpa, year FROM admissions.pg_prior_degree
+                 WHERE application_id = :app ORDER BY CASE kind WHEN 'FIRST' THEN 0 ELSE 1 END
+                """).param("app", a.get("application_id")).query().listOfRows();
+        List<Map<String, Object>> documents = jdbc.sql("""
+                SELECT id, kind, filename, content_type, uploaded_at FROM admissions.pg_document
+                 WHERE application_id = :app ORDER BY uploaded_at DESC
+                """).param("app", a.get("application_id")).query().listOfRows();
         Map<String, Object> feeRule = jdbc.sql("SELECT application_fee, acceptance_fee, checking_fee FROM admissions.pg_fee_rule(:s)")
                 .param("s", String.valueOf(a.get("session"))).query().singleRow();
         Map<String, Object> live = firstOrNull(jdbc.sql("""
@@ -256,6 +265,55 @@ class PgPortalController {
         proposal.put("text", a.get("proposal_text"));
         out.put("proposal", proposal);
         out.put("referees", referees);
+        out.put("priorDegrees", priorDegrees);
+        out.put("documents", documents);
         return out;
+    }
+
+    /* ── the credentials document (one combined PDF: O'Level, A'Level, birth certificate) ── */
+
+    static final int MAX_DOC = 8 * 1024 * 1024;
+
+    public record DocumentIn(@NotBlank @Size(max = 200) String filename, @NotBlank @Size(max = 100) String contentType,
+                             @NotBlank String base64) {
+    }
+
+    /** the applicant uploads (or replaces) their combined credentials PDF */
+    @PostMapping("/documents")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    @Transactional
+    Map<String, Object> uploadDocument(Authentication authentication, @Valid @RequestBody DocumentIn body) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        if (!"application/pdf".equals(body.contentType())) {
+            throw new DomainRuleViolation("PG_DOC_TYPE", "The credentials must be one PDF file.",
+                    new DomainRuleViolation.Remedy("Scan O'Level, A'Level and your birth certificate / declaration of age into a single PDF.", "You"));
+        }
+        byte[] content;
+        try {
+            content = java.util.Base64.getDecoder().decode(body.base64());
+        } catch (IllegalArgumentException notBase64) {
+            throw new DomainRuleViolation("PG_DOC_ENCODING", "The file did not arrive intact.",
+                    new DomainRuleViolation.Remedy("Try the upload again.", "You"));
+        }
+        if (content.length == 0 || content.length > MAX_DOC) {
+            throw new DomainRuleViolation("PG_DOC_SIZE", "A document is between 1 byte and 8 MB; this one is " + content.length + " bytes.",
+                    new DomainRuleViolation.Remedy("Reduce the scan's resolution and upload it again.", "You"));
+        }
+        // one CREDENTIALS document per application — replace any earlier one
+        jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = 'CREDENTIALS'").param("app", appId).update();
+        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, 'CREDENTIALS', :fn, :ct, :b)")
+                .param("app", appId).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
+                .update();
+        return view(me);
+    }
+
+    private UUID applicationOf(UUID applicant) {
+        Map<String, Object> row = firstOrNull(jdbc.sql("SELECT id FROM admissions.pg_application WHERE applicant_id = :me")
+                .param("me", applicant).query().listOfRows());
+        if (row == null) {
+            throw new NotFound("postgraduate application", applicant);
+        }
+        return (UUID) row.get("id");
     }
 }

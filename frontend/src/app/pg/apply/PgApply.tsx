@@ -12,7 +12,7 @@ import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean }
+interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean; entry_level: number }
 interface Applied { application_no: string; reference: string; amount: number }
 interface Status { application_no: string; state: string; programme_name: string; pg_award: string | null; surname: string; other_names: string; fee_confirmed_at: string | null; submitted_at: string | null; spgs_note: string | null }
 
@@ -38,6 +38,7 @@ export function PgApply() {
   }, []);
 
   const chosen = useMemo(() => progs.find((p) => p.code === f.programme), [progs, f.programme]);
+  const isPhd = (chosen?.entry_level ?? 0) >= 900;
   const byFaculty = useMemo(() => {
     const m = new Map<string, Prog[]>();
     for (const p of progs) { const k = p.faculty_name; if (!m.has(k)) m.set(k, []); m.get(k)!.push(p); }
@@ -51,10 +52,20 @@ export function PgApply() {
       setProblem({ status: 400, title: "Name, email, a password and a programme are required." }); return;
     }
     if ((f.password ?? "").length < 6) { setProblem({ status: 400, title: "Choose a password of at least six characters." }); return; }
+    if (!(f.priorInstitution ?? "").trim() || !(f.priorAward ?? "").trim()) {
+      setProblem({ status: 400, title: "Your first degree (institution and award) is required." }); return;
+    }
+    if (isPhd && (!(f.mInstitution ?? "").trim() || !(f.mAward ?? "").trim())) {
+      setProblem({ status: 400, title: "A PhD applicant must also give their Master's degree (institution and award)." }); return;
+    }
     if (chosen?.pg_research && !(f.proposalText ?? "").trim()) { setProblem({ status: 400, title: "This is a research programme — a research proposal is required." }); return; }
     setBusy(true);
     try {
-      const body = { ...f, referees: refs.filter((r) => r.name.trim()) };
+      const priorDegrees = [
+        { kind: "FIRST", institution: f.priorInstitution, award: f.priorAward, classOfDegree: f.priorClass, cgpa: f.priorCgpa, year: f.priorYear },
+        ...(isPhd ? [{ kind: "MASTERS", institution: f.mInstitution, award: f.mAward, classOfDegree: f.mClass, cgpa: f.mCgpa, year: f.mYear }] : []),
+      ].filter((d) => (d.institution ?? "").trim() || (d.award ?? "").trim());
+      const body = { ...f, priorDegrees, referees: refs.filter((r) => r.name.trim()) };
       const r = await fetch("/api/bff/api/v1/pg/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
@@ -66,7 +77,7 @@ export function PgApply() {
     return (
       <Wrap>
         <Note kind="ok" title={`Application received — ${applied.application_no}`}>
-          Save your application number. <b>Sign in to pay the application fee of {naira(applied.amount)} online</b> — with the email and password you just chose — and to follow your application. You can also track it with your application number and email below.
+          Save your application number. <b>Sign in to pay the application fee of {naira(applied.amount)} online</b> — with the email and password you just chose — then upload your credentials (O&rsquo;Level, A&rsquo;Level and birth certificate / declaration of age, scanned into one PDF) under <b>Documents</b> and follow your application. You can also track it with your application number and email below.
         </Note>
         <div className="card"><div className="card__body">
           <Row k="Application number" v={applied.application_no} />
@@ -115,6 +126,7 @@ export function PgApply() {
         </div>
 
         <Section title="Your first degree" />
+        <div className="hint" style={{ marginTop: -4 }}>The Bachelor&rsquo;s degree the admission rests on.{isPhd ? " A PhD also needs your Master&rsquo;s degree below." : ""}</div>
         <div className="grid grid--2">
           <Field id="priorInstitution" label="Institution"><input id="priorInstitution" className="ctl" value={f.priorInstitution ?? ""} onChange={set("priorInstitution")} /></Field>
           <Field id="priorAward" label="Degree / award"><input id="priorAward" className="ctl" value={f.priorAward ?? ""} onChange={set("priorAward")} placeholder="B.Sc. Computer Science" /></Field>
@@ -122,6 +134,20 @@ export function PgApply() {
           <Field id="priorCgpa" label="CGPA (if known)"><input id="priorCgpa" className="ctl tnum" value={f.priorCgpa ?? ""} onChange={set("priorCgpa")} placeholder="3.80" /></Field>
           <Field id="priorYear" label="Year awarded"><input id="priorYear" className="ctl tnum" value={f.priorYear ?? ""} onChange={set("priorYear")} placeholder="2022" /></Field>
         </div>
+
+        {isPhd ? (
+          <>
+            <Section title="Your Master&rsquo;s degree" />
+            <div className="hint" style={{ marginTop: -4 }}>Required for a PhD — the Master&rsquo;s degree your doctoral admission rests on.</div>
+            <div className="grid grid--2">
+              <Field id="mInstitution" label="Institution"><input id="mInstitution" className="ctl" value={f.mInstitution ?? ""} onChange={set("mInstitution")} /></Field>
+              <Field id="mAward" label="Degree / award"><input id="mAward" className="ctl" value={f.mAward ?? ""} onChange={set("mAward")} placeholder="M.Sc. Computer Science" /></Field>
+              <Field id="mClass" label="Class / result"><select id="mClass" className="ctl" value={f.mClass ?? ""} onChange={set("mClass")}><option value="">—</option>{["Distinction", "Pass", "Merit", "Credit"].map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+              <Field id="mCgpa" label="CGPA (if known)"><input id="mCgpa" className="ctl tnum" value={f.mCgpa ?? ""} onChange={set("mCgpa")} placeholder="4.20" /></Field>
+              <Field id="mYear" label="Year awarded"><input id="mYear" className="ctl tnum" value={f.mYear ?? ""} onChange={set("mYear")} placeholder="2024" /></Field>
+            </div>
+          </>
+        ) : null}
 
         {chosen?.pg_research ? (
           <>

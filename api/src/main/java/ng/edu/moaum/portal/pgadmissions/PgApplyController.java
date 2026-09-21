@@ -51,7 +51,8 @@ class PgApplyController {
     @GetMapping("/programmes")
     List<Map<String, Object>> programmes() {
         return jdbc.sql("""
-                SELECT g.code, g.name, f.name AS faculty_name, d.name AS department_name, g.pg_award, g.pg_research
+                SELECT g.code, g.name, f.name AS faculty_name, d.name AS department_name, g.pg_award, g.pg_research,
+                       admissions.pg_award_level(g.pg_award) AS entry_level
                   FROM ref.programme g
                   JOIN ref.faculty f ON f.code = g.faculty_code
                   JOIN ref.department d ON d.code = g.dept_code
