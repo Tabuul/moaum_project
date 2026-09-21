@@ -66,7 +66,7 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "s/exams": [
     "Examinations",
-    "December 2026 · computer-based"
+    "Your papers this session"
   ],
   "s/hostel": [
     "Hostel",
