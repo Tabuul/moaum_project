@@ -88,10 +88,19 @@ function StudentDetails({ s }: { s: Me }) {
         </div>
 
         {loading ? <div className="sub2" style={{ marginTop: 14 }}>Loading your details…</div> : null}
-        {sections.map((sec) => (
-          <div key={sec.title} style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 8 }}>{sec.title}</div>
-            <KvGrid cls="grid--2" pairs={sec.pairs} />
+        {/* one uniform column track for every section, so the columns line up down the whole card and a
+            section with two fields reads as tidily as one with eight (auto-fill packs left, never stretches) */}
+        {sections.map((sec, si) => (
+          <div key={sec.title} style={{ marginTop: si ? 18 : 20, paddingTop: si ? 16 : 0, borderTop: si ? "1px solid var(--line-2)" : undefined }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 12 }}>{sec.title}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", columnGap: 32, rowGap: 16, maxWidth: 1160 }}>
+              {sec.pairs.map(([k, val], i) => (
+                <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--faint)" }}>{k}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere" }}>{val}</span>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
         <div className="sub2" style={{ marginTop: 14 }}>
