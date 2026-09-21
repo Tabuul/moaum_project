@@ -57,6 +57,9 @@
                  "t/eligibility": "r/classlist" };
   var HOME = { student: "s/dashboard", staff: "t/dashboard", applicant: "a/dashboard" };
 
+  /* the postgraduate module (part56) registers its screens here */
+  for (var __pgk in PG_SCREENS) { SCREENS[__pgk] = PG_SCREENS[__pgk]; }
+
   function navItems() {
     if (S.role === "staff") { return ROLES[S.srole].groups; }
     return MENUS[S.role].groups;

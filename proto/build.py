@@ -13,7 +13,7 @@ os.chdir(HERE)
 order = (["part1.html", "part2.html", "part3.html",
           "part4.html", "part4b.html", "part4c.html",
           "part5.html", "part5b.html"]
-         + ["part%d.html" % n for n in range(7, 56)]
+         + ["part%d.html" % n for n in range(7, 57)]
          + ["part6.html"])
 
 missing = [f for f in order if not os.path.exists(f)]

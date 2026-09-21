@@ -21271,6 +21271,403 @@ body.has-cta .tst { bottom: 132px; }
     '</div></div>';
   }
 
+  /* ══ POSTGRADUATE SCHOOL ═════════════════════════════════════════
+     The School of Postgraduate Studies: the Dean and the Secretary as
+     staff offices, and the postgraduate applicant and student portals.
+     Screens follow the University's Postgraduate Policy (application →
+     admission → registration → coursework → research/thesis → award).
+     Same helpers, same markup as every other module.               */
+
+  var PG_APP = { no: "PG/25/000004", name: "Ikyernum, Manasseh Aondongu", email: "manasseh@example.com",
+    phone: "08031234567", sex: "Male", dob: "14 Mar 1996", state: "Benue", lga: "Gwer West",
+    prog: "M.Sc. Accounting and Finance", award: "M.Sc.", level: "Master&rsquo;s", fac: "Administration and Management",
+    dept: "Accounting", fee: 25000, checking: 3000, acceptance: 50000 };
+
+  var PG_PIPE = [
+    ["Ada, Ngozi", "MOAUM/PG/25/0003", "Ph.D. Economics", "Economics", "Thesis", "Draft submitted", "info", "Prof. Terwase, Dr. Aondo", "18 Sep"],
+    ["Ikyernum, Manasseh", "MOAUM/PG/25/0007", "M.Sc. Accounting", "Accounting", "Dissertation", "Supervised", "info", "Dr. Aondo", "12 Sep"],
+    ["Ocholi, Paul", "MOAUM/PG/25/0011", "M.Sc. Accounting", "Accounting", "Dissertation", "Viva held", "ok", "Prof. Utor", "09 Sep"],
+    ["Terna, Sesugh", "MOAUM/PG/24/0044", "MBA", "Business Management", "Project", "Awarded", "ok", "Dr. Ochoga", "30 Aug"]
+  ];
+
+  /* ── Dean, Postgraduate School ─────────────────────────────────── */
+  function pgDeanDash() {
+    return note('info', "3 applications recommended by a department, awaiting the School",
+      "A department&rsquo;s postgraduate committee has recommended these; the School offers or refuses each.",
+      btn('primary', "Decide them", ' data-go="t/pgadm"')) +
+      tiles([
+        ["Applications", "42", null, "2025/2026"],
+        ["Awaiting the School", "3", "var(--chrome)", "recommended"],
+        ["Offered", "5", "var(--green-ink)", "awaiting acceptance"],
+        ["To admit", "2", "var(--chrome)", "accepted"],
+        ["PG students", "118", null, "on the register"]
+      ], 'grid--5') +
+      panel("Latest applications", btn('ghost', "Open admissions desk", ' data-go="t/pgadm"'), dtable(
+        ["Applicant", "Programme", "Session|mid", "Fee|mid", "Status|mid"], [
+        [two("Ikyernum, Manasseh", "PG/25/000004"), two("M.Sc. Accounting and Finance", "M.Sc."), '<span class="tnum sub2">2025/2026</span>', pil('ok', "Paid"), pil('info', "Submitted")],
+        [two("Terkula, Doosuur", "PG/25/000005"), two("MBA", "MBA"), '<span class="tnum sub2">2025/2026</span>', '<span class="sub2">Unpaid</span>', pil('info', "Submitted")],
+        [two("Ada, Ngozi", "PG/25/000003"), two("Ph.D. Economics", "Ph.D."), '<span class="tnum sub2">2025/2026</span>', pil('ok', "Paid"), pil('info', "Recommended")]
+      ])) +
+      panel("By programme", "2025/2026", dtable(
+        ["Programme", "Applications|mid", "In progress|mid", "Offered|mid", "Accepted / admitted|num"], [
+        ["M.Sc. Accounting and Finance", "8", "5", "2", "1"],
+        ["MBA", "14", "9", "3", "2"],
+        ["Ph.D. Economics", "6", "3", "1", "1"]
+      ]));
+  }
+
+  function pgSecDash() {
+    return note('info', "Registration open for 2025/2026",
+      "Screen credentials, confirm fees, and matriculate fresh students (Policy 7).",
+      btn('primary', "Registration desk", ' data-go="t/pgreg"')) +
+      tiles([
+        ["To register", "14", "var(--chrome)", "admitted, not registered"],
+        ["Fees to confirm", "6", "var(--chrome)", "references awaiting"],
+        ["Exams pending", "3", null, "course examinations"],
+        ["Clearances", "2", "var(--chrome)", "theses to clear"]
+      ]) +
+      panel("What waits on the Secretary", "", pbody(
+        '<div class="sub2">Six application-fee references await confirmation against the bank / gateway record; two final theses await clearance before binding.</div>'));
+  }
+
+  /* ── admissions desk (department recommends, School offers, admit) ── */
+  function pgAdm() {
+    return tiles([
+      ["Total", "42", null, "2025/2026"],
+      ["Submitted", "18", "var(--chrome)", "with departments"],
+      ["Recommended", "3", "var(--chrome)", "awaiting School"],
+      ["Offered", "5", "var(--green-ink)", "awaiting acceptance"]
+    ]) +
+      panel("Postgraduate applications", '<select class="ctl" style="width:auto"><option>All states</option><option>Submitted</option><option>Recommended</option><option>Offered</option><option>Accepted</option><option>Admitted</option></select>', dtable(
+        ["Applicant", "Programme", "Prior degree", "Fee|mid", "State|mid", "Decision|mid"], [
+        [two("Ada, Ngozi", "PG/25/000003"), two("Ph.D. Economics", "Ph.D."), "M.Sc. Economics &middot; Distinction", pil('ok', "Paid"), pil('info', "Recommended"), btn('primary', "Offer / refuse", ' data-go="t/pgadm"')],
+        [two("Ikyernum, Manasseh", "PG/25/000004"), two("M.Sc. Accounting", "M.Sc."), "B.Sc. Accounting &middot; 2:1", pil('ok', "Paid"), pil('info', "Submitted"), btn('ghost', "Dept decision", ' data-go="t/pgadm"')]
+      ])) +
+      panel("Ada, Ngozi &middot; Ph.D. Economics", "PG/25/000003", pbody(
+        '<div class="grid grid--2" style="align-items:start">' +
+          '<div>' + kvGrid([
+            ["Programme", "Ph.D. Economics"], ["Department", "Economics"],
+            ["First degree", "B.Sc. Economics &middot; BSU &middot; 2016"],
+            ["Master&rsquo;s", "M.Sc. Economics &middot; UNN &middot; Distinction &middot; 2020"],
+            ["Proposal", "Monetary policy and inflation dynamics"],
+            ["Credentials", "credentials.pdf (uploaded)"]
+          ], 'grid--2') + '</div>' +
+          '<div class="stack" style="display:grid;gap:12px">' +
+            note('info', "Department recommended", "The Faculty PG Committee recommends admission.") +
+            '<div class="field"><label>School note</label><textarea class="ctl" rows="3"></textarea></div>' +
+            '<div style="display:flex;gap:8px">' + btn('primary', "Offer a place") + btn('ghost', "Do not offer") + '</div>' +
+          '</div>' +
+        '</div>'));
+  }
+
+  /* ── research & thesis desk ────────────────────────────────────── */
+  function pgResearch() {
+    return tiles([
+      ["In the pipeline", "64", null, "all candidates"],
+      ["Supervision", "12", "var(--chrome)", "registered / supervised"],
+      ["Proposal", "9", null, "submitted / approved"],
+      ["Examination", "7", "var(--chrome)", "panel &middot; viva"],
+      ["Awarded", "21", "var(--green-ink)", "by Senate"]
+    ], 'grid--5') +
+      panel("Research pipeline", '<select class="ctl" style="width:auto"><option>All stages</option><option>Registered &mdash; awaiting supervisor</option><option>Proposal submitted</option><option>Seminar held</option><option>Draft submitted</option><option>Viva held</option><option>Final submitted</option><option>Cleared</option><option>Awarded</option></select>',
+        dtable(["Candidate", "Programme", "Kind|mid", "Stage|mid", "Supervisors", "Updated|num"],
+          PG_PIPE.map(function (r) {
+            return [two(r[0], r[1]), two(r[2], r[3]), '<span class="sub2">' + r[4] + '</span>',
+              pil(r[6], r[5]), '<span class="sub2">' + r[7] + '</span>', '<span class="tnum sub2">' + r[8] + '</span>'];
+          }))) +
+      panel("Ada, Ngozi &middot; Draft submitted", btn('ghost', "Close"), pbody(
+        '<div class="grid grid--2" style="align-items:start">' +
+          '<div>' + kvGrid([
+            ["Programme", "Ph.D. Economics &middot; Thesis"], ["Department", "Economics"],
+            ["Topic", "Monetary policy and inflation dynamics"],
+            ["Proposal", "Approved 12 May 2026"], ["Seminar", "20 Jun 2026 &middot; PGSR Dr. Ige"],
+            ["Title / plagiarism", "03 Jul 2026 &middot; 82% originality"], ["Viva", "&mdash;"]
+          ], 'grid--2') + '</div>' +
+          '<div style="display:grid;gap:12px">' +
+            '<div><div style="font-weight:600;margin-bottom:6px">Supervisors</div><div class="sub2">Prof. Terwase &mdash; first</div><div class="sub2">Dr. Aondo &mdash; second</div></div>' +
+            '<div><div style="font-weight:600;margin-bottom:6px">Advance</div>' +
+              '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+                '<input class="ctl tnum" placeholder="Score %" style="max-width:110px">' +
+                '<select class="ctl" style="width:auto"><option>Outcome</option><option>Pass, no corrections</option><option>Pass, minor corrections</option><option>Pass, major corrections</option><option>Second oral</option><option>Fail</option></select>' +
+                btn('primary', "Record viva") + '</div></div>' +
+            '<div><div style="font-weight:600;margin-bottom:6px">Milestones</div>' +
+              '<div class="sub2">18 Sep 2026 &mdash; Draft submitted for examination</div>' +
+              '<div class="sub2">03 Jul 2026 &mdash; Title registered &middot; 82% originality</div>' +
+              '<div class="sub2">20 Jun 2026 &mdash; Research seminar held &middot; PGSR Dr. Ige</div></div>' +
+          '</div>' +
+        '</div>'));
+  }
+
+  function pgExaminers() {
+    return note('info', "External examiners (Policy 18)",
+      "The Board approves external examiners on the department&rsquo;s recommendation through the Faculty PG Committee.") +
+      panel("External examiners", btn('primary', "Add examiner"), dtable(
+        ["Name", "Institution", "Field", "Tenure|mid", "Status|mid"], [
+        ["Prof. B. Okonkwo", "University of Ibadan", "Economics", "2024&ndash;2027", pil('ok', "Active")],
+        ["Prof. C. Danjuma", "ABU Zaria", "Accounting", "2025&ndash;2028", pil('ok', "Active")]
+      ])) +
+      panel("Panel of examiners &middot; Ada, Ngozi (Ph.D.)", "7 members (Policy 24.3)", dtable(
+        ["Role", "Member"], [
+        ["Chairman / HOD", "Prof. G. Utor"], ["External examiner", "Prof. B. Okonkwo"],
+        ["Internal (supervisor)", "Prof. Terwase"], ["Internal (co-supervisor)", "Dr. Aondo"],
+        ["Internal (Faculty)", "Dr. M. Adaikwu"], ["Internal (PGSR)", "Dr. Ige"],
+        ["PG Coordinator", "Dr. S. Ochoga"]
+      ]));
+  }
+
+  function pgBoard() {
+    return note('ok', "2 candidates cleared, awaiting the Board&rsquo;s recommendation to Senate",
+      "The School submits a summary of results to Senate for approval (Policy 34).") +
+      panel("Awaiting Senate", btn('primary', "Recommend selected"), dtable(
+        ["Candidate", "Programme", "Viva|mid", "Cleared|mid", "Action|mid"], [
+        ["Ada, Ngozi", "Ph.D. Economics", pil('ok', "A &middot; minor"), "12 Sep 2026", btn('primary', "Recommend")],
+        ["Ocholi, Paul", "M.Sc. Accounting", pil('ok', "A"), "09 Sep 2026", btn('primary', "Recommend")]
+      ])) +
+      panel("Awarded (Senate approved)", "this session", dtable(
+        ["Candidate", "Programme", "Award date|num"], [
+        ["Terna, Sesugh", "MBA", "30 Aug 2026"], ["Imember, Doris", "PGD Computer Science", "30 Aug 2026"]
+      ]));
+  }
+
+  function pgStudentsList() {
+    return panel("Postgraduate students", '<select class="ctl" style="width:auto"><option>All programmes</option></select>', dtable(
+      ["Student", "Programme", "Level|mid", "Status|mid", "Research|mid"], [
+      [two("Ada, Ngozi", "MOAUM/PG/25/0003"), two("Ph.D. Economics", "Economics"), "900", pil('ok', "Active"), pil('info', "Draft")],
+      [two("Ikyernum, Manasseh", "MOAUM/PG/25/0007"), two("M.Sc. Accounting", "Accounting"), "800", pil('ok', "Active"), pil('info', "Supervised")]
+    ]));
+  }
+
+  /* ── Secretary desks ───────────────────────────────────────────── */
+  function pgReg() {
+    return note('info', "Registration &amp; matriculation (Policy 7&ndash;8)",
+      "Screen originals, confirm online fees, endorse forms, matriculate.") +
+      panel("Fresh postgraduate students", '<select class="ctl" style="width:auto"><option>All</option><option>To screen</option><option>To confirm fees</option><option>To matriculate</option></select>', dtable(
+        ["Student", "Programme", "Fees|mid", "Screening|mid", "Matriculation|mid"], [
+        [two("Ikyernum, Manasseh", "MOAUM/ADM/25/000007"), two("M.Sc. Accounting", "Accounting"), pil('ok', "Paid"), pil('ok', "Screened"), btn('primary', "Matriculate")],
+        [two("Terkula, Doosuur", "MOAUM/ADM/25/000009"), two("MBA", "Business"), '<span class="sub2">Owing</span>', pil('warn', "Pending"), btn('ghost', "&mdash;")]
+      ]));
+  }
+
+  function pgExams() {
+    return note('info', "Course examinations (Policy 17)",
+      "HODs/Chief Examiners submit moderated question papers and results; papers moderated by External Examiners.") +
+      panel("Examination timetable", btn('primary', "Add sitting"), dtable(
+        ["Course", "Department", "Date|mid", "Candidates|num", "Papers|mid"], [
+        ["ACC 801", "Accounting", "12 Jan 2027", "6", pil('ok', "Received")],
+        ["ECO 901", "Economics", "14 Jan 2027", "4", pil('warn', "Awaited")]
+      ])) +
+      panel("Results submitted", "", dtable(
+        ["Course", "Submitted by", "Moderated|mid", "Status|mid"], [
+        ["ACC 801", "HOD Accounting", pil('ok', "External-moderated"), pil('ok', "Recorded")]
+      ]));
+  }
+
+  function pgClear() {
+    return note('info', "Thesis clearance (Policy 31&ndash;32)",
+      "Clear the final version before binding; five hard-bound copies with the prescribed cover.") +
+      panel("Awaiting clearance", "", dtable(
+        ["Candidate", "Programme", "Final submitted|mid", "Plagiarism|mid", "Action|mid"], [
+        ["Ada, Ngozi", "Ph.D. Economics", "10 Sep 2026", pil('ok', "82%"), btn('primary', "Clear for binding")]
+      ]));
+  }
+
+  function pgSecResults() {
+    return panel("Computed results to Senate", "2025/2026", dtable(
+      ["Candidate", "Programme", "Outcome|mid", "Status|mid"], [
+      ["Ada, Ngozi", "Ph.D. Economics", pil('ok', "Pass &middot; minor"), pil('info', "With the Board")],
+      ["Ocholi, Paul", "M.Sc. Accounting", pil('ok', "Pass"), pil('info', "With the Board")]
+    ]));
+  }
+
+  /* ── applicant portal (sample, viewable from the SPGS menu) ─────── */
+  function pgApplicantDash() {
+    var a = PG_APP;
+    return note('info', a.name + " &middot; " + a.no, "The postgraduate applicant&rsquo;s own dashboard: overview, application, documents, fee and progress.") +
+      tiles([
+        ["Programme", "M.Sc.", null, a.prog],
+        ["Application fee", "&#8358;25,000", "var(--chrome)", "unpaid"],
+        ["Credentials", "1 PDF", null, "O&rsquo;/A&rsquo;Level, birth cert."],
+        ["Stage", "Submitted", null, "with the department"]
+      ]) +
+      two_col(
+        panel("Application", "", pbody(kvGrid([
+          ["Application no.", a.no], ["Programme", a.prog], ["Award", a.award], ["Level", a.level],
+          ["Department", a.dept], ["Faculty", a.fac], ["First degree", "B.Sc. Accounting &middot; 2:1 &middot; 2019"], ["Status", "Submitted"]
+        ], 'grid--2'))),
+        panel("Progress", "", pbody(pgSteps([
+          ["Application submitted", 1], ["Application fee paid", 0], ["Department decision", 0],
+          ["School decision", 0], ["Offer accepted", 0], ["Admitted to the register", 0]
+        ])))) +
+      panel("Documents &middot; credentials", "", pbody(
+        '<div class="sub2" style="margin-bottom:8px">Scan your O&rsquo;Level, A&rsquo;Level and birth certificate / declaration of age into one PDF.</div>' +
+        '<div class="sub2" style="margin-bottom:8px">On record: <strong>credentials.pdf</strong> &mdash; uploaded 21 Sep 2026.</div>' +
+        btn('primary', "Replace the PDF"))) +
+      panel("Application fee", "", pbody(
+        '<div class="sub2" style="margin-bottom:8px">Pay &#8358;25,000 by card, transfer or USSD. Acceptance later: &#8358;50,000 + checking &#8358;3,000.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' + btn('go', "Pay &#8358;25,000 by card or USSD") + btn('ghost', "I&rsquo;ve paid &mdash; check now") + '</div>'));
+  }
+
+  function pgApply() {
+    return note('info', "Apply for a postgraduate programme",
+      "Open to the world &mdash; no JAMB. A Master&rsquo;s applicant gives their first degree; a PhD applicant gives their first degree and their Master&rsquo;s. Credentials (O&rsquo;/A&rsquo;Level, birth certificate) are uploaded in the dashboard.") +
+      panel("Programme", "", pbody(
+        '<div class="field"><label>Programme</label><select class="ctl"><option>Choose&hellip;</option><option>M.Sc. Accounting and Finance</option><option>Ph.D. Economics</option><option>MBA</option><option>PGD Computer Science</option></select></div>')) +
+      panel("Your first degree", "The Bachelor&rsquo;s degree the admission rests on", pbody(kvGrid([
+        ["Institution", '<input class="ctl">'], ["Degree / award", '<input class="ctl" placeholder="B.Sc. Accounting">'],
+        ["Class", '<select class="ctl"><option>&mdash;</option><option>First Class</option><option>Second Class (Upper)</option></select>'],
+        ["CGPA", '<input class="ctl tnum" placeholder="3.80">'], ["Year", '<input class="ctl tnum" placeholder="2019">']
+      ], 'grid--2'))) +
+      panel("Your Master&rsquo;s degree", "Shown only for a PhD", pbody(
+        '<div class="sub2" style="margin-bottom:8px">Required for a doctorate &mdash; the Master&rsquo;s the PhD admission rests on.</div>' +
+        kvGrid([
+          ["Institution", '<input class="ctl">'], ["Degree / award", '<input class="ctl" placeholder="M.Sc. Economics">'],
+          ["Result", '<select class="ctl"><option>&mdash;</option><option>Distinction</option><option>Pass</option></select>'],
+          ["CGPA", '<input class="ctl tnum">'], ["Year", '<input class="ctl tnum">']
+        ], 'grid--2')) ) +
+      '<div style="display:flex;gap:8px;align-items:center">' + btn('primary', "Submit application") +
+      '<span class="sub2">The application fee (&#8358;25,000) is shown after you submit.</span></div>';
+  }
+
+  /* ── PG student portal (sample) ────────────────────────────────── */
+  function pgStudentDash() {
+    return panel("Postgraduate student", "Your record on the register", pbody(
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="width:96px;height:118px;border-radius:6px;background:#d9e0e8;display:flex;align-items:center;justify-content:center;color:#8a97a6;font-size:12px">photo</div>' +
+        '<div style="flex-grow:1;min-width:240px">' +
+          '<div style="font-size:20px;font-weight:700">Ikyernum, Manasseh Aondongu</div>' +
+          '<div class="sub2 tnum" style="margin-top:2px">MOAUM/PG/25/0007</div>' +
+          '<div class="sub2" style="margin-top:2px">M.Sc. Accounting and Finance &middot; Accounting</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' + pil('ok', "Active") + pil('info', "Master&rsquo;s degree") + pil('grey', "Postgraduate &middot; 2025/2026") + '</div>' +
+        '</div>' +
+      '</div>')) +
+      tiles([
+        ["School fees", "&#8358;180,000", null, "2025/2026"],
+        ["Registration", "Approved", "var(--green-ink)", "first semester"],
+        ["Courses", "4", null, "registered"],
+        ["Research", "Supervised", "var(--chrome)", "proposal next"]
+      ]) +
+      panel("Course registration", "24 units", dtable(
+        ["Course", "Title", "Units|num", "Type|mid", "Status|mid"], [
+        ["ACC 801", "Advanced Financial Accounting", "3", pil('info', "Core"), pil('ok', "Registered")],
+        ["ACC 803", "Research Methodology", "3", pil('info', "Core"), pil('ok', "Registered")],
+        ["ACC 805", "Corporate Finance Theory", "3", pil('grey', "Elective"), pil('ok', "Registered")],
+        ["ACC 899", "Dissertation", "6", pil('info', "Research"), pil('ok', "Registered")]
+      ])) +
+      note('info', "Grading (Policy 16)", "A 70+ &middot; B 60&ndash;69 &middot; C 50&ndash;59 &middot; F 0&ndash;49. Pass 50. No resit. A CGPA below 2.50 means probation.");
+  }
+
+  function pgStudentResearch() {
+    return panel("Research &amp; thesis", "M.Sc. &mdash; Dissertation", pbody(
+      pgSteps([
+        ["Supervisor assigned", 1], ["Proposal submitted", 1], ["Proposal approved", 0], ["Research seminar", 0],
+        ["Title registered", 0], ["Panel &amp; viva", 0], ["Corrections", 0], ["Final submission &amp; clearance", 0], ["Award", 0]
+      ]) +
+      '<div style="margin-top:12px">' + kvGrid([
+        ["Supervisor", "Dr. J. Aondo (first)"], ["Topic", "Earnings quality and firm value in Nigerian banks"], ["Degree", "Dissertation"]
+      ], 'grid--2') + '</div>')) +
+      panel("Submit / update", "", pbody(
+        '<div class="field"><label>Research topic</label><input class="ctl" value="Earnings quality and firm value in Nigerian banks"></div>' +
+        '<div style="display:flex;gap:8px;margin-top:8px">' + btn('primary', "Submit proposal") + btn('ghost', "Save topic") + '</div>'));
+  }
+
+  function pgSteps(list) {
+    return '<ol style="list-style:none;margin:0;padding:0;display:grid;gap:2px">' + list.map(function (s) {
+      var done = s[1];
+      return '<li style="display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:10px;padding:7px 0">' +
+        '<span style="width:12px;height:12px;border-radius:50%;' + (done ? 'background:var(--green-ink)' : 'border:2px solid var(--line-2)') + '"></span>' +
+        '<span' + (done ? ' style="font-weight:600"' : '') + '>' + s[0] + '</span>' +
+        '<span class="sub2">' + (done ? 'done' : 'pending') + '</span></li>';
+    }).join('') + '</ol>';
+  }
+
+  /* ── register the PG screens on the router (SCREENS is in part6) ── */
+  var PG_SCREENS = {
+    "t/pgdash": pgDeanDash, "t/pgsecdash": pgSecDash, "t/pgadm": pgAdm, "t/pgresearch": pgResearch,
+    "t/pgexaminers": pgExaminers, "t/pgboard": pgBoard, "t/pgstudents": pgStudentsList,
+    "t/pgreg": pgReg, "t/pgexams": pgExams, "t/pgclear": pgClear, "t/pgresults": pgSecResults,
+    "a/pgdash": pgApplicantDash, "a/pgapply": pgApply, "s/pgdash": pgStudentDash, "s/pgresearch": pgStudentResearch
+  };
+
+  /* ── the two School offices, as staff roles ────────────────────── */
+  ROLES.pgschool = {
+    label: "Dean, Postgraduate School", who: "Prof. G. T. Utor", sub: "School of Postgraduate Studies", initials: "GU",
+    id: ["Staff number", "MOAUM/STF/0301"], home: "t/pgdash",
+    groups: [
+      { name: "Postgraduate School", items: [
+        { id: "t/search", icon: "user", label: "Search" },
+        { id: "t/pgdash", icon: "home", label: "Dashboard" },
+        { id: "t/pgadm", icon: "cap", label: "Admissions", badge: "3" },
+        { id: "t/pgstudents", icon: "user", label: "PG students" }
+      ]},
+      { name: "Board &amp; awards", items: [
+        { id: "t/pgboard", icon: "check", label: "School Board" },
+        { id: "t/pgexaminers", icon: "shield", label: "External examiners" },
+        { id: "t/graduation", icon: "cap", label: "Graduation list" }
+      ]},
+      { name: "Research &amp; thesis", items: [
+        { id: "t/pgresearch", icon: "flask", label: "Research desk" }
+      ]},
+      { name: "Portals (preview)", items: [
+        { id: "a/pgdash", icon: "doc", label: "Applicant portal" },
+        { id: "a/pgapply", icon: "doc", label: "Apply form" },
+        { id: "s/pgdash", icon: "cap", label: "PG student" },
+        { id: "s/pgresearch", icon: "flask", label: "Student research" }
+      ]},
+      { name: "Me", items: [ { id: "r/self", icon: "user", label: "Leave &amp; payslip" } ]}
+    ]
+  };
+
+  ROLES.pgsecretary = {
+    label: "Secretary, Postgraduate School", who: "Dr. S. A. Ochoga", sub: "School of Postgraduate Studies", initials: "SO",
+    id: ["Staff number", "MOAUM/STF/0308"], home: "t/pgsecdash",
+    groups: [
+      { name: "Postgraduate School", items: [
+        { id: "t/search", icon: "user", label: "Search" },
+        { id: "t/pgsecdash", icon: "home", label: "Dashboard" },
+        { id: "t/pgadm", icon: "cap", label: "Admissions" },
+        { id: "t/pgstudents", icon: "user", label: "PG students" }
+      ]},
+      { name: "Registration &amp; records", items: [
+        { id: "t/pgreg", icon: "book", label: "Registration" },
+        { id: "t/matriculation", icon: "user", label: "Matriculation" },
+        { id: "t/feesetup", icon: "card", label: "Fees" }
+      ]},
+      { name: "Examinations &amp; research", items: [
+        { id: "t/pgexams", icon: "cap", label: "Course examinations" },
+        { id: "t/pgresearch", icon: "flask", label: "Research desk" },
+        { id: "t/pgclear", icon: "check", label: "Thesis clearance" }
+      ]},
+      { name: "Results &amp; awards", items: [
+        { id: "t/pgresults", icon: "chart", label: "Results to Senate" },
+        { id: "t/graduation", icon: "cap", label: "Graduation list" }
+      ]},
+      { name: "Me", items: [ { id: "r/self", icon: "user", label: "Leave &amp; payslip" } ]}
+    ]
+  };
+
+  ROLE_KEYS.push("pgschool", "pgsecretary");
+  ["pgschool", "pgsecretary"].forEach(function (k) {
+    ROLE_CAN[k] = {};
+    ROLES[k].groups.forEach(function (g) { g.items.forEach(function (it) { ROLE_CAN[k][it.id] = 1; }); });
+  });
+
+  /* topbar titles for the PG routes (TITLES is defined in part2) */
+  TITLES["t/pgdash"] = ["School of Postgraduate Studies", "Dean"];
+  TITLES["t/pgsecdash"] = ["School of Postgraduate Studies", "Secretary"];
+  TITLES["t/pgadm"] = ["Postgraduate admissions", "Department recommends, the School offers"];
+  TITLES["t/pgresearch"] = ["Research &amp; thesis desk", "Supervision to award"];
+  TITLES["t/pgexaminers"] = ["External examiners &amp; panels", "Policy 18 &amp; 24"];
+  TITLES["t/pgboard"] = ["School Board &amp; awards", "Recommended to Senate"];
+  TITLES["t/pgstudents"] = ["Postgraduate students", "On the register"];
+  TITLES["t/pgreg"] = ["Registration &amp; matriculation", "Policy 7&ndash;8"];
+  TITLES["t/pgexams"] = ["Course examinations", "Policy 17"];
+  TITLES["t/pgclear"] = ["Thesis clearance", "Policy 31&ndash;32"];
+  TITLES["t/pgresults"] = ["Results to Senate", "Policy 33&ndash;34"];
+  TITLES["a/pgdash"] = ["Your postgraduate application", "Applicant portal"];
+  TITLES["a/pgapply"] = ["Apply for a postgraduate programme", "No JAMB number"];
+  TITLES["s/pgdash"] = ["Postgraduate student", "Your record on the register"];
+  TITLES["s/pgresearch"] = ["Research &amp; thesis", "Your dissertation / thesis"];
+
   /* ── router ──────────────────────────────────────────────────────── */
   var SCREENS = {
     "s/dashboard": studentDashboard, "s/register": studentRegister, "s/results": sResults, "s/query": sQuery, "s/carryover": sCarryover,
@@ -21328,6 +21725,9 @@ body.has-cta .tst { bottom: 132px; }
                  "s/receipt": "s/fees", "t/sheet": "t/scores", "t/bulk": "t/sheet", "t/movement": "t/hrm", "t/student": "t/students",
                  "t/eligibility": "r/classlist" };
   var HOME = { student: "s/dashboard", staff: "t/dashboard", applicant: "a/dashboard" };
+
+  /* the postgraduate module (part56) registers its screens here */
+  for (var __pgk in PG_SCREENS) { SCREENS[__pgk] = PG_SCREENS[__pgk]; }
 
   function navItems() {
     if (S.role === "staff") { return ROLES[S.srole].groups; }
