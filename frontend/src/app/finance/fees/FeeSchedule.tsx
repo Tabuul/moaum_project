@@ -244,6 +244,29 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     if (ok) setTfStated(true);
   }
 
+  // the postgraduate application/acceptance fees (admissions.pg_fee), read by the PG apply page
+  const [pgf, setPgf] = useState({ applicationFee: "", acceptanceFee: "" });
+  const [pgfStated, setPgfStated] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/bff/api/v1/pg/sessions/${session}/fees`).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (alive && j) { setPgf({ applicationFee: String(j.application_fee ?? ""), acceptanceFee: String(j.acceptance_fee ?? "") }); setPgfStated(!!j.stated); }
+    }).catch(() => { /* leave blank */ });
+    return () => { alive = false; };
+  }, [session]);
+  async function savePgFees(): Promise<void> {
+    setBusy("pgf"); setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/pg/sessions/${session}/fees`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Postgraduate fees stated for ${session}`) },
+        body: JSON.stringify({ applicationFee: Number(pgf.applicationFee) || 0, acceptanceFee: Number(pgf.acceptanceFee) || 0 }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setPgfStated(true);
+    } finally { setBusy(null); }
+  }
+
   async function saveApplicantFees(): Promise<void> {
     setBusy("af");
     setProblem(null);
@@ -522,6 +545,21 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
             <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim()} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : "State the applicant fees"}</Btn>
             <span className="sub2">Applying costs the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))}. Accepting an offer costs the acceptance fee plus the checking fee &mdash; {naira((Number(af.acceptanceFee) || 0) + (Number(af.checkingFee) || 0))}.</span>
+          </div>
+        </PBody>
+      </Panel>
+      <Panel title="Postgraduate · application &amp; acceptance fees" right={pgfStated ? `Stated for ${session}` : `Default (not yet stated for ${session})`}>
+        <PBody>
+          <div className="sub2" style={{ marginBottom: 10 }}>
+            The fees a postgraduate applicant pays &mdash; the application fee to apply through the School of Postgraduate Studies, and the acceptance fee an offer carries. Read by the postgraduate apply page (<b>/pg/apply</b>). Until stated, a sensible default applies.
+          </div>
+          <div className="grid grid--2">
+            <Field id="pgf-app" label="PG application fee" hint="What a postgraduate applicant pays to apply"><input id="pgf-app" className="ctl tnum" inputMode="numeric" value={pgf.applicationFee} onChange={(e) => setPgf({ ...pgf, applicationFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="20000" disabled={!may} /></Field>
+            <Field id="pgf-acc" label="PG acceptance fee" hint="Paid on an offer"><input id="pgf-acc" className="ctl tnum" inputMode="numeric" value={pgf.acceptanceFee} onChange={(e) => setPgf({ ...pgf, acceptanceFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="50000" disabled={!may} /></Field>
+          </div>
+          <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+            <Btn kind="primary" disabled={!may || busy !== null || !pgf.applicationFee.trim()} onClick={() => void savePgFees()}>{busy === "pgf" ? "Saving…" : "State the postgraduate fees"}</Btn>
+            <span className="sub2">A postgraduate applicant pays {naira(Number(pgf.applicationFee) || 0)} to apply.</span>
           </div>
         </PBody>
       </Panel>

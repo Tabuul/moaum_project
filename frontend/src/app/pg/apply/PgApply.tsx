@@ -195,13 +195,28 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg, #f6f3ea)", padding: "28px 14px" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto", display: "grid", gap: 14 }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--gold, #b0842e)", fontWeight: 700 }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>Postgraduate application</div>
+    <div className="login-wrap">
+      <div className="login-brand">
+        <div>
+          <div className="login-brand__top">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
+            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>School of Postgraduate Studies</span></div>
+          </div>
+          <div style={{ height: 26 }} />
+          <h1>Apply for a postgraduate programme</h1>
+          <p>Apply directly for a Postgraduate Diploma, Master&rsquo;s or PhD &mdash; no JAMB number. One account carries you from application to admission, and becomes your student account on the day you are admitted.</p>
         </div>
-        {children}
+        <div className="login-stats">
+          <div className="login-stat"><span className="n">PGD</span><span className="l">Master&rsquo;s · PhD</span></div>
+          <div className="login-stat"><span className="n tnum">1</span><span className="l">programme at a time</span></div>
+          <div className="login-stat"><span className="n tnum">0</span><span className="l">JAMB number needed</span></div>
+        </div>
+      </div>
+      <div className="login-panel">
+        <div style={{ width: "100%", maxWidth: 620, display: "grid", gap: 14 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
