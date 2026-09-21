@@ -22,8 +22,17 @@ interface Research {
   corrections_due: string | null; final_submitted_at: string | null; cleared_at: string | null;
   award_recommended_at: string | null; awarded_at: string | null;
   programme_name: string; department_name: string; faculty_name: string;
-  supervisors: Supervisor[]; events: Event[];
+  supervisors: Supervisor[]; panel: PanelMember[]; events: Event[];
 }
+interface PanelMember { name: string; role: string; is_external: boolean }
+const PANEL_ROLE: Record<string, string> = {
+  CHAIR: "chair / HOD", EXTERNAL: "external examiner", SUPERVISOR: "supervisor", CO_SUPERVISOR: "co-supervisor",
+  INTERNAL: "internal examiner", PGSR: "PGSR", COORDINATOR: "PG coordinator",
+};
+const VIVA_OUTCOME: Record<string, string> = {
+  PASS_CLEAN: "Passed, no corrections", PASS_MINOR: "Passed, minor corrections", PASS_MAJOR: "Passed, major corrections",
+  SECOND_ORAL: "Second oral required", FAIL: "Failed",
+};
 const KIND: Record<string, string> = { PROJECT: "Project report", DISSERTATION: "Dissertation", THESIS: "Thesis" };
 const STAGE_LABEL: Record<string, string> = {
   REGISTERED: "Registered", SUPERVISED: "Supervisor assigned", PROPOSAL_SUBMITTED: "Proposal submitted",
@@ -116,6 +125,25 @@ export function Research() {
           )) : <div className="sub2">No supervisor has been assigned yet. The department assigns supervisors after registration (Policy 14).</div>}
         </PBody>
       </Panel>
+
+      {(r.panel?.length ?? 0) > 0 ? (
+        <Panel title="Panel of examiners">
+          <PBody>
+            {r.panel.map((p, i) => (
+              <div key={i} className="sub2">{p.name} — {PANEL_ROLE[p.role] ?? p.role.toLowerCase()}{p.is_external ? " (external)" : ""}</div>
+            ))}
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {r.viva_held_at ? (
+        <Note kind={r.viva_outcome === "FAIL" ? "bad" : "ok"} title={`Viva — ${VIVA_OUTCOME[r.viva_outcome ?? ""] ?? r.viva_outcome ?? ""}`}>
+          Held {fmt(r.viva_held_at)}{r.viva_grade ? ` · grade ${r.viva_grade}` : ""}.
+          {r.corrections_due ? ` Corrections are due by ${fmt(r.corrections_due)}.` : ""}
+          {r.cleared_at ? ` Cleared for binding on ${fmt(r.cleared_at)}.` : ""}
+          {r.awarded_at ? ` Awarded by Senate on ${fmt(r.awarded_at)}.` : ""}
+        </Note>
+      ) : null}
 
       <Panel title="Topic & proposal">
         <PBody>
