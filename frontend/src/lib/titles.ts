@@ -28,6 +28,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Postgraduate courses",
     "The programme catalogue"
   ],
+  "t/pgscores": [
+    "Course results",
+    "Registrations, endorsement and scores"
+  ],
   "s/broadsheet": [
     "Result broadsheet",
     "Every published semester, with the CUR/CUE/WGP/GPA and cumulative CGPA"

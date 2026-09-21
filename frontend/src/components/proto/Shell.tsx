@@ -56,6 +56,7 @@ export const ROUTES: Record<string, string> = {
   "t/de-screening": "/admissions/de-screening",
   "t/pgadmissions": "/admissions/postgraduate",
   "t/pgcourses": "/admissions/postgraduate/courses",
+  "t/pgscores": "/admissions/postgraduate/results",
   "t/pgresearch": "/admissions/postgraduate/research",
   "t/pgsupervision": "/admissions/postgraduate/research?stage=REGISTERED",
   "t/pgproposals": "/admissions/postgraduate/research?stage=PROPOSAL_SUBMITTED",

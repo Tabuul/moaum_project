@@ -2459,6 +2459,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Board & awards",
         "items": [
           { "id": "t/pgboard", "icon": "check", "label": "School Board" },
+          { "id": "t/pgscores", "icon": "doc", "label": "Course results" },
           { "id": "t/pgexaminers", "icon": "shield", "label": "External examiners" },
           { "id": "t/pgpanels", "icon": "doc", "label": "Examination panels" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
@@ -2517,6 +2518,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Results & awards",
         "items": [
+          { "id": "t/pgscores", "icon": "doc", "label": "Course results" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation list" }
         ]
