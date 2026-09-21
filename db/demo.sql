@@ -1055,6 +1055,7 @@ END $prof$;
 -- ── postgraduate applications (V202), a few in different states to work the desks ──
 DO $pg$
 DECLARE v_app uuid; v_ref text; v_hod uuid; v_dean uuid;
+        v_student uuid; v_res uuid; v_reg uuid; v_courses uuid[]; e record;
         v_pdf bytea := decode('255044462d312e34', 'hex');   -- a stub "%PDF-1.4" byte string
 BEGIN
     PERFORM set_config('moaum.actor_office', 'academic', true);
@@ -1120,6 +1121,71 @@ BEGIN
         IF v_dean IS NOT NULL THEN
             PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean);
         END IF;
+
+        -- 4 · M.Sc. Computer Science — admitted, registered, scored, and through to a cleared thesis,
+        --     so the whole postgraduate vertical (coursework, results, register, research, Board) has data
+        v_app := admissions.pg_register('2025/2026', 'Ikyernum', 'Manasseh Aondongu',
+                    'pg.demo4@example.com', '08030000004', crypt('pg-demo', gen_salt('bf', 12)), 'C90002');
+        UPDATE admissions.pg_application SET
+            prior_institution = 'Benue State University, Makurdi', prior_award = 'B.Sc. Computer Science',
+            prior_class = 'Second Class (Upper)', prior_cgpa = 3.90, prior_year = 2021,
+            proposal_title = 'Federated learning for financial reporting quality',
+            proposal_text  = 'A privacy-preserving machine-learning study of earnings quality.'
+          WHERE id = v_app;
+        INSERT INTO admissions.pg_referee (application_id, name, email, institution, position)
+            VALUES (v_app, 'Prof. G. T. Utor', 'gtutor@moaum.edu.ng', 'Rev. Fr. M. O. Adasu University', 'Professor');
+        v_ref := admissions.pg_new_fee_reference(v_app, 'APPLICATION');
+        PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
+        PERFORM admissions.pg_submit(v_app);
+        IF v_hod  IS NOT NULL THEN PERFORM admissions.pg_dept_decide(v_app, true, 'Admit.', v_hod); END IF;
+        IF v_dean IS NOT NULL THEN PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean); END IF;
+        PERFORM admissions.pg_accept(v_app);
+        v_student := admissions.pg_admit(v_app);
+
+        -- the programme's courses (Policy 11)
+        INSERT INTO admissions.pg_course (programme_code, code, title, units, kind, semester) VALUES
+            ('C90002', 'CSC 801', 'Advanced Algorithms & Complexity', 3, 'CORE',     1),
+            ('C90002', 'CSC 803', 'Research Methodology',             3, 'CORE',     1),
+            ('C90002', 'CSC 805', 'Machine Learning',                 3, 'ELECTIVE', 1),
+            ('C90002', 'CSC 899', 'Dissertation',                     6, 'RESEARCH', 1)
+        ON CONFLICT (programme_code, code) DO NOTHING;
+
+        -- register the coursework, endorse it, and record externally-moderated scores
+        SELECT array_agg(id) INTO v_courses FROM admissions.pg_course
+         WHERE programme_code = 'C90002' AND kind <> 'RESEARCH';
+        v_reg := admissions.pg_register(v_student, '2025/2026', 1, 'FULL_TIME', v_courses);
+        UPDATE admissions.pg_registration SET state = 'ENDORSED', endorsed_by = v_dean, endorsed_at = now() WHERE id = v_reg;
+        FOR e IN SELECT ent.id AS entry_id, c.code FROM admissions.pg_registration_entry ent
+                   JOIN admissions.pg_course c ON c.id = ent.course_id WHERE ent.registration_id = v_reg LOOP
+            PERFORM admissions.pg_record_score(e.entry_id,
+                CASE e.code WHEN 'CSC 801' THEN 30 WHEN 'CSC 803' THEN 28 ELSE 25 END,
+                CASE e.code WHEN 'CSC 801' THEN 42 WHEN 'CSC 803' THEN 37 ELSE 30 END, v_dean);
+        END LOOP;
+
+        -- the research, carried through to a cleared thesis awaiting the Board
+        v_res := admissions.pg_research_ensure(v_student);
+        INSERT INTO admissions.pg_research_supervisor (research_id, person_id, name, role, is_external)
+            VALUES (v_res, v_dean, 'Dr. J. Aondo', 'FIRST', false);
+        INSERT INTO admissions.pg_research_panel (research_id, name, role, is_external) VALUES
+            (v_res, 'Prof. G. Utor', 'CHAIR', false), (v_res, 'Prof. B. Okonkwo', 'EXTERNAL', true),
+            (v_res, 'Dr. J. Aondo', 'SUPERVISOR', false), (v_res, 'Dr. M. Adaikwu', 'INTERNAL', false),
+            (v_res, 'Dr. S. Ige', 'PGSR', false), (v_res, 'Dr. S. Ochoga', 'COORDINATOR', false);
+        UPDATE admissions.pg_research SET
+            topic = 'Federated learning for financial reporting quality', stage = 'CLEARED',
+            proposal_submitted_at = now() - interval '120 days', proposal_approved_at = now() - interval '110 days',
+            seminar_held_at = now() - interval '70 days', pgsr = 'Dr. S. Ige',
+            title_registered_at = now() - interval '60 days', plagiarism_pct = 82,
+            panel_constituted_at = now() - interval '40 days', draft_submitted_at = now() - interval '35 days',
+            viva_held_at = now() - interval '20 days', viva_score = 78, viva_grade = 'A', viva_outcome = 'PASS_MINOR',
+            final_submitted_at = now() - interval '8 days', cleared_at = now() - interval '3 days', updated_at = now()
+          WHERE id = v_res;
+        INSERT INTO admissions.pg_research_event (research_id, stage, note)
+            VALUES (v_res, 'CLEARED', 'Cleared by the Secretary before binding (demo)');
+
+        -- the School's external examiners (Policy 18)
+        INSERT INTO admissions.pg_examiner (name, institution, field, tenure_from, tenure_to) VALUES
+            ('Prof. B. Okonkwo', 'University of Ibadan', 'Computer Science', date '2024-01-01', date '2027-01-01'),
+            ('Prof. C. Danjuma', 'Ahmadu Bello University, Zaria', 'Economics', date '2025-01-01', date '2028-01-01');
     END IF;
 END $pg$;
 
