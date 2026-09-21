@@ -169,6 +169,27 @@ class PgResearchController {
         return detail(id);
     }
 
+    public record PanelIn(@NotBlank @Size(max = 200) String name, @NotBlank String role, Boolean external) {
+    }
+
+    /** add a member to the panel of examiners (Policy 24.3): chair, external, supervisor(s), internal, PGSR, coordinator */
+    @PostMapping("/{id}/panel-member")
+    @PreAuthorize(SCHOOL)
+    @Transactional
+    Map<String, Object> addPanelMember(@PathVariable UUID id, @Valid @RequestBody PanelIn body) {
+        stageOrThrow(id);
+        String role = body.role().trim().toUpperCase();
+        if (!List.of("CHAIR", "EXTERNAL", "SUPERVISOR", "CO_SUPERVISOR", "INTERNAL", "PGSR", "COORDINATOR").contains(role)) {
+            throw new DomainRuleViolation("PG_PANEL_ROLE", "'" + role + "' is not a panel role.",
+                    new DomainRuleViolation.Remedy("Chair, external, supervisor, co-supervisor, internal, PGSR or coordinator.", "School of Postgraduate Studies"));
+        }
+        jdbc.sql("INSERT INTO admissions.pg_research_panel (research_id, name, role, is_external) VALUES (:r, :n, :role, :ext)")
+                .param("r", id).param("n", body.name().trim()).param("role", role).param("ext", Boolean.TRUE.equals(body.external()))
+                .update();
+        event(id, "PANEL_CONSTITUTED", body.name().trim() + " added to the panel (" + role.toLowerCase().replace('_', ' ') + ")", null);
+        return detail(id);
+    }
+
     public record ActionIn(@NotBlank String action, @Size(max = 1000) String note, @Size(max = 200) String pgsr,
                            BigDecimal plagiarismPct, BigDecimal vivaScore, @Size(max = 20) String vivaOutcome,
                            String correctionsDue) {
@@ -289,9 +310,16 @@ class PgResearchController {
                 SELECT stage, note, at FROM admissions.pg_research_event
                  WHERE research_id = :id ORDER BY at DESC LIMIT 50
                 """).param("id", id).query().listOfRows();
+        List<Map<String, Object>> panel = jdbc.sql("""
+                SELECT name, role, is_external FROM admissions.pg_research_panel
+                 WHERE research_id = :id ORDER BY CASE role WHEN 'CHAIR' THEN 0 WHEN 'EXTERNAL' THEN 1
+                        WHEN 'SUPERVISOR' THEN 2 WHEN 'CO_SUPERVISOR' THEN 3 WHEN 'INTERNAL' THEN 4
+                        WHEN 'PGSR' THEN 5 ELSE 6 END, name
+                """).param("id", id).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>(r);
         out.put("name", r.get("surname") + ", " + r.get("other_names"));
         out.put("supervisors", supervisors);
+        out.put("panel", panel);
         out.put("events", events);
         return out;
     }

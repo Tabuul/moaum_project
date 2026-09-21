@@ -27,7 +27,12 @@ export interface ResearchList {
   rows: ResearchRow[];
 }
 interface Supervisor { name: string; role: string; is_external: boolean; assigned_at: string }
+interface PanelMember { name: string; role: string; is_external: boolean }
 interface Event { stage: string; note: string | null; at: string }
+const PANEL_ROLE: Record<string, string> = {
+  CHAIR: "chair / HOD", EXTERNAL: "external examiner", SUPERVISOR: "supervisor", CO_SUPERVISOR: "co-supervisor",
+  INTERNAL: "internal examiner", PGSR: "PGSR", COORDINATOR: "PG coordinator",
+};
 interface Detail extends Omit<ResearchRow, "supervisors"> {
   name: string; entry_session: string; entry_level: number;
   proposal_submitted_at: string | null; proposal_approved_at: string | null;
@@ -35,7 +40,7 @@ interface Detail extends Omit<ResearchRow, "supervisors"> {
   panel_constituted_at: string | null; draft_submitted_at: string | null;
   viva_held_at: string | null; viva_score: number | null; corrections_due: string | null;
   final_submitted_at: string | null; cleared_at: string | null; award_recommended_at: string | null; awarded_at: string | null;
-  supervisors: Supervisor[]; events: Event[];
+  supervisors: Supervisor[]; panel: PanelMember[]; events: Event[];
 }
 
 const STAGES: [string, string][] = [
@@ -91,6 +96,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
   const [err, setErr] = useState<Problem | null>(problem);
   // inline action inputs
   const [sup, setSup] = useState({ name: "", role: "FIRST", external: false });
+  const [pan, setPan] = useState({ name: "", role: "EXTERNAL", external: false });
   const [pgsr, setPgsr] = useState("");
   const [plag, setPlag] = useState("");
   const [viva, setViva] = useState({ score: "", outcome: "PASS_MINOR" });
@@ -146,6 +152,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
   const c = view?.counts;
   const nexts = detail ? (NEXT[detail.stage] ?? []) : [];
   const sups = detail?.supervisors ?? [];
+  const panel = detail?.panel ?? [];
 
   return (
     <>
@@ -218,6 +225,27 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                         <input type="checkbox" checked={sup.external} onChange={(e) => setSup({ ...sup, external: e.target.checked })} /> external
                       </label>
                       <Btn kind="ghost" disabled={busy || !sup.name.trim()} onClick={() => { void post("/supervisor", { name: sup.name.trim(), role: sup.role, external: sup.external }, `Assigned supervisor ${sup.name.trim()}`); setSup({ name: "", role: "FIRST", external: false }); }}>Add</Btn>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Panel of examiners</div>
+                  {panel.length ? panel.map((p, i) => (
+                    <div key={i} className="sub2">{p.name} — {PANEL_ROLE[p.role] ?? p.role.toLowerCase()}{p.is_external ? " (external)" : ""}</div>
+                  )) : <div className="sub2">Not constituted yet — six for a Master&rsquo;s, seven for a PhD (Policy 24.3).</div>}
+                  {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                      <input className="ctl" placeholder="Member name" value={pan.name} onChange={(e) => setPan({ ...pan, name: e.target.value })} style={{ maxWidth: 190 }} />
+                      <select className="ctl" value={pan.role} onChange={(e) => setPan({ ...pan, role: e.target.value })} style={{ maxWidth: 150 }}>
+                        <option value="CHAIR">Chair / HOD</option><option value="EXTERNAL">External examiner</option>
+                        <option value="SUPERVISOR">Supervisor</option><option value="CO_SUPERVISOR">Co-supervisor</option>
+                        <option value="INTERNAL">Internal examiner</option><option value="PGSR">PGSR</option><option value="COORDINATOR">PG Coordinator</option>
+                      </select>
+                      <label className="sub2" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="checkbox" checked={pan.external} onChange={(e) => setPan({ ...pan, external: e.target.checked })} /> external
+                      </label>
+                      <Btn kind="ghost" disabled={busy || !pan.name.trim()} onClick={() => { void post("/panel-member", { name: pan.name.trim(), role: pan.role, external: pan.external }, `Added ${pan.name.trim()} to the panel`); setPan({ name: "", role: "EXTERNAL", external: false }); }}>Add</Btn>
                     </div>
                   ) : null}
                 </div>
