@@ -117,6 +117,10 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
           </div>
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+            <Link href="/pg/apply" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Postgraduate application</Link>
+            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>PGD, Master&rsquo;s and PhD — apply directly, no JAMB number needed</div>
+          </div>
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
             <Link href="/verify" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Verify a payment or receipt</Link>
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
           </div>
