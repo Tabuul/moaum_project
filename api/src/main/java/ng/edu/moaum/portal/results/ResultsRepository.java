@@ -406,6 +406,10 @@ class ResultsRepository {
         return jdbc.sql("SELECT * FROM people.set_jamb_numbers(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }
 
+    java.util.Map<String, Object> importPostgraduate(String rowsJson) {
+        return jdbc.sql("SELECT * FROM people.import_postgraduate(:j::jsonb)").param("j", rowsJson).query().singleRow();
+    }
+
     java.util.Map<String, Object> importBiography(String rowsJson) {
         return jdbc.sql("SELECT * FROM people.import_biography(:j::jsonb)").param("j", rowsJson).query().singleRow();
     }

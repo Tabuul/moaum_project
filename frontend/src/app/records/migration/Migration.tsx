@@ -12,7 +12,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterText } from "@/lib/student-portal";
 
-type Tab = "biodata" | "students" | "registration" | "results" | "jamb" | "passports";
+type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "jamb" | "passports";
 const MIGRATE = ["ict", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
 /* the matric shapes the biography/students importers accept — the University's own, or a legacy old-portal number */
 const MATRIC_OK = /^(MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}|[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7})$/i;
@@ -106,7 +106,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const dataRows = grid.slice(1);
       const rows: Record<string, string>[] = [];
       const rej: Record<string, string>[] = [];
-      const matricKind = kind === "biodata" || kind === "students" || kind === "jamb";
+      const matricKind = kind === "biodata" || kind === "pgstudents" || kind === "students" || kind === "jamb";
       for (let i = 0; i < dataRows.length; i++) {
         const r = dataRows[i];
         if (r.some((c) => String(c ?? "").trim() !== "")) {
@@ -123,6 +123,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       setRejected(rej.length ? { rows: rej, kind } : null);
       if (!rows.length) { setProblem({ status: 400, title: rej.length ? "No row had a valid matriculation number." : "The file had no rows to read.", detail: rej.length ? `${rej.length.toLocaleString()} rows were read but none has a valid matriculation number. Download them below, fix the numbers, and upload again.` : "Export the list from the old portal and upload it." }); return; }
       const path = kind === "biodata" ? "/api/bff/api/v1/results/legacy/biodata"
+        : kind === "pgstudents" ? "/api/bff/api/v1/results/legacy/pg-students"
         : kind === "students" ? "/api/bff/api/v1/results/legacy/students"
         : kind === "jamb" ? "/api/bff/api/v1/results/legacy/jamb-numbers"
         : kind === "registration" ? "/api/bff/api/v1/results/legacy/registration" : "/api/bff/api/v1/results/legacy/results";
@@ -150,7 +151,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         groups = [{ session: "", semester: 0, rows }];
       }
 
-      const CHUNK = kind === "biodata" ? 200 : 400;
+      const CHUNK = kind === "biodata" || kind === "pgstudents" ? 200 : 400;
       const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
       const totals: Record<string, number> = {};
       let firstErr: string | null = null;
@@ -202,6 +203,15 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       name: "Students biodata",
       headers: ["Matriculation Number", "Surname", "Other Names", "Programme", "Sex", "Date of Birth", "Entry Mode", "Entry Session", "Level", "School Id"],
       example: ["MOAUM/CSC/22/0001", "Doe", "John Ada (example — delete this row)", "Computer Science", "M", "2003-05-14", "UTME", "2022/2023", "300", "S001"],
+    },
+    pgstudents: {
+      name: "Postgraduate students",
+      headers: ["matno", "appno", "Surname", "sex", "dob", "programme", "level", "mode_entry", "school_id",
+        "phone", "email", "login_email", "address", "nationality", "state", "lga",
+        "guardianname", "guardianaddress", "sponsorname", "sponsoraddress", "nokname", "nokaddress", "extracurricular", "faculty", "department"],
+      example: ["MOAU/AM/BSM/MSC/24/0002", "20251005707251", "Barnabas Aondoawase Iorpuu (example — delete this row)", "Male", "2001-06-15", "C14569", "800", "MST", "S002",
+        "08030000000", "", "student@example.com", "12 Example Street, Makurdi", "NIGERIA", "Benue", "Ushongo",
+        "Guardian Name", "Guardian Address", "Sponsor Name", "Sponsor Address", "Next of Kin", "Next of Kin Address", "Reading", "MS", "BSM"],
     },
     registration: {
       name: "Course registration",
@@ -255,6 +265,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const scopeReady = true;
   const CARDS: Record<Tab, [string, string][]> = {
     biodata: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
+    pgstudents: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     registration: [["rows", "Rows read"], ["students", "Students"], ["offerings", "Courses"], ["registrations", "Registrations"], ["no_student", "No such student"], ["no_course", "No such course"]],
     results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["no_student", "No such student"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
@@ -301,7 +312,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     const cols: Col[] = [];
     const add = (key: string, idx: number, norm?: (s: string) => string) => { if (idx >= 0) cols.push({ key, idx, norm }); };
     add("matric", at(/matric/, /reg\.?\s*(no|number)/, /registration/, /mat\.?\s*no/, /matno/));
-    if (kind === "biodata") {
+    if (kind === "biodata" || kind === "pgstudents") {
       add("jamb", at(/jamb/, /utme\s*reg/));
       add("surname", at(/surname/, /last\s*name/));
       add("otherNames", at(/other\s*name/, /first\s*name/, /given/));
@@ -381,7 +392,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
 
       <div className="card"><div className="card__body">
         <div className="role-tabs" role="tablist">
-          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"]] as [Tab, string][]).map(([k, l]) => (
+          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"]] as [Tab, string][]).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => { setTab(k); setResult(null); setProblem(null); setPResult(null); }}>{l}</button>
           ))}
         </div>
@@ -411,8 +422,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           </PBody>
         </Panel>
       ) : (
-      <Panel title={tab === "biodata" ? "Student biography exported from the old portal" : tab === "students" ? "Students exported from the old portal" : tab === "jamb" ? "JAMB registration numbers (matric → JAMB)" : tab === "registration" ? "Course registration of a past semester" : "Past results of a semester"}
-             right={tab === "students" || tab === "biodata" ? "The first step" : tab === "jamb" ? "So passport photos match" : `${session || "session"} · ${semesterText(Number(semester))}`}>
+      <Panel title={tab === "biodata" ? "Student biography exported from the old portal" : tab === "pgstudents" ? "Postgraduate students exported from the old portal" : tab === "students" ? "Students exported from the old portal" : tab === "jamb" ? "JAMB registration numbers (matric → JAMB)" : tab === "registration" ? "Course registration of a past semester" : "Past results of a semester"}
+             right={tab === "students" || tab === "biodata" || tab === "pgstudents" ? "The first step" : tab === "jamb" ? "So passport photos match" : `${session || "session"} · ${semesterText(Number(semester))}`}>
         <PBody>
           {needScope ? (
             <div className="grid grid--3">
@@ -422,7 +433,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             </div>
           ) : null}
           <div className="sub2" style={{ marginBottom: 8 }}>
-            {tab === "biodata" ? "Columns read: matriculation number, JAMB registration number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
+            {tab === "pgstudents" ? "Columns read: matno (the MOAU/… postgraduate matric), appno, name, sex, dob, programme (the old-portal code, e.g. C14569 — created as a POST GRADUATE programme in the shared table from the faculty, department and the award in the matric when it is not there yet), level (kept as 700/800/900), phone, email/login_email, address, nationality, state, LGA, guardian, sponsor, next-of-kin, extracurricular. Entry mode is set to POSTGRADUATE and the school to S002 (→ BMAS curriculum), so each lands on their own postgraduate dashboard. A matric sign-in account is created — the student signs in first with their matric number and is asked to set a password."
+              : tab === "biodata" ? "Columns read: matriculation number, JAMB registration number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
               : tab === "jamb" ? "Columns read: matriculation number and JAMB registration number. The student is matched by matriculation number and their JAMB number is set on the register. Do this before uploading passport photos named by JAMB number, so a legacy student (who carries no JAMB number yet) can be matched. The application number is NOT the JAMB number — upload the real JAMB registration number."
               : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
@@ -439,7 +451,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
                           ? `${progress.label} — ${progress.sent.toLocaleString()} rows…`
                           : `${progress.label}…`)
                     : "Importing…")
-                : `Upload ${tab === "biodata" ? "biography" : tab === "students" ? "students" : tab === "jamb" ? "JAMB numbers" : tab === "registration" ? "registration" : "results"} file`}
+                : `Upload ${tab === "biodata" ? "biography" : tab === "pgstudents" ? "postgraduate students" : tab === "students" ? "students" : tab === "jamb" ? "JAMB numbers" : tab === "registration" ? "registration" : "results"} file`}
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || (needScope && !scopeReady) || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(tab, f); e.target.value = ""; }} />
             </label>
             {needScope && !scopeReady ? <span className="sub2">Enter the session (YYYY/YYYY) and semester first.</span> : null}
@@ -475,7 +487,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             return [label, String(v), bad ? "var(--red-ink)" : /created|results|registrations|students/.test(k) ? "var(--green-ink)" : null, ""] as [string, string, string | null, string];
           })} />
           <Note kind="ok" title="Imported">
-            {tab === "biodata" ? `${result.counts.created ?? 0} students created, ${result.counts.updated ?? 0} updated; ${result.counts.contacts ?? 0} contacts and ${result.counts.biography ?? 0} biography values saved; ${result.counts.accounts ?? 0} sign-in accounts provisioned.`
+            {tab === "biodata" || tab === "pgstudents" ? `${result.counts.created ?? 0} ${tab === "pgstudents" ? "postgraduate students" : "students"} created, ${result.counts.updated ?? 0} updated; ${result.counts.contacts ?? 0} contacts and ${result.counts.biography ?? 0} biography values saved; ${result.counts.accounts ?? 0} sign-in accounts provisioned.`
               : tab === "students" ? `${result.counts.created ?? 0} students created, ${result.counts.updated ?? 0} updated.`
               : tab === "jamb" ? `${result.counts.updated ?? 0} JAMB number${result.counts.updated === 1 ? "" : "s"} set on the register. You can now upload passport photos named by JAMB number.`
               : tab === "registration" ? `${result.counts.registrations ?? 0} registrations across ${result.counts.offerings ?? 0} courses.`

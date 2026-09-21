@@ -101,6 +101,12 @@ public class ResultsService {
     }
 
     @Transactional
+    public Map<String, Object> importPostgraduate(List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importPostgraduate(json.writeValueAsString(rows));
+    }
+
+    @Transactional
     public Map<String, Object> importJambNumbers(List<Map<String, Object>> rows) {
         requireRows(rows);
         return repo.setJambNumbers(json.writeValueAsString(rows));

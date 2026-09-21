@@ -58,6 +58,14 @@ class ResultsController {
         return service.importBiography(body.rows());
     }
 
+    /** the postgraduate students exported from the old portal — kept at their postgraduate level (700/800/900)
+     *  and school (S002), the programme created in the shared table when it is not yet there */
+    @PostMapping("/legacy/pg-students")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importPostgraduate(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.importPostgraduate(body.rows());
+    }
+
     /** the course registration of a past semester, from the old portal */
     @PostMapping("/legacy/registration")
     @PreAuthorize(MIGRATE)
