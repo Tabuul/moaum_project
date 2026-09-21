@@ -14,7 +14,15 @@ import { NextRequest, NextResponse } from "next/server";
  */
 const SESSION_COOKIE = "moaum_session";
 const OFFICE_COOKIE = "moaum_office";
-const OPEN = ["/login", "/apply", "/api/auth/", "/api/bff/api/v1/applicant/lookup", "/verify", "/healthz", "/crest.png", "/favicon.ico"];
+const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/applicant/lookup", "/verify", "/healthz", "/crest.png", "/favicon.ico"];
+/* the public postgraduate endpoints, matched exactly so the prefix does not also open the
+   authenticated PG desks that share the /api/v1/pg base (e.g. /pg/applications) */
+const OPEN_EXACT = new Set([
+  "/api/bff/api/v1/pg/programmes",
+  "/api/bff/api/v1/pg/apply",
+  "/api/bff/api/v1/pg/status",
+  "/api/bff/api/v1/pg/accept",
+]);
 const API_URL = (process.env.PORTAL_API_URL ?? "http://localhost:8081").replace(/\/$/, "");
 
 function toLogin(request: NextRequest, clear: boolean): NextResponse {
@@ -36,7 +44,7 @@ export async function proxy(request: NextRequest) {
   if (agent.includes("RailwayHealthCheck") || request.headers.get("host") === "healthcheck.railway.app") {
     return NextResponse.next();
   }
-  if (OPEN.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p))) {
+  if (OPEN_EXACT.has(pathname) || OPEN.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p))) {
     return NextResponse.next();
   }
   const token = request.cookies.get(SESSION_COOKIE)?.value;
