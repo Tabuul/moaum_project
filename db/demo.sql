@@ -1052,4 +1052,75 @@ BEGIN
     ON CONFLICT (person_id) DO NOTHING;
 END $prof$;
 
+-- ── postgraduate applications (V202), a few in different states to work the desks ──
+DO $pg$
+DECLARE v_app uuid; v_ref text; v_hod uuid; v_dean uuid;
+        v_pdf bytea := decode('255044462d312e34', 'hex');   -- a stub "%PDF-1.4" byte string
+BEGIN
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'demo: postgraduate applications', true);
+    SELECT person_id INTO v_hod  FROM iam.office_assignment WHERE office_code = 'hod'      ORDER BY valid_from LIMIT 1;
+    SELECT person_id INTO v_dean FROM iam.office_assignment WHERE office_code = 'pgschool' ORDER BY valid_from LIMIT 1;
+
+    IF NOT EXISTS (SELECT 1 FROM admissions.pg_application) THEN
+        -- 1 · M.Sc. Computer Science — submitted, waiting on the department
+        v_app := admissions.pg_register('2025/2026', 'Terzungwe', 'Aondofa Grace',
+                    'pg.demo1@example.com', '08030000001', crypt('pg-demo', gen_salt('bf', 12)), 'C90002');
+        UPDATE admissions.pg_application SET
+            prior_institution = 'University of Nigeria, Nsukka', prior_award = 'B.Sc. Computer Science',
+            prior_class = 'Second Class (Upper)', prior_cgpa = 3.80, prior_year = 2022,
+            proposal_title = 'Federated learning for low-resource clinics',
+            proposal_text  = 'A study of privacy-preserving model training across rural health facilities.'
+          WHERE id = v_app;
+        INSERT INTO admissions.pg_referee (application_id, name, email, institution, position)
+            VALUES (v_app, 'Prof. A. B. Ode', 'abode@unn.edu.ng', 'University of Nigeria, Nsukka', 'Professor');
+        INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes)
+            VALUES (v_app, 'TRANSCRIPT', 'transcript.pdf', 'application/pdf', v_pdf);
+        v_ref := admissions.pg_new_fee_reference(v_app, 'APPLICATION');
+        PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
+        PERFORM admissions.pg_submit(v_app);
+
+        -- 2 · Ph.D. Economics — recommended by the department, waiting on the School
+        v_app := admissions.pg_register('2025/2026', 'Ngukwagh', 'Mimidoo Faith',
+                    'pg.demo2@example.com', '08030000002', crypt('pg-demo', gen_salt('bf', 12)), 'C90005');
+        UPDATE admissions.pg_application SET
+            prior_institution = 'Benue State University, Makurdi', prior_award = 'M.Sc. Economics',
+            prior_class = 'Distinction', prior_cgpa = 4.20, prior_year = 2020,
+            proposal_title = 'Fiscal federalism and sub-national debt in Nigeria',
+            proposal_text  = 'An empirical study of state borrowing since the 1999 constitution.'
+          WHERE id = v_app;
+        INSERT INTO admissions.pg_referee (application_id, name, email, institution, position)
+            VALUES (v_app, 'Prof. C. D. Iorpev', 'cdiorpev@bsum.edu.ng', 'Benue State University', 'Professor');
+        INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes)
+            VALUES (v_app, 'TRANSCRIPT', 'msc-transcript.pdf', 'application/pdf', v_pdf);
+        v_ref := admissions.pg_new_fee_reference(v_app, 'APPLICATION');
+        PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
+        PERFORM admissions.pg_submit(v_app);
+        IF v_hod IS NOT NULL THEN
+            PERFORM admissions.pg_dept_decide(v_app, true, 'A strong candidate with a fundable proposal.', v_hod);
+        END IF;
+
+        -- 3 · PGD Computer Science — offered, waiting on the applicant to accept
+        v_app := admissions.pg_register('2025/2026', 'Iormember', 'Doosuur Peter',
+                    'pg.demo3@example.com', '08030000003', crypt('pg-demo', gen_salt('bf', 12)), 'C90001');
+        UPDATE admissions.pg_application SET
+            prior_institution = 'Federal Polytechnic, Nasarawa', prior_award = 'HND Computer Science',
+            prior_class = 'Upper Credit', prior_cgpa = 3.40, prior_year = 2021
+          WHERE id = v_app;
+        INSERT INTO admissions.pg_referee (application_id, name, email, institution, position)
+            VALUES (v_app, 'Engr. E. F. Terwase', 'eftwase@fpn.edu.ng', 'Federal Polytechnic, Nasarawa', 'Chief Lecturer');
+        INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes)
+            VALUES (v_app, 'TRANSCRIPT', 'hnd-transcript.pdf', 'application/pdf', v_pdf);
+        v_ref := admissions.pg_new_fee_reference(v_app, 'APPLICATION');
+        PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
+        PERFORM admissions.pg_submit(v_app);
+        IF v_hod IS NOT NULL THEN
+            PERFORM admissions.pg_dept_decide(v_app, true, 'Suitable for the diploma.', v_hod);
+        END IF;
+        IF v_dean IS NOT NULL THEN
+            PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean);
+        END IF;
+    END IF;
+END $pg$;
+
 COMMIT;

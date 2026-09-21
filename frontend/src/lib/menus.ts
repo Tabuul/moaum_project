@@ -835,6 +835,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Direct Entry screening"
           },
           {
+            "id": "t/pgadmissions",
+            "icon": "cap",
+            "label": "Postgraduate admissions"
+          },
+          {
             "id": "t/applicants",
             "icon": "user",
             "label": "Report on Post-UTME Registration"

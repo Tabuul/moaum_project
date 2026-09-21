@@ -456,6 +456,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Direct Entry screening",
     "DE applicants checked against the programme’s subject set · Academic Office"
   ],
+  "t/pgadmissions": [
+    "Postgraduate admissions",
+    "Application to admission · School of Postgraduate Studies"
+  ],
   "t/transcripts": [
     "Transcript requests",
     "Exams & Records · production queue"
