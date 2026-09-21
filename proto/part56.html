@@ -29,7 +29,7 @@
         ["Offered", "5", "var(--green-ink)", "awaiting acceptance"],
         ["To admit", "2", "var(--chrome)", "accepted"],
         ["PG students", "118", null, "on the register"]
-      ], 'grid--5') +
+      ], 'grid--4') +
       panel("Latest applications", btn('ghost', "Open admissions desk", ' data-go="t/pgadm"'), dtable(
         ["Applicant", "Programme", "Session|mid", "Fee|mid", "Status|mid"], [
         [two("Ikyernum, Manasseh", "PG/25/000004"), two("M.Sc. Accounting and Finance", "M.Sc."), '<span class="tnum sub2">2025/2026</span>', pil('ok', "Paid"), pil('info', "Submitted")],
@@ -96,7 +96,7 @@
       ["Proposal", "9", null, "submitted / approved"],
       ["Examination", "7", "var(--chrome)", "panel &middot; viva"],
       ["Awarded", "21", "var(--green-ink)", "by Senate"]
-    ], 'grid--5') +
+    ], 'grid--4') +
       panel("Research pipeline", '<select class="ctl" style="width:auto"><option>All stages</option><option>Registered &mdash; awaiting supervisor</option><option>Proposal submitted</option><option>Seminar held</option><option>Draft submitted</option><option>Viva held</option><option>Final submitted</option><option>Cleared</option><option>Awarded</option></select>',
         dtable(["Candidate", "Programme", "Kind|mid", "Stage|mid", "Supervisors", "Updated|num"],
           PG_PIPE.map(function (r) {
@@ -158,35 +158,75 @@
   }
 
   function pgStudentsList() {
-    return panel("Postgraduate students", '<select class="ctl" style="width:auto"><option>All programmes</option></select>', dtable(
-      ["Student", "Programme", "Level|mid", "Status|mid", "Research|mid"], [
-      [two("Ada, Ngozi", "MOAUM/PG/25/0003"), two("Ph.D. Economics", "Economics"), "900", pil('ok', "Active"), pil('info', "Draft")],
-      [two("Ikyernum, Manasseh", "MOAUM/PG/25/0007"), two("M.Sc. Accounting", "Accounting"), "800", pil('ok', "Active"), pil('info', "Supervised")]
-    ]));
+    return tiles([
+      ["PG students", "118", null, "on the register"],
+      ["PGD", "22", null, "level 700"],
+      ["Master&rsquo;s", "71", null, "level 800"],
+      ["Doctoral", "25", null, "level 900"],
+      ["On probation", "3", "var(--red-deep)", "CGPA below 2.50"]
+    ], 'grid--4') +
+      panel("Postgraduate register", '<div style="display:flex;gap:6px">' +
+        '<select class="ctl" style="width:auto"><option>All programmes</option><option>M.Sc. Accounting and Finance</option><option>Ph.D. Economics</option><option>MBA</option></select>' +
+        '<select class="ctl" style="width:auto"><option>All levels</option><option>700 &middot; PGD</option><option>800 &middot; Master&rsquo;s</option><option>900 &middot; Doctoral</option></select>' +
+        '<select class="ctl" style="width:auto"><option>Full-time &amp; part-time</option><option>Full-time</option><option>Part-time</option></select></div>',
+        dtable(["Student", "Programme", "Level|mid", "Mode|mid", "CGPA|num", "Status|mid", "Research|mid"], [
+        [two("Ada, Ngozi", "MOAUM/PG/25/0003"), two("Ph.D. Economics", "Economics"), "900", "Full-time", "4.42", pil('ok', "Active"), pil('info', "Draft submitted")],
+        [two("Ikyernum, Manasseh", "MOAUM/PG/25/0007"), two("M.Sc. Accounting", "Accounting"), "800", "Full-time", "4.33", pil('ok', "Active"), pil('info', "Supervised")],
+        [two("Ocholi, Paul", "MOAUM/PG/25/0011"), two("M.Sc. Accounting", "Accounting"), "800", "Part-time", "3.90", pil('ok', "Active"), pil('ok', "Viva held")],
+        [two("Terkula, Doosuur", "MOAUM/PG/25/0009"), two("MBA", "Business Management"), "800", "Part-time", "2.38", pil('warn', "Probation"), pil('grey', "Coursework")],
+        [two("Imember, Doris", "MOAUM/PG/24/0021"), two("PGD Computer Science", "Maths & Computer Sci."), "700", "Full-time", "3.75", pil('ok', "Active"), pil('grey', "Project")]
+      ])) +
+      note('info', "Probation and withdrawal (Policy 15.5 / 20)",
+        "A student whose CGPA falls below 2.50 is placed on probation for a semester and withdrawn if it does not improve. One candidate is on probation this session.");
   }
 
   /* ── Secretary desks ───────────────────────────────────────────── */
   function pgReg() {
     return note('info', "Registration &amp; matriculation (Policy 7&ndash;8)",
-      "Screen originals, confirm online fees, endorse forms, matriculate.") +
+      "Present originals for screening, pay the prescribed fees online, complete and endorse the online forms, then matriculate. Registration is renewed each semester; a session missed lapses the studentship (Policy 7.6).") +
+      tiles([
+        ["To register", "14", "var(--chrome)", "admitted, not registered"],
+        ["Registered", "104", "var(--green-ink)", "this session"],
+        ["Part-time", "38", null, "of the register"],
+        ["Lapsed", "2", "var(--red-deep)", "did not renew"]
+      ]) +
       panel("Fresh postgraduate students", '<select class="ctl" style="width:auto"><option>All</option><option>To screen</option><option>To confirm fees</option><option>To matriculate</option></select>', dtable(
-        ["Student", "Programme", "Fees|mid", "Screening|mid", "Matriculation|mid"], [
-        [two("Ikyernum, Manasseh", "MOAUM/ADM/25/000007"), two("M.Sc. Accounting", "Accounting"), pil('ok', "Paid"), pil('ok', "Screened"), btn('primary', "Matriculate")],
-        [two("Terkula, Doosuur", "MOAUM/ADM/25/000009"), two("MBA", "Business"), '<span class="sub2">Owing</span>', pil('warn', "Pending"), btn('ghost', "&mdash;")]
+        ["Student", "Programme", "Mode|mid", "Fees|mid", "Screening|mid", "Matriculation|mid"], [
+        [two("Ikyernum, Manasseh", "MOAUM/ADM/25/000007"), two("M.Sc. Accounting", "Accounting"), "Full-time", pil('ok', "Paid"), pil('ok', "Screened"), btn('primary', "Matriculate")],
+        [two("Terkula, Doosuur", "MOAUM/ADM/25/000009"), two("MBA", "Business"), "Part-time", '<span class="sub2">Owing</span>', pil('warn', "Pending"), btn('ghost', "&mdash;")],
+        [two("Ada, Ngozi", "MOAUM/ADM/25/000003"), two("Ph.D. Economics", "Economics"), "Full-time", pil('ok', "Paid"), pil('ok', "Screened"), btn('primary', "Matriculate")]
+      ])) +
+      panel("Semester renewal", "Policy 7.5", dtable(
+        ["Student", "Programme", "Semester|mid", "Fees|mid", "Status|mid"], [
+        [two("Ocholi, Paul", "MOAUM/PG/25/0011"), two("M.Sc. Accounting", "Accounting"), "2nd", pil('ok', "Paid"), pil('ok', "Renewed")],
+        [two("Doe, Faith", "MOAUM/PG/24/0033"), two("MBA", "Business"), "3rd", '<span class="sub2">Owing</span>', pil('warn', "Not renewed")]
       ]));
   }
 
   function pgExams() {
     return note('info', "Course examinations (Policy 17)",
-      "HODs/Chief Examiners submit moderated question papers and results; papers moderated by External Examiners.") +
+      "Heads of Department are the Chief Examiners. They submit sealed, externally-moderated question papers and the moderated results to the Secretary not later than seven days before the examination; continuous assessment is 30&ndash;40% and the examination 60&ndash;70%. There is no resit.") +
+      tiles([
+        ["Sittings", "8", null, "this semester"],
+        ["Papers received", "6", "var(--green-ink)", "sealed &amp; moderated"],
+        ["Papers awaited", "2", "var(--chrome)", "due in 7 days"],
+        ["Results recorded", "5", null, "externally moderated"]
+      ]) +
       panel("Examination timetable", btn('primary', "Add sitting"), dtable(
-        ["Course", "Department", "Date|mid", "Candidates|num", "Papers|mid"], [
-        ["ACC 801", "Accounting", "12 Jan 2027", "6", pil('ok', "Received")],
-        ["ECO 901", "Economics", "14 Jan 2027", "4", pil('warn', "Awaited")]
+        ["Course", "Title", "Department", "Date|mid", "Candidates|num", "Papers|mid"], [
+        ["ACC 801", "Advanced Financial Accounting", "Accounting", "12 Jan 2027", "6", pil('ok', "Received")],
+        ["ACC 803", "Research Methodology", "Accounting", "13 Jan 2027", "6", pil('ok', "Received")],
+        ["ECO 901", "Advanced Econometrics", "Economics", "14 Jan 2027", "4", pil('warn', "Awaited")]
       ])) +
-      panel("Results submitted", "", dtable(
-        ["Course", "Submitted by", "Moderated|mid", "Status|mid"], [
-        ["ACC 801", "HOD Accounting", pil('ok', "External-moderated"), pil('ok', "Recorded")]
+      panel("Question-paper moderation", "sealed packets", dtable(
+        ["Course", "Chief Examiner", "External examiner", "Status|mid"], [
+        ["ACC 801", "HOD Accounting", "Prof. C. Danjuma", pil('ok', "Moderated")],
+        ["ECO 901", "HOD Economics", "Prof. B. Okonkwo", pil('warn', "With examiner")]
+      ])) +
+      panel("Results submitted", "Appendix A format", dtable(
+        ["Course", "Submitted by", "CA / Exam|mid", "Moderated|mid", "Status|mid"], [
+        ["ACC 801", "HOD Accounting", "30 / 70", pil('ok', "External-moderated"), pil('ok', "Recorded")],
+        ["ACC 803", "HOD Accounting", "40 / 60", pil('ok', "External-moderated"), pil('ok', "Recorded")]
       ]));
   }
 
@@ -200,11 +240,24 @@
   }
 
   function pgSecResults() {
-    return panel("Computed results to Senate", "2025/2026", dtable(
-      ["Candidate", "Programme", "Outcome|mid", "Status|mid"], [
-      ["Ada, Ngozi", "Ph.D. Economics", pil('ok', "Pass &middot; minor"), pil('info', "With the Board")],
-      ["Ocholi, Paul", "M.Sc. Accounting", pil('ok', "Pass"), pil('info', "With the Board")]
-    ]));
+    return note('info', "Award of degrees (Policy 33&ndash;34)",
+      "The Head of Department submits computed results through the Faculty PG Committee. The School considers them and submits a summary of graduating students to Senate; a candidate is awarded from the date Senate approves, and the Dean issues the notification of award.") +
+      tiles([
+        ["To Senate", "2", "var(--chrome)", "with the Board"],
+        ["Awarded", "21", "var(--green-ink)", "this session"],
+        ["Coursework results", "38", null, "recorded"],
+        ["Pending computation", "4", null, "with departments"]
+      ]) +
+      panel("Computed results to Senate", "2025/2026", dtable(
+        ["Candidate", "Programme", "Coursework CGPA|num", "Viva|mid", "Outcome|mid", "Status|mid"], [
+        ["Ada, Ngozi", "Ph.D. Economics", "4.42", pil('ok', "A &middot; minor"), pil('ok', "Pass"), pil('info', "With the Board")],
+        ["Ocholi, Paul", "M.Sc. Accounting", "3.90", pil('ok', "A"), pil('ok', "Pass"), pil('info', "With the Board")]
+      ])) +
+      panel("Awarded this session", "Senate-approved", dtable(
+        ["Candidate", "Programme", "Award|mid", "Senate date|num"], [
+        ["Terna, Sesugh", "MBA", pil('ok', "Awarded"), "30 Aug 2026"],
+        ["Imember, Doris", "PGD Computer Science", pil('ok', "Awarded"), "30 Aug 2026"]
+      ]));
   }
 
   /* ── applicant portal (sample, viewable from the SPGS menu) ─────── */
@@ -271,17 +324,57 @@
       tiles([
         ["School fees", "&#8358;180,000", null, "2025/2026"],
         ["Registration", "Approved", "var(--green-ink)", "first semester"],
-        ["Courses", "4", null, "registered"],
+        ["CGPA", "4.33", null, "of 5.00"],
         ["Research", "Supervised", "var(--chrome)", "proposal next"]
       ]) +
-      panel("Course registration", "24 units", dtable(
+      note('info', "Submit your research proposal",
+        "Your supervisor (Dr. J. Aondo) has been assigned. Submit your proposal under Research &amp; thesis; a Master&rsquo;s proposal is due within 6 months of first registration (Policy 21).") +
+      panel("This session", "2025/2026 &middot; first semester", pbody(kvGrid([
+        ["Programme", "M.Sc. Accounting and Finance"], ["Level / mode", "800 &middot; Full-time"],
+        ["Registration", "Approved &middot; 4 courses, 24 units"], ["Research", "Supervised &middot; dissertation"]
+      ], 'grid--2')));
+  }
+
+  function pgStudentReg() {
+    return note('ok', "Registration for 2025/2026 &middot; first semester",
+      "Endorsed by the Head of Department. Renew at the beginning of each semester within the stipulated period (Policy 7.5); a session missed lapses the studentship.") +
+      panel("Course registration", "24 units &middot; minimum 24 coursework (Policy 15)", dtable(
         ["Course", "Title", "Units|num", "Type|mid", "Status|mid"], [
         ["ACC 801", "Advanced Financial Accounting", "3", pil('info', "Core"), pil('ok', "Registered")],
         ["ACC 803", "Research Methodology", "3", pil('info', "Core"), pil('ok', "Registered")],
         ["ACC 805", "Corporate Finance Theory", "3", pil('grey', "Elective"), pil('ok', "Registered")],
+        ["ACC 807", "Financial Reporting &amp; Analysis", "3", pil('grey', "Elective"), pil('ok', "Registered")],
         ["ACC 899", "Dissertation", "6", pil('info', "Research"), pil('ok', "Registered")]
       ])) +
-      note('info', "Grading (Policy 16)", "A 70+ &middot; B 60&ndash;69 &middot; C 50&ndash;59 &middot; F 0&ndash;49. Pass 50. No resit. A CGPA below 2.50 means probation.");
+      '<div style="display:flex;gap:8px">' + btn('primary', "Add / drop courses") + btn('ghost', "Print endorsed form") + '</div>';
+  }
+
+  function pgStudentResults() {
+    return note('info', "Grading (Policy 16)",
+      "A 70+ &middot; B 60&ndash;69 &middot; C 50&ndash;59 &middot; F 0&ndash;49. Pass mark 50. There is no resit. A CGPA below 2.50 places you on probation for a semester.") +
+      panel("Results &middot; first semester", "GPA 4.33", dtable(
+        ["Course", "Title", "Units|num", "Score|num", "Grade|mid", "Points|num"], [
+        ["ACC 801", "Advanced Financial Accounting", "3", "72", pil('ok', "A"), "15"],
+        ["ACC 803", "Research Methodology", "3", "65", pil('ok', "B"), "12"],
+        ["ACC 805", "Corporate Finance Theory", "3", "58", pil('warn', "C"), "9"]
+      ])) +
+      panel("Cumulative", "", pbody(kvGrid([
+        ["GPA (this semester)", "4.33"], ["CGPA", "4.33"], ["Units passed", "9 of 9"], ["Standing", "Good standing"]
+      ], 'grid--4')));
+  }
+
+  function pgStudentFees() {
+    return note('info', "School fees (Policy 10)",
+      "Pay the prescribed fees at the beginning of each semester before you register. A student who is not registered but sits an examination has it cancelled.") +
+      tiles([
+        ["Charged", "&#8358;180,000", null, "2025/2026"],
+        ["Paid", "&#8358;180,000", "var(--green-ink)", "in full"],
+        ["Balance", "&#8358;0", null, "settled"]
+      ]) +
+      panel("Fee reference", "", pbody(kvGrid([
+        ["Session", "2025/2026"], ["Programme", "M.Sc. Accounting and Finance"],
+        ["Reference", "MOAUM-PGF-000212"], ["Status", "Paid &middot; Card &middot; 21 Sep 2026"]
+      ], 'grid--2')) );
   }
 
   function pgStudentResearch() {
@@ -313,7 +406,9 @@
     "t/pgdash": pgDeanDash, "t/pgsecdash": pgSecDash, "t/pgadm": pgAdm, "t/pgresearch": pgResearch,
     "t/pgexaminers": pgExaminers, "t/pgboard": pgBoard, "t/pgstudents": pgStudentsList,
     "t/pgreg": pgReg, "t/pgexams": pgExams, "t/pgclear": pgClear, "t/pgresults": pgSecResults,
-    "a/pgdash": pgApplicantDash, "a/pgapply": pgApply, "s/pgdash": pgStudentDash, "s/pgresearch": pgStudentResearch
+    "a/pgdash": pgApplicantDash, "a/pgapply": pgApply,
+    "s/pgdash": pgStudentDash, "s/pgreg": pgStudentReg, "s/pgresults": pgStudentResults,
+    "s/pgfees": pgStudentFees, "s/pgresearch": pgStudentResearch
   };
 
   /* ── the two School offices, as staff roles ────────────────────── */
@@ -394,4 +489,39 @@
   TITLES["a/pgdash"] = ["Your postgraduate application", "Applicant portal"];
   TITLES["a/pgapply"] = ["Apply for a postgraduate programme", "No JAMB number"];
   TITLES["s/pgdash"] = ["Postgraduate student", "Your record on the register"];
+  TITLES["s/pgreg"] = ["Course registration", "2025/2026 &middot; first semester"];
+  TITLES["s/pgresults"] = ["Results", "2025/2026"];
+  TITLES["s/pgfees"] = ["School fees", "Pay each semester"];
   TITLES["s/pgresearch"] = ["Research &amp; thesis", "Your dissertation / thesis"];
+
+  /* ── the postgraduate applicant and student as their own sign-in personas ──
+     MENUS (part2), ROLE_LABEL and LOGIN_ID (part3) all load before this part,
+     so they are extended here; HOME (part6) and the login tabs (part3) are
+     edited in place. */
+  MENUS.pgapplicant = {
+    label: "Postgraduate applicant", who: "Ikyernum, Manasseh", sub: "M.Sc. Accounting and Finance", initials: "IM", home: "a/pgdash",
+    groups: [
+      { name: "My application", items: [
+        { id: "a/pgdash", icon: "home", label: "Dashboard" },
+        { id: "a/pgapply", icon: "doc", label: "Apply form" }
+      ]}
+    ]
+  };
+  MENUS.pgstudent = {
+    label: "Postgraduate student", who: "Ikyernum, Manasseh", sub: "M.Sc. Accounting and Finance", initials: "IM", home: "s/pgdash",
+    groups: [
+      { name: "Start here", items: [
+        { id: "s/pgdash", icon: "home", label: "Dashboard" },
+        { id: "s/pgfees", icon: "card", label: "School fees" }
+      ]},
+      { name: "Academic", items: [
+        { id: "s/pgreg", icon: "book", label: "Registration" },
+        { id: "s/pgresults", icon: "cap", label: "Results" },
+        { id: "s/pgresearch", icon: "flask", label: "Research &amp; thesis" }
+      ]}
+    ]
+  };
+  ROLE_LABEL.pgstudent = "PG Student";
+  ROLE_LABEL.pgapplicant = "PG Applicant";
+  LOGIN_ID.pgstudent = ["Matriculation number", "MOAUM/PG/25/0007"];
+  LOGIN_ID.pgapplicant = ["Application number or email", "PG/25/000004"];

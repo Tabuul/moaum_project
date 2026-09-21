@@ -59,6 +59,8 @@
 
   /* the postgraduate module (part56) registers its screens here */
   for (var __pgk in PG_SCREENS) { SCREENS[__pgk] = PG_SCREENS[__pgk]; }
+  HOME.pgapplicant = "a/pgdash";
+  HOME.pgstudent = "s/pgdash";
 
   function navItems() {
     if (S.role === "staff") { return ROLES[S.srole].groups; }

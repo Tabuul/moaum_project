@@ -32,7 +32,7 @@
         '<div><div style="font-size:22px;font-weight:700;letter-spacing:-.4px">Sign in</div>' +
         '<div class="hint" style="margin-top:4px">Prototype — any password works.</div></div>' +
         '<div class="role-tabs" role="tablist">' +
-          ['student', 'staff', 'applicant'].map(function (r) {
+          ['student', 'staff', 'applicant', 'pgstudent', 'pgapplicant'].map(function (r) {
             return '<button role="tab" aria-selected="' + (loginRole === r ? 'true' : 'false') +
               '" data-role="' + r + '">' + ROLE_LABEL[r] + '</button>';
           }).join('') +
