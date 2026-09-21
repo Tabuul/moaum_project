@@ -21281,7 +21281,7 @@ body.has-cta .tst { bottom: 132px; }
   var PG_APP = { no: "PG/25/000004", name: "Ikyernum, Manasseh Aondongu", email: "manasseh@example.com",
     phone: "08031234567", sex: "Male", dob: "14 Mar 1996", state: "Benue", lga: "Gwer West",
     prog: "M.Sc. Accounting and Finance", award: "M.Sc.", level: "Master&rsquo;s", fac: "Administration and Management",
-    dept: "Accounting", fee: 25000, checking: 3000, acceptance: 50000 };
+    dept: "Accounting", fee: 20000, checking: 3000, acceptance: 50000 };
 
   var PG_PIPE = [
     ["Ada, Ngozi", "MOAUM/PG/25/0003", "Ph.D. Economics", "Economics", "Thesis", "Draft submitted", "info", "Prof. Terwase, Dr. Aondo", "18 Sep"],
@@ -21538,7 +21538,7 @@ body.has-cta .tst { bottom: 132px; }
     return note('info', a.name + " &middot; " + a.no, "The postgraduate applicant&rsquo;s own dashboard: overview, application, documents, fee and progress.") +
       tiles([
         ["Programme", "M.Sc.", null, a.prog],
-        ["Application fee", "&#8358;25,000", "var(--chrome)", "unpaid"],
+        ["Application fee", "&#8358;20,000", "var(--chrome)", "unpaid"],
         ["Credentials", "1 PDF", null, "O&rsquo;/A&rsquo;Level, birth cert."],
         ["Stage", "Submitted", null, "with the department"]
       ]) +
@@ -21556,8 +21556,8 @@ body.has-cta .tst { bottom: 132px; }
         '<div class="sub2" style="margin-bottom:8px">On record: <strong>credentials.pdf</strong> &mdash; uploaded 21 Sep 2026.</div>' +
         btn('primary', "Replace the PDF"))) +
       panel("Application fee", "", pbody(
-        '<div class="sub2" style="margin-bottom:8px">Pay &#8358;25,000 by card, transfer or USSD. Acceptance later: &#8358;50,000 + checking &#8358;3,000.</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap">' + btn('go', "Pay &#8358;25,000 by card or USSD") + btn('ghost', "I&rsquo;ve paid &mdash; check now") + '</div>'));
+        '<div class="sub2" style="margin-bottom:8px">Pay &#8358;20,000 by card, transfer or USSD. Acceptance later: &#8358;50,000 + checking &#8358;3,000.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' + btn('go', "Pay &#8358;20,000 by card or USSD") + btn('ghost', "I&rsquo;ve paid &mdash; check now") + '</div>'));
   }
 
   function pgApply() {
@@ -21578,7 +21578,7 @@ body.has-cta .tst { bottom: 132px; }
           ["CGPA", '<input class="ctl tnum">'], ["Year", '<input class="ctl tnum">']
         ], 'grid--2')) ) +
       '<div style="display:flex;gap:8px;align-items:center">' + btn('primary', "Submit application") +
-      '<span class="sub2">The application fee (&#8358;25,000) is shown after you submit.</span></div>';
+      '<span class="sub2">The application fee (&#8358;20,000) is shown after you submit.</span></div>';
   }
 
   /* ── PG student portal (sample) ────────────────────────────────── */
