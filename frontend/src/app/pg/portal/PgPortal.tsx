@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * The postgraduate applicant's portal. After applying (V205) the applicant signs in on the email they
- * applied with (or their PG application number) and lands here: their application, its status through the
- * School's pipeline, and the application fee — paid online through whichever gateway the Bursary has wired,
- * with the same PayByCard the undergraduate applicant uses. Every call is scoped to the signed-in applicant.
+ * The postgraduate applicant's dashboard. After applying (V205) the applicant signs in on the email they
+ * applied with (or their PG application number) and lands here: their full record — bio-data, the
+ * application, the first degree it rests on, the research proposal, the referees — the status through the
+ * School's pipeline, and the application fee, paid online with the same PayByCard the undergraduate
+ * applicant uses. Every call is scoped to the signed-in applicant; nothing here reaches another's record.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -14,20 +15,34 @@ import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 
+interface Referee { name: string; email: string | null; institution: string | null; position: string | null }
 interface Me {
-  applicationNo: string; name: string; email: string; phone: string | null;
-  state: string; entryLevel: number; programme: string; award: string | null; research: boolean;
-  faculty: string; department: string; submittedAt: string | null; feeConfirmedAt: string | null;
+  applicationNo: string; session: string; name: string; surname: string; otherNames: string;
+  email: string; phone: string | null;
+  state: string; entryLevel: number; programme: string; programmeCode: string; award: string | null; research: boolean;
+  faculty: string; department: string; submittedAt: string | null; createdAt: string | null; feeConfirmedAt: string | null;
   applicationFee: number | null; liveReference: string | null;
-  deptNote: string | null; spgsNote: string | null; acceptedAt: string | null; admittedAt: string | null;
+  deptNote: string | null; deptDecidedAt: string | null; spgsNote: string | null; spgsDecidedAt: string | null;
+  acceptedAt: string | null; admittedAt: string | null;
+  biodata: { sex: string | null; dateOfBirth: string | null; stateOfOrigin: string | null; lga: string | null };
+  prior: { institution: string | null; award: string | null; classOfDegree: string | null; cgpa: number | null; year: number | null };
+  proposal: { title: string | null; text: string | null };
+  referees: Referee[];
 }
 
-const naira = (n: number | null) => (n == null ? "—" : "NGN " + Number(n).toLocaleString());
+const naira = (n: number | null) => (n == null ? "—" : "₦" + Number(n).toLocaleString());
+const LEVEL: Record<number, string> = { 700: "Postgraduate Diploma", 800: "Master’s", 900: "MPhil / PhD" };
 const STATE_LABEL: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted — with the department", DEPT_RECOMMENDED: "Recommended — with the School",
   DEPT_DECLINED: "Not recommended by the department", OFFERED: "Offered a place", NOT_OFFERED: "Not offered",
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
 };
+function fmtDate(v: string | null): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+}
+const val = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
 export function PgPortal() {
   const router = useRouter();
@@ -67,12 +82,12 @@ export function PgPortal() {
   }
 
   if (loading) {
-    return <Wrap><Note kind="info" title="Loading your application…">One moment.</Note></Wrap>;
+    return <Wrap subtitle="Loading…"><Note kind="info" title="Loading your application…">One moment.</Note></Wrap>;
   }
 
   if (!me) {
     return (
-      <Wrap>
+      <Wrap subtitle="Sign in">
         <Note kind="info" title="Sign in to see your application">
           Sign in with the email you applied with (or your PG application number) and the password you chose when you applied.
         </Note>
@@ -81,54 +96,156 @@ export function PgPortal() {
     );
   }
 
+  const paid = !!me.feeConfirmedAt;
+  const steps: { label: string; done: boolean; when: string | null }[] = [
+    { label: "Application submitted", done: !!me.submittedAt, when: me.submittedAt },
+    { label: "Application fee paid", done: paid, when: me.feeConfirmedAt },
+    { label: "Department decision", done: !!me.deptDecidedAt, when: me.deptDecidedAt },
+    { label: "School decision", done: !!me.spgsDecidedAt, when: me.spgsDecidedAt },
+    { label: "Admitted to the register", done: !!me.admittedAt, when: me.admittedAt },
+  ];
+
   return (
-    <Wrap>
+    <Wrap subtitle={me.applicationNo}>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      <Note kind={me.feeConfirmedAt ? "ok" : "info"} title={`${me.name} — ${me.applicationNo}`}>
+      <Note kind={paid ? "ok" : "info"} title={`${me.name} · ${me.applicationNo}`}>
         Your postgraduate application is <b>{STATE_LABEL[me.state] ?? me.state}</b>.
-        {me.state === "OFFERED" ? " You have an offer — accept it below." : ""}
+        {me.state === "OFFERED" ? " You have an offer of admission." : ""}
+        {!paid ? " Pay the application fee below to have it screened." : ""}
       </Note>
 
-      <div className="card"><div className="card__body">
-        <Row k="Application number" v={me.applicationNo} />
-        <Row k="Programme" v={me.programme} />
-        <Row k="Award" v={me.award ?? "—"} />
-        <Row k="Faculty" v={me.faculty} />
-        <Row k="Department" v={me.department} />
-        <Row k="Status" v={STATE_LABEL[me.state] ?? me.state} />
-        <Row k="Application fee" v={naira(me.applicationFee)} />
-        <Row k="Fee" v={me.feeConfirmedAt ? "Paid" : "Not yet paid"} />
-      </div></div>
+      <Card title="Progress">
+        <ol className="pg-steps">
+          {steps.map((s) => (
+            <li key={s.label} className={s.done ? "pg-step pg-step--done" : "pg-step"}>
+              <span className="pg-step__dot" aria-hidden />
+              <span className="pg-step__label">{s.label}</span>
+              <span className="pg-step__when sub2">{s.when ? fmtDate(s.when) : (s.done ? "" : "pending")}</span>
+            </li>
+          ))}
+        </ol>
+      </Card>
 
-      {me.feeConfirmedAt ? (
-        <Note kind="ok" title="Application fee paid">
-          Your application fee is confirmed. The School will screen your application; check back here for its progress.
-        </Note>
+      {paid ? (
+        <Note kind="ok" title="Application fee paid">Confirmed on {fmtDate(me.feeConfirmedAt)}. The School will screen your application; its progress shows above.</Note>
       ) : reference ? (
-        <div className="card"><div className="card__body" style={{ display: "grid", gap: 8 }}>
-          <div style={{ fontWeight: 700 }}>Pay the application fee</div>
-          <div className="sub2">Pay {naira(me.applicationFee)} by card, transfer or USSD. It is confirmed automatically once the payment reaches the University.</div>
+        <Card title="Application fee">
+          <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University.</div>
           <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
-          <div className="sub2">Payment reference: <b className="tnum">{reference}</b></div>
-        </div></div>
+          <div className="sub2" style={{ marginTop: 8 }}>Payment reference: <b className="tnum">{reference}</b></div>
+        </Card>
       ) : (
-        <Note kind="bad" title="The application fee could not be prepared">
-          Reload the page, or write to the School of Postgraduate Studies quoting your application number.
-        </Note>
+        <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>
       )}
 
-      {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
+      <Card title="Application">
+        <KV rows={[
+          ["Application number", me.applicationNo],
+          ["Session", me.session],
+          ["Programme", me.programme],
+          ["Award", me.award ?? "—"],
+          ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
+          ["Faculty", me.faculty],
+          ["Department", me.department],
+          ["Status", STATE_LABEL[me.state] ?? me.state],
+          ["Submitted", fmtDate(me.submittedAt)],
+        ]} />
+      </Card>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+      <Card title="Bio-data">
+        <KV rows={[
+          ["Surname", me.surname],
+          ["Other names", me.otherNames],
+          ["Sex", me.biodata.sex === "F" ? "Female" : me.biodata.sex === "M" ? "Male" : "—"],
+          ["Date of birth", fmtDate(me.biodata.dateOfBirth)],
+          ["State of origin", val(me.biodata.stateOfOrigin)],
+          ["LGA", val(me.biodata.lga)],
+          ["Email", me.email],
+          ["Phone", val(me.phone)],
+        ]} />
+      </Card>
+
+      <Card title="First degree the admission rests on">
+        <KV rows={[
+          ["Institution", val(me.prior.institution)],
+          ["Award", val(me.prior.award)],
+          ["Class of degree", val(me.prior.classOfDegree)],
+          ["CGPA", val(me.prior.cgpa)],
+          ["Year", val(me.prior.year)],
+        ]} />
+      </Card>
+
+      {me.research || me.proposal.title || me.proposal.text ? (
+        <Card title="Research proposal">
+          <KV rows={[["Title", val(me.proposal.title)]]} />
+          {me.proposal.text ? <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
+        </Card>
+      ) : null}
+
+      {me.referees.length ? (
+        <Card title="Referees">
+          <div style={{ display: "grid", gap: 12 }}>
+            {me.referees.map((rf, i) => (
+              <div key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
+                <KV rows={[
+                  ["Name", val(rf.name)],
+                  ["Position", val(rf.position)],
+                  ["Institution", val(rf.institution)],
+                  ["Email", val(rf.email)],
+                ]} />
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
+      {me.deptNote ? <Note kind="info" title="A note from the department">{me.deptNote}</Note> : null}
+
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => void load()}>Refresh</button>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => void signOut()} disabled={signedOut}>Sign out</button>
       </div>
+
+      <style>{`
+        .pg-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+        .pg-step { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 10px; padding: 7px 0; }
+        .pg-step__dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-2); background: transparent; margin-left: 2px; }
+        .pg-step--done .pg-step__dot { background: var(--green-ink); border-color: var(--green-ink); }
+        .pg-step--done .pg-step__label { font-weight: 600; }
+        .pg-kv { display: grid; grid-template-columns: minmax(130px, 34%) 1fr; gap: 6px 14px; }
+        .pg-kv dt { color: var(--chrome-dim); font-size: 13px; }
+        .pg-kv dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+        @media (max-width: 460px) { .pg-kv { grid-template-columns: 1fr; gap: 2px 0; } .pg-kv dd { margin-bottom: 6px; } }
+      `}</style>
     </Wrap>
   );
 }
 
-function Wrap({ children }: { children: ReactNode }) {
+function KV({ rows }: { rows: [string, string][] }) {
+  return (
+    <dl className="pg-kv">
+      {rows.map(([k, v]) => (
+        <div key={k} style={{ display: "contents" }}>
+          <dt>{k}</dt>
+          <dd>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Card({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="card"><div className="card__body">
+      <div style={{ fontWeight: 700, marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--line-2)" }}>{title}</div>
+      {children}
+    </div></div>
+  );
+}
+
+function Wrap({ children, subtitle }: { children: ReactNode; subtitle?: string }) {
   return (
     <div className="login-wrap">
       <div className="login-brand">
@@ -140,18 +257,15 @@ function Wrap({ children }: { children: ReactNode }) {
           </div>
           <div style={{ height: 26 }} />
           <h1>Your postgraduate application</h1>
-          <p>Pay your application fee and follow your application from submission through the School&rsquo;s decision. This account becomes your student account on the day you are admitted.</p>
+          <p>Everything the University holds on your application — your bio-data, the degree it rests on, your referees and proposal — with its progress and the fee to pay. This account becomes your student account on the day you are admitted.</p>
+          {subtitle ? <p className="sub2" style={{ marginTop: 8 }}>{subtitle}</p> : null}
         </div>
       </div>
       <div className="login-panel">
-        <div style={{ width: "100%", maxWidth: 620, display: "grid", gap: 14 }}>
+        <div style={{ width: "100%", maxWidth: 640, display: "grid", gap: 14, paddingBlock: 24 }}>
           {children}
         </div>
       </div>
     </div>
   );
-}
-
-function Row({ k, v }: { k: string; v: string }) {
-  return <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}><span className="sub2">{k}</span><span style={{ fontWeight: 700, textAlign: "right" }}>{v}</span></div>;
 }

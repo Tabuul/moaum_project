@@ -180,10 +180,12 @@ class PgPortalController {
 
     private Map<String, Object> view(UUID me) {
         Map<String, Object> a = firstOrNull(jdbc.sql("""
-                SELECT a.application_no, a.state, a.entry_level, a.submitted_at, a.fee_confirmed_at,
-                       a.dept_note, a.spgs_note, a.spgs_decided_at, a.accepted_at, a.admitted_at,
-                       p.surname, p.other_names, p.email, p.phone,
-                       g.name AS programme_name, g.pg_award, g.pg_research,
+                SELECT a.id AS application_id, a.application_no, a.state, a.entry_level, a.submitted_at, a.fee_confirmed_at,
+                       a.dept_note, a.dept_decided_at, a.spgs_note, a.spgs_decided_at, a.accepted_at, a.admitted_at, a.created_at,
+                       a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
+                       a.proposal_title, a.proposal_text,
+                       p.surname, p.other_names, p.email, p.phone, p.sex, p.date_of_birth, p.state_of_origin, p.lga,
+                       g.code AS programme_code, g.name AS programme_name, g.pg_award, g.pg_research,
                        f.name AS faculty_name, d.name AS department_name, a.session
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
@@ -195,6 +197,10 @@ class PgPortalController {
         if (a == null) {
             throw new NotFound("postgraduate application", me);
         }
+        List<Map<String, Object>> referees = jdbc.sql("""
+                SELECT name, email, institution, position FROM admissions.pg_referee
+                 WHERE application_id = :app ORDER BY id
+                """).param("app", a.get("application_id")).query().listOfRows();
         Number appFee = jdbc.sql("SELECT application_fee FROM admissions.pg_fee_rule(:s)")
                 .param("s", String.valueOf(a.get("session"))).query(Number.class).optional().orElse(null);
         Map<String, Object> live = firstOrNull(jdbc.sql("""
@@ -205,25 +211,49 @@ class PgPortalController {
                 """).param("me", me).query().listOfRows());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("applicationNo", a.get("application_no"));
+        out.put("session", a.get("session"));
         out.put("name", a.get("surname") + ", " + a.get("other_names"));
+        out.put("surname", a.get("surname"));
+        out.put("otherNames", a.get("other_names"));
         out.put("email", a.get("email"));
         out.put("phone", a.get("phone"));
         out.put("state", a.get("state"));
         out.put("entryLevel", a.get("entry_level"));
         out.put("programme", a.get("programme_name"));
+        out.put("programmeCode", a.get("programme_code"));
         out.put("award", a.get("pg_award"));
         out.put("research", a.get("pg_research"));
         out.put("faculty", a.get("faculty_name"));
         out.put("department", a.get("department_name"));
         out.put("submittedAt", a.get("submitted_at"));
+        out.put("createdAt", a.get("created_at"));
         out.put("feeConfirmedAt", a.get("fee_confirmed_at"));
         out.put("applicationFee", appFee);
         out.put("liveReference", live == null ? null : live.get("reference"));
         out.put("deptNote", a.get("dept_note"));
+        out.put("deptDecidedAt", a.get("dept_decided_at"));
         out.put("spgsNote", a.get("spgs_note"));
         out.put("spgsDecidedAt", a.get("spgs_decided_at"));
         out.put("acceptedAt", a.get("accepted_at"));
         out.put("admittedAt", a.get("admitted_at"));
+        Map<String, Object> bio = new LinkedHashMap<>();
+        bio.put("sex", a.get("sex"));
+        bio.put("dateOfBirth", a.get("date_of_birth"));
+        bio.put("stateOfOrigin", a.get("state_of_origin"));
+        bio.put("lga", a.get("lga"));
+        out.put("biodata", bio);
+        Map<String, Object> prior = new LinkedHashMap<>();
+        prior.put("institution", a.get("prior_institution"));
+        prior.put("award", a.get("prior_award"));
+        prior.put("classOfDegree", a.get("prior_class"));
+        prior.put("cgpa", a.get("prior_cgpa"));
+        prior.put("year", a.get("prior_year"));
+        out.put("prior", prior);
+        Map<String, Object> proposal = new LinkedHashMap<>();
+        proposal.put("title", a.get("proposal_title"));
+        proposal.put("text", a.get("proposal_text"));
+        out.put("proposal", proposal);
+        out.put("referees", referees);
         return out;
     }
 }
