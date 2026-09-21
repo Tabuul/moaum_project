@@ -21,9 +21,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const ok = v.genuine;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f6f3ea", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", color: "#16273a" }}>
+    <div style={{ minHeight: "100vh", background: "#f6f3ea", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "20px 12px", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", color: "#16273a" }}>
       <div style={{ width: "100%", maxWidth: 600, background: "#fff", border: "1px solid #e4ddcd", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(20,39,58,.08)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: "2px solid #0e3f55" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: "2px solid #0e3f55" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
           <div>
@@ -32,7 +32,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           </div>
         </div>
 
-        <div style={{ padding: 20 }}>
+        <div style={{ padding: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 10, marginBottom: 16,
             background: ok ? "#e6f0e8" : "#f5e9ef", border: `1px solid ${ok ? "#c4ddca" : "#e2c6d3"}`, color: ok ? "#2f6b45" : "#7a3b52" }}>
             <span style={{ fontSize: 22 }}>{ok ? "✓" : "✕"}</span>
@@ -46,30 +46,36 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 
           {ok ? (
             <>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+              {/* identity sits beside the photo so the photo's right side is not wasted on a phone */}
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
                 {v.photo ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={v.photo} alt="Candidate photograph" style={{ width: 96, height: 118, objectFit: "cover", border: "1px solid #e4ddcd", borderRadius: 4 }} />
-                ) : <div style={{ width: 96, height: 118, border: "1px dashed #c3c3c3", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9aa", fontSize: 11 }}>No photo</div>}
-                <div style={{ flex: 1, minWidth: 220 }}>
-                  {[["Name", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
-                    ["Level", v.level ? `${v.level} Level` : "—"], ["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"],
-                    ["Cleared for examinations", v.cleared ? "Yes" : "No"]].map(([k, val], i) => (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid #eef1f4", fontSize: 13.5 }}>
-                      <span style={{ color: "#5d6b79", fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</span>
-                      <span style={{ fontWeight: k === "Name" ? 700 : 500, textAlign: "right", color: k === "Cleared for examinations" ? (v.cleared ? "#2f6b45" : "#7a3b52") : undefined }}>{val}</span>
-                    </div>
-                  ))}
+                  <img src={v.photo} alt="Candidate photograph" style={{ width: 76, height: 92, objectFit: "cover", border: "1px solid #e4ddcd", borderRadius: 4, flexShrink: 0 }} />
+                ) : <div style={{ width: 76, height: 92, border: "1px dashed #c3c3c3", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9aa", fontSize: 11, flexShrink: 0 }}>No photo</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.25 }}>{v.name}</div>
+                  <div style={{ fontSize: 13, marginTop: 3, fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>{v.matricNo ?? "—"}</div>
+                  <div style={{ fontSize: 12.5, color: "#5d6b79", marginTop: 3 }}>{v.programme ?? "—"}</div>
+                  <div style={{ fontSize: 12.5, color: "#5d6b79", marginTop: 2 }}>{v.level ? `${v.level} Level` : "—"}</div>
                 </div>
               </div>
+              {/* short facts as compact cells — two or three to a row, never a stretched full-width line */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 16 }}>
+                {([["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"], ["Cleared", v.cleared ? "Yes" : "No"]] as [string, string][]).map(([k, val], i) => (
+                  <div key={i} style={{ border: "1px solid #eef1f4", borderRadius: 8, padding: "7px 10px", background: "#fafbfc" }}>
+                    <div style={{ fontSize: 10.5, color: "#5d6b79", textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 2, color: k === "Cleared" ? (v.cleared ? "#2f6b45" : "#7a3b52") : undefined }}>{val}</div>
+                  </div>
+                ))}
+              </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#5d6b79", textTransform: "uppercase", letterSpacing: ".04em", margin: "4px 0 6px" }}>Courses to sit</div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <tbody>
                   {(v.courses ?? []).map((co, i) => (
                     <tr key={i} style={{ borderBottom: "1px solid #eef1f4" }}>
-                      <td style={{ padding: "7px 8px 7px 0", fontWeight: 600, whiteSpace: "nowrap" }}>{co.course_code}</td>
-                      <td style={{ padding: "7px 0" }}>{co.title}</td>
-                      <td style={{ padding: "7px 0", textAlign: "right", color: "#5d6b79" }}>{co.units}u</td>
+                      <td style={{ padding: "5px 8px 5px 0", fontWeight: 600, whiteSpace: "nowrap", verticalAlign: "top" }}>{co.course_code}</td>
+                      <td style={{ padding: "5px 0", verticalAlign: "top" }}>{co.title}</td>
+                      <td style={{ padding: "5px 0 5px 8px", textAlign: "right", color: "#5d6b79", whiteSpace: "nowrap", verticalAlign: "top" }}>{co.units}u</td>
                     </tr>
                   ))}
                   {!(v.courses ?? []).length ? <tr><td style={{ padding: "7px 0", color: "#8a97a3" }}>No approved courses on record for this semester.</td></tr> : null}
