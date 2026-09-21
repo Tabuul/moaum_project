@@ -12,12 +12,25 @@ import { naira } from "./common";
 
 const stageOf = (level: number) => (level >= 900 ? "MPhil / Doctoral" : level >= 800 ? "Master's degree" : "Postgraduate Diploma");
 
-export function PgDashboard({ s }: { s: Me }) {
+export interface PgSummary {
+  postgraduate: boolean;
+  cgpa: number | null;
+  standing: string;
+  registration: { session: string; semester: number; mode: string; state: string; courses: number } | null;
+  research: { stage: string; topic: string | null; degree_kind: string } | null;
+}
+const RESEARCH: Record<string, string> = {
+  REGISTERED: "Registered", SUPERVISED: "Supervised", PROPOSAL_SUBMITTED: "Proposal", PROPOSAL_APPROVED: "Proposal approved",
+  SEMINAR_HELD: "Seminar", TITLE_REGISTERED: "Title", PANEL_CONSTITUTED: "Panel", DRAFT_SUBMITTED: "Draft", VIVA_HELD: "Viva",
+  CORRECTIONS: "Corrections", FINAL_SUBMITTED: "Final", CLEARED: "Cleared", AWARD_RECOMMENDED: "To Senate", AWARDED: "Awarded", WITHDRAWN: "Withdrawn",
+};
+
+export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
   const f = s.fees;
-  const reg = s.registration;
   const stage = stageOf(s.entryLevel);
-  const published = s.gpa.filter((g) => Number(g.published_count) > 0).length;
-  const registered = reg && (reg.status === "APPROVED" || reg.status === "LOCKED");
+  const reg = pg?.registration ?? null;
+  const registered = !!reg && (reg.state === "SUBMITTED" || reg.state === "ENDORSED");
+  const cgpaShown = pg && pg.standing !== "NEW" && pg.cgpa != null;
   const feeLine = f.paidInFull ? `School fees settled in full for ${f.session}.`
     : f.balance > 0 ? `${naira(f.balance)} outstanding for ${f.session}${f.due > 0 ? "" : " — no charge stated yet"}.`
     : f.due > 0 ? `Fully paid for ${f.session}.` : `No charge stated yet for ${f.session}.`;
@@ -43,15 +56,26 @@ export function PgDashboard({ s }: { s: Me }) {
         </PBody>
       </Panel>
 
-      <Note kind={f.paidInFull || f.balance === 0 ? "info" : "info"} title={`Course registration for ${f.session}`} action={<Link href="/student/pg-courses" className="btn btn--primary btn--sm">Course registration &amp; results</Link>}>
-        {f.paidInFull || f.balance === 0 ? "Register the courses your programme carries this semester, and see your results and CGPA there." : `${feeLine} Register once the semester's fees are met.`}
-      </Note>
+      {pg?.standing === "PROBATION" ? (
+        <Note kind="bad" title="On academic probation" action={<Link href="/student/pg-courses" className="btn btn--primary btn--sm">My results</Link>}>
+          Your CGPA is below 2.50. You are on probation for a semester and are advised to withdraw if it does not improve (Policy 15.5 / 20).
+        </Note>
+      ) : registered ? (
+        <Note kind="ok" title={`Registered for ${reg!.session} · semester ${reg!.semester}`} action={<Link href="/student/pg-courses" className="btn btn--ghost btn--sm">Registration &amp; results</Link>}>
+          {reg!.courses} course{reg!.courses === 1 ? "" : "s"} registered ({reg!.mode === "PART_TIME" ? "part-time" : "full-time"}){reg!.state === "ENDORSED" ? ", endorsed by the department" : ""}. {feeLine}
+        </Note>
+      ) : (
+        <Note kind="info" title="Register your courses" action={<Link href="/student/pg-courses" className="btn btn--primary btn--sm">Course registration &amp; results</Link>}>
+          Register the courses your programme carries this semester, and see your results and CGPA there. {feeLine}
+        </Note>
+      )}
 
       <Tiles items={[
         ["Programme", stage, null, s.programme],
-        ["Registration", registered ? "Approved" : reg ? reg.status.charAt(0) + reg.status.slice(1).toLowerCase() : "Not started", registered ? "var(--green-ink)" : null, f.session],
+        ["Registration", registered ? (reg!.state === "ENDORSED" ? "Endorsed" : "Submitted") : "Not started", registered ? "var(--green-ink)" : null, reg ? `${reg.courses} courses` : "This session"],
+        ["CGPA", cgpaShown ? Number(pg!.cgpa).toFixed(2) : "—", pg?.standing === "PROBATION" ? "var(--red-ink)" : cgpaShown ? "var(--green-ink)" : null, pg?.standing === "PROBATION" ? "Probation" : cgpaShown ? "Good standing" : "No results yet"],
+        ["Research", pg?.research ? (RESEARCH[pg.research.stage] ?? pg.research.stage) : "—", null, pg?.research ? (pg.research.degree_kind === "THESIS" ? "Thesis" : pg.research.degree_kind === "DISSERTATION" ? "Dissertation" : "Project") : "Not started"],
         ["Fees", f.balance > 0 ? naira(f.balance) : f.paidInFull ? "Settled" : "—", f.balance > 0 ? "var(--red-ink)" : f.paidInFull ? "var(--green-ink)" : null, f.balance > 0 ? "Outstanding" : "This session"],
-        ["Results", published ? `${published} semester${published === 1 ? "" : "s"}` : "None yet", null, "Published to you"],
       ]} />
 
       <Panel title="Postgraduate desks" right={s.name}>

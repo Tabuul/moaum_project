@@ -99,6 +99,40 @@ class PgCourseworkController {
         return out;
     }
 
+    /** a compact summary for the PG student's dashboard: coursework standing, latest registration, research stage */
+    @GetMapping("/summary")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    Map<String, Object> summary(Authentication authentication) {
+        UUID me = UUID.fromString(authentication.getName());
+        if (!jdbc.sql("SELECT count(*) FROM people.student WHERE id = :me AND entry_mode = 'POSTGRADUATE'")
+                .param("me", me).query(Long.class).single().equals(1L)) {
+            return Map.of("postgraduate", false);
+        }
+        BigDecimal cgpa = jdbc.sql("SELECT admissions.pg_cgpa(:me)").param("me", me).query(BigDecimal.class).single();
+        boolean scored = Boolean.TRUE.equals(jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM admissions.pg_registration r
+                    JOIN admissions.pg_registration_entry e ON e.registration_id = r.id
+                    JOIN admissions.pg_score s ON s.entry_id = e.id WHERE r.student_id = :me)
+                """).param("me", me).query(Boolean.class).single());
+        Map<String, Object> reg = firstOrNull(jdbc.sql("""
+                SELECT r.session, r.semester, r.mode, r.state,
+                       (SELECT count(*) FROM admissions.pg_registration_entry e WHERE e.registration_id = r.id) AS courses
+                  FROM admissions.pg_registration r WHERE r.student_id = :me
+                 ORDER BY r.session DESC, r.semester DESC LIMIT 1
+                """).param("me", me).query().listOfRows());
+        Map<String, Object> research = firstOrNull(jdbc.sql("""
+                SELECT stage, topic, degree_kind FROM admissions.pg_research WHERE student_id = :me
+                """).param("me", me).query().listOfRows());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("postgraduate", true);
+        out.put("cgpa", cgpa);
+        out.put("standing", !scored ? "NEW" : cgpa.compareTo(new BigDecimal("2.50")) >= 0 ? "GOOD" : "PROBATION");
+        out.put("registration", reg);
+        out.put("research", research);
+        return out;
+    }
+
     public record RegisterIn(@NotBlank String session, @NotNull Integer semester, String mode, List<UUID> courseIds) {
     }
 
