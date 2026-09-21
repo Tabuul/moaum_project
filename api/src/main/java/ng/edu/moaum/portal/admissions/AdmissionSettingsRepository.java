@@ -216,6 +216,31 @@ class AdmissionSettingsRepository {
         }
     }
 
+    /** Replace a programme's required Direct Entry subjects (scope 'DE', V200), with how many of the set a
+     *  candidate must offer. Editable in force: it names which subjects the DE gate reads, not the standard. */
+    void setProgrammeDeSubjects(UUID policyId, String code, java.util.List<String> subjects, Integer choose) {
+        jdbc.sql("""
+                DELETE FROM admissions.rule_subject WHERE group_id IN (
+                    SELECT id FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'DE')
+                """).param("id", policyId).param("code", code).update();
+        jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'DE'")
+                .param("id", policyId).param("code", code).update();
+        java.util.List<String> subs = subjects == null ? java.util.List.of()
+                : subjects.stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+        if (subs.isEmpty()) {
+            return;
+        }
+        int n = Math.max(1, Math.min(choose == null ? 2 : choose, subs.size()));
+        UUID group = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose)
+                VALUES (:g, :id, :code, 'DE', :choose)
+                """).param("g", group).param("id", policyId).param("code", code).param("choose", n).update();
+        for (String subject : subs) {
+            jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
+        }
+    }
+
     void setProgrammeOlevelSubjects(UUID policyId, String code, java.util.List<String> subjects) {
         jdbc.sql("""
                 DELETE FROM admissions.rule_subject WHERE group_id IN (

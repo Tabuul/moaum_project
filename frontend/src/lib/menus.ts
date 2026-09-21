@@ -830,6 +830,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Merit list"
           },
           {
+            "id": "t/de-screening",
+            "icon": "chart",
+            "label": "Direct Entry screening"
+          },
+          {
             "id": "t/applicants",
             "icon": "user",
             "label": "Report on Post-UTME Registration"

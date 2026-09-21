@@ -240,6 +240,19 @@ public class AdmissionSettingsService {
         return policy(session);
     }
 
+    /** the required Direct Entry subjects the DE gate checks (V200) — a data correction like the UTME/O'Level
+     *  subjects, editable whether the policy is a draft or in force; `choose` is how many of the set are needed. */
+    @Transactional
+    public AdmissionPolicy setProgrammeDeSubjects(String session, String programmeCode, List<String> subjects, Integer choose) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        settings.setProgrammeDeSubjects(id, code, subjects, choose);
+        return policy(session);
+    }
+
     @Transactional
     public AdmissionPolicy setProgrammeCutoff(String session, String programmeCode, Integer cutoff) {
         UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));

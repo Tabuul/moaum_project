@@ -123,6 +123,18 @@ class AdmissionSettingsController {
         return service.setProgrammeUtmeSubjects(session + "/" + year, code, body.subjects());
     }
 
+    public record DeSubjectsIn(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> subjects,
+                               @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(9) Integer choose) {
+    }
+
+    /** a programme's required Direct Entry subjects the DE gate checks (V200), editable in force — a
+     *  correction to which subjects the gate reads and how many of them a candidate must offer */
+    @PutMapping("/sessions/{session}/{year}/policy/programmes/{code}/de-subjects")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy programmeDeSubjects(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody DeSubjectsIn body) {
+        return service.setProgrammeDeSubjects(session + "/" + year, code, body.subjects(), body.choose());
+    }
+
     public record Catchment(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> lgas) {
     }
 

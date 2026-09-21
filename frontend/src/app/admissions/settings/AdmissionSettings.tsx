@@ -65,6 +65,10 @@ export interface AdmissionPolicy {
   olevelAllowances?: string[];
   /** the required UTME subjects the merit list checks (V189) */
   utmeSubjects?: string[];
+  /** the required Direct Entry subjects the DE gate checks (V200) */
+  deSubjects?: string[];
+  /** how many of the DE subject set a candidate must offer (V200) */
+  deChoose?: number | null;
   /** closed for the session (V023): not admitted into, needs no rule */
   closed?: boolean;
   closedReason?: string | null;
@@ -499,10 +503,14 @@ export function AdmissionSettings({
                   const ok2 = ok && await send("PUT", `${base}/programmes/${editingProgramme.code}/utme-subjects`, {
                     subjects: ("pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                   }, `Required UTME subjects set for ${editingProgramme.name} (${session})`, "pr");
-                  if (ok2) { setEditing(null); setEdits({}); }
+                  const ok3 = ok2 && await send("PUT", `${base}/programmes/${editingProgramme.code}/de-subjects`, {
+                    subjects: ("pr-dsubj" in edits ? edits["pr-dsubj"] : (editingProgramme.deSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+                    choose: num("pr-dchoose" in edits ? edits["pr-dchoose"] : String(editingProgramme.deChoose ?? "")),
+                  }, `Required Direct Entry subjects set for ${editingProgramme.name} (${session})`, "pr");
+                  if (ok3) { setEditing(null); setEdits({}); }
                 }}
               >
-                {busy === "pr" ? "Saving…" : "Save O’Level & UTME subjects"}
+                {busy === "pr" ? "Saving…" : "Save O’Level, UTME & DE subjects"}
               </Btn>
             ) : (
               <Btn
@@ -518,6 +526,8 @@ export function AdmissionSettings({
                     olevelSubjects: ("pr-subj" in edits ? edits["pr-subj"] : (editingProgramme.olevelSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                     olevelAllowances: ("pr-allow" in edits ? edits["pr-allow"] : (editingProgramme.olevelAllowances ?? []).join(",")).split(",").map((s) => s.trim()).filter(Boolean),
                     utmeSubjects: ("pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+                    deSubjects: ("pr-dsubj" in edits ? edits["pr-dsubj"] : (editingProgramme.deSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+                    deChoose: num("pr-dchoose" in edits ? edits["pr-dchoose"] : String(editingProgramme.deChoose ?? "")),
                   }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
                   if (ok) { setEditing(null); setEdits({}); }
                 }}
@@ -553,6 +563,12 @@ export function AdmissionSettings({
             </Field>
             <Field id="pr-usubj" label="Required UTME subjects (checked)" hint="Comma = all required · “/” = any-one-of (e.g. Government/History) · “N of A/B/C” = any N of a set (e.g. “2 of Chemistry/Physics/Mathematics”) · English is always counted · blank = not checked" full>
               <textarea id="pr-usubj" className="ctl" rows={2} value={"pr-usubj" in edits ? edits["pr-usubj"] : (editingProgramme.utmeSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-usubj": e.target.value })} placeholder="Biology, 2 of Chemistry/Mathematics/Physics" />
+            </Field>
+            <Field id="pr-dsubj" label="Direct Entry subjects (checked)" hint="The set a DE candidate is checked against · comma or one per line · “/” = alternatives (e.g. Biology/Zoology) · read from the captured award, not from CAPS · English is NOT auto-counted · blank = not checked" full>
+              <textarea id="pr-dsubj" className="ctl" rows={2} value={"pr-dsubj" in edits ? edits["pr-dsubj"] : (editingProgramme.deSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-dsubj": e.target.value })} placeholder="Physics, Chemistry, Biology" />
+            </Field>
+            <Field id="pr-dchoose" label="DE passes required" hint="How many of the set above the candidate must offer (e.g. 2 for “two ’A’ Level passes”) · blank defaults to two">
+              <input id="pr-dchoose" className="ctl tnum" inputMode="numeric" value={"pr-dchoose" in edits ? edits["pr-dchoose"] : editingProgramme.deChoose ?? ""} onChange={(e) => setEdits({ ...edits, "pr-dchoose": e.target.value })} autoComplete="off" placeholder="2" />
             </Field>
             <Field id="pr-allow" label="Compulsory-credit exceptions" hint="A credit in English and Mathematics is compulsory for all programmes; tick where this programme accepts a pass instead" full>
               {(() => {

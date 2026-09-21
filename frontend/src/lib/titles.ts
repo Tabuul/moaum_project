@@ -452,6 +452,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Screening register",
     "Every screened candidate — the mark and where it came from · Academic Office"
   ],
+  "t/de-screening": [
+    "Direct Entry screening",
+    "DE applicants checked against the programme’s subject set · Academic Office"
+  ],
   "t/transcripts": [
     "Transcript requests",
     "Exams & Records · production queue"
