@@ -5,11 +5,10 @@
 --   Programmes & Admissions handbook, seeded into the shared ref.programme as
 --   POST GRADUATE (beside the undergraduate ones). One programme per degree —
 --   the handbook's specialization lists are recorded per student later, not as
---   separate programmes. The few departments the handbook adds are created under
---   the closest existing faculty (no new faculties, so undergraduate admissions
---   is untouched). pg_award is stored structurally and pg_research says whether
---   the degree ends in a thesis. A programme already on record (same name +
---   department) is left as it is, so this does not duplicate the earlier seeds.
+--   separate programmes. Missing faculties and departments are created; the
+--   award is stored structurally (pg_award) and whether it ends in a thesis
+--   (pg_research). Programmes already on record (name + department) are left as
+--   they are, so this does not duplicate the earlier seeds.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -21,13 +20,19 @@ SELECT set_config('moaum.reason', 'Postgraduate programme catalogue from the 202
 -- the real award set is wider than the V201 shortlist; keep pg_award as free text
 ALTER TABLE ref.programme DROP CONSTRAINT IF EXISTS ck_prog_pg_award;
 
--- departments the handbook names that are not yet on the register, under the closest existing faculty
+-- faculties the handbook names that are not yet on the register
+INSERT INTO ref.faculty (code, name) VALUES
+    ('CLS', 'Clinical Sciences'),
+    ('CTR', 'Postgraduate Centres')
+ON CONFLICT (code) DO NOTHING;
+
+-- departments the handbook names that are not yet on the register
 INSERT INTO ref.department (code, name, faculty_code) VALUES
-    ('EPI', 'Epidemiology and Community Health', 'BAMS'),
-    ('OBG', 'Gynaecology and Obstetrics', 'BAMS'),
-    ('PDS', 'Peace and Development Studies', 'SS'),
-    ('CSP', 'Conservation Science and Practice', 'SC'),
-    ('GND', 'Gender Studies', 'SS')
+    ('EPI', 'Epidemiology and Community Health', 'CLS'),
+    ('OBG', 'Gynaecology and Obstetrics', 'CLS'),
+    ('PDS', 'Peace and Development Studies', 'CTR'),
+    ('CSP', 'Conservation Science and Practice', 'CTR'),
+    ('GND', 'Gender Studies', 'CTR')
 ON CONFLICT (code) DO NOTHING;
 
 -- the programmes; a programme already on record (same name + department) is left as is
@@ -72,8 +77,8 @@ SELECT v.code, v.name, v.dept, v.fac, 0, false, 'POST GRADUATE', v.award, v.rese
     ('C90045', 'Ph.D. Human Anatomy', 'ANT', 'BAMS', 'PHD', true),
     ('C90046', 'M.Sc. Human Physiology', 'PGY', 'BAMS', 'MSC', true),
     ('C90047', 'Ph.D. Human Physiology', 'PGY', 'BAMS', 'PHD', true),
-    ('C90048', 'Master of Public Health', 'EPI', 'BAMS', 'MPH', true),
-    ('C90049', 'Master of Reproductive Health', 'OBG', 'BAMS', 'MRH', true),
+    ('C90048', 'Master of Public Health', 'EPI', 'CLS', 'MPH', true),
+    ('C90049', 'Master of Reproductive Health', 'OBG', 'CLS', 'MRH', true),
     ('C90050', 'Postgraduate Diploma in Mass Communication', 'MCM', 'CM', 'PGD', false),
     ('C90051', 'M.Sc. Mass Communication', 'BRC', 'CM', 'MSC', true),
     ('C90052', 'Ph.D. Mass Communication', 'BRC', 'CM', 'PHD', true),
@@ -216,12 +221,12 @@ SELECT v.code, v.name, v.dept, v.fac, 0, false, 'POST GRADUATE', v.award, v.rese
     ('C90189', 'Ph.D. Materials Science and Renewable Energy Physics', 'PHY', 'SC', 'PHD', true),
     ('C90190', 'M.Sc. (Ed) Technology Education', 'IND', 'TI', 'MSC', true),
     ('C90191', 'Ph.D. Industrial Technology Education', 'IND', 'TI', 'PHD', true),
-    ('C90192', 'M.A. Religion and Peace Studies', 'PDS', 'SS', 'MA', true),
-    ('C90193', 'M.Sc. Humanitarian and Refugee Studies', 'PDS', 'SS', 'MSC', true),
-    ('C90194', 'M.Sc. Risk & Disaster Management', 'PDS', 'SS', 'MSC', true),
-    ('C90195', 'M.Sc. Applied Conservation', 'CSP', 'SC', 'MSC', true),
-    ('C90196', 'Postgraduate Diploma in Gender Studies', 'GND', 'SS', 'PGD', false),
-    ('C90197', 'Masters in Gender Studies', 'GND', 'SS', 'MSC', true)
+    ('C90192', 'M.A. Religion and Peace Studies', 'PDS', 'CTR', 'MA', true),
+    ('C90193', 'M.Sc. Humanitarian and Refugee Studies', 'PDS', 'CTR', 'MSC', true),
+    ('C90194', 'M.Sc. Risk & Disaster Management', 'PDS', 'CTR', 'MSC', true),
+    ('C90195', 'M.Sc. Applied Conservation', 'CSP', 'CTR', 'MSC', true),
+    ('C90196', 'Postgraduate Diploma in Gender Studies', 'GND', 'CTR', 'PGD', false),
+    ('C90197', 'Masters in Gender Studies', 'GND', 'CTR', 'MSC', true)
   ) AS v(code, name, dept, fac, award, research)
  WHERE NOT EXISTS (SELECT 1 FROM ref.programme p
                     WHERE p.category = 'POST GRADUATE' AND lower(p.name) = lower(v.name) AND p.dept_code = v.dept);
