@@ -180,6 +180,53 @@ class PgAdmissionsController {
         return out;
     }
 
+    /** the postgraduate register: every PG student with their coursework CGPA, academic standing and research stage */
+    @GetMapping("/students")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> students(@RequestParam(required = false) String programme,
+                                 @RequestParam(required = false) Integer level) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT s.id, s.surname, s.other_names, s.matric_no, s.admission_no, s.entry_level, s.entry_session, s.status,
+                       g.name AS programme_name, g.pg_award, d.name AS department_name, f.name AS faculty_name,
+                       admissions.pg_cgpa(s.id) AS cgpa,
+                       r.stage AS research_stage,
+                       (SELECT reg.mode FROM admissions.pg_registration reg WHERE reg.student_id = s.id
+                         ORDER BY reg.session DESC, reg.semester DESC LIMIT 1) AS mode,
+                       EXISTS (SELECT 1 FROM admissions.pg_registration reg
+                                JOIN admissions.pg_registration_entry e ON e.registration_id = reg.id
+                                JOIN admissions.pg_score sc ON sc.entry_id = e.id WHERE reg.student_id = s.id) AS has_results
+                  FROM people.student s
+                  JOIN ref.programme g ON g.code = s.programme_code
+                  JOIN ref.department d ON d.code = g.dept_code
+                  JOIN ref.faculty f ON f.code = g.faculty_code
+                  LEFT JOIN admissions.pg_research r ON r.student_id = s.id
+                 WHERE s.entry_mode = 'POSTGRADUATE'
+                   AND (:prog::text IS NULL OR s.programme_code = :prog)
+                   AND (:lvl::int IS NULL OR s.entry_level = :lvl)
+                 ORDER BY s.surname, s.other_names
+                """)
+                .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), Types.VARCHAR)
+                .param("lvl", level, Types.INTEGER)
+                .query().listOfRows();
+        for (Map<String, Object> row : rows) {
+            java.math.BigDecimal cgpa = row.get("cgpa") == null ? java.math.BigDecimal.ZERO : new java.math.BigDecimal(row.get("cgpa").toString());
+            boolean scored = Boolean.TRUE.equals(row.get("has_results"));
+            row.put("standing", !scored ? "NEW" : cgpa.compareTo(new java.math.BigDecimal("2.50")) >= 0 ? "GOOD" : "PROBATION");
+        }
+        Map<String, Object> counts = jdbc.sql("""
+                SELECT count(*) AS total,
+                       count(*) FILTER (WHERE entry_level = 700) AS pgd,
+                       count(*) FILTER (WHERE entry_level = 800) AS masters,
+                       count(*) FILTER (WHERE entry_level = 900) AS doctoral
+                  FROM people.student WHERE entry_mode = 'POSTGRADUATE'
+                """).query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("counts", counts);
+        out.put("rows", rows);
+        return out;
+    }
+
     /** one application in full: the applicant, the first degree, the proposal, its referees and documents */
     @GetMapping("/applications/{id}")
     @PreAuthorize(READERS)

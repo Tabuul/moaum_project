@@ -2450,7 +2450,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/academic", "icon": "home", "label": "Dashboard" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
-          { "id": "t/students", "icon": "user", "label": "PG students" },
+          { "id": "t/pgstudents", "icon": "user", "label": "PG students" },
           { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -2492,7 +2492,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/academic", "icon": "home", "label": "Dashboard" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
-          { "id": "t/students", "icon": "user", "label": "PG students" },
+          { "id": "t/pgstudents", "icon": "user", "label": "PG students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },

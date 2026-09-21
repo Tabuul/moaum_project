@@ -1,0 +1,103 @@
+"use client";
+
+/**
+ * The postgraduate register (V211): every postgraduate student with their coursework CGPA, academic
+ * standing (good / probation below 2.50, Policy 15.5) and research stage. Filterable by programme and
+ * level. Read by the Dean, Secretary and the academic offices.
+ */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Problem } from "@/lib/api";
+import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { DTable } from "@/components/proto/DTable";
+import { ProblemNotice } from "@/components/ProblemNotice";
+
+interface Prog { code: string; name: string; faculty_name: string }
+interface Row {
+  id: string; surname: string; other_names: string; matric_no: string | null; admission_no: string | null;
+  entry_level: number; entry_session: string; status: string; programme_name: string; department_name: string;
+  cgpa: number | null; research_stage: string | null; mode: string | null; standing: string;
+}
+export interface View { counts: { total: number; pgd: number; masters: number; doctoral: number }; rows: Row[] }
+
+const LEVEL: Record<number, string> = { 700: "PGD", 800: "Master’s", 900: "Doctoral" };
+const RESEARCH: Record<string, string> = {
+  REGISTERED: "Registered", SUPERVISED: "Supervised", PROPOSAL_SUBMITTED: "Proposal", PROPOSAL_APPROVED: "Proposal approved",
+  SEMINAR_HELD: "Seminar", TITLE_REGISTERED: "Title", PANEL_CONSTITUTED: "Panel", DRAFT_SUBMITTED: "Draft", VIVA_HELD: "Viva",
+  CORRECTIONS: "Corrections", FINAL_SUBMITTED: "Final", CLEARED: "Cleared", AWARD_RECOMMENDED: "To Senate", AWARDED: "Awarded", WITHDRAWN: "Withdrawn",
+};
+
+export function StudentsRegister({ view, problem }: { view: View | null; problem: Problem | null }) {
+  const [progs, setProgs] = useState<Prog[]>([]);
+  const [programme, setProgramme] = useState("");
+  const [level, setLevel] = useState("");
+  const [data, setData] = useState<View | null>(view);
+  const [err, setErr] = useState<Problem | null>(problem);
+
+  useEffect(() => {
+    let live = true;
+    fetch("/api/bff/api/v1/pg/programmes").then((r) => (r.ok ? r.json() : [])).then((j) => { if (live) setProgs(Array.isArray(j) ? j : []); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  const load = useCallback(async (p: string, l: string) => {
+    const q = [p ? `programme=${encodeURIComponent(p)}` : "", l ? `level=${l}` : ""].filter(Boolean).join("&");
+    const r = await fetch(`/api/bff/api/v1/pg/students${q ? `?${q}` : ""}`, { cache: "no-store" });
+    setErr(null);
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+    setData(j as View);
+  }, []);
+
+  useEffect(() => {
+    if (programme === "" && level === "") return;
+    void (async () => { await load(programme, level); })();
+  }, [programme, level, load]);
+
+  const byFaculty = useMemo(() => {
+    const m = new Map<string, Prog[]>();
+    for (const p of progs) { const k = p.faculty_name; if (!m.has(k)) m.set(k, []); m.get(k)!.push(p); }
+    return [...m.entries()];
+  }, [progs]);
+
+  if (!data) return <ProblemNotice problem={err ?? { status: 500, title: "The register could not be read." }} />;
+  const c = data.counts;
+  const onProbation = data.rows.filter((r) => r.standing === "PROBATION").length;
+
+  return (
+    <>
+      {err ? <ProblemNotice problem={err} /> : null}
+      <Tiles items={[
+        ["PG students", String(c.total), null, "on the register"],
+        ["PGD", String(c.pgd), null, "level 700"],
+        ["Master’s", String(c.masters), null, "level 800"],
+        ["Doctoral", String(c.doctoral), null, "level 900"],
+        ["On probation", String(onProbation), onProbation ? "var(--red-deep)" : null, "CGPA below 2.50"],
+      ]} />
+      <Panel title="Postgraduate register" right={
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <select className="ctl" style={{ width: "auto", maxWidth: 220 }} value={programme} onChange={(e) => setProgramme(e.target.value)} aria-label="Programme">
+            <option value="">All programmes</option>
+            {byFaculty.map(([fac, list]) => <optgroup key={fac} label={fac}>{list.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</optgroup>)}
+          </select>
+          <select className="ctl" style={{ width: "auto" }} value={level} onChange={(e) => setLevel(e.target.value)} aria-label="Level">
+            <option value="">All levels</option><option value="700">700 · PGD</option><option value="800">800 · Master&rsquo;s</option><option value="900">900 · Doctoral</option>
+          </select>
+        </span>
+      }>
+        {data.rows.length ? (
+          <DTable cols={["Student", "Programme", "Level|mid", "Mode|mid", "CGPA|num", "Standing|mid", "Research|mid"]}
+            rows={data.rows.map((r) => [
+              <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
+              <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.department_name}</div></span>,
+              <span key="l" className="sub2">{LEVEL[r.entry_level] ?? r.entry_level}</span>,
+              <span key="m" className="sub2">{r.mode === "PART_TIME" ? "Part-time" : r.mode === "FULL_TIME" ? "Full-time" : "—"}</span>,
+              <span key="c" className="tnum">{r.cgpa == null ? "—" : Number(r.cgpa).toFixed(2)}</span>,
+              r.standing === "PROBATION" ? <Pil key="s" kind="bad">Probation</Pil> : r.standing === "GOOD" ? <Pil key="s" kind="ok">Good</Pil> : <Pil key="s" kind="grey">New</Pil>,
+              <span key="r" className="sub2">{r.research_stage ? (RESEARCH[r.research_stage] ?? r.research_stage) : "—"}</span>,
+            ])} texts={data.rows.map((r) => `${r.surname} ${r.other_names} ${r.matric_no ?? ""} ${r.programme_name}`)} />
+        ) : <PBody><div className="sub2">No postgraduate student on the register for this filter.</div></PBody>}
+      </Panel>
+      <Note kind="info" title="Academic standing (Policy 15.5 / 20)">A student whose CGPA falls below 2.50 is placed on probation for a semester and advised to withdraw if it does not improve.</Note>
+    </>
+  );
+}
