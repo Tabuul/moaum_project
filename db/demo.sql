@@ -1134,6 +1134,8 @@ BEGIN
           WHERE id = v_app;
         INSERT INTO admissions.pg_referee (application_id, name, email, institution, position)
             VALUES (v_app, 'Prof. G. T. Utor', 'gtutor@moaum.edu.ng', 'Rev. Fr. M. O. Adasu University', 'Professor');
+        INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes)
+            VALUES (v_app, 'TRANSCRIPT', 'bsc-transcript.pdf', 'application/pdf', v_pdf);
         v_ref := admissions.pg_new_fee_reference(v_app, 'APPLICATION');
         PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
         PERFORM admissions.pg_submit(v_app);
