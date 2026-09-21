@@ -63,7 +63,11 @@ public class AdmissionSettingsService {
                                   /** compulsory O'Level subjects this programme accepts a pass in (V053); null leaves them as they are */
                                   List<String> olevelAllowances,
                                   /** the required UTME subjects the merit list checks (V189); null leaves them as they are */
-                                  List<String> utmeSubjects) {
+                                  List<String> utmeSubjects,
+                                  /** the required Direct Entry subjects the DE gate checks (V200); null leaves them as they are */
+                                  List<String> deSubjects,
+                                  /** how many of the DE subject set a candidate must offer (V200); null defaults to two, capped to the set */
+                                  @Min(1) @Max(9) Integer deChoose) {
     }
 
     public record Instrument(@NotBlank @Size(max = 200) String instrument) {

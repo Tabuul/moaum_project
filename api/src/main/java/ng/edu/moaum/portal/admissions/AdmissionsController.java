@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -110,6 +111,52 @@ class AdmissionsController {
     @PreAuthorize(LOADERS)
     Map<String, Object> recordMeritMany(@jakarta.validation.Valid @RequestBody MeritRecordMany body) {
         return intake.recordMeritMany(body.session(), body.programmes());
+    }
+
+    /** Direct Entry screening for a programme: the DE applicants with the subject gate's verdict (V200).
+     *  Screening-only — separate from the UTME merit list and from the offer decision. */
+    @GetMapping("/de-screening")
+    @PreAuthorize(READERS)
+    Map<String, Object> deScreening(@RequestParam String session, @RequestParam String programme) {
+        return intake.deScreening(session, programme);
+    }
+
+    /** the Direct Entry awards captured for a candidate — the basis and its subjects (V200) */
+    @GetMapping("/de-awards")
+    @PreAuthorize(READERS)
+    List<Map<String, Object>> deAwards(@RequestParam String session, @RequestParam String jambKey) {
+        return intake.deAwards(session, jambKey);
+    }
+
+    public record DeSubjectIn(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 80) String subject,
+                              @jakarta.validation.constraints.Size(max = 20) String grade) {
+    }
+
+    public record DeAwardIn(@jakarta.validation.constraints.NotBlank String session,
+                            @jakarta.validation.constraints.NotBlank String jambKey,
+                            @jakarta.validation.constraints.Pattern(regexp = "A_LEVEL|IJMB|JUPEB|NCE|ND|HND",
+                                    message = "basis must be one of A_LEVEL, IJMB, JUPEB, NCE, ND, HND") String basis,
+                            @jakarta.validation.constraints.Min(1960) @jakarta.validation.constraints.Max(2100) Integer awardedYear,
+                            @jakarta.validation.constraints.Size(max = 200) String institution,
+                            @jakarta.validation.constraints.NotNull @Valid List<DeSubjectIn> subjects) {
+    }
+
+    /** record (replace whole) a candidate's Direct Entry award and its subjects; returns the candidate's awards (V200) */
+    @PostMapping("/de-awards")
+    @PreAuthorize(LOADERS)
+    List<Map<String, Object>> recordDeAward(@Valid @RequestBody DeAwardIn body) {
+        List<Map<String, String>> subs = body.subjects().stream()
+                .map(s -> Map.of("subject", s.subject(), "grade", s.grade() == null ? "" : s.grade()))
+                .toList();
+        return intake.recordDeAward(body.session(), body.jambKey(), body.basis(), body.awardedYear(), body.institution(), subs);
+    }
+
+    /** remove one Direct Entry award (V200) */
+    @DeleteMapping("/de-awards/{id}")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> deleteDeAward(@PathVariable UUID id) {
+        intake.deleteDeAward(id);
+        return Map.of("deleted", true);
     }
 
     record JambRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {

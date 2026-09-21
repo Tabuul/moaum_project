@@ -266,6 +266,57 @@ class CapsRepository {
                 .param("s", session).param("p", programme).query().listOfRows();
     }
 
+    /** per-programme Direct Entry screening: each submitted DE applicant with the DE subject gate's verdict (V200) */
+    java.util.List<java.util.Map<String, Object>> deScreening(String session, String programme) {
+        return jdbc.sql("SELECT * FROM admissions.de_screening(:s, :p)")
+                .param("s", session).param("p", programme).query().listOfRows();
+    }
+
+    /** the Direct Entry awards captured for a candidate, each with its subjects and grades (V200) */
+    java.util.List<java.util.Map<String, Object>> deAwards(String session, String jambKey) {
+        return jdbc.sql("""
+                SELECT a.id, a.basis, a.awarded_year, a.institution, a.recorded_at,
+                       coalesce(json_agg(json_build_object('subject', s.subject, 'grade', s.grade)
+                                ORDER BY s.subject) FILTER (WHERE s.subject IS NOT NULL), '[]') AS subjects
+                  FROM admissions.de_award a
+                  LEFT JOIN admissions.de_award_subject s ON s.award_id = a.id
+                 WHERE a.session = :s AND a.jamb_key = upper(btrim(:k))
+                 GROUP BY a.id, a.basis, a.awarded_year, a.institution, a.recorded_at
+                 ORDER BY a.basis
+                """).param("s", session).param("k", jambKey).query().listOfRows();
+    }
+
+    /** record (replace whole) one Direct Entry award and its subjects for a candidate (V200) */
+    void recordDeAward(String session, String jambKey, String basis, Integer year, String institution,
+                       java.util.List<java.util.Map<String, String>> subjects, java.util.UUID actor) {
+        // one award per (session, jamb_key, basis): the subjects cascade off the award, so replace it whole
+        jdbc.sql("DELETE FROM admissions.de_award WHERE session = :s AND jamb_key = upper(btrim(:k)) AND basis = :b")
+                .param("s", session).param("k", jambKey).param("b", basis).update();
+        java.util.UUID id = java.util.UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO admissions.de_award (id, session, jamb_key, basis, awarded_year, institution, recorded_by)
+                VALUES (:id, :s, upper(btrim(:k)), :b, :y, :i, :by)
+                """).param("id", id).param("s", session).param("k", jambKey).param("b", basis)
+                .param("y", year, java.sql.Types.INTEGER)
+                .param("i", institution == null || institution.isBlank() ? null : institution.trim(), java.sql.Types.VARCHAR)
+                .param("by", actor).update();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (java.util.Map<String, String> s : subjects) {
+            String subject = s.get("subject") == null ? "" : s.get("subject").trim();
+            if (subject.isEmpty() || !seen.add(subject.toLowerCase())) {
+                continue;
+            }
+            String grade = s.get("grade") == null || s.get("grade").isBlank() ? null : s.get("grade").trim();
+            jdbc.sql("INSERT INTO admissions.de_award_subject (award_id, subject, grade) VALUES (:g, :s, :gr)")
+                    .param("g", id).param("s", subject).param("gr", grade, java.sql.Types.VARCHAR).update();
+        }
+    }
+
+    /** remove one Direct Entry award (its subjects cascade) (V200) */
+    void deleteDeAward(java.util.UUID id) {
+        jdbc.sql("DELETE FROM admissions.de_award WHERE id = :id").param("id", id).update();
+    }
+
     /** whether an application's decision is already released and stands (not to be overwritten) */
     boolean decisionReleased(java.util.UUID app) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT decision_released_at IS NOT NULL FROM admissions.application WHERE id = :id")

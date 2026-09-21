@@ -41,6 +41,10 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
                                 List<String> olevelAllowances,
                                 /** the required UTME subjects the merit list checks (V189); empty = not gated */
                                 List<String> utmeSubjects,
+                                /** the required Direct Entry subjects the DE gate checks (V200); empty = not gated */
+                                List<String> deSubjects,
+                                /** how many of the DE subject set a candidate must offer (V200); null = not gated */
+                                Integer deChoose,
                                 /** closed for the session (V023): not admitted into, needs no rule */
                                 boolean closed, String closedReason) {
     }

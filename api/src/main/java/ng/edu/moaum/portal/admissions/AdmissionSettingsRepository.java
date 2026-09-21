@@ -69,6 +69,13 @@ class AdmissionSettingsRepository {
                           FROM admissions.rule_subject rs
                           JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
                          WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'UTME') AS utme_subjects,
+                       (SELECT string_agg(DISTINCT rs.subject, E'\n' ORDER BY rs.subject)
+                          FROM admissions.rule_subject rs
+                          JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
+                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'DE') AS de_subjects,
+                       (SELECT max(sg.choose)
+                          FROM admissions.rule_subject_group sg
+                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'DE') AS de_choose,
                        (SELECT string_agg(a.subject, E'\n' ORDER BY a.subject)
                           FROM admissions.programme_olevel_allowance a
                          WHERE a.policy_id = r.policy_id AND a.programme_code = r.programme_code) AS olevel_allowances,
@@ -92,6 +99,8 @@ class AdmissionSettingsRepository {
                         rs.getBoolean("stated"), lines(rs.getString("olevel_subjects")),
                         lines(rs.getString("olevel_allowances")),
                         lines(rs.getString("utme_subjects")),
+                        lines(rs.getString("de_subjects")),
+                        rs.getObject("de_choose", Integer.class),
                         rs.getBoolean("closed"), rs.getString("closed_reason")))
                 .list();
     }
@@ -287,6 +296,28 @@ class AdmissionSettingsRepository {
                         INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose)
                         VALUES (:g, :id, :code, 'UTME', :choose)
                         """).param("g", group).param("id", policyId).param("code", code).param("choose", subjects.size()).update();
+                for (String subject : subjects) {
+                    jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
+                }
+            }
+        }
+        if (r.deSubjects() != null) {
+            /* the required Direct Entry subjects the DE gate checks (V200, scope 'DE'): one group, replaced whole.
+               Unlike UTME (offer all listed), DE is "offer `choose` of the set" — the officer sets how many. */
+            jdbc.sql("""
+                    DELETE FROM admissions.rule_subject WHERE group_id IN (
+                        SELECT id FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'DE')
+                    """).param("id", policyId).param("code", code).update();
+            jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'DE'")
+                    .param("id", policyId).param("code", code).update();
+            List<String> subjects = r.deSubjects().stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+            if (!subjects.isEmpty()) {
+                int choose = Math.max(1, Math.min(r.deChoose() == null ? 2 : r.deChoose(), subjects.size()));
+                UUID group = UUID.randomUUID();
+                jdbc.sql("""
+                        INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose)
+                        VALUES (:g, :id, :code, 'DE', :choose)
+                        """).param("g", group).param("id", policyId).param("code", code).param("choose", choose).update();
                 for (String subject : subjects) {
                     jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
                 }

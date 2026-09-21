@@ -212,6 +212,45 @@ public class CapsIntakeService {
         return out;
     }
 
+    /** per-programme Direct Entry screening: the DE applicants and the subject gate's verdict (V200).
+     *  Screening-only — this reports, it does not gate the offer decision. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> deScreening(String session, String programme) {
+        java.util.List<java.util.Map<String, Object>> rows = caps.deScreening(session, programme);
+        long met = rows.stream().filter(r -> "MET".equals(r.get("status"))).count();
+        long shortfall = rows.stream().filter(r -> "SHORT".equals(r.get("status"))).count();
+        long unverified = rows.stream().filter(r -> "UNVERIFIED".equals(r.get("status"))).count();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("programme", programme);
+        out.put("counts", Map.of("pool", rows.size(), "met", met, "shortfall", shortfall, "unverified", unverified));
+        out.put("rows", rows);
+        return out;
+    }
+
+    /** the Direct Entry awards captured for a candidate, each with its subjects (V200) */
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> deAwards(String session, String jambKey) {
+        return caps.deAwards(session, jambKey);
+    }
+
+    /** record (replace whole) a candidate's Direct Entry award and its subjects; returns the candidate's awards (V200) */
+    @Transactional
+    public java.util.List<java.util.Map<String, Object>> recordDeAward(String session, String jambKey, String basis,
+            Integer year, String institution, java.util.List<java.util.Map<String, String>> subjects) {
+        AuditContext actor = AuditContextHolder.required();
+        caps.recordDeAward(session, jambKey, basis == null ? null : basis.trim().toUpperCase(), year, institution,
+                subjects == null ? java.util.List.of() : subjects, actor.actorId());
+        return caps.deAwards(session, jambKey);
+    }
+
+    /** remove one Direct Entry award (V200) */
+    @Transactional
+    public void deleteDeAward(java.util.UUID id) {
+        AuditContextHolder.required();
+        caps.deleteDeAward(id);
+    }
+
     /** the Board records the proposed merit list in a batch: an offer (with its basis) for each proposed
      *  candidate, the waiting list for the eligible below the line, and NOT OFFERED — with the reason — for
      *  the ineligible, so every candidate in the pool carries a decision and the JAMB template reconciles;
