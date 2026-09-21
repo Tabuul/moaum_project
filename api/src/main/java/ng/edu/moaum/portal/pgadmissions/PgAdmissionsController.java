@@ -262,6 +262,31 @@ class PgAdmissionsController {
         return Map.of("ok", true);
     }
 
+    public record StatusIn(@NotBlank String to, @NotBlank @Size(max = 400) String instrument, @Size(max = 400) String reason) {
+    }
+
+    /** defer, withdraw or reinstate a postgraduate student (Policy 19–20), on a cited instrument */
+    @PostMapping("/students/{id}/status")
+    @PreAuthorize(SPGS)
+    @Transactional
+    Map<String, Object> setStatus(@PathVariable UUID id, @Valid @RequestBody StatusIn body) {
+        String to = body.to().trim().toUpperCase();
+        if (!List.of("DEFERRED", "WITHDRAWN", "ACTIVE").contains(to)) {
+            throw new DomainRuleViolation("PG_STATUS", "A postgraduate status change here is deferment, withdrawal, or reinstatement.",
+                    new DomainRuleViolation.Remedy("Choose Defer, Withdraw or Reinstate.", "School of Postgraduate Studies"));
+        }
+        boolean isPg = jdbc.sql("SELECT count(*) FROM people.student WHERE id = :id AND entry_mode = 'POSTGRADUATE'")
+                .param("id", id).query(Long.class).single() == 1L;
+        if (!isPg) {
+            throw new NotFound("postgraduate student", id);
+        }
+        jdbc.sql("SELECT people.change_status(:id, :to, :inst, current_date, :reason)")
+                .param("id", id).param("to", to).param("inst", body.instrument().trim())
+                .param("reason", body.reason() == null || body.reason().isBlank() ? null : body.reason().trim(), Types.VARCHAR)
+                .query().listOfRows();
+        return Map.of("ok", true, "status", to);
+    }
+
     /** one application in full: the applicant, the first degree, the proposal, its referees and documents */
     @GetMapping("/applications/{id}")
     @PreAuthorize(READERS)

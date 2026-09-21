@@ -6,6 +6,7 @@
  * level. Read by the Dean, Secretary and the academic offices.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -26,12 +27,13 @@ const RESEARCH: Record<string, string> = {
   CORRECTIONS: "Corrections", FINAL_SUBMITTED: "Final", CLEARED: "Cleared", AWARD_RECOMMENDED: "To Senate", AWARDED: "Awarded", WITHDRAWN: "Withdrawn",
 };
 
-export function StudentsRegister({ view, problem }: { view: View | null; problem: Problem | null }) {
+export function StudentsRegister({ view, problem, mayEdit }: { view: View | null; problem: Problem | null; mayEdit: boolean }) {
   const [progs, setProgs] = useState<Prog[]>([]);
   const [programme, setProgramme] = useState("");
   const [level, setLevel] = useState("");
   const [data, setData] = useState<View | null>(view);
   const [err, setErr] = useState<Problem | null>(problem);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -59,6 +61,22 @@ export function StudentsRegister({ view, problem }: { view: View | null; problem
     return [...m.entries()];
   }, [progs]);
 
+  async function changeStatus(id: string, to: string) {
+    const label = to === "ACTIVE" ? "reinstate" : to.toLowerCase();
+    const instrument = window.prompt(`Instrument for the ${label} (Senate minute, letter, or decision):`, "");
+    if (instrument === null || !instrument.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/pg/students/${id}/status`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PG student ${label}`) },
+        body: JSON.stringify({ to, instrument: instrument.trim(), reason: "" }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      await load(programme, level);
+    } finally { setBusy(false); }
+  }
+
   if (!data) return <ProblemNotice problem={err ?? { status: 500, title: "The register could not be read." }} />;
   const c = data.counts;
   const onProbation = data.rows.filter((r) => r.standing === "PROBATION").length;
@@ -85,15 +103,24 @@ export function StudentsRegister({ view, problem }: { view: View | null; problem
         </span>
       }>
         {data.rows.length ? (
-          <DTable cols={["Student", "Programme", "Level|mid", "Mode|mid", "CGPA|num", "Standing|mid", "Research|mid"]}
+          <DTable cols={["Student", "Programme", "Level|mid", "Status|mid", "CGPA|num", "Standing|mid", "Research|mid", ...(mayEdit ? ["|mid"] : [])]}
             rows={data.rows.map((r) => [
               <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
               <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.department_name}</div></span>,
               <span key="l" className="sub2">{LEVEL[r.entry_level] ?? r.entry_level}</span>,
-              <span key="m" className="sub2">{r.mode === "PART_TIME" ? "Part-time" : r.mode === "FULL_TIME" ? "Full-time" : "—"}</span>,
+              <span key="st" className="sub2">{(r.status ?? "").charAt(0) + (r.status ?? "").slice(1).toLowerCase()}{r.mode ? ` · ${r.mode === "PART_TIME" ? "PT" : "FT"}` : ""}</span>,
               <span key="c" className="tnum">{r.cgpa == null ? "—" : Number(r.cgpa).toFixed(2)}</span>,
               r.standing === "PROBATION" ? <Pil key="s" kind="bad">Probation</Pil> : r.standing === "GOOD" ? <Pil key="s" kind="ok">Good</Pil> : <Pil key="s" kind="grey">New</Pil>,
               <span key="r" className="sub2">{r.research_stage ? (RESEARCH[r.research_stage] ?? r.research_stage) : "—"}</span>,
+              ...(mayEdit ? [
+                <select key="a" className="ctl" style={{ width: "auto", padding: "2px 6px" }} disabled={busy} value=""
+                  onChange={(e) => { const to = e.target.value; e.currentTarget.value = ""; if (to) void changeStatus(r.id, to); }} aria-label="Change status">
+                  <option value="">Action…</option>
+                  {r.status !== "DEFERRED" ? <option value="DEFERRED">Defer</option> : null}
+                  {r.status !== "WITHDRAWN" ? <option value="WITHDRAWN">Withdraw</option> : null}
+                  {r.status !== "ACTIVE" ? <option value="ACTIVE">Reinstate (active)</option> : null}
+                </select>,
+              ] : []),
             ])} texts={data.rows.map((r) => `${r.surname} ${r.other_names} ${r.matric_no ?? ""} ${r.programme_name}`)} />
         ) : <PBody><div className="sub2">No postgraduate student on the register for this filter.</div></PBody>}
       </Panel>
