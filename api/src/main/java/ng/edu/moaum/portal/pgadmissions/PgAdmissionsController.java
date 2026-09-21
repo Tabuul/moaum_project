@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 
@@ -238,8 +240,8 @@ class PgAdmissionsController {
                 """).query().listOfRows();
     }
 
-    public record ExaminerIn(@jakarta.validation.constraints.NotBlank @Size(max = 200) String name,
-                             @jakarta.validation.constraints.NotBlank @Size(max = 200) String institution,
+    public record ExaminerIn(@NotBlank @Size(max = 200) String name,
+                             @NotBlank @Size(max = 200) String institution,
                              @Size(max = 160) String field, String tenureFrom, String tenureTo) {
     }
 
