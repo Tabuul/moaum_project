@@ -87,7 +87,9 @@ BEGIN
             ('services',         '022', 'Student Services',         'institution', NULL),
             ('ict',              '023', 'ICT Directorate',          'platform',    NULL),
             ('admin',            '024', 'University Administrator', 'platform',    NULL),
-            ('super',            '025', 'Super Administrator',      'platform',    NULL)
+            ('super',            '025', 'Super Administrator',      'platform',    NULL),
+            ('pgschool',         '026', 'PG School Dean',           'institution', NULL),
+            ('pgsecretary',      '027', 'PG School Secretary',      'institution', NULL)
         ) AS t(office, n, given, scope_kind, scope_id)
     LOOP
         SELECT id INTO v_person FROM iam.person WHERE staff_number = 'MOAUM/DEMO/' || o.n;
