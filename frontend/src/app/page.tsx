@@ -10,7 +10,6 @@ import { LecturerDashboard } from "./dashboards/Lecturer";
 import { BursarDashboard } from "./dashboards/Bursar";
 import { HodDashboard, type HodHome } from "./dashboards/Hod";
 import { ClinicDashboard } from "./dashboards/Clinic";
-import { LibraryDashboard } from "./dashboards/Library";
 import { ExamsDashboard } from "./dashboards/Exams";
 import { HrDashboard, type HrHome } from "./dashboards/Hr";
 import { DeanDashboard, type DeanHome } from "./dashboards/Dean";
@@ -23,7 +22,6 @@ import type { Posture } from "./security/Security";
 import type { HostelDeskData } from "@/lib/hostel";
 import type { MySheet, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
-import type { LibraryDeskData } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +48,9 @@ export default async function DashboardPage() {
   if (office === "admin") redirect("/admin");
   /* the Vice-Chancellor's home is the institutional overview (menus.ts home t/overview) */
   if (office === "vc") redirect("/overview");
+  /* the Librarian's home is the identity-card desk — "Card printing" (menus.ts home t/idcards); the
+     circulation figures have their own desk under Library → Circulation */
+  if (office === "library") redirect("/credentials/idcards");
   /* the College of Health Sciences officers land in the College module — its own dashboard area.
      They sign in through this same login (single sign-on); the login gate routes them here. */
   if (office === "provost" || office === "collegesecretary" || office === "financecontroller") redirect("/college/dashboard");
@@ -66,8 +67,6 @@ export default async function DashboardPage() {
   const hodHome = office === "hod" ? await api<HodHome>(`/api/v1/hod/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* the Support Services office's home is the clinic: its figures and the queue (V032) */
   const clinic = office === "services" ? await api<ClinicDesk>("/api/v1/health/desk") : null;
-  /* the Librarian's home is the circulation desk (V033) */
-  const library = office === "library" ? await api<LibraryDeskData>("/api/v1/library/desk") : null;
   /* the Exams Officer's home is the result-sheet pipeline in their scope (V013) */
   const examSheets = office && ["exams", "facultyexams"].includes(office) ? await api<SheetListing>(`/api/v1/results/sheets?session=${encodeURIComponent(session)}`) : null;
   /* the Director of HR's home is the establishment and what waits on the directorate (V071-V076) */
@@ -115,8 +114,6 @@ export default async function DashboardPage() {
         <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} />
       ) : office === "services" ? (
         <ClinicDashboard me={me.ok ? me.data : null} desk={clinic && clinic.ok ? clinic.data : null} />
-      ) : office === "library" ? (
-        <LibraryDashboard me={me.ok ? me.data : null} desk={library && library.ok ? library.data : null} />
       ) : (office === "exams" || office === "facultyexams") ? (
         <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} />
       ) : office === "hrm" ? (
