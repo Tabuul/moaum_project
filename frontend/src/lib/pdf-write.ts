@@ -107,6 +107,12 @@ export class Page {
     return this;
   }
 
+  /** a filled rectangle in colour (RGB, each 0..1) — for a branded band or stripe; resets to black after */
+  fillRgb(x: number, y: number, w: number, h: number, colour: [number, number, number]): this {
+    this.ops.push(`${colour.map((c) => c.toFixed(3)).join(" ")} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f 0 g`);
+    return this;
+  }
+
   /** a JPEG, placed with its bottom-left at (x, y) and the given box, keeping its own proportions inside it */
   jpeg(x: number, y: number, w: number, h: number, img: Image): this {
     const name = `Im${this.images.length + 1}`;

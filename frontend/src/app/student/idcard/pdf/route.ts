@@ -42,8 +42,10 @@ function c128Runs(text: string): number[] {
 
 interface CardFields { name: string; matric: string; barcode: string; serial: string; faculty: string; prog: string; level: string; session: string; admitted: string; graduates: string; blood: string; expires: string; kinPhone: string }
 
+/* the card's own colours, as on screen: the navy header, the red|green accent stripe, the red holder tag */
 const DARK: [number, number, number] = [0.07, 0.13, 0.24];
 const RED: [number, number, number] = [0.72, 0.12, 0.16];
+const GREEN: [number, number, number] = [0.13, 0.5, 0.24];
 const GREY: [number, number, number] = [0.42, 0.42, 0.42];
 
 /** draw the card front with its bottom-left corner at (x0,y0) in a W×H box */
@@ -53,16 +55,17 @@ function drawFront(p: Page, x0: number, y0: number, W: number, H: number, f: Car
   p.box(x0, y0, W, H, 0.7);
   // header band (dark)
   const hb = 30;
-  p.fill(x0, top - hb, W, hb, 0.11);
+  p.fillRgb(x0, top - hb, W, hb, DARK);
   if (crest) p.jpeg(x0 + 8, top - hb + 5, 20, 20, crest);
   p.text(x0 + 34, top - 13, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY", 7.4, true, [1, 1, 1]);
   p.text(x0 + 34, top - 23, "MAKURDI · BENUE STATE · NIGERIA", 5.6, false, [0.75, 0.8, 0.86]);
-  // accent rule under the header
-  p.fill(x0, top - hb - 3, W, 3, 0.28);
+  // the red | green accent stripe under the header, as on the screen card
+  p.fillRgb(x0, top - hb - 3, W * 0.55, 3, RED);
+  p.fillRgb(x0 + W * 0.55, top - hb - 3, W * 0.45, 3, GREEN);
   // photo
   const px = x0 + 12, pw = 74, ph = 92, py = top - hb - 12 - ph;
   if (photo) p.jpeg(px, py, pw, ph, photo); else { p.fill(px, py, pw, ph, 0.85); p.box(px, py, pw, ph, 0.7); }
-  p.fill(px, py, 44, 13, 0.2); p.text(px + 6, py + 3.5, "STUDENT", 6.4, true, [1, 1, 1]);
+  p.fillRgb(px, py, 44, 13, RED); p.text(px + 6, py + 3.5, "STUDENT", 6.4, true, [1, 1, 1]);
   // who + grid
   const wx = px + pw + 14;
   let wy = top - hb - 22;
@@ -88,7 +91,7 @@ function drawBack(p: Page, x0: number, y0: number, W: number, H: number, f: Card
   p.fill(x0, y0, W, H, 0.985);
   p.box(x0, y0, W, H, 0.7);
   // strip
-  p.fill(x0, top - 16, W, 16, 0.11);
+  p.fillRgb(x0, top - 16, W, 16, DARK);
   p.text(x0 + 10, top - 11, "PROPERTY OF THE UNIVERSITY · NOT TRANSFERABLE", 6, true, [1, 1, 1]);
   // barcode
   const runs = c128Runs(f.barcode);
