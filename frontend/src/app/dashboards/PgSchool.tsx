@@ -42,7 +42,7 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
   return (
     <>
       {recommended ? (
-        <Note kind="info" title={`${recommended} application${recommended === 1 ? "" : "s"} recommended by a department, awaiting the School`} action={<Link href={desk} className="btn btn--primary btn--sm">Decide them</Link>}>
+        <Note kind="info" title={`${recommended} application${recommended === 1 ? "" : "s"} recommended by a department, awaiting the School`}>
           A department&rsquo;s postgraduate committee has recommended these; the School offers or refuses each.
         </Note>
       ) : toAdmit ? (
