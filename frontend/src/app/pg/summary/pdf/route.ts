@@ -34,7 +34,7 @@ export async function GET() {
   let photo: { width: number; height: number; data: Uint8Array } | null = null;
   try {
     const tok = await sessionToken();
-    const res = await fetch(`${API_URL}/api/v1/pg/passport/image`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
+    const res = await fetch(`${API_URL}/api/v1/pg/passport/image?format=jpeg`, { headers: tok ? { Authorization: `Bearer ${tok}` } : {}, cache: "no-store" });
     if (res.ok && (res.headers.get("content-type") ?? "").includes("jpeg")) {
       const buf = new Uint8Array(await res.arrayBuffer());
       const dim = jpegSize(buf);
@@ -56,15 +56,17 @@ export async function GET() {
   p.rule(L, y, A4.w - L, y, 1, 0.2);
   y -= 20;
 
-  const row = (k: string, v: string) => { p.text(L, y, k.toUpperCase(), 7, false, [0.4, 0.4, 0.4]); p.text(L + 170, y, clean(v) || "—", 10, true); y -= 15; };
-  const section = (t: string) => { y -= 6; p.fill(L, y - 4, A4.w - 2 * L, 15, 0.16); p.text(L + 6, y, t, 8, true, [1, 1, 1]); y -= 20; };
+  const row = (k: string, v: string) => { p.text(L, y, k.toUpperCase(), 7, false, [0.45, 0.45, 0.45]); p.text(L + 120, y, clean(v) || "—", 10, true); y -= 15; };
+  // a light heading band with dark-navy text (was a dark bar with white text)
+  const section = (t: string) => { y -= 8; p.fill(L, y - 4, A4.w - 2 * L, 15, 0.9); p.text(L + 6, y, t, 8, true, [0.1, 0.25, 0.4]); y -= 20; };
 
   section("APPLICATION");
   row("Application number", s.applicationNo);
   row("Session", s.session);
   row("Programme", `${s.programme}${s.award ? ` (${s.award})` : ""}`);
   row("Level", LEVEL[s.entryLevel] ?? String(s.entryLevel));
-  row("Faculty / Department", `${clean(s.faculty)} · ${clean(s.department)}`);
+  row("Faculty", s.faculty);
+  row("Department", s.department);
   row("Submitted", day(s.submittedAt));
   row("Application fee", s.feeConfirmedAt ? `Paid — ${day(s.feeConfirmedAt)}` : "Not yet paid");
 
@@ -72,8 +74,10 @@ export async function GET() {
   row("Name", `${s.surname}, ${s.otherNames}`);
   row("Sex", s.biodata.sex === "F" ? "Female" : s.biodata.sex === "M" ? "Male" : "—");
   row("Date of birth", day(s.biodata.dateOfBirth));
-  row("State / LGA", `${clean(s.biodata.stateOfOrigin) || "—"}${s.biodata.lga ? ` · ${clean(s.biodata.lga)}` : ""}`);
-  row("Email / Phone", `${clean(s.email)}${s.phone ? ` · ${clean(s.phone)}` : ""}`);
+  row("State of origin", s.biodata.stateOfOrigin ?? "—");
+  row("LGA", s.biodata.lga ?? "—");
+  row("Email", s.email);
+  row("Phone", s.phone ?? "—");
 
   const degs: Deg[] = (s.priorDegrees && s.priorDegrees.length)
     ? s.priorDegrees
@@ -83,10 +87,10 @@ export async function GET() {
   if (degs.length) {
     section("QUALIFICATIONS");
     for (const d of degs) {
-      p.text(L, y, (QUAL[d.kind] ?? d.kind).toUpperCase(), 7, false, [0.4, 0.4, 0.4]);
-      p.text(L + 170, y, clean(`${d.award ?? ""}${d.field ? ` (${d.field})` : ""}`) || "—", 10, true);
+      p.text(L, y, (QUAL[d.kind] ?? d.kind).toUpperCase(), 7, false, [0.45, 0.45, 0.45]);
+      p.text(L + 120, y, clean(`${d.award ?? ""}${d.field ? ` (${d.field})` : ""}`) || "—", 10, true);
       y -= 13;
-      p.text(L + 170, y, clean([d.institution, d.class_of_degree, d.cgpa != null ? `CGPA ${d.cgpa}` : null, d.year != null ? String(d.year) : null].filter(Boolean).join(" · ")) || "—", 8, false, [0.4, 0.4, 0.4]);
+      p.text(L + 120, y, clean([d.institution, d.class_of_degree, d.cgpa != null ? `CGPA ${d.cgpa}` : null, d.year != null ? String(d.year) : null].filter(Boolean).join(" · ")) || "—", 8, false, [0.45, 0.45, 0.45]);
       y -= 16;
     }
   }

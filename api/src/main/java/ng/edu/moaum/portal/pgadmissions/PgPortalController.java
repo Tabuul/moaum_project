@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -369,7 +370,7 @@ class PgPortalController {
     @GetMapping("/passport/image")
     @PreAuthorize("hasAuthority('OFFICE_applicant')")
     @Transactional(readOnly = true)
-    ResponseEntity<byte[]> passportImage(Authentication authentication) {
+    ResponseEntity<byte[]> passportImage(Authentication authentication, @RequestParam(required = false) String format) {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         Map<String, Object> r = firstOrNull(jdbc.sql("""
@@ -381,6 +382,22 @@ class PgPortalController {
         }
         byte[] bytes = (byte[]) r.get("bytes");
         String ct = String.valueOf(r.getOrDefault("content_type", "image/jpeg"));
+        // the application-summary PDF can only embed JPEG, so re-encode a PNG passport to JPEG on request
+        if ("jpeg".equalsIgnoreCase(format) && !ct.contains("jpeg")) {
+            try {
+                java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+                if (src != null) {
+                    java.awt.image.BufferedImage rgb = new java.awt.image.BufferedImage(src.getWidth(), src.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+                    java.awt.Graphics2D g = rgb.createGraphics();
+                    g.setColor(java.awt.Color.WHITE);
+                    g.fillRect(0, 0, src.getWidth(), src.getHeight());
+                    g.drawImage(src, 0, 0, null);
+                    g.dispose();
+                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                    if (javax.imageio.ImageIO.write(rgb, "jpg", baos)) { bytes = baos.toByteArray(); ct = "image/jpeg"; }
+                }
+            } catch (java.io.IOException reencodeFailed) { /* fall back to the stored bytes and type */ }
+        }
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(ct))
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=600")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline").body(bytes);
