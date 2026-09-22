@@ -341,11 +341,30 @@ class PgPortalController {
             throw new DomainRuleViolation("PG_DOC_SIZE", "A document is between 1 byte and 8 MB; this one is " + content.length + " bytes.",
                     new DomainRuleViolation.Remedy("Reduce the scan's resolution and upload it again.", "You"));
         }
-        // one document per kind per application — replace any earlier one of the same kind
-        jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = :k").param("app", appId).param("k", kind).update();
+        // a higher-degree certificate may be more than one (a candidate can hold several); every other
+        // kind is one document per application, so a new upload replaces the earlier one of that kind
+        if (!"HIGHER_DEGREE".equals(kind)) {
+            jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = :k").param("app", appId).param("k", kind).update();
+        }
         jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, :k, :fn, :ct, :b)")
                 .param("app", appId).param("k", kind).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
                 .update();
+        return view(me);
+    }
+
+    /** the applicant removes one of their uploaded documents (not the passport) — after payment */
+    @org.springframework.web.bind.annotation.DeleteMapping("/documents/{docId}")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    @Transactional
+    Map<String, Object> deleteDocument(Authentication authentication, @org.springframework.web.bind.annotation.PathVariable UUID docId) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        requireFeePaid(appId);
+        int n = jdbc.sql("DELETE FROM admissions.pg_document WHERE id = :d AND application_id = :app AND kind <> 'PASSPORT'")
+                .param("d", docId).param("app", appId).update();
+        if (n == 0) {
+            throw new NotFound("document", docId);
+        }
         return view(me);
     }
 

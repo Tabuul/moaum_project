@@ -55,8 +55,8 @@ function fmtDate(v: string | null): string {
 const val = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
 /** the documents an applicant uploads, each on its own PDF (the School downloads them merged) */
-const DOC_TYPES: { kind: string; label: string; optional?: boolean }[] = [
-  { kind: "HIGHER_DEGREE", label: "Higher degree certificate", optional: true },
+const DOC_TYPES: { kind: string; label: string; optional?: boolean; multi?: boolean }[] = [
+  { kind: "HIGHER_DEGREE", label: "Higher degree certificate", multi: true },
   { kind: "UNDERGRAD_CERT", label: "Undergraduate certificate" },
   { kind: "OLEVEL", label: "O’Level result" },
   { kind: "BIRTH_CERTIFICATE", label: "Birth certificate / declaration of age" },
@@ -259,7 +259,7 @@ export function PgPortal() {
       <Tiles items={[
         ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
         ["Application fee", paid ? "Paid" : naira(me.applicationFee), paid ? "var(--green-ink)" : "var(--chrome)", paid ? "confirmed" : "unpaid"],
-        ["Documents", `${docCount}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
+        ["Documents", `${new Set(me.documents.filter((d) => d.kind !== "PASSPORT").map((d) => d.kind)).size}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
         ["Stage", STATE_SHORT[me.state] ?? me.state, me.state === "ADMITTED" ? "var(--green-ink)" : null, me.department],
       ]} />
 
@@ -375,6 +375,16 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
     } finally { setBusy(null); }
   }
 
+  async function remove(id: string) {
+    setErr(null); setBusy(id);
+    try {
+      const r = await fetch(`/api/bff/api/v1/pg/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      await onDone();
+    } finally { setBusy(null); }
+  }
+
   return (
     <Panel title="Documents">
       <PBody>
@@ -388,17 +398,32 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
             {err ? <ProblemNotice problem={err} /> : null}
             <div style={{ display: "grid", gap: 2 }}>
               {DOC_TYPES.map((t) => {
-                const on = documents.find((d) => d.kind === t.kind) ?? null;
+                const on = documents.filter((d) => d.kind === t.kind);
+                const single = on[0] ?? null;
                 return (
-                  <div key={t.kind} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", padding: "9px 0", borderBottom: "1px solid var(--line-2)" }}>
-                    <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.label}{t.optional ? <span className="sub2" style={{ fontWeight: 400 }}> · optional</span> : null}</div>
-                      <div className="sub2">{on ? <>On record: {on.filename} · uploaded {fmtDate(on.uploaded_at)}</> : "Not uploaded"}</div>
+                  <div key={t.kind} style={{ padding: "9px 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.label}{t.optional ? <span className="sub2" style={{ fontWeight: 400 }}> · optional</span> : null}{t.multi ? <span className="sub2" style={{ fontWeight: 400 }}> · you may add more than one</span> : null}</div>
+                        {t.multi
+                          ? <div className="sub2">{on.length ? `${on.length} uploaded` : "Not uploaded"}</div>
+                          : <div className="sub2">{single ? <>On record: {single.filename} · uploaded {fmtDate(single.uploaded_at)}</> : "Not uploaded"}</div>}
+                      </div>
+                      <label className={`btn btn--sm ${!t.multi && single ? "btn--ghost" : "btn--primary"}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+                        {busy === t.kind ? "Uploading…" : t.multi ? (on.length ? "Add another" : "Upload PDF") : single ? "Replace" : "Upload PDF"}
+                        <input type="file" accept="application/pdf" hidden disabled={busy !== null} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(t.kind, f); e.target.value = ""; }} />
+                      </label>
                     </div>
-                    <label className={`btn btn--sm ${on ? "btn--ghost" : "btn--primary"}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
-                      {busy === t.kind ? "Uploading…" : on ? "Replace" : "Upload PDF"}
-                      <input type="file" accept="application/pdf" hidden disabled={busy !== null} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(t.kind, f); e.target.value = ""; }} />
-                    </label>
+                    {t.multi && on.length ? (
+                      <div style={{ display: "grid", gap: 3, marginTop: 6, paddingLeft: 4 }}>
+                        {on.map((d) => (
+                          <div key={d.id} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <span>• {d.filename} · uploaded {fmtDate(d.uploaded_at)}</span>
+                            <button type="button" className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => void remove(d.id)}>{busy === d.id ? "Removing…" : "Remove"}</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -470,7 +495,6 @@ const QUAL_KINDS: [string, string][] = [
 type QRow = { kind: string; institution: string; award: string; field: string; classOfDegree: string; cgpa: string; year: string };
 const emptyQ = (kind = "MASTERS"): QRow => ({ kind, institution: "", award: "", field: "", classOfDegree: "", cgpa: "", year: "" });
 
-/** the first degree and the other qualifications — supplied (and amended) in the portal after payment */
 /** the post-payment tasks arranged as steps — the applicant moves from one to the next, as on the apply form */
 function CompleteSteps({ me, paid, passport, onDone }: { me: Me; paid: boolean; passport: DocMeta | null; onDone: () => Promise<void> }) {
   const [step, setStep] = useState(1);
