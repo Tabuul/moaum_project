@@ -1119,6 +1119,7 @@ BEGIN
             PERFORM admissions.pg_dept_decide(v_app, true, 'Suitable for the diploma.', v_hod);
         END IF;
         IF v_dean IS NOT NULL THEN
+            PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean);
             PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean);
         END IF;
 
@@ -1140,7 +1141,7 @@ BEGIN
         PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
         PERFORM admissions.pg_submit(v_app);
         IF v_hod  IS NOT NULL THEN PERFORM admissions.pg_dept_decide(v_app, true, 'Admit.', v_hod); END IF;
-        IF v_dean IS NOT NULL THEN PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean); END IF;
+        IF v_dean IS NOT NULL THEN PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean); PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean); END IF;
         PERFORM admissions.pg_accept(v_app);
         v_student := admissions.pg_admit(v_app);
 

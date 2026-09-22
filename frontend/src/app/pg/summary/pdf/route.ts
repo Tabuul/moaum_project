@@ -45,14 +45,17 @@ export async function GET() {
   const p = new Page();
   const L = 56;
   const crest = crestImage();
-  const cx = A4.w / 2;
+  // the passport sits in a reserved column on the right; the heading is centred in the space to its left,
+  // so the two never overlap however long the university's name is
+  const photoW = 60, photoH = 74, photoX = A4.w - L - photoW;
+  if (photo) p.jpeg(photoX, A4.h - 40 - photoH, photoW, photoH, photo);
+  const hcx = (L + (photoX - 14)) / 2;         // centre of the heading area, left of the passport
   let y = A4.h - 44;
-  if (crest) p.jpeg(cx - 21, y - 42, 42, 42, crest);
-  if (photo) p.jpeg(A4.w - L - 66, A4.h - 44 - 80, 66, 80, photo);   // passport, top-right
-  p.textCenter(cx, y - 55, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
-  p.textCenter(cx, y - 68, "School of Postgraduate Studies", 9, false, [0.35, 0.35, 0.35]);
-  p.textCenter(cx, y - 84, "APPLICATION SUMMARY", 12, true, [0.1, 0.25, 0.4]);
-  y -= 96;
+  if (crest) p.jpeg(hcx - 20, y - 40, 40, 40, crest);
+  p.textCenter(hcx, y - 55, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 11, true);
+  p.textCenter(hcx, y - 68, "School of Postgraduate Studies", 9, false, [0.35, 0.35, 0.35]);
+  p.textCenter(hcx, y - 84, "APPLICATION SUMMARY", 12, true, [0.1, 0.25, 0.4]);
+  y -= 100;
   p.rule(L, y, A4.w - L, y, 1, 0.2);
   y -= 20;
 
@@ -86,12 +89,28 @@ export async function GET() {
       : []);
   if (degs.length) {
     section("QUALIFICATIONS");
-    for (const d of degs) {
-      p.text(L, y, (QUAL[d.kind] ?? d.kind).toUpperCase(), 7, false, [0.45, 0.45, 0.45]);
-      p.text(L + 120, y, clean(`${d.award ?? ""}${d.field ? ` (${d.field})` : ""}`) || "—", 10, true);
+    const grey: [number, number, number] = [0.45, 0.45, 0.45];
+    const sub = (label: string, value: string | null, x = L + 16, vx = L + 120) => {
+      if (!value) return;
+      p.text(x, y, label, 7, false, grey);
+      p.text(vx, y, clean(value), 9, false);
       y -= 13;
-      p.text(L + 120, y, clean([d.institution, d.class_of_degree, d.cgpa != null ? `CGPA ${d.cgpa}` : null, d.year != null ? String(d.year) : null].filter(Boolean).join(" · ")) || "—", 8, false, [0.45, 0.45, 0.45]);
-      y -= 16;
+    };
+    for (const d of degs) {
+      // the qualification's kind, and the award (with its field of study)
+      p.text(L, y, (QUAL[d.kind] ?? d.kind).toUpperCase(), 8, true, [0.1, 0.25, 0.4]);
+      p.text(L + 120, y, clean(`${d.award ?? "—"}${d.field ? ` — ${d.field}` : ""}`), 10, true);
+      y -= 15;
+      sub("Institution", d.institution);
+      sub("Class / result", d.class_of_degree);
+      const cg = d.cgpa != null ? String(d.cgpa) : null;
+      const yr = d.year != null ? String(d.year) : null;
+      if (cg || yr) {
+        if (cg) { p.text(L + 16, y, "CGPA", 7, false, grey); p.text(L + 120, y, cg, 9, false); }
+        if (yr) { p.text(L + 210, y, "Year awarded", 7, false, grey); p.text(L + 290, y, yr, 9, false); }
+        y -= 13;
+      }
+      y -= 8; // a gap before the next qualification
     }
   }
 
