@@ -214,7 +214,7 @@ class PgPortalController {
             throw new NotFound("postgraduate application", me);
         }
         List<Map<String, Object>> referees = jdbc.sql("""
-                SELECT name, email, institution, position FROM admissions.pg_referee
+                SELECT name, email, phone, institution, position, submitted_at, verdict FROM admissions.pg_referee
                  WHERE application_id = :app ORDER BY id
                 """).param("app", a.get("application_id")).query().listOfRows();
         List<Map<String, Object>> priorDegrees = jdbc.sql("""
@@ -440,6 +440,151 @@ class PgPortalController {
                 .param("r", email).param("sub", "Your MOAUM postgraduate application summary")
                 .param("b", body).param("ai", appId).query().listOfRows();
         return Map.of("ok", true, "email", email);
+    }
+
+    /* ── the academic record, supplied in the portal after payment ── */
+
+    public record FirstDegreeIn(@Size(max = 200) String institution, @Size(max = 120) String award, @Size(max = 120) String field,
+                                @Size(max = 60) String classOfDegree, @Size(max = 8) String cgpa, @Size(max = 8) String year) {
+    }
+
+    /** the applicant states (or amends) the first degree the admission rests on (after payment) */
+    @PostMapping("/first-degree")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> firstDegree(Authentication authentication, @Valid @RequestBody FirstDegreeIn body) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        requireFeePaid(appId);
+        String inst = trimToNull(body.institution()), award = trimToNull(body.award()), field = trimToNull(body.field()),
+                cls = trimToNull(body.classOfDegree()), cgpa = trimToNull(body.cgpa()), year = trimToNull(body.year());
+        AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate first degree", null, null),
+                () -> tx.execute(st -> {
+                    jdbc.sql("""
+                            UPDATE admissions.pg_application
+                               SET prior_institution = :i, prior_award = :a, prior_class = :c,
+                                   prior_cgpa = nullif(regexp_replace(coalesce(:g,''), '[^0-9.]','','g'),'')::numeric,
+                                   prior_year = nullif(regexp_replace(coalesce(:y,''), '[^0-9]','','g'),'')::int
+                             WHERE id = :app
+                            """).param("i", inst).param("a", award).param("c", cls).param("g", cgpa).param("y", year)
+                            .param("app", appId).update();
+                    int upd = jdbc.sql("""
+                            UPDATE admissions.pg_prior_degree
+                               SET institution = :i, award = :a, field = :fld, class_of_degree = :c,
+                                   cgpa = nullif(regexp_replace(coalesce(:g,''), '[^0-9.]','','g'),'')::numeric,
+                                   year = nullif(regexp_replace(coalesce(:y,''), '[^0-9]','','g'),'')::int
+                             WHERE application_id = :app AND kind = 'FIRST'
+                            """).param("i", inst).param("a", award).param("fld", field).param("c", cls)
+                            .param("g", cgpa).param("y", year).param("app", appId).update();
+                    if (upd == 0) {
+                        jdbc.sql("""
+                                INSERT INTO admissions.pg_prior_degree (application_id, kind, institution, award, field, class_of_degree, cgpa, year)
+                                VALUES (:app, 'FIRST', :i, :a, :fld, :c,
+                                        nullif(regexp_replace(coalesce(:g,''), '[^0-9.]','','g'),'')::numeric,
+                                        nullif(regexp_replace(coalesce(:y,''), '[^0-9]','','g'),'')::int)
+                                """).param("app", appId).param("i", inst).param("a", award).param("fld", field)
+                                .param("c", cls).param("g", cgpa).param("y", year).update();
+                    }
+                    return null;
+                }));
+        return view(me);
+    }
+
+    public record QualIn(@Size(max = 20) String kind, @Size(max = 200) String institution, @Size(max = 120) String award,
+                         @Size(max = 120) String field, @Size(max = 60) String classOfDegree, @Size(max = 8) String cgpa, @Size(max = 8) String year) {
+    }
+
+    private static final java.util.Set<String> QUAL_KINDS = java.util.Set.of("NCE", "ND", "HND", "PGD", "MASTERS", "PHD", "OTHER");
+
+    /** the applicant states (or amends) their other qualifications — everything but the first degree (after payment) */
+    @PostMapping("/qualifications")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> qualifications(Authentication authentication, @Valid @RequestBody List<QualIn> body) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        requireFeePaid(appId);
+        List<QualIn> quals = body == null ? List.of() : body;
+        AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate qualifications", null, null),
+                () -> tx.execute(st -> {
+                    jdbc.sql("DELETE FROM admissions.pg_prior_degree WHERE application_id = :app AND kind <> 'FIRST'").param("app", appId).update();
+                    for (QualIn q : quals) {
+                        String inst = trimToNull(q.institution()), award = trimToNull(q.award()), field = trimToNull(q.field());
+                        if (inst == null && award == null && field == null) {
+                            continue;
+                        }
+                        String kind = q.kind() == null ? "OTHER" : q.kind().trim().toUpperCase();
+                        if (!QUAL_KINDS.contains(kind)) {
+                            kind = "OTHER";
+                        }
+                        jdbc.sql("""
+                                INSERT INTO admissions.pg_prior_degree (application_id, kind, institution, award, field, class_of_degree, cgpa, year)
+                                VALUES (:app, :k, :i, :a, :fld, :c,
+                                        nullif(regexp_replace(coalesce(:g,''), '[^0-9.]','','g'),'')::numeric,
+                                        nullif(regexp_replace(coalesce(:y,''), '[^0-9]','','g'),'')::int)
+                                """).param("app", appId).param("k", kind).param("i", inst).param("a", award).param("fld", field)
+                                .param("c", trimToNull(q.classOfDegree())).param("g", trimToNull(q.cgpa())).param("y", trimToNull(q.year())).update();
+                    }
+                    return null;
+                }));
+        return view(me);
+    }
+
+    public record RefereeIn(@Size(max = 160) String name, @Size(max = 160) String email, @Size(max = 40) String phone,
+                            @Size(max = 200) String institution, @Size(max = 120) String position) {
+    }
+
+    /** the applicant sets (or amends) their referees; each new referee with an email is sent a reference request (after payment) */
+    @PostMapping("/referees")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> referees(Authentication authentication, @Valid @RequestBody List<RefereeIn> body) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        requireFeePaid(appId);
+        List<RefereeIn> in = body == null ? List.of() : body;
+        String applicantName = String.valueOf(jdbc.sql("""
+                SELECT p.surname || ' ' || p.other_names FROM admissions.pg_application a
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id WHERE a.id = :app
+                """).param("app", appId).query(String.class).single());
+        AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate referees", null, null),
+                () -> tx.execute(st -> {
+                    // keep referees who have already given their reference; replace the rest
+                    jdbc.sql("DELETE FROM admissions.pg_referee WHERE application_id = :app AND submitted_at IS NULL").param("app", appId).update();
+                    for (RefereeIn r : in) {
+                        String name = trimToNull(r.name());
+                        if (name == null) {
+                            continue;
+                        }
+                        String email = trimToNull(r.email());
+                        // do not duplicate a referee whose reference is already in
+                        if (email != null) {
+                            Integer dup = jdbc.sql("SELECT count(*) FROM admissions.pg_referee WHERE application_id = :app AND lower(email) = lower(:e) AND submitted_at IS NOT NULL")
+                                    .param("app", appId).param("e", email).query(Integer.class).single();
+                            if (dup != null && dup > 0) {
+                                continue;
+                            }
+                        }
+                        Map<String, Object> row = jdbc.sql("""
+                                INSERT INTO admissions.pg_referee (application_id, name, email, phone, institution, position)
+                                VALUES (:app, :n, :e, :ph, :i, :po) RETURNING token
+                                """).param("app", appId).param("n", name).param("e", email).param("ph", trimToNull(r.phone()))
+                                .param("i", trimToNull(r.institution())).param("po", trimToNull(r.position())).query().singleRow();
+                        if (email != null) {
+                            String link = portalUrl + "/pg/referee/" + row.get("token");
+                            String msg = "Dear " + name + ",\n\n" + applicantName
+                                    + " has named you as a referee for a postgraduate application to the Rev. Fr. Moses Orshio Adasu University, Makurdi.\n\n"
+                                    + "Please complete a short, confidential reference here:\n" + link + "\n\n"
+                                    + "It asks how you know the applicant, for how long, and your academic assessment and recommendation. Thank you for your assistance.";
+                            jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'pg_application', :ai)")
+                                    .param("r", email).param("sub", "Reference request — " + applicantName + " (MOAUM Postgraduate)")
+                                    .param("b", msg).param("ai", appId).query().listOfRows();
+                        }
+                    }
+                    return null;
+                }));
+        return view(me);
+    }
+
+    private static String trimToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 
     private UUID applicationOf(UUID applicant) {

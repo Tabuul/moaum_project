@@ -23,20 +23,6 @@ const STATE_LABEL: Record<string, string> = {
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
 };
 
-/** a prior qualification beyond the first degree — a prior Master's, a PGD, an HND/ND, an NCE, etc. */
-interface Qual { kind: string; award: string; field: string; institution: string; classOfDegree: string; cgpa: string; year: string }
-const KINDS: [string, string][] = [
-  ["MASTERS", "Master’s degree"],
-  ["PGD", "Postgraduate Diploma (PGD)"],
-  ["HND", "Higher National Diploma (HND)"],
-  ["ND", "National Diploma (ND)"],
-  ["NCE", "Nigeria Certificate in Education (NCE)"],
-  ["PHD", "Doctorate (PhD)"],
-  ["OTHER", "Other qualification"],
-];
-const CLASSES = ["First Class", "Second Class (Upper)", "Second Class (Lower)", "Third Class", "Pass", "Distinction", "Credit", "Merit"];
-const emptyQual = (kind = "MASTERS"): Qual => ({ kind, award: "", field: "", institution: "", classOfDegree: "", cgpa: "", year: "" });
-
 /** a searchable programme picker: type to filter by name, award, department or faculty, then pick one */
 function ProgrammePicker({ progs, value, onPick }: { progs: Prog[]; value: string; onPick: (code: string) => void }) {
   const [q, setQ] = useState("");
@@ -88,8 +74,6 @@ function ProgrammePicker({ progs, value, onPick }: { progs: Prog[]; value: strin
 export function PgApply() {
   const [progs, setProgs] = useState<Prog[]>([]);
   const [f, setF] = useState<Record<string, string>>({});
-  const [refs, setRefs] = useState([{ name: "", email: "", phone: "", institution: "", position: "" }, { name: "", email: "", phone: "", institution: "", position: "" }]);
-  const [quals, setQuals] = useState<Qual[]>([]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
@@ -101,15 +85,8 @@ export function PgApply() {
   }, []);
 
   const chosen = useMemo(() => progs.find((p) => p.code === f.programme), [progs, f.programme]);
-  const isPhd = (chosen?.entry_level ?? 0) >= 900;
   const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
-  const setQual = (i: number, k: keyof Qual, v: string) => setQuals(quals.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
-  function chooseProgramme(code: string) {
-    const p = progs.find((x) => x.code === code);
-    setF({ ...f, programme: code });
-    // a PhD rests on a Master's — seed a Master's row so it is obvious the applicant must give it
-    if (p && p.entry_level >= 900 && quals.length === 0) setQuals([emptyQual("MASTERS")]);
-  }
+  function chooseProgramme(code: string) { setF({ ...f, programme: code }); }
 
   async function submit() {
     setProblem(null);
@@ -117,20 +94,13 @@ export function PgApply() {
       setProblem({ status: 400, title: "Name, email, a password and a programme are required." }); return;
     }
     if ((f.password ?? "").length < 6) { setProblem({ status: 400, title: "Choose a password of at least six characters." }); return; }
-    if (!(f.priorInstitution ?? "").trim() || !(f.priorAward ?? "").trim()) {
-      setProblem({ status: 400, title: "Your first degree (institution and award) is required." }); return;
-    }
-    const hasMasters = quals.some((q) => q.kind === "MASTERS" && ((q.institution ?? "").trim() || (q.award ?? "").trim() || (q.field ?? "").trim()));
-    if (isPhd && !hasMasters) {
-      setProblem({ status: 400, title: "A PhD applicant must also give a Master’s degree.", detail: "Add it under “Other qualifications” below." }); return;
-    }
+    if ((f.password ?? "") !== (f.password2 ?? "")) { setProblem({ status: 400, title: "The two passwords do not match." }); return; }
     setBusy(true);
     try {
-      const priorDegrees = [
-        { kind: "FIRST", institution: f.priorInstitution, award: f.priorAward, field: f.priorField, classOfDegree: f.priorClass, cgpa: f.priorCgpa, year: f.priorYear },
-        ...quals.map((q) => ({ kind: q.kind, institution: q.institution, award: q.award, field: q.field, classOfDegree: q.classOfDegree, cgpa: q.cgpa, year: q.year })),
-      ].filter((d) => (d.institution ?? "").trim() || (d.award ?? "").trim() || (d.field ?? "").trim());
-      const body = { ...f, priorDegrees, referees: refs.filter((r) => r.name.trim()) };
+      // the academic record (first degree, other qualifications, referees) is supplied in the portal after payment
+      const { password2: _pw2, ...rest } = f; // the confirm-password stays in the browser
+      void _pw2;
+      const body = { ...rest };
       const r = await fetch("/api/bff/api/v1/pg/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
@@ -141,8 +111,8 @@ export function PgApply() {
   if (applied) {
     return (
       <Wrap>
-        <Note kind="ok" title={`Application received — ${applied.application_no}`}>
-          Save your application number. <b>Sign in to pay the application fee of {naira(applied.amount)} online</b> — with the email and password you just chose — then upload your credentials (O&rsquo;Level, A&rsquo;Level and birth certificate / declaration of age, scanned into one PDF) under <b>Documents</b> and follow your application. You can also track it with your application number and email below.
+        <Note kind="ok" title={`Account created — ${applied.application_no}`}>
+          Save your application number. <b>Sign in to pay the application fee of {naira(applied.amount)} online</b> — with the email and password you just chose. After payment you complete your application in the portal: your <b>first degree</b>, any <b>other qualifications</b>, your <b>referees</b> (who are then emailed a reference request), and your <b>documents and passport</b>. You can also track it with your application number and email below.
         </Note>
         <div className="card"><div className="card__body">
           <Row k="Application number" v={applied.application_no} />
@@ -159,7 +129,7 @@ export function PgApply() {
   return (
     <Wrap>
       <Note kind="info" title="Apply for a postgraduate programme">
-        Complete the form below. Applications without official transcripts of academic record shall not be processed — bring your transcripts for screening. You may apply for only one programme at a time. The application fee is stated after you submit.
+        Choose a programme and create your account below. The application fee is stated once you submit; after you pay, you complete your application in the portal — your first degree, other qualifications, referees, documents and passport. You may apply for only one programme at a time.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
@@ -180,39 +150,9 @@ export function PgApply() {
           <Field id="lga" label="Local government"><input id="lga" className="ctl" value={f.lga ?? ""} onChange={set("lga")} /></Field>
           <Field id="email" label="Email"><input id="email" type="email" className="ctl" value={f.email ?? ""} onChange={set("email")} autoComplete="email" /></Field>
           <Field id="phone" label="Phone"><input id="phone" className="ctl" value={f.phone ?? ""} onChange={set("phone")} placeholder="08030000000" autoComplete="tel" /></Field>
-          <Field id="password" label="Choose a password" hint="At least six characters — to check your status later"><input id="password" type="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
+          <Field id="password" label="Choose a password" hint="At least six characters — to sign in and pay later"><input id="password" type="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
+          <Field id="password2" label="Confirm password"><input id="password2" type="password" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
         </div>
-
-        <Section title="Your first degree" />
-        <div className="hint" style={{ marginTop: -4 }}>Related / relevant Bachelor&rsquo;s degree(s)</div>
-        <div className="grid grid--2">
-          <Field id="priorInstitution" label="Institution"><input id="priorInstitution" className="ctl" value={f.priorInstitution ?? ""} onChange={set("priorInstitution")} /></Field>
-          <Field id="priorAward" label="Degree / award"><input id="priorAward" className="ctl" value={f.priorAward ?? ""} onChange={set("priorAward")} placeholder="B.Sc." /></Field>
-          <Field id="priorField" label="Field of study"><input id="priorField" className="ctl" value={f.priorField ?? ""} onChange={set("priorField")} placeholder="Computer Science" /></Field>
-          <Field id="priorClass" label="Class of degree"><select id="priorClass" className="ctl" value={f.priorClass ?? ""} onChange={set("priorClass")}><option value="">—</option>{CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
-          <Field id="priorCgpa" label="CGPA (if known)"><input id="priorCgpa" className="ctl tnum" value={f.priorCgpa ?? ""} onChange={set("priorCgpa")} placeholder="3.80" /></Field>
-          <Field id="priorYear" label="Year awarded"><input id="priorYear" className="ctl tnum" value={f.priorYear ?? ""} onChange={set("priorYear")} placeholder="2018" /></Field>
-        </div>
-
-        <Section title="Other qualifications" />
-        <div className="hint" style={{ marginTop: -4 }}>
-          Add every other qualification you hold that bears on this application — a prior <b>Master&rsquo;s</b> (in this or a related field), a <b>Postgraduate Diploma</b>, an <b>HND / ND</b>, or an <b>NCE</b> (for example where it covers a subject deficiency).{isPhd ? " A PhD requires a Master’s degree — give it here." : ""}
-        </div>
-        {quals.map((q, i) => (
-          <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 10, padding: 12 }}>
-            <div className="grid grid--2">
-              <Field id={`q-kind-${i}`} label="Qualification"><select id={`q-kind-${i}`} className="ctl" value={q.kind} onChange={(e) => setQual(i, "kind", e.target.value)}>{KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-              <Field id={`q-inst-${i}`} label="Institution"><input id={`q-inst-${i}`} className="ctl" value={q.institution} onChange={(e) => setQual(i, "institution", e.target.value)} /></Field>
-              <Field id={`q-award-${i}`} label="Award / title"><input id={`q-award-${i}`} className="ctl" value={q.award} onChange={(e) => setQual(i, "award", e.target.value)} placeholder="M.Sc. / PGD / HND" /></Field>
-              <Field id={`q-field-${i}`} label="Field of study"><input id={`q-field-${i}`} className="ctl" value={q.field} onChange={(e) => setQual(i, "field", e.target.value)} placeholder="Economics" /></Field>
-              <Field id={`q-class-${i}`} label="Class / result"><select id={`q-class-${i}`} className="ctl" value={q.classOfDegree} onChange={(e) => setQual(i, "classOfDegree", e.target.value)}><option value="">—</option>{CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
-              <Field id={`q-cgpa-${i}`} label="CGPA (if known)"><input id={`q-cgpa-${i}`} className="ctl tnum" value={q.cgpa} onChange={(e) => setQual(i, "cgpa", e.target.value)} placeholder="4.20" /></Field>
-              <Field id={`q-year-${i}`} label="Year awarded"><input id={`q-year-${i}`} className="ctl tnum" value={q.year} onChange={(e) => setQual(i, "year", e.target.value)} placeholder="2021" /></Field>
-            </div>
-            <div style={{ marginTop: 6 }}><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove this qualification</button></div>
-          </div>
-        ))}
-        <div><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals([...quals, emptyQual()])}>+ Add a qualification</button></div>
 
         {chosen?.pg_research ? (
           <>
@@ -222,20 +162,10 @@ export function PgApply() {
           </>
         ) : null}
 
-        <Section title="Referees" />
-        <div className="hint" style={{ marginTop: -4 }}>Each referee with an email is sent a private link to complete a short, confidential reference for you.</div>
-        {refs.map((r, i) => (
-          <div className="grid grid--2" key={i}>
-            <Field id={`rn${i}`} label={`Referee ${i + 1} — name`}><input id={`rn${i}`} className="ctl" value={r.name} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], name: e.target.value }; setRefs(a); }} /></Field>
-            <Field id={`re${i}`} label="Email"><input id={`re${i}`} type="email" className="ctl" value={r.email} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], email: e.target.value }; setRefs(a); }} /></Field>
-            <Field id={`rph${i}`} label="Phone number"><input id={`rph${i}`} className="ctl" value={r.phone} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], phone: e.target.value }; setRefs(a); }} /></Field>
-            <Field id={`ri${i}`} label="Institution"><input id={`ri${i}`} className="ctl" value={r.institution} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], institution: e.target.value }; setRefs(a); }} /></Field>
-            <Field id={`rp${i}`} label="Position"><input id={`rp${i}`} className="ctl" value={r.position} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], position: e.target.value }; setRefs(a); }} /></Field>
-          </div>
-        ))}
+        <div className="hint">After you submit, sign in to pay the application fee. You then complete your first degree, other qualifications, referees, documents and passport in the portal.</div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4 }}>
-          <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit application"}</button>
+          <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</button>
           <Link href="/login" className="btn btn--ghost btn--sm">Cancel</Link>
         </div>
       </div></div>

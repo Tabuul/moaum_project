@@ -41,14 +41,11 @@ class PgApplyController {
     private final TransactionTemplate tx;
     private final tools.jackson.databind.ObjectMapper json;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
-    private final String portalUrl;
 
-    PgApplyController(JdbcClient jdbc, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json,
-                      @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
+    PgApplyController(JdbcClient jdbc, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json) {
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactions);
         this.json = json;
-        this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
     /** the postgraduate programmes to apply into, for the form's picker (public) */
@@ -118,33 +115,8 @@ class PgApplyController {
         form.put("proposalText", body.proposalText());
         form.put("referees", body.referees() == null ? List.of() : body.referees());
         String j = json.writeValueAsString(form);
-        String applicantName = (body.surname() + " " + (body.otherNames() == null ? "" : body.otherNames())).trim();
         return AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "postgraduate application", null, null),
-                () -> tx.execute(st -> {
-                    Map<String, Object> row = jdbc.sql("SELECT * FROM admissions.pg_apply(:j::jsonb)").param("j", j).query().singleRow();
-                    emailReferees((UUID) row.get("application_id"), applicantName);
-                    return row;
-                }));
-    }
-
-    /** email each named referee a private link to complete their reference for this application */
-    private void emailReferees(UUID appId, String applicantName) {
-        List<Map<String, Object>> referees = jdbc.sql("""
-                SELECT name, email, token FROM admissions.pg_referee
-                 WHERE application_id = :a AND email IS NOT NULL AND submitted_at IS NULL
-                """).param("a", appId).query().listOfRows();
-        for (Map<String, Object> r : referees) {
-            String link = portalUrl + "/pg/referee/" + r.get("token");
-            String body = "Dear " + r.get("name") + ",\n\n"
-                    + applicantName + " has named you as a referee for a postgraduate application to the "
-                    + "Rev. Fr. Moses Orshio Adasu University, Makurdi.\n\n"
-                    + "Please complete a short, confidential reference here:\n" + link + "\n\n"
-                    + "It asks how you know the applicant, for how long, and your academic assessment and recommendation. "
-                    + "Thank you for your assistance.";
-            jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'pg_application', :ai)")
-                    .param("r", r.get("email")).param("sub", "Reference request — " + applicantName + " (MOAUM Postgraduate)")
-                    .param("b", body).param("ai", appId).query().listOfRows();
-        }
+                () -> tx.execute(st -> jdbc.sql("SELECT * FROM admissions.pg_apply(:j::jsonb)").param("j", j).query().singleRow()));
     }
 
     /** check an application's status, by its number and the email it was made with (public) */
