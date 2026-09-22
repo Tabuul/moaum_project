@@ -41,35 +41,57 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         r.onerror = () => reject(r.error);
         r.readAsDataURL(file);
       });
-      const CHUNK = 12;
+      /* Smaller batches keep each request well under the API's JSON size limit, and an oversized scan is
+         held back rather than sent — a single ~15 MB+ image cannot be parsed and used to refuse the batch
+         (and, before, halt the whole upload). Anything a batch cannot send is counted and listed, and the
+         upload carries on to the end. Re-uploading is idempotent, so fixed files can go up again. */
+      const CHUNK = 6;
+      const MAX_BYTES = 8 * 1024 * 1024;   // hold back a scan larger than this; resize and re-upload it
       const totals = { total: 0, stored: 0, attached: 0, notFound: 0, skipped: 0 };
       const notFoundList: string[] = [];
-      let sent = 0;
+      const problemFiles: string[] = [];
+      let sent = 0, failed = 0;
       setProgress({ label: "Uploading photos", sent: 0, of: files.length });
-      for (let i = 0; i < files.length; i += CHUNK) {
-        const slice = files.slice(i, i + CHUNK);
-        const items = await Promise.all(slice.map(async (f) => ({ filename: f.name, contentType: f.type || "", contentBase64: await fileToBase64(f) })));
-        const r = await fetch("/api/bff/api/v1/results/legacy/passports", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy passport photos imported: ${sent + 1} to ${sent + slice.length} of ${files.length}`) },
-          body: JSON.stringify({ items }),
-        });
-        const j = await r.json().catch(() => null);
-        if (!r.ok) {
-          const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
-          setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${sent.toLocaleString()} of ${files.length.toLocaleString()} photos were processed before this batch was refused.` });
-          if (totals.total) setPResult({ ...totals, notFoundList });
-          return;
+      const usable: File[] = [];
+      for (const f of files) {
+        if (f.size > MAX_BYTES) { totals.total++; totals.skipped++; failed++; if (problemFiles.length < 5000) problemFiles.push(f.name); }
+        else usable.push(f);
+      }
+      sent = files.length - usable.length;
+      setProgress({ label: "Uploading photos", sent, of: files.length });
+      for (let i = 0; i < usable.length; i += CHUNK) {
+        const slice = usable.slice(i, i + CHUNK);
+        try {
+          const items = await Promise.all(slice.map(async (f) => ({ filename: f.name, contentType: f.type || "", contentBase64: await fileToBase64(f) })));
+          const r = await fetch("/api/bff/api/v1/results/legacy/passports", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy passport photos imported: ${sent + 1} to ${sent + slice.length} of ${files.length}`) },
+            body: JSON.stringify({ items }),
+          });
+          const j = await r.json().catch(() => null);
+          if (!r.ok) {
+            /* one refused batch no longer stops the upload — count it, list its files, and carry on */
+            totals.total += slice.length; totals.skipped += slice.length; failed += slice.length;
+            for (const f of slice) if (problemFiles.length < 5000) problemFiles.push(f.name);
+          } else {
+            const c = (j ?? {}) as Record<string, unknown>;
+            totals.total += Number(c.total ?? 0); totals.stored += Number(c.stored ?? 0); totals.attached += Number(c.attached ?? 0);
+            totals.notFound += Number(c.notFound ?? 0); totals.skipped += Number(c.skipped ?? 0);
+            if (Array.isArray(c.notFoundList)) for (const n of c.notFoundList) if (notFoundList.length < 5000 && typeof n === "string") notFoundList.push(n);
+          }
+        } catch {
+          totals.total += slice.length; totals.skipped += slice.length; failed += slice.length;
+          for (const f of slice) if (problemFiles.length < 5000) problemFiles.push(f.name);
         }
-        const c = (j ?? {}) as Record<string, unknown>;
-        totals.total += Number(c.total ?? 0); totals.stored += Number(c.stored ?? 0); totals.attached += Number(c.attached ?? 0);
-        totals.notFound += Number(c.notFound ?? 0); totals.skipped += Number(c.skipped ?? 0);
-        if (Array.isArray(c.notFoundList)) for (const n of c.notFoundList) if (notFoundList.length < 2000 && typeof n === "string") notFoundList.push(n);
         sent += slice.length;
         setProgress({ label: "Uploading photos", sent, of: files.length });
       }
-      setPResult({ ...totals, notFoundList });
-      notify(`${files.length} passport photo${files.length === 1 ? "" : "s"} processed`);
+      setPResult({ ...totals, notFoundList: notFoundList.length ? notFoundList : problemFiles });
+      if (failed) {
+        setProblem({ status: 400, title: `${failed.toLocaleString()} photo${failed === 1 ? "" : "s"} could not be sent`,
+          detail: `The rest were processed — a photo is held back when the scan is larger than 8 MB, or a batch is refused. Reduce those scans and upload just them again (re-uploading is idempotent, so nothing duplicates).${notFoundList.length ? "" : " Download the list below to see which files."}` });
+      }
+      notify(`${(files.length - failed).toLocaleString()} of ${files.length.toLocaleString()} passport photo${files.length === 1 ? "" : "s"} processed`);
     } catch {
       setProblem({ status: 400, title: "The photos could not be read.", detail: "Select image files (JPEG or PNG) named by the student's JAMB registration number." });
     } finally {
