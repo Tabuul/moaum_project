@@ -18,7 +18,7 @@ import { SecurityDashboard } from "./dashboards/Security";
 import { HousingDashboard } from "./dashboards/Housing";
 import { SiwesDashboard, type SiwesOffering } from "./dashboards/Siwes";
 import { AuditDashboard, type AuditEntry } from "./dashboards/Audit";
-import { PgSchoolDashboard, type PgHome } from "./dashboards/PgSchool";
+import { PgSchoolDashboard, PgSecretaryDashboard, type PgHome, type PgSecHome } from "./dashboards/PgSchool";
 import type { Posture } from "./security/Security";
 import type { HostelDeskData } from "@/lib/hostel";
 import type { MySheet, SheetListing } from "@/lib/results";
@@ -81,8 +81,10 @@ export default async function DashboardPage() {
   const hostel = office === "housing" ? await api<HostelDeskData>(`/api/v1/hostel/sessions/${encodeURIComponent(session)}`) : null;
   /* the SIWES Coordinator's department offerings this second semester (V156) */
   const siwes = office === "siwes" ? await api<SiwesOffering[]>(`/api/v1/siwes/offerings?session=${encodeURIComponent(session)}&semester=2`) : null;
-  /* the School of Postgraduate Studies' home: what waits on the School, the register, the pipeline (V202) */
-  const pg = office && ["pgschool", "pgsecretary"].includes(office) ? await api<PgHome>(`/api/v1/pg/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the School of Postgraduate Studies: the Dean's home is the admissions pipeline (V202); the Secretary's
+     home is what waits on the Secretary — registration, fees, examinations and thesis clearance */
+  const pg = office === "pgschool" ? await api<PgHome>(`/api/v1/pg/dashboard?session=${encodeURIComponent(session)}`) : null;
+  const pgSec = office === "pgsecretary" ? await api<PgSecHome>(`/api/v1/pg/secretary/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
   let sub: string | undefined;
   if (office === "lecturer" && mine && mine.ok) {
@@ -91,6 +93,10 @@ export default async function DashboardPage() {
   } else if (office === "hod" && hodHome && hodHome.ok && hodHome.data.resolved) {
     const h = hodHome.data;
     sub = `${h.deptName} · ${h.approvals ?? 0} to approve · ${h.deptStudents ?? 0} students`;
+  } else if (office === "pgschool") {
+    sub = "Dean";
+  } else if (office === "pgsecretary") {
+    sub = "Secretary";
   }
   return (
     <Shell route="r/academic" me={me.ok ? me.data : null} sub={sub}>
@@ -127,8 +133,10 @@ export default async function DashboardPage() {
         <HousingDashboard me={me.ok ? me.data : null} desk={hostel && hostel.ok ? hostel.data : null} />
       ) : office === "siwes" ? (
         <SiwesDashboard me={me.ok ? me.data : null} offerings={siwes && siwes.ok ? siwes.data : []} semester={2} />
-      ) : (office === "pgschool" || office === "pgsecretary") ? (
-        <PgSchoolDashboard me={me.ok ? me.data : null} home={pg && pg.ok ? pg.data : null} role={office === "pgsecretary" ? "Secretary, School of Postgraduate Studies" : "Dean, School of Postgraduate Studies"} />
+      ) : office === "pgschool" ? (
+        <PgSchoolDashboard me={me.ok ? me.data : null} home={pg && pg.ok ? pg.data : null} />
+      ) : office === "pgsecretary" ? (
+        <PgSecretaryDashboard me={me.ok ? me.data : null} home={pgSec && pgSec.ok ? pgSec.data : null} />
       ) : (
         <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}
