@@ -122,9 +122,6 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
             )}
             <Link href="/results/chain" className="btn btn--ghost">Open the approval chain</Link>
           </div>
-          <Note kind="bad" title="A set with a missing sheet does not go forward on its own">
-            Forwarding sends what may be approved from here: not a set you took the previous stage on, and not one failing more than half its candidates, which is opened and read before it moves. What is not approved stays visible on this desk with the name of the person it is waiting on.
-          </Note>
         </PBody>
       </Panel>
     </>

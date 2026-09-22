@@ -79,7 +79,6 @@ export function Eligibility({ depts, dept, courses, code, view, problem }: {
             <Panel title="What the lecturer sees" right="On the score sheet">
               <PBody>
                 <p className="sub2" style={{ margin: 0, lineHeight: 1.6 }}>All {all} registered candidates in one list, ordered by matriculation number. The programme is a column, not a filter. {borrowed} of them are from other departments, and they are marked exactly like the rest, because they sat exactly the same paper.</p>
-                <Note kind="bad" title="A sheet that shows only the owning department is a sheet with missing marks that looks complete">This is the silent failure: the lecturer submits, the department and Senate approve, results are released, and a borrowed student who sat the paper has no mark. The roll is drawn from the register for exactly this reason.</Note>
               </PBody>
             </Panel>
           </div>

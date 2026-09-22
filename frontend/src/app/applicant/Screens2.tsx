@@ -60,9 +60,6 @@ export function Screening({ a }: { a: Application }) {
           ["A dark pen", "Anyone who is not sitting the screening"],
         ]} />
       </Panel>
-      <Note kind="bad" title="Your photograph is checked at the door and again at your seat">
-        The photograph on this slip is the one you uploaded. If the person who arrives is not the person in the photograph, both are reported to the Board and both lose the place. Every seat interaction is logged and kept.
-      </Note>
     </>
   );
 }

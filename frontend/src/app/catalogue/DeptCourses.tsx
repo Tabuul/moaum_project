@@ -208,10 +208,6 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
         ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board."}</div></PBody>}
       </Panel>
 
-      <Note kind="bad" title="Ending a course is not deleting it">
-        A course that is no longer taught is ended with a date. It disappears from next session&rsquo;s registration and stays on every transcript that carries it, because a degree earned in one year was earned on the courses that existed that year. Nothing in this catalogue is ever removed.
-      </Note>
-
       {add ? (
         <Modal title="New course" sub={`For ${depts.find((d) => d.code === dept)?.name ?? dept}`} onClose={() => setAdd(false)}
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />

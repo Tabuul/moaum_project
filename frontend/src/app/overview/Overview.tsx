@@ -87,9 +87,6 @@ export function Overview({ d, semester, session, sessions }: { d: OverviewData; 
                   { l: "Pending in the chain", v: pend, c: VZ.warn, i: <Ico name="clock" size={13} stroke="#8a6300" w={2.2} /> },
                   { l: "Never submitted", v: miss, c: VZ.crit, i: <WarnIcon size={13} /> },
                 ]} />
-                <Note kind="bad" title="The two red-ish slices are different problems">
-                  A <b>pending</b> set is on a named desk and can be chased there. A set that was <b>never submitted</b> has no desk at all &mdash; it is a lecturer who has not attested and a Head of Department who has not noticed.
-                </Note>
               </>
             ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester yet. A sheet appears when a lecturer is allocated and the examination session is open.</div>}
           </PBody>

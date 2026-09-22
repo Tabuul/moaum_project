@@ -223,9 +223,6 @@ export function Register({ session }: { session: string }) {
               <div className="hint" style={{ textAlign: "center" }}>Enter your JAMB number to continue</div>
             </>
           ) : null}
-          <Note kind="bad" title="The University sells nothing at the gate">
-            No member of staff, agent or &ldquo;consultant&rdquo; can sell you a place, a higher score or a faster clearance. Every naira you owe is paid on this portal, to a reference this portal generates. Report any other demand to the Registrar.
-          </Note>
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
             <Link href="/login" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>I already have an account</Link>
           </div>

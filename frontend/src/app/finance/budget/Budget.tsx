@@ -115,10 +115,6 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
         );
       })() : null}
 
-      <Note kind="bad" title="A cost centre with nothing available has its next requisition refused at budget check">
-        Commitment accounting is the point: the money an approved voucher will pay is gone from the available balance the moment it is approved, not when it is paid, so a second commitment against the same money cannot slip through in the gap.
-      </Note>
-
       {add ? (
         <Modal title="Set a cost centre's budget" sub={`Financial year ${d.year}`} onClose={() => setAdd(false)}
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.costCentre.trim() || !(Number(f.amount) >= 0)} onClick={() => void set()}>Set the budget</Btn></>}>

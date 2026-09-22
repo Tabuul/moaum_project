@@ -53,9 +53,6 @@ export function Query({ q }: { q: Queries }) {
               <Field id="q-part" label="Which mark"><select id="q-part" className="ctl" value={part} onChange={(e) => setPart(e.target.value)}><option value="EXAM">The examination mark</option><option value="CA">The continuous assessment mark</option><option value="ABSENT">I was recorded absent and I sat the paper</option></select></Field>
             </div>
             <Field id="q-say" label="What you say is wrong"><textarea id="q-say" className="ctl" rows={2} value={said} onChange={(e) => setSaid(e.target.value)} placeholder="Say what you expected and why. If you collected your script, say so." /></Field>
-            <Note kind="bad" title="A query is not an appeal against a grade">
-              It is a statement that a specific mark was recorded wrongly &mdash; a test that is missing from the CA, a total that does not add up, an absence recorded for a paper you sat. &ldquo;I expected a better grade&rdquo; is not a query, and the department will close it as one.
-            </Note>
             {problem ? <ProblemNotice problem={problem} /> : null}
             <div><Btn kind="primary" disabled={!sheet || !said.trim() || busy !== null} onClick={async () => { const ok = await act("raise", "POST", "/me/queries", { sheetId: sheet, part, said }, "Result query raised by the student"); if (ok) setSaid(""); }}>{busy === "raise" ? "Submitting…" : "Submit the query"}</Btn></div>
           </PBody>

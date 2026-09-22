@@ -76,11 +76,6 @@ export function HostelDesk({ d, sessions, actingOffice }: { d: HostelDeskData; s
         ["Taken by priority", String(c.priority), null, "Filled before the ballot is drawn"],
         ["Ballot odds", odds === null ? "—" : `${odds}%`, odds !== null && odds < 50 ? "var(--red-ink)" : null, contested ? `${ballot} beds, ${contested} applicants` : "Nobody in the ballot yet"],
       ]} />
-      {odds !== null && odds < 100 ? (
-        <Note kind="bad" title="The odds are published, because a student who knows them can act on them">
-          After the priority categories are filled, {ballot} beds remain for {contested} applicants — about {odds}%. The system cannot create beds and should not pretend otherwise; a student told now finds lodgings now.
-        </Note>
-      ) : null}
 
       <div className="grid grid--2">
         <Panel title={`The session — ${d.session}`} right={d.setting ? `Fee ${money(Number(d.setting.fee))} · hold ${d.setting.hold_hours} h` : "Not yet stated"}>

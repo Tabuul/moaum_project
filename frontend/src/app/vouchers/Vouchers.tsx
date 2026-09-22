@@ -94,10 +94,6 @@ export function Vouchers({ vouchers, actingOffice }: { vouchers: Voucher[]; acti
         ) : <PBody><div className="sub2">No voucher has been raised. The Bursary raises one for a payment, and it passes Internal Audit before any money moves.</div></PBody>}
       </Panel>
 
-      <Note kind="bad" title="BR-006 applies to a voucher exactly as it applies to a mark">
-        The officer who prepared or authorised a voucher may not audit it, and no person may act twice in its chain, however many offices they hold. It is the same constraint on the same act table, keyed on the person and not the office. The ninth check on a contract voucher — the site visit — is attested by the auditor in their own name, because a portal cannot evidence a person standing on a site.
-      </Note>
-
       {add ? (
         <Modal title="Raise a voucher" sub="It goes to Internal Audit before it can be paid" onClose={() => setAdd(false)}
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />

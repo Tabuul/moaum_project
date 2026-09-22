@@ -142,10 +142,6 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
         <div><button className="btn btn--primary" onClick={() => openModal()}>+ Raise a refund</button></div>
       ) : null}
 
-      <Note kind="bad" title="A refund account whose name does not match the payer is the commonest route money reaches the wrong person">
-        The account is snapshotted when the refund is raised, so a later edit of a student&rsquo;s bank details cannot redirect money already approved. The University never asks for a BVN, a PIN or a card, and never collects by direct debit.
-      </Note>
-
       {add ? (
         <Modal title="Raise a refund" sub="It goes to a second officer to approve" onClose={() => setAdd(false)}
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />

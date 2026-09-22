@@ -57,9 +57,6 @@ export function Accept({ a }: { a: Application }) {
   }
   return (
     <>
-      <Note kind="bad" title="An offer that lapses cannot be reinstated">
-        Accept it here: sign the undertaking and pay the acceptance fee against the reference this portal generates. The place is released to the waiting list when an offer lapses.
-      </Note>
       <Panel title="To accept, you must do both">
         <DTable cols={["What", "Detail", "Amount|num"]} rows={[
           [<Two key="w" a="Pay the acceptance fee" b="Non-refundable. It is credited against your first session charges." />, <span className="sub2" key="d">{paid ? "Confirmed" : open ? `Reference ${open.reference}, expires ${when(open.expiresAt)}` : "Generate a reference below"}</span>, <strong className="tnum" key="a">{money(fee)}</strong>],
@@ -132,11 +129,6 @@ export function Clearance({ a }: { a: Application }) {
           ];
         })} />
       </Panel>
-      {!done ? (
-        <Note kind="bad" title="A statement of result is accepted once, and only for a time">
-          If the certificate has not replaced it on your file when the Registry says it must, your registration is suspended until it does. This is the single most common reason a first-year student is blocked in January.
-        </Note>
-      ) : null}
       <Note kind="info" title="Nothing is paid at clearance, to anyone">
         Clearance is a check of documents. Any request for money at the counter, in the corridor or afterwards should be reported to the Registrar with the name and the date.
       </Note>

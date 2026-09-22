@@ -78,9 +78,6 @@ export function FacultyListScreen({ list, actingOffice }: { list: FacultyList; a
         />
         {!list.rows.length ? <div className="card__body"><div className="sub2">No student of this faculty has an approved registration for {list.session} yet.</div></div> : null}
       </Panel>
-      <Note kind="bad" title="You cannot add a student to this list, and that is deliberate">
-        Every officer who has ever run a matriculation has been asked to add one name at the counter — a student who paid but whose registration did not go through, a candidate whose file was mislaid. The answer is not to type the name here. It is to fix the registration, at which point the student appears on this list without anybody typing anything. A name typed onto a matriculation list is a permanent number issued on somebody’s say-so.
-      </Note>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button className="btn btn--primary" disabled={busy || conf || !may || !list.rows.length} onClick={() => void send("POST", `${base}/confirm`, {}, `${list.name} list confirmed for ${list.session}`)}>{conf ? `Confirmed ${day(list.confirmedAt, false)}` : `Confirm ${ready} students to the Academic Office`}</button>
         <Btn kind="ghost" onClick={() => download(`${list.code}-${list.session.replace("/", "-")}-list.csv`, csv([["Admission number", "Name", "Department", "Units", "State"], ...list.rows.map((r) => [r.admissionNo, `${r.surname}, ${r.otherNames}`, r.deptName, r.units, r.queryReason ? `Query: ${r.queryReason}` : "For matriculation"])]))}>Export the list</Btn>

@@ -119,11 +119,6 @@ export function SessionModal({
         }
       >
         {problem ? <ProblemNotice problem={problem} /> : null}
-        <Note kind="bad" title="Ending is not deleting, and the difference is the whole point">
-          Ending a session closes it: it stops being the session anything new is recorded against, and every registration,
-          score sheet and result already bound to it stays exactly where it is and keeps resolving. No application role in
-          this system holds a DELETE grant on any table, this screen included.
-        </Note>
         <div className="grid grid--2 rfgrid">
           <Field id="rf_endwhy" label="Reason, as it will read in the log" full>
             <input
