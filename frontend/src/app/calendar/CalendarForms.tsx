@@ -69,7 +69,7 @@ function Foot({ onClose, onEnd, endLabel, save, busy }: { onClose: () => void; o
 }
 
 const STATES = ["Planned", "Current", "Closed"];
-const SEMS = ["2", "3 (with a long vacation semester)"];
+const SEMS = ["2", "3 (Summer semester)"];
 
 export function SessionModal({
   row,
