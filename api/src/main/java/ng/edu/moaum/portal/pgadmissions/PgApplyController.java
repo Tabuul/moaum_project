@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -78,6 +79,22 @@ class PgApplyController {
     /** apply: creates the applicant account and a submitted application, and returns the fee reference to pay */
     @PostMapping("/apply")
     Map<String, Object> apply(@Valid @RequestBody ApplyIn body) {
+        // no duplicate application: an email that already carries one is told its number, not given a second
+        List<Map<String, Object>> existing = jdbc.sql("""
+                SELECT a.application_no FROM admissions.pg_application a
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                 WHERE lower(p.email) = lower(:e)
+                 ORDER BY a.submitted_at DESC NULLS LAST LIMIT 1
+                """).param("e", body.email().trim()).query().listOfRows();
+        if (!existing.isEmpty()) {
+            String no = String.valueOf(existing.get(0).get("application_no"));
+            throw new DomainRuleViolation("PG_APP_EXISTS",
+                    "An application already exists for this email — " + no + ".",
+                    new DomainRuleViolation.Remedy(
+                            "Sign in with this email to pay and continue your application (" + no + "). "
+                            + "Forgotten your password? Use “Forgot your password?” on the sign-in page to reset it with this email.",
+                            "You"));
+        }
         Map<String, Object> form = new LinkedHashMap<>();
         form.put("surname", body.surname());
         form.put("otherNames", body.otherNames());

@@ -2449,7 +2449,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "My application",
         "items": [
           { "id": "pg/portal", "icon": "home", "label": "Dashboard" },
-          { "id": "pg/apply", "icon": "doc", "label": "Apply form" }
+          { "id": "pg/apply", "icon": "doc", "label": "Apply form" },
+          { "id": "pg/summary", "icon": "print", "label": "Application summary" }
         ]
       }
     ]

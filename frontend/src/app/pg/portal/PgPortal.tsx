@@ -61,6 +61,9 @@ export function PgPortal() {
   const [reference, setReference] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  const [emailed, setEmailed] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -79,23 +82,48 @@ export function PgPortal() {
     } finally { setLoading(false); }
   }, []);
 
+  /* verify a reference and re-read the application a few times — a gateway can take a little while to
+     settle after the "success" screen, so we poll rather than checking once and leaving it unpaid */
+  const pollConfirm = useCallback(async (ref: string, tries: number): Promise<boolean> => {
+    for (let i = 0; i < tries; i++) {
+      try { await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: ref }) }); } catch { /* ignore */ }
+      const r = await fetch("/api/bff/api/v1/pg/me", { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j) { setMe(j as Me); if ((j as Me).feeConfirmedAt) return true; }
+      if (i < tries - 1) await new Promise((res) => setTimeout(res, 4000));
+    }
+    return false;
+  }, []);
+
   useEffect(() => {
     const paidRef = new URLSearchParams(window.location.search).get("paid");
     void (async () => {
-      if (paidRef) {
-        try { await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: paidRef }) }); } catch { /* ignore */ }
-      }
       await load();
+      if (paidRef) {
+        setVerifying(true);
+        await pollConfirm(paidRef, 8);
+        setVerifying(false);
+        await load();
+      }
     })();
-  }, [load]);
+  }, [load, pollConfirm]);
 
   async function checkNow() {
     if (!reference) return;
     setChecking(true);
     try {
-      await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
+      await pollConfirm(reference, 4);
       await load();
     } finally { setChecking(false); }
+  }
+
+  async function emailSummary() {
+    setEmailing(true); setEmailed(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/pg/email-summary", { method: "POST", headers: { "Content-Type": "application/json" } });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j && j.ok) setEmailed(String(j.email ?? ""));
+    } finally { setEmailing(false); }
   }
 
   if (loading) return <Bare><Note kind="info" title="Loading your application…">One moment.</Note></Bare>;
@@ -145,6 +173,8 @@ export function PgPortal() {
         {me.state === "OFFERED" ? " You have an offer of admission." : ""}
         {!paid ? " Pay the application fee below to have it screened." : ""}
       </Note>
+
+      {verifying ? <Note kind="info" title="Confirming your payment…">This can take a moment after the gateway&rsquo;s success page — the page updates on its own once the payment reaches the University.</Note> : null}
 
       <Tiles items={[
         ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
@@ -240,6 +270,19 @@ export function PgPortal() {
 
       <Documents credentials={credentials} paid={paid} onDone={load} />
       <Passport passport={passport} paid={paid} onDone={load} />
+
+      {paid ? (
+        <Panel title="Application summary">
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 10 }}>Print your completed application, or download it as a PDF. You can also have the summary emailed to you.</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <a href="/pg/summary/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print summary (PDF)</a>
+              <button type="button" className="btn btn--ghost btn--sm" disabled={emailing} onClick={() => void emailSummary()}>{emailing ? "Sending…" : "Email me the summary"}</button>
+              {emailed ? <span className="sub2" style={{ color: "var(--green-ink)" }}>Sent to {emailed}.</span> : null}
+            </div>
+          </PBody>
+        </Panel>
+      ) : null}
 
       {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
 

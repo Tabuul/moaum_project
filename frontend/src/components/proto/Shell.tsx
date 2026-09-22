@@ -197,6 +197,7 @@ export const ROUTES: Record<string, string> = {
   /* the postgraduate applicant's own portal (pg/portal, pg/apply) */
   "pg/portal": "/pg/portal",
   "pg/apply": "/pg/apply",
+  "pg/summary": "/pg/summary/pdf",
 };
 
 /* the portal's own subtitles where the prototype's named an invented figure */

@@ -91,6 +91,17 @@ public class PasswordResetService {
             Map<String, Object> a = applicant.get(0);
             return new Subject("APPLICANT", (UUID) a.get("id"), (String) a.get("email"), (String) a.get("phone"), "portal account");
         }
+        // postgraduate applicant: by email or application number
+        var pg = jdbc.sql("""
+                SELECT p.id, p.email, p.phone FROM admissions.pg_applicant p
+                  JOIN admissions.pg_application ap ON ap.applicant_id = p.id
+                 WHERE lower(p.email) = :e OR upper(ap.application_no) = :k
+                 LIMIT 1
+                """).param("k", upper).param("e", lower).query().listOfRows();
+        if (!pg.isEmpty()) {
+            Map<String, Object> a = pg.get(0);
+            return new Subject("PGAPPLICANT", (UUID) a.get("id"), (String) a.get("email"), (String) a.get("phone"), "postgraduate application account");
+        }
         return null;
     }
 
@@ -153,6 +164,8 @@ public class PasswordResetService {
                 case "STAFF" -> jdbc.sql("UPDATE iam.credential SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL WHERE person_id = :s")
                         .param("h", pwHash).param("s", subject).update();
                 case "STUDENT" -> jdbc.sql("UPDATE iam.student_account SET password_hash = :h, must_change = false, failed_attempts = 0, locked_until = NULL WHERE student_id = :s")
+                        .param("h", pwHash).param("s", subject).update();
+                case "PGAPPLICANT" -> jdbc.sql("UPDATE admissions.pg_applicant SET password_hash = :h WHERE id = :s")
                         .param("h", pwHash).param("s", subject).update();
                 default -> jdbc.sql("UPDATE admissions.applicant_account SET password_hash = :h WHERE id = :s")
                         .param("h", pwHash).param("s", subject).update();

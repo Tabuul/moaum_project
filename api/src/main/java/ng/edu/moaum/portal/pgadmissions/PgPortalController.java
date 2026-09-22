@@ -20,6 +20,9 @@ import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -57,11 +60,14 @@ class PgPortalController {
     private final TokenIssuer issuer;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
+    private final String portalUrl;
 
-    PgPortalController(JdbcClient jdbc, PlatformTransactionManager transactions, TokenIssuer issuer) {
+    PgPortalController(JdbcClient jdbc, PlatformTransactionManager transactions, TokenIssuer issuer,
+                       @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactions);
         this.issuer = issuer;
+        this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
     private static Map<String, Object> firstOrNull(List<Map<String, Object>> rows) {
@@ -348,6 +354,53 @@ class PgPortalController {
                 .param("app", appId).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
                 .update();
         return view(me);
+    }
+
+    /** the applicant's own passport photograph, so it can be shown on their summary and printout */
+    @GetMapping("/passport/image")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> passportImage(Authentication authentication) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        Map<String, Object> r = firstOrNull(jdbc.sql("""
+                SELECT content_type, bytes FROM admissions.pg_document
+                 WHERE application_id = :id AND kind = 'PASSPORT'
+                """).param("id", appId).query().listOfRows());
+        if (r == null || r.get("bytes") == null) {
+            throw new NotFound("passport", appId);
+        }
+        byte[] bytes = (byte[]) r.get("bytes");
+        String ct = String.valueOf(r.getOrDefault("content_type", "image/jpeg"));
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(ct))
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=600")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline").body(bytes);
+    }
+
+    /** email the applicant a link to sign in and download their application summary (PDF) */
+    @PostMapping("/email-summary")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    @Transactional
+    Map<String, Object> emailSummary(Authentication authentication) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        Map<String, Object> r = firstOrNull(jdbc.sql("""
+                SELECT p.email, a.application_no FROM admissions.pg_application a
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id WHERE a.id = :id
+                """).param("id", appId).query().listOfRows());
+        String email = r == null ? null : (String) r.get("email");
+        String no = r == null ? "" : String.valueOf(r.get("application_no"));
+        if (email == null || email.isBlank()) {
+            throw new DomainRuleViolation("PG_NO_EMAIL", "No email is on record for this application.",
+                    new DomainRuleViolation.Remedy("Add an email to your application, then try again.", "You"));
+        }
+        String body = "Your MOAUM postgraduate application " + no + " summary is ready.\n\n"
+                + "Sign in to view and download it as a PDF:\n" + portalUrl + "/pg/portal\n\n"
+                + "Keep your application number safe — you will need it to accept an offer.";
+        jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'pg_application', :ai)")
+                .param("r", email).param("sub", "Your MOAUM postgraduate application summary")
+                .param("b", body).param("ai", appId).query().listOfRows();
+        return Map.of("ok", true, "email", email);
     }
 
     private UUID applicationOf(UUID applicant) {
