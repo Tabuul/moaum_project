@@ -124,9 +124,6 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
             <Link href="/verify" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Verify a payment or receipt</Link>
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
           </div>
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <div className="hint" style={{ textAlign: "center" }}><b>College of Health Sciences</b> — MBBS, BDS, Nursing and Medical Laboratory Science. The College&rsquo;s officers sign in <b>here</b> with their staff account; the portal takes them to the College dashboard.</div>
-          </div>
           <div className="notice notice--info" style={{ marginTop: 6 }}>
             <Ico name="alert" size={17} stroke="var(--chrome)" w={2} />
             <p>Five failed attempts lock an account for fifteen minutes. {sso?.enabled ? "Staff sign in through the University's single sign-on, which asks for a second step." : "Staff and privileged accounts will also complete a second step when single sign-on is connected."}</p>
