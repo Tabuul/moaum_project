@@ -192,6 +192,73 @@ class PgCourseworkController {
         return Map.of("ok", true);
     }
 
+    public record CoursesIn(@NotNull List<Map<String, Object>> rows) {
+    }
+
+    /** bulk-upload the postgraduate course catalogue from a spreadsheet (desk). Each row names the
+     *  programme (its code or its name), the course code, the title, units, kind and semester; it upserts
+     *  on (programme, code), so a re-upload updates rather than duplicates. */
+    @PostMapping("/courses/import")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> importCourses(@Valid @RequestBody CoursesIn body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("PG_COURSE_ROWS", "The file has no rows to read.",
+                    new DomainRuleViolation.Remedy("Download the template, fill it and upload it.", "Postgraduate School"));
+        }
+        int created = 0, updated = 0, noProg = 0, skipped = 0;
+        String firstError = null;
+        for (Map<String, Object> r : body.rows()) {
+            try {
+                String progRaw = str(r.get("programme"));
+                String code = str(r.get("code")).toUpperCase();
+                String title = str(r.get("title"));
+                if (progRaw.isBlank() || code.isBlank() || title.isBlank()) { skipped++; continue; }
+                String prog = jdbc.sql("""
+                        SELECT code FROM ref.programme
+                         WHERE category = 'POST GRADUATE' AND (upper(code) = upper(:p) OR upper(name) = upper(:p))
+                         ORDER BY archived, code LIMIT 1
+                        """).param("p", progRaw).query(String.class).optional().orElse(null);
+                if (prog == null) { noProg++; continue; }
+                int units = parseFirstInt(str(r.get("units")), 3);
+                if (units < 0 || units > 12) { units = 3; }
+                String kind = str(r.get("kind")).toUpperCase();
+                if (!List.of("CORE", "ELECTIVE", "DEFICIENCY", "RESEARCH").contains(kind)) { kind = "CORE"; }
+                String semRaw = str(r.get("semester")).toLowerCase();
+                int sem = semRaw.startsWith("2") || semRaw.startsWith("s") ? 2 : 1;
+                boolean exists = jdbc.sql("SELECT count(*) FROM admissions.pg_course WHERE programme_code = :p AND code = :c")
+                        .param("p", prog).param("c", code).query(Long.class).single() == 1L;
+                jdbc.sql("""
+                        INSERT INTO admissions.pg_course (programme_code, code, title, units, kind, semester)
+                        VALUES (:p, :c, :t, :u, :k, :sem)
+                        ON CONFLICT (programme_code, code) DO UPDATE SET title = EXCLUDED.title, units = EXCLUDED.units,
+                            kind = EXCLUDED.kind, semester = EXCLUDED.semester, active = true
+                        """).param("p", prog).param("c", code).param("t", title).param("u", units).param("k", kind).param("sem", sem).update();
+                if (exists) { updated++; } else { created++; }
+            } catch (RuntimeException e) {
+                skipped++;
+                if (firstError == null) { firstError = e.getMessage(); }
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rows", body.rows().size());
+        out.put("created", created);
+        out.put("updated", updated);
+        out.put("no_programme", noProg);
+        out.put("skipped", skipped);
+        out.put("first_error", firstError);
+        return out;
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : o.toString().trim();
+    }
+
+    private static int parseFirstInt(String s, int def) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(s);
+        return m.find() ? Integer.parseInt(m.group()) : def;
+    }
+
     /** the registrations for a session, optionally by programme (desk: to endorse and to enter scores) */
     @GetMapping("/registrations")
     @PreAuthorize(DESK)

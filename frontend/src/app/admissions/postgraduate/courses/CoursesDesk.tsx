@@ -8,7 +8,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
+import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -24,6 +25,8 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyUp, setBusyUp] = useState(false);
+  const [upResult, setUpResult] = useState<string | null>(null);
   const [f, setF] = useState({ code: "", title: "", units: "3", kind: "CORE", semester: "1" });
 
   useEffect(() => {
@@ -64,6 +67,56 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
     } finally { setBusy(false); }
   }
 
+  function downloadTemplate() {
+    const blob = buildXlsx(
+      ["Programme", "Course Code", "Title", "Units", "Kind", "Semester"],
+      [["M.Sc. Computer Science", "CSC 801", "Advanced Algorithms & Complexity", "3", "Core", "First"]],
+      "PG courses",
+    );
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "PG courses template.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function uploadCourses(file: File) {
+    setBusyUp(true); setProblem(null); setUpResult(null);
+    try {
+      const isCsv = /\.csv$/i.test(file.name) || file.type === "text/csv";
+      const grid = isCsv ? csvRows(await file.text()) : await xlsxRows(await file.arrayBuffer());
+      const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
+      const at = (...re: RegExp[]) => header.findIndex((h) => re.some((rx) => rx.test(h)));
+      const col = {
+        programme: at(/programme/, /program/, /course of study/), code: at(/course\s*code/, /^code$/, /^course$/),
+        title: at(/title/, /^name$/, /descrip/), units: at(/unit/, /credit/, /^cu$/),
+        kind: at(/kind/, /type/, /category/), semester: at(/semester/, /^sem$/),
+      };
+      if (col.programme < 0 || col.code < 0 || col.title < 0) {
+        setProblem({ status: 400, title: "The file needs Programme, Course Code and Title columns.", detail: "Download the template to see the exact columns." });
+        return;
+      }
+      const rows: Record<string, string>[] = [];
+      for (const r of grid.slice(1)) {
+        const g = (i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
+        const o = { programme: g(col.programme), code: g(col.code), title: g(col.title), units: g(col.units), kind: g(col.kind), semester: g(col.semester) };
+        if (o.programme && o.code && o.title) rows.push(o);
+      }
+      if (!rows.length) { setProblem({ status: 400, title: "No course rows to read.", detail: "Fill the template (delete the example row) and upload it." }); return; }
+      const res = await fetch("/api/bff/api/v1/pg/coursework/courses/import", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PG course catalogue uploaded: ${rows.length} rows`) },
+        body: JSON.stringify({ rows }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); return; }
+      const c = j as { rows: number; created: number; updated: number; no_programme: number; skipped: number };
+      setUpResult(`${c.created} course${c.created === 1 ? "" : "s"} added, ${c.updated} updated${c.no_programme ? ` · ${c.no_programme} row${c.no_programme === 1 ? "" : "s"} had a programme that did not match one on record` : ""}${c.skipped ? ` · ${c.skipped} skipped` : ""}.`);
+      if (programme) await loadCourses(programme);
+    } catch {
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx built from the template." });
+    } finally { setBusyUp(false); }
+  }
+
   const chosen = progs.find((p) => p.code === programme);
   const totalUnits = courses.filter((c) => c.kind !== "DEFICIENCY").reduce((s, c) => s + c.units, 0);
 
@@ -82,6 +135,24 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
           </select>
         </PBody>
       </Panel>
+
+      {mayEdit ? (
+        <Panel title="Upload the course catalogue" right="Every programme, from one spreadsheet">
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 8 }}>
+              Bulk-load courses for any postgraduate programme. Columns: <b>Programme</b> (its name or old-portal code), <b>Course Code</b>, <b>Title</b>, <b>Units</b> (0&ndash;12), <b>Kind</b> (Core / Elective / Deficiency / Research) and <b>Semester</b> (First / Second). Column names are matched flexibly. It upserts on programme + code, so re-uploading updates rather than duplicates.
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
+              <label className={`btn btn--primary btn--sm${busyUp ? " btn--disabled" : ""}`} style={{ cursor: busyUp ? "not-allowed" : "pointer", margin: 0 }}>
+                {busyUp ? "Uploading…" : "Upload courses (.xlsx / .csv)"}
+                <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busyUp} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadCourses(file); e.target.value = ""; }} />
+              </label>
+            </div>
+            {upResult ? <div style={{ marginTop: 10 }}><Note kind="ok" title="Course catalogue uploaded">{upResult}</Note></div> : null}
+          </PBody>
+        </Panel>
+      ) : null}
 
       {programme ? (
         <Panel title="Courses" right={`${courses.length} course${courses.length === 1 ? "" : "s"} · ${totalUnits} credit units`}>
