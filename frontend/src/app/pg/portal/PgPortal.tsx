@@ -118,6 +118,7 @@ export function PgPortal() {
 
   const paid = !!me.feeConfirmedAt;
   const credentials = me.documents.find((d) => d.kind === "CREDENTIALS") ?? null;
+  const passport = me.documents.find((d) => d.kind === "PASSPORT") ?? null;
   const degrees = me.priorDegrees.length ? me.priorDegrees : [{ kind: "FIRST", ...me.prior, class_of_degree: me.prior.classOfDegree } as unknown as PriorDegree];
   const steps: [string, boolean, string | null][] = [
     ["Application submitted", !!me.submittedAt, me.submittedAt],
@@ -220,14 +221,13 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      <Documents credentials={credentials} onDone={load} />
-
+      {/* Payment comes first; the credentials and passport uploads unlock once the fee is confirmed */}
       {paid ? (
         <Note kind="ok" title="Application fee paid">Confirmed on {fmtDate(me.feeConfirmedAt)}. The School will screen your application; its progress shows above.</Note>
       ) : reference ? (
         <Panel title="Application fee">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University.</div>
+            <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University. <b>Upload your credentials and passport after payment.</b></div>
             <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
               <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
@@ -238,6 +238,9 @@ export function PgPortal() {
         </Panel>
       ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
 
+      <Documents credentials={credentials} paid={paid} onDone={load} />
+      <Passport passport={passport} paid={paid} onDone={load} />
+
       {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
 
       <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 6 }}>
@@ -247,7 +250,7 @@ export function PgPortal() {
   );
 }
 
-function Documents({ credentials, onDone }: { credentials: DocMeta | null; onDone: () => Promise<void> }) {
+function Documents({ credentials, paid, onDone }: { credentials: DocMeta | null; paid: boolean; onDone: () => Promise<void> }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
@@ -281,13 +284,71 @@ function Documents({ credentials, onDone }: { credentials: DocMeta | null; onDon
         <div className="sub2" style={{ marginBottom: 10 }}>
           Scan your <b>O&rsquo;Level</b>, <b>A&rsquo;Level</b> and <b>birth certificate / declaration of age</b> into a single PDF and upload it here. Bring the originals for screening.
         </div>
-        {err ? <ProblemNotice problem={err} /> : null}
-        {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
-        {credentials ? (
-          <div className="sub2" style={{ marginBottom: 8 }}>On record: <b>{credentials.filename}</b> — uploaded {fmtDate(credentials.uploaded_at)}. Uploading again replaces it.</div>
-        ) : <div className="sub2" style={{ marginBottom: 8 }}>No credentials uploaded yet.</div>}
-        <input ref={inputRef} type="file" accept="application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
-        <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : credentials ? "Replace the PDF" : "Upload the PDF"}</button>
+        {!paid ? (
+          <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you can upload your credentials here.</Note>
+        ) : (
+          <>
+            {err ? <ProblemNotice problem={err} /> : null}
+            {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
+            {credentials ? (
+              <div className="sub2" style={{ marginBottom: 8 }}>On record: <b>{credentials.filename}</b> — uploaded {fmtDate(credentials.uploaded_at)}. Uploading again replaces it.</div>
+            ) : <div className="sub2" style={{ marginBottom: 8 }}>No credentials uploaded yet.</div>}
+            <input ref={inputRef} type="file" accept="application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
+            <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : credentials ? "Replace the PDF" : "Upload the PDF"}</button>
+          </>
+        )}
+      </PBody>
+    </Panel>
+  );
+}
+
+function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: boolean; onDone: () => Promise<void> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<Problem | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+
+  async function upload(file: File) {
+    setErr(null); setOk(null);
+    if (file.type !== "image/jpeg" && file.type !== "image/png") { setErr({ status: 400, title: "The passport must be a JPEG or PNG photo." }); return; }
+    if (file.size > 4 * 1024 * 1024) { setErr({ status: 400, title: "The photo is larger than 4 MB — reduce its size." }); return; }
+    setBusy(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+        reader.onerror = () => reject(new Error("read failed"));
+        reader.readAsDataURL(file);
+      });
+      const r = await fetch("/api/bff/api/v1/pg/passport", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, contentType: file.type, base64 }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setOk("Passport uploaded."); await onDone();
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Panel title="Passport photograph">
+      <PBody>
+        <div className="sub2" style={{ marginBottom: 10 }}>
+          Upload a clear, recent <b>passport photograph</b> (JPEG or PNG) on a plain background. It appears on your record and, once you are admitted, on your identity and examination cards.
+        </div>
+        {!paid ? (
+          <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you can upload your passport here.</Note>
+        ) : (
+          <>
+            {err ? <ProblemNotice problem={err} /> : null}
+            {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
+            {passport ? (
+              <div className="sub2" style={{ marginBottom: 8 }}>On record: <b>{passport.filename}</b> — uploaded {fmtDate(passport.uploaded_at)}. Uploading again replaces it.</div>
+            ) : <div className="sub2" style={{ marginBottom: 8 }}>No passport uploaded yet.</div>}
+            <input ref={inputRef} type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
+            <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : passport ? "Replace the photo" : "Upload the photo"}</button>
+          </>
+        )}
       </PBody>
     </Panel>
   );

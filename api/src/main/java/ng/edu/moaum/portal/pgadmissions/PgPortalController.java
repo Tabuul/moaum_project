@@ -273,18 +273,30 @@ class PgPortalController {
     /* ── the credentials document (one combined PDF: O'Level, A'Level, birth certificate) ── */
 
     static final int MAX_DOC = 8 * 1024 * 1024;
+    static final int MAX_IMG = 4 * 1024 * 1024;
 
     public record DocumentIn(@NotBlank @Size(max = 200) String filename, @NotBlank @Size(max = 100) String contentType,
                              @NotBlank String base64) {
     }
 
-    /** the applicant uploads (or replaces) their combined credentials PDF */
+    /** documents and the passport are uploaded only after the application fee is confirmed */
+    private void requireFeePaid(UUID appId) {
+        Map<String, Object> r = firstOrNull(jdbc.sql("SELECT fee_confirmed_at FROM admissions.pg_application WHERE id = :id")
+                .param("id", appId).query().listOfRows());
+        if (r == null || r.get("fee_confirmed_at") == null) {
+            throw new DomainRuleViolation("PG_FEE_UNPAID", "Pay the application fee before uploading your documents.",
+                    new DomainRuleViolation.Remedy("Pay the application fee, then upload your credentials and passport.", "You"));
+        }
+    }
+
+    /** the applicant uploads (or replaces) their combined credentials PDF (after payment) */
     @PostMapping("/documents")
     @PreAuthorize("hasAuthority('OFFICE_applicant')")
     @Transactional
     Map<String, Object> uploadDocument(Authentication authentication, @Valid @RequestBody DocumentIn body) {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
+        requireFeePaid(appId);
         if (!"application/pdf".equals(body.contentType())) {
             throw new DomainRuleViolation("PG_DOC_TYPE", "The credentials must be one PDF file.",
                     new DomainRuleViolation.Remedy("Scan O'Level, A'Level and your birth certificate / declaration of age into a single PDF.", "You"));
@@ -303,6 +315,36 @@ class PgPortalController {
         // one CREDENTIALS document per application — replace any earlier one
         jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = 'CREDENTIALS'").param("app", appId).update();
         jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, 'CREDENTIALS', :fn, :ct, :b)")
+                .param("app", appId).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
+                .update();
+        return view(me);
+    }
+
+    /** the applicant uploads (or replaces) their passport photograph (after payment) */
+    @PostMapping("/passport")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    @Transactional
+    Map<String, Object> uploadPassport(Authentication authentication, @Valid @RequestBody DocumentIn body) {
+        UUID me = UUID.fromString(authentication.getName());
+        UUID appId = applicationOf(me);
+        requireFeePaid(appId);
+        if (!"image/jpeg".equals(body.contentType()) && !"image/png".equals(body.contentType())) {
+            throw new DomainRuleViolation("PG_PASSPORT_TYPE", "The passport must be a JPEG or PNG photo.",
+                    new DomainRuleViolation.Remedy("Upload a clear passport photograph (JPEG or PNG).", "You"));
+        }
+        byte[] content;
+        try {
+            content = java.util.Base64.getDecoder().decode(body.base64());
+        } catch (IllegalArgumentException notBase64) {
+            throw new DomainRuleViolation("PG_PASSPORT_ENCODING", "The photo did not arrive intact.",
+                    new DomainRuleViolation.Remedy("Try the upload again.", "You"));
+        }
+        if (content.length == 0 || content.length > MAX_IMG) {
+            throw new DomainRuleViolation("PG_PASSPORT_SIZE", "A passport photo is between 1 byte and 4 MB; this one is " + content.length + " bytes.",
+                    new DomainRuleViolation.Remedy("Reduce the photo's size and upload it again.", "You"));
+        }
+        jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = 'PASSPORT'").param("app", appId).update();
+        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, 'PASSPORT', :fn, :ct, :b)")
                 .param("app", appId).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
                 .update();
         return view(me);
