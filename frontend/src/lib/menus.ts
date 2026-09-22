@@ -2534,10 +2534,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Research & thesis",
         "items": [
-          { "id": "t/pgsupervision", "icon": "swap", "label": "Supervisors" },
-          { "id": "t/pgproposals", "icon": "doc", "label": "Research proposals" },
-          { "id": "t/pgseminars", "icon": "book", "label": "Research seminars" },
-          { "id": "t/pgtheses", "icon": "flask", "label": "Theses & dissertations" }
+          { "id": "t/pgresearch", "icon": "flask", "label": "Research desk" },
+          { "id": "t/pgclearance", "icon": "check", "label": "Thesis clearance" }
         ]
       },
       {
