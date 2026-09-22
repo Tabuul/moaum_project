@@ -170,4 +170,58 @@ class ReportsController {
                 """).param("s", session).query().singleRow();
         return Map.of("session", session, "rows", rows, "totals", totals);
     }
+
+    /** Expenditure for a financial year: budget, committed, spent and available by cost centre (V045). */
+    @GetMapping("/expenditure")
+    @PreAuthorize(REVENUE_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> expenditure(@RequestParam(required = false) Integer year) {
+        int y = year != null ? year : java.time.LocalDate.now().getYear();
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM expenditure.budget_performance(:y) ORDER BY cost_centre")
+                .param("y", y).query().listOfRows();
+        Map<String, Object> totals = jdbc.sql("""
+                SELECT coalesce(sum(budget), 0) AS budget, coalesce(sum(committed), 0) AS committed,
+                       coalesce(sum(spent), 0) AS spent, coalesce(sum(available), 0) AS available
+                  FROM expenditure.budget_performance(:y)
+                """).param("y", y).query().singleRow();
+        return Map.of("year", y, "rows", rows, "totals", totals);
+    }
+
+    /**
+     * The income and expenditure statement for a financial year, read off the general ledger (V145):
+     * every income and expense account with its movement, the totals and the surplus or deficit, beside
+     * the year's expenditure budget and what has been spent against it (V045).
+     */
+    @GetMapping("/income-expenditure")
+    @PreAuthorize(REVENUE_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> incomeExpenditure(@RequestParam(required = false) Integer year) {
+        int y = year != null ? year : java.time.LocalDate.now().getYear();
+        java.time.LocalDate from = java.time.LocalDate.of(y, 1, 1);
+        java.time.LocalDate to = java.time.LocalDate.of(y, 12, 31);
+        List<Map<String, Object>> lines = jdbc.sql("SELECT * FROM finance.income_expenditure(:f, :t)")
+                .param("f", from).param("t", to).query().listOfRows();
+        java.math.BigDecimal income = java.math.BigDecimal.ZERO, expense = java.math.BigDecimal.ZERO;
+        for (Map<String, Object> l : lines) {
+            java.math.BigDecimal amt = l.get("amount") == null ? java.math.BigDecimal.ZERO : new java.math.BigDecimal(String.valueOf(l.get("amount")));
+            if ("INCOME".equalsIgnoreCase(String.valueOf(l.get("section")))) income = income.add(amt); else expense = expense.add(amt);
+        }
+        Map<String, Object> budget = jdbc.sql("""
+                SELECT coalesce(sum(budget), 0) AS budget, coalesce(sum(committed), 0) AS committed,
+                       coalesce(sum(spent), 0) AS spent, coalesce(sum(available), 0) AS available
+                  FROM expenditure.budget_performance(:y)
+                """).param("y", y).query().singleRow();
+        Map<String, Object> totals = new java.util.LinkedHashMap<>();
+        totals.put("income", income);
+        totals.put("expense", expense);
+        totals.put("surplus", income.subtract(expense));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("year", y);
+        out.put("from", from);
+        out.put("to", to);
+        out.put("lines", lines);
+        out.put("totals", totals);
+        out.put("budget", budget);
+        return out;
+    }
 }

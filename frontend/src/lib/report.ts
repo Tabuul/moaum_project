@@ -21,6 +21,11 @@ export interface ReportSpec {
   subtitle: string;
   /** the offices whose sidebar carries this return (activeOffice codes) */
   offices: string[];
+  /** who owns the return, and how often it is taken — the Standard reports table (proto gReports) */
+  owner: string;
+  frequency: string;
+  /** what the return is for, in the regulator's or management's own words */
+  purpose: string;
 }
 
 export const REPORTS: ReportSpec[] = [
@@ -29,36 +34,56 @@ export const REPORTS: ReportSpec[] = [
     title: "Admissions return",
     subtitle: "Applications, offers and acceptances by faculty and programme",
     offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Registry", frequency: "Per session", purpose: "JAMB / CAPS and Council",
   },
   {
     slug: "enrolment",
-    title: "Enrolment return",
+    title: "Enrolment by programme, level and sex",
     subtitle: "The session's cohort by faculty, programme and level, split by sex",
     offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Registry", frequency: "Per session", purpose: "NUC statutory return",
   },
   {
     slug: "registration",
     title: "Registration & fees return",
     subtitle: "Not-registered students by faculty and programme, split into fee-blocked and cleared-but-idle",
     offices: ["academic", "registrar", "dregistrar", "records", "bursar", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Registry", frequency: "Per semester", purpose: "Management",
   },
   {
     slug: "carryovers",
     title: "Carryover return",
     subtitle: "Outstanding carryovers by faculty, programme and course — the re-sit load, as at today",
     offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Exams & Records", frequency: "Per session", purpose: "Senate",
   },
   {
     slug: "revenue",
-    title: "Revenue return",
-    subtitle: "Fees confirmed for the session, by category",
+    title: "IGR collections by revenue head",
+    subtitle: "Fees confirmed for the session, by category — the University's internally generated revenue",
     offices: ["bursar", "registrar", "dregistrar", "academic", "audit", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Monthly", purpose: "State treasury return",
   },
   {
     slug: "funding",
     title: "Funding return",
     subtitle: "Student funding by source and nature, and the wallet cash flow",
     offices: ["bursar", "audit", "deputyaudit", "registrar", "dregistrar", "academic", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Per session", purpose: "Management",
+  },
+  {
+    slug: "expenditure",
+    title: "Expenditure by cost centre",
+    subtitle: "The financial year's budget, commitments, spending and balance by cost centre",
+    offices: ["bursar", "audit", "deputyaudit", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Monthly", purpose: "Council finance committee",
+  },
+  {
+    slug: "income-expenditure",
+    title: "Income & expenditure statement",
+    subtitle: "Every income and expense head for the financial year, the surplus or deficit, and spending against budget",
+    offices: ["bursar", "audit", "deputyaudit", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Monthly", purpose: "Council and management",
   },
 ];
 
