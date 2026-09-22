@@ -45,16 +45,12 @@ export async function GET() {
   const p = new Page();
   const L = 56;
   const crest = crestImage();
-  // the passport sits in a reserved column on the right; the heading is centred in the space to its left,
-  // so the two never overlap however long the university's name is
-  const photoW = 60, photoH = 74, photoX = A4.w - L - photoW;
-  if (photo) p.jpeg(photoX, A4.h - 40 - photoH, photoW, photoH, photo);
-  const hcx = (L + (photoX - 14)) / 2;         // centre of the heading area, left of the passport
+  const cx = A4.w / 2;
   let y = A4.h - 44;
-  if (crest) p.jpeg(hcx - 20, y - 40, 40, 40, crest);
-  p.textCenter(hcx, y - 55, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 11, true);
-  p.textCenter(hcx, y - 68, "School of Postgraduate Studies", 9, false, [0.35, 0.35, 0.35]);
-  p.textCenter(hcx, y - 84, "APPLICATION SUMMARY", 12, true, [0.1, 0.25, 0.4]);
+  if (crest) p.jpeg(cx - 20, y - 40, 40, 40, crest);
+  p.textCenter(cx, y - 55, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12, true);
+  p.textCenter(cx, y - 68, "School of Postgraduate Studies", 9, false, [0.35, 0.35, 0.35]);
+  p.textCenter(cx, y - 84, "APPLICATION SUMMARY", 12, true, [0.1, 0.25, 0.4]);
   y -= 100;
   p.rule(L, y, A4.w - L, y, 1, 0.2);
   y -= 20;
@@ -64,14 +60,16 @@ export async function GET() {
   const section = (t: string) => { y -= 8; p.fill(L, y - 4, A4.w - 2 * L, 15, 0.9); p.text(L + 6, y, t, 8, true, [0.1, 0.25, 0.4]); y -= 20; };
 
   section("APPLICATION");
+  // the passport photograph, at the top-right of the APPLICATION section
+  if (photo) { const pw = 84, ph = 104; p.jpeg(A4.w - L - pw, y + 11 - ph, pw, ph, photo); }
   row("Application number", s.applicationNo);
   row("Session", s.session);
-  row("Programme", `${s.programme}${s.award ? ` (${s.award})` : ""}`);
+  row("Programme", s.programme);
   row("Level", LEVEL[s.entryLevel] ?? String(s.entryLevel));
   row("Faculty", s.faculty);
   row("Department", s.department);
-  row("Submitted", day(s.submittedAt));
-  row("Application fee", s.feeConfirmedAt ? `Paid — ${day(s.feeConfirmedAt)}` : "Not yet paid");
+  row("Date applied", day(s.submittedAt));
+  row("Application fee", s.feeConfirmedAt ? "Paid" : "Not yet paid");
 
   section("APPLICANT");
   row("Name", `${s.surname}, ${s.otherNames}`);
