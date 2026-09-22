@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
   const crest = crestImage();
   if (crest) p.imageWatermark((A4.w - 340) / 2, (A4.h - 360) / 2, 340, 340, crest);   // big faint centred crest
   p.watermark(matric);   // the matric number, tiled faint at 45°, as a security watermark
+  p.bigDiagonalWatermark(matric);   // one bold matric number, large and diagonal, centred as the main watermark
 
   // ── centred header ──
   const cx = A4.w / 2;

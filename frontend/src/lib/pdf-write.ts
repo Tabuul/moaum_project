@@ -76,6 +76,22 @@ export class Page {
     return this;
   }
 
+  /** one big BOLD text as a single diagonal (45°) watermark, centred on the page — e.g. the matric
+   *  number. Drawn faint so the card's content sits on top and it shows through the whitespace; call
+   *  it FIRST like the other watermarks. The size shrinks to keep a long number inside the margins. */
+  bigDiagonalWatermark(s: string, size = 44, grey = 0.85, margin = 40): this {
+    const cos = 0.7071, sin = 0.7071; // 45 degrees
+    const maxLen = (Math.min(A4.w, A4.h) - 2 * margin) / cos;   // diagonal room inside the margins
+    let w = s.length * size * 0.54;                              // bold width (Helvetica-Bold approx)
+    if (w > maxLen) { size = size * maxLen / w; w = maxLen; }
+    const cx = A4.w / 2, cy = A4.h / 2;
+    // centre the rotated baseline about the page centre, nudged up the perpendicular so it reads centred
+    const x = cx - (w / 2) * cos + 0.35 * size * sin;
+    const y = cy - (w / 2) * sin - 0.35 * size * cos;
+    this.ops.push(`BT /F2 ${size.toFixed(2)} Tf ${grey.toFixed(3)} g ${cos} ${sin} ${-sin} ${cos} ${x.toFixed(2)} ${y.toFixed(2)} Tm (${escapePdf(s)}) Tj ET 0 g`);
+    return this;
+  }
+
   rule(x1: number, y1: number, x2: number, y2: number, width = 0.6, grey = 0.75): this {
     this.ops.push(`${grey} G ${width} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
     return this;
