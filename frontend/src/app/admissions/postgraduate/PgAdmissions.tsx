@@ -168,6 +168,9 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       <Section title="Documents">
         {otherDocs.length || passport ? (
           <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ marginBottom: 4 }}>
+              <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download all as one PDF</a>
+            </div>
             {passport ? (
               <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span>passport — {passport.filename}</span>

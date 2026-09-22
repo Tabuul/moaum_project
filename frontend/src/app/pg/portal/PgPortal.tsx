@@ -55,6 +55,17 @@ function fmtDate(v: string | null): string {
 }
 const val = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
+/** the documents an applicant uploads, each on its own PDF (the School downloads them merged) */
+const DOC_TYPES: { kind: string; label: string; optional?: boolean }[] = [
+  { kind: "HIGHER_DEGREE", label: "Higher degree certificate", optional: true },
+  { kind: "UNDERGRAD_CERT", label: "Undergraduate certificate" },
+  { kind: "OLEVEL", label: "O’Level result" },
+  { kind: "BIRTH_CERTIFICATE", label: "Birth certificate / declaration of age" },
+  { kind: "NYSC", label: "NYSC certificate" },
+  { kind: "LGA_CERTIFICATE", label: "LGA / indigene certificate" },
+  { kind: "NAME_CHANGE", label: "Change of name / marriage certificate", optional: true },
+];
+
 export function PgPortal() {
   const [me, setMe] = useState<Me | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -145,8 +156,8 @@ export function PgPortal() {
   };
 
   const paid = !!me.feeConfirmedAt;
-  const credentials = me.documents.find((d) => d.kind === "CREDENTIALS") ?? null;
   const passport = me.documents.find((d) => d.kind === "PASSPORT") ?? null;
+  const docCount = me.documents.filter((d) => d.kind !== "PASSPORT").length;
   const degrees = me.priorDegrees.length ? me.priorDegrees : [{ kind: "FIRST", ...me.prior, class_of_degree: me.prior.classOfDegree } as unknown as PriorDegree];
   const steps: [string, boolean, string | null][] = [
     ["Application submitted", !!me.submittedAt, me.submittedAt],
@@ -179,7 +190,7 @@ export function PgPortal() {
       <Tiles items={[
         ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
         ["Application fee", paid ? "Paid" : naira(me.applicationFee), paid ? "var(--green-ink)" : "var(--chrome)", paid ? "confirmed" : "unpaid"],
-        ["Credentials", credentials ? "1 PDF" : "None", credentials ? null : "var(--chrome)", "O’/A’Level, birth cert."],
+        ["Documents", `${docCount}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
         ["Stage", STATE_SHORT[me.state] ?? me.state, me.state === "ADMITTED" ? "var(--green-ink)" : null, me.department],
       ]} />
 
@@ -268,7 +279,7 @@ export function PgPortal() {
         </Panel>
       ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
 
-      <Documents credentials={credentials} paid={paid} onDone={load} />
+      <DocList documents={me.documents} paid={paid} onDone={load} />
       <Passport passport={passport} paid={paid} onDone={load} />
 
       {paid ? (
@@ -293,17 +304,15 @@ export function PgPortal() {
   );
 }
 
-function Documents({ credentials, paid, onDone }: { credentials: DocMeta | null; paid: boolean; onDone: () => Promise<void> }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: boolean; onDone: () => Promise<void> }) {
+  const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<Problem | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
-  async function upload(file: File) {
-    setErr(null); setOk(null);
-    if (file.type !== "application/pdf") { setErr({ status: 400, title: "The credentials must be one PDF file." }); return; }
+  async function upload(kind: string, file: File) {
+    setErr(null);
+    if (file.type !== "application/pdf") { setErr({ status: 400, title: "Each document is a single PDF file.", detail: "Scan the certificate to PDF and upload it." }); return; }
     if (file.size > 8 * 1024 * 1024) { setErr({ status: 400, title: "The file is larger than 8 MB — reduce the scan resolution." }); return; }
-    setBusy(true);
+    setBusy(kind);
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -313,31 +322,42 @@ function Documents({ credentials, paid, onDone }: { credentials: DocMeta | null;
       });
       const r = await fetch("/api/bff/api/v1/pg/documents", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, contentType: file.type, base64 }),
+        body: JSON.stringify({ kind, filename: file.name, contentType: file.type, base64 }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      setOk("Credentials uploaded."); await onDone();
-    } finally { setBusy(false); }
+      await onDone();
+    } finally { setBusy(null); }
   }
 
   return (
-    <Panel title="Credentials">
+    <Panel title="Documents">
       <PBody>
         <div className="sub2" style={{ marginBottom: 10 }}>
-          Scan your <b>O&rsquo;Level</b>, <b>A&rsquo;Level</b> and <b>birth certificate / declaration of age</b> into a single PDF and upload it here. Bring the originals for screening.
+          Upload each document as its own <b>PDF</b>. Bring the originals for screening. The School reads them together as one document.
         </div>
         {!paid ? (
-          <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you can upload your credentials here.</Note>
+          <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you can upload your documents here.</Note>
         ) : (
           <>
             {err ? <ProblemNotice problem={err} /> : null}
-            {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
-            {credentials ? (
-              <div className="sub2" style={{ marginBottom: 8 }}>On record: <b>{credentials.filename}</b> — uploaded {fmtDate(credentials.uploaded_at)}. Uploading again replaces it.</div>
-            ) : <div className="sub2" style={{ marginBottom: 8 }}>No credentials uploaded yet.</div>}
-            <input ref={inputRef} type="file" accept="application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
-            <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : credentials ? "Replace the PDF" : "Upload the PDF"}</button>
+            <div style={{ display: "grid", gap: 2 }}>
+              {DOC_TYPES.map((t) => {
+                const on = documents.find((d) => d.kind === t.kind) ?? null;
+                return (
+                  <div key={t.kind} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", padding: "9px 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.label}{t.optional ? <span className="sub2" style={{ fontWeight: 400 }}> · optional</span> : null}</div>
+                      <div className="sub2">{on ? <>On record: {on.filename} · uploaded {fmtDate(on.uploaded_at)}</> : "Not uploaded"}</div>
+                    </div>
+                    <label className={`btn btn--sm ${on ? "btn--ghost" : "btn--primary"}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+                      {busy === t.kind ? "Uploading…" : on ? "Replace" : "Upload PDF"}
+                      <input type="file" accept="application/pdf" hidden disabled={busy !== null} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(t.kind, f); e.target.value = ""; }} />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
           </>
         )}
       </PBody>

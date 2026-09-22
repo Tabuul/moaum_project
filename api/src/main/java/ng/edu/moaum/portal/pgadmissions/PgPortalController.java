@@ -282,8 +282,12 @@ class PgPortalController {
     static final int MAX_IMG = 4 * 1024 * 1024;
 
     public record DocumentIn(@NotBlank @Size(max = 200) String filename, @NotBlank @Size(max = 100) String contentType,
-                             @NotBlank String base64) {
+                             @NotBlank String base64, @Size(max = 40) String kind) {
     }
+
+    /* the documents an applicant uploads, each on its own (CREDENTIALS is the old single combined PDF) */
+    private static final java.util.Set<String> APPLICANT_DOC_KINDS = java.util.Set.of(
+            "HIGHER_DEGREE", "UNDERGRAD_CERT", "OLEVEL", "BIRTH_CERTIFICATE", "NYSC", "LGA_CERTIFICATE", "NAME_CHANGE", "CREDENTIALS");
 
     /** documents and the passport are uploaded only after the application fee is confirmed */
     private void requireFeePaid(UUID appId) {
@@ -303,9 +307,14 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         requireFeePaid(appId);
+        String kind = body.kind() == null || body.kind().isBlank() ? "CREDENTIALS" : body.kind().trim().toUpperCase();
+        if (!APPLICANT_DOC_KINDS.contains(kind)) {
+            throw new DomainRuleViolation("PG_DOC_KIND", "That is not a document the application takes.",
+                    new DomainRuleViolation.Remedy("Upload the document under one of the listed types.", "You"));
+        }
         if (!"application/pdf".equals(body.contentType())) {
-            throw new DomainRuleViolation("PG_DOC_TYPE", "The credentials must be one PDF file.",
-                    new DomainRuleViolation.Remedy("Scan O'Level, A'Level and your birth certificate / declaration of age into a single PDF.", "You"));
+            throw new DomainRuleViolation("PG_DOC_TYPE", "Each document is a single PDF file.",
+                    new DomainRuleViolation.Remedy("Scan the certificate to PDF and upload it.", "You"));
         }
         byte[] content;
         try {
@@ -318,10 +327,10 @@ class PgPortalController {
             throw new DomainRuleViolation("PG_DOC_SIZE", "A document is between 1 byte and 8 MB; this one is " + content.length + " bytes.",
                     new DomainRuleViolation.Remedy("Reduce the scan's resolution and upload it again.", "You"));
         }
-        // one CREDENTIALS document per application — replace any earlier one
-        jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = 'CREDENTIALS'").param("app", appId).update();
-        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, 'CREDENTIALS', :fn, :ct, :b)")
-                .param("app", appId).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
+        // one document per kind per application — replace any earlier one of the same kind
+        jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = :k").param("app", appId).param("k", kind).update();
+        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, :k, :fn, :ct, :b)")
+                .param("app", appId).param("k", kind).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
                 .update();
         return view(me);
     }

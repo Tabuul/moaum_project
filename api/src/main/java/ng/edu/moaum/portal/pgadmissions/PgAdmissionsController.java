@@ -1,10 +1,20 @@
 package ng.edu.moaum.portal.pgadmissions;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.sql.Types;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.multipdf.PDFMergerUtility;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -357,6 +367,60 @@ class PgAdmissionsController {
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=600")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fn + "\"")
                 .body(bytes);
+    }
+
+    /** every document the applicant uploaded, merged into one PDF for the School to read and keep — the PDF
+     *  certificates concatenated, and the passport added as an image page. Scoped to the application. */
+    @GetMapping("/applications/{id}/documents.pdf")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> mergedDocuments(@PathVariable UUID id) {
+        List<Map<String, Object>> docs = jdbc.sql("""
+                SELECT kind, content_type, bytes FROM admissions.pg_document
+                 WHERE application_id = :id
+                 ORDER BY CASE kind WHEN 'PASSPORT' THEN 1 ELSE 0 END, kind
+                """).param("id", id).query().listOfRows();
+        if (docs.isEmpty()) {
+            throw new NotFound("postgraduate documents", id);
+        }
+        try (PDDocument out = new PDDocument(); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            PDFMergerUtility merger = new PDFMergerUtility();
+            for (Map<String, Object> d : docs) {
+                byte[] b = (byte[]) d.get("bytes");
+                if (b == null) {
+                    continue;
+                }
+                String ct = String.valueOf(d.getOrDefault("content_type", ""));
+                if (ct.contains("pdf")) {
+                    try (PDDocument src = Loader.loadPDF(b)) {
+                        merger.appendDocument(out, src);
+                    } catch (RuntimeException | IOException badPdf) { /* skip an unreadable PDF */ }
+                } else if (ct.contains("jpeg") || ct.contains("jpg") || ct.contains("png")) {
+                    try {
+                        PDImageXObject img = PDImageXObject.createFromByteArray(out, b, String.valueOf(d.get("kind")));
+                        PDPage page = new PDPage(PDRectangle.A4);
+                        out.addPage(page);
+                        float maxW = PDRectangle.A4.getWidth() - 72, maxH = PDRectangle.A4.getHeight() - 72;
+                        float scale = Math.min(maxW / img.getWidth(), maxH / img.getHeight());
+                        float w = img.getWidth() * scale, h = img.getHeight() * scale;
+                        float x = (PDRectangle.A4.getWidth() - w) / 2, y = (PDRectangle.A4.getHeight() - h) / 2;
+                        try (PDPageContentStream cs = new PDPageContentStream(out, page)) {
+                            cs.drawImage(img, x, y, w, h);
+                        }
+                    } catch (RuntimeException | IOException badImg) { /* skip an unreadable image */ }
+                }
+            }
+            if (out.getNumberOfPages() == 0) {
+                throw new NotFound("postgraduate documents", id);
+            }
+            out.save(baos);
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"pg-documents-" + id + ".pdf\"")
+                    .body(baos.toByteArray());
+        } catch (IOException e) {
+            throw new DomainRuleViolation("PG_DOC_MERGE", "The documents could not be combined into one PDF.",
+                    new DomainRuleViolation.Remedy("Open each document individually from the list.", "Postgraduate School"));
+        }
     }
 
     public record DeptDecision(boolean recommend, String note) {
