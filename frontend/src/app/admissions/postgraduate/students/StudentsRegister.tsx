@@ -8,14 +8,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface Prog { code: string; name: string; faculty_name: string }
 interface Row {
   id: string; surname: string; other_names: string; matric_no: string | null; admission_no: string | null;
-  entry_level: number; entry_session: string; status: string; programme_name: string; department_name: string;
+  sex: string | null; entry_level: number; entry_session: string; status: string; programme_name: string; department_name: string;
   cgpa: number | null; research_stage: string | null; mode: string | null; standing: string;
 }
 export interface View { counts: { total: number; pgd: number; masters: number; doctoral: number }; rows: Row[] }
@@ -31,6 +31,9 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
   const [progs, setProgs] = useState<Prog[]>([]);
   const [programme, setProgramme] = useState("");
   const [level, setLevel] = useState("");
+  const [gender, setGender] = useState("");
+  const [session, setSession] = useState("");
+  const [standing, setStanding] = useState("");
   const [data, setData] = useState<View | null>(view);
   const [err, setErr] = useState<Problem | null>(problem);
   const [busy, setBusy] = useState(false);
@@ -61,15 +64,22 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
     return [...m.entries()];
   }, [progs]);
 
-  async function changeStatus(id: string, to: string) {
-    const label = to === "ACTIVE" ? "reinstate" : to.toLowerCase();
-    const instrument = window.prompt(`Instrument for the ${label} (Senate minute, letter, or decision):`, "");
+  async function changeStatus(id: string, action: string) {
+    // "READMIT" returns a lapsed student (past their duration or probation) to ACTIVE to continue where
+    // they stopped; it is a reinstatement carrying a readmission — the readmission fee is charged and paid
+    // through the shared finance engine (the Bursary states a Readmission fee; the student pays on /student/fees).
+    const to = action === "READMIT" ? "ACTIVE" : action;
+    const label = action === "READMIT" ? "readmission" : action === "ACTIVE" ? "reinstate" : action.toLowerCase();
+    const promptText = action === "READMIT"
+      ? "Instrument for the readmission (Senate minute or decision). The student resumes at their current level and is charged the readmission fee:"
+      : `Instrument for the ${label} (Senate minute, letter, or decision):`;
+    const instrument = window.prompt(promptText, "");
     if (instrument === null || !instrument.trim()) return;
     setBusy(true); setErr(null);
     try {
       const r = await fetch(`/api/bff/api/v1/pg/students/${id}/status`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PG student ${label}`) },
-        body: JSON.stringify({ to, instrument: instrument.trim(), reason: "" }),
+        body: JSON.stringify({ to, instrument: instrument.trim(), reason: action === "READMIT" ? "Readmitted to continue" : "" }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
@@ -80,17 +90,32 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
   if (!data) return <ProblemNotice problem={err ?? { status: 500, title: "The register could not be read." }} />;
   const c = data.counts;
   const onProbation = data.rows.filter((r) => r.standing === "PROBATION").length;
+  const sessions = [...new Set(data.rows.map((r) => r.entry_session).filter(Boolean))].sort().reverse();
+  const shown = data.rows.filter((r) =>
+    (!gender || r.sex === gender) && (!session || r.entry_session === session) && (!standing || r.standing === standing));
+
+  // the summary tiles double as filters — click one to scope the register to that segment
+  const tiles: { label: string; value: string; color: string | null; sub: string; active: boolean; onClick: () => void }[] = [
+    { label: "PG students", value: String(c.total), color: null, sub: "on the register", active: level === "" && standing === "", onClick: () => { setLevel(""); setStanding(""); } },
+    { label: "PGD", value: String(c.pgd), color: null, sub: "level 700", active: level === "700", onClick: () => { setStanding(""); setLevel(level === "700" ? "" : "700"); } },
+    { label: "Master’s", value: String(c.masters), color: null, sub: "level 800", active: level === "800", onClick: () => { setStanding(""); setLevel(level === "800" ? "" : "800"); } },
+    { label: "Doctoral", value: String(c.doctoral), color: null, sub: "level 900", active: level === "900", onClick: () => { setStanding(""); setLevel(level === "900" ? "" : "900"); } },
+    { label: "On probation", value: String(onProbation), color: onProbation ? "var(--red-deep)" : null, sub: "CGPA below 2.50", active: standing === "PROBATION", onClick: () => setStanding(standing === "PROBATION" ? "" : "PROBATION") },
+  ];
 
   return (
     <>
       {err ? <ProblemNotice problem={err} /> : null}
-      <Tiles items={[
-        ["PG students", String(c.total), null, "on the register"],
-        ["PGD", String(c.pgd), null, "level 700"],
-        ["Master’s", String(c.masters), null, "level 800"],
-        ["Doctoral", String(c.doctoral), null, "level 900"],
-        ["On probation", String(onProbation), onProbation ? "var(--red-deep)" : null, "CGPA below 2.50"],
-      ]} />
+      <div className="grid grid--4">
+        {tiles.map((t, i) => (
+          <button type="button" key={i} className="tile" onClick={t.onClick} aria-pressed={t.active}
+            style={{ textAlign: "left", cursor: "pointer", ...(t.active ? { outline: "2px solid var(--chrome)", outlineOffset: "-2px" } : {}) }}>
+            <span className="eyebrow">{t.label}</span>
+            <span className="n tnum" style={t.color ? { color: t.color } : undefined}>{t.value}</span>
+            <span className="c">{t.sub}</span>
+          </button>
+        ))}
+      </div>
       <Panel title="Postgraduate register" right={
         <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <select className="ctl" style={{ width: "auto", maxWidth: 220 }} value={programme} onChange={(e) => setProgramme(e.target.value)} aria-label="Programme">
@@ -100,14 +125,24 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
           <select className="ctl" style={{ width: "auto" }} value={level} onChange={(e) => setLevel(e.target.value)} aria-label="Level">
             <option value="">All levels</option><option value="700">700 · PGD</option><option value="800">800 · Master&rsquo;s</option><option value="900">900 · Doctoral</option>
           </select>
+          <select className="ctl" style={{ width: "auto" }} value={gender} onChange={(e) => setGender(e.target.value)} aria-label="Gender">
+            <option value="">All genders</option><option value="F">Female</option><option value="M">Male</option>
+          </select>
+          <select className="ctl" style={{ width: "auto" }} value={session} onChange={(e) => setSession(e.target.value)} aria-label="Entry session">
+            <option value="">All sessions</option>{sessions.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select className="ctl" style={{ width: "auto" }} value={standing} onChange={(e) => setStanding(e.target.value)} aria-label="Standing">
+            <option value="">All standings</option><option value="GOOD">Good</option><option value="PROBATION">Probation</option><option value="NEW">New</option>
+          </select>
         </span>
       }>
-        {data.rows.length ? (
-          <DTable cols={["Student", "Programme", "Level|mid", "Status|mid", "CGPA|num", "Standing|mid", "Research|mid", ...(mayEdit ? ["|mid"] : [])]}
-            rows={data.rows.map((r) => [
+        {shown.length ? (
+          <DTable cols={["Student", "Programme", "Level|mid", "Sex|mid", "Status|mid", "CGPA|num", "Standing|mid", "Research|mid", ...(mayEdit ? ["|mid"] : [])]}
+            rows={shown.map((r) => [
               <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
               <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.department_name}</div></span>,
               <span key="l" className="sub2">{LEVEL[r.entry_level] ?? r.entry_level}</span>,
+              <span key="g" className="sub2">{r.sex === "F" ? "Female" : r.sex === "M" ? "Male" : "—"}</span>,
               <span key="st" className="sub2">{(r.status ?? "").charAt(0) + (r.status ?? "").slice(1).toLowerCase()}{r.mode ? ` · ${r.mode === "PART_TIME" ? "PT" : "FT"}` : ""}</span>,
               <span key="c" className="tnum">{r.cgpa == null ? "—" : Number(r.cgpa).toFixed(2)}</span>,
               r.standing === "PROBATION" ? <Pil key="s" kind="bad">Probation</Pil> : r.standing === "GOOD" ? <Pil key="s" kind="ok">Good</Pil> : <Pil key="s" kind="grey">New</Pil>,
@@ -119,10 +154,11 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
                   {r.status !== "DEFERRED" ? <option value="DEFERRED">Defer</option> : null}
                   {r.status !== "WITHDRAWN" ? <option value="WITHDRAWN">Withdraw</option> : null}
                   {r.status !== "ACTIVE" ? <option value="ACTIVE">Reinstate (active)</option> : null}
+                  {r.status !== "ACTIVE" ? <option value="READMIT">Readmit (continue)</option> : null}
                 </select>,
               ] : []),
-            ])} texts={data.rows.map((r) => `${r.surname} ${r.other_names} ${r.matric_no ?? ""} ${r.programme_name}`)} />
-        ) : <PBody><div className="sub2">No postgraduate student on the register for this filter.</div></PBody>}
+            ])} texts={shown.map((r) => `${r.surname} ${r.other_names} ${r.matric_no ?? ""} ${r.programme_name}`)} />
+        ) : <PBody><div className="sub2">No postgraduate student matches these filters{data.rows.length ? ` (${data.rows.length} on the register).` : "."}</div></PBody>}
       </Panel>
       <Note kind="info" title="Academic standing (Policy 15.5 / 20)">A student whose CGPA falls below 2.50 is placed on probation for a semester and advised to withdraw if it does not improve.</Note>
     </>

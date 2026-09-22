@@ -194,7 +194,7 @@ class PgAdmissionsController {
     Map<String, Object> students(@RequestParam(required = false) String programme,
                                  @RequestParam(required = false) Integer level) {
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT s.id, s.surname, s.other_names, s.matric_no, s.admission_no, s.entry_level, s.entry_session, s.status,
+                SELECT s.id, s.surname, s.other_names, s.matric_no, s.admission_no, s.sex, s.entry_level, s.entry_session, s.status,
                        g.name AS programme_name, g.pg_award, d.name AS department_name, f.name AS faculty_name,
                        admissions.pg_cgpa(s.id) AS cgpa,
                        r.stage AS research_stage,
