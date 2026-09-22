@@ -56,6 +56,7 @@ export const ROUTES: Record<string, string> = {
   "t/de-screening": "/admissions/de-screening",
   "t/pgadmissions": "/admissions/postgraduate",
   "t/pgcourses": "/admissions/postgraduate/courses",
+  "t/pgcalendar": "/admissions/postgraduate/calendar",
   "t/pgstudents": "/admissions/postgraduate/students",
   "t/pgscores": "/admissions/postgraduate/results",
   "t/pgexams": "/admissions/postgraduate/results",
@@ -218,6 +219,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "r/lecturer": ["Lecturer dashboard", "Your courses, marks and staff profile this session"],
   "r/hod": ["Head of Department", "Your department's desk — approvals, allocation and results"],
   "r/pgschool": ["School of Postgraduate Studies", "Admissions, register, research and awards"],
+  "t/pgcalendar": ["Postgraduate calendar", "The School's own sessions and semesters, apart from the undergraduate calendar"],
   "pg/portal": ["Your postgraduate application", "Applicant portal"],
   "pg/apply": ["Apply for a postgraduate programme", "School of Postgraduate Studies"],
 };

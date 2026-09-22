@@ -2466,6 +2466,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
           { "id": "t/pgstudents", "icon": "user", "label": "PG students" },
           { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
+          { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -2514,6 +2515,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Registration & records",
         "items": [
           { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
+          { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
           { "id": "t/pgregistration", "icon": "book", "label": "Registration" },
           { "id": "t/matriculation", "icon": "user", "label": "Matriculation" },
           { "id": "t/feesetup", "icon": "card", "label": "Fees" }
