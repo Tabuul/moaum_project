@@ -2508,6 +2508,51 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "provost": {
+    "label": "Provost, College of Health Sciences",
+    "home": "r/college",
+    "groups": [
+      {
+        "name": "College of Health Sciences",
+        "items": [
+          { "id": "r/college", "icon": "home", "label": "Dashboard" },
+          { "id": "t/college", "icon": "flask", "label": "College overview" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      { "name": "Me", "items": [{ "id": "r/self", "icon": "user", "label": "Leave & payslip" }] }
+    ]
+  },
+  "collegesecretary": {
+    "label": "College Secretary, College of Health Sciences",
+    "home": "r/college",
+    "groups": [
+      {
+        "name": "College of Health Sciences",
+        "items": [
+          { "id": "r/college", "icon": "home", "label": "Dashboard" },
+          { "id": "t/college", "icon": "flask", "label": "College overview" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      { "name": "Me", "items": [{ "id": "r/self", "icon": "user", "label": "Leave & payslip" }] }
+    ]
+  },
+  "financecontroller": {
+    "label": "Finance Controller, College of Health Sciences",
+    "home": "r/college",
+    "groups": [
+      {
+        "name": "College of Health Sciences",
+        "items": [
+          { "id": "r/college", "icon": "home", "label": "Dashboard" },
+          { "id": "t/college", "icon": "flask", "label": "College overview" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      { "name": "Me", "items": [{ "id": "r/self", "icon": "user", "label": "Leave & payslip" }] }
+    ]
+  },
   "pgsecretary": {
     "label": "Secretary, Postgraduate School",
     "home": "r/pgschool",

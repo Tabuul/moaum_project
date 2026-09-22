@@ -125,8 +125,7 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
           </div>
           <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <button type="button" className="btn btn--ghost btn--sm" style={{ width: "100%" }} disabled title="No address recorded for CHS-AMS yet">College of Health Sciences → CHS-AMS</button>
-            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>MBBS, BDS, Nursing and Medical Laboratory Science — College academic business runs in a separate system. Sign in <b>here</b> for fees, records and the transcript.</div>
+            <div className="hint" style={{ textAlign: "center" }}><b>College of Health Sciences</b> — MBBS, BDS, Nursing and Medical Laboratory Science. The College&rsquo;s officers sign in <b>here</b> with their staff account; the portal takes them to the College dashboard.</div>
           </div>
           <div className="notice notice--info" style={{ marginTop: 6 }}>
             <Ico name="alert" size={17} stroke="var(--chrome)" w={2} />

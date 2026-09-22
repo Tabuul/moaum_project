@@ -20,6 +20,7 @@ export const OFFICE_LABELS: Record<string, string> = {
   housing: "Deputy Registrar (Housing, Welfare, Passages)",
   provost: "Provost, College of Health Sciences",
   collegesecretary: "College Secretary",
+  financecontroller: "Finance Controller, College of Health Sciences",
   library: "Librarian",
   security: "Chief Security Officer",
   services: "Support Services",
@@ -67,6 +68,9 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   pgapplicant: ["Postgraduate applicant", "School of Postgraduate Studies"],
   pgschool: ["Dean, Postgraduate School", "School of Postgraduate Studies"],
   pgsecretary: ["Secretary, Postgraduate School", "School of Postgraduate Studies"],
+  provost: ["Provost", "College of Health Sciences"],
+  collegesecretary: ["College Secretary", "College of Health Sciences"],
+  financecontroller: ["Finance Controller", "College of Health Sciences"],
 };
 
 /** What the shell calls an office: the prototype's label where it has one, the database's otherwise. */
