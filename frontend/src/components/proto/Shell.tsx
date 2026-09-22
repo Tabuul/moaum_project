@@ -218,7 +218,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/sms": ["SMS gateway", "The eBulkSMS account the portal sends text messages from"],
   "r/lecturer": ["Lecturer dashboard", "Your courses, marks and staff profile this session"],
   "r/hod": ["Head of Department", "Your department's desk — approvals, allocation and results"],
-  "r/pgschool": ["School of Postgraduate Studies", "Admissions, register, research and awards"],
+  "r/pgschool": ["School of Postgraduate Studies", ""],
   "t/pgcalendar": ["Postgraduate calendar", "The School's own sessions and semesters, apart from the undergraduate calendar"],
   "pg/portal": ["Your postgraduate application", "Applicant portal"],
   "pg/apply": ["Apply for a postgraduate programme", "School of Postgraduate Studies"],
@@ -410,7 +410,7 @@ export function Shell({ route, me, children, sub }: { route: string; me: Me | nu
             </button>
             <div style={{ flexGrow: 1, minWidth: 0 }}>
               <h1>{t0}</h1>
-              <div className="sub">{t1}</div>
+              {t1 ? <div className="sub">{t1}</div> : null}
             </div>
             <button className="topsrch" aria-label="Search" onClick={() => router.push("/search")}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

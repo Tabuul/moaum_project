@@ -325,10 +325,7 @@ export function PgPortal() {
         </Panel>
       ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
 
-      <AcademicRecord me={me} paid={paid} onDone={load} />
-      <RefereesEditor me={me} paid={paid} onDone={load} />
-      <DocList documents={me.documents} paid={paid} onDone={load} />
-      <Passport passport={passport} paid={paid} onDone={load} />
+      <CompleteSteps me={me} paid={paid} passport={passport} onDone={load} />
 
       {paid ? (
         <Panel title="Application summary">
@@ -474,6 +471,62 @@ type QRow = { kind: string; institution: string; award: string; field: string; c
 const emptyQ = (kind = "MASTERS"): QRow => ({ kind, institution: "", award: "", field: "", classOfDegree: "", cgpa: "", year: "" });
 
 /** the first degree and the other qualifications — supplied (and amended) in the portal after payment */
+/** the post-payment tasks arranged as steps — the applicant moves from one to the next, as on the apply form */
+function CompleteSteps({ me, paid, passport, onDone }: { me: Me; paid: boolean; passport: DocMeta | null; onDone: () => Promise<void> }) {
+  const [step, setStep] = useState(1);
+  if (!paid) {
+    return (
+      <Panel title="Complete your application">
+        <PBody><Note kind="info" title="Pay the application fee first">Once your payment is confirmed you complete your application here — your first degree, other qualifications, referees, documents and passport.</Note></PBody>
+      </Panel>
+    );
+  }
+  const first = me.priorDegrees.find((d) => d.kind === "FIRST");
+  const docCount = me.documents.filter((d) => d.kind !== "PASSPORT").length;
+  const steps: { label: string; done: boolean; node: React.ReactNode }[] = [
+    { label: "Academic record", done: !!(first?.institution || first?.award || me.prior.institution || me.prior.award), node: <AcademicRecord me={me} paid onDone={onDone} /> },
+    { label: "Referees", done: me.referees.length > 0, node: <RefereesEditor me={me} paid onDone={onDone} /> },
+    { label: "Documents", done: docCount > 0, node: <DocList documents={me.documents} paid onDone={onDone} /> },
+    { label: "Passport", done: !!passport, node: <Passport passport={passport} paid onDone={onDone} /> },
+  ];
+  const cur = Math.min(step, steps.length);
+  return (
+    <Panel title="Complete your application">
+      <PBody style={{ display: "grid", gap: 14 }}>
+        <PortalStepper steps={steps.map((s) => ({ label: s.label, done: s.done }))} current={cur} onGo={setStep} />
+        {steps[cur - 1].node}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button type="button" className="btn btn--ghost btn--sm" disabled={cur === 1} onClick={() => setStep(cur - 1)}>Back</button>
+          <span style={{ flexGrow: 1 }} />
+          <span className="sub2">Step {cur} of {steps.length}</span>
+          <button type="button" className="btn btn--primary btn--sm" disabled={cur === steps.length} onClick={() => setStep(cur + 1)}>Next</button>
+        </div>
+      </PBody>
+    </Panel>
+  );
+}
+
+/** a step indicator with a tick on completed steps; any step can be opened directly */
+function PortalStepper({ steps, current, onGo }: { steps: { label: string; done: boolean }[]; current: number; onGo: (n: number) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      {steps.map((s, i) => {
+        const n = i + 1, cur = current === n;
+        const on = cur || s.done;
+        return (
+          <button key={s.label} type="button" onClick={() => onGo(n)}
+            style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, #2b6cb0)" : "var(--line-2, #d9d9d9)" }} />
+            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, #888)" }}>
+              {s.done ? "✓ " : `${n}. `}{s.label}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: () => Promise<void> }) {
   const first = me.priorDegrees.find((d) => d.kind === "FIRST");
   const [fd, setFd] = useState({
