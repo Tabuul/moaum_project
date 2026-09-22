@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS admissions.pg_semester (
     PRIMARY KEY (session, number)
 );
 
+-- these hold real state the School edits, like policy.academic_session / policy.semester,
+-- so they go on the audit spine (attached, not exempt); their writes carry the actor the
+-- request runs as, and the seeds below run as the migration actor set above
+SELECT audit.attach('admissions.pg_academic_session');
+SELECT audit.attach('admissions.pg_semester');
+
 -- ── 3 · the current PG session: the School's own, else the University's, else a literal ──
 CREATE OR REPLACE FUNCTION admissions.pg_current_session()
 RETURNS text

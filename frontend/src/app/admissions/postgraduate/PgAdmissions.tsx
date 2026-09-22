@@ -222,12 +222,14 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
   );
 }
 
-export function PgAdmissions({ session, view, problem, actingOffice }: {
-  session: string; view: PgView | null; problem: Problem | null; actingOffice: string | null;
+export function PgAdmissions({ session, sessions = [], view, problem, actingOffice }: {
+  session: string; sessions?: { name: string; state: string }[]; view: PgView | null; problem: Problem | null; actingOffice: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<string | null>(null);
   const c = view?.counts;
+  // the session on the desk is always among the options, even if the calendar doesn't list it yet
+  const sessionOptions = sessions.some((s) => s.name === session) ? sessions : [{ name: session, state: "" }, ...sessions];
   return (
     <>
       <RoleLine allowed={["pgschool", "pgsecretary", "hod", "dean", "academic", "registrar"]} actingOffice={actingOffice}
@@ -235,6 +237,20 @@ export function PgAdmissions({ session, view, problem, actingOffice }: {
       <Note kind="info" title="Postgraduate admission is decided on the record, not on a UTME score">
         A postgraduate applicant applies on a first degree — no JAMB, no UTME aggregate. The department&rsquo;s committee recommends a submitted application, the <b>School of Postgraduate Studies</b> offers or refuses, the applicant accepts, and the School admits, which puts the student on the register to be matriculated on fees and registration.
       </Note>
+
+      <Panel title="Session" right={<span className="sub2">Applications are shown for the session you choose</span>}>
+        <PBody>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <label htmlFor="pg-session" className="sub2" style={{ fontWeight: 600 }}>Admissions session</label>
+            <select id="pg-session" className="ctl" style={{ maxWidth: 260 }} value={session}
+              onChange={(e) => router.push(`/admissions/postgraduate?session=${encodeURIComponent(e.target.value)}`)}>
+              {sessionOptions.map((s) => (
+                <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : s.state === "PLANNED" ? " · planned" : ""}</option>
+              ))}
+            </select>
+          </div>
+        </PBody>
+      </Panel>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
 

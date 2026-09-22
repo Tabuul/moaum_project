@@ -37,6 +37,54 @@ const KINDS: [string, string][] = [
 const CLASSES = ["First Class", "Second Class (Upper)", "Second Class (Lower)", "Third Class", "Pass", "Distinction", "Credit", "Merit"];
 const emptyQual = (kind = "MASTERS"): Qual => ({ kind, award: "", field: "", institution: "", classOfDegree: "", cgpa: "", year: "" });
 
+/** a searchable programme picker: type to filter by name, award, department or faculty, then pick one */
+function ProgrammePicker({ progs, value, onPick }: { progs: Prog[]; value: string; onPick: (code: string) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const chosen = progs.find((p) => p.code === value) ?? null;
+  const ql = q.trim().toLowerCase();
+  const matches = (ql
+    ? progs.filter((p) => `${p.name} ${p.code} ${p.faculty_name} ${p.department_name} ${p.pg_award ?? ""}`.toLowerCase().includes(ql))
+    : progs).slice(0, 60);
+  // group the matches by faculty, keeping faculties in first-seen order
+  const groups: [string, Prog[]][] = [];
+  for (const p of matches) { const g = groups.find(([k]) => k === p.faculty_name); if (g) g[1].push(p); else groups.push([p.faculty_name, [p]]); }
+  const shown = open ? q : chosen ? `${chosen.name}${chosen.pg_award ? ` (${chosen.pg_award})` : ""}` : q;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        id="programme" className="ctl" role="combobox" aria-expanded={open} aria-controls="programme-list" autoComplete="off"
+        placeholder={chosen ? undefined : "Search programmes by name, award or faculty…"}
+        value={shown}
+        onFocus={() => { setOpen(true); setQ(""); }}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+      />
+      {open ? (
+        <div id="programme-list" role="listbox" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30, maxHeight: 300, overflowY: "auto", background: "var(--bg, #fff)", border: "1px solid var(--line-2, #d9d9d9)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
+          {groups.length ? groups.map(([fac, list]) => (
+            <div key={fac}>
+              <div style={{ padding: "7px 12px 4px", fontSize: 11, letterSpacing: ".4px", textTransform: "uppercase", color: "var(--chrome, #888)", position: "sticky", top: 0, background: "var(--bg, #fff)" }}>{fac}</div>
+              {list.map((p) => (
+                <button
+                  key={p.code} type="button" role="option" aria-selected={p.code === value}
+                  onMouseDown={(e) => { e.preventDefault(); onPick(p.code); setOpen(false); setQ(""); }}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", background: p.code === value ? "var(--tint, #eef3fb)" : "transparent", cursor: "pointer", fontSize: 13.5 }}
+                >
+                  <span style={{ fontWeight: 600 }}>{p.name}</span>{p.pg_award ? <span className="sub2"> ({p.pg_award})</span> : null}
+                  <div className="sub2">{p.department_name}</div>
+                </button>
+              ))}
+            </div>
+          )) : <div className="sub2" style={{ padding: "12px" }}>No programme matches &ldquo;{q}&rdquo;.</div>}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function PgApply() {
   const [progs, setProgs] = useState<Prog[]>([]);
   const [f, setF] = useState<Record<string, string>>({});
@@ -54,15 +102,9 @@ export function PgApply() {
 
   const chosen = useMemo(() => progs.find((p) => p.code === f.programme), [progs, f.programme]);
   const isPhd = (chosen?.entry_level ?? 0) >= 900;
-  const byFaculty = useMemo(() => {
-    const m = new Map<string, Prog[]>();
-    for (const p of progs) { const k = p.faculty_name; if (!m.has(k)) m.set(k, []); m.get(k)!.push(p); }
-    return [...m.entries()];
-  }, [progs]);
   const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   const setQual = (i: number, k: keyof Qual, v: string) => setQuals(quals.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
-  function chooseProgramme(e: ChangeEvent<HTMLSelectElement>) {
-    const code = e.target.value;
+  function chooseProgramme(code: string) {
     const p = progs.find((x) => x.code === code);
     setF({ ...f, programme: code });
     // a PhD rests on a Master's — seed a Master's row so it is obvious the applicant must give it
@@ -124,14 +166,7 @@ export function PgApply() {
       <div className="card"><div className="card__body" style={{ display: "grid", gap: 12 }}>
         <Section title="Programme" />
         <Field id="programme" label="Programme applied for">
-          <select id="programme" className="ctl" value={f.programme ?? ""} onChange={chooseProgramme}>
-            <option value="">Choose a programme…</option>
-            {byFaculty.map(([fac, list]) => (
-              <optgroup key={fac} label={fac}>
-                {list.map((p) => <option key={p.code} value={p.code}>{p.name}{p.pg_award ? ` (${p.pg_award})` : ""}</option>)}
-              </optgroup>
-            ))}
-          </select>
+          <ProgrammePicker progs={progs} value={f.programme ?? ""} onPick={chooseProgramme} />
         </Field>
         {chosen ? <div className="hint">{chosen.department_name} · {chosen.faculty_name}{chosen.pg_research ? " · research degree (a proposal may be added — optional)" : ""}</div> : null}
 
