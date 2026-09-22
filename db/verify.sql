@@ -56,12 +56,13 @@ BEGIN
     END;
 
     -- 4 · the offices are seeded
-    -- twenty-eight staff offices (incl. the SIWES Coordinator V156 and the School of
-    -- Postgraduate Studies' Dean and Secretary V201), the applicant (V021) and the student (V026)
+    -- twenty-nine staff offices (incl. the SIWES Coordinator V156, the School of Postgraduate
+    -- Studies' Dean and Secretary V201 and the College Finance Controller V227), the applicant
+    -- (V021) and the student (V026)
     SELECT count(*) INTO n FROM ref.office;
-    IF n <> 30 THEN
+    IF n <> 31 THEN
         RAISE EXCEPTION 'deployment verification failed: % offices in the register, '
-                        'expected 30 (28 staff offices, the applicant and the student).', n;
+                        'expected 31 (29 staff offices, the applicant and the student).', n;
     END IF;
 
     -- 5 · the University's programme table is loaded
