@@ -329,7 +329,8 @@ class PgAdmissionsController {
         }
         Map<String, Object> app = found.get(0);
         List<Map<String, Object>> referees = jdbc.sql("""
-                SELECT id, name, email, institution, position, reference_text, submitted_at
+                SELECT id, name, email, phone, institution, position, reference_text, submitted_at,
+                       relationship, known_duration, attestation, recommendation, verdict
                   FROM admissions.pg_referee WHERE application_id = :id ORDER BY name
                 """).param("id", id).query().listOfRows();
         List<Map<String, Object>> documents = jdbc.sql("""

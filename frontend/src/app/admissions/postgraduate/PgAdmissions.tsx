@@ -21,7 +21,8 @@ export interface PgRow {
   spgs_decided_at: string | null; accepted_at: string | null; admitted_at: string | null; student_id: string | null;
 }
 export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; offered: number; accepted: number; admitted: number }; rows: PgRow[] }
-interface Referee { id: string; name: string; email: string | null; institution: string | null; position: string | null; reference_text: string | null }
+interface Referee { id: string; name: string; email: string | null; phone: string | null; institution: string | null; position: string | null; reference_text: string | null; submitted_at: string | null; relationship: string | null; known_duration: string | null; attestation: string | null; recommendation: string | null; verdict: string | null }
+const VERDICT_LABEL: Record<string, string> = { RECOMMEND: "Recommended", RECOMMEND_WITH_RESERVATION: "Recommended with reservation", DO_NOT_RECOMMEND: "Not recommended" };
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface PriorQual { kind: string; institution: string | null; award: string | null; field: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
 interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[] }
@@ -161,7 +162,20 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
 
       <Section title="Referees">
         {(d.referees ?? []).length ? (d.referees ?? []).map((r) => (
-          <div key={r.id} className="sub2" style={{ marginBottom: 4 }}><b>{r.name}</b>{r.position ? ` · ${r.position}` : ""}{r.institution ? ` · ${r.institution}` : ""}{r.email ? ` · ${r.email}` : ""}</div>
+          <div key={r.id} style={{ marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--line-2)" }}>
+            <div className="sub2"><b>{r.name}</b>{r.position ? ` · ${r.position}` : ""}{r.institution ? ` · ${r.institution}` : ""}</div>
+            <div className="sub2">{r.email ? `${r.email}` : ""}{r.phone ? ` · ${r.phone}` : ""}</div>
+            {r.submitted_at ? (
+              <div style={{ marginTop: 6, paddingLeft: 10, borderLeft: "3px solid var(--green-ink)" }}>
+                <div className="sub2" style={{ color: "var(--green-ink)", fontWeight: 600 }}>
+                  Reference received{r.verdict ? ` · ${VERDICT_LABEL[r.verdict] ?? r.verdict}` : ""}
+                </div>
+                {r.relationship ? <div className="sub2"><b>Relationship:</b> {r.relationship}{r.known_duration ? ` · known ${r.known_duration}` : ""}</div> : null}
+                {r.attestation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Attestation:</b> {r.attestation}</div> : null}
+                {r.recommendation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Recommendation:</b> {r.recommendation}</div> : null}
+              </div>
+            ) : <div className="sub2" style={{ color: "var(--chrome)" }}>Reference not yet submitted{r.email ? " — a request was emailed" : " (no email on record)"}.</div>}
+          </div>
         )) : <div className="sub2">None named.</div>}
       </Section>
 

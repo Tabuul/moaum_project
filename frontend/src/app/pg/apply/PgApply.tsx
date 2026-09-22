@@ -88,7 +88,7 @@ function ProgrammePicker({ progs, value, onPick }: { progs: Prog[]; value: strin
 export function PgApply() {
   const [progs, setProgs] = useState<Prog[]>([]);
   const [f, setF] = useState<Record<string, string>>({});
-  const [refs, setRefs] = useState([{ name: "", email: "", institution: "", position: "" }, { name: "", email: "", institution: "", position: "" }]);
+  const [refs, setRefs] = useState([{ name: "", email: "", phone: "", institution: "", position: "" }, { name: "", email: "", phone: "", institution: "", position: "" }]);
   const [quals, setQuals] = useState<Qual[]>([]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -223,10 +223,12 @@ export function PgApply() {
         ) : null}
 
         <Section title="Referees" />
+        <div className="hint" style={{ marginTop: -4 }}>Each referee with an email is sent a private link to complete a short, confidential reference for you.</div>
         {refs.map((r, i) => (
           <div className="grid grid--2" key={i}>
             <Field id={`rn${i}`} label={`Referee ${i + 1} — name`}><input id={`rn${i}`} className="ctl" value={r.name} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], name: e.target.value }; setRefs(a); }} /></Field>
-            <Field id={`re${i}`} label="Email"><input id={`re${i}`} className="ctl" value={r.email} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], email: e.target.value }; setRefs(a); }} /></Field>
+            <Field id={`re${i}`} label="Email"><input id={`re${i}`} type="email" className="ctl" value={r.email} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], email: e.target.value }; setRefs(a); }} /></Field>
+            <Field id={`rph${i}`} label="Phone number"><input id={`rph${i}`} className="ctl" value={r.phone} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], phone: e.target.value }; setRefs(a); }} /></Field>
             <Field id={`ri${i}`} label="Institution"><input id={`ri${i}`} className="ctl" value={r.institution} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], institution: e.target.value }; setRefs(a); }} /></Field>
             <Field id={`rp${i}`} label="Position"><input id={`rp${i}`} className="ctl" value={r.position} onChange={(e) => { const a = [...refs]; a[i] = { ...a[i], position: e.target.value }; setRefs(a); }} /></Field>
           </div>
