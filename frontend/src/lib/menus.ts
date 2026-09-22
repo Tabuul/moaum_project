@@ -2456,12 +2456,12 @@ export const MENUS: Record<string, Menu> = {
   },
   "pgschool": {
     "label": "Dean, Postgraduate School",
-    "home": "r/academic",
+    "home": "r/pgschool",
     "groups": [
       {
         "name": "Postgraduate School",
         "items": [
-          { "id": "r/academic", "icon": "home", "label": "Dashboard" },
+          { "id": "r/pgschool", "icon": "home", "label": "Dashboard" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
           { "id": "t/pgstudents", "icon": "user", "label": "PG students" },
           { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
@@ -2498,12 +2498,12 @@ export const MENUS: Record<string, Menu> = {
   },
   "pgsecretary": {
     "label": "Secretary, Postgraduate School",
-    "home": "r/academic",
+    "home": "r/pgschool",
     "groups": [
       {
         "name": "Postgraduate School",
         "items": [
-          { "id": "r/academic", "icon": "home", "label": "Dashboard" },
+          { "id": "r/pgschool", "icon": "home", "label": "Dashboard" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
           { "id": "t/pgstudents", "icon": "user", "label": "PG students" },
           { "id": "t/search", "icon": "user", "label": "Search" }

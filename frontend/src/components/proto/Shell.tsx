@@ -216,6 +216,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/sms": ["SMS gateway", "The eBulkSMS account the portal sends text messages from"],
   "r/lecturer": ["Lecturer dashboard", "Your courses, marks and staff profile this session"],
   "r/hod": ["Head of Department", "Your department's desk — approvals, allocation and results"],
+  "r/pgschool": ["School of Postgraduate Studies", "Admissions, register, research and awards"],
   "pg/portal": ["Your postgraduate application", "Applicant portal"],
   "pg/apply": ["Apply for a postgraduate programme", "School of Postgraduate Studies"],
 };
