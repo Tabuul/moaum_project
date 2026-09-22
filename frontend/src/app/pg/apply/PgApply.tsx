@@ -82,7 +82,6 @@ export function PgApply() {
     if (isPhd && !hasMasters) {
       setProblem({ status: 400, title: "A PhD applicant must also give a Master’s degree.", detail: "Add it under “Other qualifications” below." }); return;
     }
-    if (chosen?.pg_research && !(f.proposalText ?? "").trim()) { setProblem({ status: 400, title: "This is a research programme — a research proposal is required." }); return; }
     setBusy(true);
     try {
       const priorDegrees = [
@@ -134,7 +133,7 @@ export function PgApply() {
             ))}
           </select>
         </Field>
-        {chosen ? <div className="hint">{chosen.department_name} · {chosen.faculty_name}{chosen.pg_research ? " · research degree (a proposal is required)" : ""}</div> : null}
+        {chosen ? <div className="hint">{chosen.department_name} · {chosen.faculty_name}{chosen.pg_research ? " · research degree (a proposal may be added — optional)" : ""}</div> : null}
 
         <Section title="Your details" />
         <div className="grid grid--2">
@@ -182,7 +181,7 @@ export function PgApply() {
 
         {chosen?.pg_research ? (
           <>
-            <Section title="Research proposal" />
+            <Section title="Research proposal (optional)" />
             <Field id="proposalTitle" label="Proposed topic"><input id="proposalTitle" className="ctl" value={f.proposalTitle ?? ""} onChange={set("proposalTitle")} /></Field>
             <Field id="proposalText" label="Summary of the proposed research"><textarea id="proposalText" className="ctl" rows={4} value={f.proposalText ?? ""} onChange={set("proposalText")} /></Field>
           </>
