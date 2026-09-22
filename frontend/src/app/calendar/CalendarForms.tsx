@@ -142,7 +142,7 @@ export function SessionModal({
 
   return (
     <Modal
-      title={isNew ? "New session" : `Edit ${row.name}`}
+      title={isNew ? "Setup new Session" : `Edit ${row.name}`}
       sub={
         isNew
           ? ""
@@ -170,13 +170,6 @@ export function SessionModal({
         <Field id="rf_sems" label="Semesters">
           <Sel k="sems" draft={draft} set={set} options={SEMS} />
         </Field>
-        <Field
-          id="rf_scheme"
-          label={<>Grading scheme {LOCKED}</>}
-          hint="The scheme in force is effective-dated policy, recorded with its instrument where policy is versioned — not chosen on this form."
-        >
-          <input id="rf_scheme" className="ctl ctl--ro" value="The scheme in force on the day" readOnly />
-        </Field>
         <Field id="rf_minute" label="Senate minute">
           <Txt k="minute" draft={draft} set={set} num ph="SEN/2027/…" />
         </Field>
@@ -184,11 +177,6 @@ export function SessionModal({
           <Sel k="state" draft={draft} set={set} options={STATES} />
         </Field>
       </div>
-      <Note kind="bad" title="A session cannot open without its Senate minute, and two may never overlap">
-        The academic calendar is approved by Senate. Opening one early would let students register into a session the
-        University has not resolved to run. The no-overlap rule is an exclusion constraint in the database, not a check on
-        this form &mdash; a script cannot get around it either.
-      </Note>
     </Modal>
   );
 }
