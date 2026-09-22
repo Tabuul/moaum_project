@@ -57,6 +57,19 @@ export function naira(n: number | string | null | undefined): string {
 
 const GATEWAY_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller", paydirect: "Quickteller PayDirect" };
 
+/** a failed checkout as something readable: the portal's own Problem when it sent one, else the server's
+ *  plain error (Spring's {status, error, message}), else the HTTP status — never a blank notice */
+export function asProblem(j: unknown, r: Response): Problem {
+  if (j && typeof j === "object") {
+    const o = j as Record<string, unknown>;
+    if (typeof o.title === "string" && o.title) return o as unknown as Problem;
+    const title = (typeof o.error === "string" && o.error) || (typeof o.message === "string" && o.message) || null;
+    const detail = typeof o.message === "string" && o.message !== title ? o.message : undefined;
+    if (title) return { status: r.status, title: `The checkout could not be opened (${title})`, detail };
+  }
+  return { status: r.status, title: `The checkout could not be opened (HTTP ${r.status})`, detail: "Try again in a moment, or pay by transfer or at a branch against the reference." };
+}
+
 interface Paydirect { gateway: string; billerName: string; billerCode: string; prn: string; payLink: string | null; ussd: string }
 
 /** Card and USSD through whichever gateway is wired; when more than one is on, the payer picks. */
@@ -88,7 +101,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       const r = await fetch("/api/bff/api/v1/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checkout opened for ${reference}`) }, body: JSON.stringify(gateway ? { reference, gateway } : { reference }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
+        setProblem(asProblem(j, r));
         return;
       }
       if (j && (j as Paydirect).gateway === "paydirect") { setPd(j as Paydirect); setChoices(null); return; }

@@ -13,6 +13,7 @@ import { notify } from "@/components/proto/Toast";
 import { STAGES, type Application } from "@/lib/applicant";
 import { Panel } from "@/components/proto/ui";
 import { Step } from "@/components/proto/blocks";
+import { asProblem } from "@/app/student/common";
 
 /* stage N means milestone N is complete, so N is ticked and N+1 is in hand */
 export function Rail({ a }: { a: Application }) {
@@ -112,7 +113,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       const r = await fetch("/api/bff/api/v1/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checkout opened for ${reference}`) }, body: JSON.stringify(gateway ? { reference, gateway } : { reference }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
+        setProblem(asProblem(j, r));
         return;
       }
       if (j && (j as Paydirect).gateway === "paydirect") { setPd(j as Paydirect); setChoices(null); return; }
