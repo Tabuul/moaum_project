@@ -245,7 +245,9 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
       </div></div>
       {live ? (
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <a href="/student/idcard/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Open the printable copy</a>
           <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record; the Library issues a replacement."); if (!reason) return; void act("lost", "POST", "/me/id-card/lost", { reason }, `Identity card reported lost: ${reason}`); }}>{busy === "lost" ? "Reporting…" : "Report it lost"}</Btn>
+          <Link href="/student/support" className="btn btn--ghost btn--sm">Request a replacement</Link>
         </div>
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
