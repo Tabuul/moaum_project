@@ -23,7 +23,12 @@ export interface PgRow {
 export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; offered: number; accepted: number; admitted: number }; rows: PgRow[] }
 interface Referee { id: string; name: string; email: string | null; institution: string | null; position: string | null; reference_text: string | null }
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
-interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; spgs_note: string | null }; referees?: Referee[]; documents?: DocMeta[] }
+interface PriorQual { kind: string; institution: string | null; award: string | null; field: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
+interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[] }
+const QUAL_LABEL: Record<string, string> = {
+  FIRST: "First degree", MASTERS: "Master’s degree", PGD: "Postgraduate Diploma", HND: "Higher National Diploma",
+  ND: "National Diploma", NCE: "Nigeria Certificate in Education", PHD: "Doctorate (PhD)", OTHER: "Other qualification",
+};
 
 const STATE: Record<string, { kind: "ok" | "bad" | "warn" | "info" | "grey"; label: string }> = {
   DRAFT: { kind: "grey", label: "Draft" },
@@ -85,11 +90,32 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px 24px" }}>
         {([["Sex", sexLabel(a.sex)], ["Date of birth", fmtDate(a.date_of_birth)],
            ["State of origin", a.state_of_origin ?? "—"], ["LGA", a.lga ?? "—"],
-           ["Contact", `${a.email}${a.phone ? ` · ${a.phone}` : ""}`],
-           ["First degree", `${a.prior_award ?? "—"}${a.prior_class ? ` · ${a.prior_class}` : ""}`], ["Institution", a.prior_institution ?? "—"],
-           ["CGPA", a.prior_cgpa != null ? String(a.prior_cgpa) : "—"], ["Year", a.prior_year != null ? String(a.prior_year) : "—"]] as [string, string][]).map(([k, v]) => (
+           ["Contact", `${a.email}${a.phone ? ` · ${a.phone}` : ""}`]] as [string, string][]).map(([k, v]) => (
           <div key={k}><div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5 }}>{k}</div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{v}</div></div>
         ))}
+      </div>
+
+      <div>
+        <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5, marginBottom: 6 }}>Qualifications</div>
+        {(() => {
+          const list = (d.priorDegrees ?? []).length
+            ? (d.priorDegrees ?? [])
+            : [{ kind: "FIRST", institution: a.prior_institution, award: a.prior_award, field: null, class_of_degree: a.prior_class, cgpa: a.prior_cgpa, year: a.prior_year } as PriorQual];
+          return (
+            <div style={{ display: "grid", gap: 8 }}>
+              {list.map((q, i) => (
+                <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 8, padding: "8px 12px" }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                    {QUAL_LABEL[q.kind] ?? q.kind}{q.award ? ` — ${q.award}` : ""}{q.field ? ` (${q.field})` : ""}
+                  </div>
+                  <div className="sub2" style={{ marginTop: 2 }}>
+                    {[q.institution, q.class_of_degree, q.cgpa != null ? `CGPA ${q.cgpa}` : null, q.year != null ? String(q.year) : null].filter(Boolean).join(" · ") || "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {a.pg_research ? (

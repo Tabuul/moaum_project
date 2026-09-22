@@ -23,10 +23,25 @@ const STATE_LABEL: Record<string, string> = {
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
 };
 
+/** a prior qualification beyond the first degree — a prior Master's, a PGD, an HND/ND, an NCE, etc. */
+interface Qual { kind: string; award: string; field: string; institution: string; classOfDegree: string; cgpa: string; year: string }
+const KINDS: [string, string][] = [
+  ["MASTERS", "Master’s degree"],
+  ["PGD", "Postgraduate Diploma (PGD)"],
+  ["HND", "Higher National Diploma (HND)"],
+  ["ND", "National Diploma (ND)"],
+  ["NCE", "Nigeria Certificate in Education (NCE)"],
+  ["PHD", "Doctorate (PhD)"],
+  ["OTHER", "Other qualification"],
+];
+const CLASSES = ["First Class", "Second Class (Upper)", "Second Class (Lower)", "Third Class", "Pass", "Distinction", "Credit", "Merit"];
+const emptyQual = (kind = "MASTERS"): Qual => ({ kind, award: "", field: "", institution: "", classOfDegree: "", cgpa: "", year: "" });
+
 export function PgApply() {
   const [progs, setProgs] = useState<Prog[]>([]);
   const [f, setF] = useState<Record<string, string>>({});
   const [refs, setRefs] = useState([{ name: "", email: "", institution: "", position: "" }, { name: "", email: "", institution: "", position: "" }]);
+  const [quals, setQuals] = useState<Qual[]>([]);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
@@ -45,6 +60,14 @@ export function PgApply() {
     return [...m.entries()];
   }, [progs]);
   const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
+  const setQual = (i: number, k: keyof Qual, v: string) => setQuals(quals.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
+  function chooseProgramme(e: ChangeEvent<HTMLSelectElement>) {
+    const code = e.target.value;
+    const p = progs.find((x) => x.code === code);
+    setF({ ...f, programme: code });
+    // a PhD rests on a Master's — seed a Master's row so it is obvious the applicant must give it
+    if (p && p.entry_level >= 900 && quals.length === 0) setQuals([emptyQual("MASTERS")]);
+  }
 
   async function submit() {
     setProblem(null);
@@ -55,16 +78,17 @@ export function PgApply() {
     if (!(f.priorInstitution ?? "").trim() || !(f.priorAward ?? "").trim()) {
       setProblem({ status: 400, title: "Your first degree (institution and award) is required." }); return;
     }
-    if (isPhd && (!(f.mInstitution ?? "").trim() || !(f.mAward ?? "").trim())) {
-      setProblem({ status: 400, title: "A PhD applicant must also give their Master's degree (institution and award)." }); return;
+    const hasMasters = quals.some((q) => q.kind === "MASTERS" && ((q.institution ?? "").trim() || (q.award ?? "").trim() || (q.field ?? "").trim()));
+    if (isPhd && !hasMasters) {
+      setProblem({ status: 400, title: "A PhD applicant must also give a Master’s degree.", detail: "Add it under “Other qualifications” below." }); return;
     }
     if (chosen?.pg_research && !(f.proposalText ?? "").trim()) { setProblem({ status: 400, title: "This is a research programme — a research proposal is required." }); return; }
     setBusy(true);
     try {
       const priorDegrees = [
-        { kind: "FIRST", institution: f.priorInstitution, award: f.priorAward, classOfDegree: f.priorClass, cgpa: f.priorCgpa, year: f.priorYear },
-        ...(isPhd ? [{ kind: "MASTERS", institution: f.mInstitution, award: f.mAward, classOfDegree: f.mClass, cgpa: f.mCgpa, year: f.mYear }] : []),
-      ].filter((d) => (d.institution ?? "").trim() || (d.award ?? "").trim());
+        { kind: "FIRST", institution: f.priorInstitution, award: f.priorAward, field: f.priorField, classOfDegree: f.priorClass, cgpa: f.priorCgpa, year: f.priorYear },
+        ...quals.map((q) => ({ kind: q.kind, institution: q.institution, award: q.award, field: q.field, classOfDegree: q.classOfDegree, cgpa: q.cgpa, year: q.year })),
+      ].filter((d) => (d.institution ?? "").trim() || (d.award ?? "").trim() || (d.field ?? "").trim());
       const body = { ...f, priorDegrees, referees: refs.filter((r) => r.name.trim()) };
       const r = await fetch("/api/bff/api/v1/pg/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
@@ -101,7 +125,7 @@ export function PgApply() {
       <div className="card"><div className="card__body" style={{ display: "grid", gap: 12 }}>
         <Section title="Programme" />
         <Field id="programme" label="Programme applied for">
-          <select id="programme" className="ctl" value={f.programme ?? ""} onChange={set("programme")}>
+          <select id="programme" className="ctl" value={f.programme ?? ""} onChange={chooseProgramme}>
             <option value="">Choose a programme…</option>
             {byFaculty.map(([fac, list]) => (
               <optgroup key={fac} label={fac}>
@@ -126,28 +150,35 @@ export function PgApply() {
         </div>
 
         <Section title="Your first degree" />
-        <div className="hint" style={{ marginTop: -4 }}>The Bachelor&rsquo;s degree the admission rests on.{isPhd ? " A PhD also needs your Master&rsquo;s degree below." : ""}</div>
+        <div className="hint" style={{ marginTop: -4 }}>The Bachelor&rsquo;s degree the admission rests on. Add any other qualifications below.</div>
         <div className="grid grid--2">
           <Field id="priorInstitution" label="Institution"><input id="priorInstitution" className="ctl" value={f.priorInstitution ?? ""} onChange={set("priorInstitution")} /></Field>
-          <Field id="priorAward" label="Degree / award"><input id="priorAward" className="ctl" value={f.priorAward ?? ""} onChange={set("priorAward")} placeholder="B.Sc. Computer Science" /></Field>
-          <Field id="priorClass" label="Class of degree"><select id="priorClass" className="ctl" value={f.priorClass ?? ""} onChange={set("priorClass")}><option value="">—</option>{["First Class", "Second Class (Upper)", "Second Class (Lower)", "Third Class", "Pass", "Distinction", "Credit", "Merit"].map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+          <Field id="priorAward" label="Degree / award"><input id="priorAward" className="ctl" value={f.priorAward ?? ""} onChange={set("priorAward")} placeholder="B.Sc." /></Field>
+          <Field id="priorField" label="Field of study"><input id="priorField" className="ctl" value={f.priorField ?? ""} onChange={set("priorField")} placeholder="Computer Science" /></Field>
+          <Field id="priorClass" label="Class of degree"><select id="priorClass" className="ctl" value={f.priorClass ?? ""} onChange={set("priorClass")}><option value="">—</option>{CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
           <Field id="priorCgpa" label="CGPA (if known)"><input id="priorCgpa" className="ctl tnum" value={f.priorCgpa ?? ""} onChange={set("priorCgpa")} placeholder="3.80" /></Field>
-          <Field id="priorYear" label="Year awarded"><input id="priorYear" className="ctl tnum" value={f.priorYear ?? ""} onChange={set("priorYear")} placeholder="2022" /></Field>
+          <Field id="priorYear" label="Year awarded"><input id="priorYear" className="ctl tnum" value={f.priorYear ?? ""} onChange={set("priorYear")} placeholder="2018" /></Field>
         </div>
 
-        {isPhd ? (
-          <>
-            <Section title="Your Master&rsquo;s degree" />
-            <div className="hint" style={{ marginTop: -4 }}>Required for a PhD — the Master&rsquo;s degree your doctoral admission rests on.</div>
+        <Section title="Other qualifications" />
+        <div className="hint" style={{ marginTop: -4 }}>
+          Add every other qualification you hold that bears on this application — a prior <b>Master&rsquo;s</b> (in this or a related field), a <b>Postgraduate Diploma</b>, an <b>HND / ND</b>, or an <b>NCE</b> (for example where it covers a subject deficiency).{isPhd ? " A PhD requires a Master’s degree — give it here." : ""}
+        </div>
+        {quals.map((q, i) => (
+          <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 10, padding: 12 }}>
             <div className="grid grid--2">
-              <Field id="mInstitution" label="Institution"><input id="mInstitution" className="ctl" value={f.mInstitution ?? ""} onChange={set("mInstitution")} /></Field>
-              <Field id="mAward" label="Degree / award"><input id="mAward" className="ctl" value={f.mAward ?? ""} onChange={set("mAward")} placeholder="M.Sc. Computer Science" /></Field>
-              <Field id="mClass" label="Class / result"><select id="mClass" className="ctl" value={f.mClass ?? ""} onChange={set("mClass")}><option value="">—</option>{["Distinction", "Pass", "Merit", "Credit"].map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
-              <Field id="mCgpa" label="CGPA (if known)"><input id="mCgpa" className="ctl tnum" value={f.mCgpa ?? ""} onChange={set("mCgpa")} placeholder="4.20" /></Field>
-              <Field id="mYear" label="Year awarded"><input id="mYear" className="ctl tnum" value={f.mYear ?? ""} onChange={set("mYear")} placeholder="2024" /></Field>
+              <Field id={`q-kind-${i}`} label="Qualification"><select id={`q-kind-${i}`} className="ctl" value={q.kind} onChange={(e) => setQual(i, "kind", e.target.value)}>{KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+              <Field id={`q-inst-${i}`} label="Institution"><input id={`q-inst-${i}`} className="ctl" value={q.institution} onChange={(e) => setQual(i, "institution", e.target.value)} /></Field>
+              <Field id={`q-award-${i}`} label="Award / title"><input id={`q-award-${i}`} className="ctl" value={q.award} onChange={(e) => setQual(i, "award", e.target.value)} placeholder="M.Sc. / PGD / HND" /></Field>
+              <Field id={`q-field-${i}`} label="Field of study"><input id={`q-field-${i}`} className="ctl" value={q.field} onChange={(e) => setQual(i, "field", e.target.value)} placeholder="Economics" /></Field>
+              <Field id={`q-class-${i}`} label="Class / result"><select id={`q-class-${i}`} className="ctl" value={q.classOfDegree} onChange={(e) => setQual(i, "classOfDegree", e.target.value)}><option value="">—</option>{CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+              <Field id={`q-cgpa-${i}`} label="CGPA (if known)"><input id={`q-cgpa-${i}`} className="ctl tnum" value={q.cgpa} onChange={(e) => setQual(i, "cgpa", e.target.value)} placeholder="4.20" /></Field>
+              <Field id={`q-year-${i}`} label="Year awarded"><input id={`q-year-${i}`} className="ctl tnum" value={q.year} onChange={(e) => setQual(i, "year", e.target.value)} placeholder="2021" /></Field>
             </div>
-          </>
-        ) : null}
+            <div style={{ marginTop: 6 }}><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove this qualification</button></div>
+          </div>
+        ))}
+        <div><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals([...quals, emptyQual()])}>+ Add a qualification</button></div>
 
         {chosen?.pg_research ? (
           <>

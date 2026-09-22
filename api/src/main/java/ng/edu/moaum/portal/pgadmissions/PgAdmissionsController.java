@@ -322,10 +322,16 @@ class PgAdmissionsController {
                 SELECT id, kind, filename, content_type, uploaded_at
                   FROM admissions.pg_document WHERE application_id = :id ORDER BY uploaded_at
                 """).param("id", id).query().listOfRows();
+        List<Map<String, Object>> priorDegrees = jdbc.sql("""
+                SELECT kind, institution, award, field, class_of_degree, cgpa, year
+                  FROM admissions.pg_prior_degree WHERE application_id = :id
+                 ORDER BY CASE kind WHEN 'FIRST' THEN 0 ELSE 1 END, year
+                """).param("id", id).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("found", true);
         out.put("application", app);
         out.put("referees", referees);
+        out.put("priorDegrees", priorDegrees);
         out.put("documents", documents);
         return out;
     }

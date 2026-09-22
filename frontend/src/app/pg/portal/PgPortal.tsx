@@ -17,7 +17,11 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 
 interface Referee { name: string; email: string | null; institution: string | null; position: string | null }
-interface PriorDegree { kind: string; institution: string | null; award: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
+interface PriorDegree { kind: string; institution: string | null; award: string | null; field?: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
+const QUAL_LABEL: Record<string, string> = {
+  FIRST: "First degree", MASTERS: "Master’s degree", PGD: "Postgraduate Diploma", HND: "Higher National Diploma",
+  ND: "National Diploma", NCE: "Nigeria Certificate in Education", PHD: "Doctorate (PhD)", OTHER: "Other qualification",
+};
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface Me {
   applicationNo: string; session: string; name: string; surname: string; otherNames: string;
@@ -185,11 +189,11 @@ export function PgPortal() {
       </Panel>
 
       {degrees.map((pd, i) => (
-        <Panel key={i} title={pd.kind === "MASTERS" ? "Master’s degree" : "First degree"}>
+        <Panel key={i} title={QUAL_LABEL[pd.kind] ?? "Qualification"}>
           <PBody>
             <KvGrid cls="grid--2" pairs={[
-              ["Institution", val(pd.institution)], ["Award", val(pd.award)],
-              ["Class of degree", val(pd.class_of_degree)], ["CGPA", val(pd.cgpa)], ["Year", val(pd.year)],
+              ["Institution", val(pd.institution)], ["Award", val(pd.award)], ["Field of study", val(pd.field)],
+              ["Class / result", val(pd.class_of_degree)], ["CGPA", val(pd.cgpa)], ["Year", val(pd.year)],
             ]} />
           </PBody>
         </Panel>

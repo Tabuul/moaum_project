@@ -203,8 +203,8 @@ class PgPortalController {
                  WHERE application_id = :app ORDER BY id
                 """).param("app", a.get("application_id")).query().listOfRows();
         List<Map<String, Object>> priorDegrees = jdbc.sql("""
-                SELECT kind, institution, award, class_of_degree, cgpa, year FROM admissions.pg_prior_degree
-                 WHERE application_id = :app ORDER BY CASE kind WHEN 'FIRST' THEN 0 ELSE 1 END
+                SELECT kind, institution, award, field, class_of_degree, cgpa, year FROM admissions.pg_prior_degree
+                 WHERE application_id = :app ORDER BY CASE kind WHEN 'FIRST' THEN 0 ELSE 1 END, year
                 """).param("app", a.get("application_id")).query().listOfRows();
         List<Map<String, Object>> documents = jdbc.sql("""
                 SELECT id, kind, filename, content_type, uploaded_at FROM admissions.pg_document
