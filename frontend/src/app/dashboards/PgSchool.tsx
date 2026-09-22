@@ -37,18 +37,20 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
   const toAdmit = Number(c.accepted);
   const progs = home.byProgramme ?? [];
   const recent = home.recent ?? [];
+  /* carry the session so the desk opens on the intake that has these applications, not an empty one */
+  const desk = `/admissions/postgraduate?session=${encodeURIComponent(home.session)}`;
   return (
     <>
       {recommended ? (
-        <Note kind="info" title={`${recommended} application${recommended === 1 ? "" : "s"} recommended by a department, awaiting the School`} action={<Link href="/admissions/postgraduate" className="btn btn--primary btn--sm">Decide them</Link>}>
+        <Note kind="info" title={`${recommended} application${recommended === 1 ? "" : "s"} recommended by a department, awaiting the School`} action={<Link href={desk} className="btn btn--primary btn--sm">Decide them</Link>}>
           A department&rsquo;s postgraduate committee has recommended these; the School offers or refuses each.
         </Note>
       ) : toAdmit ? (
-        <Note kind="ok" title={`${toAdmit} applicant${toAdmit === 1 ? " has" : "s have"} accepted an offer, ready to admit`} action={<Link href="/admissions/postgraduate" className="btn btn--primary btn--sm">Admit them</Link>}>
+        <Note kind="ok" title={`${toAdmit} applicant${toAdmit === 1 ? " has" : "s have"} accepted an offer, ready to admit`} action={<Link href={desk} className="btn btn--primary btn--sm">Admit them</Link>}>
           Admitting puts each on the register as a postgraduate student, to matriculate on fees and registration.
         </Note>
       ) : (
-        <Note kind="ok" title={`Nothing waits on the School for ${home.session}`} action={<Link href="/admissions/postgraduate" className="btn btn--ghost btn--sm">Postgraduate admissions</Link>}>
+        <Note kind="ok" title={`Nothing waits on the School for ${home.session}`} action={<Link href={desk} className="btn btn--ghost btn--sm">Postgraduate admissions</Link>}>
           New recommendations from the departments and fresh acceptances appear here to be acted on.
         </Note>
       )}
@@ -57,7 +59,7 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
         ["Applications", String(c.total), null, home.session],
         ["Awaiting the School", String(recommended), recommended ? "var(--chrome)" : null, "Recommended by a department"],
         ["Offered", String(c.offered), Number(c.offered) ? "var(--green-ink)" : null, "Awaiting acceptance"],
-        ["To admit", String(toAdmit), toAdmit ? "var(--chrome)" : null, "Accepted, not yet on the register", "/admissions/postgraduate"],
+        ["To admit", String(toAdmit), toAdmit ? "var(--chrome)" : null, "Accepted, not yet on the register", desk],
         ["PG students", String(home.pgStudents), null, "On the register"],
       ]} />
 
@@ -74,7 +76,7 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
         ) : <PBody><div className="sub2">No postgraduate application has been submitted for {home.session} yet.</div></PBody>}
       </Panel>
 
-      <Panel title="Latest applications" right={<Link href="/admissions/postgraduate" className="btn btn--ghost btn--sm">Open admissions desk</Link>}>
+      <Panel title="Latest applications" right={<Link href={desk} className="btn btn--ghost btn--sm">Open admissions desk</Link>}>
         {recent.length ? (
           <DTable cols={["Applicant", "Programme", "Session|mid", "Fee|mid", "Status|mid", "Applied|num"]}
             rows={recent.map((a) => [

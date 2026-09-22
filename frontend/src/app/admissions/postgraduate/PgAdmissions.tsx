@@ -38,6 +38,8 @@ const STATE: Record<string, { kind: "ok" | "bad" | "warn" | "info" | "grey"; lab
 const isDept = (o: string | null) => ["hod", "dean", "academic", "super"].includes(o ?? "");
 const isSpgs = (o: string | null) => ["pgschool", "pgsecretary", "super"].includes(o ?? "");
 const mayAdmit = (o: string | null) => ["pgschool", "pgsecretary", "registrar", "super"].includes(o ?? "");
+const fmtDate = (v: string | null | undefined) => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }); };
+const sexLabel = (v: string | null | undefined) => (v === "F" ? "Female" : v === "M" ? "Male" : "—");
 
 function DetailPanel({ id, office, onChanged }: { id: string; office: string | null; onChanged: () => void }) {
   const [d, setD] = useState<Detail | null>(null);
@@ -81,9 +83,11 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
     <div className="card__body" style={{ display: "grid", gap: 14 }}>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px 24px" }}>
-        {([["First degree", `${a.prior_award ?? "—"}${a.prior_class ? ` · ${a.prior_class}` : ""}`], ["Institution", a.prior_institution ?? "—"],
-           ["CGPA", a.prior_cgpa != null ? String(a.prior_cgpa) : "—"], ["Year", a.prior_year != null ? String(a.prior_year) : "—"],
-           ["Contact", `${a.email}${a.phone ? ` · ${a.phone}` : ""}`], ["State of origin", a.state_of_origin ?? "—"]] as [string, string][]).map(([k, v]) => (
+        {([["Sex", sexLabel(a.sex)], ["Date of birth", fmtDate(a.date_of_birth)],
+           ["State of origin", a.state_of_origin ?? "—"], ["LGA", a.lga ?? "—"],
+           ["Contact", `${a.email}${a.phone ? ` · ${a.phone}` : ""}`],
+           ["First degree", `${a.prior_award ?? "—"}${a.prior_class ? ` · ${a.prior_class}` : ""}`], ["Institution", a.prior_institution ?? "—"],
+           ["CGPA", a.prior_cgpa != null ? String(a.prior_cgpa) : "—"], ["Year", a.prior_year != null ? String(a.prior_year) : "—"]] as [string, string][]).map(([k, v]) => (
           <div key={k}><div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5 }}>{k}</div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{v}</div></div>
         ))}
       </div>
@@ -106,8 +110,11 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
         <div>
           <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5, marginBottom: 6 }}>Documents</div>
           {(d.documents ?? []).length ? (d.documents ?? []).map((x) => (
-            <div key={x.id} className="sub2" style={{ marginBottom: 4 }}>{x.kind.replace("_", " ").toLowerCase()} — {x.filename}</div>
-          )) : <div className="sub2">None uploaded.</div>}
+            <div key={x.id} className="sub2" style={{ marginBottom: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span>{x.kind.replace("_", " ").toLowerCase()} — {x.filename}</span>
+              <a href={`/api/bff/api/v1/pg/applications/${id}/documents/${x.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">View PDF</a>
+            </div>
+          )) : <div className="sub2">None uploaded &mdash; the applicant scans their O&rsquo;/A&rsquo;Level and birth certificate into one PDF on their dashboard.</div>}
         </div>
       </div>
 
@@ -184,7 +191,7 @@ export function PgAdmissions({ session, view, problem, actingOffice }: {
                     <span className="tnum" key="l">{r.entry_level}</span>,
                     <span className="sub2" key="d">{r.prior_award ?? "—"}{r.prior_class ? ` · ${r.prior_class}` : ""}</span>,
                     <Pil kind={st.kind} key="s">{st.label}</Pil>,
-                    <Btn kind="ghost" key="a" onClick={() => setOpen(open === r.id ? null : r.id)}>{open === r.id ? "Close" : "Open"}</Btn>,
+                    <Btn kind="ghost" key="a" onClick={() => setOpen(open === r.id ? null : r.id)}>{open === r.id ? "Close" : "Details"}</Btn>,
                   ];
                 })}
                 texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.programme_name} ${r.state}`)}

@@ -14,6 +14,9 @@ import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -325,6 +328,29 @@ class PgAdmissionsController {
         out.put("referees", referees);
         out.put("documents", documents);
         return out;
+    }
+
+    /** the credentials document an applicant uploaded, streamed for the desk to read inline (the O'/A'Level
+     *  and birth-certificate PDF). Scoped to its application, so an id alone cannot reach another's file. */
+    @GetMapping("/applications/{id}/documents/{docId}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> document(@PathVariable UUID id, @PathVariable UUID docId) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT filename, content_type, bytes
+                  FROM admissions.pg_document WHERE id = :d AND application_id = :a
+                """).param("d", docId).param("a", id).query().listOfRows();
+        if (rows.isEmpty() || rows.get(0).get("bytes") == null) {
+            throw new NotFound("postgraduate document", docId);
+        }
+        Map<String, Object> row = rows.get(0);
+        byte[] bytes = (byte[]) row.get("bytes");
+        String ct = String.valueOf(row.getOrDefault("content_type", "application/pdf"));
+        String fn = String.valueOf(row.getOrDefault("filename", "document.pdf")).replaceAll("[\"\\r\\n]", "");
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(ct))
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=600")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fn + "\"")
+                .body(bytes);
     }
 
     public record DeptDecision(boolean recommend, String note) {
