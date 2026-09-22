@@ -198,6 +198,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/students",
             "icon": "cap",
             "label": "Students"
+          },
+          {
+            "id": "t/pgadmissions",
+            "icon": "cap",
+            "label": "PG admissions"
           }
         ]
       },
@@ -352,6 +357,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/students",
             "icon": "cap",
             "label": "Students"
+          },
+          {
+            "id": "t/pgadmissions",
+            "icon": "cap",
+            "label": "PG admissions"
           },
           {
             "id": "r/allocate",
