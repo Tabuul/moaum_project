@@ -90,6 +90,7 @@ public class StudentPortalService {
         v.put("programmeCode", s.programmeCode());
         v.put("programme", s.programme());
         v.put("faculty", s.facultyName());
+        v.put("collegeCode", s.collegeCode());
         v.put("department", s.deptName());
         v.put("entryMode", s.entryMode());
         v.put("entrySession", s.entrySession());
