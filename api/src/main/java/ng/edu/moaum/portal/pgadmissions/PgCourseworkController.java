@@ -164,6 +164,21 @@ class PgCourseworkController {
                 """).param("p", programme.trim()).query().listOfRows();
     }
 
+    /** every postgraduate course on record, with its programme — the whole catalogue for the desk */
+    @GetMapping("/courses/all")
+    @PreAuthorize(DESK)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> allCourses() {
+        return jdbc.sql("""
+                SELECT c.id, c.programme_code, g.name AS programme_name, f.name AS faculty_name,
+                       c.code, c.title, c.units, c.kind, c.semester, c.active
+                  FROM admissions.pg_course c
+                  JOIN ref.programme g ON g.code = c.programme_code
+                  JOIN ref.faculty f ON f.code = g.faculty_code
+                 ORDER BY g.name, c.semester, c.code
+                """).query().listOfRows();
+    }
+
     public record CourseIn(@NotBlank String programmeCode, @NotBlank @Size(max = 20) String code,
                            @NotBlank @Size(max = 200) String title, @NotNull Integer units,
                            String kind, Integer semester) {
