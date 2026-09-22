@@ -2421,6 +2421,46 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "pgstudent": {
+    "label": "Postgraduate student",
+    "home": "s/dashboard",
+    "groups": [
+      {
+        "name": "Start here",
+        "items": [
+          { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "s/fees", "icon": "card", "label": "School fees" }
+        ]
+      },
+      {
+        "name": "Academic",
+        "items": [
+          { "id": "s/pgcourses", "icon": "book", "label": "Registration & results" },
+          { "id": "s/research", "icon": "flask", "label": "Research & thesis" },
+          { "id": "s/exams", "icon": "cap", "label": "Examinations" },
+          { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
+        ]
+      },
+      {
+        "name": "Services",
+        "items": [
+          { "id": "s/wallet", "icon": "swap", "label": "Wallet & funding" },
+          { "id": "s/library", "icon": "book", "label": "Library" },
+          { "id": "s/idcard", "icon": "user", "label": "Identity card" },
+          { "id": "s/health", "icon": "heart", "label": "Health" },
+          { "id": "s/support", "icon": "life", "label": "Help & requests" }
+        ]
+      },
+      {
+        "name": "Account",
+        "items": [
+          { "id": "s/profile", "icon": "user", "label": "Profile" },
+          { "id": "s/biodata", "icon": "doc", "label": "Biodata" },
+          { "id": "s/notifications", "icon": "bell", "label": "Notifications" }
+        ]
+      }
+    ]
+  },
   "applicant": {
     "label": "Applicant",
     "home": "a/dashboard",

@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { KvGrid, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -71,6 +71,9 @@ export function Coursework({ initialSession }: { initialSession: string }) {
   const pickedUnits = v.courses.filter((c) => picked.has(c.id)).reduce((s, c) => s + c.units, 0);
   const scored = v.entries.filter((e) => e.total != null);
   const endorsed = v.registration?.state === "ENDORSED";
+  const unitsSat = scored.reduce((a, e) => a + e.units, 0);
+  const unitsPassed = scored.filter((e) => e.grade && e.grade !== "F").reduce((a, e) => a + e.units, 0);
+  const cgpa = Number(v.cgpa);
 
   return (
     <>
@@ -95,13 +98,23 @@ export function Coursework({ initialSession }: { initialSession: string }) {
 
       {scored.length ? (
         <Panel title="Results" right={`GPA ${Number(v.gpa).toFixed(2)} · CGPA ${Number(v.cgpa).toFixed(2)}`}>
-          <DTable cols={["Course", "Title", "Units|num", "CA|num", "Exam|num", "Total|num", "Grade|mid"]}
+          <DTable cols={["Course", "Title", "Units|num", "CA|num", "Exam|num", "Total|num", "Grade|mid", "Points|num"]}
             rows={scored.map((e) => [
               <span key="c" className="tnum">{e.code}</span>, e.title, <span key="u" className="tnum">{e.units}</span>,
               <span key="ca" className="tnum">{e.ca ?? "—"}</span>, <span key="ex" className="tnum">{e.exam ?? "—"}</span>,
               <span key="t" className="tnum">{e.total}</span>,
               <Pil key="g" kind={e.grade === "F" ? "bad" : e.grade === "C" ? "warn" : "ok"}>{e.grade}</Pil>,
+              <span key="p" className="tnum">{e.points != null ? (Number(e.points) * e.units).toFixed(0) : "—"}</span>,
             ])} texts={scored.map((e) => `${e.code} ${e.title}`)} />
+          <PBody>
+            <KvGrid cls="grid--4" pairs={[
+              ["GPA (this semester)", Number(v.gpa).toFixed(2)],
+              ["CGPA", cgpa.toFixed(2)],
+              ["Units passed", `${unitsPassed} of ${unitsSat}`],
+              ["Standing", cgpa >= 2.5 ? <Pil kind="ok">Good standing</Pil> : <Pil kind="bad">Probation</Pil>],
+            ]} />
+            <div className="sub2" style={{ marginTop: 8 }}>Grading (Policy 16): A 70+ · B 60–69 · C 50–59 · F 0–49. Pass mark 50; there is no resit. A CGPA below 2.50 places you on probation for a semester.</div>
+          </PBody>
         </Panel>
       ) : null}
 

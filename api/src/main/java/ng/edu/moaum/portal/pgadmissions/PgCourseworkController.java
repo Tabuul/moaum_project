@@ -117,12 +117,18 @@ class PgCourseworkController {
                 """).param("me", me).query(Boolean.class).single());
         Map<String, Object> reg = firstOrNull(jdbc.sql("""
                 SELECT r.session, r.semester, r.mode, r.state,
-                       (SELECT count(*) FROM admissions.pg_registration_entry e WHERE e.registration_id = r.id) AS courses
+                       (SELECT count(*) FROM admissions.pg_registration_entry e WHERE e.registration_id = r.id) AS courses,
+                       (SELECT coalesce(sum(c.units), 0) FROM admissions.pg_registration_entry e
+                          JOIN admissions.pg_course c ON c.id = e.course_id WHERE e.registration_id = r.id) AS units
                   FROM admissions.pg_registration r WHERE r.student_id = :me
                  ORDER BY r.session DESC, r.semester DESC LIMIT 1
                 """).param("me", me).query().listOfRows());
         Map<String, Object> research = firstOrNull(jdbc.sql("""
-                SELECT stage, topic, degree_kind FROM admissions.pg_research WHERE student_id = :me
+                SELECT r.stage, r.topic, r.degree_kind, r.proposal_submitted_at, r.proposal_approved_at,
+                       (SELECT s.name FROM admissions.pg_research_supervisor s
+                         WHERE s.research_id = r.id AND s.ended_at IS NULL
+                         ORDER BY CASE s.role WHEN 'FIRST' THEN 0 WHEN 'SECOND' THEN 1 ELSE 2 END, s.assigned_at LIMIT 1) AS supervisor
+                  FROM admissions.pg_research r WHERE r.student_id = :me
                 """).param("me", me).query().listOfRows());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("postgraduate", true);

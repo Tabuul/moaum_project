@@ -254,6 +254,8 @@ export interface Me {
   unit?: string | null;
   /** what waits in each queue, by menu item id: the count, or "!" where an act is needed (iam/me) */
   waiting?: Record<string, string> | null;
+  /** a menu other than the office's own — a postgraduate signs in as a student but reads the School's sidebar */
+  menu?: string | null;
 }
 
 /* the prototype drew its counts as fixtures; the portal draws what the API says is waiting, and nothing else */
@@ -279,13 +281,13 @@ export function Shell({ route, me, children, sub }: { route: string; me: Me | nu
   const [navg, setNavg] = useState<Record<string, boolean>>({});
   const [said, setSaid] = useState<string | null>(null);
   const office = me?.activeOffice ?? null;
-  const menu = (office && MENUS[office]) || FALLBACK;
+  const menu = (me?.menu && MENUS[me.menu]) || (office && MENUS[office]) || FALLBACK;
   const waiting = me?.waiting ?? {};
   const current = route === "r/academic" ? menu.home : route;
   const [t0, t1def] = TITLES[current] ?? TITLES[route] ?? ["", ""];
   // a page may pass a live subtitle (e.g. the lecturer's real name and course count) that beats the static one
   const t1 = sub && sub.trim() ? sub : t1def;
-  const label = roleLabel(office);
+  const label = me?.menu && MENUS[me.menu] ? MENUS[me.menu].label : roleLabel(office);
   const who = me?.name ?? label;
 
   const isOpen = (g: MenuGroup) => {
