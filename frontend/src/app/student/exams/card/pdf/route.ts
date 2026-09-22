@@ -101,14 +101,19 @@ export async function GET(request: NextRequest) {
   const pw = 74, ph = 88, px = A4.w - L - pw, ptop = y + 8;
   if (photo) p.jpeg(px, ptop - ph, pw, ph, photo);
   else { for (const [a, b, cc, d] of [[px, ptop, px + pw, ptop], [px, ptop - ph, px + pw, ptop - ph], [px, ptop, px, ptop - ph], [px + pw, ptop, px + pw, ptop - ph]]) p.rule(a, b, cc, d, 0.6, 0.7); p.text(px + 20, ptop - ph / 2, "PHOTO", 8, false, [0.6, 0.6, 0.6]); }
-  p.text(px, ptop - ph - 9, "Photograph on file", 6.5, false, [0.5, 0.5, 0.5]);
+  // the student's name centred under the photo (auto-fit to the photo's width), with "Original" beneath it
+  const nameCx = px + pw / 2;
+  const nm = clean(s.name) || matric;
+  const nmSize = Math.max(5, Math.min(7.5, pw / (Math.max(1, nm.length) * 0.54)));
+  p.textCenter(nameCx, ptop - ph - 9, nm, nmSize, true);
+  p.textCenter(nameCx, ptop - ph - 19, "Original", 6.5, false, [0.5, 0.5, 0.5]);
 
   for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester)]]) {
     p.text(L, y, k.toUpperCase(), 7, false, [0.4, 0.4, 0.4]);
     p.text(L + 140, y, val, 10, true);
     y -= 15;
   }
-  y = Math.min(y, ptop - ph - 18) - 4;
+  y = Math.min(y, ptop - ph - 30) - 4;   // leave room under the photo for the name and the "Original" line
 
   const titleX = L + 92, unitX = A4.w - L - 150, signX = A4.w - L - 92;
   p.fill(L, y - 4, A4.w - 2 * L, 16, 0.16);
