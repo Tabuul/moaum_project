@@ -47,8 +47,9 @@ Sign in as the 300-level student to see the results path from the student's end.
 | Deputy Audit              | `demo.deputyaudit`        | The University               |
 | Human Resources           | `demo.hrm`                | The University               |
 | Housing                   | `demo.housing`            | The University               |
-| Provost                   | `demo.provost`            | The University               |
-| College Secretary         | `demo.collegesecretary`   | The University               |
+| Provost                   | `demo.provost`            | College of Health Sciences   |
+| College Secretary         | `demo.collegesecretary`   | College of Health Sciences   |
+| Finance Controller        | `demo.financecontroller`  | College of Health Sciences   |
 | PG School (Dean)          | `demo.pgschool`           | School of Postgraduate Studies |
 | PG School (Secretary)     | `demo.pgsecretary`        | School of Postgraduate Studies |
 | Librarian                 | `demo.library`            | The University               |
