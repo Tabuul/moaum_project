@@ -107,7 +107,7 @@ export function PgApply() {
           <Row k="Payment reference" v={applied.reference} />
           <Row k="Amount" v={naira(applied.amount)} />
         </div></div>
-        <div style={{ textAlign: "center" }}><Link href="/login?next=/pg/portal" className="btn btn--primary">Sign in to pay &amp; track</Link></div>
+        <div style={{ textAlign: "center" }}><Link href="/login?next=/pg/portal" className="btn btn--primary">Sign in to pay and continue application</Link></div>
         <StatusCheck initialNo={applied.application_no} />
         <div style={{ textAlign: "center", marginTop: 12 }}><Link href="/login">Back to sign in</Link></div>
       </Wrap>
