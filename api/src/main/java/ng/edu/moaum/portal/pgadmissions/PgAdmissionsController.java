@@ -61,8 +61,12 @@ class PgAdmissionsController {
 
     private final JdbcClient jdbc;
 
-    PgAdmissionsController(JdbcClient jdbc) {
+    private final String portalUrl;
+
+    PgAdmissionsController(JdbcClient jdbc,
+                          @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
+        this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
     /* the Bursary (and the School) set the postgraduate application and acceptance fees */
@@ -450,6 +454,23 @@ class PgAdmissionsController {
         jdbc.sql("SELECT admissions.pg_spgs_decide(:id, :offer, :note, :actor)")
                 .param("id", id).param("offer", body.offer())
                 .param("note", body.note(), Types.VARCHAR).param("actor", actor).query().listOfRows();
+        // tell the applicant a decision is ready — they pay the checking fee to see it
+        Map<String, Object> who = jdbc.sql("""
+                SELECT p.email, a.application_no, r.checking_fee
+                  FROM admissions.pg_application a
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                  CROSS JOIN LATERAL admissions.pg_fee_rule(a.session) r
+                 WHERE a.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElse(null);
+        if (who != null && who.get("email") != null && !String.valueOf(who.get("email")).isBlank()) {
+            String fee = "₦" + who.get("checking_fee");
+            String body2 = "A decision has been made on your postgraduate application " + who.get("application_no") + ".\n\n"
+                    + "Pay the checking fee of " + fee + " on the applicant portal to view your admission status:\n"
+                    + portalUrl + "/pg/portal\n\nIf you are admitted, you then pay the acceptance fee to accept and print your offer of admission.";
+            jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'pg_application', :ai)")
+                    .param("r", who.get("email")).param("sub", "A decision on your MOAUM postgraduate application")
+                    .param("b", body2).param("ai", id).query().listOfRows();
+        }
         return application(id);
     }
 

@@ -158,37 +158,45 @@ class PgPortalController {
      */
     @PostMapping("/fee-reference")
     @PreAuthorize("hasAuthority('OFFICE_applicant')")
-    Map<String, Object> feeReference(Authentication authentication) {
+    Map<String, Object> feeReference(Authentication authentication, @RequestParam(required = false) String kind) {
         UUID me = UUID.fromString(authentication.getName());
-        Map<String, Object> app = firstOrNull(jdbc.sql("SELECT id, session, fee_confirmed_at FROM admissions.pg_application WHERE applicant_id = :me")
-                .param("me", me).query().listOfRows());
+        String k = kind == null || kind.isBlank() ? "APPLICATION" : kind.trim().toUpperCase();
+        if (!java.util.Set.of("APPLICATION", "CHECKING", "ACCEPTANCE").contains(k)) {
+            throw new DomainRuleViolation("PG_FEE_KIND", "Unknown fee.", new DomainRuleViolation.Remedy("Reload the page.", "You"));
+        }
+        Map<String, Object> app = firstOrNull(jdbc.sql("""
+                SELECT id, fee_confirmed_at, checking_confirmed_at, acceptance_confirmed_at FROM admissions.pg_application
+                 WHERE applicant_id = :me
+                """).param("me", me).query().listOfRows());
         if (app == null) {
             throw new NotFound("postgraduate application", me);
         }
-        if (app.get("fee_confirmed_at") != null) {
-            throw new DomainRuleViolation("PG_FEE_PAID", "The application fee is already confirmed for this application.",
-                    new DomainRuleViolation.Remedy("Nothing more to pay; track the application on this page.", "School of Postgraduate Studies"));
+        String paidCol = switch (k) { case "CHECKING" -> "checking_confirmed_at"; case "ACCEPTANCE" -> "acceptance_confirmed_at"; default -> "fee_confirmed_at"; };
+        if (app.get(paidCol) != null) {
+            throw new DomainRuleViolation("PG_FEE_PAID", "That fee is already confirmed for this application.",
+                    new DomainRuleViolation.Remedy("Nothing more to pay for it; track the application on this page.", "School of Postgraduate Studies"));
         }
         UUID appId = (UUID) app.get("id");
         Map<String, Object> live = firstOrNull(jdbc.sql("""
                 SELECT reference, amount FROM admissions.pg_fee_reference
-                 WHERE application_id = :app AND kind = 'APPLICATION' AND confirmed_at IS NULL AND expires_at > now()
+                 WHERE application_id = :app AND kind = :k AND confirmed_at IS NULL AND expires_at > now()
                  ORDER BY expires_at DESC LIMIT 1
-                """).param("app", appId).query().listOfRows());
+                """).param("app", appId).param("k", k).query().listOfRows());
         Map<String, Object> ref = live != null ? live
-                : AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate application fee reference", null, null),
+                : AuditContextHolder.with(new AuditContext(me, "applicant", "postgraduate " + k.toLowerCase() + " fee reference", null, null),
                         () -> tx.execute(st -> {
-                            String r = jdbc.sql("SELECT admissions.pg_new_fee_reference(:app, 'APPLICATION')")
-                                    .param("app", appId).query(String.class).single();
+                            String r = jdbc.sql("SELECT admissions.pg_new_fee_reference(:app, :k)")
+                                    .param("app", appId).param("k", k).query(String.class).single();
                             return jdbc.sql("SELECT reference, amount FROM admissions.pg_fee_reference WHERE reference = :r")
                                     .param("r", r).query().singleRow();
                         }));
-        return Map.of("reference", ref.get("reference"), "amount", ref.get("amount"));
+        return Map.of("reference", ref.get("reference"), "amount", ref.get("amount"), "kind", k);
     }
 
     private Map<String, Object> view(UUID me) {
         Map<String, Object> a = firstOrNull(jdbc.sql("""
                 SELECT a.id AS application_id, a.application_no, a.state, a.entry_level, a.submitted_at, a.fee_confirmed_at,
+                       a.checking_confirmed_at, a.acceptance_confirmed_at,
                        a.dept_note, a.dept_decided_at, a.spgs_note, a.spgs_decided_at, a.accepted_at, a.admitted_at, a.created_at,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
                        a.proposal_title, a.proposal_text,
@@ -233,7 +241,12 @@ class PgPortalController {
         out.put("otherNames", a.get("other_names"));
         out.put("email", a.get("email"));
         out.put("phone", a.get("phone"));
-        out.put("state", a.get("state"));
+        // the admission decision is released only after the checking fee is paid
+        boolean decisionLocked = a.get("spgs_decided_at") != null && a.get("checking_confirmed_at") == null;
+        out.put("state", decisionLocked ? "DECISION_LOCKED" : a.get("state"));
+        out.put("decisionLocked", decisionLocked);
+        out.put("checkingConfirmedAt", a.get("checking_confirmed_at"));
+        out.put("acceptanceConfirmedAt", a.get("acceptance_confirmed_at"));
         out.put("entryLevel", a.get("entry_level"));
         out.put("programme", a.get("programme_name"));
         out.put("programmeCode", a.get("programme_code"));
@@ -250,7 +263,7 @@ class PgPortalController {
         out.put("liveReference", live == null ? null : live.get("reference"));
         out.put("deptNote", a.get("dept_note"));
         out.put("deptDecidedAt", a.get("dept_decided_at"));
-        out.put("spgsNote", a.get("spgs_note"));
+        out.put("spgsNote", decisionLocked ? null : a.get("spgs_note"));
         out.put("spgsDecidedAt", a.get("spgs_decided_at"));
         out.put("acceptedAt", a.get("accepted_at"));
         out.put("admittedAt", a.get("admitted_at"));

@@ -31,6 +31,7 @@ interface Me {
   applicationFee: number | null; acceptanceFee: number | null; checkingFee: number | null; liveReference: string | null;
   deptNote: string | null; deptDecidedAt: string | null; spgsNote: string | null; spgsDecidedAt: string | null;
   acceptedAt: string | null; admittedAt: string | null;
+  decisionLocked?: boolean; checkingConfirmedAt: string | null; acceptanceConfirmedAt: string | null;
   biodata: { sex: string | null; dateOfBirth: string | null; stateOfOrigin: string | null; lga: string | null };
   prior: { institution: string | null; award: string | null; classOfDegree: string | null; cgpa: number | null; year: number | null };
   proposal: { title: string | null; text: string | null };
@@ -43,10 +44,12 @@ const STATE_LABEL: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted — with the department", DEPT_RECOMMENDED: "Recommended — with the School",
   DEPT_DECLINED: "Not recommended by the department", OFFERED: "Offered a place", NOT_OFFERED: "Not offered",
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
+  DECISION_LOCKED: "A decision has been made — pay the checking fee to view it",
 };
 const STATE_SHORT: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Recommended", DEPT_DECLINED: "Declined",
   OFFERED: "Offered", NOT_OFFERED: "Not offered", ACCEPTED: "Accepted", ADMITTED: "Admitted",
+  DECISION_LOCKED: "Decision ready",
 };
 function fmtDate(v: string | null): string {
   if (!v) return "—";
@@ -85,22 +88,33 @@ export function PgPortal() {
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
       const m = j as Me;
       setMe(m);
-      if (!m.feeConfirmedAt) {
-        const fr = await fetch("/api/bff/api/v1/pg/fee-reference", { method: "POST", headers: { "Content-Type": "application/json" } });
+      // the fee to prepare for the current step: application, then checking (to see the decision), then acceptance
+      const kind = !m.feeConfirmedAt ? "APPLICATION"
+        : m.state === "DECISION_LOCKED" ? "CHECKING"
+        : (m.state === "OFFERED" && !m.acceptanceConfirmedAt) ? "ACCEPTANCE"
+        : null;
+      if (kind) {
+        const fr = await fetch(`/api/bff/api/v1/pg/fee-reference?kind=${kind}`, { method: "POST", headers: { "Content-Type": "application/json" } });
         const fj = await fr.json().catch(() => null);
-        if (fr.ok && fj && typeof fj === "object" && "reference" in fj) setReference(String((fj as { reference: string }).reference));
+        setReference(fr.ok && fj && typeof fj === "object" && "reference" in fj ? String((fj as { reference: string }).reference) : null);
+      } else {
+        setReference(null);
       }
     } finally { setLoading(false); }
   }, []);
 
   /* verify a reference and re-read the application a few times — a gateway can take a little while to
-     settle after the "success" screen, so we poll rather than checking once and leaving it unpaid */
+     settle after the "success" screen, so we poll rather than checking once and leaving it unpaid.
+     which confirmation to wait for is read from the reference's kind (APP / CHK / ACC). */
   const pollConfirm = useCallback(async (ref: string, tries: number): Promise<boolean> => {
+    const done = (m: Me) => ref.includes("PGACC") ? !!m.acceptanceConfirmedAt
+      : ref.includes("PGCHK") ? !!m.checkingConfirmedAt
+      : !!m.feeConfirmedAt;
     for (let i = 0; i < tries; i++) {
       try { await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference: ref }) }); } catch { /* ignore */ }
       const r = await fetch("/api/bff/api/v1/pg/me", { cache: "no-store" });
       const j = await r.json().catch(() => null);
-      if (r.ok && j) { setMe(j as Me); if ((j as Me).feeConfirmedAt) return true; }
+      if (r.ok && j) { setMe(j as Me); if (done(j as Me)) return true; }
       if (i < tries - 1) await new Promise((res) => setTimeout(res, 4000));
     }
     return false;
@@ -186,6 +200,66 @@ export function PgPortal() {
       </Note>
 
       {verifying ? <Note kind="info" title="Confirming your payment…">This can take a moment after the gateway&rsquo;s success page — the page updates on its own once the payment reaches the University.</Note> : null}
+
+      {/* The decision gate: once the School decides, the applicant pays the checking fee to view the
+          outcome; if offered, they pay the acceptance fee to accept, and can then print the offer letter. */}
+      {paid && me.state === "DECISION_LOCKED" ? (
+        <Panel title="Your admission decision is ready">
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 8 }}>
+              The School of Postgraduate Studies has taken a decision on your application. Pay the checking fee of <b>{naira(me.checkingFee)}</b> to view your admission status. If you are offered a place, you will then pay the acceptance fee to accept the offer and print your admission letter.
+            </div>
+            {reference ? (
+              <>
+                <PayByCard reference={reference} amount={Number(me.checkingFee ?? 0)} />
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+                  <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — show my status"}</button>
+                  <span className="sub2">Reference: <b className="tnum">{reference}</b></span>
+                </div>
+              </>
+            ) : <Note kind="bad" title="The checking fee could not be prepared">Reload the page, or write to the School quoting your application number.</Note>}
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {paid && me.state === "OFFERED" ? (
+        <Panel title="Congratulations — you have been offered a place">
+          <PBody>
+            <Note kind="ok" title={`Offer of provisional admission · ${me.programme}`}>
+              You have been offered provisional admission for the {me.session} session. Pay the acceptance fee of <b>{naira(me.acceptanceFee)}</b> to accept the offer, then print your offer of admission.
+            </Note>
+            {reference ? (
+              <div style={{ marginTop: 10 }}>
+                <PayByCard reference={reference} amount={Number(me.acceptanceFee ?? 0)} />
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+                  <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
+                  <span className="sub2">Reference: <b className="tnum">{reference}</b></span>
+                </div>
+              </div>
+            ) : <Note kind="bad" title="The acceptance fee could not be prepared">Reload the page, or write to the School quoting your application number.</Note>}
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {paid && (me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
+        <Panel title="Offer of admission">
+          <PBody>
+            <Note kind="ok" title="Your offer is accepted">You accepted your offer of admission{me.acceptanceConfirmedAt ? ` on ${fmtDate(me.acceptanceConfirmedAt)}` : ""}. Download and print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
+            <div style={{ marginTop: 10 }}>
+              <a href="/pg/offer/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print offer of admission (PDF)</a>
+            </div>
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {paid && me.state === "NOT_OFFERED" ? (
+        <Panel title="Admission decision">
+          <PBody>
+            <Note kind="bad" title="Not offered a place">We regret that you were not offered admission for the {me.session} session.{me.spgsNote ? "" : " You may wish to apply again in a future session."}</Note>
+            {me.spgsNote ? <div className="sub2" style={{ marginTop: 8 }}>{me.spgsNote}</div> : null}
+          </PBody>
+        </Panel>
+      ) : null}
 
       <Tiles items={[
         ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
@@ -295,7 +369,7 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
+      {me.spgsNote && me.state !== "NOT_OFFERED" ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
 
       <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 6 }}>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => void load()}>Refresh</button>
