@@ -9,6 +9,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
+import { Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -72,6 +73,8 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [note, setNote] = useState("");
+  /* a document opened in a modal viewer on this page, rather than in a new tab */
+  const [viewing, setViewing] = useState<{ url: string; title: string; image: boolean } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -185,24 +188,39 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       <Section title="Documents">
         {otherDocs.length || passport ? (
           <div style={{ display: "grid", gap: 6 }}>
-            <div style={{ marginBottom: 4 }}>
-              <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download all as one PDF</a>
+            <div style={{ marginBottom: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Btn kind="primary" onClick={() => setViewing({ url: `/api/bff/api/v1/pg/applications/${id}/documents.pdf`, title: "All documents — one PDF", image: false })}>View all as one PDF</Btn>
+              <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} download className="btn btn--ghost btn--sm">Download</a>
             </div>
             {passport ? (
               <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span>passport — {passport.filename}</span>
-                <a href={docUrl(passport.id)} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">View</a>
+                <Btn kind="ghost" onClick={() => setViewing({ url: docUrl(passport.id), title: `Passport — ${passport.filename}`, image: true })}>View</Btn>
               </div>
             ) : null}
             {otherDocs.map((x) => (
               <div key={x.id} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span>{x.kind.replace(/_/g, " ").toLowerCase()} — {x.filename}</span>
-                <a href={docUrl(x.id)} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">View PDF</a>
+                <Btn kind="ghost" onClick={() => setViewing({ url: docUrl(x.id), title: `${x.kind.replace(/_/g, " ").toLowerCase()} — ${x.filename}`, image: false })}>View PDF</Btn>
               </div>
             ))}
           </div>
         ) : <div className="sub2">No documents uploaded yet.</div>}
       </Section>
+
+      {viewing ? (
+        <Modal title={viewing.title} sub="Opens here; close to return to the application" wide onClose={() => setViewing(null)}
+          foot={<><a href={viewing.url} download className="btn btn--ghost btn--sm">Download</a><span style={{ flexGrow: 1 }} /><button type="button" className="btn btn--primary btn--sm" onClick={() => setViewing(null)}>Close</button></>}>
+          {viewing.image ? (
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={viewing.url} alt={viewing.title} style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+            </div>
+          ) : (
+            <iframe src={viewing.url} title={viewing.title} style={{ width: "100%", height: "72vh", border: "1px solid var(--line-2)", borderRadius: 8, background: "#fff" }} />
+          )}
+        </Modal>
+      ) : null}
 
       {a.dept_note ? <Note kind="info" title="Department note">{a.dept_note}</Note> : null}
       {a.fac_note ? <Note kind="info" title="Faculty note">{a.fac_note}</Note> : null}

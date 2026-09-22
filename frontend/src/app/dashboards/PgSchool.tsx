@@ -114,15 +114,17 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
     return <Note kind="bad" title="The Secretary's figures could not be read">This dashboard reads the postgraduate registration, fee and research registers; it did not answer.</Note>;
   }
   const c = home.counts;
-  const registrations = "/admissions/postgraduate/results";
+  const registrations = "/admissions/postgraduate/results";                 // where a registration is endorsed
+  const registrationDesk = `/admissions/postgraduate/registration?session=${encodeURIComponent(home.session)}`;
+  const examinations = `/admissions/postgraduate/examinations?session=${encodeURIComponent(home.session)}`;
   const admissions = `/admissions/postgraduate?session=${encodeURIComponent(home.session)}`;
-  const clearance = "/admissions/postgraduate/research?stage=FINAL_SUBMITTED";
-  const register = "/admissions/postgraduate/students";
+  const clearance = "/admissions/postgraduate/clearance";
+  const register = registrationDesk;
   const waiting = Number(c.toEndorse) + Number(c.feesToConfirm) + Number(c.clearances);
   return (
     <>
       {waiting ? (
-        <Note kind="info" title={`${waiting} item${waiting === 1 ? "" : "s"} wait on the Secretary for ${home.session}`} action={<Link href={registrations} className="btn btn--primary btn--sm">Registration desk</Link>}>
+        <Note kind="info" title={`${waiting} item${waiting === 1 ? "" : "s"} wait on the Secretary for ${home.session}`} action={<Link href={registrationDesk} className="btn btn--primary btn--sm">Registration desk</Link>}>
           {Number(c.toEndorse) ? `${c.toEndorse} registration${Number(c.toEndorse) === 1 ? "" : "s"} to endorse` : null}
           {Number(c.toEndorse) && (Number(c.feesToConfirm) || Number(c.clearances)) ? " · " : null}
           {Number(c.feesToConfirm) ? `${c.feesToConfirm} fee${Number(c.feesToConfirm) === 1 ? "" : "s"} to confirm` : null}
@@ -131,7 +133,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
           .
         </Note>
       ) : (
-        <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<Link href={registrations} className="btn btn--ghost btn--sm">Registration desk</Link>}>
+        <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<Link href={registrationDesk} className="btn btn--ghost btn--sm">Registration desk</Link>}>
           Submitted registrations, fee references and theses awaiting clearance appear here to be acted on.
         </Note>
       )}
@@ -139,7 +141,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
       <Tiles items={[
         ["To register", String(c.toRegister), Number(c.toRegister) ? "var(--chrome)" : null, "PG students yet to register this session", register],
         ["Fees to confirm", String(c.feesToConfirm), Number(c.feesToConfirm) ? "var(--chrome)" : null, "Live references awaiting confirmation", admissions],
-        ["Exams pending", String(c.examsPending), Number(c.examsPending) ? "var(--chrome)" : null, "Registered courses without a result", registrations],
+        ["Exams pending", String(c.examsPending), Number(c.examsPending) ? "var(--chrome)" : null, "Registered courses without a result", examinations],
         ["Clearances", String(c.clearances), Number(c.clearances) ? "var(--chrome)" : null, "Theses awaiting the Secretary's clearance", clearance],
       ]} />
 
@@ -150,7 +152,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
               <div style={{ fontWeight: 600 }}>Registrations to endorse</div>
               <span className="sub2">{c.toEndorse} submitted</span>
               <span style={{ flexGrow: 1 }} />
-              <Link href={registrations} className="btn btn--ghost btn--sm">Registration desk</Link>
+              <Link href={registrations} className="btn btn--ghost btn--sm">Endorse on the registrations desk</Link>
             </div>
             {home.toEndorse.length ? (
               <DTable cols={["Student", "Programme", "Semester|mid", "Courses|num", "Submitted|num"]}

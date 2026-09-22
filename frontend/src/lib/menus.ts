@@ -2590,6 +2590,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Results & awards",
         "items": [
           { "id": "t/pgscores", "icon": "doc", "label": "Course results" },
+          { "id": "t/pgsenate", "icon": "check", "label": "Results to Senate" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation list" }
         ]
