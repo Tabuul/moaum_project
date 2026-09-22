@@ -14,8 +14,10 @@ import { semesterText } from "@/lib/student-portal";
 
 type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "pgregistration" | "pgresults" | "pgresearch" | "jamb" | "passports";
 const MIGRATE = ["ict", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
-/* the matric shapes the biography/students importers accept — the University's own, or a legacy old-portal number */
-const MATRIC_OK = /^(MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}|[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7})$/i;
+/* any institutional matriculation number: a 2–6 letter prefix (MOAU / MOAUM / BSU …) then 2–8 slash
+   segments. Postgraduate numbers spell out faculty/department/programme (e.g. MOAU/AM/BSM/PGDM/MSC/25/0021),
+   so the shape is kept permissive rather than tied to the undergraduate MOAUM/DEPT/YY/NNNN form. */
+const MATRIC_OK = /^[A-Z]{2,6}(\/[A-Z0-9]{1,12}){2,8}$/i;
 /** a semester cell — "First"/"Second"/"Third" or 1/2/3 — to its number */
 const semNum = (v: string) => { const t = v.trim().toLowerCase(); return t.startsWith("f") || t === "1" ? 1 : t.startsWith("s") || t === "2" ? 2 : t.startsWith("t") || t === "3" ? 3 : Number(v) || 0; };
 
