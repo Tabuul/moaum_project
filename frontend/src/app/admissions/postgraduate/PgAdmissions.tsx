@@ -3,7 +3,7 @@
 /** The postgraduate admissions desks (V202): the department's committee recommends a submitted
  *  application, the School of Postgraduate Studies offers or refuses, the applicant accepts, and the
  *  School admits — which puts the student on the register. Separate from the JAMB/CAPS flow. */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -46,6 +46,23 @@ const mayAdmit = (o: string | null) => ["pgschool", "pgsecretary", "registrar", 
 const fmtDate = (v: string | null | undefined) => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }); };
 const sexLabel = (v: string | null | undefined) => (v === "F" ? "Female" : v === "M" ? "Male" : "—");
 
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".05em", fontSize: 10.5, fontWeight: 600, color: "var(--chrome)", borderBottom: "2px solid var(--line-2)", paddingBottom: 5, marginBottom: 8 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+function Kv({ k, v }: { k: string; v: string }) {
+  return (
+    <div style={{ display: "flex", gap: 14, padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "baseline" }}>
+      <span className="sub2" style={{ minWidth: 150, textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5 }}>{k}</span>
+      <span style={{ fontWeight: 600, fontSize: 13.5 }}>{v}</span>
+    </div>
+  );
+}
+
 function DetailPanel({ id, office, onChanged }: { id: string; office: string | null; onChanged: () => void }) {
   const [d, setD] = useState<Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -84,65 +101,88 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
   if (!d.found || !d.application) return <PBody><div className="sub2">This application could not be read.</div></PBody>;
   const a = d.application;
   const st = a.state;
+  const docUrl = (docId: string) => `/api/bff/api/v1/pg/applications/${id}/documents/${docId}`;
+  const passport = (d.documents ?? []).find((x) => x.kind === "PASSPORT") ?? null;
+  const otherDocs = (d.documents ?? []).filter((x) => x.kind !== "PASSPORT");
+  const quals: PriorQual[] = (d.priorDegrees ?? []).length
+    ? (d.priorDegrees ?? [])
+    : [{ kind: "FIRST", institution: a.prior_institution, award: a.prior_award, field: null, class_of_degree: a.prior_class, cgpa: a.prior_cgpa, year: a.prior_year } as PriorQual];
   return (
-    <div className="card__body" style={{ display: "grid", gap: 14 }}>
+    <div className="card__body" style={{ display: "grid", gap: 20 }}>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px 24px" }}>
-        {([["Sex", sexLabel(a.sex)], ["Date of birth", fmtDate(a.date_of_birth)],
-           ["State of origin", a.state_of_origin ?? "—"], ["LGA", a.lga ?? "—"],
-           ["Contact", `${a.email}${a.phone ? ` · ${a.phone}` : ""}`]] as [string, string][]).map(([k, v]) => (
-          <div key={k}><div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5 }}>{k}</div><div style={{ fontWeight: 600, fontSize: 13.5 }}>{v}</div></div>
-        ))}
+
+      {/* identity, with the passport shown as a photograph */}
+      <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {passport ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={docUrl(passport.id)} alt="Passport photograph" style={{ width: 108, height: 132, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+        ) : (
+          <div className="sub2" style={{ width: 108, height: 132, borderRadius: 8, border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: 6 }}>No passport uploaded</div>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{a.surname}, {a.other_names}</div>
+          <div className="sub2" style={{ marginTop: 2 }}>{a.application_no} · {a.programme_name}{a.pg_award ? ` (${a.pg_award})` : ""}</div>
+          <div className="sub2">{a.email}{a.phone ? ` · ${a.phone}` : ""}</div>
+        </div>
       </div>
 
-      <div>
-        <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5, marginBottom: 6 }}>Qualifications</div>
-        {(() => {
-          const list = (d.priorDegrees ?? []).length
-            ? (d.priorDegrees ?? [])
-            : [{ kind: "FIRST", institution: a.prior_institution, award: a.prior_award, field: null, class_of_degree: a.prior_class, cgpa: a.prior_cgpa, year: a.prior_year } as PriorQual];
-          return (
-            <div style={{ display: "grid", gap: 8 }}>
-              {list.map((q, i) => (
-                <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 8, padding: "8px 12px" }}>
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>
-                    {QUAL_LABEL[q.kind] ?? q.kind}{q.award ? ` — ${q.award}` : ""}{q.field ? ` (${q.field})` : ""}
-                  </div>
-                  <div className="sub2" style={{ marginTop: 2 }}>
-                    {[q.institution, q.class_of_degree, q.cgpa != null ? `CGPA ${q.cgpa}` : null, q.year != null ? String(q.year) : null].filter(Boolean).join(" · ") || "—"}
-                  </div>
-                </div>
-              ))}
+      <Section title="Bio-data">
+        <Kv k="Surname" v={a.surname} />
+        <Kv k="Other names" v={a.other_names} />
+        <Kv k="Sex" v={sexLabel(a.sex)} />
+        <Kv k="Date of birth" v={fmtDate(a.date_of_birth)} />
+        <Kv k="State of origin" v={a.state_of_origin ?? "—"} />
+        <Kv k="LGA" v={a.lga ?? "—"} />
+        <Kv k="Email" v={a.email} />
+        <Kv k="Phone" v={a.phone ?? "—"} />
+      </Section>
+
+      <Section title="Institutions attended">
+        <div style={{ display: "grid", gap: 8 }}>
+          {quals.map((q, i) => (
+            <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 8, padding: "8px 12px" }}>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                {QUAL_LABEL[q.kind] ?? q.kind}{q.award ? ` — ${q.award}` : ""}{q.field ? ` (${q.field})` : ""}
+              </div>
+              <div className="sub2" style={{ marginTop: 2 }}>
+                {[q.institution, q.class_of_degree, q.cgpa != null ? `CGPA ${q.cgpa}` : null, q.year != null ? String(q.year) : null].filter(Boolean).join(" · ") || "—"}
+              </div>
             </div>
-          );
-        })()}
-      </div>
+          ))}
+        </div>
+      </Section>
 
       {a.pg_research ? (
-        <div>
-          <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5, marginBottom: 4 }}>Research proposal</div>
+        <Section title="Research proposal">
           <div style={{ fontWeight: 600 }}>{a.proposal_title || "—"}</div>
           {a.proposal_text ? <div className="sub2" style={{ marginTop: 4, lineHeight: 1.5 }}>{a.proposal_text}</div> : null}
-        </div>
+        </Section>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
-        <div>
-          <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5, marginBottom: 6 }}>Referees</div>
-          {(d.referees ?? []).length ? (d.referees ?? []).map((r) => (
-            <div key={r.id} className="sub2" style={{ marginBottom: 4 }}><b>{r.name}</b>{r.position ? ` · ${r.position}` : ""}{r.institution ? ` · ${r.institution}` : ""}</div>
-          )) : <div className="sub2">None named.</div>}
-        </div>
-        <div>
-          <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5, marginBottom: 6 }}>Documents</div>
-          {(d.documents ?? []).length ? (d.documents ?? []).map((x) => (
-            <div key={x.id} className="sub2" style={{ marginBottom: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span>{x.kind.replace("_", " ").toLowerCase()} — {x.filename}</span>
-              <a href={`/api/bff/api/v1/pg/applications/${id}/documents/${x.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">View PDF</a>
-            </div>
-          )) : <div className="sub2">None uploaded &mdash; the applicant scans their O&rsquo;/A&rsquo;Level and birth certificate into one PDF on their dashboard.</div>}
-        </div>
-      </div>
+      <Section title="Referees">
+        {(d.referees ?? []).length ? (d.referees ?? []).map((r) => (
+          <div key={r.id} className="sub2" style={{ marginBottom: 4 }}><b>{r.name}</b>{r.position ? ` · ${r.position}` : ""}{r.institution ? ` · ${r.institution}` : ""}{r.email ? ` · ${r.email}` : ""}</div>
+        )) : <div className="sub2">None named.</div>}
+      </Section>
+
+      <Section title="Documents">
+        {otherDocs.length || passport ? (
+          <div style={{ display: "grid", gap: 6 }}>
+            {passport ? (
+              <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span>passport — {passport.filename}</span>
+                <a href={docUrl(passport.id)} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">View</a>
+              </div>
+            ) : null}
+            {otherDocs.map((x) => (
+              <div key={x.id} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span>{x.kind.replace(/_/g, " ").toLowerCase()} — {x.filename}</span>
+                <a href={docUrl(x.id)} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">View PDF</a>
+              </div>
+            ))}
+          </div>
+        ) : <div className="sub2">No documents uploaded yet.</div>}
+      </Section>
 
       {a.dept_note ? <Note kind="info" title="Department note">{a.dept_note}</Note> : null}
       {a.spgs_note ? <Note kind="info" title="School note">{a.spgs_note}</Note> : null}
