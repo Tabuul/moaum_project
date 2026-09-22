@@ -85,9 +85,23 @@ export function PgApply() {
     return () => { live = false; };
   }, []);
 
+  const [step, setStep] = useState(1);
   const chosen = useMemo(() => progs.find((p) => p.code === f.programme), [progs, f.programme]);
   const set = (k: string) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   function chooseProgramme(code: string) { setF({ ...f, programme: code }); }
+
+  const STEPS = ["Programme", "Your details", "Account"];
+  function next() {
+    setProblem(null);
+    if (step === 1 && !f.programme) { setProblem({ status: 400, title: "Choose a programme to continue." }); return; }
+    if (step === 2) {
+      if (!f.surname?.trim() || !f.otherNames?.trim()) { setProblem({ status: 400, title: "Your surname and other names are required." }); return; }
+      if (!f.email?.trim()) { setProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); return; }
+    }
+    setStep((n) => Math.min(STEPS.length, n + 1));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function back() { setProblem(null); setStep((n) => Math.max(1, n - 1)); }
 
   async function submit() {
     setProblem(null);
@@ -127,62 +141,103 @@ export function PgApply() {
     );
   }
 
+  const last = step === STEPS.length;
   return (
     <Wrap>
       <Note kind="info" title="Apply for a postgraduate programme">
-        Choose a programme and create your account below. The application fee is stated once you submit; after you pay, you complete your application in the portal — your first degree, other qualifications, referees, documents and passport. You may apply for only one programme at a time.
+        Choose a programme and create your account in the steps below. The application fee is stated once you submit; after you pay, you complete your application in the portal — your first degree, other qualifications, referees, documents and passport. You may apply for only one programme at a time.
       </Note>
+
+      <Stepper steps={STEPS} current={step} onGo={(n) => { if (n < step) { setProblem(null); setStep(n); } }} />
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <div className="card"><div className="card__body" style={{ display: "grid", gap: 12 }}>
-        <Section title="Programme" />
-        <Field id="programme" label="Programme applied for">
-          <ProgrammePicker progs={progs} value={f.programme ?? ""} onPick={chooseProgramme} />
-        </Field>
-        {chosen ? <div className="hint">{chosen.department_name} · {chosen.faculty_name}{chosen.pg_research ? " · research degree (a proposal may be added — optional)" : ""}</div> : null}
-
-        <Section title="Your details" />
-        <div className="grid grid--2">
-          <Field id="surname" label="Surname"><input id="surname" className="ctl" value={f.surname ?? ""} onChange={set("surname")} autoComplete="family-name" /></Field>
-          <Field id="otherNames" label="Other names"><input id="otherNames" className="ctl" value={f.otherNames ?? ""} onChange={set("otherNames")} autoComplete="given-name" /></Field>
-          <Field id="sex" label="Sex"><select id="sex" className="ctl" value={f.sex ?? ""} onChange={set("sex")}><option value="">—</option><option value="F">Female</option><option value="M">Male</option></select></Field>
-          <Field id="dob" label="Date of birth"><input id="dob" type="date" className="ctl" value={f.dob ?? ""} onChange={set("dob")} /></Field>
-          <Field id="state" label="State of origin">
-            <select id="state" className="ctl" value={f.state ?? ""} onChange={(e) => setF({ ...f, state: e.target.value, lga: "" })}>
-              <option value="">— Select a state —</option>
-              {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </Field>
-          <Field id="lga" label="Local government">
-            <select id="lga" className="ctl" value={f.lga ?? ""} onChange={set("lga")} disabled={!f.state}>
-              <option value="">{f.state ? "— Select an LGA —" : "Select a state first"}</option>
-              {lgasOf(f.state ?? "").map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </Field>
-          <Field id="email" label="Email"><input id="email" type="email" className="ctl" value={f.email ?? ""} onChange={set("email")} autoComplete="email" /></Field>
-          <Field id="phone" label="Phone"><input id="phone" className="ctl" value={f.phone ?? ""} onChange={set("phone")} placeholder="08030000000" autoComplete="tel" /></Field>
-          <Field id="password" label="Choose a password" hint="At least six characters — to sign in and pay later"><input id="password" type="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
-          <Field id="password2" label="Confirm password"><input id="password2" type="password" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
-        </div>
-
-        {chosen?.pg_research ? (
+        {step === 1 ? (
           <>
-            <Section title="Research proposal (optional)" />
-            <Field id="proposalTitle" label="Proposed topic"><input id="proposalTitle" className="ctl" value={f.proposalTitle ?? ""} onChange={set("proposalTitle")} /></Field>
-            <Field id="proposalText" label="Summary of the proposed research"><textarea id="proposalText" className="ctl" rows={4} value={f.proposalText ?? ""} onChange={set("proposalText")} /></Field>
+            <Section title="Programme" />
+            <Field id="programme" label="Programme applied for">
+              <ProgrammePicker progs={progs} value={f.programme ?? ""} onPick={chooseProgramme} />
+            </Field>
+            {chosen ? <div className="hint">{chosen.department_name} · {chosen.faculty_name}{chosen.pg_research ? " · research degree (you can add a proposal in the last step)" : ""}</div> : <div className="hint">Search and pick the postgraduate programme you are applying for.</div>}
           </>
         ) : null}
 
-        <div className="hint">After you submit, sign in to pay the application fee. You then complete your first degree, other qualifications, referees, documents and passport in the portal.</div>
+        {step === 2 ? (
+          <>
+            <Section title="Your details" />
+            <div className="grid grid--2">
+              <Field id="surname" label="Surname"><input id="surname" className="ctl" value={f.surname ?? ""} onChange={set("surname")} autoComplete="family-name" /></Field>
+              <Field id="otherNames" label="Other names"><input id="otherNames" className="ctl" value={f.otherNames ?? ""} onChange={set("otherNames")} autoComplete="given-name" /></Field>
+              <Field id="sex" label="Sex"><select id="sex" className="ctl" value={f.sex ?? ""} onChange={set("sex")}><option value="">—</option><option value="F">Female</option><option value="M">Male</option></select></Field>
+              <Field id="dob" label="Date of birth"><input id="dob" type="date" className="ctl" value={f.dob ?? ""} onChange={set("dob")} /></Field>
+              <Field id="state" label="State of origin">
+                <select id="state" className="ctl" value={f.state ?? ""} onChange={(e) => setF({ ...f, state: e.target.value, lga: "" })}>
+                  <option value="">— Select a state —</option>
+                  {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+              <Field id="lga" label="Local government">
+                <select id="lga" className="ctl" value={f.lga ?? ""} onChange={set("lga")} disabled={!f.state}>
+                  <option value="">{f.state ? "— Select an LGA —" : "Select a state first"}</option>
+                  {lgasOf(f.state ?? "").map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </Field>
+              <Field id="email" label="Email"><input id="email" type="email" className="ctl" value={f.email ?? ""} onChange={set("email")} autoComplete="email" /></Field>
+              <Field id="phone" label="Phone"><input id="phone" className="ctl" value={f.phone ?? ""} onChange={set("phone")} placeholder="08030000000" autoComplete="tel" /></Field>
+            </div>
+          </>
+        ) : null}
+
+        {step === 3 ? (
+          <>
+            <Section title="Choose a password" />
+            <div className="grid grid--2">
+              <Field id="password" label="Password" hint="At least six characters — to sign in and pay later"><input id="password" type="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
+              <Field id="password2" label="Confirm password"><input id="password2" type="password" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
+            </div>
+            {chosen?.pg_research ? (
+              <>
+                <Section title="Research proposal (optional)" />
+                <Field id="proposalTitle" label="Proposed topic"><input id="proposalTitle" className="ctl" value={f.proposalTitle ?? ""} onChange={set("proposalTitle")} /></Field>
+                <Field id="proposalText" label="Summary of the proposed research"><textarea id="proposalText" className="ctl" rows={4} value={f.proposalText ?? ""} onChange={set("proposalText")} /></Field>
+              </>
+            ) : null}
+            <div className="hint">After you submit, sign in to pay the application fee. You then complete your first degree, other qualifications, referees, documents and passport in the portal.</div>
+          </>
+        ) : null}
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4 }}>
-          <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</button>
-          <Link href="/login" className="btn btn--ghost btn--sm">Cancel</Link>
+          {step > 1 ? <button type="button" className="btn btn--ghost btn--sm" onClick={back}>Back</button> : <Link href="/login" className="btn btn--ghost btn--sm">Cancel</Link>}
+          <span style={{ flexGrow: 1 }} />
+          <span className="sub2">Step {step} of {STEPS.length}</span>
+          {last
+            ? <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</button>
+            : <button type="button" className="btn btn--primary" onClick={next}>Next</button>}
         </div>
       </div></div>
 
       <StatusCheck />
     </Wrap>
+  );
+}
+
+/** the step indicator across the top of the application wizard; a completed step can be clicked to go back */
+function Stepper({ steps, current, onGo }: { steps: string[]; current: number; onGo: (n: number) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      {steps.map((t, i) => {
+        const n = i + 1;
+        const done = current > n, cur = current === n;
+        const on = done || cur;
+        return (
+          <button key={t} type="button" onClick={() => (done ? onGo(n) : undefined)} disabled={!done}
+            style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: done ? "pointer" : "default" }}>
+            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, #2b6cb0)" : "var(--line-2, #d9d9d9)" }} />
+            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, #888)" }}>{n}. {t}</div>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
