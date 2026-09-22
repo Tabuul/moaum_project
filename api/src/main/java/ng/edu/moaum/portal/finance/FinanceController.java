@@ -169,8 +169,8 @@ class FinanceController {
     @Transactional
     Map<String, Object> addItem(@PathVariable String session, @PathVariable String year, @Valid @RequestBody Item body) {
         String s = session + "/" + year;
-        if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600).contains(body.level())) {
-            throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 600.", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
+        if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600, 700, 800, 900).contains(body.level())) {
+            throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 900 (700–900 are postgraduate).", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
         }
         if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
@@ -211,8 +211,8 @@ class FinanceController {
     @PreAuthorize(BURSARY)
     @Transactional
     Map<String, Object> editItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody Item body) {
-        if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600).contains(body.level())) {
-            throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 600.", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
+        if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600, 700, 800, 900).contains(body.level())) {
+            throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 900 (700–900 are postgraduate).", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
         }
         if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
