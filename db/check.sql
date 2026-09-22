@@ -278,7 +278,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 30, n || ' offices (28 staff offices incl. the SIWES Coordinator V156 and the School of Postgraduate Studies'' Dean and Secretary V201, the applicant V021 and the student V026)');
+                           n = 31, n || ' offices (29 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201 and the College Finance Controller V227, the applicant V021 and the student V026)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
