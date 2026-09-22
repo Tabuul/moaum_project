@@ -11,6 +11,7 @@ import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { STATES, lgasOf } from "@/lib/nigeria";
 
 interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean; entry_level: number }
 interface Applied { application_no: string; reference: string; amount: number }
@@ -146,8 +147,18 @@ export function PgApply() {
           <Field id="otherNames" label="Other names"><input id="otherNames" className="ctl" value={f.otherNames ?? ""} onChange={set("otherNames")} autoComplete="given-name" /></Field>
           <Field id="sex" label="Sex"><select id="sex" className="ctl" value={f.sex ?? ""} onChange={set("sex")}><option value="">—</option><option value="F">Female</option><option value="M">Male</option></select></Field>
           <Field id="dob" label="Date of birth"><input id="dob" type="date" className="ctl" value={f.dob ?? ""} onChange={set("dob")} /></Field>
-          <Field id="state" label="State of origin"><input id="state" className="ctl" value={f.state ?? ""} onChange={set("state")} /></Field>
-          <Field id="lga" label="Local government"><input id="lga" className="ctl" value={f.lga ?? ""} onChange={set("lga")} /></Field>
+          <Field id="state" label="State of origin">
+            <select id="state" className="ctl" value={f.state ?? ""} onChange={(e) => setF({ ...f, state: e.target.value, lga: "" })}>
+              <option value="">— Select a state —</option>
+              {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field id="lga" label="Local government">
+            <select id="lga" className="ctl" value={f.lga ?? ""} onChange={set("lga")} disabled={!f.state}>
+              <option value="">{f.state ? "— Select an LGA —" : "Select a state first"}</option>
+              {lgasOf(f.state ?? "").map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </Field>
           <Field id="email" label="Email"><input id="email" type="email" className="ctl" value={f.email ?? ""} onChange={set("email")} autoComplete="email" /></Field>
           <Field id="phone" label="Phone"><input id="phone" className="ctl" value={f.phone ?? ""} onChange={set("phone")} placeholder="08030000000" autoComplete="tel" /></Field>
           <Field id="password" label="Choose a password" hint="At least six characters — to sign in and pay later"><input id="password" type="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
