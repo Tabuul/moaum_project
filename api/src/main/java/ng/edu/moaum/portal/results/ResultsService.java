@@ -130,6 +130,33 @@ public class ResultsService {
         return repo.importLegacy(session, semester, json.writeValueAsString(rows), true);
     }
 
+    /** the postgraduate course registration of a past session/semester, into the postgraduate module (V214) */
+    @Transactional
+    public Map<String, Object> importPgRegistration(String session, int semester, List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importLegacyPg(session, semester, json.writeValueAsString(rows), false);
+    }
+
+    /** the postgraduate past results of a session/semester, graded on the postgraduate scale (V214) */
+    @Transactional
+    public Map<String, Object> importPgResults(String session, int semester, List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importLegacyPg(session, semester, json.writeValueAsString(rows), true);
+    }
+
+    /** post every held postgraduate result whose student has since been loaded (V214) */
+    @Transactional
+    public Map<String, Object> reconcilePgHolding() {
+        return repo.reconcilePgHolding();
+    }
+
+    /** the postgraduate research / thesis record brought over from the old portal (V215) */
+    @Transactional
+    public Map<String, Object> importPgResearch(List<Map<String, Object>> rows) {
+        requireRows(rows);
+        return repo.importPgResearch(json.writeValueAsString(rows));
+    }
+
     /* ── bulk passport photos from the old portal (matched by JAMB reg no in the file name) ── */
 
     private static final java.util.Set<String> IMG_OK = java.util.Set.of("image/jpeg", "image/png", "application/pdf");

@@ -88,6 +88,34 @@ class ResultsController {
         return service.importResults(body.session(), body.semester(), body.rows());
     }
 
+    /** the postgraduate course registration of a past session/semester, into the postgraduate module (V214) */
+    @PostMapping("/legacy/pg-registration")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importPgRegistration(@Valid @RequestBody ResultsService.MigrationIn body) {
+        return service.importPgRegistration(body.session(), body.semester(), body.rows());
+    }
+
+    /** the postgraduate past results of a session/semester, graded on the postgraduate scale (V214) */
+    @PostMapping("/legacy/pg-results")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importPgResults(@Valid @RequestBody ResultsService.MigrationIn body) {
+        return service.importPgResults(body.session(), body.semester(), body.rows());
+    }
+
+    /** post every past postgraduate result held for a student not on the register when uploaded (V214) */
+    @PostMapping("/legacy/reconcile-pg-results")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> reconcilePgResults() {
+        return service.reconcilePgHolding();
+    }
+
+    /** the postgraduate research / thesis records exported from the old portal (V215) */
+    @PostMapping("/legacy/pg-research")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> importPgResearch(@Valid @RequestBody ResultsService.StudentsIn body) {
+        return service.importPgResearch(body.rows());
+    }
+
     /** set students' JAMB registration numbers from a matric → JAMB upload, so passport photos named by the
      *  JAMB number can match a legacy student who carries no candidate. Same offices as the rest of the desk. */
     @PostMapping("/legacy/jamb-numbers")

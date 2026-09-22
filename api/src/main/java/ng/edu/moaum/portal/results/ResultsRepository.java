@@ -423,6 +423,19 @@ class ResultsRepository {
                 .param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).query().singleRow();
     }
 
+    java.util.Map<String, Object> importLegacyPg(String session, int semester, String rowsJson, boolean withResults) {
+        return jdbc.sql("SELECT * FROM admissions.import_legacy_pg_semester(:s, :sem, :j::jsonb, :wr)")
+                .param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).query().singleRow();
+    }
+
+    java.util.Map<String, Object> reconcilePgHolding() {
+        return jdbc.sql("SELECT * FROM admissions.pg_reconcile_legacy_holding()").query().singleRow();
+    }
+
+    java.util.Map<String, Object> importPgResearch(String rowsJson) {
+        return jdbc.sql("SELECT * FROM admissions.import_legacy_pg_research(:j::jsonb)").param("j", rowsJson).query().singleRow();
+    }
+
     /**
      * Store one migrated passport photo, matched to a candidate by JAMB reg no (the picture's file name).
      * When the candidate has an application and the image is an acceptable type/size, it goes into the

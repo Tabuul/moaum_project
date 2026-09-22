@@ -1188,6 +1188,27 @@ BEGIN
         INSERT INTO admissions.pg_examiner (name, institution, field, tenure_from, tenure_to) VALUES
             ('Prof. B. Okonkwo', 'University of Ibadan', 'Computer Science', date '2024-01-01', date '2027-01-01'),
             ('Prof. C. Danjuma', 'Ahmadu Bello University, Zaria', 'Economics', date '2025-01-01', date '2028-01-01');
+
+        -- 5 · a postgraduate carried over from the old portal, to prove the migration desk (V214/V215):
+        --     the student is loaded, then a past session's registration + results (graded on the PG scale)
+        --     and a completed research record — through the same functions Records → Migration uses
+        PERFORM people.import_postgraduate(jsonb_build_array(jsonb_build_object(
+            'matric', 'MOAU/SC/CSC/MSC/22/0007', 'name', 'Ortserga, Sesugh David',
+            'programme', 'C90002', 'level', '800', 'sex', 'M', 'dob', '1994-02-11',
+            'email', 'pg.legacy1@example.com', 'phone', '08030000077', 'entrySession', '2022/2023')));
+        SELECT id INTO v_student FROM people.student WHERE upper(matric_no) = 'MOAU/SC/CSC/MSC/22/0007';
+        IF v_student IS NOT NULL THEN
+            PERFORM admissions.import_legacy_pg_semester('2022/2023', 1,
+                jsonb_build_array(
+                    jsonb_build_object('matric','MOAU/SC/CSC/MSC/22/0007','course','CSC 801','title','Advanced Algorithms & Complexity','units','3','kind','CORE','ca','30','exam','45'),
+                    jsonb_build_object('matric','MOAU/SC/CSC/MSC/22/0007','course','CSC 803','title','Research Methodology','units','3','kind','CORE','ca','28','exam','40')),
+                true);
+            PERFORM admissions.import_legacy_pg_research(jsonb_build_array(jsonb_build_object(
+                'matric','MOAU/SC/CSC/MSC/22/0007','topic','A study of scheduling heuristics for stream processing',
+                'supervisor','Dr. J. Aondo','supervisor2','Dr. M. Adaikwu','stage','AWARDED',
+                'proposalApproved','2022-11-01','vivaHeld','2023-10-05','awardDate','2024-01-20',
+                'vivaScore','80','vivaGrade','A','vivaOutcome','PASS_CLEAN')));
+        END IF;
     END IF;
 END $pg$;
 

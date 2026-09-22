@@ -12,7 +12,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterText } from "@/lib/student-portal";
 
-type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "jamb" | "passports";
+type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "pgregistration" | "pgresults" | "pgresearch" | "jamb" | "passports";
 const MIGRATE = ["ict", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
 /* the matric shapes the biography/students importers accept — the University's own, or a legacy old-portal number */
 const MATRIC_OK = /^(MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}|[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7})$/i;
@@ -106,7 +106,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const dataRows = grid.slice(1);
       const rows: Record<string, string>[] = [];
       const rej: Record<string, string>[] = [];
-      const matricKind = kind === "biodata" || kind === "pgstudents" || kind === "students" || kind === "jamb";
+      const matricKind = kind === "biodata" || kind === "pgstudents" || kind === "students" || kind === "jamb" || kind === "pgresearch";
       for (let i = 0; i < dataRows.length; i++) {
         const r = dataRows[i];
         if (r.some((c) => String(c ?? "").trim() !== "")) {
@@ -126,10 +126,14 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         : kind === "pgstudents" ? "/api/bff/api/v1/results/legacy/pg-students"
         : kind === "students" ? "/api/bff/api/v1/results/legacy/students"
         : kind === "jamb" ? "/api/bff/api/v1/results/legacy/jamb-numbers"
+        : kind === "pgregistration" ? "/api/bff/api/v1/results/legacy/pg-registration"
+        : kind === "pgresults" ? "/api/bff/api/v1/results/legacy/pg-results"
+        : kind === "pgresearch" ? "/api/bff/api/v1/results/legacy/pg-research"
         : kind === "registration" ? "/api/bff/api/v1/results/legacy/registration" : "/api/bff/api/v1/results/legacy/results";
       /* a large export goes up in batches — the importers upsert on the matriculation number, so each
          batch is independent and idempotent; the counts are summed as the batches come back */
-      const scoped = kind === "registration" || kind === "results";
+      const scoped = kind === "registration" || kind === "results" || kind === "pgregistration" || kind === "pgresults";
+      const twoSemesters = kind === "pgregistration" || kind === "pgresults"; // postgraduate study has two semesters
       /* registration and results carry the session and semester on each row (falling back to the fields
          above), so one file can hold many sessions and semesters — group by them and load each group */
       type G = { session: string; semester: number; rows: Record<string, string>[] };
@@ -139,7 +143,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         for (const o of rows) {
           const ses = o.session && /^[0-9]{4}\/[0-9]{4}$/.test(o.session) ? o.session : session;
           const sem = o.semester ? semNum(o.semester) : Number(semester);
-          if (!/^[0-9]{4}\/[0-9]{4}$/.test(ses) || ![1, 2, 3].includes(sem)) continue;
+          if (!/^[0-9]{4}\/[0-9]{4}$/.test(ses) || !(twoSemesters ? [1, 2] : [1, 2, 3]).includes(sem)) continue;
           const key = `${ses}|${sem}`;
           let g = map.get(key);
           if (!g) { g = { session: ses, semester: sem, rows: [] }; map.set(key, g); }
@@ -186,6 +190,11 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           const rj = (await rr.json().catch(() => null)) as { reconciled?: number } | null;
           if (rr.ok && rj && (rj.reconciled ?? 0) > 0) notify(`${rj.reconciled} held past result${rj.reconciled === 1 ? "" : "s"} now matched to the newly loaded students`);
         } catch { /* reconcile is best-effort; a manual re-upload of the results also reconciles */ }
+        try {
+          const pr = await fetch("/api/bff/api/v1/results/legacy/reconcile-pg-results", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Reconcile held postgraduate results after a student upload") }, body: "{}" });
+          const pj = (await pr.json().catch(() => null)) as { reconciled?: number } | null;
+          if (pr.ok && pj && (pj.reconciled ?? 0) > 0) notify(`${pj.reconciled} held postgraduate result${pj.reconciled === 1 ? "" : "s"} now matched to the newly loaded students`);
+        } catch { /* reconcile is best-effort */ }
       }
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
@@ -232,6 +241,23 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       headers: ["Matriculation Number", "Course Code", "Level", "Session", "Semester", "CA", "Exam", "Total", "Outcome"],
       example: ["MOAUM/CSC/22/0001", "CSC 301", "300", "2024/2025", "First", "25", "55", "80", "GRADED"],
     },
+    pgregistration: {
+      name: "PG course registration",
+      headers: ["Matriculation Number", "Course Code", "Course Title", "Units", "Kind", "Mode", "Session", "Semester"],
+      example: ["MOAU/AM/BSM/MSC/24/0002", "BSM 801", "Advanced Management Theory", "3", "CORE", "Full-time", "2024/2025", "First"],
+    },
+    pgresults: {
+      name: "PG past results",
+      headers: ["Matriculation Number", "Course Code", "Course Title", "Units", "Kind", "Session", "Semester", "CA", "Exam", "Total"],
+      example: ["MOAU/AM/BSM/MSC/24/0002", "BSM 801", "Advanced Management Theory", "3", "CORE", "2024/2025", "First", "35", "50", "85"],
+    },
+    pgresearch: {
+      name: "PG research and thesis",
+      headers: ["Matriculation Number", "Topic", "Stage", "Supervisor", "Second Supervisor", "Viva Score", "Viva Grade", "Viva Outcome",
+        "Proposal Approved", "Seminar Held", "Title Registered", "Viva Held", "Final Submitted", "Cleared", "Award Date"],
+      example: ["MOAU/AM/BSM/MSC/24/0002", "Working capital and firm value on the NGX", "AWARDED", "Prof. A. Doe", "Dr B. Roe", "78", "A", "PASS_MINOR",
+        "2024-03-01", "2024-06-10", "2024-07-01", "2025-02-14", "2025-03-20", "2025-04-05", "2025-05-30"],
+    },
     jamb: {
       name: "JAMB numbers",
       headers: ["Matriculation Number", "JAMB Registration Number"],
@@ -268,7 +294,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  const needScope = tab === "registration" || tab === "results";
+  const needScope = tab === "registration" || tab === "results" || tab === "pgregistration" || tab === "pgresults";
+  const pgTwoSemesters = tab === "pgregistration" || tab === "pgresults";
   /* the file now carries Session and Semester per row; the fields below are only a fallback for a file
      that has neither column, so the upload is never gated on them */
   const scopeReady = true;
@@ -278,6 +305,9 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     registration: [["rows", "Rows read"], ["students", "Students"], ["offerings", "Courses"], ["registrations", "Registrations"], ["no_student", "No such student"], ["no_course", "No such course"]],
     results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["registrations", "Registrations made"], ["held", "Held (student not loaded yet)"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
+    pgregistration: [["rows", "Rows read"], ["students", "Students"], ["courses", "New courses"], ["registrations", "Registrations made"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
+    pgresults: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["courses", "New courses"], ["held", "Held (student not loaded yet)"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
+    pgresearch: [["rows", "Rows read"], ["matched", "Records set"], ["created", "New records"], ["updated", "Updated"], ["supervisors", "Supervisors set"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
     jamb: [["rows", "Rows read"], ["updated", "JAMB numbers set"], ["no_student", "No such student"]],
     passports: [], // photos have their own summary
   };
@@ -360,16 +390,43 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       add("schoolId", at(/school\s*id/, /schoolid/, /^school$/));
     } else if (kind === "jamb") {
       add("jamb", at(/jamb/, /jamb\s*reg/, /jamb\s*no/, /jamb\s*number/, /utme\s*reg/));
+    } else if (kind === "pgresearch") {
+      add("topic", at(/topic/, /research\s*title/, /thesis\s*title/, /project\s*title/, /dissertation\s*title/, /^title$/));
+      add("stage", at(/^stage$/, /status/));
+      add("supervisor", at(/^supervisor$/, /main\s*supervisor/, /first\s*supervisor/, /supervisor\s*1/));
+      add("supervisor2", at(/second\s*supervisor/, /supervisor\s*2/));
+      add("coSupervisor", at(/co-?\s*supervisor/));
+      add("vivaScore", at(/viva\s*score/, /defence\s*score/));
+      add("vivaGrade", at(/viva\s*grade/, /research\s*grade/));
+      add("vivaOutcome", at(/viva\s*outcome/, /defence\s*outcome/, /^outcome$/, /recommendation/));
+      add("plagiarism", at(/plagiar/, /similarity/));
+      add("pgsr", at(/pgsr/));
+      add("proposalApproved", at(/proposal\s*approv/, /proposal\s*date/));
+      add("seminarHeld", at(/seminar/));
+      add("titleRegistered", at(/title\s*regist/));
+      add("panelConstituted", at(/panel/));
+      add("draftSubmitted", at(/draft/));
+      add("vivaHeld", at(/viva\s*(held|date)/, /defence\s*date/));
+      add("finalSubmitted", at(/final\s*sub/, /bound/));
+      add("cleared", at(/clear/));
+      add("awardDate", at(/award/, /graduat/));
     } else {
       add("course", at(/course\s*code/, /^course$/, /^code$/, /subject\s*code/));
       add("units", at(/unit/, /^cu$/, /credit/));
       add("level", at(/^level$/, /^lvl$/));
       add("session", at(/session/));
       add("semester", at(/semester/, /^sem$/));
-      if (kind === "results") {
+      if (kind === "pgregistration" || kind === "pgresults") {
+        add("title", at(/course\s*title/, /^title$/, /descrip/));
+        add("kind", at(/^kind$/, /^type$/, /category/));
+        add("mode", at(/study\s*mode/, /^mode$/));
+      }
+      if (kind === "results" || kind === "pgresults") {
         add("ca", at(/\bca\b/, /continuous/, /c\.a/));
         add("exam", at(/exam/, /examination/));
         add("total", at(/total/, /^score$/, /^mark$/, /aggregate/));
+      }
+      if (kind === "results") {
         add("outcome", at(/outcome/, /remark/, /status/, /grade/));
       }
     }
@@ -401,7 +458,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
 
       <div className="card"><div className="card__body">
         <div className="role-tabs" role="tablist">
-          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"]] as [Tab, string][]).map(([k, l]) => (
+          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"]] as [Tab, string][]).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => { setTab(k); setResult(null); setProblem(null); setPResult(null); }}>{l}</button>
           ))}
         </div>
@@ -431,13 +488,13 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           </PBody>
         </Panel>
       ) : (
-      <Panel title={tab === "biodata" ? "Student biography exported from the old portal" : tab === "pgstudents" ? "Postgraduate students exported from the old portal" : tab === "students" ? "Students exported from the old portal" : tab === "jamb" ? "JAMB registration numbers (matric → JAMB)" : tab === "registration" ? "Course registration of a past semester" : "Past results of a semester"}
-             right={tab === "students" || tab === "biodata" || tab === "pgstudents" ? "The first step" : tab === "jamb" ? "So passport photos match" : `${session || "session"} · ${semesterText(Number(semester))}`}>
+      <Panel title={tab === "biodata" ? "Student biography exported from the old portal" : tab === "pgstudents" ? "Postgraduate students exported from the old portal" : tab === "students" ? "Students exported from the old portal" : tab === "jamb" ? "JAMB registration numbers (matric → JAMB)" : tab === "registration" ? "Course registration of a past semester" : tab === "pgregistration" ? "Postgraduate course registration of a past semester" : tab === "pgresults" ? "Postgraduate past results of a semester" : tab === "pgresearch" ? "Postgraduate research / thesis records" : "Past results of a semester"}
+             right={tab === "students" || tab === "biodata" || tab === "pgstudents" ? "The first step" : tab === "jamb" ? "So passport photos match" : tab === "pgresearch" ? "Matched by matriculation number" : `${session || "session"} · ${semesterText(Number(semester))}`}>
         <PBody>
           {needScope ? (
             <div className="grid grid--3">
               <Field id="mg-ses" label="Session (fallback)" hint="Used only for rows with no Session column, e.g. 2024/2025"><input id="mg-ses" className="ctl tnum" value={session} placeholder="2024/2025" onChange={(e) => setSession(e.target.value.trim())} /></Field>
-              <Field id="mg-sem" label="Semester (fallback)"><select id="mg-sem" className="ctl" value={semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option><option value="3">Third semester</option></select></Field>
+              <Field id="mg-sem" label="Semester (fallback)"><select id="mg-sem" className="ctl" value={pgTwoSemesters && semester === "3" ? "1" : semester} onChange={(e) => setSemester(e.target.value)}><option value="1">First semester</option><option value="2">Second semester</option>{pgTwoSemesters ? null : <option value="3">Third semester</option>}</select></Field>
               <div />
             </div>
           ) : null}
@@ -447,6 +504,9 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
               : tab === "jamb" ? "Columns read: matriculation number and JAMB registration number. The student is matched by matriculation number and their JAMB number is set on the register. Do this before uploading passport photos named by JAMB number, so a legacy student (who carries no JAMB number yet) can be matched. The application number is NOT the JAMB number — upload the real JAMB registration number."
               : tab === "registration" ? "Columns read: matriculation number, course code, units, level, session (YYYY/YYYY) and semester (First/Second or 1/2). The session and semester are read per row, so one file can carry many — an approved registration and its course entries are created for each. Student name and programme are not needed: the student is matched by matriculation number."
+              : tab === "pgregistration" ? "Columns read: matriculation number, course code, course title, units, kind (CORE/ELECTIVE/DEFICIENCY/RESEARCH), mode (full/part-time), session (YYYY/YYYY) and semester (First/Second or 1/2 — postgraduate study has two semesters). The student must be a postgraduate already on the register (upload the postgraduate students first). A course not yet in the postgraduate catalogue is created for the student's programme from the title/units/kind; an endorsed registration and its entries are created for each session/semester."
+              : tab === "pgresults" ? "Columns read: matriculation number, course code, course title, units, kind, session, semester, and the mark. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). The result is graded on the postgraduate scale (A 70+, B 60–69, C 50–59, F below 50 — no D/E, Policy 16), so it counts on the postgraduate register's CGPA. A row whose student is not on the register yet is HELD and posts automatically once that student is uploaded (in either order)."
+              : tab === "pgresearch" ? "Columns read: matriculation number, topic, stage, supervisor(s), viva score/grade/outcome, plagiarism %, and the milestone dates (proposal approved, seminar, title registered, viva held, final submitted, cleared, award). The student must be a postgraduate on the register. The research record is created if absent (its degree kind — Project/Dissertation/Thesis — derived from the programme) and set from the row; the stage is taken as stated, else inferred from the furthest milestone present (an award date ⇒ AWARDED). Supervisors named on the row replace the record's current ones, so a re-upload updates rather than duplicates."
               : "Columns read: matriculation number, course code, level, session, semester, and the mark. The unit is taken from the course record, not the file — any “Units” column in the export (a 1/2/3 status code) is ignored. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Session and semester are read per row; outcome is read when present. A row whose student is not on the register yet is HELD, not lost — it posts automatically once that student is uploaded (in either order)."}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -460,7 +520,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
                           ? `${progress.label} — ${progress.sent.toLocaleString()} rows…`
                           : `${progress.label}…`)
                     : "Importing…")
-                : `Upload ${tab === "biodata" ? "biography" : tab === "pgstudents" ? "postgraduate students" : tab === "students" ? "students" : tab === "jamb" ? "JAMB numbers" : tab === "registration" ? "registration" : "results"} file`}
+                : `Upload ${tab === "biodata" ? "biography" : tab === "pgstudents" ? "postgraduate students" : tab === "students" ? "students" : tab === "jamb" ? "JAMB numbers" : tab === "registration" ? "registration" : tab === "pgregistration" ? "PG registration" : tab === "pgresults" ? "PG results" : tab === "pgresearch" ? "PG research" : "results"} file`}
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || (needScope && !scopeReady) || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(tab, f); e.target.value = ""; }} />
             </label>
             {needScope && !scopeReady ? <span className="sub2">Enter the session (YYYY/YYYY) and semester first.</span> : null}
@@ -500,6 +560,9 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "students" ? `${result.counts.created ?? 0} students created, ${result.counts.updated ?? 0} updated.`
               : tab === "jamb" ? `${result.counts.updated ?? 0} JAMB number${result.counts.updated === 1 ? "" : "s"} set on the register. You can now upload passport photos named by JAMB number.`
               : tab === "registration" ? `${result.counts.registrations ?? 0} registrations across ${result.counts.offerings ?? 0} courses.`
+              : tab === "pgregistration" ? `${result.counts.registrations ?? 0} postgraduate registrations for ${result.counts.students ?? 0} students${(result.counts.courses ?? 0) > 0 ? `; ${result.counts.courses} new courses added to the postgraduate catalogue` : ""}.`
+              : tab === "pgresearch" ? `${result.counts.matched ?? 0} research records set (${result.counts.created ?? 0} new, ${result.counts.updated ?? 0} updated); ${result.counts.supervisors ?? 0} supervisors recorded.`
+              : tab === "pgresults" ? `${result.counts.results ?? 0} postgraduate results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}. These count on the postgraduate register's CGPA.`
               : `${result.counts.results ?? 0} results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}.`}
             {" "}Rows that did not match are counted above; fix them at source and re-upload — the import is idempotent.
             {(result.counts.no_student ?? 0) > 0 ? <> <b>Import the students first</b> if a number was not found.</> : null}
