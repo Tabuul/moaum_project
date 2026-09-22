@@ -8,7 +8,7 @@
     "build": "python3 proto/build.py && cp proto/moaum-portal-prototype.html public/index.html",
     "start": "node web/server.js",
     "migrate": "bash db/migrate.sh",
-    "check:db": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=off -f db/check.sql",
+    "check:db": "psql -v ON_ERROR_STOP=off -f db/check.sql \"$DATABASE_URL\"",
     "check:web": "node proto/runall.mjs"
   }
 }

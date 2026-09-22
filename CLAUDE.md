@@ -14,6 +14,7 @@ MOAUMPP — the MOAUM Unified University Portal (Rev. Fr. Moses Orshio Adasu Uni
 | `web/server.js` | The prototype's server. No dependencies, deliberately. |
 | `api/` | The Spring Boot service — Java 21, Spring Boot, Spring Modulith, plain JDBC (no ORM). One package per business module under `ng.edu.moaum.portal`. See `api/README.md`. |
 | `frontend/` | The Next.js frontend — App Router, server-rendered, Tailwind. Talks to the API only from the server, as a BFF; the prototype's palette and typeface, self-hosted via `next/font`. |
+| `docs/` | `running-locally.md` (Windows local setup), `demo-accounts.md` (the invented demo accounts and their passwords), `keycloak.md` (staff SSO/MFA setup), `go-live-readiness.md` (operational go-live checklist — not a dev doc). |
 
 **The root `README.md` and `api/README.md` describe the project near its start** (e.g. they say "ten migrations" and "two modules, iam and admissions"). The repository has grown far past that (hundreds of migrations, ~40 API module packages, dozens of frontend routes covering undergraduate and postgraduate admissions, registration, finance, HR, hostel, library, results, credentials, etc.) — treat the READMEs' *architecture and workflow* description as authoritative, but verify any specific count or "not yet built" claim against the actual code before relying on it.
 
@@ -30,7 +31,7 @@ createdb moaumpp
 export DATABASE_URL=postgres:///moaumpp
 npm run migrate               # bash db/migrate.sh — applies pending V*.sql in order, then stops
 npm run check:db              # psql -f db/check.sql — self-asserting properties; WRITES, use a throwaway database
-psql "$DATABASE_URL" -f db/verify.sql   # read-only; safe to run against a real deployment
+psql -f db/verify.sql "$DATABASE_URL"   # read-only; safe to run against a real deployment
 
 # the Spring Boot API (needs Java 21; wrapper included)
 export MOAUM_AUTH_HMAC_SECRET='change-me-to-at-least-thirty-two-bytes-long'
@@ -46,7 +47,7 @@ DATABASE_URL=postgres://... (cd api && ./mvnw verify)   # ...and run the *IT cla
 (cd frontend && npm run build)
 ```
 
-On Windows, `python` (not `python3`) is found automatically, and the build folds CRLF to LF so `public/index.html` is byte-identical to what CI produces.
+On Windows, `python` (not `python3`) is found automatically, and the build folds CRLF to LF so `public/index.html` is byte-identical to what CI produces. `db/migrate.sh` and `db/demo.sh` are bash scripts — run them from Git Bash, not PowerShell. If `psql` on the machine silently ignores flags like `-v`/`-q`/`-f` (prints `warning: extra command-line argument "..." ignored` but still connects), the flags — and whatever they were supposed to do, e.g. loading a `-f` file — are not actually taking effect; that breaks `migrate.sh`'s ledger bookkeeping and `demo.sh` silently no-ops. The workaround is to run the affected `.sql` file directly in a GUI client (pgAdmin's Query Tool) instead of through the wrapper script. See `docs/running-locally.md`.
 
 ### Minting a dev token for the API
 
