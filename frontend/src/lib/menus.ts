@@ -2528,7 +2528,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgexaminers", "icon": "shield", "label": "External examiners" },
           { "id": "t/pgpanels", "icon": "doc", "label": "Examination panels" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
-          { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" }
+          { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" }
         ]
       },
       {
@@ -2630,7 +2631,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgscores", "icon": "doc", "label": "Course results" },
           { "id": "t/pgsenate", "icon": "check", "label": "Results to Senate" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation list" }
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" }
         ]
       },
       {

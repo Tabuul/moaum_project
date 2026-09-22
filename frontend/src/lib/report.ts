@@ -58,6 +58,13 @@ export const REPORTS: ReportSpec[] = [
     owner: "Exams & Records", frequency: "Per session", purpose: "Senate",
   },
   {
+    slug: "postgraduate",
+    title: "Postgraduate return",
+    subtitle: "By programme: the session's applications, offers, acceptances and admissions; the register by sex and mode of study; research candidates and awards",
+    offices: ["pgschool", "pgsecretary", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Postgraduate School", frequency: "Per session", purpose: "School Board and Senate",
+  },
+  {
     slug: "revenue",
     title: "IGR collections by revenue head",
     subtitle: "Fees confirmed for the session, by category — the University's internally generated revenue",
@@ -96,6 +103,7 @@ const OFFICE_LABELS: Record<string, string> = {
   records: "Exams & Records", bursar: "Bursary", audit: "Internal Audit",
   ict: "ICT Directorate", admin: "Administration", super: "System Administration",
   vc: "Vice-Chancellor's Office", dvc: "Deputy Vice-Chancellor's Office",
+  pgschool: "School of Postgraduate Studies", pgsecretary: "School of Postgraduate Studies",
 };
 
 /** the readable name of an office, for the return's footing; falls back to the code */

@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.reports;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +26,10 @@ class ReportsController {
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String REVENUE_READERS =
             "hasAnyAuthority('OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
+
+    /** the School of Postgraduate Studies' own return is read by the School and the Registry */
+    private static final String PG_READERS =
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
 
     private final JdbcClient jdbc;
 
@@ -223,5 +228,71 @@ class ReportsController {
         out.put("totals", totals);
         out.put("budget", budget);
         return out;
+    }
+
+    /**
+     * The postgraduate return for a session (V202, V211, V209): by programme, the applications the
+     * session drew and how far they went (offered, accepted, admitted), the candidates on the register
+     * by mode of study, and the research candidates and the awards. The register columns count every
+     * postgraduate on the books, whatever session they entered; the application columns are the
+     * session's own.
+     */
+    @GetMapping("/postgraduate")
+    @PreAuthorize(PG_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> postgraduate(@RequestParam(required = false) String session) {
+        String s = session == null || session.isBlank()
+                ? jdbc.sql("SELECT admissions.pg_current_session()").query(String.class).single()
+                : session.trim();
+        String sql = """
+                WITH prog AS (
+                    SELECT p.code, p.name AS programme, f.name AS faculty, admissions.pg_award_level(p.pg_award) AS pg_level
+                      FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+                     WHERE p.category = 'POST GRADUATE'
+                ),
+                app AS (
+                    SELECT programme_code,
+                           count(*) FILTER (WHERE state <> 'DRAFT') AS applications,
+                           count(*) FILTER (WHERE state IN ('OFFERED','ACCEPTED','ADMITTED')) AS offered,
+                           count(*) FILTER (WHERE state IN ('ACCEPTED','ADMITTED')) AS accepted,
+                           count(*) FILTER (WHERE state = 'ADMITTED') AS admitted
+                      FROM admissions.pg_application WHERE session = :s GROUP BY programme_code
+                ),
+                reg AS (
+                    SELECT st.programme_code,
+                           count(*) AS on_register,
+                           count(*) FILTER (WHERE st.sex = 'F') AS female,
+                           count(*) FILTER (WHERE st.sex = 'M') AS male,
+                           count(*) FILTER (WHERE r.mode = 'PART_TIME') AS part_time,
+                           count(*) FILTER (WHERE r.mode = 'FULL_TIME') AS full_time,
+                           count(*) FILTER (WHERE rs.stage IS NOT NULL AND rs.stage NOT IN ('AWARDED','WITHDRAWN')) AS researching,
+                           count(*) FILTER (WHERE rs.stage = 'AWARDED') AS awarded
+                      FROM people.student st
+                      LEFT JOIN LATERAL (
+                            SELECT mode FROM admissions.pg_registration r WHERE r.student_id = st.id AND r.session = :s
+                             ORDER BY r.semester DESC LIMIT 1) r ON true
+                      LEFT JOIN admissions.pg_research rs ON rs.student_id = st.id
+                     WHERE st.entry_mode = 'POSTGRADUATE'
+                       AND st.status IN ('ADMITTED','ACTIVE','PROBATION','DORMANT','GRADUATED')
+                     GROUP BY st.programme_code
+                )
+                SELECT prog.faculty, prog.code AS programme_code, prog.programme,
+                       CASE prog.pg_level WHEN 900 THEN 'MPhil / PhD' WHEN 800 THEN 'Master''s' ELSE 'PGD' END AS award,
+                       coalesce(app.applications, 0) AS applications, coalesce(app.offered, 0) AS offered,
+                       coalesce(app.accepted, 0) AS accepted, coalesce(app.admitted, 0) AS admitted,
+                       coalesce(reg.on_register, 0) AS on_register, coalesce(reg.female, 0) AS female, coalesce(reg.male, 0) AS male,
+                       coalesce(reg.full_time, 0) AS full_time, coalesce(reg.part_time, 0) AS part_time,
+                       coalesce(reg.researching, 0) AS researching, coalesce(reg.awarded, 0) AS awarded
+                  FROM prog LEFT JOIN app ON app.programme_code = prog.code
+                            LEFT JOIN reg ON reg.programme_code = prog.code
+                 WHERE coalesce(app.applications, 0) + coalesce(reg.on_register, 0) > 0
+                 ORDER BY prog.faculty, prog.programme
+                """;
+        List<Map<String, Object>> rows = jdbc.sql(sql).param("s", s).query().listOfRows();
+        Map<String, Object> totals = new LinkedHashMap<>();
+        for (String k : List.of("applications", "offered", "accepted", "admitted", "on_register", "female", "male", "full_time", "part_time", "researching", "awarded")) {
+            totals.put(k, rows.stream().mapToLong(r -> ((Number) r.get(k)).longValue()).sum());
+        }
+        return Map.of("session", s, "rows", rows, "totals", totals);
     }
 }
