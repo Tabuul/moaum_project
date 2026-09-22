@@ -41,11 +41,7 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
   const desk = `/admissions/postgraduate?session=${encodeURIComponent(home.session)}`;
   return (
     <>
-      {recommended ? (
-        <Note kind="info" title={`${recommended} application${recommended === 1 ? "" : "s"} recommended by a department, awaiting the School`}>
-          A department&rsquo;s postgraduate committee has recommended these; the School offers or refuses each.
-        </Note>
-      ) : toAdmit ? (
+      {toAdmit ? (
         <Note kind="ok" title={`${toAdmit} applicant${toAdmit === 1 ? " has" : "s have"} accepted an offer, ready to admit`} action={<Link href={desk} className="btn btn--primary btn--sm">Admit them</Link>}>
           Admitting puts each on the register as a postgraduate student, to matriculate on fees and registration.
         </Note>
