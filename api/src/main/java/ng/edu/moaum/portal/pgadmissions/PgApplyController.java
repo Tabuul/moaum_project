@@ -62,7 +62,7 @@ class PgApplyController {
                 """).query().listOfRows();
     }
 
-    public record RefereeIn(String name, String email, String institution, String position) {
+    public record RefereeIn(String name, String email, String phone, String institution, String position) {
     }
 
     public record ApplyIn(@NotBlank @Size(max = 80) String surname, @Size(max = 120) String otherNames,

@@ -16,12 +16,8 @@ import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 
-interface Referee { name: string; email: string | null; institution: string | null; position: string | null }
+interface Referee { name: string; email: string | null; phone: string | null; institution: string | null; position: string | null; submitted_at: string | null; verdict: string | null }
 interface PriorDegree { kind: string; institution: string | null; award: string | null; field?: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
-const QUAL_LABEL: Record<string, string> = {
-  FIRST: "First degree", MASTERS: "Master’s degree", PGD: "Postgraduate Diploma", HND: "Higher National Diploma",
-  ND: "National Diploma", NCE: "Nigeria Certificate in Education", PHD: "Doctorate (PhD)", OTHER: "Other qualification",
-};
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface Me {
   applicationNo: string; session: string; name: string; surname: string; otherNames: string;
@@ -59,8 +55,8 @@ function fmtDate(v: string | null): string {
 const val = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
 /** the documents an applicant uploads, each on its own PDF (the School downloads them merged) */
-const DOC_TYPES: { kind: string; label: string; optional?: boolean }[] = [
-  { kind: "HIGHER_DEGREE", label: "Higher degree certificate", optional: true },
+const DOC_TYPES: { kind: string; label: string; optional?: boolean; multi?: boolean }[] = [
+  { kind: "HIGHER_DEGREE", label: "Higher degree certificate", multi: true },
   { kind: "UNDERGRAD_CERT", label: "Undergraduate certificate" },
   { kind: "OLEVEL", label: "O’Level result" },
   { kind: "BIRTH_CERTIFICATE", label: "Birth certificate / declaration of age" },
@@ -172,7 +168,6 @@ export function PgPortal() {
   const paid = !!me.feeConfirmedAt;
   const passport = me.documents.find((d) => d.kind === "PASSPORT") ?? null;
   const docCount = me.documents.filter((d) => d.kind !== "PASSPORT").length;
-  const degrees = me.priorDegrees.length ? me.priorDegrees : [{ kind: "FIRST", ...me.prior, class_of_degree: me.prior.classOfDegree } as unknown as PriorDegree];
   const steps: [string, boolean, string | null][] = [
     ["Application submitted", !!me.submittedAt, me.submittedAt],
     ["Application fee paid", paid, me.feeConfirmedAt],
@@ -264,7 +259,7 @@ export function PgPortal() {
       <Tiles items={[
         ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
         ["Application fee", paid ? "Paid" : naira(me.applicationFee), paid ? "var(--green-ink)" : "var(--chrome)", paid ? "confirmed" : "unpaid"],
-        ["Documents", `${docCount}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
+        ["Documents", `${new Set(me.documents.filter((d) => d.kind !== "PASSPORT").map((d) => d.kind)).size}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
         ["Stage", STATE_SHORT[me.state] ?? me.state, me.state === "ADMITTED" ? "var(--green-ink)" : null, me.department],
       ]} />
 
@@ -304,17 +299,6 @@ export function PgPortal() {
         </PBody>
       </Panel>
 
-      {degrees.map((pd, i) => (
-        <Panel key={i} title={QUAL_LABEL[pd.kind] ?? "Qualification"}>
-          <PBody>
-            <KvGrid cls="grid--2" pairs={[
-              ["Institution", val(pd.institution)], ["Award", val(pd.award)], ["Field of study", val(pd.field)],
-              ["Class / result", val(pd.class_of_degree)], ["CGPA", val(pd.cgpa)], ["Year", val(pd.year)],
-            ]} />
-          </PBody>
-        </Panel>
-      ))}
-
       {me.research || me.proposal.title || me.proposal.text ? (
         <Panel title="Research proposal">
           <PBody>
@@ -324,19 +308,7 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      {me.referees.length ? (
-        <Panel title="Referees">
-          <PBody style={{ display: "grid", gap: 12 }}>
-            {me.referees.map((rf, i) => (
-              <div key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
-                <KvGrid cls="grid--2" pairs={[["Name", val(rf.name)], ["Position", val(rf.position)], ["Institution", val(rf.institution)], ["Email", val(rf.email)]]} />
-              </div>
-            ))}
-          </PBody>
-        </Panel>
-      ) : null}
-
-      {/* Payment comes first; the credentials and passport uploads unlock once the fee is confirmed */}
+      {/* Payment comes first; the academic record, credentials and passport unlock once the fee is confirmed */}
       {paid ? (
         <Note kind="ok" title="Application fee paid">Confirmed on {fmtDate(me.feeConfirmedAt)}. The School will screen your application; its progress shows above.</Note>
       ) : reference ? (
@@ -353,8 +325,7 @@ export function PgPortal() {
         </Panel>
       ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
 
-      <DocList documents={me.documents} paid={paid} onDone={load} />
-      <Passport passport={passport} paid={paid} onDone={load} />
+      <CompleteSteps me={me} paid={paid} passport={passport} onDone={load} />
 
       {paid ? (
         <Panel title="Application summary">
@@ -404,6 +375,16 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
     } finally { setBusy(null); }
   }
 
+  async function remove(id: string) {
+    setErr(null); setBusy(id);
+    try {
+      const r = await fetch(`/api/bff/api/v1/pg/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      await onDone();
+    } finally { setBusy(null); }
+  }
+
   return (
     <Panel title="Documents">
       <PBody>
@@ -417,17 +398,32 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
             {err ? <ProblemNotice problem={err} /> : null}
             <div style={{ display: "grid", gap: 2 }}>
               {DOC_TYPES.map((t) => {
-                const on = documents.find((d) => d.kind === t.kind) ?? null;
+                const on = documents.filter((d) => d.kind === t.kind);
+                const single = on[0] ?? null;
                 return (
-                  <div key={t.kind} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", padding: "9px 0", borderBottom: "1px solid var(--line-2)" }}>
-                    <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.label}{t.optional ? <span className="sub2" style={{ fontWeight: 400 }}> · optional</span> : null}</div>
-                      <div className="sub2">{on ? <>On record: {on.filename} · uploaded {fmtDate(on.uploaded_at)}</> : "Not uploaded"}</div>
+                  <div key={t.kind} style={{ padding: "9px 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.label}{t.optional ? <span className="sub2" style={{ fontWeight: 400 }}> · optional</span> : null}{t.multi ? <span className="sub2" style={{ fontWeight: 400 }}> · you may add more than one</span> : null}</div>
+                        {t.multi
+                          ? <div className="sub2">{on.length ? `${on.length} uploaded` : "Not uploaded"}</div>
+                          : <div className="sub2">{single ? <>On record: {single.filename} · uploaded {fmtDate(single.uploaded_at)}</> : "Not uploaded"}</div>}
+                      </div>
+                      <label className={`btn btn--sm ${!t.multi && single ? "btn--ghost" : "btn--primary"}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+                        {busy === t.kind ? "Uploading…" : t.multi ? (on.length ? "Add another" : "Upload PDF") : single ? "Replace" : "Upload PDF"}
+                        <input type="file" accept="application/pdf" hidden disabled={busy !== null} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(t.kind, f); e.target.value = ""; }} />
+                      </label>
                     </div>
-                    <label className={`btn btn--sm ${on ? "btn--ghost" : "btn--primary"}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
-                      {busy === t.kind ? "Uploading…" : on ? "Replace" : "Upload PDF"}
-                      <input type="file" accept="application/pdf" hidden disabled={busy !== null} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(t.kind, f); e.target.value = ""; }} />
-                    </label>
+                    {t.multi && on.length ? (
+                      <div style={{ display: "grid", gap: 3, marginTop: 6, paddingLeft: 4 }}>
+                        {on.map((d) => (
+                          <div key={d.id} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <span>• {d.filename} · uploaded {fmtDate(d.uploaded_at)}</span>
+                            <button type="button" className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => void remove(d.id)}>{busy === d.id ? "Removing…" : "Remove"}</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -488,6 +484,241 @@ function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: 
         )}
       </PBody>
     </Panel>
+  );
+}
+
+const CLASSES = ["First Class", "Second Class (Upper)", "Second Class (Lower)", "Third Class", "Pass", "Distinction", "Credit", "Merit"];
+const QUAL_KINDS: [string, string][] = [
+  ["MASTERS", "Master’s degree"], ["PGD", "Postgraduate Diploma (PGD)"], ["HND", "Higher National Diploma (HND)"],
+  ["ND", "National Diploma (ND)"], ["NCE", "Nigeria Certificate in Education (NCE)"], ["PHD", "Doctorate (PhD)"], ["OTHER", "Other qualification"],
+];
+type QRow = { kind: string; institution: string; award: string; field: string; classOfDegree: string; cgpa: string; year: string };
+const emptyQ = (kind = "MASTERS"): QRow => ({ kind, institution: "", award: "", field: "", classOfDegree: "", cgpa: "", year: "" });
+
+/** the post-payment tasks arranged as steps — the applicant moves from one to the next, as on the apply form */
+function CompleteSteps({ me, paid, passport, onDone }: { me: Me; paid: boolean; passport: DocMeta | null; onDone: () => Promise<void> }) {
+  const [step, setStep] = useState(1);
+  if (!paid) {
+    return (
+      <Panel title="Complete your application">
+        <PBody><Note kind="info" title="Pay the application fee first">Once your payment is confirmed you complete your application here — your first degree, other qualifications, referees, documents and passport.</Note></PBody>
+      </Panel>
+    );
+  }
+  const first = me.priorDegrees.find((d) => d.kind === "FIRST");
+  const docCount = me.documents.filter((d) => d.kind !== "PASSPORT").length;
+  const steps: { label: string; done: boolean; node: React.ReactNode }[] = [
+    { label: "Academic record", done: !!(first?.institution || first?.award || me.prior.institution || me.prior.award), node: <AcademicRecord me={me} paid onDone={onDone} /> },
+    { label: "Referees", done: me.referees.length > 0, node: <RefereesEditor me={me} paid onDone={onDone} /> },
+    { label: "Documents", done: docCount > 0, node: <DocList documents={me.documents} paid onDone={onDone} /> },
+    { label: "Passport", done: !!passport, node: <Passport passport={passport} paid onDone={onDone} /> },
+  ];
+  const cur = Math.min(step, steps.length);
+  return (
+    <Panel title="Complete your application">
+      <PBody style={{ display: "grid", gap: 14 }}>
+        <PortalStepper steps={steps.map((s) => ({ label: s.label, done: s.done }))} current={cur} onGo={setStep} />
+        {steps[cur - 1].node}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <button type="button" className="btn btn--ghost btn--sm" disabled={cur === 1} onClick={() => setStep(cur - 1)}>Back</button>
+          <span style={{ flexGrow: 1 }} />
+          <span className="sub2">Step {cur} of {steps.length}</span>
+          <button type="button" className="btn btn--primary btn--sm" disabled={cur === steps.length} onClick={() => setStep(cur + 1)}>Next</button>
+        </div>
+      </PBody>
+    </Panel>
+  );
+}
+
+/** a step indicator with a tick on completed steps; any step can be opened directly */
+function PortalStepper({ steps, current, onGo }: { steps: { label: string; done: boolean }[]; current: number; onGo: (n: number) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      {steps.map((s, i) => {
+        const n = i + 1, cur = current === n;
+        const on = cur || s.done;
+        return (
+          <button key={s.label} type="button" onClick={() => onGo(n)}
+            style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, #2b6cb0)" : "var(--line-2, #d9d9d9)" }} />
+            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, #888)" }}>
+              {s.done ? "✓ " : `${n}. `}{s.label}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: () => Promise<void> }) {
+  const first = me.priorDegrees.find((d) => d.kind === "FIRST");
+  const [fd, setFd] = useState({
+    institution: first?.institution ?? me.prior.institution ?? "", award: first?.award ?? me.prior.award ?? "",
+    field: first?.field ?? "", classOfDegree: first?.class_of_degree ?? me.prior.classOfDegree ?? "",
+    cgpa: first?.cgpa != null ? String(first.cgpa) : (me.prior.cgpa != null ? String(me.prior.cgpa) : ""),
+    year: first?.year != null ? String(first.year) : (me.prior.year != null ? String(me.prior.year) : ""),
+  });
+  const [quals, setQuals] = useState<QRow[]>(me.priorDegrees.filter((d) => d.kind !== "FIRST").map((d) => ({
+    kind: d.kind, institution: d.institution ?? "", award: d.award ?? "", field: d.field ?? "",
+    classOfDegree: d.class_of_degree ?? "", cgpa: d.cgpa != null ? String(d.cgpa) : "", year: d.year != null ? String(d.year) : "",
+  })));
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<Problem | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const setQ = (i: number, k: keyof QRow, v: string) => setQuals(quals.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
+
+  async function saveFirst() {
+    setErr(null); setOk(null); setBusy("first");
+    try {
+      const r = await fetch("/api/bff/api/v1/pg/first-degree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setOk("First degree saved."); await onDone();
+    } finally { setBusy(null); }
+  }
+  async function saveQuals() {
+    setErr(null); setOk(null); setBusy("quals");
+    try {
+      const r = await fetch("/api/bff/api/v1/pg/qualifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(quals) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setOk("Other qualifications saved."); await onDone();
+    } finally { setBusy(null); }
+  }
+
+  return (
+    <Panel title="Your academic record">
+      <PBody>
+        {!paid ? (
+          <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you supply your first degree and other qualifications here.</Note>
+        ) : (
+          <div style={{ display: "grid", gap: 16 }}>
+            {err ? <ProblemNotice problem={err} /> : null}
+            {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>First degree <span className="sub2" style={{ fontWeight: 400 }}>· the related / relevant Bachelor’s degree the admission rests on</span></div>
+              <div className="grid grid--2">
+                <Fld id="fd-inst" label="Institution" v={fd.institution} on={(v) => setFd({ ...fd, institution: v })} />
+                <Fld id="fd-award" label="Degree / award" v={fd.award} on={(v) => setFd({ ...fd, award: v })} ph="B.Sc." />
+                <Fld id="fd-field" label="Field of study" v={fd.field} on={(v) => setFd({ ...fd, field: v })} ph="Computer Science" />
+                <Sel id="fd-class" label="Class of degree" v={fd.classOfDegree} on={(v) => setFd({ ...fd, classOfDegree: v })} options={CLASSES} />
+                <Fld id="fd-cgpa" label="CGPA (if known)" v={fd.cgpa} on={(v) => setFd({ ...fd, cgpa: v })} ph="3.80" num />
+                <Fld id="fd-year" label="Year awarded" v={fd.year} on={(v) => setFd({ ...fd, year: v })} ph="2018" num />
+              </div>
+              <div style={{ marginTop: 8 }}><button type="button" className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void saveFirst()}>{busy === "first" ? "Saving…" : "Save first degree"}</button></div>
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--line-2)", paddingTop: 14 }}>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>Other qualifications</div>
+              <div className="sub2" style={{ marginBottom: 8 }}>Any qualification beyond the first degree that bears on this application — a prior Master’s, a Postgraduate Diploma, an HND / ND, or an NCE. A PhD applicant should give their Master’s here.</div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {quals.map((q, i) => (
+                  <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 10, padding: 12 }}>
+                    <div className="grid grid--2">
+                      <Sel id={`q-kind-${i}`} label="Qualification" v={q.kind} on={(v) => setQ(i, "kind", v)} options={QUAL_KINDS} />
+                      <Fld id={`q-inst-${i}`} label="Institution" v={q.institution} on={(v) => setQ(i, "institution", v)} />
+                      <Fld id={`q-award-${i}`} label="Award / title" v={q.award} on={(v) => setQ(i, "award", v)} ph="M.Sc. / PGD / HND" />
+                      <Fld id={`q-field-${i}`} label="Field of study" v={q.field} on={(v) => setQ(i, "field", v)} />
+                      <Sel id={`q-class-${i}`} label="Class / result" v={q.classOfDegree} on={(v) => setQ(i, "classOfDegree", v)} options={CLASSES} />
+                      <Fld id={`q-cgpa-${i}`} label="CGPA (if known)" v={q.cgpa} on={(v) => setQ(i, "cgpa", v)} num />
+                      <Fld id={`q-year-${i}`} label="Year awarded" v={q.year} on={(v) => setQ(i, "year", v)} num />
+                    </div>
+                    <div style={{ marginTop: 6 }}><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove</button></div>
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals([...quals, emptyQ()])}>+ Add a qualification</button>
+                  <button type="button" className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void saveQuals()}>{busy === "quals" ? "Saving…" : "Save other qualifications"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </PBody>
+    </Panel>
+  );
+}
+
+type RRow = { name: string; email: string; phone: string; institution: string; position: string };
+
+/** the referees — supplied in the portal after payment; each new referee with an email is emailed a reference request */
+function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: () => Promise<void> }) {
+  const submitted = me.referees.filter((r) => r.submitted_at);
+  const [rows, setRows] = useState<RRow[]>(() => {
+    const editable = me.referees.filter((r) => !r.submitted_at).map((r) => ({ name: r.name ?? "", email: r.email ?? "", phone: r.phone ?? "", institution: r.institution ?? "", position: r.position ?? "" }));
+    return editable.length ? editable : [{ name: "", email: "", phone: "", institution: "", position: "" }, { name: "", email: "", phone: "", institution: "", position: "" }];
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<Problem | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const setR = (i: number, k: keyof RRow, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+
+  async function save() {
+    setErr(null); setOk(null); setBusy(true);
+    try {
+      const r = await fetch("/api/bff/api/v1/pg/referees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows.filter((x) => x.name.trim())) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setOk("Referees saved — a reference request was emailed to each referee with an email."); await onDone();
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Panel title="Referees">
+      <PBody>
+        {!paid ? (
+          <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you name your referees here.</Note>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div className="sub2">Each referee with an email is sent a private link to complete a short, confidential reference for you. You can update referees who have not yet responded.</div>
+            {err ? <ProblemNotice problem={err} /> : null}
+            {ok ? <Note kind="ok" title={ok}>Thank you.</Note> : null}
+            {submitted.length ? (
+              <div style={{ display: "grid", gap: 4 }}>
+                {submitted.map((r, i) => (
+                  <div key={i} className="sub2" style={{ color: "var(--green-ink)" }}>✓ Reference received from <b>{r.name}</b>{r.email ? ` · ${r.email}` : ""}.</div>
+                ))}
+              </div>
+            ) : null}
+            {rows.map((r, i) => (
+              <div className="grid grid--2" key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
+                <Fld id={`rf-n-${i}`} label={`Referee ${i + 1} — name`} v={r.name} on={(v) => setR(i, "name", v)} />
+                <Fld id={`rf-e-${i}`} label="Email" v={r.email} on={(v) => setR(i, "email", v)} />
+                <Fld id={`rf-p-${i}`} label="Phone number" v={r.phone} on={(v) => setR(i, "phone", v)} />
+                <Fld id={`rf-i-${i}`} label="Institution" v={r.institution} on={(v) => setR(i, "institution", v)} />
+                <Fld id={`rf-po-${i}`} label="Position" v={r.position} on={(v) => setR(i, "position", v)} />
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setRows([...rows, { name: "", email: "", phone: "", institution: "", position: "" }])}>+ Add a referee</button>
+              <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save referees & send requests"}</button>
+            </div>
+          </div>
+        )}
+      </PBody>
+    </Panel>
+  );
+}
+
+function Fld({ id, label, v, on, ph, num }: { id: string; label: string; v: string; on: (v: string) => void; ph?: string; num?: boolean }) {
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input id={id} className={`ctl${num ? " tnum" : ""}`} value={v} placeholder={ph} onChange={(e) => on(e.target.value)} />
+    </div>
+  );
+}
+function Sel({ id, label, v, on, options }: { id: string; label: string; v: string; on: (v: string) => void; options: string[] | [string, string][] }) {
+  const opts: [string, string][] = options.map((o) => (Array.isArray(o) ? o : [o, o]));
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <select id={id} className="ctl" value={v} onChange={(e) => on(e.target.value)}>
+        <option value="">—</option>
+        {opts.map(([val2, lab]) => <option key={val2} value={val2}>{lab}</option>)}
+      </select>
+    </div>
   );
 }
 

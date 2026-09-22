@@ -89,7 +89,8 @@ BEGIN
             ('admin',            '024', 'University Administrator', 'platform',    NULL),
             ('super',            '025', 'Super Administrator',      'platform',    NULL),
             ('pgschool',         '026', 'PG School Dean',           'institution', NULL),
-            ('pgsecretary',      '027', 'PG School Secretary',      'institution', NULL)
+            ('pgsecretary',      '027', 'PG School Secretary',      'institution', NULL),
+            ('financecontroller','028', 'Finance Controller',       'college',     'CHS')
         ) AS t(office, n, given, scope_kind, scope_id)
     LOOP
         SELECT id INTO v_person FROM iam.person WHERE staff_number = 'MOAUM/DEMO/' || o.n;
@@ -411,6 +412,7 @@ BEGIN
                 WHEN 'hod' THEN 'CONUASS 5'
                 WHEN 'dean' THEN 'CONUASS 7'
                 WHEN 'provost' THEN 'CONUASS 7'
+                WHEN 'financecontroller' THEN 'CONTISS 15'
                 WHEN 'bursar' THEN 'CONTISS 15'
                 WHEN 'registrar' THEN 'CONTISS 15'
                 WHEN 'audit' THEN 'CONTISS 15'
@@ -1119,6 +1121,7 @@ BEGIN
             PERFORM admissions.pg_dept_decide(v_app, true, 'Suitable for the diploma.', v_hod);
         END IF;
         IF v_dean IS NOT NULL THEN
+            PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean);
             PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean);
         END IF;
 
@@ -1140,7 +1143,7 @@ BEGIN
         PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
         PERFORM admissions.pg_submit(v_app);
         IF v_hod  IS NOT NULL THEN PERFORM admissions.pg_dept_decide(v_app, true, 'Admit.', v_hod); END IF;
-        IF v_dean IS NOT NULL THEN PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean); END IF;
+        IF v_dean IS NOT NULL THEN PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean); PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean); END IF;
         PERFORM admissions.pg_accept(v_app);
         v_student := admissions.pg_admit(v_app);
 

@@ -20,11 +20,12 @@ export interface PgRow {
   fee_confirmed_at: string | null; submitted_at: string | null; dept_decided_at: string | null;
   spgs_decided_at: string | null; accepted_at: string | null; admitted_at: string | null; student_id: string | null;
 }
-export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; offered: number; accepted: number; admitted: number }; rows: PgRow[] }
-interface Referee { id: string; name: string; email: string | null; institution: string | null; position: string | null; reference_text: string | null }
+export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; faculty: number; offered: number; accepted: number; admitted: number }; rows: PgRow[] }
+interface Referee { id: string; name: string; email: string | null; phone: string | null; institution: string | null; position: string | null; reference_text: string | null; submitted_at: string | null; relationship: string | null; known_duration: string | null; attestation: string | null; recommendation: string | null; verdict: string | null }
+const VERDICT_LABEL: Record<string, string> = { RECOMMEND: "Recommended", RECOMMEND_WITH_RESERVATION: "Recommended with reservation", DO_NOT_RECOMMEND: "Not recommended" };
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface PriorQual { kind: string; institution: string | null; award: string | null; field: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
-interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[] }
+interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[] }
 const QUAL_LABEL: Record<string, string> = {
   FIRST: "First degree", MASTERS: "Master’s degree", PGD: "Postgraduate Diploma", HND: "Higher National Diploma",
   ND: "National Diploma", NCE: "Nigeria Certificate in Education", PHD: "Doctorate (PhD)", OTHER: "Other qualification",
@@ -35,12 +36,15 @@ const STATE: Record<string, { kind: "ok" | "bad" | "warn" | "info" | "grey"; lab
   SUBMITTED: { kind: "info", label: "Submitted" },
   DEPT_RECOMMENDED: { kind: "info", label: "Dept recommended" },
   DEPT_DECLINED: { kind: "grey", label: "Dept declined" },
+  FAC_RECOMMENDED: { kind: "info", label: "Faculty recommended" },
+  FAC_DECLINED: { kind: "grey", label: "Faculty declined" },
   OFFERED: { kind: "ok", label: "Offered" },
   NOT_OFFERED: { kind: "grey", label: "Not offered" },
   ACCEPTED: { kind: "ok", label: "Accepted" },
   ADMITTED: { kind: "ok", label: "Admitted" },
 };
-const isDept = (o: string | null) => ["hod", "dean", "academic", "super"].includes(o ?? "");
+const isDept = (o: string | null) => ["hod", "academic", "super"].includes(o ?? "");
+const isFaculty = (o: string | null) => ["dean", "academic", "super"].includes(o ?? "");
 const isSpgs = (o: string | null) => ["pgschool", "pgsecretary", "super"].includes(o ?? "");
 const mayAdmit = (o: string | null) => ["pgschool", "pgsecretary", "registrar", "super"].includes(o ?? "");
 const fmtDate = (v: string | null | undefined) => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }); };
@@ -161,7 +165,20 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
 
       <Section title="Referees">
         {(d.referees ?? []).length ? (d.referees ?? []).map((r) => (
-          <div key={r.id} className="sub2" style={{ marginBottom: 4 }}><b>{r.name}</b>{r.position ? ` · ${r.position}` : ""}{r.institution ? ` · ${r.institution}` : ""}{r.email ? ` · ${r.email}` : ""}</div>
+          <div key={r.id} style={{ marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--line-2)" }}>
+            <div className="sub2"><b>{r.name}</b>{r.position ? ` · ${r.position}` : ""}{r.institution ? ` · ${r.institution}` : ""}</div>
+            <div className="sub2">{r.email ? `${r.email}` : ""}{r.phone ? ` · ${r.phone}` : ""}</div>
+            {r.submitted_at ? (
+              <div style={{ marginTop: 6, paddingLeft: 10, borderLeft: "3px solid var(--green-ink)" }}>
+                <div className="sub2" style={{ color: "var(--green-ink)", fontWeight: 600 }}>
+                  Reference received{r.verdict ? ` · ${VERDICT_LABEL[r.verdict] ?? r.verdict}` : ""}
+                </div>
+                {r.relationship ? <div className="sub2"><b>Relationship:</b> {r.relationship}{r.known_duration ? ` · known ${r.known_duration}` : ""}</div> : null}
+                {r.attestation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Attestation:</b> {r.attestation}</div> : null}
+                {r.recommendation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Recommendation:</b> {r.recommendation}</div> : null}
+              </div>
+            ) : <div className="sub2" style={{ color: "var(--chrome)" }}>Reference not yet submitted{r.email ? " — a request was emailed" : " (no email on record)"}.</div>}
+          </div>
         )) : <div className="sub2">None named.</div>}
       </Section>
 
@@ -188,9 +205,10 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       </Section>
 
       {a.dept_note ? <Note kind="info" title="Department note">{a.dept_note}</Note> : null}
+      {a.fac_note ? <Note kind="info" title="Faculty note">{a.fac_note}</Note> : null}
       {a.spgs_note ? <Note kind="info" title="School note">{a.spgs_note}</Note> : null}
 
-      {(isDept(office) && st === "SUBMITTED") || (isSpgs(office) && ["DEPT_RECOMMENDED", "SUBMITTED"].includes(st)) ? (
+      {(isDept(office) && st === "SUBMITTED") || (isFaculty(office) && st === "DEPT_RECOMMENDED") || (isSpgs(office) && st === "FAC_RECOMMENDED") ? (
         <div>
           <textarea className="ctl" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="A note for the decision (optional)" />
         </div>
@@ -199,11 +217,17 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {isDept(office) && st === "SUBMITTED" ? (
           <>
-            <Btn kind="primary" disabled={busy !== null} onClick={() => void act("dept-decision", `Recommended ${a.surname}, ${a.other_names} for ${a.programme_name}`, { recommend: true, note })}>Recommend</Btn>
-            <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("dept-decision", `Declined ${a.surname}, ${a.other_names}`, { recommend: false, note })}>Decline</Btn>
+            <Btn kind="primary" disabled={busy !== null} onClick={() => void act("dept-decision", `Department recommended ${a.surname}, ${a.other_names} for ${a.programme_name}`, { recommend: true, note })}>Department: recommend</Btn>
+            <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("dept-decision", `Department declined ${a.surname}, ${a.other_names}`, { recommend: false, note })}>Decline</Btn>
           </>
         ) : null}
-        {isSpgs(office) && ["DEPT_RECOMMENDED", "SUBMITTED"].includes(st) ? (
+        {isFaculty(office) && st === "DEPT_RECOMMENDED" ? (
+          <>
+            <Btn kind="primary" disabled={busy !== null} onClick={() => void act("faculty-decision", `Faculty recommended ${a.surname}, ${a.other_names} for ${a.programme_name}`, { recommend: true, note })}>Faculty: recommend</Btn>
+            <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("faculty-decision", `Faculty declined ${a.surname}, ${a.other_names}`, { recommend: false, note })}>Decline</Btn>
+          </>
+        ) : null}
+        {isSpgs(office) && st === "FAC_RECOMMENDED" ? (
           <>
             <Btn kind="primary" disabled={busy !== null} onClick={() => void act("spgs-decision", `Offered ${a.surname}, ${a.other_names} a place on ${a.programme_name}`, { offer: true, note })}>Offer a place</Btn>
             <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("spgs-decision", `Refused ${a.surname}, ${a.other_names}`, { offer: false, note })}>Refuse</Btn>
@@ -222,19 +246,35 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
   );
 }
 
-export function PgAdmissions({ session, view, problem, actingOffice }: {
-  session: string; view: PgView | null; problem: Problem | null; actingOffice: string | null;
+export function PgAdmissions({ session, sessions = [], view, problem, actingOffice }: {
+  session: string; sessions?: { name: string; state: string }[]; view: PgView | null; problem: Problem | null; actingOffice: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<string | null>(null);
   const c = view?.counts;
+  // the session on the desk is always among the options, even if the calendar doesn't list it yet
+  const sessionOptions = sessions.some((s) => s.name === session) ? sessions : [{ name: session, state: "" }, ...sessions];
   return (
     <>
       <RoleLine allowed={["pgschool", "pgsecretary", "hod", "dean", "academic", "registrar"]} actingOffice={actingOffice}
         action="Deciding postgraduate admissions" />
       <Note kind="info" title="Postgraduate admission is decided on the record, not on a UTME score">
-        A postgraduate applicant applies on a first degree — no JAMB, no UTME aggregate. The department&rsquo;s committee recommends a submitted application, the <b>School of Postgraduate Studies</b> offers or refuses, the applicant accepts, and the School admits, which puts the student on the register to be matriculated on fees and registration.
+        A postgraduate applicant applies on a first degree — no JAMB, no UTME aggregate. The <b>department</b> recommends a submitted application, the <b>faculty</b> vets it, then the <b>School of Postgraduate Studies</b> offers or refuses; the applicant accepts, and the School admits, which puts the student on the register to be matriculated on fees and registration.
       </Note>
+
+      <Panel title="Session" right={<span className="sub2">Applications are shown for the session you choose</span>}>
+        <PBody>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <label htmlFor="pg-session" className="sub2" style={{ fontWeight: 600 }}>Admissions session</label>
+            <select id="pg-session" className="ctl" style={{ maxWidth: 260 }} value={session}
+              onChange={(e) => router.push(`/admissions/postgraduate?session=${encodeURIComponent(e.target.value)}`)}>
+              {sessionOptions.map((s) => (
+                <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : s.state === "PLANNED" ? " · planned" : ""}</option>
+              ))}
+            </select>
+          </div>
+        </PBody>
+      </Panel>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
 
@@ -243,10 +283,11 @@ export function PgAdmissions({ session, view, problem, actingOffice }: {
           <Tiles items={[
             ["Applications", String(c?.total ?? 0), null, session],
             ["Submitted", String(c?.submitted ?? 0), Number(c?.submitted) ? "var(--chrome)" : null, "Awaiting the department"],
-            ["Recommended", String(c?.recommended ?? 0), Number(c?.recommended) ? "var(--chrome)" : null, "Awaiting the School"],
+            ["Dept recommended", String(c?.recommended ?? 0), Number(c?.recommended) ? "var(--chrome)" : null, "Awaiting the faculty"],
+            ["Faculty recommended", String(c?.faculty ?? 0), Number(c?.faculty) ? "var(--chrome)" : null, "Awaiting the School"],
             ["Offered", String(c?.offered ?? 0), Number(c?.offered) ? "var(--green-ink)" : null, "Awaiting acceptance"],
             ["Admitted", String(c?.admitted ?? 0), Number(c?.admitted) ? "var(--green-ink)" : null, "On the register"],
-          ]} />
+          ]} cls="grid--3" />
 
           <Panel title="Postgraduate applications" right={`${view.rows.length} application${view.rows.length === 1 ? "" : "s"}`}>
             {view.rows.length ? (

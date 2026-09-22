@@ -1,93 +1,37 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- V224 — the postgraduate School's own session and semester calendar
+-- V225 — the postgraduate referee's attestation
 --
---   The Postgraduate School keeps its own academic calendar, apart from the
---   undergraduate one: its own set of sessions (with the one it is currently
---   running), and its own semester windows for each. Until now the PG side
---   borrowed the University's single CURRENT session (policy.academic_session);
---   this gives the School its own store and a resolver that prefers it, falling
---   back to the University's current session, then a literal, so nothing that
---   already keys off a session string breaks. Like admissions.pg_fee, these are
---   plain tables the School owns — not on the audit spine.
+--   A referee named on an application is emailed a private link and fills a
+--   short reference: their relationship to the applicant, how long they have
+--   known them, an academic attestation and a recommendation. The link carries
+--   an unguessable token per referee. This adds the referee's phone, the token,
+--   and the attestation fields, backfills tokens for referees already on record,
+--   and teaches the public apply to record a referee's phone.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 BEGIN;
 
 SELECT set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
 SELECT set_config('moaum.actor_office', 'academic', true);
-SELECT set_config('moaum.reason', 'PG calendar introduced (V224)', true);
+SELECT set_config('moaum.reason', 'PG referee attestation (V225)', true);
 
--- ── 1 · the PG School's sessions (one CURRENT at a time) ─────────────────────
-CREATE TABLE IF NOT EXISTS admissions.pg_academic_session (
-    name        text PRIMARY KEY CHECK (name ~ '^[0-9]{4}/[0-9]{4}$'),
-    starts_on   date,
-    ends_on     date,
-    semesters   int  NOT NULL DEFAULT 2 CHECK (semesters BETWEEN 1 AND 3),
-    state       text NOT NULL DEFAULT 'PLANNED' CHECK (state IN ('PLANNED', 'CURRENT', 'CLOSED')),
-    note        text,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now()
-);
+-- ── 1 · the referee's phone, private token, and the reference they give ──────
+ALTER TABLE admissions.pg_referee ADD COLUMN IF NOT EXISTS phone          text NULL;
+ALTER TABLE admissions.pg_referee ADD COLUMN IF NOT EXISTS token          text NULL;
+ALTER TABLE admissions.pg_referee ADD COLUMN IF NOT EXISTS relationship   text NULL;
+ALTER TABLE admissions.pg_referee ADD COLUMN IF NOT EXISTS known_duration text NULL;
+ALTER TABLE admissions.pg_referee ADD COLUMN IF NOT EXISTS attestation    text NULL;
+ALTER TABLE admissions.pg_referee ADD COLUMN IF NOT EXISTS recommendation text NULL;
+ALTER TABLE admissions.pg_referee ADD COLUMN IF NOT EXISTS verdict        text NULL
+    CONSTRAINT ck_pg_ref_verdict CHECK (verdict IS NULL OR verdict IN ('RECOMMEND','RECOMMEND_WITH_RESERVATION','DO_NOT_RECOMMEND'));
 
--- exactly one session may be CURRENT for the School at a time
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pg_session_one_current
-    ON admissions.pg_academic_session (state) WHERE state = 'CURRENT';
+-- every referee carries an unguessable token for their private reference link
+UPDATE admissions.pg_referee SET token = encode(gen_random_bytes(18), 'hex') WHERE token IS NULL;
+ALTER TABLE admissions.pg_referee ALTER COLUMN token SET DEFAULT encode(gen_random_bytes(18), 'hex');
+ALTER TABLE admissions.pg_referee ALTER COLUMN token SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pg_referee_token ON admissions.pg_referee (token);
 
--- ── 2 · the semester windows of each PG session ─────────────────────────────
-CREATE TABLE IF NOT EXISTS admissions.pg_semester (
-    session             text NOT NULL REFERENCES admissions.pg_academic_session(name) ON DELETE CASCADE,
-    number              int  NOT NULL CHECK (number BETWEEN 1 AND 3),
-    registration_opens  date,
-    registration_closes date,
-    lectures_from       date,
-    lectures_to         date,
-    exams_from          date,
-    exams_to            date,
-    results_due         date,
-    state               text NOT NULL DEFAULT 'NOT_YET_OPEN' CHECK (state IN ('NOT_YET_OPEN', 'OPEN', 'CLOSED')),
-    PRIMARY KEY (session, number)
-);
-
--- these hold real state the School edits, like policy.academic_session / policy.semester,
--- so they go on the audit spine (attached, not exempt); their writes carry the actor the
--- request runs as, and the seeds below run as the migration actor set above
-SELECT audit.attach('admissions.pg_academic_session');
-SELECT audit.attach('admissions.pg_semester');
-
--- ── 3 · the current PG session: the School's own, else the University's, else a literal ──
-CREATE OR REPLACE FUNCTION admissions.pg_current_session()
-RETURNS text
-LANGUAGE sql STABLE AS $$
-    SELECT coalesce(
-        (SELECT name FROM admissions.pg_academic_session WHERE state = 'CURRENT' LIMIT 1),
-        (SELECT name FROM policy.academic_session         WHERE state = 'CURRENT' LIMIT 1),
-        '2025/2026');
-$$;
-
--- ── 4 · seed the PG calendar from the University's, so the School starts populated ──
-INSERT INTO admissions.pg_academic_session (name, starts_on, ends_on, semesters, state)
-SELECT name, starts_on, ends_on, semesters, state
-  FROM policy.academic_session
- WHERE name ~ '^[0-9]{4}/[0-9]{4}$'
-ON CONFLICT (name) DO NOTHING;
-
--- any session PG applications already carry, but the University's calendar does not list, as CLOSED
-INSERT INTO admissions.pg_academic_session (name, state)
-SELECT DISTINCT session, 'CLOSED'
-  FROM admissions.pg_application
- WHERE session ~ '^[0-9]{4}/[0-9]{4}$'
-ON CONFLICT (name) DO NOTHING;
-
--- mirror the University's semester windows for the sessions just copied in
-INSERT INTO admissions.pg_semester (session, number, registration_opens, registration_closes,
-                                    lectures_from, lectures_to, exams_from, exams_to, results_due, state)
-SELECT s.session, s.number, s.registration_opens, s.registration_closes,
-       s.lectures_from, s.lectures_to, s.exams_from, s.exams_to, s.results_due, s.state
-  FROM policy.semester s
-  JOIN admissions.pg_academic_session p ON p.name = s.session
-ON CONFLICT (session, number) DO NOTHING;
-
--- ── 5 · the public apply resolves the session from the PG calendar now ───────
+-- ── 2 · the public apply records a referee's phone alongside their details ───
 CREATE OR REPLACE FUNCTION admissions.pg_apply(p_form jsonb)
 RETURNS TABLE (application_id uuid, application_no text, reference text, amount numeric)
 LANGUAGE plpgsql AS $$
@@ -156,8 +100,9 @@ BEGIN
     IF jsonb_typeof(p_form->'referees') = 'array' THEN
         FOR ref IN SELECT * FROM jsonb_array_elements(p_form->'referees') LOOP
             IF coalesce(btrim(ref->>'name'), '') <> '' THEN
-                INSERT INTO admissions.pg_referee (application_id, name, email, institution, position)
+                INSERT INTO admissions.pg_referee (application_id, name, email, phone, institution, position)
                 VALUES (v_app, btrim(ref->>'name'), nullif(btrim(coalesce(ref->>'email', '')), ''),
+                        nullif(btrim(coalesce(ref->>'phone', '')), ''),
                         nullif(btrim(coalesce(ref->>'institution', '')), ''), nullif(btrim(coalesce(ref->>'position', '')), ''));
             END IF;
         END LOOP;
@@ -169,9 +114,5 @@ BEGIN
                         (SELECT a.application_no FROM admissions.pg_application a WHERE a.id = v_app),
                         v_ref, v_amt;
 END $$;
-
--- ── 6 · PG coursework registration may run a third (Summer) semester too ─────
-ALTER TABLE admissions.pg_registration DROP CONSTRAINT IF EXISTS ck_pg_reg_sem;
-ALTER TABLE admissions.pg_registration ADD  CONSTRAINT ck_pg_reg_sem CHECK (semester IN (1, 2, 3));
 
 COMMIT;

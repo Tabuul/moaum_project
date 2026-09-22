@@ -51,8 +51,10 @@ class PgAdmissionsController {
     /* who may read the postgraduate applications */
     private static final String READERS =
             "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dean','OFFICE_hod','OFFICE_dvc','OFFICE_vc','OFFICE_super')";
-    /* the department's postgraduate committee */
-    private static final String DEPT = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_super')";
+    /* the department's postgraduate committee (the HOD) */
+    private static final String DEPT = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_super')";
+    /* the faculty (the Dean) vets after the department */
+    private static final String FACULTY = "hasAnyAuthority('OFFICE_dean','OFFICE_academic','OFFICE_super')";
     /* the School of Postgraduate Studies */
     private static final String SPGS = "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_super')";
     /* admitting onto the register, and confirming a fee */
@@ -122,7 +124,7 @@ class PgAdmissionsController {
                        g.name AS programme_name, g.pg_award, g.pg_research,
                        p.surname, p.other_names, p.email, p.phone, p.state_of_origin,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa,
-                       a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.spgs_decided_at,
+                       a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.fac_decided_at, a.spgs_decided_at,
                        a.accepted_at, a.admitted_at, a.student_id
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
@@ -140,6 +142,7 @@ class PgAdmissionsController {
                 SELECT count(*) AS total,
                        count(*) FILTER (WHERE state = 'SUBMITTED') AS submitted,
                        count(*) FILTER (WHERE state = 'DEPT_RECOMMENDED') AS recommended,
+                       count(*) FILTER (WHERE state = 'FAC_RECOMMENDED') AS faculty,
                        count(*) FILTER (WHERE state = 'OFFERED') AS offered,
                        count(*) FILTER (WHERE state = 'ACCEPTED') AS accepted,
                        count(*) FILTER (WHERE state = 'ADMITTED') AS admitted
@@ -161,6 +164,7 @@ class PgAdmissionsController {
                 SELECT count(*) AS total,
                        count(*) FILTER (WHERE state = 'SUBMITTED') AS submitted,
                        count(*) FILTER (WHERE state = 'DEPT_RECOMMENDED') AS recommended,
+                       count(*) FILTER (WHERE state = 'FAC_RECOMMENDED') AS faculty,
                        count(*) FILTER (WHERE state = 'OFFERED') AS offered,
                        count(*) FILTER (WHERE state = 'ACCEPTED') AS accepted,
                        count(*) FILTER (WHERE state = 'ADMITTED') AS admitted
@@ -317,7 +321,8 @@ class PgAdmissionsController {
                        p.surname, p.other_names, p.sex, p.date_of_birth, p.state_of_origin, p.lga, p.email, p.phone,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
                        a.proposal_title, a.proposal_text,
-                       a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.dept_note, a.spgs_decided_at, a.spgs_note,
+                       a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.dept_note,
+                       a.fac_decided_at, a.fac_note, a.spgs_decided_at, a.spgs_note,
                        a.accepted_at, a.admitted_at, a.student_id
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
@@ -329,7 +334,8 @@ class PgAdmissionsController {
         }
         Map<String, Object> app = found.get(0);
         List<Map<String, Object>> referees = jdbc.sql("""
-                SELECT id, name, email, institution, position, reference_text, submitted_at
+                SELECT id, name, email, phone, institution, position, reference_text, submitted_at,
+                       relationship, known_duration, attestation, recommendation, verdict
                   FROM admissions.pg_referee WHERE application_id = :id ORDER BY name
                 """).param("id", id).query().listOfRows();
         List<Map<String, Object>> documents = jdbc.sql("""
@@ -437,6 +443,21 @@ class PgAdmissionsController {
     Map<String, Object> deptDecision(@PathVariable UUID id, @Valid @RequestBody DeptDecision body) {
         UUID actor = AuditContextHolder.required().actorId();
         jdbc.sql("SELECT admissions.pg_dept_decide(:id, :rec, :note, :actor)")
+                .param("id", id).param("rec", body.recommend())
+                .param("note", body.note(), Types.VARCHAR).param("actor", actor).query().listOfRows();
+        return application(id);
+    }
+
+    public record FacultyDecision(boolean recommend, String note) {
+    }
+
+    /** the faculty (the Dean) recommends (or declines) an application the department recommended */
+    @PostMapping("/applications/{id}/faculty-decision")
+    @PreAuthorize(FACULTY)
+    @Transactional
+    Map<String, Object> facultyDecision(@PathVariable UUID id, @Valid @RequestBody FacultyDecision body) {
+        UUID actor = AuditContextHolder.required().actorId();
+        jdbc.sql("SELECT admissions.pg_faculty_decide(:id, :rec, :note, :actor)")
                 .param("id", id).param("rec", body.recommend())
                 .param("note", body.note(), Types.VARCHAR).param("actor", actor).query().listOfRows();
         return application(id);

@@ -124,10 +124,6 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
             <Link href="/verify" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Verify a payment or receipt</Link>
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
           </div>
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <button type="button" className="btn btn--ghost btn--sm" style={{ width: "100%" }} disabled title="No address recorded for CHS-AMS yet">College of Health Sciences → CHS-AMS</button>
-            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>MBBS, BDS, Nursing and Medical Laboratory Science — College academic business runs in a separate system. Sign in <b>here</b> for fees, records and the transcript.</div>
-          </div>
           <div className="notice notice--info" style={{ marginTop: 6 }}>
             <Ico name="alert" size={17} stroke="var(--chrome)" w={2} />
             <p>Five failed attempts lock an account for fifteen minutes. {sso?.enabled ? "Staff sign in through the University's single sign-on, which asks for a second step." : "Staff and privileged accounts will also complete a second step when single sign-on is connected."}</p>

@@ -22,6 +22,7 @@ export default async function PgAdmissionsPage({ searchParams }: { searchParams:
     <Shell route="t/pgadmissions" me={me.ok ? me.data : null}>
       <PgAdmissions
         session={session}
+        sessions={pgSessions}
         view={view.ok ? view.data : null}
         problem={view.ok ? null : view.problem}
         actingOffice={me.ok ? me.data.activeOffice : null}

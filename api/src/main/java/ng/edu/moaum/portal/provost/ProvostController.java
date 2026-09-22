@@ -62,7 +62,7 @@ class ProvostController {
     }
 
     @GetMapping("/api/v1/provost/dashboard")
-    @PreAuthorize("hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_super')")
     @Transactional(readOnly = true)
     Map<String, Object> dashboard(@RequestParam(required = false) String session) {
         Map<String, Object> out = new LinkedHashMap<>();
