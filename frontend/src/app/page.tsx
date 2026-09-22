@@ -39,7 +39,13 @@ export default async function DashboardPage() {
   const office = me.ok ? me.data.activeOffice : null;
   /* an applicant's home is their application, not an office's dashboard */
   if (office === "applicant") redirect("/applicant");
-  if (office === "student") redirect("/student");
+  if (office === "student") {
+    /* a College of Health Sciences student (a programme under the College) from 200 level up lands in
+       the College's own student area; every other student keeps the standard student portal */
+    const sme = await api<{ collegeCode: string | null; level: number }>("/api/v1/me");
+    if (sme.ok && sme.data.collegeCode === "CHS" && (sme.data.level ?? 0) >= 200) redirect("/college/student");
+    redirect("/student");
+  }
   /* the administrator's home is the whole institution at one desk (proto part18) */
   if (office === "admin") redirect("/admin");
   /* the Vice-Chancellor's home is the institutional overview (menus.ts home t/overview) */

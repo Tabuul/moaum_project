@@ -25,13 +25,13 @@ class StudentPortalRepository {
     /* ── the account ── */
 
     record Student(UUID id, String matricNo, String admissionNo, String surname, String otherNames, String programmeCode,
-                   String programme, String facultyCode, String facultyName, String deptCode, String deptName, String entryMode,
+                   String programme, String facultyCode, String facultyName, String collegeCode, String deptCode, String deptName, String entryMode,
                    String entrySession, int entryLevel, int currentLevel, String status, UUID candidateId, String curriculumVersion) {
     }
 
     private static final String STUDENT = """
             SELECT s.id, s.matric_no, s.admission_no, s.surname, s.other_names, s.programme_code, p.name AS programme,
-                   p.faculty_code, f.name AS faculty_name, p.dept_code, d.name AS dept_name, s.entry_mode, s.entry_session,
+                   p.faculty_code, f.name AS faculty_name, f.college_code, p.dept_code, d.name AS dept_name, s.entry_mode, s.entry_session,
                    s.entry_level, s.current_level, s.status, s.candidate_id, s.curriculum_version
               FROM people.student s
               JOIN ref.programme p ON p.code = s.programme_code
