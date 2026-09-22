@@ -184,7 +184,7 @@ export function PgApply() {
         </div>
 
         <Section title="Your first degree" />
-        <div className="hint" style={{ marginTop: -4 }}>The Bachelor&rsquo;s degree the admission rests on. Add any other qualifications below.</div>
+        <div className="hint" style={{ marginTop: -4 }}>Related / relevant Bachelor&rsquo;s degree(s)</div>
         <div className="grid grid--2">
           <Field id="priorInstitution" label="Institution"><input id="priorInstitution" className="ctl" value={f.priorInstitution ?? ""} onChange={set("priorInstitution")} /></Field>
           <Field id="priorAward" label="Degree / award"><input id="priorAward" className="ctl" value={f.priorAward ?? ""} onChange={set("priorAward")} placeholder="B.Sc." /></Field>
