@@ -199,11 +199,13 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
   const { act, busy, problem } = useAct();
   const [now] = useState(() => Date.now());
   const live = c.cards.find((x) => x.state === "ISSUED") ?? null;
-  const card: IdCardData | null = live ? {
+  /* the card is drawn for every matriculated student — it is a picture of the card, keyed on the
+     matriculation number; the serial and validity fill in once the Library has issued the card itself */
+  const card: IdCardData | null = s.matricNo ? {
     name: s.name,
-    matric: s.matricNo ?? "",
-    barcode: (s.matricNo ?? "").replace(/[^A-Za-z0-9]/g, ""),
-    serial: live.card_no,
+    matric: s.matricNo,
+    barcode: s.matricNo.replace(/[^A-Za-z0-9]/g, ""),
+    serial: live ? live.card_no : "Not yet issued",
     faculty: s.faculty,
     prog: s.programme,
     level: String(s.level),
@@ -211,10 +213,10 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
     admitted: (s.entrySession ?? "").slice(0, 4) || "—",
     graduates: "—",
     blood: "—",
-    expiresShort: onDay(live.valid_to),
+    expiresShort: live ? onDay(live.valid_to) : "—",
     kinPhone: "—",
     photoSrc: s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null,
-    state: new Date(live.valid_to).getTime() < now ? "expired" : "issued",
+    state: live ? (new Date(live.valid_to).getTime() < now ? "expired" : "issued") : undefined,
   } : null;
   return (
     <>
@@ -225,10 +227,10 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
       ) : c.clearsIdCard === false ? (
         <Note kind="bad" title="Your card waits on the Bursary's clearance" action={<Link href="/student/fees" className="btn btn--urgent btn--sm">Fees & payments</Link>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
       ) : (
-        <Note kind="info" title="No live card">The Library prints it and Security hands it over. Bring your fee receipt to the Library; your photograph and signature are checked at the counter.</Note>
+        <Note kind="info" title="Your card has not been issued yet">This is what your card will carry. The Library prints it and Security hands it over — bring your fee receipt to the Library; your photograph and signature are checked at the counter. The printable copy opens once the card is issued.</Note>
       )}
       {card ? (
-        <Panel title="Your identity card" right="This is a picture of the card, not the card">
+        <Panel title="Your identity card" right={live ? "This is a picture of the card, not the card" : "Preview — not yet issued"}>
           <PBody>
             <IdCardPair c={card} big />
             <div className="sub2" style={{ marginTop: 4 }}>The barcode on the back is your borrower number at the Library and the number the gate reads; it does not change when a card is replaced &mdash; the serial does. A field shown as &ldquo;&mdash;&rdquo; is one the University has not recorded against you.</div>
