@@ -1123,6 +1123,8 @@ BEGIN
         IF v_dean IS NOT NULL THEN
             PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean);
             PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean);
+            -- the applicant paid the checking fee to see the decision; the acceptance fee is still to pay
+            v_ref := admissions.pg_new_fee_reference(v_app, 'CHECKING'); PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
         END IF;
 
         -- 4 · M.Sc. Computer Science — admitted, registered, scored, and through to a cleared thesis,
@@ -1144,7 +1146,10 @@ BEGIN
         PERFORM admissions.pg_submit(v_app);
         IF v_hod  IS NOT NULL THEN PERFORM admissions.pg_dept_decide(v_app, true, 'Admit.', v_hod); END IF;
         IF v_dean IS NOT NULL THEN PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean); PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean); END IF;
-        PERFORM admissions.pg_accept(v_app);
+        -- the applicant paid the checking fee to see the decision and the acceptance fee to accept it
+        -- (confirming the acceptance fee moves the offer to ACCEPTED); then the School admits
+        v_ref := admissions.pg_new_fee_reference(v_app, 'CHECKING');   PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
+        v_ref := admissions.pg_new_fee_reference(v_app, 'ACCEPTANCE'); PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
         v_student := admissions.pg_admit(v_app);
 
         -- the programme's courses (Policy 11)

@@ -87,7 +87,7 @@ export function PgPortal() {
       // the fee to prepare for the current step: application, then checking (to see the decision), then acceptance
       const kind = !m.feeConfirmedAt ? "APPLICATION"
         : m.state === "DECISION_LOCKED" ? "CHECKING"
-        : (m.state === "OFFERED" && !m.acceptanceConfirmedAt) ? "ACCEPTANCE"
+        : (!m.acceptanceConfirmedAt && (m.state === "OFFERED" || m.state === "ACCEPTED" || m.state === "ADMITTED")) ? "ACCEPTANCE"
         : null;
       if (kind) {
         const fr = await fetch(`/api/bff/api/v1/pg/fee-reference?kind=${kind}`, { method: "POST", headers: { "Content-Type": "application/json" } });
@@ -217,7 +217,7 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      {paid && me.state === "OFFERED" ? (
+      {paid && !me.acceptanceConfirmedAt && (me.state === "OFFERED" || me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
         <Panel title="Congratulations — you have been offered a place">
           <PBody>
             <Note kind="ok" title={`Offer of provisional admission · ${me.programme}`}>
@@ -236,10 +236,10 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      {paid && (me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
+      {paid && me.acceptanceConfirmedAt ? (
         <Panel title="Offer of admission">
           <PBody>
-            <Note kind="ok" title="Your offer is accepted">You accepted your offer of admission{me.acceptanceConfirmedAt ? ` on ${fmtDate(me.acceptanceConfirmedAt)}` : ""}. Download and print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
+            <Note kind="ok" title="Your offer is accepted">You accepted your offer of admission on {fmtDate(me.acceptanceConfirmedAt)} (acceptance fee paid). Download and print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
             <div style={{ marginTop: 10 }}>
               <a href="/pg/offer/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print offer of admission (PDF)</a>
             </div>
