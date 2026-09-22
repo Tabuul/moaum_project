@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * The postgraduate applicant's dashboard, laid out to match the prototype's pgApplicantDash: a branded
- * top bar, an at-a-glance tile row, the application beside its progress, then bio-data, the degree(s) the
- * admission rests on, the proposal, the referees, the credentials document and the fee — all with the
- * portal's own components (Panel, Tiles, KvGrid), stacked as one page. Every call is scoped to the
- * signed-in applicant.
+ * The postgraduate applicant's dashboard, laid out to match the prototype's pgApplicantDash: it sits in
+ * the portal's own shell (the sidebar with the "My application" menu, the branded top bar and the account
+ * foot — the same shell every signed-in person gets, so the applicant's screen does not digress from the
+ * rest of the portal), and inside it an at-a-glance tile row, the application beside its progress, then
+ * bio-data, the degree(s) the admission rests on, the proposal, the referees, the credentials document
+ * and the fee. Every call is scoped to the signed-in applicant.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Tiles, KvGrid } from "@/components/proto/ui";
+import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
 
@@ -51,7 +52,6 @@ function fmtDate(v: string | null): string {
 const val = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
 export function PgPortal() {
-  const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [reference, setReference] = useState<string | null>(null);
@@ -94,23 +94,23 @@ export function PgPortal() {
     } finally { setChecking(false); }
   }
 
-  async function signOut() {
-    try { await fetch("/api/bff/api/v1/pg/sign-out", { method: "POST" }); } catch { /* ignore */ }
-    try { await fetch("/api/auth/sign-out", { method: "POST" }); } catch { /* ignore */ }
-    router.push("/login");
-    router.refresh();
-  }
-
-  if (loading) return <Frame><Note kind="info" title="Loading your application…">One moment.</Note></Frame>;
+  if (loading) return <Bare><Note kind="info" title="Loading your application…">One moment.</Note></Bare>;
 
   if (!me) {
     return (
-      <Frame>
+      <Bare>
         <Note kind="info" title="Sign in to see your application">Sign in with the email you applied with (or your PG application number) and the password you chose when you applied.</Note>
         <div style={{ marginTop: 12 }}><Link href="/login?next=/pg/portal" className="btn btn--primary btn--sm">Sign in</Link></div>
-      </Frame>
+      </Bare>
     );
   }
+
+  /* the portal's own shell, with the applicant's "My application" menu, branded top bar and account foot —
+     the same shell every signed-in person gets, so the applicant's screen matches the rest of the portal */
+  const shellMe: ShellMe = {
+    actorId: "", activeOffice: "pgapplicant", offices: ["pgapplicant"],
+    name: me.name, staffNumber: me.applicationNo, sessionId: null, unit: me.programme, waiting: {},
+  };
 
   const paid = !!me.feeConfirmedAt;
   const credentials = me.documents.find((d) => d.kind === "CREDENTIALS") ?? null;
@@ -125,7 +125,14 @@ export function PgPortal() {
   ];
 
   return (
-    <Frame sub={me.applicationNo}>
+    <Shell route="pg/portal" me={shellMe}>
+      <style>{`
+        .pg-steps { list-style:none; margin:0; padding:0; display:grid; gap:2px; }
+        .pg-step { display:grid; grid-template-columns:20px 1fr auto; align-items:center; gap:10px; padding:7px 0; }
+        .pg-step__dot { width:12px; height:12px; border-radius:50%; border:2px solid var(--line-2); background:transparent; margin-left:2px; }
+        .pg-step--done .pg-step__dot { background:var(--green-ink); border-color:var(--green-ink); }
+        .pg-step--done .pg-step__label { font-weight:600; }
+      `}</style>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Note kind={paid ? "ok" : "info"} title={`${me.name} · ${me.applicationNo}`}>
@@ -229,11 +236,10 @@ export function PgPortal() {
 
       {me.spgsNote ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+      <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 6 }}>
         <button type="button" className="btn btn--ghost btn--sm" onClick={() => void load()}>Refresh</button>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={() => void signOut()}>Sign out</button>
       </div>
-    </Frame>
+    </Shell>
   );
 }
 
@@ -283,7 +289,8 @@ function Documents({ credentials, onDone }: { credentials: DocMeta | null; onDon
   );
 }
 
-function Frame({ children, sub }: { children: React.ReactNode; sub?: string }) {
+/** a plain branded frame for the two states shown before the shell can be built (loading, or not signed in) */
+function Bare({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       <header style={{ background: "var(--chrome-deep, #0b1f3a)", color: "#fff", padding: "16px 22px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -293,18 +300,10 @@ function Frame({ children, sub }: { children: React.ReactNode; sub?: string }) {
           <div style={{ fontSize: 11, letterSpacing: ".6px", textTransform: "uppercase", opacity: .7 }}>School of Postgraduate Studies</div>
           <h1 style={{ fontFamily: "var(--serif, Georgia)", fontSize: 20, fontWeight: 700, margin: "2px 0 0" }}>Your postgraduate application</h1>
         </div>
-        {sub ? <span className="tnum" style={{ fontSize: 13, opacity: .85 }}>{sub}</span> : null}
       </header>
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "18px 16px 56px", display: "grid", gap: 14 }}>
         {children}
       </div>
-      <style>{`
-        .pg-steps { list-style:none; margin:0; padding:0; display:grid; gap:2px; }
-        .pg-step { display:grid; grid-template-columns:20px 1fr auto; align-items:center; gap:10px; padding:7px 0; }
-        .pg-step__dot { width:12px; height:12px; border-radius:50%; border:2px solid var(--line-2); background:transparent; margin-left:2px; }
-        .pg-step--done .pg-step__dot { background:var(--green-ink); border-color:var(--green-ink); }
-        .pg-step--done .pg-step__label { font-weight:600; }
-      `}</style>
     </div>
   );
 }

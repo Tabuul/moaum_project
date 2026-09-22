@@ -64,6 +64,7 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   vc: ["Vice-Chancellor", "Office of the Vice-Chancellor"],
   applicant: ["Applicant", "Admissions"],
   student: ["Student", "The register"],
+  pgapplicant: ["Postgraduate applicant", "School of Postgraduate Studies"],
   pgschool: ["Dean, Postgraduate School", "School of Postgraduate Studies"],
   pgsecretary: ["Secretary, Postgraduate School", "School of Postgraduate Studies"],
 };

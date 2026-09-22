@@ -2441,6 +2441,19 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "pgapplicant": {
+    "label": "Postgraduate applicant",
+    "home": "pg/home",
+    "groups": [
+      {
+        "name": "My application",
+        "items": [
+          { "id": "pg/portal", "icon": "home", "label": "Dashboard" },
+          { "id": "pg/apply", "icon": "doc", "label": "Apply form" }
+        ]
+      }
+    ]
+  },
   "pgschool": {
     "label": "Dean, Postgraduate School",
     "home": "r/academic",

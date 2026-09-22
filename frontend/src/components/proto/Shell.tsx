@@ -194,6 +194,9 @@ export const ROUTES: Record<string, string> = {
   "a/accept": "/applicant/accept",
   "a/clearance": "/applicant/clearance",
   "a/matric": "/applicant/matric",
+  /* the postgraduate applicant's own portal (pg/portal, pg/apply) */
+  "pg/portal": "/pg/portal",
+  "pg/apply": "/pg/apply",
 };
 
 /* the portal's own subtitles where the prototype's named an invented figure */
@@ -213,6 +216,8 @@ const OVERRIDES: Record<string, [string, string]> = {
   "t/sms": ["SMS gateway", "The eBulkSMS account the portal sends text messages from"],
   "r/lecturer": ["Lecturer dashboard", "Your courses, marks and staff profile this session"],
   "r/hod": ["Head of Department", "Your department's desk — approvals, allocation and results"],
+  "pg/portal": ["Your postgraduate application", "Applicant portal"],
+  "pg/apply": ["Apply for a postgraduate programme", "School of Postgraduate Studies"],
 };
 
 export const TITLES: Record<string, [string, string]> = { ...PROTOTYPE_TITLES, ...OVERRIDES };
@@ -234,6 +239,8 @@ export interface Me {
   name?: string | null;
   staffNumber?: string | null;
   sessionId?: string | null;
+  /** an optional sub-line for the nav foot (e.g. a student's programme); falls back to the role's unit */
+  unit?: string | null;
   /** what waits in each queue, by menu item id: the count, or "!" where an act is needed (iam/me) */
   waiting?: Record<string, string> | null;
 }
@@ -380,7 +387,7 @@ export function Shell({ route, me, children, sub }: { route: string; me: Me | nu
             <div className="avatar">{initials(who)}</div>
             <div style={{ minWidth: 0, flexGrow: 1 }}>
               <div className="nav__who">{who}</div>
-              <div className="nav__sub">{me ? (me.name ? label : roleUnit(office) || `${me.offices.length} office${me.offices.length === 1 ? "" : "s"} held`) : "Not signed in"}</div>
+              <div className="nav__sub">{me ? (me.unit || (me.name ? label : roleUnit(office) || `${me.offices.length} office${me.offices.length === 1 ? "" : "s"} held`)) : "Not signed in"}</div>
             </div>
             <button title="Sign out" aria-label="Sign out" style={{ color: "var(--chrome-ink)", padding: 6 }} onClick={() => void signOut()}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
