@@ -18,6 +18,7 @@ import { statusLabel, statusPill } from "@/lib/student";
 import { rememberSearch, useRecentSearches } from "@/lib/student-recents";
 import { Btn, Ico, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { StudentOpen } from "@/components/StudentModal";
 import { TwoCol } from "@/components/proto/blocks";
 
 
@@ -49,9 +50,7 @@ function hitRow(hit: SearchHit) {
       <Pil kind={statusPill(hit.status)} key="s">
         {statusLabel(hit.status)}
       </Pil>,
-      <Link className="btn btn--primary btn--sm" href={`/students/${hit.id}`} key="a">
-        Open record
-      </Link>,
+      <StudentOpen id={hit.id} label="Details" key="a" />,
     ];
   }
   if (hit.kind === "staff") {
@@ -216,9 +215,7 @@ export function Search({ q, kind, result }: { q: string; kind: string; result: S
           title={`Exact match on ${exact.identifier}`}
           action={
             exact.kind === "students" ? (
-              <Link className="btn btn--primary btn--sm" href={`/students/${exact.id}`}>
-                Open {exact.name}
-              </Link>
+              <StudentOpen id={exact.id} label={`Open ${exact.name}`} kind="primary" />
             ) : undefined
           }
         >

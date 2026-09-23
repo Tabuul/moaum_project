@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Pil } from "@/components/proto/ui";
 import { RegisterDesk } from "../RegisterDesk";
+import { StudentOpen } from "@/components/StudentModal";
 import {
   STUDENT_FILTERS, STUDENT_HEADERS, STUDENT_KEYS, registerQuery, words,
   type RegisterPage, type StudentOptions, type StudentRow,
@@ -47,7 +48,7 @@ export default async function StudentsRegister({ searchParams }: { searchParams:
         cols={["Matric / admission no.", "Name", "Sex|mid", "Faculty", "Programme", "Level|num", "Status|mid", "Entry"]}
         rows={d.rows.map((r) => [
           <span key="n" className="tnum">{r.matric_no ?? r.admission_no ?? "—"}</span>,
-          <span key="nm"><strong>{r.surname}</strong>, {r.other_names}</span>,
+          <StudentOpen key="nm" id={r.id} kind="link" label={<><strong>{r.surname}</strong>, {r.other_names}</>} />,
           <span key="s">{r.sex ?? "—"}</span>,
           <span key="f">{r.faculty}<div className="sub2">{r.department ?? ""}</div></span>,
           <span key="p">{r.programme}</span>,

@@ -38,12 +38,15 @@ class StudentController {
     private final ChangeService changes;
     private final SearchService search;
     private final RecordsService records;
+    private final ng.edu.moaum.portal.studentportal.StudentPortalService portal;
 
-    StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records) {
+    StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records,
+                      ng.edu.moaum.portal.studentportal.StudentPortalService portal) {
         this.students = students;
         this.changes = changes;
         this.search = search;
         this.records = records;
+        this.portal = portal;
     }
 
     /** The register in a scope, and how many the University has on it altogether. */
@@ -63,6 +66,26 @@ class StudentController {
     @PreAuthorize(READERS)
     StudentRecord record(@PathVariable UUID id, @RequestParam(required = false) String session) {
         return students.record(id, blankToNull(session));
+    }
+
+    /** The student's own portal view of themselves — fees, GPA and CGPA, standing, carryovers, this session's
+     *  registration, graduation — read by an office for the record pop-up. The same figures the student sees. */
+    @GetMapping("/students/{id}/portal")
+    @PreAuthorize(READERS)
+    java.util.Map<String, Object> portal(@PathVariable UUID id) {
+        return portal.me(id);
+    }
+
+    /** The student's passport photograph, from whichever store holds it (document, JAMB, attachment). */
+    @GetMapping("/students/{id}/passport")
+    @PreAuthorize(READERS)
+    org.springframework.http.ResponseEntity<byte[]> passport(@PathVariable UUID id) {
+        return portal.passportImage(id)
+                .map(img -> org.springframework.http.ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.IMAGE_JPEG)
+                        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePrivate())
+                        .body(img))
+                .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
     }
 
     @PutMapping("/students/{id}/biodata/{field}")
