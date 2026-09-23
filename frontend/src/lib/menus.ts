@@ -190,6 +190,11 @@ export const MENUS: Record<string, Menu> = {
             "badge": "2"
           },
           {
+            "id": "t/structure",
+            "icon": "book",
+            "label": "Programme structure"
+          },
+          {
             "id": "r/classlist",
             "icon": "user",
             "label": "Registered students"

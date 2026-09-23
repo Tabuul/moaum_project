@@ -232,6 +232,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Department courses",
     "The department owns them, and creates them"
   ],
+  "t/structure": [
+    "Programme structure",
+    "What each programme offers at each level, and the binding of a course into it"
+  ],
   "t/courseupload": [
     "Upload course structure",
     "A programme's CCMAS courses, from the document"

@@ -264,16 +264,21 @@ class CatalogueController {
                          WHERE o.course_code = c.code AND o.session = (SELECT name FROM cur)
                          ORDER BY o.semester LIMIT 1) AS lecturer,
                        EXISTS (SELECT 1 FROM catalogue.offering o2 WHERE o2.course_code = c.code AND o2.session = (SELECT name FROM cur)) AS offered,
-                       coalesce((SELECT jsonb_agg(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code), '[]'::jsonb) AS programmes
+                       coalesce((SELECT jsonb_agg(DISTINCT co.programme_code) FROM catalogue.course_offer co WHERE co.course_code = c.code), '[]'::jsonb) AS programmes,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('programme_code', co.programme_code, 'programme', p.name, 'level', co.level, 'basis', co.basis, 'track', co.track) ORDER BY p.name, co.level)
+                                   FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code WHERE co.course_code = c.code), '[]'::jsonb) AS bindings
                   FROM catalogue.course c
                  WHERE c.dept_code = :dept
                  ORDER BY c.level, c.semester, c.code
                 """).param("dept", dept).query().listOfRows();
-        // programmes comes back as a jsonb string over JDBC; parse it to a real array of codes
+        // programmes and bindings come back as jsonb strings over JDBC; parse them to real values
         for (Map<String, Object> row : rows) {
             Object pr = row.get("programmes");
             row.put("programmes", json.readValue(pr == null ? "[]" : pr.toString(),
                     new tools.jackson.core.type.TypeReference<List<String>>() { }));
+            Object bd = row.get("bindings");
+            row.put("bindings", json.readValue(bd == null ? "[]" : bd.toString(),
+                    new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
         }
         return rows;
     }
@@ -291,6 +296,111 @@ class CatalogueController {
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose one of the tracks, or clear it.", "Head of Department"));
         }
         return c;
+    }
+
+    /* ── a programme's structure: what it offers at each level, and the binding of a course into it (V013 course_offer, V235 track) ── */
+
+    private String programmeDept(String prog) {
+        return jdbc.sql("SELECT dept_code FROM ref.programme WHERE upper(code) = upper(:p)").param("p", prog)
+                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("programme", prog));
+    }
+
+    /** every course a programme offers, by level and semester, with the level's unit limits */
+    @GetMapping("/structure")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> structure(@RequestParam String prog) {
+        String p = prog.trim().toUpperCase();
+        scope.bound(null, null, p);                        // a department office reads its own programmes only
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT co.level, c.semester, c.code, c.title, c.units, c.kind, c.state, c.dept_code, d.name AS dept_name, co.basis, co.track, c.ca_max
+                  FROM catalogue.course_offer co
+                  JOIN catalogue.course c ON c.code = co.course_code
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                 WHERE co.programme_code = :p
+                 ORDER BY co.level, c.semester, (co.basis = 'GST') DESC, (co.basis IN ('Core','GST')) DESC, c.code
+                """).param("p", p).query().listOfRows();
+        List<Map<String, Object>> limits = jdbc.sql("SELECT level, min_units, max_units FROM policy.level_limit ORDER BY level").query().listOfRows();
+        Map<String, Object> programme = jdbc.sql("""
+                SELECT p.code, p.name, p.dept_code, d.name AS dept_name, p.faculty_code FROM ref.programme p LEFT JOIN ref.department d ON d.code = p.dept_code WHERE p.code = :p
+                """).param("p", p).query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("programme", prog));
+        List<Map<String, Object>> tracks = jdbc.sql("SELECT code, name FROM policy.curriculum_track ORDER BY code").query().listOfRows();
+        return Map.of("programme", programme, "rows", rows, "limits", limits, "tracks", tracks);
+    }
+
+    public record BindIn(@NotBlank @Size(max = 12) String programme, @NotBlank @Size(max = 24) String course,
+                         @NotNull @Min(100) @Max(600) Integer level, @Size(max = 12) String basis, @Size(max = 12) String track) {
+    }
+
+    /** bind a course into a programme's structure at a level, on a basis, for a track (or every track) */
+    @PostMapping("/structure/bind")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> bind(@Valid @RequestBody BindIn body) {
+        String p = body.programme().trim().toUpperCase();
+        String c = body.course().trim().toUpperCase();
+        assertHodOwns(programmeDept(p));                    // the programme's department binds into its structure
+        String basis = body.basis() == null || body.basis().isBlank() ? "Core" : body.basis().trim();
+        if (!List.of("Core", "Elective", "Borrowed", "GST").contains(basis)) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_BASIS", "A course is offered to a programme as Core, Elective, Borrowed or GST.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose one of the four.", "Head of Department"));
+        }
+        String track = body.track() == null || body.track().isBlank() ? null : body.track().trim().toUpperCase();
+        Map<String, Object> course = jdbc.sql("SELECT code, state, dept_code FROM catalogue.course WHERE code = :c").param("c", c)
+                .query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", c));
+        if ("ENDED".equals(course.get("state"))) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_ENDED", c + " has ended; an ended course is not offered to a programme.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Restore the course on its department's desk first, or bind another.", "Head of Department"));
+        }
+        jdbc.sql("""
+                INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis, track) VALUES (:c, :p, :l, :b, :t)
+                ON CONFLICT (course_code, programme_code, level) DO UPDATE SET basis = EXCLUDED.basis, track = EXCLUDED.track
+                """).param("c", c).param("p", p).param("l", body.level()).param("b", basis).param("t", track, java.sql.Types.VARCHAR).update();
+        return Map.of("programme", p, "course", c, "level", body.level(), "basis", basis, "track", track == null ? "" : track);
+    }
+
+    /** unbind a course from a programme at a level — refused while a student of that programme and level is registered on it this session */
+    @DeleteMapping("/structure/bind")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> unbind(@RequestParam String programme, @RequestParam String course, @RequestParam int level) {
+        String p = programme.trim().toUpperCase();
+        String c = course.trim().toUpperCase();
+        assertHodOwns(programmeDept(p));
+        long live = jdbc.sql("""
+                SELECT count(*) FROM registration.entry e
+                  JOIN registration.course_registration r ON r.id = e.registration_id
+                  JOIN catalogue.offering o ON o.id = e.offering_id
+                  JOIN people.student st ON st.id = r.student_id
+                 WHERE o.course_code = :c AND st.programme_code = :p AND r.level = :l
+                   AND e.status IN ('REGISTERED','APPROVED') AND r.status <> 'RETURNED'
+                   AND r.session = (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
+                """).param("c", c).param("p", p).param("l", level).query(Long.class).single();
+        if (live > 0) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_BOUND_IN_USE",
+                    live + " student" + (live == 1 ? "" : "s") + " of " + p + " at " + level + " level " + (live == 1 ? "is" : "are") + " registered on " + c + " this session; the binding stays while they are.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Unbind it after the session, or have the registrations amended first.", "Head of Department"));
+        }
+        int n = jdbc.sql("DELETE FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :p AND level = :l")
+                .param("c", c).param("p", p).param("l", level).update();
+        if (n == 0) throw new ng.edu.moaum.portal.shared.NotFound("binding", c + " → " + p + " at " + level);
+        return Map.of("programme", p, "course", c, "level", level, "removed", n);
+    }
+
+    /** a course anywhere in the University, by code or title, for the structure's picker */
+    @GetMapping("/courses/search")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> searchCourses(@RequestParam String q) {
+        String needle = "%" + q.trim().toLowerCase() + "%";
+        if (q.trim().length() < 2) return List.of();
+        return jdbc.sql("""
+                SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.dept_code, d.name AS dept_name
+                  FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code
+                 WHERE c.state <> 'ENDED' AND (lower(c.code) LIKE :q OR lower(c.title) LIKE :q)
+                 ORDER BY (lower(c.code) LIKE :q) DESC, c.code
+                 LIMIT 25
+                """).param("q", needle).query().listOfRows();
     }
 
     /** tag one course's curriculum (CCMAS / BMAS, or blank to clear) so registration shows it to the

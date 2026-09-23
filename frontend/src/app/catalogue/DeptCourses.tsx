@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 /** tDeptCourses — proto/part…: the department's catalogue, a new course (into BOARD state,
  *  the Board and Senate make it live), and ending a course with a date rather than deleting it. */
@@ -21,6 +22,8 @@ export interface Course {
   programmes: string[];
   /** the CA share of the hundred marks (V239); the examination is the rest */
   ca_max?: number;
+  /** the programmes the course is bound into, at which level, on what basis, for which track (V013/V235) */
+  bindings?: { programme_code: string; programme: string; level: number; basis: string; track: string | null }[];
 }
 export interface Duplicate { level: number; semester: number; title: string; code: string; keeper: boolean }
 export interface Programme { code: string; name: string }
@@ -198,7 +201,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
         {shown.length ? (
           <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Curriculum|mid", "CA / Exam|mid", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
             <b className="tnum" key="c">{c.code}</b>,
-            <span key="t">{c.title}</span>,
+            <span key="t">{c.title}{c.bindings && c.bindings.length ? <div className="sub2" style={{ marginTop: 2, display: "flex", gap: 4, flexWrap: "wrap" }}>{c.bindings.map((b) => <Link key={`${b.programme_code}-${b.level}`} href={`/catalogue/structure?prog=${encodeURIComponent(b.programme_code)}`} className="pill" style={{ fontSize: 11, textDecoration: "none" }} title={`${b.programme} · ${b.level} level · ${b.basis}${b.track ? ` · ${b.track}` : ""}`}>{b.programme_code} · {b.level}{b.basis !== "Core" ? ` · ${b.basis}` : ""}{b.track ? ` · ${b.track}` : ""}</Link>)}</div> : <div className="sub2" style={{ marginTop: 2, color: "var(--red-ink)" }}>Not bound to any programme — no student sees it at registration</div>}</span>,
             <span className="tnum" key="u">{c.units}</span>,
             <span className="tnum" key="s">{c.semester === 1 ? "First" : c.semester === 2 ? "Second" : "Third"}</span>,
             <span className="tnum" key="l">{c.level}</span>,
