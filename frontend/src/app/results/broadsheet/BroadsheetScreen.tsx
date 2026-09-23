@@ -51,7 +51,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
   })();
   /* a carryover candidate from another year shares the prefix up to the year: they show as year/serial (22/65244) */
-  const matricBase = matricPrefix ? matricPrefix.replace(/[^/]+/$/, "") : "";
+  const matricBase = matricPrefix ? matricPrefix.replace(/[^/]+\/$/, "") : "";
   const serialOf = (n: string) =>
     matricPrefix && n.startsWith(matricPrefix) ? n.slice(matricPrefix.length)
       : matricBase && n.startsWith(matricBase) ? n.slice(matricBase.length)
