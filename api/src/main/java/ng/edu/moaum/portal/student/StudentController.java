@@ -39,14 +39,16 @@ class StudentController {
     private final SearchService search;
     private final RecordsService records;
     private final ng.edu.moaum.portal.studentportal.StudentPortalService portal;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
     StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records,
-                      ng.edu.moaum.portal.studentportal.StudentPortalService portal) {
+                      ng.edu.moaum.portal.studentportal.StudentPortalService portal, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.students = students;
         this.changes = changes;
         this.search = search;
         this.records = records;
         this.portal = portal;
+        this.jdbc = jdbc;
     }
 
     /** The register in a scope, and how many the University has on it altogether. */
@@ -59,6 +61,24 @@ class StudentController {
                                  @RequestParam(required = false) String session,
                                  @RequestParam(required = false) String q) {
         return students.register(Scope.of(fac, dept, prog, level, null, session, null), q);
+    }
+
+    /** The students migrated from the old portal at these levels: how many, how many stand cleared at every unit, how many do not (V233). */
+    @GetMapping("/students/migrated")
+    @PreAuthorize(READERS)
+    java.util.Map<String, Object> migrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to) {
+        return jdbc.sql("SELECT * FROM clearance.migrated_summary(:f, :t)").param("f", from).param("t", to).query().singleRow();
+    }
+
+    /** Clear the migrated students at these levels who still lack a unit's word — the old portal's clearance, carried over (V231/V233). */
+    @PostMapping("/students/migrated/clear")
+    @PreAuthorize(WRITERS)
+    @org.springframework.transaction.annotation.Transactional
+    java.util.Map<String, Object> clearMigrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to) {
+        java.util.Map<String, Object> done = jdbc.sql("SELECT * FROM clearance.clear_migrated(:f, :t)").param("f", from).param("t", to).query().singleRow();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(done);
+        out.putAll(migrated(from, to));
+        return out;
     }
 
     /** One record entire. The session decides which registrations it shows. */

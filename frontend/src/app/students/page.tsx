@@ -5,6 +5,7 @@ import type { Register } from "@/lib/student";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Students } from "./Students";
+import { MigratedPanel, type MigratedSummary } from "./MigratedPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -19,16 +20,21 @@ export default async function StudentsPage({
   const { scope, structure, sessions, ceiling } = await loadScope(params);
   const q = typeof params.q === "string" ? params.q : "";
 
-  const [me, register] = await Promise.all([
+  const [me, register, migrated] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Register>(`/api/v1/student/students?${scopeQuery(scope)}&q=${encodeURIComponent(q)}`),
+    api<MigratedSummary>("/api/v1/student/students/migrated?from=100&to=400"),
   ]);
+  const office = me.ok ? me.data.activeOffice : null;
+  const mayClear = office === "registrar" || office === "dregistrar" || office === "academic";
 
   return (
     <Shell route="t/students" me={me.ok ? me.data : null}>
       {!register.ok ? (
         <ProblemNotice problem={register.problem} />
       ) : (
+        <>
+        {mayClear && migrated.ok ? <MigratedPanel summary={migrated.data} /> : null}
         <Students
           scope={scope}
           q={q}
@@ -37,6 +43,7 @@ export default async function StudentsPage({
           sessions={sessions}
           ceiling={ceiling}
         />
+        </>
       )}
     </Shell>
   );
