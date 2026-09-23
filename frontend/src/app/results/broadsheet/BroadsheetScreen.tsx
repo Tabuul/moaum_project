@@ -21,21 +21,24 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   const elec = sheet ? sheet.courses.filter((c) => c.kind === "Elective") : [];
   const markOf = (r: Broadsheet["rows"][number], code: string) => r.marks.find((m) => m.courseCode === code);
   const fx = (n: number | null) => (n === null || n === undefined ? "—" : Number(n).toFixed(2));
-  /** a mark as text: "75 A"; ABS F for a candidate who did not sit; a score still in the chain marked as not yet counted */
+  /** the grade carries its weight: A5, B4, C3, D2, E1, F0 */
+  const gw = (grade: string | null | undefined, points: number | null | undefined) =>
+    grade == null ? "" : points == null ? grade : `${grade}${Number.isInteger(Number(points)) ? Number(points) : Number(points).toFixed(2)}`;
+  /** a mark as text: "75 A5"; ABS F0 for a candidate who did not sit; a score still in the chain marked as not yet counted */
   const markText = (m: ReturnType<typeof markOf>): string =>
     !m || m.stage === "NOT_REGISTERED" ? ""
-      : m.counted ? (m.total == null ? "ABS F" : `${m.total} ${m.grade}`)
-      : m.total != null ? `${m.total} ${m.grade ?? ""} (not yet counted)`
+      : m.counted ? (m.total == null ? "ABS F0" : `${m.total} ${gw(m.grade, m.points)}`)
+      : m.total != null ? `${m.total} ${gw(m.grade, m.points)} (not yet counted)`
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? m.outcome.slice(0, 3)
-      : "ABS F";
+      : "ABS F0";
   const cell = (m: ReturnType<typeof markOf>) =>
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
       : m.counted ? (m.total == null
-          ? <span><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F</div></span>
-          : <span><span className="tnum">{m.total}</span><div className="sub2" style={{ color: COLOUR(m.points), fontWeight: 700 }}>{m.grade}</div></span>)
-      : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div style={{ fontWeight: 700 }}>{m.grade}</div></span>
+          ? <span><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F0</div></span>
+          : <span><span className="tnum">{m.total}</span><div className="sub2" style={{ color: COLOUR(m.points), fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>)
+      : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div style={{ fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
-      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F</div></span>;
+      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F0</div></span>;
   const orderCols = [...core, ...elec];
   /* the matriculation number's prefix (everything up to the last oblique) is the class's, shared by nearly every
      row: it sits under the MATRIC NO. heading once, and each cell carries the serial alone. A row whose number
@@ -140,7 +143,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
     const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
-      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F" ? "<b>ABS</b><br><b>F</b>" : m!.counted ? `${m!.total}<br><b>${m!.grade}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(m!.grade ?? "")}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
+      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
       body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
@@ -327,7 +330,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
           <Panel title="The grading scheme this sheet used" right="Effective-dated: a 2019 result is graded by the 2019 scheme">
             <DTable cols={["Grade|mid", "From|mid", "To|mid", "Points|mid", "Meaning"]}
               rows={sheet.bands.map((b) => [
-                <b key="g" style={{ color: COLOUR(b.points) }}>{b.grade}</b>,
+                <b key="g" style={{ color: COLOUR(b.points) }}>{gw(b.grade, b.points)}</b>,
                 <span className="tnum" key="l">{b.low}</span>, <span className="tnum" key="h">{b.high}</span>, <span className="tnum" key="p">{b.points}</span>,
                 <span key="m">{b.points >= 1 ? "Pass" : "Fail — the course is carried over"}</span>,
               ])} />
