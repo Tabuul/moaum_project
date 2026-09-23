@@ -509,6 +509,7 @@ public class ResultsService {
             BigDecimal points = BigDecimal.ZERO;
             int pending = 0;
             boolean failed = false;
+            List<String> failedHere = new ArrayList<>();   // this sheet's failures, ABS included, by course code
             Sheets.BroadsheetCell first = e.getValue().getFirst();
             for (String code : courses.keySet()) {
                 Sheets.BroadsheetCell c = e.getValue().stream().filter(x -> x.courseCode().equals(code)).findFirst().orElse(null);
@@ -517,20 +518,29 @@ public class ResultsService {
                     continue;
                 }
                 cur += c.units();   // registered: the student has a cell for this course
-                boolean counted = COUNTED.contains(c.stage()) && "GRADED".equals(c.outcome()) && c.points() != null;
+                boolean past = COUNTED.contains(c.stage());
+                boolean counted = past && "GRADED".equals(c.outcome()) && c.points() != null;
+                // no score at all, or absent, on a set past the Faculty Board: the candidate did not sit — an F, recorded ABS
+                boolean absent = past && !counted && (c.outcome() == null || "ABSENT".equals(c.outcome()));
                 if (counted) {
                     units += c.units();
                     points = points.add(c.points().multiply(BigDecimal.valueOf(c.units())));
                     if (c.points().signum() == 0) {
                         failed = true;
+                        failedHere.add(code);
                     } else {
                         cue += c.units();   // earned: passed with points
                     }
+                } else if (absent) {
+                    units += c.units();
+                    failed = true;
+                    failedHere.add(code);
                 } else {
                     pending++;
                 }
-                marks.add(new Sheets.BroadsheetMark(code, c.stage(), counted ? c.total() : null, counted ? c.grade() : null,
-                        counted ? c.points() : null, c.outcome(), counted));
+                // a score still in the chain is carried with its figures so the sheet can show it as not yet counted
+                marks.add(new Sheets.BroadsheetMark(code, c.stage(), absent ? null : c.total(), absent ? "F" : c.grade(),
+                        absent ? BigDecimal.ZERO : c.points(), absent ? "ABSENT" : c.outcome(), counted || absent));
             }
             BigDecimal gpa = units == 0 ? null : points.divide(BigDecimal.valueOf(units), 2, RoundingMode.HALF_UP);
             String standing = gpa == null ? "Pending" : failed ? "Carryover" : "Pass";
@@ -557,13 +567,19 @@ public class ResultsService {
                any course on a PUBLISHED sheet whose score is still missing (a missing script), shown as
                pending until the score is found and the sheet re-viewed. */
             List<String> owed = new java.util.ArrayList<>(repo.carryoversAt(e.getKey(), session, sem, true));
-            List<String> awaiting = marks.stream()
-                    .filter(m -> COUNTED.contains(m.stage()) && !m.counted())
-                    .map(m -> m.courseCode() + " (pending)").sorted().toList();
-            owed.addAll(awaiting);
+            for (String f : failedHere) if (!owed.contains(f)) owed.add(f);
             boolean anyUnreleased = marks.stream().anyMatch(m -> !"NOT_REGISTERED".equals(m.stage()) && !COUNTED.contains(m.stage()));
-            String remarks = !owed.isEmpty() ? "CO: " + String.join(", ", owed)
-                    : anyUnreleased ? "Pending"
+            /* the REMARK reads as the Senate's sheet reads: TO GO ON PROBATION when the CGPA is under 1.0; CO: for
+               every core course owed (a prior carryover, or failed or missed on this sheet); Fail: for an elective
+               failed; PASS when nothing is owed; PENDING only while a set is still in the chain and nothing is owed */
+            List<String> coreOwed = owed.stream().filter(x -> !"Elective".equals(courseKind.get(x))).sorted().toList();
+            List<String> electiveOwed = owed.stream().filter(x -> "Elective".equals(courseKind.get(x))).sorted().toList();
+            List<String> parts = new ArrayList<>();
+            if (cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
+            if (!coreOwed.isEmpty()) parts.add("CO: " + String.join(", ", coreOwed));
+            if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
+            String remarks = !parts.isEmpty() ? String.join(" · ", parts)
+                    : anyUnreleased ? "PENDING"
                     : "PASS";
             rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
                     cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks));

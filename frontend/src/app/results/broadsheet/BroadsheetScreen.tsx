@@ -21,10 +21,21 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   const elec = sheet ? sheet.courses.filter((c) => c.kind === "Elective") : [];
   const markOf = (r: Broadsheet["rows"][number], code: string) => r.marks.find((m) => m.courseCode === code);
   const fx = (n: number | null) => (n === null || n === undefined ? "—" : Number(n).toFixed(2));
+  /** a mark as text: "75 A"; ABS F for a candidate who did not sit; a score still in the chain marked as not yet counted */
+  const markText = (m: ReturnType<typeof markOf>): string =>
+    !m || m.stage === "NOT_REGISTERED" ? ""
+      : m.counted ? (m.total == null ? "ABS F" : `${m.total} ${m.grade}`)
+      : m.total != null ? `${m.total} ${m.grade ?? ""} (not yet counted)`
+      : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? m.outcome.slice(0, 3)
+      : "ABS F";
   const cell = (m: ReturnType<typeof markOf>) =>
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
-      : m.counted ? <span><span className="tnum">{m.total}</span><div className="sub2" style={{ color: COLOUR(m.points), fontWeight: 700 }}>{m.grade}</div></span>
-      : <span className="sub2" title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}>{m.outcome && m.outcome !== "GRADED" ? m.outcome.toLowerCase() : "•"}</span>;
+      : m.counted ? (m.total == null
+          ? <span><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F</div></span>
+          : <span><span className="tnum">{m.total}</span><div className="sub2" style={{ color: COLOUR(m.points), fontWeight: 700 }}>{m.grade}</div></span>)
+      : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div style={{ fontWeight: 700 }}>{m.grade}</div></span>
+      : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
+      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F</div></span>;
   const orderCols = [...core, ...elec];
 
   /* a 100 level first-semester class has no prior record: no carryover, and nothing cumulative yet */
@@ -41,8 +52,8 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const roll = sheet.rows.length;
     const sat = sheet.rows.filter((r) => r.gpa !== null).length;
     const notSit = roll - sat;
-    const probation = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.5 && r.cgpa >= 1.0).length;
-    const withdraw = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length;
+    const probation = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length;   // the remark says TO GO ON PROBATION
+    const withdraw = 0;   // no rule in force names a CGPA at which a candidate is advised to withdraw
     const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "");
     const n0 = (n: number) => (n === 0 ? "Nil" : String(n));
     const SUM: [string, string, string][] = [
@@ -69,12 +80,12 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
 
-  const bsCols: Cell[] = ["S/N", "Matric no.", "Name", ...(hideCarryover ? [] : ["Carryover"]),
+  const bsCols: Cell[] = ["S/N", "MATRIC NO.", "NAME OF CANDIDATE", ...(hideCarryover ? [] : ["CARRYOVER"]),
     ...orderCols.map((c) => `${c.courseCode} (${c.units})`), "CUR", "CUE", "WGP", "GPA",
-    ...(hideCum ? [] : ["TCR", "TCE", "TWGP", "LCGPA", "CGPA"]), "Remarks"];
+    ...(hideCum ? [] : ["TCR", "TCE", "TWGP", "LCGPA", "CGPA"]), "REMARKS"];
   const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, r.number, r.name,
     ...(hideCarryover ? [] : [r.carryovers.join(" ")]),
-    ...orderCols.map((c) => { const m = markOf(r, c.courseCode); return m && m.counted ? `${m.total} ${m.grade}` : m && m.stage !== "NOT_REGISTERED" ? "pending" : ""; }),
+    ...orderCols.map((c) => markText(markOf(r, c.courseCode))),
     r.cur, r.cue, r.points, r.gpa ?? "", ...(hideCum ? [] : [r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? ""]), r.remarks];
 
   async function exportExcel() {
@@ -110,12 +121,12 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const half = Math.ceil(sheet.courses.length / 2);
     const courseTwoCol = `<div class="cols2"><table class="t"><tbody>${courseCells(sheet.courses.slice(0, half))}</tbody></table>`
       + `<table class="t"><tbody>${courseCells(sheet.courses.slice(half))}</tbody></table></div>`;
-    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">Matric</th><th rowspan="2">Name</th>${hideCarryover ? "" : `<th rowspan="2">C/O</th>`}`
-      + (core.length ? `<th colspan="${core.length}">Core</th>` : "") + (elec.length ? `<th colspan="${elec.length}">Elective</th>` : "")
-      + `<th colspan="4">Current</th>${hideCum ? "" : `<th colspan="5">Cumulative to date</th>`}<th rowspan="2">Remarks</th></tr>`
+    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">MATRIC NO.</th><th rowspan="2">NAME OF CANDIDATE</th>${hideCarryover ? "" : `<th rowspan="2">CARRYOVER</th>`}`
+      + (core.length ? `<th colspan="${core.length}">CORE COURSES</th>` : "") + (elec.length ? `<th colspan="${elec.length}">ELECTIVE COURSES</th>` : "")
+      + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
     const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(r.number)}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
-      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const v = m && m.counted ? `${m.total}<br><b>${m.grade}</b>` : m && m.stage !== "NOT_REGISTERED" ? "·" : ""; return `<td>${v}</td>`; }).join("")
+      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F" ? "<b>ABS</b><br><b>F</b>" : m!.counted ? `${m!.total}<br><b>${m!.grade}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(m!.grade ?? "")}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
       body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
@@ -150,7 +161,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   return (
     <>
       <Note kind="info" title="The broadsheet is computed, not typed">
-        Every figure on this sheet comes from the score sheets and the grading scheme in force for the session. Nobody keys a GPA. A mark counts here once its set has passed the Faculty Board; a set still in the chain shows as pending, and the GPA is computed over what is approved so far.
+        Every figure on this sheet comes from the score sheets and the grading scheme in force for the session. Nobody keys a GPA. A mark counts here once its set has passed the Faculty Board; a score still in the chain shows greyed as not yet counted, and the GPA is computed over what is approved so far. A candidate with no score on a counted set did not sit: ABS, graded F, and the course is owed. The remark reads CO: for a core course owed, Fail: for an elective failed, and TO GO ON PROBATION when the CGPA is under 1.0.
       </Note>
       <Note kind="info" title="A broadsheet is by programme and level. A score sheet is by course.">
         A score sheet carries every candidate registered for one course, from every programme the course was made available to. A broadsheet carries every candidate in one programme at one level, across all their courses, because a GPA belongs to a student in a programme.
@@ -224,14 +235,14 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                   <thead>
                     <tr className="grp">
                       <th rowSpan={2} className="sn">S/N</th>
-                      <th rowSpan={2} className="l">Matric no.</th>
-                      <th rowSpan={2} className="l">Name of candidate</th>
-                      {hideCarryover ? null : <th rowSpan={2}>Carryover</th>}
-                      {core.length ? <th colSpan={core.length} className="band">Core courses</th> : null}
-                      {elec.length ? <th colSpan={elec.length} className="band">Elective courses</th> : null}
-                      <th colSpan={4} className="band">Current</th>
-                      {hideCum ? null : <th colSpan={5} className="band">Cumulative to date</th>}
-                      <th rowSpan={2} className="l">Remarks</th>
+                      <th rowSpan={2} className="l">MATRIC NO.</th>
+                      <th rowSpan={2} className="l">NAME OF CANDIDATE</th>
+                      {hideCarryover ? null : <th rowSpan={2}>CARRYOVER</th>}
+                      {core.length ? <th colSpan={core.length} className="band">CORE COURSES</th> : null}
+                      {elec.length ? <th colSpan={elec.length} className="band">ELECTIVE COURSES</th> : null}
+                      <th colSpan={4} className="band">CURRENT</th>
+                      {hideCum ? null : <th colSpan={5} className="band">CUMULATIVE DATE</th>}
+                      <th rowSpan={2} className="l">REMARKS</th>
                     </tr>
                     <tr className="sub">
                       {[...core, ...elec].map((c) => <th key={c.courseCode} className="course"><span className="mono">{c.courseCode}</span><span className="u">{c.units}</span></th>)}
@@ -258,7 +269,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                           <td className="tnum">{fx(r.lcgpa)}</td>
                           <td className="tnum b">{fx(r.cgpa)}</td>
                         </>}
-                        <td className="rm sub2">{r.remarks}</td>
+                        <td className="rm" style={{ fontWeight: /PROBATION|CO:|Fail:/.test(r.remarks) ? 700 : 400, color: /PROBATION/.test(r.remarks) ? "var(--red-ink)" : undefined }}>{r.remarks}</td>
                       </tr>
                     ))}
                   </tbody>
