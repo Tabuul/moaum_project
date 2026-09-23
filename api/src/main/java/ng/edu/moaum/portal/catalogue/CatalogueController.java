@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -257,7 +258,7 @@ class CatalogueController {
         dept = scope.scopedDept(dept);                      // an HOD sees only their own department's courses
         List<Map<String, Object>> rows = jdbc.sql("""
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
-                SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum,
+                SELECT c.code, c.title, c.units, c.semester, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max,
                        (SELECT CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END
                           FROM catalogue.offering o LEFT JOIN iam.person p ON p.id = o.lecturer_id
                          WHERE o.course_code = c.code AND o.session = (SELECT name FROM cur)
@@ -307,6 +308,41 @@ class CatalogueController {
         jdbc.sql("UPDATE catalogue.course SET curriculum = :curr WHERE code = :c")
                 .param("curr", curr, java.sql.Types.VARCHAR).param("c", c).update();
         return Map.of("code", c, "curriculum", curr == null ? "" : curr);
+    }
+
+    public record SplitIn(@NotNull @Min(0) @Max(100) Integer caMax) {
+    }
+
+    /** how one course's hundred marks split between continuous assessment and the examination (V239):
+     *  the CA share; the examination is the rest */
+    @PostMapping("/courses/{code}/split")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> setSplit(@PathVariable String code, @Valid @RequestBody SplitIn body) {
+        String c = code.trim().toUpperCase();
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
+                .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));
+        assertHodOwns(dept);
+        jdbc.sql("UPDATE catalogue.course SET ca_max = :m WHERE code = :c").param("m", body.caMax()).param("c", c).update();
+        return Map.of("code", c, "caMax", body.caMax(), "examMax", 100 - body.caMax());
+    }
+
+    /** the same split for a whole department's live courses, optionally one level */
+    @PostMapping("/split/bulk")
+    @PreAuthorize(OWNERS)
+    @Transactional
+    Map<String, Object> bulkSplit(@RequestParam String dept, @RequestParam int caMax, @RequestParam(required = false) Integer level) {
+        if (caMax < 0 || caMax > 100) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_SPLIT", "The CA share is between 0 and 100 of the hundred marks.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose 40/60 or 30/70.", "Head of Department"));
+        }
+        String d = scope.scopedDept(dept);
+        int n = jdbc.sql("""
+                UPDATE catalogue.course SET ca_max = :m
+                 WHERE dept_code = :d AND state <> 'ENDED' AND code NOT LIKE 'DMO %'
+                   AND (:lvl::int IS NULL OR level = :lvl)
+                """).param("m", caMax).param("d", d).param("lvl", level, java.sql.Types.INTEGER).update();
+        return Map.of("dept", d, "caMax", caMax, "examMax", 100 - caMax, "updated", n);
     }
 
     /** tag a whole department's live courses (optionally one level) with a curriculum in one action —

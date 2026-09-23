@@ -13,7 +13,7 @@ import org.springframework.stereotype.Repository;
 class ResultsRepository {
 
     private static final String SHEET_SELECT = """
-            SELECT s.id, o.course_code, c.title AS course_title, c.units, c.dept_code, d.name AS dept_name,
+            SELECT s.id, o.course_code, c.title AS course_title, c.units, c.ca_max, c.dept_code, d.name AS dept_name,
                    d.faculty_code, f.name AS faculty_name, o.session, o.semester, s.stage, s.due_on, s.submitted_at,
                    s.returned_times, o.lecturer_id, coalesce(es.kind, 'MAIN') AS sitting,
                    CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,

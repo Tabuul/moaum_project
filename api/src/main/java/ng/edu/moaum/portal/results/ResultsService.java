@@ -275,7 +275,7 @@ public class ResultsService {
         boolean blocked = ctx != null && r.lastActor() != null && r.lastActor().equals(ctx.actorId());
         return new Sheets.Listed(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.deptName(), r.facultyName(),
                 r.session(), r.semester(), r.stage(), Sheets.spine(r.stage()), r.sitting(), r.dueOn(), daysLate, r.returnedTimes(),
-                r.lecturer(), r.candidates(), failRate, mayAct, blocked);
+                r.lecturer(), r.candidates(), failRate, mayAct, blocked, r.caMax());
     }
 
     private static String desk(String office) {
@@ -339,8 +339,14 @@ public class ResultsService {
         }
         int written = 0;
         Boolean returned = null;
+        int caMax = r.caMax(), examMax = 100 - r.caMax();
         for (ScoreIn s : in.scores()) {
             String outcome = s.outcome() == null ? "GRADED" : s.outcome();
+            if ((s.ca() != null && (s.ca() < 0 || s.ca() > caMax)) || (s.exam() != null && (s.exam() < 0 || s.exam() > examMax))) {
+                throw new DomainRuleViolation("RES_MARK_OUTSIDE_SPLIT",
+                        r.courseCode() + " assesses out of " + caMax + " and examines out of " + examMax + "; a mark outside that was entered.",
+                        new DomainRuleViolation.Remedy("Enter the CA out of " + caMax + " and the examination out of " + examMax + ". The split is set on the department's catalogue.", "Course lecturer"));
+            }
             ResultsRepository.Latest was = repo.latest(id, s.studentId()).orElse(null);
             if (was != null && Objects.equals(was.ca(), s.ca()) && Objects.equals(was.exam(), s.exam()) && was.outcome().equals(outcome)) {
                 continue;

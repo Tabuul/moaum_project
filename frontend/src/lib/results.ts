@@ -29,6 +29,8 @@ export interface SheetListed {
   failRate: number | null;
   mayAct: boolean;
   blockedForYou: boolean;
+  /** the CA share of the hundred marks (V239); the examination is the rest */
+  caMax: number;
 }
 
 export interface SheetListing {

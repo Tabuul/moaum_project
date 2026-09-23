@@ -19,6 +19,8 @@ export interface Course {
   code: string; title: string; units: number; semester: number; level: number; kind: string;
   state: string; ended_on: string | null; lecturer: string | null; offered: boolean; curriculum: string | null;
   programmes: string[];
+  /** the CA share of the hundred marks (V239); the examination is the rest */
+  ca_max?: number;
 }
 export interface Duplicate { level: number; semester: number; title: string; code: string; keeper: boolean }
 export interface Programme { code: string; name: string }
@@ -31,6 +33,9 @@ const KINDS = ["Core", "Required", "Elective", "GST"];
 const KIND_LABEL: Record<string, string> = { Core: "Core Courses" };
 const kindLabel = (k: string) => KIND_LABEL[k] ?? k;
 const LEVELS = [100, 200, 300, 400, 500, 600];
+/** how a course's hundred marks split: CA share / examination share */
+const SPLITS: [number, string][] = [[40, "CA 40 / Exam 60"], [30, "CA 30 / Exam 70"]];
+const splitLabel = (caMax: number) => `CA ${caMax} / Exam ${100 - caMax}`;
 
 export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null }) {
   const router = useRouter();
@@ -180,9 +185,18 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
               }}>Set to {cur}</Btn>
             ))}
           </div>
+          <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+            <span>Assessment split — how a course&rsquo;s hundred marks divide between continuous assessment and the examination; the score sheet holds every mark to it. Set {fLevel ? `${fLevel} Level` : "the department's"} courses:</span>
+            {SPLITS.map(([m, label]) => (
+              <Btn key={m} kind="ghost" disabled={busy} onClick={() => {
+                if (!window.confirm(`Set ${fLevel ? `every ${fLevel} Level` : "every"} course in this department to ${label}? You can change any course individually afterwards.`)) return;
+                void send(`/split/bulk?dept=${encodeURIComponent(dept)}&caMax=${m}${fLevel ? `&level=${fLevel}` : ""}`, {}, `${fLevel || "All"} ${dept} courses set to ${label}`).then((j) => { if (j) setSaid(`${String(j.updated ?? "")} course(s) set to ${label}`); });
+              }}>{label}</Btn>
+            ))}
+          </div>
         </PBody>
         {shown.length ? (
-          <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Curriculum|mid", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
+          <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Curriculum|mid", "CA / Exam|mid", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
             <b className="tnum" key="c">{c.code}</b>,
             <span key="t">{c.title}</span>,
             <span className="tnum" key="u">{c.units}</span>,
@@ -194,6 +208,11 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
               <option value="">— (shared)</option>
               <option value="CCMAS">CCMAS</option>
               <option value="BMAS">BMAS</option>
+            </select>,
+            <select key="split" className="ctl" style={{ minWidth: 128, padding: "3px 6px", fontSize: 12.5 }} value={String(c.ca_max ?? 40)} disabled={busy || c.state === "ENDED"} aria-label={`Assessment split of ${c.code}`}
+              onChange={(e) => { const m = Number(e.target.value); void send(`/courses/${encodeURIComponent(c.code)}/split`, { caMax: m }, `${c.code} set to ${splitLabel(m)}`).then((j) => { if (j) setSaid(`${c.code} → ${splitLabel(m)}`); }); }}>
+              {SPLITS.some(([m]) => m === (c.ca_max ?? 40)) ? null : <option value={String(c.ca_max ?? 40)}>{splitLabel(c.ca_max ?? 40)}</option>}
+              {SPLITS.map(([m, label]) => <option key={m} value={String(m)}>{label}</option>)}
             </select>,
             c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2" key="lec" style={{ color: "var(--red-ink)" }}>Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,

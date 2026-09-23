@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 137
+\set EXPECTED 138
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -497,6 +497,29 @@ BEGIN
      WHERE (SELECT count(*) FROM policy.grade_of(m)) <> 1;
     PERFORM pg_temp.assert('Every mark 0-100 resolves to exactly one grade', n = 0,
                            n || ' marks resolve to none or many');
+END $;
+
+-- ── 17a. a mark is held to its course's CA/examination split (V239) ────────
+DO $
+DECLARE dept text; o uuid := gen_random_uuid(); sh uuid := gen_random_uuid(); st uuid := gen_random_uuid();
+        ca_high boolean := false; ex_high boolean := false; within boolean := false;
+BEGIN
+    PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max)
+    VALUES ('CHK 901', 'Check Split Thirty Seventy', 3, 1, 100, dept, 'Core', 'LIVE', 30);
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'CHK 901', '9999/0000', 1);
+    INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh, o);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990901', 'MOAUM/CHK/99/0901', 'CHECKSPLIT', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    BEGIN INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh, st, 35, 10); EXCEPTION WHEN check_violation THEN ca_high := true; END;
+    BEGIN INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh, st, 20, 71); EXCEPTION WHEN check_violation THEN ex_high := true; END;
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (sh, st, 30, 70);
+    within := (SELECT total = 100 FROM assessment.latest_scores(sh) WHERE student_id = st);
+    PERFORM pg_temp.assert('A mark is held to its course''s CA/examination split: 35 CA on a 30/70 course is refused, 71 examination is refused, 30 + 70 stands',
+                           ca_high AND ex_high AND within,
+                           format('ca_refused=%s exam_refused=%s within=%s', ca_high, ex_high, within));
 END $;
 
 -- ── 17b. the grace mark: one short of the pass mark is the pass mark ──────

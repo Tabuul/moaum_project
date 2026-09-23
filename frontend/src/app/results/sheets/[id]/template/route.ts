@@ -28,7 +28,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     ["Department", sheet.deptName], ["Programme", programme], ["Course", `${sheet.courseCode} — ${sheet.courseTitle}`],
     ["Lecturer", sheet.lecturer ?? "Not allocated"], ["Session", `${sheet.session} · semester ${sheet.semester}`], [],
   ] : [];
-  const header = ["S/N", "Matriculation number", "Name", "Programme", "Level", "CA (0-40)", "Exam (0-60)",
+  const caMax = typeof sheet?.caMax === "number" ? sheet.caMax : 40;
+  const header = ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${caMax})`, `Exam (0-${100 - caMax})`,
     "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"];
   const lines = [...heading, header, ...roll.data.map((r, i) => [
     i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level,

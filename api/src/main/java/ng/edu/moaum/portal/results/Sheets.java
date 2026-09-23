@@ -40,13 +40,13 @@ public final class Sheets {
     public record Row(UUID id, String courseCode, String courseTitle, int units, String deptCode, String deptName,
                       String facultyCode, String facultyName, String session, int semester, String stage,
                       LocalDate dueOn, OffsetDateTime submittedAt, int returnedTimes, UUID lecturerId, String sitting, String lecturer,
-                      long candidates, long graded, long failed, UUID lastActor) {
+                      long candidates, long graded, long failed, UUID lastActor, int caMax) {
     }
 
     public record Listed(UUID id, String courseCode, String courseTitle, int units, String deptName, String facultyName,
                          String session, int semester, String stage, int spineStage, String sitting, LocalDate dueOn, Integer daysLate,
                          int returnedTimes, String lecturer, long candidates, Integer failRate, boolean mayAct,
-                         boolean blockedForYou) {
+                         boolean blockedForYou, int caMax) {
     }
 
     public record Tiles(long expected, long senateApproved, long inWorkflow, long notSubmitted) {

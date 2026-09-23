@@ -20,8 +20,6 @@ import { semesterName } from "@/lib/student-portal";
 
 interface Draft { ca: string; exam: string; outcome: string; reason: string }
 
-const CA_MAX = 40;
-const EXAM_MAX = 60;
 /** the pass mark under the scheme in force, for the preview only — the record grades from the scheme itself */
 const PASS = 40;
 /** the grace mark: a total one short of the pass mark is raised to it (V238) */
@@ -40,6 +38,9 @@ function changed(r: RollRow, d: Draft): boolean {
 export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail; roll: RollRow[]; actingOffice: string | null }) {
   const router = useRouter();
   const s = detail.sheet;
+  // the course's own split of the hundred marks (V239): CA share, examination the rest
+  const CA_MAX = typeof s.caMax === "number" ? s.caMax : 40;
+  const EXAM_MAX = 100 - CA_MAX;
   const atEntry = s.stage === "ENTRY";
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => Object.fromEntries(roll.map((r) => [r.studentId, draftOf(r)])));
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -218,7 +219,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       <Tiles items={[
         ["Candidates", String(roll.length), null, "Every approved registration"],
         ["From other programmes", String(borrowed), borrowed ? "var(--chrome)" : null, borrowed ? "They sat the same paper" : "All from the owning programme"],
-        ["CA out of", String(CA_MAX), null, `Examination out of ${EXAM_MAX}`],
+        ["CA out of", String(CA_MAX), null, `Examination out of ${EXAM_MAX} · set on the department's catalogue`],
         ["Second examiner", detail.secondExaminer ?? "Not yet set", detail.secondExaminer ? null : "var(--red-ink)", "Set when the course was allocated"],
       ]} />
 
