@@ -109,8 +109,14 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
   function template() {
     download(`${s.courseCode.replace(" ", "-")}-score-sheet.csv`, csv([
-      ["Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
-      ...roll.map((r) => [r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level, r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : ""]),
+      ["Department", s.deptName],
+      ["Programme", ownProgramme?.programmeName ?? ""],
+      ["Course", `${s.courseCode} — ${s.courseTitle}`],
+      ["Lecturer", s.lecturer ?? "Not allocated"],
+      ["Session", `${s.session} · ${semesterName(s.semester)} semester`],
+      [],
+      ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
+      ...roll.map((r, i) => [i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level, r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : ""]),
     ]));
   }
 
@@ -123,13 +129,17 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     const problems: string[] = [];
     const next: Record<string, Draft> = { ...drafts };
     let matched = 0;
+    // the header row says where the matriculation number sits (after S/N in the current template, first in
+    // the old one); the heading lines above it — department, programme, course, lecturer — are passed over
+    const hasHeader = cells.some((row) => row.some((c) => /matric/i.test(c)));
+    let started = !hasHeader; let off = 0;
     for (const [i, row] of cells.entries()) {
-      if (i === 0 && /matric/i.test(row[0] ?? "")) continue;
-      const r = byNumber[(row[0] ?? "").toUpperCase()];
-      if (!r) { problems.push(`Line ${i + 1}: ${row[0] || "(blank)"} is not on this roll`); continue; }
-      const ca = (row[4] ?? "").trim();
-      const exam = (row[5] ?? "").trim();
-      const outcome = (row[6] ?? "").trim().toUpperCase() || "GRADED";
+      if (!started) { const h = row.findIndex((c) => /matric/i.test(c)); if (h >= 0) { started = true; off = h; } continue; }
+      const r = byNumber[(row[off] ?? "").toUpperCase()];
+      if (!r) { problems.push(`Line ${i + 1}: ${row[off] || "(blank)"} is not on this roll`); continue; }
+      const ca = (row[off + 4] ?? "").trim();
+      const exam = (row[off + 5] ?? "").trim();
+      const outcome = (row[off + 6] ?? "").trim().toUpperCase() || "GRADED";
       if (!OUTCOMES.includes(outcome as (typeof OUTCOMES)[number])) { problems.push(`Line ${i + 1}: outcome ${outcome} is not one the register knows`); continue; }
       if (outcome === "GRADED") {
         if (ca === "" && exam === "") continue;
@@ -149,9 +159,9 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     setFileNote({ kind: "ok", title: `${f.name} read: ${matched} row${matched === 1 ? "" : "s"} matched the roll`, lines: ["The marks are on the sheet below as a draft. Check them, then Save — nothing is written until you do."] });
   }
 
-  const programmes = Array.from(new Set(roll.map((r) => r.programmeCode)));
-  const ownProgramme = roll.find((r) => r.programmeCode === programmes[0]);
-  const borrowed = roll.filter((r) => r.programmeCode !== programmes[0]).length;
+  const ownCode = [...roll.reduce((m, r) => m.set(r.programmeCode, (m.get(r.programmeCode) ?? 0) + 1), new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const ownProgramme = roll.find((r) => r.programmeCode === ownCode);
+  const borrowed = roll.filter((r) => r.programmeCode !== ownCode).length;
   const stageIdx = s.spineStage - 1;
 
   return (
@@ -189,16 +199,16 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       ]} />
 
       <Note kind="info" title={borrowed ? "This roll is every registered candidate, not this department’s students" : "This roll is every registered candidate"}>
-        {s.courseCode} — {s.courseTitle}, {s.units} units, {s.session} {semesterName(s.semester).toLowerCase()} semester. {roll.length} candidate{roll.length === 1 ? "" : "s"} registered and approved{borrowed ? `; ${borrowed} from ${Array.from(new Set(roll.filter((r) => r.programmeCode !== programmes[0]).map((r) => r.programmeName))).join(", ")}` : ownProgramme ? `, all ${ownProgramme.programmeName}` : ""}. They registered the course the ordinary way and they sat the same paper. Mark them the same way.
+        {s.courseCode} — {s.courseTitle}, {s.units} units, {s.session} {semesterName(s.semester).toLowerCase()} semester. {roll.length} candidate{roll.length === 1 ? "" : "s"} registered and approved{borrowed ? `; ${borrowed} from ${Array.from(new Set(roll.filter((r) => r.programmeCode !== ownCode).map((r) => r.programmeName))).join(", ")}` : ownProgramme ? `, all ${ownProgramme.programmeName}` : ""}. They registered the course the ordinary way and they sat the same paper. Mark them the same way.
       </Note>
 
-      <Panel title={`${s.courseCode} — ${s.courseTitle}`} right={`${entered} of ${roll.length} entered · Enter or ↓ moves down the column`}>
+      <Panel title={`${s.deptName} · ${ownProgramme?.programmeName ?? "Programme not on the roll yet"} · ${s.courseCode} — ${s.courseTitle} · ${s.lecturer ?? "No lecturer allocated"}`} right={`${entered} of ${roll.length} entered · Enter or ↓ moves down the column`}>
         {roll.length === 0 ? (
           <div className="card__body sub2">Nobody is registered and approved for this offering, so the sheet has no rows. A student who is not on the roll is not registered, whatever they tell you.</div>
         ) : (
           <div className="tablewrap">
-            <table style={{ minWidth: 980 }}>
-              <thead><tr><th>Matriculation number</th><th>Name</th><th>Programme</th><th className="mid">Lv</th><th className="mid">CA — {CA_MAX}</th><th className="mid">Exam — {EXAM_MAX}</th><th className="mid">Total</th><th className="mid">Grade</th><th className="mid">Points</th><th>Outcome</th><th>Reason, if amended</th></tr></thead>
+            <table style={{ minWidth: 1020 }}>
+              <thead><tr><th className="mid">S/N</th><th>Matriculation number</th><th>Name</th><th>Programme</th><th className="mid">Lv</th><th className="mid">CA — {CA_MAX}</th><th className="mid">Exam — {EXAM_MAX}</th><th className="mid">Total</th><th className="mid">Grade</th><th className="mid">Points</th><th>Outcome</th><th>Reason, if amended</th></tr></thead>
               <tbody>
                 {roll.map((r, i) => {
                   const d = drafts[r.studentId];
@@ -214,6 +224,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                   };
                   return (
                     <tr key={r.studentId} style={isChanged ? { background: "var(--amber-wash, #FFF7E6)" } : undefined}>
+                      <td className="mid tnum">{i + 1}</td>
                       <td className="tnum">{r.number}</td>
                       <td><strong>{r.surname}, {r.otherNames}</strong></td>
                       <td className="sub2">{r.programmeName}</td>

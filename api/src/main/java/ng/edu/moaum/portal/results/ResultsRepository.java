@@ -285,7 +285,7 @@ class ResultsRepository {
                   JOIN ref.programme p ON p.code = st.programme_code
                   LEFT JOIN LATERAL (SELECT * FROM assessment.latest_scores(s.id) x WHERE x.student_id = st.id) l ON true
                  WHERE s.id = :id
-                 ORDER BY st.surname, st.other_names
+                 ORDER BY coalesce(st.matric_no, st.admission_no), st.surname, st.other_names
                 """).param("id", sheetId).query(Sheets.RollRow.class).list();
     }
 

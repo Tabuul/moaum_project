@@ -18,11 +18,20 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     api<SheetDetail>(`/api/v1/results/sheets/${id}`),
   ]);
   if (!roll.ok) return NextResponse.json(roll.problem, { status: roll.problem.status });
-  const course = detail.ok ? detail.data.sheet.courseCode : "score";
-  const header = ["Matriculation number", "Name", "Programme", "Level", "CA (0-40)", "Exam (0-60)",
+  const sheet = detail.ok ? detail.data.sheet : null;
+  const course = sheet?.courseCode ?? "score";
+  const counts = new Map<string, number>();
+  for (const r of roll.data) counts.set(r.programmeCode, (counts.get(r.programmeCode) ?? 0) + 1);
+  const ownCode = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const programme = roll.data.find((r) => r.programmeCode === ownCode)?.programmeName ?? "";
+  const heading: (string | number)[][] = sheet ? [
+    ["Department", sheet.deptName], ["Programme", programme], ["Course", `${sheet.courseCode} — ${sheet.courseTitle}`],
+    ["Lecturer", sheet.lecturer ?? "Not allocated"], ["Session", `${sheet.session} · semester ${sheet.semester}`], [],
+  ] : [];
+  const header = ["S/N", "Matriculation number", "Name", "Programme", "Level", "CA (0-40)", "Exam (0-60)",
     "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"];
-  const lines = [header, ...roll.data.map((r) => [
-    r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level,
+  const lines = [...heading, header, ...roll.data.map((r, i) => [
+    i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level,
     r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : "",
   ])].map((row) => row.map(cell).join(",")).join("\r\n");
 
