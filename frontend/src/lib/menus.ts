@@ -2421,6 +2421,46 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "studentchs": {
+    "label": "Student",
+    "home": "s/dashboard",
+    "groups": [
+      {
+        "name": "Start here",
+        "items": [
+          { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "s/fees", "icon": "card", "label": "School fees — pay first" }
+        ]
+      },
+      {
+        "name": "Records",
+        "items": [
+          { "id": "s/results", "icon": "cap", "label": "Results" },
+          { "id": "s/query", "icon": "alert", "label": "Result query" },
+          { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
+        ]
+      },
+      {
+        "name": "Services",
+        "items": [
+          { "id": "s/wallet", "icon": "swap", "label": "Wallet & funding" },
+          { "id": "s/hostel", "icon": "bed", "label": "Hostel" },
+          { "id": "s/library", "icon": "book", "label": "Library" },
+          { "id": "s/idcard", "icon": "user", "label": "Identity card" },
+          { "id": "s/health", "icon": "heart", "label": "Health" },
+          { "id": "s/support", "icon": "life", "label": "Help & requests" }
+        ]
+      },
+      {
+        "name": "Account",
+        "items": [
+          { "id": "s/profile", "icon": "user", "label": "Profile" },
+          { "id": "s/biodata", "icon": "doc", "label": "Biodata" },
+          { "id": "s/notifications", "icon": "bell", "label": "Notifications" }
+        ]
+      }
+    ]
+  },
   "applicant": {
     "label": "Applicant",
     "home": "a/dashboard",

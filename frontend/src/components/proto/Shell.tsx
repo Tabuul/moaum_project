@@ -267,14 +267,16 @@ function initials(label: string): string {
   return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? "")).toUpperCase() || "MP";
 }
 
-export function Shell({ route, me, children, sub }: { route: string; me: Me | null; children: ReactNode; sub?: string }) {
+export function Shell({ route, me, children, sub, menuKey }: { route: string; me: Me | null; children: ReactNode; sub?: string; menuKey?: string }) {
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
   const [navSlim, setNavSlim] = useState(false);
   const [navg, setNavg] = useState<Record<string, boolean>>({});
   const [said, setSaid] = useState<string | null>(null);
   const office = me?.activeOffice ?? null;
-  const menu = (office && MENUS[office]) || FALLBACK;
+  /* a caller may ask for a menu variant other than the acting office's own (e.g. a College of Health
+     Sciences student, still office "student", gets the trimmed "studentchs" menu — see /college/student) */
+  const menu = (menuKey && MENUS[menuKey]) || (office && MENUS[office]) || FALLBACK;
   const waiting = me?.waiting ?? {};
   const current = route === "r/academic" ? menu.home : route;
   const [t0, t1def] = TITLES[current] ?? TITLES[route] ?? ["", ""];
