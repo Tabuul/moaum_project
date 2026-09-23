@@ -58,9 +58,9 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
           an attendance register or a score sheet until you approve them.
         </Note>
       ) : needLect ? (
-        <Note kind="info" title={`${needLect} offering${needLect === 1 ? " has" : "s have"} no lecturer allocated`}
+        <Note kind="info" title={`${needLect} course${needLect === 1 ? " has" : "s have"} no lecturer allocated`}
           action={<Link href="/allocate" className="btn btn--primary btn--sm">Allocate teaching</Link>}>
-          A score sheet opens only once a lecturer is allocated. Allocate the remaining {home.session} offerings so teaching
+          A score sheet opens only once a lecturer is allocated. Allocate the remaining {home.session} courses so teaching
           and assessment can begin.
         </Note>
       ) : siwesGap ? (
@@ -72,13 +72,13 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
       ) : (
         <Note kind="ok" title={`${home.deptName} is set up for ${home.session}`}
           action={<Link href="/allocate" className="btn btn--ghost btn--sm">Teaching allocation</Link>}>
-          No registrations are waiting and every offering has a lecturer. Nothing is blocking your department right now.
+          No registrations are waiting and every course has a lecturer. Nothing is blocking your department right now.
         </Note>
       )}
 
       <Tiles items={[
         ["Registrations to approve", String(approvals), approvals ? "var(--red-ink)" : "var(--green-ink)", `${home.deptName} · ${home.session}`],
-        ["Offerings without a lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${allocated} of ${home.offeringsTotal ?? 0} allocated`],
+        ["Courses without a lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${allocated} of ${home.offeringsTotal ?? 0} allocated`],
         ["SIWES without a supervisor", String(siwesGap), siwesGap ? "var(--red-ink)" : "var(--green-ink)", "Industrial-training students"],
         ["Result sheets in progress", String(sheets), null, "Not yet published"],
         ["Students", String(home.deptStudents ?? 0), null, "Active in the department"],
@@ -89,7 +89,7 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
       ]} />
 
       <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>
-        <Panel title="Offerings still needing a lecturer" right={needLect ? `${needLect} to allocate` : "All allocated"}>
+        <Panel title="Courses still needing a lecturer" right={needLect ? `${needLect} to allocate` : "All allocated"}>
           {home.needLecturer && home.needLecturer.length ? (
             <DTable
               cols={["Course|mid", "Title", "Level|num", "Semester|mid"]}
@@ -100,7 +100,7 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
                 <span key="s">{semesterName(o.semester)}</span>,
               ])}
             />
-          ) : <PBody><div className="sub2">Every offering this session has a lecturer. There is nothing to allocate.</div></PBody>}
+          ) : <PBody><div className="sub2">Every course this session has a lecturer. There is nothing to allocate.</div></PBody>}
         </Panel>
 
         <Panel title="Your department desks" right="Everything scoped to your department">
@@ -155,7 +155,7 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
                 <span className="tnum" key="s">{l.candidates}</span>,
               ])} />
           ) : (
-            <PBody><div className="sub2">No lecturer is allocated a {home.session} offering yet. Allocate teaching so load appears here.</div></PBody>
+            <PBody><div className="sub2">No lecturer is allocated a {home.session} course yet. Allocate teaching so load appears here.</div></PBody>
           )}
         </Panel>
       </div>

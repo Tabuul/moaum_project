@@ -28,7 +28,7 @@ export default async function LmsPage({ searchParams }: { searchParams: Promise<
                 <span className="tnum" key="e">{s.enrolled}</span>, <span className="tnum" key="m">{s.materials}</span>, <span className="tnum" key="a">{s.assignments}</span>,
                 <Link key="o" href={`/lms/${s.offering_id}${upload ? "?tab=upload" : ""}`} className="btn btn--primary btn--sm">{upload ? "Upload material" : "Open the space"}</Link>,
               ])} />
-            ) : <PBody><div className="sub2">No offering is allocated to you in {t.data.session}. The Head of Department allocates courses; a space follows the allocation.</div></PBody>}
+            ) : <PBody><div className="sub2">No course is allocated to you in {t.data.session}. The Head of Department allocates courses; a space follows the allocation.</div></PBody>}
           </Panel>
         </>
       )}

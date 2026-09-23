@@ -43,7 +43,7 @@ export function ResetData({ office }: { office: string | null }) {
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as Record<string, number>;
-      setDemoDone(`Removed ${c.demo_courses ?? 0} demo course(s) and ${c.demo_offerings ?? 0} demo offering(s) from the catalogue. No student, candidate or real course was touched.`);
+      setDemoDone(`Removed ${c.demo_courses ?? 0} demo course(s) and ${c.demo_offerings ?? 0} demo course session(s) from the catalogue. No student, candidate or real course was touched.`);
       setCourseOpen(false); setCourseConfirm("");
       notify("Demo courses removed");
       router.refresh();

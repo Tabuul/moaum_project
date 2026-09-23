@@ -29,7 +29,7 @@ const OWN: [ReactNode, string][] = [
 
 const THEIRS: [ReactNode, string][] = [
   ["Academic periods, and their states", "The Third Semester, the 24- and 30-week posting levels"],
-  ["Course offerings within the College", "And registration against them"],
+  ["Courses within the College", "And registration against them"],
   ["Continuous and clinical assessment", "Five components on a posting, not two"],
   ["Clinical postings", "Schedules, groups, supervisors, attendance, completion"],
   ["Promotion evaluation", "The rules recommend; the College Board decides"],

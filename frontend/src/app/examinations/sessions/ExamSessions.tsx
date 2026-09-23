@@ -74,7 +74,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
     const made = await post("/api/bff/api/v1/results/exam-sessions", { ...f, semester: Number(f.semester) }, `Examination session ${f.session} semester ${f.semester} ${open ? "opened" : "saved as a draft"}`, "create");
     if (made && open && made.id) {
       const r = await post(`/api/bff/api/v1/results/exam-sessions/${made.id}/open`, {}, `Examination session opened`, "open");
-      if (r) setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} offerings have no lecturer and generated none.`);
+      if (r) setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer and generated none.`);
     }
   }
 
@@ -133,7 +133,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
               e.state === "OPEN" ? <Pil kind="ok" key="st">Open</Pil> : e.state === "DRAFT" ? <Pil kind="info" key="st">Draft</Pil> : <Pil kind="grey" key="st">Closed</Pil>,
               <span key="a" style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
                 {e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit</Btn> : null}
-                {e.state === "DRAFT" ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} offerings have no lecturer.`))}>Open</Btn> : <Link href={`/examinations/sessions?exam=${e.id}`} className="btn btn--ghost btn--sm">Monitor</Link>}
+                {e.state === "DRAFT" ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer.`))}>Open</Btn> : <Link href={`/examinations/sessions?exam=${e.id}`} className="btn btn--ghost btn--sm">Monitor</Link>}
               </span>,
             ])}
           />

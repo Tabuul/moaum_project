@@ -15,7 +15,7 @@ export function SiwesDashboard({ me, offerings, semester }: { me: Me | null; off
   return (
     <>
       {!offerings.length ? (
-        <Note kind="info" title={`No SIWES offering in your department this semester`} action={<Link href="/siwes" className="btn btn--primary btn--sm">SIWES desk</Link>}>
+        <Note kind="info" title={`No SIWES course in your department this semester`} action={<Link href="/siwes" className="btn btn--primary btn--sm">SIWES desk</Link>}>
           Industrial-training courses appear here once they are offered for the semester. This dashboard shows the second-semester sitting.
         </Note>
       ) : unsupervised ? (
@@ -47,7 +47,7 @@ export function SiwesDashboard({ me, offerings, semester }: { me: Me | null; off
                 gap > 0 ? <Pil kind="bad" key="a">{o.assigned} of {o.students}</Pil> : <Pil kind="ok" key="a">{o.assigned} of {o.students}</Pil>,
               ];
             })} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.dept_name}`)} />
-        ) : <PBody><div className="sub2">No industrial-training offering this semester.</div></PBody>}
+        ) : <PBody><div className="sub2">No industrial-training course this semester.</div></PBody>}
       </Panel>
 
       <Panel title="SIWES desks" right={me?.name ? `Signed in as ${me.name}` : "SIWES"}>
