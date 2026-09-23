@@ -49,8 +49,10 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   const orderCols = bands.flatMap((b) => b[1]);
   /* from 200 level the sheet is in three lists: the class with no question of probation; at 200 level first
      semester the Direct Entry students, whose first semester this is (no standing to judge yet); and the
-     PROBATION LIST — every student whose CGPA is under 1.0. At 100 level there is one list. */
-  const sectioned = !!sheet && Number(sheet.level) >= 200;
+     PROBATION LIST — every student whose CGPA is under 1.0. Probation is pronounced in the first semester of every
+     level above 100; at 100 level, and in every second semester, there is one list. */
+  // probation is pronounced in the first semester of every level above 100: only then is the sheet in lists
+  const sectioned = !!sheet && Number(sheet.level) >= 200 && Number(sheet.semester) === 1;
   const deSection = !!sheet && Number(sheet.level) === 200 && Number(sheet.semester) === 1;
   const isDE = (r: Broadsheet["rows"][number]) => deSection && r.entryMode === "DIRECT_ENTRY";
   const onProbation = (r: Broadsheet["rows"][number]) => sectioned && !isDE(r) && r.cgpa !== null && Number(r.cgpa) < 1.0;
@@ -92,7 +94,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const notSit = roll - sat;
     // probation and withdrawal are judged on a cumulative standing, which a 100 level class does not yet have:
     // at 100 level both rows read Nil with no percentage; from 200 level first semester they are counted
-    const standingApplies = Number(sheet.level) >= 200;
+    const standingApplies = Number(sheet.level) >= 200 && Number(sheet.semester) === 1;
     const probation = standingApplies ? sheet.rows.filter(onProbation).length : 0;   // the PROBATION LIST
     const withdraw = 0;   // no rule in force names a CGPA at which a candidate is advised to withdraw
     const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "");
