@@ -289,6 +289,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       example: ["MOAUM/CSC/22/0001", "202441922663AF"],
     },
     passports: { name: "Passport photos", headers: [], example: [] }, // no spreadsheet — image files, handled separately
+    clearance: { name: "Clearance", headers: [], example: [] }, // no spreadsheet — the panel acts on the register
   };
 
   function downloadTemplate(kind: Tab) {
@@ -335,6 +336,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     pgresearch: [["rows", "Rows read"], ["matched", "Records set"], ["created", "New records"], ["updated", "Updated"], ["supervisors", "Supervisors set"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
     jamb: [["rows", "Rows read"], ["updated", "JAMB numbers set"], ["no_student", "No such student"]],
     passports: [], // photos have their own summary
+    clearance: [], // the panel has its own tiles
   };
 
   /* map an old-portal export's own column names onto the keys the importer reads, so a real file
