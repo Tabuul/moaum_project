@@ -139,11 +139,16 @@ export const RS_STAGES: [string, string, string][] = [
 
 /** a table for download: the first row is the header. csv() tags the rows so
  *  download() writes a formatted .xlsx (auto column widths, bordered cells). */
-export interface SheetData { __sheet: (string | number | null | undefined)[][]; __meta?: [string, string][] }
+export type SheetValidation = { col: number; min: number; max: number; title: string; message: string };
+export interface SheetData { __sheet: (string | number | null | undefined)[][]; __meta?: [string, string][]; __validations?: SheetValidation[] }
 
-/** rows (the first is the header); meta is the labelled block written above the table — Department, Programme… */
-export function csv(rows: (string | number | null | undefined)[][], meta?: [string, string][]): SheetData {
-  return meta && meta.length ? { __sheet: rows, __meta: meta } : { __sheet: rows };
+/** rows (the first is the header); meta is the labelled block written above the table — Department, Programme…;
+ *  validations are whole-number limits the spreadsheet enforces on columns as the reader types */
+export function csv(rows: (string | number | null | undefined)[][], meta?: [string, string][], validations?: SheetValidation[]): SheetData {
+  const d: SheetData = { __sheet: rows };
+  if (meta && meta.length) d.__meta = meta;
+  if (validations && validations.length) d.__validations = validations;
+  return d;
 }
 
 function saveBlob(name: string, blob: Blob) {
@@ -164,7 +169,7 @@ export function download(name: string, data: string | SheetData) {
     const sheet = base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet1";
     const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
     void loadCrest().then((logo) =>
-      saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL, title: humanize(base), date, logo: logo ?? undefined, meta: data.__meta })),
+      saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL, title: humanize(base), date, logo: logo ?? undefined, meta: data.__meta, validations: data.__validations })),
     );
     return;
   }

@@ -127,6 +127,9 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       ["Course", `${s.courseCode} — ${s.courseTitle}`],
       ["Lecturer", s.lecturer ?? "Not allocated"],
       ["Session", `${s.session} · ${semesterName(s.semester)} semester`],
+    ], [
+      { col: 5, min: 0, max: CA_MAX, title: `More than the ${CA_MAX} CA marks`, message: `${s.courseCode} assesses CA out of ${CA_MAX}. Enter 0 to ${CA_MAX}.` },
+      { col: 6, min: 0, max: EXAM_MAX, title: `More than the ${EXAM_MAX} examination marks`, message: `${s.courseCode} examines out of ${EXAM_MAX}. Enter 0 to ${EXAM_MAX}.` },
     ]));
   }
 
@@ -214,7 +217,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         </Note>
       ) : null}
       {needReason.length ? <Note kind="bad" title="A changed mark carries its reason">{needReason.length} row{needReason.length === 1 ? " is" : "s are"} amendments of a mark already on the record. Say why in the reason box on the row; the old value stays beside the new one.</Note> : null}
-      {invalid.length ? <Note kind="bad" title="Some rows are not a mark yet">CA is 0–{CA_MAX} and examination 0–{EXAM_MAX}, both or neither. {invalid.length} row{invalid.length === 1 ? "" : "s"} below {invalid.length === 1 ? "is" : "are"} outside that.</Note> : null}
+      {invalid.length ? <Note kind="bad" title={`${invalid.length} row${invalid.length === 1 ? " is" : "s are"} outside the marks — nothing saves until they are within`}>{s.courseCode} assesses CA out of {CA_MAX} and examines out of {EXAM_MAX}, both entered or neither. A part over its share is marked red on the row.</Note> : null}
 
       <Tiles items={[
         ["Candidates", String(roll.length), null, "Every approved registration"],
@@ -240,7 +243,12 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                   const graded = d.outcome === "GRADED";
                   const ca = d.ca === "" ? null : Number(d.ca);
                   const ex = d.exam === "" ? null : Number(d.exam);
-                  const raw = graded && ca !== null && ex !== null && !Number.isNaN(ca) && !Number.isNaN(ex) ? ca + ex : null;
+                  // a part over the course's share is flagged on the row as it is typed; no total until it is within
+                  const caOver = graded && ca !== null && !Number.isNaN(ca) && ca > CA_MAX;
+                  const exOver = graded && ex !== null && !Number.isNaN(ex) && ex > EXAM_MAX;
+                  const raw = graded && !caOver && !exOver && ca !== null && ex !== null && !Number.isNaN(ca) && !Number.isNaN(ex) ? ca + ex : null;
+                  const overStyle = { width: 64, textAlign: "center" as const, borderColor: "var(--red-ink)", background: "var(--red-wash, #FDECEC)", color: "var(--red-ink)", fontWeight: 700 };
+                  const overNote = (n: number) => <div style={{ color: "var(--red-ink)", fontSize: 11, lineHeight: 1.2, marginTop: 3, whiteSpace: "nowrap" }}>More than {n}</div>;
                   const total = raw === null ? null : graced(raw);
                   const isChanged = changed(r, d);
                   const editable = atEntry && own && !locked(r);
@@ -255,8 +263,8 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                       <td><strong>{r.surname}, {r.otherNames}</strong></td>
                       <td className="sub2">{r.programmeName}</td>
                       <td className="mid tnum">{r.level}</td>
-                      <td className="mid">{editable ? <input id={`ca-${i}`} className="ctl tnum" style={{ width: 64, textAlign: "center" }} inputMode="numeric" value={d.ca} disabled={!graded} onKeyDown={(e) => move(e, "ca")} onChange={(e) => set(r.studentId, { ca: e.target.value.replace(/[^0-9]/g, "") })} /> : <span className="tnum">{r.ca ?? "—"}</span>}</td>
-                      <td className="mid">{editable ? <input id={`ex-${i}`} className="ctl tnum" style={{ width: 64, textAlign: "center" }} inputMode="numeric" value={d.exam} disabled={!graded} onKeyDown={(e) => move(e, "ex")} onChange={(e) => set(r.studentId, { exam: e.target.value.replace(/[^0-9]/g, "") })} /> : <span className="tnum">{r.exam ?? "—"}</span>}</td>
+                      <td className="mid">{editable ? <><input id={`ca-${i}`} className="ctl tnum" style={caOver ? overStyle : { width: 64, textAlign: "center" }} aria-invalid={caOver || undefined} title={caOver ? `${s.courseCode} assesses CA out of ${CA_MAX}` : undefined} inputMode="numeric" value={d.ca} disabled={!graded} onKeyDown={(e) => move(e, "ca")} onChange={(e) => set(r.studentId, { ca: e.target.value.replace(/[^0-9]/g, "") })} />{caOver ? overNote(CA_MAX) : null}</> : <span className="tnum">{r.ca ?? "—"}</span>}</td>
+                      <td className="mid">{editable ? <><input id={`ex-${i}`} className="ctl tnum" style={exOver ? overStyle : { width: 64, textAlign: "center" }} aria-invalid={exOver || undefined} title={exOver ? `${s.courseCode} examines out of ${EXAM_MAX}` : undefined} inputMode="numeric" value={d.exam} disabled={!graded} onKeyDown={(e) => move(e, "ex")} onChange={(e) => set(r.studentId, { exam: e.target.value.replace(/[^0-9]/g, "") })} />{exOver ? overNote(EXAM_MAX) : null}</> : <span className="tnum">{r.exam ?? "—"}</span>}</td>
                       <td className="mid"><b className="tnum" title={isChanged && raw !== null && total !== raw ? `${raw} + 1 grace mark` : r.ca !== null && r.exam !== null && r.total !== null && r.total !== r.ca + r.exam ? `${r.ca + r.exam} + 1 grace mark` : undefined}>{isChanged ? (total ?? "—") : (r.total ?? (r.outcome && r.outcome !== "GRADED" ? r.outcome : "—"))}{(isChanged && raw !== null && total !== raw) || (!isChanged && r.ca !== null && r.exam !== null && r.total !== null && r.total !== r.ca + r.exam) ? <sup style={{ fontWeight: 400, marginLeft: 2 }}>+1</sup> : null}</b></td>
                       <td className="mid">{!isChanged && r.grade ? <Pil kind={(r.points ?? 0) >= 4 ? "ok" : (r.points ?? 0) >= 1 ? "info" : "bad"}>{r.grade}</Pil> : <span className="sub2">{isChanged ? "on save" : "—"}</span>}</td>
                       <td className="mid tnum">{!isChanged && r.points !== null ? r.points : "—"}</td>

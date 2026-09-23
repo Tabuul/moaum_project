@@ -290,6 +290,8 @@ export interface XlsxHead {
   school?: string; title?: string; date?: string; logo?: XlsxLogo;
   /** labelled lines between the brand and the table — Department, Programme, Course, Lecturer… */
   meta?: [string, string][];
+  /** whole-number limits on table columns (0-based), enforced by the spreadsheet as the reader types */
+  validations?: { col: number; min: number; max: number; title: string; message: string }[];
 }
 
 /** fetch /crest.png and read its dimensions, for embedding as a workbook logo; null if unavailable */
@@ -362,12 +364,16 @@ export function buildXlsx(headers: string[], rows: Cell[][], sheetName = "Sheet1
   const merges = hb && nCols > 1
     ? `<mergeCells count="${3 + metaMerges.length}"><mergeCell ref="${colLetter(tCol)}1:${lastCol}1"/><mergeCell ref="${colLetter(tCol)}2:${lastCol}2"/><mergeCell ref="${colLetter(tCol)}3:${lastCol}3"/>${metaMerges.join("")}</mergeCells>`
     : "";
+  const vals = hb && head!.validations && head!.validations.length && rows.length
+    ? `<dataValidations count="${head!.validations.length}">` + head!.validations.map((v) =>
+        `<dataValidation type="whole" allowBlank="1" showErrorMessage="1" errorTitle="${xesc(v.title)}" error="${xesc(v.message)}" sqref="${colLetter(v.col)}${off + 2}:${colLetter(v.col)}${off + 1 + rows.length}"><formula1>${v.min}</formula1><formula2>${v.max}</formula2></dataValidation>`).join("") + "</dataValidations>"
+    : "";
   // the header row stays in view as the reader scrolls the table
   const views = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${off + 1}" topLeftCell="A${off + 2}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
 
   const withLogo = hb && !!head!.logo;
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${views}${cols}<sheetData>${headRows}${tableRows}</sheetData>${merges}${withLogo ? `<drawing r:id="rId1"/>` : ""}</worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${views}${cols}<sheetData>${headRows}${tableRows}</sheetData>${merges}${vals}${withLogo ? `<drawing r:id="rId1"/>` : ""}</worksheet>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
