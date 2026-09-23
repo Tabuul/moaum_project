@@ -75,6 +75,20 @@ class HeldScriptsController {
         return Map.of("id", held, "held", list(id));
     }
 
+    public record BulkIn(@jakarta.validation.constraints.NotNull @Size(max = 2000) List<Map<String, Object>> rows) {
+    }
+
+    /** hold many at once from the uploaded template: every line holds, or none does and each refusal is named */
+    @PostMapping("/sheets/{id}/held/bulk")
+    @PreAuthorize(ENTRY)
+    @Transactional
+    Map<String, Object> holdBulk(@PathVariable UUID id, @Valid @RequestBody BulkIn body) throws tools.jackson.core.JacksonException {
+        String json = new tools.jackson.databind.ObjectMapper().writeValueAsString(body.rows());
+        int n = jdbc.sql("SELECT assessment.hold_scripts_bulk(:s, cast(:rows as jsonb))")
+                .param("s", id).param("rows", json).query(Integer.class).single();
+        return Map.of("held", n, "list", list(id));
+    }
+
     /** withdraw a held script entered wrongly; only a script still held */
     @DeleteMapping("/sheets/{id}/held/{held}")
     @PreAuthorize(ENTRY)

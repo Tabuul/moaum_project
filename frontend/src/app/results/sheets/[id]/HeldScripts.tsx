@@ -3,12 +3,13 @@
  *  the register releases it into the sheet when the candidate's registration is approved, or lapses it
  *  when the semester's late-registration date passes. Held marks are not on the roll, not graded and not
  *  on the broadsheet; this panel is where they wait, in view. */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { OUTCOMES, type HeldScript } from "@/lib/results";
+import { OUTCOMES, csv, download, type HeldScript } from "@/lib/results";
+import { csvRows, xlsxRows } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -20,14 +21,16 @@ const STATE: Record<string, ["ok" | "info" | "bad" | "grey", string]> = {
   HELD: ["info", "Held — waiting on registration"], RELEASED: ["ok", "Released into the sheet"], LAPSED: ["bad", "Lapsed — not registered in time"], WITHDRAWN: ["grey", "Withdrawn"],
 };
 
-export function HeldScripts({ sheetId, courseCode, caMax, items, own, closesOn }: {
-  sheetId: string; courseCode: string; caMax: number; items: HeldScript[]; own: boolean; closesOn: string | null;
+export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, own, closesOn }: {
+  sheetId: string; courseCode: string; courseTitle: string; caMax: number; items: HeldScript[]; own: boolean; closesOn: string | null;
 }) {
   const router = useRouter();
   const examMax = 100 - caMax;
   const [f, setF] = useState({ number: "", ca: "", exam: "", outcome: "GRADED", note: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
+  const [fileNote, setFileNote] = useState<{ kind: "ok" | "bad"; title: string; lines: string[] } | null>(null);
+  const file = useRef<HTMLInputElement>(null);
   const held = items.filter((h) => h.state === "HELD").length;
   const closed = hasClosed(closesOn);
   const caOver = f.ca !== "" && Number(f.ca) > caMax;
@@ -51,6 +54,62 @@ export function HeldScripts({ sheetId, courseCode, caMax, items, own, closesOn }
     }
   }
 
+  /** the template: one line per candidate not on the roll, the same columns as the panel */
+  function template() {
+    download(`${courseCode.replace(/[^A-Za-z0-9]+/g, "-")}-held-scripts.xlsx`, csv([
+      ["S/N", "Matriculation number", `CA (0-${caMax})`, `Exam (0-${examMax})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)", "Note"],
+      ...Array.from({ length: 30 }, (_, i) => [i + 1, "", "", "", "", ""]),
+    ], [
+      ["Course", `${courseCode} — ${courseTitle}`],
+      ["For", "Scripts from candidates NOT on the roll — held until the candidate pays and registers"],
+      ["Marks", `CA out of ${caMax}, examination out of ${examMax}; both, or an outcome instead`],
+    ], [
+      { col: 2, min: 0, max: caMax, title: `More than the ${caMax} CA marks`, message: `${courseCode} assesses CA out of ${caMax}. Enter 0 to ${caMax}.` },
+      { col: 3, min: 0, max: examMax, title: `More than the ${examMax} examination marks`, message: `${courseCode} examines out of ${examMax}. Enter 0 to ${examMax}.` },
+    ]));
+  }
+
+  /** the upload: every line holds, or none does and each refusal is named by the register */
+  async function readFile(f: File) {
+    setFileNote(null);
+    const buf = await f.arrayBuffer();
+    const head = new Uint8Array(buf.slice(0, 2));
+    const isWorkbook = (head[0] === 0x50 && head[1] === 0x4b) || /\.xlsx$/i.test(f.name);
+    let cells: string[][];
+    try {
+      cells = (isWorkbook ? await xlsxRows(buf) : csvRows(new TextDecoder("utf-8").decode(buf))).map((row) => row.map((c) => String(c ?? "").trim()));
+    } catch {
+      setFileNote({ kind: "bad", title: `${f.name} could not be read`, lines: ["Upload the held-scripts template as downloaded, filled in, or a CSV with the same columns."] });
+      return;
+    }
+    const hasHeader = cells.some((row) => row.some((c) => /matric/i.test(c)));
+    let started = !hasHeader; let off = 0;
+    const rows: { line: number; number: string; ca: string; exam: string; outcome: string; note: string }[] = [];
+    for (const [i, row] of cells.entries()) {
+      if (!started) { const h = row.findIndex((c) => /matric/i.test(c)); if (h >= 0) { started = true; off = h; } continue; }
+      if (row.every((c) => c === "")) continue;
+      const number = (row[off] ?? "").toUpperCase();
+      if (!number) continue;   // a numbered but unfilled template line
+      rows.push({ line: i + 1, number, ca: row[off + 1] ?? "", exam: row[off + 2] ?? "", outcome: (row[off + 3] ?? "").toUpperCase() || "GRADED", note: row[off + 4] ?? "" });
+    }
+    if (!rows.length) { setFileNote({ kind: "bad", title: `${f.name} has no candidate on it`, lines: ["Fill the matriculation number and the marks on each line below the header."] }); return; }
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/results/sheets/${sheetId}/held/bulk`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${courseCode}: ${rows.length} held script${rows.length === 1 ? "" : "s"} uploaded`) },
+        body: JSON.stringify({ rows: rows.map((x) => ({ line: String(x.line), number: x.number, ca: x.ca, exam: x.exam, outcome: x.outcome, note: x.note })) }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return; }
+      setFileNote({ kind: "ok", title: `${j.held} script${j.held === 1 ? "" : "s"} held from ${f.name}`, lines: ["Each waits on the candidate's registration; the register releases it into the sheet when that is approved."] });
+      notify(`${j.held} held script${j.held === 1 ? "" : "s"} uploaded`);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function hold() {
     const ok = await call("", "POST", {
       number: f.number.trim(), ca: graded && f.ca !== "" ? Number(f.ca) : null, exam: graded && f.exam !== "" ? Number(f.exam) : null,
@@ -67,6 +126,15 @@ export function HeldScripts({ sheetId, courseCode, caMax, items, own, closesOn }
           {closesOn ? <> Late registration for this semester closes on <b>{day(closesOn)}</b>; a script not released by then lapses and never grades.</> : <> The Registry has not set a late-registration closing date for this semester on the calendar; until it does, held scripts do not lapse.</>}
         </div>
         {err ? <ProblemNotice problem={err} /> : null}
+        {fileNote ? <Note kind={fileNote.kind} title={fileNote.title}>{fileNote.lines.map((l, i) => <div key={i}>{l}</div>)}</Note> : null}
+        {own && !closed ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <span className="sub2">Many candidates? Fill the template and upload it — every line holds, or none does and each refusal is named.</span>
+            <button className="btn btn--ghost btn--sm" onClick={template}>Download the held-scripts template</button>
+            <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => file.current?.click()}>{busy ? "Working…" : "Upload held scripts"}</button>
+            <input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} />
+          </div>
+        ) : null}
         {own ? closed ? (
           <Note kind="bad" title="Late registration has closed for this semester">No more scripts can be held for {courseCode}. A script still held has lapsed; the Registry can move the date on the calendar if Senate extends it.</Note>
         ) : (

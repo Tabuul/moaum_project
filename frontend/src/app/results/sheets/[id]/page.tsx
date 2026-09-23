@@ -40,7 +40,7 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
       {detail.ok && roll.ok ? (
         <>
           <ScoreEntry detail={detail.data} roll={roll.data.map(normalise)} actingOffice={office} />
-          <HeldScripts sheetId={s!.id} courseCode={s!.courseCode} caMax={typeof s!.caMax === "number" ? s!.caMax : 40} items={heldRows} own={own}
+          <HeldScripts sheetId={s!.id} courseCode={s!.courseCode} courseTitle={s!.courseTitle} caMax={typeof s!.caMax === "number" ? s!.caMax : 40} items={heldRows} own={own}
             closesOn={heldRows[0]?.closesOn ?? null} />
         </>
       ) : (
