@@ -21,7 +21,6 @@ const OPEN_EXACT = new Set([
   "/api/bff/api/v1/pg/programmes",
   "/api/bff/api/v1/pg/apply",
   "/api/bff/api/v1/pg/status",
-  "/api/bff/api/v1/pg/accept",
   "/api/bff/api/v1/pg/sign-in",
 ]);
 const API_URL = (process.env.PORTAL_API_URL ?? "http://localhost:8081").replace(/\/$/, "");
