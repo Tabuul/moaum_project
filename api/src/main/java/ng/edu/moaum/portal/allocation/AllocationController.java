@@ -227,11 +227,25 @@ class AllocationController {
     Map<String, Object> assign(@PathVariable UUID offering, @RequestBody Assign body) {
         assertHodOwnsOffering(offering);
         assertOfferingLive(offering);
+        // an allocation is two small writes; if the offerings table is held by someone opening registration or
+        // loading a structure, say so in seconds rather than hang the desk for the length of that work
+        jdbc.sql("SET LOCAL lock_timeout = '8s'").update();
+        jdbc.sql("SET LOCAL statement_timeout = '25s'").update();
+        try {
         jdbc.sql("SELECT catalogue.allocate_offering(:o, :lec, :sec, :ov)")
                 .param("o", offering).param("lec", body.lecturer())
                 .param("sec", body.secondExaminer(), Types.OTHER)
                 .param("ov", Boolean.TRUE.equals(body.overload()))
                 .query().singleRow();
+        } catch (org.springframework.dao.DataAccessException e) {
+            String m = String.valueOf(e.getMostSpecificCause() == null ? e.getMessage() : e.getMostSpecificCause().getMessage());
+            if (m.contains("lock timeout") || m.contains("55P03") || m.contains("statement timeout") || m.contains("57014")) {
+                throw new ng.edu.moaum.portal.shared.DomainRuleViolation("ALLOC_BUSY",
+                        "The offerings are held by another act at the moment — someone is opening registration or loading a course structure.",
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Nothing was saved. Wait a minute and press Save again.", "You"));
+            }
+            throw e;
+        }
         return Map.of("offering", offering, "allocated", true);
     }
 
