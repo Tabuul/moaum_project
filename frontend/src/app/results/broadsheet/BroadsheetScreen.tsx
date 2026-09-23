@@ -78,11 +78,10 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       : matricBase && n.startsWith(matricBase) ? n.slice(matricBase.length)
       : n;
 
-  /* a 100 level first-semester class has no prior record: no carryover, and nothing cumulative yet */
-  /* the Carryover column starts at 200 level — a 100 level student has no prior level to carry from, so
-     it is hidden for BOTH 100 level semesters. The Cumulative band is only empty in 100 level first
-     semester (nothing before it); 100 level second semester already has a cumulative standing. */
-  const hideCarryover = Number(sheet?.level) === 100;
+  /* the CARRYOVER COURSES band already names each carryover course with the candidate's mark in it, so the
+     separate CARRYOVER column said the same thing twice; it is not shown. The Cumulative band is only empty
+     in 100 level first semester (nothing before it); 100 level second semester already has a standing. */
+  const hideCarryover = true;
   const hideCum = Number(sheet?.level) === 100 && Number(sheet?.semester) === 1;
 
   /* the cover ("Examination Reporting Sheet") data, shared by the on-screen panel and the exports */
