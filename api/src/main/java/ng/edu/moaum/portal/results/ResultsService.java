@@ -338,6 +338,7 @@ public class ResultsService {
                     new DomainRuleViolation.Remedy("Return the sheet to the lecturer, with the reason on the record.", "The desk holding it"));
         }
         int written = 0;
+        Boolean returned = null;
         for (ScoreIn s : in.scores()) {
             String outcome = s.outcome() == null ? "GRADED" : s.outcome();
             ResultsRepository.Latest was = repo.latest(id, s.studentId()).orElse(null);
@@ -345,6 +346,15 @@ public class ResultsService {
                 continue;
             }
             int version = was == null ? 1 : was.version() + 1;
+            // a mark once saved is on the record: the lecturer does not change it on their own. It changes,
+            // with its reason, only after the Examination Officer or the Head of Department returns the sheet.
+            if (version > 1) {
+                if (returned == null) returned = repo.returnedToEntry(id);
+                if (!returned) {
+                    throw new DomainRuleViolation("RES_MARK_ON_RECORD", "A saved mark is on the record; the lecturer does not change it on their own.",
+                            new DomainRuleViolation.Remedy("Submit the sheet and ask the Examination Officer or the Head of Department to return it with the reason; the mark can then be amended.", "Course lecturer"));
+                }
+            }
             if (version > 1 && (s.reason() == null || s.reason().isBlank())) {
                 throw new DomainRuleViolation("RES_AMENDMENT_SAYS_WHY", "An amended mark carries its reason.",
                         new DomainRuleViolation.Remedy("Say why the mark changes; the old value stays on the record.", "Course lecturer"));

@@ -75,11 +75,11 @@ class ReportingController {
                      WHERE o.session = :s AND o.semester = :sem AND sh.stage = 'PUBLISHED'
                        AND coalesce((SELECT es.kind FROM assessment.exam_session es WHERE es.id = sh.exam_session_id), 'MAIN') = 'MAIN'
                      ORDER BY sc.sheet_id, sc.student_id, sc.version DESC)
-                SELECT CASE WHEN ca + exam >= 70 THEN 'A' WHEN ca + exam >= 60 THEN 'B'
-                            WHEN ca + exam >= 50 THEN 'C' WHEN ca + exam >= 45 THEN 'D'
-                            WHEN ca + exam >= 40 THEN 'E' ELSE 'F' END AS grade,
+                SELECT CASE WHEN t >= 70 THEN 'A' WHEN t >= 60 THEN 'B'
+                            WHEN t >= 50 THEN 'C' WHEN t >= 45 THEN 'D'
+                            WHEN t >= 40 THEN 'E' ELSE 'F' END AS grade,
                        count(*) AS count
-                  FROM latest WHERE outcome = 'GRADED'
+                  FROM (SELECT assessment.grace_total(ca + exam) AS t FROM latest WHERE outcome = 'GRADED') x
                  GROUP BY 1
                 """).param("s", s).param("sem", semester).query().listOfRows();
 

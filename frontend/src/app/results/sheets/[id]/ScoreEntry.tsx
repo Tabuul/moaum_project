@@ -22,6 +22,10 @@ interface Draft { ca: string; exam: string; outcome: string; reason: string }
 
 const CA_MAX = 40;
 const EXAM_MAX = 60;
+/** the pass mark under the scheme in force, for the preview only — the record grades from the scheme itself */
+const PASS = 40;
+/** the grace mark: a total one short of the pass mark is raised to it (V238) */
+const graced = (raw: number): number => (raw === PASS - 1 ? PASS : raw);
 
 function draftOf(r: RollRow): Draft {
   return { ca: r.ca === null ? "" : String(r.ca), exam: r.exam === null ? "" : String(r.exam), outcome: r.outcome ?? "GRADED", reason: "" };
@@ -58,6 +62,11 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
   const blank = roll.length - entered;
   const ready = atEntry && blank === 0 && dirty.length === 0;
   const own = actingOffice === "lecturer" || actingOffice === "exams" || actingOffice === "academic";
+  // the sheet is back with the lecturer by a return when its latest decision is one; only then does a saved mark change
+  const returned = detail.chain.length > 0 && detail.chain[detail.chain.length - 1].kind === "RETURN";
+  const onRecord = (r: RollRow) => r.version !== null;
+  const locked = (r: RollRow) => onRecord(r) && !returned;
+  const lockedCount = roll.filter(locked).length;
 
   function set(id: string, patch: Partial<Draft>) {
     setDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
@@ -141,6 +150,11 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       const exam = (row[off + 5] ?? "").trim();
       const outcome = (row[off + 6] ?? "").trim().toUpperCase() || "GRADED";
       if (!OUTCOMES.includes(outcome as (typeof OUTCOMES)[number])) { problems.push(`Line ${i + 1}: outcome ${outcome} is not one the register knows`); continue; }
+      if (locked(r)) {
+        const same = outcome === (r.outcome ?? "GRADED") && (outcome !== "GRADED" || (Number(ca) === r.ca && Number(exam) === r.exam));
+        if (same) continue;
+        problems.push(`Line ${i + 1}: ${r.number} already has a mark on the record — it changes only after the sheet is returned`); continue;
+      }
       if (outcome === "GRADED") {
         if (ca === "" && exam === "") continue;
         const c = Number(ca); const e = Number(exam);
@@ -188,6 +202,16 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
       {problem ? <ProblemNotice problem={problem} /> : null}
       {fileNote ? <Note kind={fileNote.kind} title={fileNote.title}>{fileNote.lines.map((l, i) => <div key={i}>{l}</div>)}</Note> : null}
+      {atEntry && own && lockedCount > 0 ? (
+        <Note kind="info" title={`${lockedCount} mark${lockedCount === 1 ? " is" : "s are"} on the record and locked`}>
+          A mark once saved is not changed by the lecturer. Enter the candidates still without one and submit. If a saved mark is wrong, submit the sheet and ask the Examination Officer or the Head of Department to return it with the reason; every mark then opens for amendment, each change carrying its reason.
+        </Note>
+      ) : null}
+      {atEntry && own && returned ? (
+        <Note kind="ok" title="Returned to you — every mark is open for amendment">
+          Change what the return asks for, say why on each row, and submit again.
+        </Note>
+      ) : null}
       {needReason.length ? <Note kind="bad" title="A changed mark carries its reason">{needReason.length} row{needReason.length === 1 ? " is" : "s are"} amendments of a mark already on the record. Say why in the reason box on the row; the old value stays beside the new one.</Note> : null}
       {invalid.length ? <Note kind="bad" title="Some rows are not a mark yet">CA is 0–{CA_MAX} and examination 0–{EXAM_MAX}, both or neither. {invalid.length} row{invalid.length === 1 ? "" : "s"} below {invalid.length === 1 ? "is" : "are"} outside that.</Note> : null}
 
@@ -215,9 +239,10 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                   const graded = d.outcome === "GRADED";
                   const ca = d.ca === "" ? null : Number(d.ca);
                   const ex = d.exam === "" ? null : Number(d.exam);
-                  const total = graded && ca !== null && ex !== null && !Number.isNaN(ca) && !Number.isNaN(ex) ? ca + ex : null;
+                  const raw = graded && ca !== null && ex !== null && !Number.isNaN(ca) && !Number.isNaN(ex) ? ca + ex : null;
+                  const total = raw === null ? null : graced(raw);
                   const isChanged = changed(r, d);
-                  const editable = atEntry && own;
+                  const editable = atEntry && own && !locked(r);
                   const move = (e: React.KeyboardEvent<HTMLInputElement>, col: string) => {
                     if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); (document.getElementById(`${col}-${i + 1}`) as HTMLInputElement | null)?.focus(); }
                     if (e.key === "ArrowUp") { e.preventDefault(); (document.getElementById(`${col}-${i - 1}`) as HTMLInputElement | null)?.focus(); }
@@ -231,7 +256,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                       <td className="mid tnum">{r.level}</td>
                       <td className="mid">{editable ? <input id={`ca-${i}`} className="ctl tnum" style={{ width: 64, textAlign: "center" }} inputMode="numeric" value={d.ca} disabled={!graded} onKeyDown={(e) => move(e, "ca")} onChange={(e) => set(r.studentId, { ca: e.target.value.replace(/[^0-9]/g, "") })} /> : <span className="tnum">{r.ca ?? "—"}</span>}</td>
                       <td className="mid">{editable ? <input id={`ex-${i}`} className="ctl tnum" style={{ width: 64, textAlign: "center" }} inputMode="numeric" value={d.exam} disabled={!graded} onKeyDown={(e) => move(e, "ex")} onChange={(e) => set(r.studentId, { exam: e.target.value.replace(/[^0-9]/g, "") })} /> : <span className="tnum">{r.exam ?? "—"}</span>}</td>
-                      <td className="mid"><b className="tnum">{isChanged ? (total ?? "—") : (r.total ?? (r.outcome && r.outcome !== "GRADED" ? r.outcome : "—"))}</b></td>
+                      <td className="mid"><b className="tnum" title={isChanged && raw !== null && total !== raw ? `${raw} + 1 grace mark` : r.ca !== null && r.exam !== null && r.total !== null && r.total !== r.ca + r.exam ? `${r.ca + r.exam} + 1 grace mark` : undefined}>{isChanged ? (total ?? "—") : (r.total ?? (r.outcome && r.outcome !== "GRADED" ? r.outcome : "—"))}{(isChanged && raw !== null && total !== raw) || (!isChanged && r.ca !== null && r.exam !== null && r.total !== null && r.total !== r.ca + r.exam) ? <sup style={{ fontWeight: 400, marginLeft: 2 }}>+1</sup> : null}</b></td>
                       <td className="mid">{!isChanged && r.grade ? <Pil kind={(r.points ?? 0) >= 4 ? "ok" : (r.points ?? 0) >= 1 ? "info" : "bad"}>{r.grade}</Pil> : <span className="sub2">{isChanged ? "on save" : "—"}</span>}</td>
                       <td className="mid tnum">{!isChanged && r.points !== null ? r.points : "—"}</td>
                       <td>{editable ? (
@@ -239,7 +264,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                           {OUTCOMES.map((o) => <option key={o} value={o}>{o === "GRADED" ? "Graded" : o.charAt(0) + o.slice(1).toLowerCase()}</option>)}
                         </select>
                       ) : <span className="sub2">{r.outcome ?? "Not entered"}</span>}</td>
-                      <td>{editable && r.version !== null && isChanged ? <input className="ctl" placeholder="Why the mark changes" value={d.reason} onChange={(e) => set(r.studentId, { reason: e.target.value })} /> : r.version && r.version > 1 ? <span className="sub2">Version {r.version}</span> : <span className="sub2">—</span>}</td>
+                      <td>{editable && r.version !== null && isChanged ? <input className="ctl" placeholder="Why the mark changes" value={d.reason} onChange={(e) => set(r.studentId, { reason: e.target.value })} /> : atEntry && own && locked(r) ? <span className="sub2">On the record{r.version && r.version > 1 ? ` · version ${r.version}` : ""}</span> : r.version && r.version > 1 ? <span className="sub2">Version {r.version}</span> : <span className="sub2">—</span>}</td>
                     </tr>
                   );
                 })}
@@ -250,7 +275,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       </Panel>
 
       <Note kind="info" title="You type two numbers; the system does the rest">
-        CA plus examination gives a total; the total meets the grading scheme in force for this session; the scheme gives a grade and a point. <b>Nobody types a grade</b>, so nobody can type the wrong one, and a change to the scheme cannot leave behind a grade that no longer follows from the mark. The same three columns are computed identically whether the marks were typed on this screen or read from the template.
+        CA plus examination gives a total; a total one short of the pass mark is raised to it by the University&rsquo;s grace mark (39 reads 40) and graded as a pass; the total meets the grading scheme in force for this session; the scheme gives a grade and a point. <b>Nobody types a grade</b>, so nobody can type the wrong one, and a change to the scheme cannot leave behind a grade that no longer follows from the mark. The same three columns are computed identically whether the marks were typed on this screen or read from the template.
       </Note>
 
       <Panel title="What happens when you attest">

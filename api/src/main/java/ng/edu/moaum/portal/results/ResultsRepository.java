@@ -144,6 +144,14 @@ class ResultsRepository {
                 .param("s", sheetId).param("st", studentId).query(Latest.class).optional();
     }
 
+    /** true when the sheet's latest decision is a return: it is at entry again because a desk sent it back */
+    boolean returnedToEntry(UUID sheetId) {
+        return jdbc.sql("""
+                SELECT coalesce((SELECT d.kind = 'RETURN' FROM assessment.decision d
+                                  WHERE d.sheet_id = :id ORDER BY d.decided_at DESC LIMIT 1), false)
+                """).param("id", sheetId).query(Boolean.class).single();
+    }
+
     void score(UUID sheetId, UUID studentId, int version, Integer ca, Integer exam, String outcome, String reason) {
         jdbc.sql("""
                 INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, reason)

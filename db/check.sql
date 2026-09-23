@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 136
+\set EXPECTED 137
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -497,7 +497,22 @@ BEGIN
      WHERE (SELECT count(*) FROM policy.grade_of(m)) <> 1;
     PERFORM pg_temp.assert('Every mark 0-100 resolves to exactly one grade', n = 0,
                            n || ' marks resolve to none or many');
-END $$;
+END $;
+
+-- ── 17b. the grace mark: one short of the pass mark is the pass mark ──────
+DO $
+DECLARE pass int; g_low text; g_pass text;
+BEGIN
+    SELECT min(b.low) INTO pass FROM policy.grade_band b
+     WHERE b.version_id = policy.in_force('grading', 'UNIVERSITY', current_date) AND b.points > 0;
+    SELECT grade INTO g_low  FROM policy.grade_of(assessment.grace_total(pass - 2));
+    SELECT grade INTO g_pass FROM policy.grade_of(assessment.grace_total(pass - 1));
+    PERFORM pg_temp.assert('A total one short of the pass mark is graced to it; two short is not',
+                           assessment.grace_total(pass - 1) = pass AND assessment.grace_total(pass - 2) = pass - 2
+                           AND assessment.grace_total(pass) = pass AND assessment.grace_total(100) = 100
+                           AND g_pass <> g_low,
+                           pass - 1 || ' graces to ' || assessment.grace_total(pass - 1) || ' (' || g_pass || '), ' || (pass - 2) || ' stays (' || g_low || ')');
+END $;
 
 -- ── 18. the answer is the one in force on the DATE ASKED ABOUT ────────────
 -- A 1994 degree is classified under the 1994 scheme, in 2041.
