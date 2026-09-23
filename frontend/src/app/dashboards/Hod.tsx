@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { HodFeeDownloads } from "./HodFeeDownloads";
+import { FeeCount } from "./HodFeeDownloads";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 import { semesterName } from "@/lib/student-portal";
 
@@ -60,7 +60,7 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
           an attendance register or a score sheet until you approve them.
         </Note>
       ) : needLect ? (
-        <Note kind="info" title={`${needLect} course${needLect === 1 ? " has" : "s have"} no lecturer allocated`}
+        <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer allocated`}
           action={<Link href="/allocate" className="btn btn--primary btn--sm">Allocate teaching</Link>}>
           A score sheet opens only once a lecturer is allocated. Allocate the remaining {home.session} courses so teaching
           and assessment can begin.
@@ -80,18 +80,24 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
 
       <Tiles items={[
         ["Registrations to approve", String(approvals), approvals ? "var(--red-ink)" : "var(--green-ink)", `${home.deptName} · ${home.session}`, "/results/approvals"],
-        ["Courses without a lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${allocated} of ${home.offeringsTotal ?? 0} allocated`],
+        ["Courses without a Lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${allocated} of ${home.offeringsTotal ?? 0} allocated`],
         ["SIWES without a supervisor", String(siwesGap), siwesGap ? "var(--red-ink)" : "var(--green-ink)", "Industrial-training students"],
         ["Result sheets in progress", String(sheets), null, "Not yet published"],
         ["Students", String(home.deptStudents ?? 0), null, "Active in the department"],
-        ["Cleared for registration", String(feesCleared), feesOwing ? "var(--chrome)" : "var(--green-ink)", <HodFeeDownloads key="fees" session={home.session ?? ""} cleared={feesCleared} owing={feesOwing} deptName={home.deptName ?? ""} />],
+        ["Cleared for registration",
+          <FeeCount key="c" which="cleared" count={feesCleared} session={home.session ?? ""} deptName={home.deptName ?? ""} />,
+          feesOwing ? "var(--chrome)" : "var(--green-ink)",
+          <span key="o" style={{ display: "block" }}>
+            <FeeCount which="owing" count={feesOwing} session={home.session ?? ""} deptName={home.deptName ?? ""} size={22} colour={feesOwing ? "var(--red-ink)" : "var(--green-ink)"} />
+            <span style={{ display: "block", marginTop: 2 }}>still owing for {home.session} · press either figure to download its list</span>
+          </span>],
         ["Courses", String(home.deptCourses ?? 0), null, "In the department catalogue"],
         ...(home.openQueries ? [["Result queries", String(home.openQueries), "var(--chrome)", "Awaiting your department", "/results/queries"] as [string, string, string, string, string]] : []),
         ...(requestsOpen ? [["Student requests", String(requestsOpen), "var(--chrome)", "Open, to your office"] as [string, string, string, string]] : []),
       ]} />
 
       <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>
-        <Panel title="Courses still needing a lecturer" right={needLect ? `${needLect} to allocate` : "All allocated"}>
+        <Panel title="Courses still needing a Lecturer" right={needLect ? `${needLect} to allocate` : "All allocated"}>
           {home.needLecturer && home.needLecturer.length ? (
             <DTable
               cols={["Course|mid", "Title", "Level|num", "Semester|mid"]}

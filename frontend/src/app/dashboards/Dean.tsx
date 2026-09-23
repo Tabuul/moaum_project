@@ -36,7 +36,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
   return (
     <>
       {needLect ? (
-        <Note kind="info" title={`${needLect} course${needLect === 1 ? " has" : "s have"} no lecturer across ${home.facultyName}`} action={<Link href="/allocate" className="btn btn--primary btn--sm">Teaching allocation</Link>}>
+        <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer across ${home.facultyName}`} action={<Link href="/allocate" className="btn btn--primary btn--sm">Teaching allocation</Link>}>
           A score sheet opens only once a lecturer is allocated. The departments below carry the gaps; a Head of Department allocates within each.
         </Note>
       ) : (
@@ -48,7 +48,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
       <Tiles items={[
         [`Students in the ${scopeNoun}`, students.toLocaleString(), null, `${dept.length} department${dept.length === 1 ? "" : "s"}`],
         ["Registered this session", registered.toLocaleString(), null, students ? `${Math.round((100 * registered) / students)}% · ${home.session}` : String(home.session)],
-        ["Courses without a lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${(home.offeringsTotal ?? 0) - needLect} of ${home.offeringsTotal ?? 0} allocated`],
+        ["Courses without a Lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${(home.offeringsTotal ?? 0) - needLect} of ${home.offeringsTotal ?? 0} allocated`],
         ["On probation", String(home.probation ?? 0), (home.probation ?? 0) ? "var(--red-ink)" : "var(--green-ink)", `Across the ${scopeNoun}`],
       ]} />
 
