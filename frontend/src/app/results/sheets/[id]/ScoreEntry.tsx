@@ -17,6 +17,7 @@ import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Modal, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterName } from "@/lib/student-portal";
+import { csvRows, xlsxRows } from "@/lib/xlsx";
 
 interface Draft { ca: string; exam: string; outcome: string; reason: string }
 
@@ -118,7 +119,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
   }
 
   function template() {
-    download(`${s.courseCode.replace(" ", "-")}-score-sheet.csv`, csv([
+    download(`${s.courseCode.replace(/[^A-Za-z0-9]+/g, "-")}-score-sheet.xlsx`, csv([
       ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
       ...roll.map((r, i) => [i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level, r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : ""]),
     ], [
@@ -135,9 +136,17 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
   /* the file is read into the same drafts the keyboard fills; nothing is written until Save */
   async function readFile(f: File) {
-    const text = await f.text();
-    const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    const cells = lines.map((l) => l.match(/("([^"]|"")*"|[^,]*)(,|$)/g)?.map((c) => c.replace(/,$/, "").replace(/^"|"$/g, "").replace(/""/g, '"').trim()) ?? []);
+    // the template is a workbook; a CSV filled by hand is read too. A workbook is known by its bytes (a zip), not its name.
+    const buf = await f.arrayBuffer();
+    const head = new Uint8Array(buf.slice(0, 2));
+    const isWorkbook = (head[0] === 0x50 && head[1] === 0x4b) || /\.xlsx$/i.test(f.name);
+    let cells: string[][];
+    try {
+      cells = (isWorkbook ? await xlsxRows(buf) : csvRows(new TextDecoder("utf-8").decode(buf))).map((row) => row.map((c) => String(c ?? "").trim()));
+    } catch {
+      setFileNote({ kind: "bad", title: `${f.name} could not be read`, lines: ["Upload the template as downloaded (an Excel workbook), filled in, or a CSV with the same columns."] });
+      return;
+    }
     const byNumber = Object.fromEntries(roll.map((r) => [r.number.toUpperCase(), r]));
     const problems: string[] = [];
     const next: Record<string, Draft> = { ...drafts };
@@ -148,6 +157,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     let started = !hasHeader; let off = 0;
     for (const [i, row] of cells.entries()) {
       if (!started) { const h = row.findIndex((c) => /matric/i.test(c)); if (h >= 0) { started = true; off = h; } continue; }
+      if (row.every((c) => c === "")) continue;   // an empty line, or a spacer row a spreadsheet keeps
       const r = byNumber[(row[off] ?? "").toUpperCase()];
       if (!r) { problems.push(`Line ${i + 1}: ${row[off] || "(blank)"} is not on this roll`); continue; }
       const ca = (row[off + 4] ?? "").trim();
@@ -204,7 +214,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
           <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/marked?format=xlsx`} title="The roll with total, grade and point, and a summary of performance — Excel">Marked sheet · Excel</a>
           <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/marked?format=pdf`} title="The roll with total, grade and point, and a summary of performance — PDF">Marked sheet · PDF</a>
         </> : null}
-        {atEntry && own ? <><button className="btn btn--ghost btn--sm" onClick={() => file.current?.click()}>Upload a completed sheet</button><input ref={file} type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></> : null}
+        {atEntry && own ? <><button className="btn btn--ghost btn--sm" onClick={() => file.current?.click()}>Upload a completed sheet</button><input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></> : null}
         {atEntry && own ? <Btn kind="primary" disabled={busy || !dirty.length || invalid.length > 0 || needReason.length > 0} onClick={() => void save()}>{busy ? "Saving…" : "Save the draft"}</Btn> : null}
         {atEntry && own ? <Btn kind={ready ? "go" : "ghost"} disabled={busy || !(blank === 0) || invalid.length > 0 || needReason.length > 0} onClick={() => setAsk("submit")}>Submit and attest</Btn> : null}
       </div>
