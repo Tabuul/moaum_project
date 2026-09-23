@@ -83,10 +83,20 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   }
 
   async function call(path: string, method: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
-    const r = await fetch(`/api/bff/api/v1/allocation${path}`, {
-      method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) },
-      body: method === "DELETE" ? undefined : JSON.stringify(body ?? {}),
-    });
+    // a request the portal never answers (an API restarting mid-deploy) must not lock the dialog for ever
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 30_000);
+    let r: Response;
+    try {
+      r = await fetch(`/api/bff/api/v1/allocation${path}`, {
+        method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) },
+        body: method === "DELETE" ? undefined : JSON.stringify(body ?? {}), signal: ctl.signal,
+      });
+    } catch (e) {
+      setErr({ status: 0, title: ctl.signal.aborted ? "The portal did not answer within 30 seconds" : "The portal could not be reached",
+        detail: "Nothing was saved. Try again in a moment; if the portal has just been updated, sign in again first." } as Problem);
+      return null;
+    } finally { clearTimeout(timer); }
     const j = await r.json().catch(() => null);
     if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
     notify(reason);
@@ -210,10 +220,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
 
       {open ? (
         <Modal title={`${open.lecturer_id ? "Manage" : "Assign"} teaching for ${open.course_code}`} sub={`${open.title} · ${open.level} level · ${open.units} units · ${open.registered} registered`} wide onClose={() => setOpen(null)}
-          foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn>
+            <span className="sub2" style={{ flexGrow: 1, color: err ? "var(--red-ink)" : undefined }}>
+              {err ? `Not saved — ${err.title}` : busy ? "Saving…" : !lecturer ? "Choose the lead lecturer to save" : ""}
+            </span>
             {overloaded
-              ? <Btn kind="urgent" disabled={busy || !lecturer} onClick={() => void assign(true)}>Save as an overload ({after} units)</Btn>
-              : <Btn kind="go" disabled={busy || !lecturer} onClick={() => void assign(false)}>Save the lead &amp; second examiner</Btn>}</>}>
+              ? <Btn kind="urgent" disabled={busy || !lecturer} onClick={() => void assign(true)}>{busy ? "Saving…" : `Save as an overload (${after} units)`}</Btn>
+              : <Btn kind="go" disabled={busy || !lecturer} onClick={() => void assign(false)}>{busy ? "Saving…" : "Save the lead & second examiner"}</Btn>}</>}>
           {err ? <ProblemNotice problem={err} /> : null}
 
           <div className="eyebrow" style={{ marginTop: 2 }}>Lead lecturer</div>
