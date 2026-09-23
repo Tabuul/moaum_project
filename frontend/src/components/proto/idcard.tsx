@@ -159,9 +159,8 @@ export function IdCardBack({ c }: { c: IdCardData }) {
       <div className="idc__bcols">
         <div className="idc__terms">
           <b>Conditions</b>
-          <p>This card is issued to the named student and is not transferable. It must be produced on demand to any officer of the University, at the gate, in the Library and at the door of an examination hall.</p>
-          <p>A lost card is reported to Security at once; a card reported lost is refused at every reader from the moment it is reported.</p>
-          <p>If found, return to the Security post, Km 1 Gboko Road, Makurdi.</p>
+          <p>This ID card must always be in the owner&rsquo;s possession for identification at the gates, examination or wherever identification is necessary.</p>
+          <p>Any alteration or erasure renders this card invalid. Loss must be reported immediately to the Chief Security Officer of the University.</p>
         </div>
         <div className="idc__vfy">
           <div className="idc__qr"><Qr /></div>

@@ -24,6 +24,59 @@ export class Page {
     return this;
   }
 
+  /** text with a chosen face and letter-spacing — for the card faces: serif bold (Times) for the University's name,
+   *  spaced capitals for labels. Fonts: F1 Helvetica · F2 Helvetica-Bold · F3 Times-Bold. */
+  textStyled(x: number, y: number, s: string, size: number, o: { font?: "F1" | "F2" | "F3"; colour?: [number, number, number]; spacing?: number } = {}): this {
+    const c = (o.colour ?? [0, 0, 0]).map((v) => v.toFixed(3)).join(" ");
+    this.ops.push(`BT /${o.font ?? "F1"} ${size} Tf ${(o.spacing ?? 0).toFixed(2)} Tc ${c} rg ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdf(s)}) Tj ET`);
+    return this;
+  }
+
+  /** a rounded rectangle path (bezier corners), ready for f / S / W n */
+  private roundPath(x: number, y: number, w: number, h: number, r: number): string {
+    const k = 0.5523 * r;
+    const f = (n: number) => n.toFixed(2);
+    return `${f(x + r)} ${f(y)} m ${f(x + w - r)} ${f(y)} l ${f(x + w - r + k)} ${f(y)} ${f(x + w)} ${f(y + r - k)} ${f(x + w)} ${f(y + r)} c `
+      + `${f(x + w)} ${f(y + h - r)} l ${f(x + w)} ${f(y + h - r + k)} ${f(x + w - r + k)} ${f(y + h)} ${f(x + w - r)} ${f(y + h)} c `
+      + `${f(x + r)} ${f(y + h)} l ${f(x + r - k)} ${f(y + h)} ${f(x)} ${f(y + h - r + k)} ${f(x)} ${f(y + h - r)} c `
+      + `${f(x)} ${f(y + r)} l ${f(x)} ${f(y + r - k)} ${f(x + r - k)} ${f(y)} ${f(x + r)} ${f(y)} c h`;
+  }
+
+  /** a filled rounded rectangle in colour, with an optional stroke */
+  roundRect(x: number, y: number, w: number, h: number, r: number, fill: [number, number, number], stroke?: [number, number, number], width = 0.6, faint = false): this {
+    const fc = fill.map((v) => v.toFixed(3)).join(" ");
+    if (faint) {
+      this.ops.push(`q /GSW gs ${fc} rg ${this.roundPath(x, y, w, h, r)} f Q`);
+    } else if (stroke) {
+      const sc = stroke.map((v) => v.toFixed(3)).join(" ");
+      this.ops.push(`${fc} rg ${sc} RG ${width} w ${this.roundPath(x, y, w, h, r)} B 0 g 0 G`);
+    } else {
+      this.ops.push(`${fc} rg ${this.roundPath(x, y, w, h, r)} f 0 g`);
+    }
+    return this;
+  }
+
+  /** clip everything drawn until restore() to a rounded rectangle */
+  clipRound(x: number, y: number, w: number, h: number, r: number): this {
+    this.ops.push(`q ${this.roundPath(x, y, w, h, r)} W n`);
+    return this;
+  }
+
+  restore(): this {
+    this.ops.push("Q");
+    return this;
+  }
+
+  /** a faint image at a given alpha: the crest as a card watermark (GS5 is 5 %, GSW 6 %) */
+  imageFaint(x: number, y: number, w: number, h: number, img: Image): this {
+    const name = `Im${this.images.length + 1}`;
+    this.images.push({ name, img });
+    const scale = Math.min(w / img.width, h / img.height);
+    const dw = img.width * scale, dh = img.height * scale;
+    this.ops.push(`q /GS5 gs ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${(x + (w - dw) / 2).toFixed(2)} ${(y + (h - dh) / 2).toFixed(2)} cm /${name} Do Q`);
+    return this;
+  }
+
   /** wrapped text, returns the y after the last line */
   paragraph(x: number, y: number, s: string, width: number, size = 10, lead = 1.35, bold = false): number {
     const maxChars = Math.max(10, Math.floor(width / (size * 0.5)));
@@ -183,8 +236,8 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
     push("\nendobj\n");
   };
   push("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n");
-  /* 1 catalog · 2 pages · 3 F1 · 4 F2 · then per page: page, content, images */
-  let next = 5;
+  /* 1 catalog · 2 pages · 3 F1 · 4 F2 · 5 F3 · then per page: page, content, images */
+  let next = 6;
   const pageIds: number[] = [];
   const built: { id: number; content: number; images: { id: number; name: string; img: Image }[]; page: Page }[] = [];
   for (const p of pages) {
@@ -198,9 +251,10 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
   obj(2, `<< /Type /Pages /Kids [${pageIds.map((i) => `${i} 0 R`).join(" ")}] /Count ${pageIds.length} >>`);
   obj(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
   obj(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+  obj(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>");
   for (const b of built) {
     const xobjects = b.images.map((im) => `/${im.name} ${im.id} 0 R`).join(" ");
-    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
+    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
     const stream = enc.encode(b.page.ops.join("\n"));
     obj(b.content, [enc.encode(`<< /Length ${stream.length} >>\nstream\n`), stream, enc.encode("\nendstream")]);
     for (const im of b.images) {
