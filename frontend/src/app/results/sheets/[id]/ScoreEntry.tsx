@@ -199,6 +199,11 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         {saved ? <span className="sk__saved">✓ {saved}</span> : dirty.length ? <span className="sub2">{dirty.length} unsaved</span> : null}
         <span style={{ flexGrow: 1 }} />
         <button className="btn btn--ghost btn--sm" onClick={template}>Download the template</button>
+        {entered > 0 ? <>
+          {/* the marked sheet as it stands — total, grade and point computed by the register, a performance summary at the end */}
+          <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/marked?format=xlsx`} title="The roll with total, grade and point, and a summary of performance — Excel">Marked sheet · Excel</a>
+          <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/marked?format=pdf`} title="The roll with total, grade and point, and a summary of performance — PDF">Marked sheet · PDF</a>
+        </> : null}
         {atEntry && own ? <><button className="btn btn--ghost btn--sm" onClick={() => file.current?.click()}>Upload a completed sheet</button><input ref={file} type="file" accept=".csv,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></> : null}
         {atEntry && own ? <Btn kind="primary" disabled={busy || !dirty.length || invalid.length > 0 || needReason.length > 0} onClick={() => void save()}>{busy ? "Saving…" : "Save the draft"}</Btn> : null}
         {atEntry && own ? <Btn kind={ready ? "go" : "ghost"} disabled={busy || !(blank === 0) || invalid.length > 0 || needReason.length > 0} onClick={() => setAsk("submit")}>Submit and attest</Btn> : null}
