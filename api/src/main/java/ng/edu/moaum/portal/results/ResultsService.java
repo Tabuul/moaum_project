@@ -575,10 +575,10 @@ public class ResultsService {
             List<String> coreOwed = owed.stream().filter(x -> !"Elective".equals(courseKind.get(x))).sorted().toList();
             List<String> electiveOwed = owed.stream().filter(x -> "Elective".equals(courseKind.get(x))).sorted().toList();
             List<String> parts = new ArrayList<>();
-            // probation is judged on a cumulative standing, which a 100 level class does not yet have
-            if (level >= 200 && cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
             if (!coreOwed.isEmpty()) parts.add("CO: " + String.join(", ", coreOwed));
             if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
+            // any student whose CGPA is under 1.0 is to go on probation — said after the courses owed
+            if (cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)
                     : anyUnreleased ? "PENDING"
                     : "PASS";
