@@ -541,6 +541,11 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/records",
             "icon": "chart",
             "label": "Records & queries"
+          },
+          {
+            "id": "t/reports",
+            "icon": "chart",
+            "label": "Reports & returns"
           }
         ]
       },

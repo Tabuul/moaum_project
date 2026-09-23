@@ -31,6 +31,10 @@ class ReportsController {
     private static final String PG_READERS =
             "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
 
+    /** the accreditation return is the Registry's and HR's, read by management */
+    private static final String STAFF_RATIO_READERS =
+            "hasAnyAuthority('OFFICE_hrm','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+
     private final JdbcClient jdbc;
 
     ReportsController(JdbcClient jdbc) {
@@ -294,5 +298,58 @@ class ReportsController {
             totals.put(k, rows.stream().mapToLong(r -> ((Number) r.get(k)).longValue()).sum());
         }
         return Map.of("session", s, "rows", rows, "totals", totals);
+    }
+
+    /**
+     * Staff/student ratio by department, for the NUC accreditation return: the students on the
+     * books under each department's programmes against the academic staff whose home department it
+     * is (V137 staff record, holding the lecturer office), with the rank mix that the qualification
+     * table of the return is built from. The ratio is students per academic staff.
+     */
+    @GetMapping("/staff-ratio")
+    @PreAuthorize(STAFF_RATIO_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> staffRatio() {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                WITH staff AS (
+                    SELECT r.home_department AS dept,
+                           count(*) AS academic,
+                           count(*) FILTER (WHERE upper(coalesce(r.present_rank, '')) LIKE '%PROFESSOR%' OR upper(coalesce(r.present_rank, '')) LIKE '%READER%') AS professorial,
+                           count(*) FILTER (WHERE upper(coalesce(r.present_rank, '')) LIKE 'SENIOR LECTURER%') AS senior,
+                           count(*) FILTER (WHERE upper(coalesce(r.present_rank, '')) LIKE 'LECTURER%') AS lecturers,
+                           count(*) FILTER (WHERE upper(coalesce(r.present_rank, '')) LIKE 'ASSISTANT%' OR upper(coalesce(r.present_rank, '')) LIKE 'GRADUATE%') AS junior
+                      FROM hrm.staff_record r
+                     WHERE r.home_department IS NOT NULL
+                       AND EXISTS (SELECT 1 FROM iam.office_assignment a
+                                    WHERE a.person_id = r.person_id AND a.office_code IN ('lecturer','hod','dean')
+                                      AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date))
+                     GROUP BY r.home_department
+                ),
+                students AS (
+                    SELECT p.dept_code AS dept, count(*) AS students,
+                           count(*) FILTER (WHERE s.entry_mode = 'POSTGRADUATE') AS postgraduates
+                      FROM people.student s JOIN ref.programme p ON p.code = s.programme_code
+                     WHERE s.status IN ('ADMITTED','ACTIVE','PROBATION')
+                     GROUP BY p.dept_code
+                )
+                SELECT f.name AS faculty, d.code AS department_code, d.name AS department,
+                       coalesce(st.students, 0) AS students, coalesce(st.postgraduates, 0) AS postgraduates,
+                       coalesce(sf.academic, 0) AS academic,
+                       coalesce(sf.professorial, 0) AS professorial, coalesce(sf.senior, 0) AS senior,
+                       coalesce(sf.lecturers, 0) AS lecturers, coalesce(sf.junior, 0) AS junior,
+                       CASE WHEN coalesce(sf.academic, 0) > 0 THEN round(coalesce(st.students, 0)::numeric / sf.academic, 1) END AS ratio
+                  FROM ref.department d JOIN ref.faculty f ON f.code = d.faculty_code
+                  LEFT JOIN staff sf ON sf.dept = d.code
+                  LEFT JOIN students st ON st.dept = d.code
+                 WHERE d.ended_on IS NULL AND (coalesce(st.students, 0) + coalesce(sf.academic, 0)) > 0
+                 ORDER BY f.name, d.name
+                """).query().listOfRows();
+        Map<String, Object> totals = new LinkedHashMap<>();
+        for (String k : List.of("students", "postgraduates", "academic", "professorial", "senior", "lecturers", "junior")) {
+            totals.put(k, rows.stream().mapToLong(r -> ((Number) r.get(k)).longValue()).sum());
+        }
+        long students = (Long) totals.get("students"), academic = (Long) totals.get("academic");
+        totals.put("ratio", academic > 0 ? Math.round((10.0 * students) / academic) / 10.0 : null);
+        return Map.of("rows", rows, "totals", totals);
     }
 }
