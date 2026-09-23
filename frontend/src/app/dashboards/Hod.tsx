@@ -17,6 +17,8 @@ export interface HodHome {
   openQueries?: number;
   offeringsNeedLecturer?: number;
   offeringsTotal?: number;
+  /** the department's students by curriculum track, with each track's expected end (V235) */
+  tracks?: { code: string; label: string; framework: string; expected_end_session: string | null; students: number }[];
   deptStudents?: number;
   deptCourses?: number;
   sheetsPending?: number;
@@ -92,6 +94,10 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
             <span style={{ display: "block", marginTop: 2 }}>still owing for {home.session} · press either figure to download its list</span>
           </span>],
         ["Courses", String(home.deptCourses ?? 0), null, "In the department catalogue"],
+        ...((home.tracks ?? []).filter((t) => t.code === "BMAS").map((t) => [
+          "BMAS students remaining", String(Number(t.students)), Number(t.students) ? "var(--chrome)" : "var(--green-ink)",
+          Number(t.students) ? `BMAS courses stay offered until the last has gone · expected end ${t.expected_end_session ?? "—"}` : "BMAS has run its course in this department",
+        ] as [string, string, string, string])),
         ...(home.openQueries ? [["Result queries", String(home.openQueries), "var(--chrome)", "Awaiting your department", "/results/queries"] as [string, string, string, string, string]] : []),
         ...(requestsOpen ? [["Student requests", String(requestsOpen), "var(--chrome)", "Open, to your office"] as [string, string, string, string]] : []),
       ]} />

@@ -64,7 +64,7 @@ class CatalogueController {
                             @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind) {
     }
 
-    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows, @Size(max = 10) String curriculum) {
+    public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows, @Size(max = 12) String curriculum) {
     }
 
     public record FacultyIn(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 160) String name) {
@@ -277,14 +277,17 @@ class CatalogueController {
         return rows;
     }
 
-    public record CurriculumIn(@Size(max = 8) String curriculum) {
+    public record CurriculumIn(@Size(max = 12) String curriculum) {
     }
 
+    /** a curriculum names a track — BMAS, CCMAS_BSU, CCMAS_MOAU (V235) — or a bare framework, CCMAS or BMAS */
+    private static final java.util.Set<String> CURRICULA = java.util.Set.of("CCMAS", "BMAS", "CCMAS_BSU", "CCMAS_MOAU");
+
     private static String cleanCurriculum(String v) {
-        String c = v == null || v.isBlank() ? null : v.trim().toUpperCase();
-        if (c != null && !c.equals("CCMAS") && !c.equals("BMAS")) {
-            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_CURRICULUM", "A curriculum is CCMAS or BMAS.",
-                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose CCMAS or BMAS, or clear it.", "Head of Department"));
+        String c = v == null || v.isBlank() ? null : v.trim().toUpperCase().replace('-', '_').replace(' ', '_');
+        if (c != null && !CURRICULA.contains(c)) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_CURRICULUM", "A curriculum is BMAS, CCMAS (BSU cohort), CCMAS (MOAU cohorts) or CCMAS for any cohort.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose one of the tracks, or clear it.", "Head of Department"));
         }
         return c;
     }
@@ -296,6 +299,7 @@ class CatalogueController {
     @Transactional
     Map<String, Object> setCurriculum(@PathVariable String code, @RequestBody CurriculumIn body) {
         String curr = cleanCurriculum(body.curriculum());
+        if (curr != null && curr.startsWith("CCMAS_")) curr = "CCMAS";   // the course carries the framework; the structure row carries the track
         String c = code.trim().toUpperCase();
         String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c)
                 .query(String.class).optional().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("course", code));

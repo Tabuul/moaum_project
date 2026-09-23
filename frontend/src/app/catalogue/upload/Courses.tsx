@@ -24,7 +24,7 @@ const MAY = ["ict", "super", "admin", "hod", "dean", "academic", "registrar", "d
 export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOption[]; actingOffice: string | null }) {
   const may = MAY.includes(actingOffice ?? "");
   const [programme, setProgramme] = useState("");
-  const [curriculum, setCurriculum] = useState("CCMAS");
+  const [curriculum, setCurriculum] = useState("CCMAS_MOAU");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -162,7 +162,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
         const cur = (row.category || curriculum || "").toUpperCase();
         const key = `${pc}|${cur}`;
         let g = groups.get(key);
-        if (!g) { g = { programme: pc, curriculum: cur === "CCMAS" || cur === "BMAS" ? cur : curriculum, rows: [] }; groups.set(key, g); }
+        if (!g) { g = { programme: pc, curriculum: ["CCMAS", "BMAS", "CCMAS_BSU", "CCMAS_MOAU"].includes(cur.replace(/[- ]/g, "_")) ? cur.replace(/[- ]/g, "_") : curriculum, rows: [] }; groups.set(key, g); }
         g.rows.push(row);
       }
       const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0 };
@@ -255,10 +255,12 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
               options={programmes.map((p) => ({ value: p.code, label: `${p.name}${p.facultyName ? ` · ${p.facultyName}` : ""}` }))}
               onChange={(v) => { setProgramme(v); setLoaded(null); }} />
           </Field>
-          <Field id="cu-curr" label="Curriculum framework" hint="The framework this structure is drawn from">
+          <Field id="cu-curr" label="Curriculum" hint="The track this structure is for — a student sees only the rows of their own track; a row for any cohort is shared">
             <select id="cu-curr" className="ctl" value={curriculum} onChange={(e) => setCurriculum(e.target.value)}>
-              <option value="CCMAS">CCMAS (current)</option>
-              <option value="BMAS">BMAS (older)</option>
+              <option value="CCMAS_MOAU">CCMAS — MOAU cohorts (entered 2024/2025 on)</option>
+              <option value="CCMAS_BSU">CCMAS — BSU cohort (entered 2023/2024)</option>
+              <option value="BMAS">BMAS — cohorts up to 2022/2023</option>
+              <option value="CCMAS">CCMAS — any cohort (shared rows)</option>
             </select>
           </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

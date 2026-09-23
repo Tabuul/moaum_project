@@ -160,6 +160,9 @@ class HodController {
         out.put("feesCleared", fees.get("cleared"));
         out.put("feesOwing", fees.get("owing"));
 
+        // the department's students by curriculum track, with each track's expected end (V235)
+        out.put("tracks", jdbc.sql("SELECT * FROM policy.track_census(:d)").param("d", dept).query().listOfRows());
+
         return out;
     }
 
