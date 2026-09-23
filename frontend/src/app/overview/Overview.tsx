@@ -71,7 +71,7 @@ export function Overview({ d, semester, session, sessions }: { d: OverviewData; 
       </Note>
 
       <Tiles items={[
-        ["Students on the register", vzNum(uniStudents), null, `${N(d.uni?.faculties ?? d.students.byFaculty.length)} faculties · ${N(d.uni?.departments)} departments`],
+        ["Students on the register", vzNum(uniStudents), null, `${N(d.uni?.faculties ?? d.students.byFaculty.length)} faculties · ${N(d.uni?.departments)} departments`, "/reports/students"],
         ["Result sets expected", vzNum(expected), null, `${d.session} · ${semester === 1 ? "first" : "second"} semester`],
         ["Past Senate", expected ? `${pastPct}%` : "—", appr ? "var(--green-ink)" : null, `${vzNum(appr)} sets`],
         ["Never submitted", vzNum(miss), miss ? "var(--red-ink)" : "var(--green-ink)", miss ? "sets with no desk yet" : "every set is on a desk"],

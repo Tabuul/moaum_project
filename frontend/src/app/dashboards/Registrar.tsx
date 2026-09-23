@@ -37,8 +37,8 @@ export async function RegistrarDashboard({ session }: { session: string }) {
         The return is filed by the Data Protection Officer under your signature. The record of processing activities and the impact assessments arrive with the governance module; until then, the offices held under your grants are the part of it this portal can already show.
       </Note>
       <Tiles items={[
-        ["Students on the register", students.ok ? students.data.total.toLocaleString() : "—", null, "All levels and modes"],
-        ["Staff on the register", staff.length.toLocaleString(), null, `${staff.filter((p) => p.username).length} with an account`],
+        ["Students on the register", students.ok ? students.data.total.toLocaleString() : "—", null, "All levels and modes", "/reports/students"],
+        ["Staff on the register", staff.length.toLocaleString(), null, `${staff.filter((p) => p.username).length} with an account`, "/reports/staff"],
         ["Senate business", String(inWorkflow), null, "Result sets in the workflow"],
         ["Credentials in hand", String(openTranscripts + awaitingCollection), "var(--chrome)", "Transcripts and certificates"],
       ]} />
