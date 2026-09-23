@@ -303,7 +303,7 @@ class ResultsRepository {
 
     List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem) {
         return jdbc.sql("""
-                SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names,
+                SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode,
                        o.course_code, c.title, e.units, coalesce(c.kind, 'Core') AS kind, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome
                   FROM registration.course_registration r
                   JOIN people.student st ON st.id = r.student_id

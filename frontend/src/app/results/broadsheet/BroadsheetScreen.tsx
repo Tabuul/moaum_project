@@ -40,6 +40,18 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
       : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F0</div></span>;
   const orderCols = [...core, ...elec];
+  /* from 200 level the sheet is in three lists: the class with no question of probation; at 200 level first
+     semester the Direct Entry students, whose first semester this is (no standing to judge yet); and the
+     PROBATION LIST — every student whose CGPA is under 1.0. At 100 level there is one list. */
+  const sectioned = !!sheet && Number(sheet.level) >= 200;
+  const deSection = !!sheet && Number(sheet.level) === 200 && Number(sheet.semester) === 1;
+  const isDE = (r: Broadsheet["rows"][number]) => deSection && r.entryMode === "DIRECT_ENTRY";
+  const onProbation = (r: Broadsheet["rows"][number]) => sectioned && !isDE(r) && r.cgpa !== null && Number(r.cgpa) < 1.0;
+  const sections: { title: string; rows: Broadsheet["rows"] }[] = !sheet ? [] : !sectioned ? [{ title: "", rows: sheet.rows }] : [
+    { title: "", rows: sheet.rows.filter((r) => !isDE(r) && !onProbation(r)) },
+    ...(deSection ? [{ title: "DIRECT ENTRY STUDENTS", rows: sheet.rows.filter(isDE) }] : []),
+    { title: "PROBATION LIST", rows: sheet.rows.filter(onProbation) },
+  ];
   /* the matriculation number's prefix (everything up to the last oblique) is the class's, shared by nearly every
      row: it sits under the MATRIC NO. heading once, and each cell carries the serial alone. A row whose number
      does not share the prefix — a transfer, an old-format number — shows in full. */
@@ -74,7 +86,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     // probation and withdrawal are judged on a cumulative standing, which a 100 level class does not yet have:
     // at 100 level both rows read Nil with no percentage; from 200 level first semester they are counted
     const standingApplies = Number(sheet.level) >= 200;
-    const probation = standingApplies ? sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length : 0;   // the remark says TO GO ON PROBATION
+    const probation = standingApplies ? sheet.rows.filter(onProbation).length : 0;   // the PROBATION LIST
     const withdraw = 0;   // no rule in force names a CGPA at which a candidate is advised to withdraw
     const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "");
     const n0 = (n: number) => (n === 0 ? "Nil" : String(n));
@@ -121,7 +133,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       ["Summary of results", "", "%"], ...cov.SUM.map((s) => [s[0], s[1], s[2]] as Cell[]), [],
       ["Key", ""], ...cov.KEY.map((k) => [k[0], k[1]] as Cell[]), [],
       ["Courses", "", ""], ["Code", "Title", "Units"], ...sheet.courses.map((c) => [c.courseCode, c.title, c.units] as Cell[])];
-    const broad: Cell[][] = [...head("Broadsheet"), bsCols, ...sheet.rows.map((r, i) => bsRow(r, i))];
+    const broad: Cell[][] = [...head("Broadsheet"), ...sections.flatMap((sec) => [
+      ...(sec.title ? [[], [sec.title]] : []), bsCols, ...sec.rows.map((r, i) => bsRow(r, i)), ...(sec.rows.length ? [] : [["None"]]),
+    ] as Cell[][])];
     const book = xlsx([["Summary", summary], ["Broadsheet", broad]], { logo: logo ?? undefined });
     const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const a = document.createElement("a");
@@ -147,7 +161,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       + (core.length ? `<th colspan="${core.length}">CORE COURSES</th>` : "") + (elec.length ? `<th colspan="${elec.length}">ELECTIVE COURSES</th>` : "")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
-    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
+    const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
       + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
@@ -171,7 +185,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       <div class="sign"><div><div class="role">Dean of Faculty</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div>
         <div><div class="role">Head of Department</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div></div>
       <div class="pb"></div>
-      <table class="bs"><thead>${gh}</thead><tbody>${body}</tbody></table></body></html>`;
+      ${sections.map((sec) => `${sec.title ? `<h3>${escd(sec.title)} · ${sec.rows.length}</h3>` : ""}<table class="bs"><thead>${gh}</thead><tbody>${sec.rows.length ? bodyOf(sec.rows) : `<tr><td colspan="40" style="text-align:left">None</td></tr>`}</tbody></table>`).join("")}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) { return; }
     w.document.write(html);
@@ -251,8 +265,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
           <Panel title="" right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
             {sheet.rows.length === 0 ? (
               <div className="card__body sub2">No approved registration at this level in {sheet.session} {semester.toLowerCase()} semester for this programme. The broadsheet has nobody to compute.</div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
+            ) : sections.map((sec, si) => (
+              <div key={si} style={{ overflowX: "auto", marginTop: si ? 18 : 0 }}>
+                {sec.title ? <div className="ers__h" style={{ margin: "8px 0 6px", display: "flex", gap: 10, alignItems: "baseline" }}>{sec.title}<span className="sub2" style={{ textTransform: "none", fontWeight: 400 }}>{sec.rows.length} candidate{sec.rows.length === 1 ? "" : "s"}</span></div> : null}
                 <table className="bsheet">
                   <thead>
                     <tr className="grp">
@@ -273,7 +288,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                     </tr>
                   </thead>
                   <tbody>
-                    {sheet.rows.map((r, i) => (
+                    {sec.rows.map((r, i) => (
                       <tr key={r.studentId}>
                         <td className="sn tnum">{i + 1}</td>
                         <td className="l tnum mt" title={r.number}>{serialOf(r.number)}</td>
@@ -296,8 +311,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                     ))}
                   </tbody>
                 </table>
+                {sec.rows.length === 0 ? <div className="sub2" style={{ padding: "8px 6px" }}>None</div> : null}
               </div>
-            )}
+            ))}
           </Panel>
           <style>{`
             .bsheet{border-collapse:collapse;font-size:12px;width:100%}

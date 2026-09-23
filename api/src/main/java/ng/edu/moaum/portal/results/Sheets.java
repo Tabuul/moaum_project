@@ -104,7 +104,8 @@ public final class Sheets {
 
     /** one candidate, one course, on the broadsheet */
     public record BroadsheetCell(UUID studentId, String number, String surname, String otherNames, String courseCode,
-                                 String title, int units, String kind, String stage, Integer total, String grade, BigDecimal points, String outcome) {
+                                 String title, int units, String kind, String stage, Integer total, String grade, BigDecimal points, String outcome,
+                                 String entryMode) {
     }
 
     public record BroadsheetCourse(String courseCode, String title, int units, String kind) {
@@ -120,7 +121,7 @@ public final class Sheets {
                                 int cur, int cue,
                                 BigDecimal points, BigDecimal gpa, int pending, String standing,
                                 int tcr, int tce, BigDecimal twgp, BigDecimal cgpa, BigDecimal lcgpa,
-                                List<String> carryovers, String remarks) {
+                                List<String> carryovers, String remarks, String entryMode) {
     }
 
     public record Broadsheet(String programme, int level, String session, int semester, List<BroadsheetCourse> courses,

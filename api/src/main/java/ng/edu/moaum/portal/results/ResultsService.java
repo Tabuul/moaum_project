@@ -579,12 +579,14 @@ public class ResultsService {
             if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
             // probation is judged from 200 level first semester on: a student whose CGPA is still under 1.0 by then is
             // to go on probation — said after the courses owed; a 100 level class has no standing to judge yet
-            if (level >= 200 && cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
+            // a Direct Entry student's first semester (200 level first) has no standing to judge either
+            boolean deFirst = "DIRECT_ENTRY".equals(first.entryMode()) && level == 200 && sem == 1;
+            if (level >= 200 && !deFirst && cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)
                     : anyUnreleased ? "PENDING"
                     : "PASS";
             rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
-                    cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks));
+                    cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks, first.entryMode()));
         }
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
         List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()))).toList();
