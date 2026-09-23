@@ -13,11 +13,23 @@ export interface DeanHome {
   atRisk?: { name: string; number: string; programme: string; level: number }[];
 }
 
+const FACULTY_DESKS: { label: string; href: string }[] = [
+  { label: "Broadsheet", href: "/results/broadsheet" },
+  { label: "Result desk", href: "/results/desk" },
+  { label: "Approvals", href: "/results/approvals" },
+  { label: "Teaching allocation", href: "/allocate" },
+  { label: "Students", href: "/students" },
+  { label: "Courses", href: "/catalogue" },
+];
+
 /** The faculty (or College) home, scoped to one unit: registration by department, the result pipeline,
  *  offerings without a lecturer, and the students at risk. Serves the Dean and Faculty Officer at faculty
- *  scope, and the Provost and College Secretary at College scope — same view, labelled by `role` and
- *  `scopeNoun`. When `scopeNoun` is "college", the `faculty`/`facultyName` fields carry the College. */
-export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }: { me: Me | null; home: DeanHome | null; role?: string; scopeNoun?: string }) {
+ *  scope, and the Provost, College Secretary and Finance Controller at College scope — same view, labelled
+ *  by `role` and `scopeNoun`. When `scopeNoun` is "college", the `faculty`/`facultyName` fields carry the
+ *  College. The faculty-scoped desk screens (broadsheet, result desk, allocation, ...) are not yet open to
+ *  the College offices' authority, so a caller passes `desks={[]}` to hide those links rather than send
+ *  a College officer to a screen that refuses them. */
+export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty", desks = FACULTY_DESKS }: { me: Me | null; home: DeanHome | null; role?: string; scopeNoun?: string; desks?: { label: string; href: string }[] }) {
   const Scope = scopeNoun.charAt(0).toUpperCase() + scopeNoun.slice(1);
   if (!home || !home.resolved) {
     return (
@@ -36,6 +48,12 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
   return (
     <>
       {needLect ? (
+        <Note kind="info" title={`${needLect} offering${needLect === 1 ? " has" : "s have"} no lecturer across ${home.facultyName}`} action={desks.length ? <Link href="/allocate" className="btn btn--primary btn--sm">Teaching allocation</Link> : undefined}>
+          A score sheet opens only once a lecturer is allocated. The departments below carry the gaps; a Head of Department allocates within each.
+        </Note>
+      ) : (
+        <Note kind="ok" title={`${home.facultyName} is staffed for ${home.session}`} action={desks.length ? <Link href="/results/broadsheet" className="btn btn--ghost btn--sm">{Scope} broadsheet</Link> : undefined}>
+          Every offering has a lecturer. Registration and results progress by department below.
         <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer across ${home.facultyName}`} action={<Link href="/allocate" className="btn btn--primary btn--sm">Teaching allocation</Link>}>
           A score sheet opens only once a lecturer is allocated. The departments below carry the gaps; a Head of Department allocates within each.
         </Note>
@@ -87,14 +105,13 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
 
         <Panel title={`${Scope} desks`} right={`Scoped to your ${scopeNoun}`}>
           <PBody>
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
-              <Link href="/results/broadsheet" className="btn btn--ghost btn--sm">Broadsheet</Link>
-              <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
-              <Link href="/results/approvals" className="btn btn--ghost btn--sm">Approvals</Link>
-              <Link href="/allocate" className="btn btn--ghost btn--sm">Teaching allocation</Link>
-              <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>
-              <Link href="/catalogue" className="btn btn--ghost btn--sm">Courses</Link>
-            </div>
+            {desks.length ? (
+              <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+                {desks.map((d) => <Link key={d.href} href={d.href} className="btn btn--ghost btn--sm">{d.label}</Link>)}
+              </div>
+            ) : (
+              <div className="sub2">The register, results and allocation desks are faculty-scoped and not yet open at College level.</div>
+            )}
             <div className="sub2" style={{ marginTop: 8 }}>You are acting as {role} of {home.facultyName}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
           </PBody>
         </Panel>

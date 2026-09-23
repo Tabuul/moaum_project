@@ -2570,6 +2570,14 @@ export const MENUS: Record<string, Menu> = {
         "name": "Start here",
         "items": [
           { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "s/fees", "icon": "card", "label": "School fees — pay first" }
+        ]
+      },
+      {
+        "name": "Records",
+        "items": [
+          { "id": "s/results", "icon": "cap", "label": "Results" },
+          { "id": "s/query", "icon": "alert", "label": "Result query" },
           { "id": "s/fees", "icon": "card", "label": "School fees" }
         ]
       },
@@ -2586,6 +2594,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Services",
         "items": [
           { "id": "s/wallet", "icon": "swap", "label": "Wallet & funding" },
+          { "id": "s/hostel", "icon": "bed", "label": "Hostel" },
           { "id": "s/library", "icon": "book", "label": "Library" },
           { "id": "s/idcard", "icon": "user", "label": "Identity card" },
           { "id": "s/health", "icon": "heart", "label": "Health" },

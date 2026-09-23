@@ -16,8 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The Provost's home, scoped to their College: registration by department across every faculty in the
  * College, the result-sheet pipeline, the offerings still without a lecturer, and the students at risk.
- * The College is the scope of their standing 'provost' grant, with a staff-record fallback and, in a
- * single-College institution, the sole College. The College Secretary shares this view. Read-only.
+ * The College is the scope of their standing office grant (provost, college secretary or finance
+ * controller), with a staff-record fallback and, in a single-College institution, the sole College.
+ * The College Secretary and Finance Controller share this view. Read-only.
  *
  * The shape mirrors the Dean's dashboard so the same frontend renders it, one scope higher: the
  * "faculty" fields carry the College's code and name.
@@ -39,7 +40,7 @@ class ProvostController {
                 WITH raw AS (
                   SELECT COALESCE(
                     (SELECT scope_id FROM iam.office_assignment
-                      WHERE person_id = :p AND office_code IN ('provost','collegesecretary') AND scope_kind = 'college'
+                      WHERE person_id = :p AND office_code IN ('provost','collegesecretary','financecontroller') AND scope_kind = 'college'
                         AND nullif(btrim(scope_id), '') IS NOT NULL
                         AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
                       ORDER BY valid_from DESC LIMIT 1),

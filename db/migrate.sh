@@ -28,11 +28,15 @@ set -euo pipefail
 : "${DATABASE_URL:?DATABASE_URL is not set — Railway provides it when the Postgres service is attached to this one}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q --no-psqlrc)
+# The connection string goes LAST on every invocation below: PostgreSQL 15's
+# Windows psql.exe does not reorder argv the way Linux's does, so a flag
+# placed after it is silently dropped (only on Windows — CI and Railway are
+# unaffected either way).
+PSQL=(psql -v ON_ERROR_STOP=1 -q --no-psqlrc)
 
 echo "── MOAUMPP migrations ─────────────────────────────────────────"
 
-"${PSQL[@]}" <<'SQL'
+"${PSQL[@]}" "$DATABASE_URL" <<'SQL'
 CREATE TABLE IF NOT EXISTS public.schema_migration (
     filename    text PRIMARY KEY,
     sha256      text NOT NULL,
@@ -51,7 +55,7 @@ skipped=0
 for f in "$HERE"/V*.sql; do
     name="$(basename "$f")"
     sha="$(sha256sum "$f" | cut -d' ' -f1)"
-    seen="$("${PSQL[@]}" -tAc "SELECT sha256 FROM public.schema_migration WHERE filename = '$name'")"
+    seen="$("${PSQL[@]}" -tAc "SELECT sha256 FROM public.schema_migration WHERE filename = '$name'" "$DATABASE_URL")"
 
     if [ -n "$seen" ]; then
         if [ "$seen" != "$sha" ]; then
@@ -71,8 +75,8 @@ for f in "$HERE"/V*.sql; do
     fi
 
     echo "   applying $name"
-    "${PSQL[@]}" -f "$f"
-    "${PSQL[@]}" -c "INSERT INTO public.schema_migration (filename, sha256) VALUES ('$name', '$sha')"
+    "${PSQL[@]}" -f "$f" "$DATABASE_URL"
+    "${PSQL[@]}" -c "INSERT INTO public.schema_migration (filename, sha256) VALUES ('$name', '$sha')" "$DATABASE_URL"
     applied=$((applied + 1))
 done
 
@@ -80,7 +84,7 @@ echo "   $applied applied, $skipped already in place"
 
 if [ -f "$HERE/verify.sql" ]; then
     echo "── verifying ──────────────────────────────────────────────────"
-    "${PSQL[@]}" -f "$HERE/verify.sql"
+    "${PSQL[@]}" -f "$HERE/verify.sql" "$DATABASE_URL"
 fi
 
 echo "── done ───────────────────────────────────────────────────────"
