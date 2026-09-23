@@ -64,7 +64,7 @@ export default async function FundingReport({ searchParams }: { searchParams: Pr
       totals={totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={note}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`funding-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`funding-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} keep={{ report: "funding", period: session }} />}
     />
   );
 }

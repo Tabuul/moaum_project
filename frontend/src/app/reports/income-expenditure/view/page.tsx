@@ -65,7 +65,7 @@ export default async function IncomeExpenditureReport({ searchParams }: { search
       rows={rows}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`Financial year ${d.year}: income ${money(Number(d.totals.income))} against expenditure ${money(Number(d.totals.expense))} — a ${surplus >= 0 ? "surplus" : "deficit"} of ${money(Math.abs(surplus))}. Read off the general ledger's income and expense accounts; the expenditure budget and what has been committed and paid against it are shown beneath (commitment accounting).`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`income-expenditure-${d.year}`} title={`${spec.title} · ${d.year}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`income-expenditure-${d.year}`} title={`${spec.title} · ${d.year}`} keep={{ report: "income-expenditure", period: String(d.year) }} />}
     />
   );
 }

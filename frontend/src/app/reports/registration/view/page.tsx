@@ -56,7 +56,7 @@ export default async function RegistrationReport({ searchParams }: { searchParam
       totals={{ ...t, pct: t.expected ? `${Math.round((100 * t.registered) / t.expected)}%` : "—" }}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={note}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`registration-return-${sessionSlug(session)}-${semester}`} title={`${spec.title} · ${session} · ${semesterText(semester)}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`registration-return-${sessionSlug(session)}-${semester}`} title={`${spec.title} · ${session} · ${semesterText(semester)}`} keep={{ report: "registration", period: `${session} · semester ${semester}` }} />}
     />
   );
 }

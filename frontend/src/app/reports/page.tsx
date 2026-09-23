@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
-import { Reports, type FacultyRow } from "./Reports";
+import { Reports, type DueRow, type FacultyRow, type KeptRow } from "./Reports";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     : (sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name : null) ?? (pg ? "2025/2026" : "2026/2027");
   /* the enrolment by faculty shown on the desk itself (proto gReports): the return's rows, rolled up */
   const enrol = pg ? null : await api<{ rows: EnrolmentRow[] }>(`/api/v1/reports/enrolment?session=${encodeURIComponent(session)}`);
+  /* the due register and the copies kept (V229) */
+  const [due, kept] = await Promise.all([
+    api<{ asAt: string; rows: DueRow[]; overdue: number; dueSoon: number }>("/api/v1/reports/due"),
+    api<KeptRow[]>("/api/v1/reports/snapshots?limit=12"),
+  ]);
   const byFaculty: FacultyRow[] = [];
   if (enrol && enrol.ok) {
     const m = new Map<string, FacultyRow>();
@@ -33,7 +38,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   }
   return (
     <Shell route="t/reports" me={me.ok ? me.data : null}>
-      <Reports session={session} sessions={sessions.ok ? sessions.data : []} activeOffice={me.ok ? me.data.activeOffice : null} byFaculty={enrol && enrol.ok ? byFaculty : null} />
+      <Reports session={session} sessions={sessions.ok ? sessions.data : []} activeOffice={me.ok ? me.data.activeOffice : null} byFaculty={enrol && enrol.ok ? byFaculty : null}
+        due={due.ok ? due.data : null} kept={kept.ok ? kept.data : []} />
     </Shell>
   );
 }

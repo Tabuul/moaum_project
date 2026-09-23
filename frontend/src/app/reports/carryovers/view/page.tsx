@@ -49,7 +49,7 @@ export default async function CarryoverReport({ searchParams }: { searchParams: 
       note={d.rows.length
         ? `${d.distinctStudents.toLocaleString()} active student${d.distinctStudents === 1 ? "" : "s"} carry ${carried.toLocaleString()} course-registration${carried === 1 ? "" : "s"} across ${d.rows.length} course${d.rows.length === 1 ? "" : "s"}. A carryover is a course whose most recent published result is an F, not yet passed; it is added to the student's registration automatically. Figures are as at today, not bound to a session.`
         : "No active student currently carries a course whose latest published result is an F."}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`carryover-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`carryover-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} keep={{ report: "carryovers", period: session }} />}
     />
   );
 }

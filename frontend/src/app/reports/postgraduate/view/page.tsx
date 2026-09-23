@@ -64,7 +64,7 @@ export default async function PostgraduateReport({ searchParams }: { searchParam
       totals={{ ...t }}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${d.session}: ${Number(t.applications).toLocaleString()} applications, ${Number(t.offered).toLocaleString()} offered (${pct(t.offered, t.applications)} of applications), ${Number(t.accepted).toLocaleString()} accepted and ${Number(t.admitted).toLocaleString()} admitted to the register. ${Number(t.on_register).toLocaleString()} postgraduates are on the books across every entry session — ${Number(t.full_time).toLocaleString()} full-time and ${Number(t.part_time).toLocaleString()} part-time registered this session — of whom ${Number(t.researching).toLocaleString()} are at a research stage and ${Number(t.awarded).toLocaleString()} have been awarded.`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`postgraduate-return-${sessionSlug(d.session)}`} title={`${spec.title} · ${d.session}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`postgraduate-return-${sessionSlug(d.session)}`} title={`${spec.title} · ${d.session}`} keep={{ report: "postgraduate", period: d.session }} />}
     />
   );
 }

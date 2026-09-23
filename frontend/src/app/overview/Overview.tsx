@@ -29,7 +29,7 @@ function niceMax(v: number) {
   return Math.ceil((v * 1.12) / mag) * mag;
 }
 
-export function Overview({ d, semester, session, sessions }: { d: OverviewData; semester: number; session: string; sessions: string[] }) {
+export function Overview({ d, semester, session, sessions, due }: { d: OverviewData; semester: number; session: string; sessions: string[]; due?: { overdue: number; dueSoon: number } | null }) {
   const res = d.results.map((r) => {
     const expected = N(r.expected);
     const submitted = r.submitted != null ? N(r.submitted) : N(r.published) + N(r.in_progress);
@@ -76,6 +76,12 @@ export function Overview({ d, semester, session, sessions }: { d: OverviewData; 
         ["Past Senate", expected ? `${pastPct}%` : "—", appr ? "var(--green-ink)" : null, `${vzNum(appr)} sets`],
         ["Never submitted", vzNum(miss), miss ? "var(--red-ink)" : "var(--green-ink)", miss ? "sets with no desk yet" : "every set is on a desk"],
       ]} />
+      {due ? (
+        <Tiles cls="grid--2" items={[
+          ["Returns overdue", String(due.overdue), due.overdue ? "var(--red-ink)" : "var(--green-ink)", due.overdue ? "past the due date with no copy kept" : "every return is answered", "/reports"],
+          ["Returns due within 30 days", String(due.dueSoon), due.dueSoon ? "var(--chrome)" : null, "not yet kept — the due register", "/reports"],
+        ]} />
+      ) : null}
 
       <div className="grid grid--2">
         <Panel title={`Where the ${vzNum(expected)} result sets stand`} right="Approved, pending, never submitted">

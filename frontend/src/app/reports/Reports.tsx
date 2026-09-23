@@ -1,17 +1,44 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Btn, Note, Panel, PBody } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { REPORTS } from "@/lib/report";
 
 export interface FacultyRow { faculty: string; male: number; female: number; total: number }
+/** one row of the due register (reports.due_register, V229) */
+export interface DueRow {
+  slug: string; title: string; owner_office: string; owner_label: string; frequency: string; purpose: string;
+  last_due: string | null; last_period: string | null; last_snapshot: string | null; last_taken_at: string | null; last_filed_at: string | null; last_filed_to: string | null;
+  next_due: string | null; next_period: string | null; next_snapshot: string | null; next_taken_at: string | null; next_filed_at: string | null;
+  latest_snapshot: string | null; latest_taken_at: string | null;
+  state: string; days: number | null;
+}
+/** a kept copy, as the list gives it */
+export interface KeptRow {
+  id: string; report: string; title: string; period: string; due_on: string | null; row_count: number; taken_at: string; taken_office: string | null;
+  verification_code: string; filed_to: string | null; filed_at: string | null; taken_by_name: string | null; filed_by_name: string | null;
+}
+const FREQ: Record<string, string> = { MONTHLY: "Monthly", PER_SEMESTER: "Per semester", PER_SESSION: "Per session", ON_DEMAND: "On demand" };
+const dmy = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+function statePill(r: DueRow) {
+  switch (r.state) {
+    case "OVERDUE": return <Pil kind="bad">Overdue · {r.days} days</Pil>;
+    case "DUE": return <Pil kind={r.days != null && r.days <= 30 ? "warn" : "info"}>{r.days != null && r.days < 0 ? `Due · ${-r.days} days ago` : r.days === 0 ? "Due today" : `Due in ${r.days ?? "—"} days`}</Pil>;
+    case "TAKEN": return <Pil kind="info">Kept · not filed</Pil>;
+    case "FILED": return <Pil kind="ok">Filed</Pil>;
+    default: return <Pil kind="grey">On demand</Pil>;
+  }
+}
+/** the last due date is what a Run answers while it stands unanswered; otherwise the next */
+const pending = (r: DueRow) => r.state === "OVERDUE" || (r.state === "DUE" && !!r.last_due && !r.last_snapshot);
 
 /** The returns desk, as the prototype's Reports & returns screen lays it out: the standard reports the
  *  office may take — each with its owner, its frequency, and a Run that opens it as a branded, printable
  *  document with a CSV beside it — and the session's enrolment by faculty, read off the register. */
-export function Reports({ session, sessions, activeOffice, byFaculty }: {
+export function Reports({ session, sessions, activeOffice, byFaculty, due, kept }: {
   session: string; sessions: { name: string; state: string }[]; activeOffice: string | null; byFaculty: FacultyRow[] | null;
+  due: { asAt: string; rows: DueRow[]; overdue: number; dueSoon: number } | null; kept: KeptRow[];
 }) {
   const router = useRouter();
   const mine = REPORTS.filter((r) => activeOffice != null && r.offices.includes(activeOffice));
@@ -19,6 +46,16 @@ export function Reports({ session, sessions, activeOffice, byFaculty }: {
   const open = (slug: string) => router.push(`/reports/${slug}/view?session=${encodeURIComponent(session)}`);
   const stamp = new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const grand = byFaculty ? byFaculty.reduce((s, f) => s + f.total, 0) : 0;
+  const mayRun = (slug: string) => activeOffice != null && (REPORTS.find((r) => r.slug === slug)?.offices.includes(activeOffice) || slug === "students" || slug === "staff");
+  /* run a return for the period a due date answers: the session it falls in, or the desk's session for a monthly one */
+  const runFor = (r: DueRow) => {
+    if (r.slug === "students" || r.slug === "staff") return router.push(`/reports/${r.slug}`);
+    const dueOn = pending(r) ? r.last_due : r.next_due;
+    const period = pending(r) ? r.last_period : r.next_period;
+    const ses = period && /^\d{4}\/\d{4}$/.test(period) ? period : session;
+    router.push(`/reports/${r.slug}/view?session=${encodeURIComponent(ses)}${dueOn ? `&due=${dueOn}` : ""}`);
+  };
+  const filedCount = kept.filter((k) => k.filed_at).length;
 
   return (
     <>
@@ -26,6 +63,33 @@ export function Reports({ session, sessions, activeOffice, byFaculty }: {
         A return is read off the register for the session you choose — the crest, the figures, and the footing that says it is verified
         against the record. Run one to read it on screen, print it or save it as a PDF, or take the same rows as a CSV.
       </Note>
+
+      {due ? (
+        <>
+          <Tiles items={[
+            ["Overdue", String(due.overdue), due.overdue ? "var(--red-ink)" : "var(--green-ink)", due.overdue ? "past the due date, nothing kept" : "nothing is past its date"],
+            ["Due within 30 days", String(due.dueSoon), due.dueSoon ? "var(--chrome)" : null, "not yet kept"],
+            ["Kept copies", String(kept.length), null, "the latest twelve, below"],
+            ["Filed", String(filedCount), filedCount ? "var(--green-ink)" : null, "of those kept"],
+          ]} />
+          <Panel title="Due register" right={`As at ${dmy(due.asAt)} · a return is answered by a kept copy`}>
+            <DTable cols={["Return", "Owner", "Frequency|mid", "Last due", "Next due", "State|mid", "|num"]}
+              rows={due.rows.map((r) => [
+                <span key="t"><span style={{ fontWeight: 600 }}>{r.title}</span><div className="sub2">{r.purpose}{r.owner_office === activeOffice ? " · yours" : ""}</div></span>,
+                <span key="o">{r.owner_label}</span>,
+                <span key="f" className="sub2">{FREQ[r.frequency] ?? r.frequency}</span>,
+                <span key="l" className="sub2">{r.last_due ? <>{dmy(r.last_due)}<div>{r.last_period}{r.last_snapshot ? <> · <a href={`/reports/snapshots/${r.last_snapshot}`}>{r.last_filed_at ? "filed" : "kept"}</a></> : null}</div></> : "—"}</span>,
+                <span key="n" className="sub2">{r.next_due ? <>{dmy(r.next_due)}<div>{r.next_period}{r.next_snapshot ? <> · <a href={`/reports/snapshots/${r.next_snapshot}`}>{r.next_filed_at ? "filed" : "kept"}</a></> : null}</div></> : "—"}</span>,
+                <span key="s">{statePill(r)}</span>,
+                mayRun(r.slug)
+                  ? <Btn kind={pending(r) ? "primary" : "ghost"} key="run" onClick={() => runFor(r)}>{r.frequency === "ON_DEMAND" ? "Open" : "Run"}</Btn>
+                  : <span key="run" className="sub2">—</span>,
+              ])}
+              texts={due.rows.map((r) => `${r.title} ${r.owner_label} ${r.state}`)} />
+            <PBody><div className="sub2">Run a return and press <b>Keep a copy</b> to answer its due date; then mark the kept copy <b>filed</b> once it has gone to the body it is for. A fortnight&rsquo;s grace runs after each due date before a return shows as overdue.</div></PBody>
+          </Panel>
+        </>
+      ) : null}
 
       <Panel title="Session" right={sessions.find((s) => s.name === session)?.state ?? ""}>
         <PBody>
@@ -54,6 +118,22 @@ export function Reports({ session, sessions, activeOffice, byFaculty }: {
           ],
         ]} />
       </Panel>
+
+      {kept.length ? (
+        <Panel title="Kept copies" right="Returns as they were when kept — each with a verification code">
+          <DTable cols={["Return", "Period", "Rows|num", "Taken", "Code|mid", "Filed", "|num"]}
+            rows={kept.map((k) => [
+              <span key="t" style={{ fontWeight: 600 }}>{k.title}</span>,
+              <span key="p">{k.period}</span>,
+              <span key="r" className="tnum">{Number(k.row_count).toLocaleString()}</span>,
+              <span key="tk" className="sub2">{dmy(k.taken_at)}{k.taken_by_name ? ` · ${k.taken_by_name}` : ""}</span>,
+              <span key="c" className="tnum">{k.verification_code}</span>,
+              k.filed_at ? <Pil key="f" kind="ok">{k.filed_to}</Pil> : <Pil key="f" kind="grey">Not filed</Pil>,
+              <Btn kind="ghost" key="o" onClick={() => router.push(`/reports/snapshots/${k.id}`)}>Open</Btn>,
+            ])}
+            texts={kept.map((k) => `${k.title} ${k.period} ${k.verification_code} ${k.filed_to ?? ""}`)} />
+        </Panel>
+      ) : null}
 
       <Panel title="Standard reports" right="Run against the register, never a copy of it">
         {mine.length ? (

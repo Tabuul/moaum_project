@@ -61,7 +61,7 @@ export default async function StaffRatioReport({ searchParams }: { searchParams:
       totals={{ ...t, ratio_text: ratioText(t.ratio) }}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${Number(t.students).toLocaleString()} students on the books (${Number(t.postgraduates).toLocaleString()} postgraduate) against ${Number(t.academic).toLocaleString()} academic staff — ${ratioText(t.ratio)} overall. ${heavy ? `${heavy} department${heavy === 1 ? "" : "s"} exceed 1 : 30. ` : ""}${unstaffed ? `${unstaffed} department${unstaffed === 1 ? " has" : "s have"} students but no academic staff on the register — their staff have not been imported with a home department. ` : ""}Academic staff are those holding the lecturer, Head of Department or Dean office with a home department on the staff record; students are those admitted, active or on probation. The NUC guide is 1 : 10 for Medicine and Pharmacy, 1 : 20 for the Sciences and Engineering, and 1 : 30 for the Arts, Social and Management Sciences, Education and Law.`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`staff-student-ratio-${session ? sessionSlug(session) : today}`} title={`${spec.title} · ${today}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`staff-student-ratio-${session ? sessionSlug(session) : today}`} title={`${spec.title} · ${today}`} keep={{ report: "staff-ratio", period: `as at ${today}` }} />}
     />
   );
 }

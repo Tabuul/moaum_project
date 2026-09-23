@@ -15,10 +15,13 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   ]);
   const list = sessions.ok ? sessions.data : [];
   const session = typeof p.session === "string" ? p.session : (list.find((s) => s.state === "CURRENT")?.name ?? "2026/2027");
-  const data = await api<OverviewData>(`/api/v1/reporting/overview?session=${encodeURIComponent(session)}&semester=${semester}`);
+  const [data, due] = await Promise.all([
+    api<OverviewData>(`/api/v1/reporting/overview?session=${encodeURIComponent(session)}&semester=${semester}`),
+    api<{ overdue: number; dueSoon: number }>("/api/v1/reports/due"),
+  ]);
   return (
     <Shell route="t/overview" me={me.ok ? me.data : null}>
-      {data.ok ? <Overview d={data.data} semester={semester} session={session} sessions={list.map((s) => s.name)} /> : <ProblemNotice problem={data.problem} />}
+      {data.ok ? <Overview d={data.data} semester={semester} session={session} sessions={list.map((s) => s.name)} due={due.ok ? due.data : null} /> : <ProblemNotice problem={data.problem} />}
     </Shell>
   );
 }

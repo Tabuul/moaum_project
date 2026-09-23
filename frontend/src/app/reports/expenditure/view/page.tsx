@@ -52,7 +52,7 @@ export default async function ExpenditureReport({ searchParams }: { searchParams
       totals={{ ...d.totals, utilisation: pct(d.totals) }}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`Financial year ${d.year}: ${money(Number(d.totals.budget))} budgeted, ${money(Number(d.totals.committed))} committed at approval and ${money(Number(d.totals.spent))} paid, leaving ${money(Number(d.totals.available))} available. Commitment accounting — budget is consumed at approval, not at payment.`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`expenditure-return-${d.year}`} title={`${spec.title} · ${d.year}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`expenditure-return-${d.year}`} title={`${spec.title} · ${d.year}`} keep={{ report: "expenditure", period: String(d.year) }} />}
     />
   );
 }

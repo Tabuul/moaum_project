@@ -297,4 +297,22 @@ class VerifyController {
         out.put("rows", rows);
         return out;
     }
+
+    /**
+     * A kept return, by the verification code its printed footing carries (V229): what it is, the period,
+     * when it was taken and by which office, how many rows, its totals, and whether it was filed — so the
+     * figures on a filed copy can be checked against what the portal kept. Public, like a receipt.
+     */
+    @GetMapping("/report/{code}")
+    @Transactional(readOnly = true)
+    Map<String, Object> report(@PathVariable String code) {
+        String c = code == null ? "" : code.trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
+        return jdbc.sql("""
+                SELECT s.title, s.subtitle, s.period, s.report, s.row_count, s.taken_at, s.taken_office,
+                       s.totals::text AS totals, s.headers::text AS headers, s.filed_to, s.filed_at, s.verification_code
+                  FROM reports.snapshot s WHERE s.verification_code = :c
+                """).param("c", c).query().listOfRows().stream().findFirst()
+                .map(r -> { Map<String, Object> m = new java.util.LinkedHashMap<>(); m.put("genuine", true); m.putAll(r); return m; })
+                .orElse(Map.of("genuine", false));
+    }
 }
