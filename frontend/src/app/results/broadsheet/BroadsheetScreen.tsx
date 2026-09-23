@@ -18,14 +18,14 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
   const semester = (scope.sem || "1") === "1" ? "First" : "Second";
   /* the course columns in the Senate's order: carryover courses (a course from a lower level, re-written
-     this semester), then GST, then core, then elective */
+     this semester), then the core courses with the GST courses leading them, then elective */
   const lvl = Number(sheet?.level ?? 0);
   const isCarryCourse = (c: { level: number }) => Number(c.level) > 0 && Number(c.level) < lvl;
   const carryC = sheet ? sheet.courses.filter(isCarryCourse) : [];
   const gst = sheet ? sheet.courses.filter((c) => !isCarryCourse(c) && c.kind === "GST") : [];
   const core = sheet ? sheet.courses.filter((c) => !isCarryCourse(c) && c.kind !== "GST" && c.kind !== "Elective") : [];
   const elec = sheet ? sheet.courses.filter((c) => !isCarryCourse(c) && c.kind === "Elective") : [];
-  const bands: [string, typeof core][] = ([["CARRYOVER COURSES", carryC], ["GST COURSES", gst], ["CORE COURSES", core], ["ELECTIVE COURSES", elec]] as [string, typeof core][]).filter((b) => b[1].length > 0);
+  const bands: [string, typeof core][] = ([["CARRYOVER COURSES", carryC], ["CORE COURSES", [...gst, ...core]], ["ELECTIVE COURSES", elec]] as [string, typeof core][]).filter((b) => b[1].length > 0);
   const markOf = (r: Broadsheet["rows"][number], code: string) => r.marks.find((m) => m.courseCode === code);
   const fx = (n: number | null) => (n === null || n === undefined ? "—" : Number(n).toFixed(2));
   /** the grade carries its weight: A5, B4, C3, D2, E1, F0 */
