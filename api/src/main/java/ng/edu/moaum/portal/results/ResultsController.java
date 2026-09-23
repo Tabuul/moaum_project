@@ -36,31 +36,10 @@ class ResultsController {
 
     private final ResultsService service;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
-    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
-    ResultsController(ResultsService service, ng.edu.moaum.portal.shared.OfficeScope scope, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+    ResultsController(ResultsService service, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.service = service;
         this.scope = scope;
-        this.jdbc = jdbc;
-    }
-
-    /** a department office reads its own department's programmes only; a faculty office its faculty's */
-    private void assertProgrammeInScope(String prog) {
-        String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", prog).query(String.class).optional().orElse(null);
-        if (scope.actingDepartmentOffice()) {
-            String own = scope.actingDept();
-            if (dept == null || own == null || !own.equals(dept)) {
-                throw new ng.edu.moaum.portal.shared.DomainRuleViolation("SCOPE_DEPARTMENT", "That programme is not in your department.",
-                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose a programme of your own department from the bar.", "You"));
-            }
-        } else if (scope.actingFacultyOffice()) {
-            String fac = dept == null ? null : jdbc.sql("SELECT faculty_code FROM ref.department WHERE code = :d").param("d", dept).query(String.class).optional().orElse(null);
-            String own = scope.actingFaculty();
-            if (fac == null || own == null || !own.equals(fac)) {
-                throw new ng.edu.moaum.portal.shared.DomainRuleViolation("SCOPE_FACULTY", "That programme is not in your faculty.",
-                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose a programme of your own faculty from the bar.", "You"));
-            }
-        }
     }
 
     private static final String MIGRATE =
@@ -170,7 +149,9 @@ class ResultsController {
                           @RequestParam(required = false) String prog, @RequestParam(required = false) String course,
                           @RequestParam(required = false) String session, @RequestParam(required = false) Integer sem,
                           @RequestParam(required = false) String stage) {
-        return service.sheets(blank(fac), blank(dept), blank(prog), blank(course), blank(session), sem, blank(stage));
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);   // the office's bound, whatever the parameters say
+        if (course != null && !course.isBlank()) scope.assertCourseInScope(course);
+        return service.sheets(b.fac(), b.dept(), b.prog(), blank(course), blank(session), sem, blank(stage));
     }
 
     @GetMapping("/sheets/{id}")
@@ -258,7 +239,7 @@ class ResultsController {
     @GetMapping("/broadsheet")
     @PreAuthorize(READERS)
     Sheets.Broadsheet broadsheet(@RequestParam String prog, @RequestParam int level, @RequestParam String session, @RequestParam int sem) {
-        assertProgrammeInScope(prog);
+        scope.bound(null, null, prog);   // a programme outside the office's bound is refused
         return service.broadsheet(prog, level, session, sem);
     }
 

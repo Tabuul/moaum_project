@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 class RefController {
 
     private final RefRepository ref;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    RefController(RefRepository ref) {
+    RefController(RefRepository ref, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.ref = ref;
+        this.scope = scope;
     }
 
     /** Colleges, faculties, departments and programmes — the scope bar's ladder. */
@@ -35,6 +37,6 @@ class RefController {
     List<Course> courses(@RequestParam(required = false) String dept,
                          @RequestParam(required = false) Integer semester,
                          @RequestParam(required = false) Integer level) {
-        return ref.courses(dept, semester, level);
+        return ref.courses(scope.deptWithin(dept), semester, level);   // a department office reads its own courses only
     }
 }

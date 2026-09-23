@@ -28,9 +28,11 @@ class ClearanceController {
             + "'OFFICE_library','OFFICE_services')";
 
     private final ClearanceService service;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    ClearanceController(ClearanceService service) {
+    ClearanceController(ClearanceService service, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.service = service;
+        this.scope = scope;
     }
 
     @GetMapping
@@ -39,7 +41,8 @@ class ClearanceController {
                               @RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
                               @RequestParam(required = false) String prog, @RequestParam(required = false) Integer level,
                               @RequestParam(required = false) String session) {
-        return service.listing(purpose, blank(fac), blank(dept), blank(prog), level, blank(session));
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);   // the office's bound, whatever the parameters say
+        return service.listing(purpose, b.fac(), b.dept(), b.prog(), level, blank(session));
     }
 
     @GetMapping("/units")

@@ -101,6 +101,77 @@ public class OfficeScope {
         return own != null ? own : "__none__";
     }
 
+    /* ── the guard every scoped endpoint applies: the office's bound on faculty, department and programme ── */
+
+    /** the faculty, department and programme a request is held to */
+    public record Bound(String fac, String dept, String prog) {
+    }
+
+    private static String blank(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    private String deptOfProgramme(String prog) {
+        return jdbc.sql("SELECT dept_code FROM ref.programme WHERE upper(code) = upper(:p)").param("p", prog).query(String.class).optional().orElse(null);
+    }
+
+    private String facultyOfDept(String dept) {
+        return jdbc.sql("SELECT faculty_code FROM ref.department WHERE upper(code) = upper(:d)").param("d", dept).query(String.class).optional().orElse(null);
+    }
+
+    private static DomainRuleViolation outside(String what, String where) {
+        return new DomainRuleViolation("SCOPE_" + where.toUpperCase(), "That " + what + " is not in your " + where + ".",
+                new DomainRuleViolation.Remedy("Choose from your own " + where + " in the bar; your office bounds what you see.", "You"));
+    }
+
+    /**
+     * Holds a request's faculty, department and programme to the acting office's bound, whatever the
+     * parameters say. A department office (Head of Department, Examinations Officer, SIWES Coordinator, a
+     * lecturer) is held to its own department: a different department or a programme outside it is
+     * refused, and an absent department is filled in. A faculty office (Dean, Faculty Officer) is held
+     * to its faculty the same way. Every other office is passed through as asked. An office that
+     * resolves to nothing is held to a sentinel that matches nothing.
+     */
+    public Bound bound(String fac, String dept, String prog) {
+        fac = blank(fac);
+        dept = blank(dept);
+        prog = blank(prog);
+        if (actingDepartmentOffice()) {
+            String own = actingDept();
+            if (own == null) own = "__none__";
+            if (dept != null && !dept.equalsIgnoreCase(own)) throw outside("department", "department");
+            if (prog != null && !own.equalsIgnoreCase(String.valueOf(deptOfProgramme(prog)))) throw outside("programme", "department");
+            String f = "__none__".equals(own) ? "__none__" : facultyOfDept(own);
+            if (fac != null && f != null && !fac.equalsIgnoreCase(f)) throw outside("faculty", "department");
+            return new Bound(f, own, prog);
+        }
+        if (actingFacultyOffice()) {
+            String ownF = actingFaculty();
+            if (ownF == null) ownF = "__none__";
+            if (fac != null && !fac.equalsIgnoreCase(ownF)) throw outside("faculty", "faculty");
+            if (dept != null && !ownF.equalsIgnoreCase(String.valueOf(facultyOfDept(dept)))) throw outside("department", "faculty");
+            if (prog != null) {
+                String pd = deptOfProgramme(prog);
+                if (pd == null || !ownF.equalsIgnoreCase(String.valueOf(facultyOfDept(pd)))) throw outside("programme", "faculty");
+            }
+            return new Bound(ownF, dept, prog);
+        }
+        return new Bound(fac, dept, prog);
+    }
+
+    /** the department a request is held to: the office's own for a department office, within the faculty for a faculty office */
+    public String deptWithin(String requested) {
+        return bound(null, requested, null).dept();
+    }
+
+    /** a course is read only within the office's bound: its owning department must be in scope */
+    public void assertCourseInScope(String courseCode) {
+        String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE upper(code) = upper(:c)").param("c", courseCode == null ? "" : courseCode.trim())
+                .query(String.class).optional().orElse(null);
+        if (dept == null) return;   // an unknown course is refused downstream as not found, not as out of scope
+        bound(null, dept, null);
+    }
+
     /** the offices that work within a single faculty */
     private static final java.util.Set<String> FACULTY_OFFICES = java.util.Set.of("dean", "facultyofficer");
 

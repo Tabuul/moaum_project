@@ -30,9 +30,11 @@ class RegistrationController {
     private static final String HOD_APPROVES = "hasAnyAuthority('OFFICE_hod','OFFICE_super')";
 
     private final RegistrationService service;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    RegistrationController(RegistrationService service) {
+    RegistrationController(RegistrationService service, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.service = service;
+        this.scope = scope;
     }
 
     @PutMapping("/courses/{code}")
@@ -111,6 +113,7 @@ class RegistrationController {
     @GetMapping("/class-list")
     @PreAuthorize(READERS)
     ClassList classList(@RequestParam String course, @RequestParam String session, @RequestParam(defaultValue = "1") int sem) {
+        scope.assertCourseInScope(course);   // a course of another department is refused to a department office
         return service.classList(course, session, sem);
     }
 }

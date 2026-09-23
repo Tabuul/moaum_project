@@ -40,15 +40,18 @@ class StudentController {
     private final RecordsService records;
     private final ng.edu.moaum.portal.studentportal.StudentPortalService portal;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
     StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records,
-                      ng.edu.moaum.portal.studentportal.StudentPortalService portal, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+                      ng.edu.moaum.portal.studentportal.StudentPortalService portal, org.springframework.jdbc.core.simple.JdbcClient jdbc,
+                      ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.students = students;
         this.changes = changes;
         this.search = search;
         this.records = records;
         this.portal = portal;
         this.jdbc = jdbc;
+        this.scope = scope;
     }
 
     /** The register in a scope, and how many the University has on it altogether. */
@@ -60,7 +63,8 @@ class StudentController {
                                  @RequestParam(required = false) Integer level,
                                  @RequestParam(required = false) String session,
                                  @RequestParam(required = false) String q) {
-        return students.register(Scope.of(fac, dept, prog, level, null, session, null), q);
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);   // the office's bound, whatever the parameters say
+        return students.register(Scope.of(b.fac(), b.dept(), b.prog(), level, null, session, null), q);
     }
 
     /** The students migrated from the old portal at these levels: how many, how many stand cleared at every unit, how many do not (V233). */

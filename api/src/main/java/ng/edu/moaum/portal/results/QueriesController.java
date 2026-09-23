@@ -59,7 +59,7 @@ class QueriesController {
     List<Map<String, Object>> queries(@RequestParam(required = false) String dept, @RequestParam(defaultValue = "open") String state) {
         // a Head of Department sees only their own department's queries unless they pick one explicitly;
         // a wider office (records, academic, registrar, super) sees them all and may filter by department
-        String d = (dept == null || dept.isBlank()) ? scope.actingHodDept() : dept;
+        String d = scope.deptWithin((dept == null || dept.isBlank()) ? scope.actingHodDept() : dept);
         return jdbc.sql("""
                 SELECT q.id, q.ref, q.part, q.said, q.routed_dept, d.name AS dept_name, q.raised_at, q.state, q.answer, q.answered_at,
                        s.matric_no, s.surname, s.other_names, c.code AS course_code, c.title, o.session, o.semester,

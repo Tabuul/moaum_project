@@ -60,7 +60,7 @@ class DeskController {
                                             @RequestParam(required = false) String deptParam, @RequestParam(defaultValue = "SUBMITTED") String status) {
         // a Head of Department (or lecturer) is confined to their own department server-side; a wider office
         // keeps the requested filter. This is the scoping, not the frontend's dept param, so it cannot be widened.
-        String dept = scope.scopedDept(deptParam);
+        String dept = scope.deptWithin(deptParam);
         // semester 0 means every semester — the approvals desk shows all pending registrations, so its list
         // matches the dashboard's session-wide count (a submitted second-semester registration is not hidden)
         List<Map<String, Object>> rows = jdbc.sql("""

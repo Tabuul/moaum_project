@@ -22,15 +22,19 @@ class GraduationController {
 
     private final GraduationService service;
 
-    GraduationController(GraduationService service) {
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
+
+    GraduationController(GraduationService service, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.service = service;
+        this.scope = scope;
     }
 
     @GetMapping("/sessions/{s}/{y}")
     @PreAuthorize(READERS)
     GraduationService.View view(@PathVariable String s, @PathVariable String y, @RequestParam(required = false) String fac,
                                 @RequestParam(required = false) String dept, @RequestParam(required = false) String prog) {
-        return service.view(s + "/" + y, blank(fac), blank(dept), blank(prog));
+        ng.edu.moaum.portal.shared.OfficeScope.Bound b = scope.bound(fac, dept, prog);   // the office's bound, whatever the parameters say
+        return service.view(s + "/" + y, b.fac(), b.dept(), b.prog());
     }
 
     @PostMapping("/sessions/{s}/{y}/audit")

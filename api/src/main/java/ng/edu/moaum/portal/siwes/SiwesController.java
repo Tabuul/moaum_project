@@ -69,7 +69,7 @@ class SiwesController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> offerings(@RequestParam(required = false) String dept, @RequestParam String session,
                                         @RequestParam(defaultValue = "2") int semester) {
-        String d = scope.scopedDept(dept);                  // a department office is bound to its department
+        String d = scope.deptWithin(dept);                  // a department office is bound to its department, a faculty office to its faculty
         return jdbc.sql("""
                 SELECT o.id, o.course_code, c.title, c.units, c.dept_code, dp.name AS dept_name, o.session, o.semester,
                        sh.id AS sheet_id, sh.stage AS sheet_stage,
