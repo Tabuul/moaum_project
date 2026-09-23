@@ -40,6 +40,13 @@ export async function loadScope(params: Record<string, string | string[] | undef
       ceiling.dept = fac.departments[0].code;
       scope.dept = fac.departments[0].code;
       ceiling.why = "Your department bounds this scope.";
+      // a lecturer whose courses serve one programme, or a one-programme department: the programme is fixed too
+      const progs = fac.departments[0].programmes.filter((p) => !p.archived);
+      if (progs.length === 1) {
+        ceiling.prog = progs[0].code;
+        scope.prog = progs[0].code;
+        ceiling.why = "Your programme bounds this scope.";
+      }
     } else {
       ceiling.why = "Your faculty bounds this scope.";
     }

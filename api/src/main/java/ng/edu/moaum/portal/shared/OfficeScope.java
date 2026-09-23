@@ -21,8 +21,14 @@ public class OfficeScope {
         this.jdbc = jdbc;
     }
 
-    /** the offices that work within a single department (their screens are bound to it) */
-    private static final java.util.Set<String> DEPARTMENT_OFFICES = java.util.Set.of("hod", "siwes");
+    /** the offices that work within a single department (their screens are bound to it): the Head of
+     *  Department, the Examinations Officer, the SIWES Coordinator — and every lecturer, who belongs to one */
+    private static final java.util.Set<String> DEPARTMENT_OFFICES = java.util.Set.of("hod", "exams", "siwes", "lecturer");
+
+    /** true when the acting office is the lecturer's */
+    public boolean actingLecturer() {
+        return AuditContextHolder.current().map(c -> "lecturer".equals(c.actorOffice())).orElse(false);
+    }
 
     /** true when the request is being made in the Head-of-Department office */
     public boolean actingHod() {

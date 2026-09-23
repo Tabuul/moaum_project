@@ -35,9 +35,32 @@ class ResultsController {
     private static final String EXAMS = "hasAnyAuthority('OFFICE_records','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
 
     private final ResultsService service;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
-    ResultsController(ResultsService service) {
+    ResultsController(ResultsService service, ng.edu.moaum.portal.shared.OfficeScope scope, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.service = service;
+        this.scope = scope;
+        this.jdbc = jdbc;
+    }
+
+    /** a department office reads its own department's programmes only; a faculty office its faculty's */
+    private void assertProgrammeInScope(String prog) {
+        String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", prog).query(String.class).optional().orElse(null);
+        if (scope.actingDepartmentOffice()) {
+            String own = scope.actingDept();
+            if (dept == null || own == null || !own.equals(dept)) {
+                throw new ng.edu.moaum.portal.shared.DomainRuleViolation("SCOPE_DEPARTMENT", "That programme is not in your department.",
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose a programme of your own department from the bar.", "You"));
+            }
+        } else if (scope.actingFacultyOffice()) {
+            String fac = dept == null ? null : jdbc.sql("SELECT faculty_code FROM ref.department WHERE code = :d").param("d", dept).query(String.class).optional().orElse(null);
+            String own = scope.actingFaculty();
+            if (fac == null || own == null || !own.equals(fac)) {
+                throw new ng.edu.moaum.portal.shared.DomainRuleViolation("SCOPE_FACULTY", "That programme is not in your faculty.",
+                        new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose a programme of your own faculty from the bar.", "You"));
+            }
+        }
     }
 
     private static final String MIGRATE =
@@ -235,6 +258,7 @@ class ResultsController {
     @GetMapping("/broadsheet")
     @PreAuthorize(READERS)
     Sheets.Broadsheet broadsheet(@RequestParam String prog, @RequestParam int level, @RequestParam String session, @RequestParam int sem) {
+        assertProgrammeInScope(prog);
         return service.broadsheet(prog, level, session, sem);
     }
 

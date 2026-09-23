@@ -22,32 +22,51 @@ class RefRepository {
     }
 
     Structure structure() {
-        // A Head of Department works within one department. When the request is an HOD's,
-        // the ladder is pruned to their department, its faculty and that faculty's college,
-        // so the scope bar's Faculty and Department are fixed to their own and only
-        // Programme, Level and Course remain to choose.
-        String hodDept = scope.actingHod() ? scope.actingHodDept() : null;
+        // A department office — the Head of Department, the Examinations Officer, a lecturer — works within
+        // one department: the ladder is pruned to their department, its faculty and that faculty's college,
+        // so the scope bar's Faculty and Department are fixed to their own and only Programme, Level and
+        // Course remain to choose. A faculty office — the Dean, the Faculty Officer — is pruned to its
+        // faculty. A lecturer is pruned further, to the programmes their courses are offered to, so they see
+        // their own students and nobody else's. An office that resolves to nothing sees nothing.
+        String hodDept = scope.actingDepartmentOffice() ? (scope.actingDept() == null ? "__none__" : scope.actingDept()) : null;
+        String facOnly = scope.actingFacultyOffice() ? (scope.actingFaculty() == null ? "__none__" : scope.actingFaculty()) : null;
+        java.util.UUID lecturer = scope.actingLecturer() ? scope.actorId() : null;
 
         List<Structure.College> colleges = jdbc.sql("""
                 SELECT co.code, co.name, co.system, co.url FROM ref.college co
                  WHERE (:dept::text IS NULL OR co.code = (
                          SELECT f.college_code FROM ref.department d JOIN ref.faculty f ON f.code = d.faculty_code
                           WHERE d.code = :dept))
+                   AND (:fac::text IS NULL OR co.code = (SELECT college_code FROM ref.faculty WHERE code = :fac))
                  ORDER BY co.name""")
-                .param("dept", hodDept).query(Structure.College.class).list();
+                .param("dept", hodDept).param("fac", facOnly).query(Structure.College.class).list();
         List<Structure.FacultyRow> faculties = jdbc.sql("""
                 SELECT f.code, f.name, f.college_code FROM ref.faculty f
                  WHERE (:dept::text IS NULL OR f.code = (SELECT faculty_code FROM ref.department WHERE code = :dept))
+                   AND (:fac::text IS NULL OR f.code = :fac)
                  ORDER BY f.name""")
-                .param("dept", hodDept).query(Structure.FacultyRow.class).list();
+                .param("dept", hodDept).param("fac", facOnly).query(Structure.FacultyRow.class).list();
         List<Structure.DepartmentRow> departments = jdbc.sql("""
                 SELECT code, name, faculty_code FROM ref.department
-                 WHERE ended_on IS NULL AND (:dept::text IS NULL OR code = :dept) ORDER BY name""")
-                .param("dept", hodDept).query(Structure.DepartmentRow.class).list();
+                 WHERE ended_on IS NULL AND (:dept::text IS NULL OR code = :dept)
+                   AND (:fac::text IS NULL OR faculty_code = :fac) ORDER BY name""")
+                .param("dept", hodDept).param("fac", facOnly).query(Structure.DepartmentRow.class).list();
         List<Structure.ProgrammeRow> programmes = jdbc.sql("""
-                SELECT code, name, dept_code, category, archived FROM ref.programme
-                 WHERE (:dept::text IS NULL OR dept_code = :dept) ORDER BY name""")
-                .param("dept", hodDept).query(Structure.ProgrammeRow.class).list();
+                SELECT p.code, p.name, p.dept_code, p.category, p.archived FROM ref.programme p
+                 WHERE (:dept::text IS NULL OR p.dept_code = :dept)
+                   AND (:fac::text IS NULL OR p.dept_code IN (SELECT code FROM ref.department WHERE faculty_code = :fac))
+                   -- a lecturer sees the programmes their courses are offered to; one with no course allocated yet sees the department's
+                   AND (:lect::uuid IS NULL
+                        OR NOT EXISTS (SELECT 1 FROM catalogue.offering o
+                                        WHERE o.lecturer_id = :lect OR o.second_examiner_id = :lect
+                                           OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :lect))
+                        OR EXISTS (SELECT 1 FROM catalogue.course_offer co
+                                     JOIN catalogue.offering o ON o.course_code = co.course_code
+                                    WHERE co.programme_code = p.code
+                                      AND (o.lecturer_id = :lect OR o.second_examiner_id = :lect
+                                           OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :lect))))
+                 ORDER BY p.name""")
+                .param("dept", hodDept).param("fac", facOnly).param("lect", lecturer, java.sql.Types.OTHER).query(Structure.ProgrammeRow.class).list();
 
         Map<String, List<Structure.Programme>> byDept = new LinkedHashMap<>();
         for (Structure.ProgrammeRow p : programmes) {
