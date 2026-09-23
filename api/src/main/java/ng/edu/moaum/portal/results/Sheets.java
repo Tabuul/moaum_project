@@ -105,10 +105,10 @@ public final class Sheets {
     /** one candidate, one course, on the broadsheet */
     public record BroadsheetCell(UUID studentId, String number, String surname, String otherNames, String courseCode,
                                  String title, int units, String kind, String stage, Integer total, String grade, BigDecimal points, String outcome,
-                                 String entryMode) {
+                                 String entryMode, int courseLevel) {
     }
 
-    public record BroadsheetCourse(String courseCode, String title, int units, String kind) {
+    public record BroadsheetCourse(String courseCode, String title, int units, String kind, int level) {
     }
 
     public record BroadsheetMark(String courseCode, String stage, Integer total, String grade, BigDecimal points, String outcome, boolean counted) {

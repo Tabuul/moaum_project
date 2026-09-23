@@ -17,8 +17,15 @@ const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;",
 export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null }) {
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
   const semester = (scope.sem || "1") === "1" ? "First" : "Second";
-  const core = sheet ? sheet.courses.filter((c) => c.kind !== "Elective") : [];
-  const elec = sheet ? sheet.courses.filter((c) => c.kind === "Elective") : [];
+  /* the course columns in the Senate's order: carryover courses (a course from a lower level, re-written
+     this semester), then GST, then core, then elective */
+  const lvl = Number(sheet?.level ?? 0);
+  const isCarryCourse = (c: { level: number }) => Number(c.level) > 0 && Number(c.level) < lvl;
+  const carryC = sheet ? sheet.courses.filter(isCarryCourse) : [];
+  const gst = sheet ? sheet.courses.filter((c) => !isCarryCourse(c) && c.kind === "GST") : [];
+  const core = sheet ? sheet.courses.filter((c) => !isCarryCourse(c) && c.kind !== "GST" && c.kind !== "Elective") : [];
+  const elec = sheet ? sheet.courses.filter((c) => !isCarryCourse(c) && c.kind === "Elective") : [];
+  const bands: [string, typeof core][] = ([["CARRYOVER COURSES", carryC], ["GST COURSES", gst], ["CORE COURSES", core], ["ELECTIVE COURSES", elec]] as [string, typeof core][]).filter((b) => b[1].length > 0);
   const markOf = (r: Broadsheet["rows"][number], code: string) => r.marks.find((m) => m.courseCode === code);
   const fx = (n: number | null) => (n === null || n === undefined ? "—" : Number(n).toFixed(2));
   /** the grade carries its weight: A5, B4, C3, D2, E1, F0 */
@@ -39,7 +46,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div style={{ fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
       : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F0</div></span>;
-  const orderCols = [...core, ...elec];
+  const orderCols = bands.flatMap((b) => b[1]);
   /* from 200 level the sheet is in three lists: the class with no question of probation; at 200 level first
      semester the Direct Entry students, whose first semester this is (no standing to judge yet); and the
      PROBATION LIST — every student whose CGPA is under 1.0. At 100 level there is one list. */
@@ -132,7 +139,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       ["Level", sheet.level], ["Semester", semester], ["Session", sheet.session], [],
       ["Summary of results", "", "%"], ...cov.SUM.map((s) => [s[0], s[1], s[2]] as Cell[]), [],
       ["Key", ""], ...cov.KEY.map((k) => [k[0], k[1]] as Cell[]), [],
-      ["Courses", "", ""], ["Code", "Title", "Units"], ...sheet.courses.map((c) => [c.courseCode, c.title, c.units] as Cell[])];
+      ["Courses", "", ""], ["Code", "Title", "Units"], ...orderCols.map((c) => [c.courseCode, c.title, c.units] as Cell[])];
     const broad: Cell[][] = [...head("Broadsheet"), ...sections.flatMap((sec) => [
       ...(sec.title ? [[], [sec.title]] : []), bsCols, ...sec.rows.map((r, i) => bsRow(r, i)), ...(sec.rows.length ? [] : [["None"]]),
     ] as Cell[][])];
@@ -154,11 +161,11 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const courseCells = (list: typeof sheet.courses) =>
       `<tr><td class="ab ch">Course Code</td><td class="ch">Course Title</td><td class="u ch">Credit Units</td></tr>`
       + list.map((c) => `<tr><td class="ab">${escd(c.courseCode)}</td><td>${escd(c.title)}</td><td class="u">${c.units}</td></tr>`).join("");
-    const half = Math.ceil(sheet.courses.length / 2);
-    const courseTwoCol = `<div class="cols2"><table class="t"><tbody>${courseCells(sheet.courses.slice(0, half))}</tbody></table>`
-      + `<table class="t"><tbody>${courseCells(sheet.courses.slice(half))}</tbody></table></div>`;
+    const half = Math.ceil(orderCols.length / 2);
+    const courseTwoCol = `<div class="cols2"><table class="t"><tbody>${courseCells(orderCols.slice(0, half))}</tbody></table>`
+      + `<table class="t"><tbody>${courseCells(orderCols.slice(half))}</tbody></table></div>`;
     const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">MATRIC NO.${matricPrefix ? `<br><span style="font-weight:400;text-transform:none">${escd(matricPrefix)}</span>` : ""}</th><th rowspan="2">NAME OF CANDIDATE</th>${hideCarryover ? "" : `<th rowspan="2">CARRYOVER</th>`}`
-      + (core.length ? `<th colspan="${core.length}">CORE COURSES</th>` : "") + (elec.length ? `<th colspan="${elec.length}">ELECTIVE COURSES</th>` : "")
+      + bands.map((b) => `<th colspan="${b[1].length}">${b[0]}</th>`).join("")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
     const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
@@ -252,7 +259,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                   </div>
                   <div className="ers__h" style={{ marginTop: 14 }}>Courses</div>
                   <table className="ers__t ers__courses"><tbody>
-                    {sheet.courses.map((c) => <tr key={c.courseCode}><td className="tnum ab">{c.courseCode}</td><td>{c.title}</td><td className="tnum">{c.units} units</td></tr>)}
+                    {orderCols.map((c) => <tr key={c.courseCode}><td className="tnum ab">{c.courseCode}</td><td>{c.title}</td><td className="tnum">{c.units} units</td></tr>)}
                   </tbody></table>
                   <div className="ers__sign">
                     <div><div className="role">Dean of Faculty</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
@@ -275,14 +282,13 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                       <th rowSpan={2} className="l">MATRIC NO.{matricPrefix ? <div style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{matricPrefix}</div> : null}</th>
                       <th rowSpan={2} className="l">NAME OF CANDIDATE</th>
                       {hideCarryover ? null : <th rowSpan={2}>CARRYOVER</th>}
-                      {core.length ? <th colSpan={core.length} className="band">CORE COURSES</th> : null}
-                      {elec.length ? <th colSpan={elec.length} className="band">ELECTIVE COURSES</th> : null}
+                      {bands.map((b) => <th key={b[0]} colSpan={b[1].length} className="band">{b[0]}</th>)}
                       <th colSpan={4} className="band">CURRENT</th>
                       {hideCum ? null : <th colSpan={5} className="band">CUMULATIVE DATE</th>}
                       <th rowSpan={2} className="l">REMARKS</th>
                     </tr>
                     <tr className="sub">
-                      {[...core, ...elec].map((c) => <th key={c.courseCode} className="course"><span className="mono">{c.courseCode}</span><span className="u">{c.units}</span></th>)}
+                      {orderCols.map((c) => <th key={c.courseCode} className="course"><span className="mono">{c.courseCode}</span><span className="u">{c.units}</span></th>)}
                       <th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>
                       {hideCum ? null : <><th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th></>}
                     </tr>
@@ -294,7 +300,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                         <td className="l tnum mt" title={r.number}>{serialOf(r.number)}</td>
                         <td className="l nm">{r.name}</td>
                         {hideCarryover ? null : <td className="co sub2">{r.carryovers.length ? r.carryovers.join(", ") : "—"}</td>}
-                        {[...core, ...elec].map((c) => <td key={c.courseCode} className="mk">{cell(markOf(r, c.courseCode))}</td>)}
+                        {orderCols.map((c) => <td key={c.courseCode} className="mk">{cell(markOf(r, c.courseCode))}</td>)}
                         <td className="tnum">{r.cur}</td>
                         <td className="tnum">{r.cue}</td>
                         <td className="tnum">{Number(r.points)}</td>

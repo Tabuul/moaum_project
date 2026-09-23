@@ -486,11 +486,13 @@ public class ResultsService {
         List<Sheets.BroadsheetCell> cells = repo.broadsheet(prog, level, session, sem);
         Map<String, Integer> courses = new LinkedHashMap<>();
         Map<String, String> courseKind = new LinkedHashMap<>();
+        Map<String, Integer> courseLevel = new LinkedHashMap<>();
         Map<String, String> courseTitle = new LinkedHashMap<>();
         Map<UUID, List<Sheets.BroadsheetCell>> byStudent = new LinkedHashMap<>();
         for (Sheets.BroadsheetCell c : cells) {
             courses.putIfAbsent(c.courseCode(), c.units());
             courseKind.putIfAbsent(c.courseCode(), c.kind());
+            courseLevel.putIfAbsent(c.courseCode(), c.courseLevel());
             courseTitle.putIfAbsent(c.courseCode(), c.title());
             byStudent.computeIfAbsent(c.studentId(), k -> new ArrayList<>()).add(c);
         }
@@ -589,7 +591,7 @@ public class ResultsService {
                     cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks, first.entryMode()));
         }
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
-        List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()))).toList();
+        List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()), courseLevel.getOrDefault(x.getKey(), level))).toList();
         return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,
                 repo.gradeBands(), classes, repo.gradingInstrument());
     }
