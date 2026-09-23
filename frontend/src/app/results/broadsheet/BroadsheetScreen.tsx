@@ -50,7 +50,12 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     for (const r of sheet.rows) { const p = prefixOf(r.number); if (p) counts.set(p, (counts.get(p) ?? 0) + 1); }
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
   })();
-  const serialOf = (n: string) => (matricPrefix && n.startsWith(matricPrefix) ? n.slice(matricPrefix.length) : n);
+  /* a carryover candidate from another year shares the prefix up to the year: they show as year/serial (22/65244) */
+  const matricBase = matricPrefix ? matricPrefix.replace(/[^/]+/$/, "") : "";
+  const serialOf = (n: string) =>
+    matricPrefix && n.startsWith(matricPrefix) ? n.slice(matricPrefix.length)
+      : matricBase && n.startsWith(matricBase) ? n.slice(matricBase.length)
+      : n;
 
   /* a 100 level first-semester class has no prior record: no carryover, and nothing cumulative yet */
   /* the Carryover column starts at 200 level — a 100 level student has no prior level to carry from, so
@@ -142,7 +147,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       + (core.length ? `<th colspan="${core.length}">CORE COURSES</th>` : "") + (elec.length ? `<th colspan="${elec.length}">ELECTIVE COURSES</th>` : "")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
-    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
+    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
       + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
@@ -155,7 +160,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       .t td.ch{font-weight:700;text-transform:uppercase;font-size:10px;color:#333;border-bottom:1px solid #999}
       table{border-collapse:collapse;width:100%}.t td{padding:2px 6px;font-size:11.5px;vertical-align:top}.t td.n,.t td.p{text-align:right;width:40px}.t td.ab{font-family:monospace;font-weight:700}
       .bs{border-collapse:collapse;width:100%;margin-top:8px}.bs th,.bs td{border:1px solid #bbb;padding:3px 5px;text-align:center;font-size:10.5px}.bs td.nm,.bs td.co{text-align:left}
-      .bs td.b{font-weight:700}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
+      .bs td.b{font-weight:700}.bs td.mt{white-space:nowrap;width:1%}.bs td.nm{white-space:nowrap}.bs td.co{min-width:150px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
       @media print{.pb{page-break-before:always}}</style></head><body>
       <div class="head"><img src="${crest}" alt=""><div class="uni">${escd(UNI)}</div><div class="st">Examination Reporting Sheet</div><div style="font-size:10px;color:#555;margin-top:3px">Serial ${escd(serial)} · generated ${escd(new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }))}</div></div>
       <div class="meta"><div><span class="k">Faculty</span><b>${escd(cov.facName)}</b></div><div><span class="k">Level</span><b>${sheet.level}</b></div>
@@ -271,7 +276,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                     {sheet.rows.map((r, i) => (
                       <tr key={r.studentId}>
                         <td className="sn tnum">{i + 1}</td>
-                        <td className="l tnum" title={r.number}>{serialOf(r.number)}</td>
+                        <td className="l tnum mt" title={r.number}>{serialOf(r.number)}</td>
                         <td className="l nm">{r.name}</td>
                         {hideCarryover ? null : <td className="co sub2">{r.carryovers.length ? r.carryovers.join(", ") : "—"}</td>}
                         {[...core, ...elec].map((c) => <td key={c.courseCode} className="mk">{cell(markOf(r, c.courseCode))}</td>)}
@@ -300,12 +305,14 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             .bsheet thead th{background:var(--panel-2,var(--line-2));font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--chrome-dim)}
             .bsheet th.band{color:var(--chrome);font-weight:700}
             .bsheet th.l,.bsheet td.l{text-align:left;white-space:nowrap}
-            .bsheet td.nm{white-space:normal;min-width:150px;font-weight:600}
+            .bsheet td.nm{white-space:normal;min-width:170px;font-weight:600}
+            .bsheet td.mt{width:1%;white-space:nowrap}
             .bsheet th.course .mono{display:block;font-family:ui-monospace,monospace;font-weight:700}
             .bsheet th.course .u{display:block;font-size:10px;color:var(--chrome-dim)}
             .bsheet td.mk{min-width:44px}
             .bsheet td.b{font-weight:700}
-            .bsheet td.co,.bsheet td.rm{text-align:left;min-width:120px;max-width:220px}
+            .bsheet td.co{text-align:left;min-width:110px;max-width:200px;white-space:normal}
+            .bsheet td.rm{text-align:left;min-width:190px;max-width:340px;white-space:normal;font-size:11.5px}
             .bsheet tbody tr:nth-child(even) td{background:var(--line-2)}
             .ers{max-width:900px;margin:0 auto}
             .ers__title{text-align:center;margin-bottom:16px}
