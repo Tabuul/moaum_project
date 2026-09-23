@@ -275,7 +275,7 @@ public class ResultsService {
         boolean blocked = ctx != null && r.lastActor() != null && r.lastActor().equals(ctx.actorId());
         return new Sheets.Listed(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.deptName(), r.facultyName(),
                 r.session(), r.semester(), r.stage(), Sheets.spine(r.stage()), r.sitting(), r.dueOn(), daysLate, r.returnedTimes(),
-                r.lecturer(), r.candidates(), failRate, mayAct, blocked, r.caMax());
+                r.lecturer(), r.candidates(), failRate, mayAct, blocked, r.caMax(), r.heldScripts());
     }
 
     private static String desk(String office) {
@@ -466,7 +466,7 @@ public class ResultsService {
             Integer daysToDue = r.dueOn() == null ? null : (int) ChronoUnit.DAYS.between(LocalDate.now(), r.dueOn());
             out.add(new Sheets.MySheet(r.id(), r.courseCode(), r.courseTitle(), r.units(), r.session(), r.semester(), r.stage(),
                     Sheets.spine(r.stage()), r.dueOn(), daysLate, daysToDue, r.returnedTimes(), r.candidates(), r.entered(), r.graded(),
-                    r.secondExaminer(), me != null && me.equals(r.lecturerId()), r.openQueries(), r.bankQuestions(), r.caEntered()));
+                    r.secondExaminer(), me != null && me.equals(r.lecturerId()), r.openQueries(), r.bankQuestions(), r.caEntered(), r.heldScripts()));
         }
         return out;
     }

@@ -116,6 +116,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Hanging payments",
     "Successful at the gateway, pending here"
   ],
+  "t/heldscripts": [
+    "Held scripts",
+    "Students who sat a paper unregistered — the mark waits on their fees"
+  ],
   "t/cashdesk": [
     "Cash office and final account",
     "Revenue received, and the assets extracted from it"

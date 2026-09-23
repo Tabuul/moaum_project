@@ -18,6 +18,7 @@ class ResultsRepository {
                    s.returned_times, o.lecturer_id, coalesce(es.kind, 'MAIN') AS sitting,
                    CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS lecturer,
                    (SELECT count(*) FROM assessment.sheet_candidates(s.id)) AS candidates,
+                   (SELECT count(*) FROM assessment.held_script h WHERE h.sheet_id = s.id AND h.state = 'HELD') AS held_scripts,
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED') AS graded,
                    (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE outcome = 'GRADED' AND points = 0) AS failed,
                    (SELECT dd.actor_id FROM assessment.decision dd WHERE dd.sheet_id = s.id AND dd.kind IN ('SUBMIT','ADVANCE')
@@ -251,7 +252,7 @@ class ResultsRepository {
 
     record MineRow(UUID id, String courseCode, String courseTitle, int units, String session, int semester, String stage,
                    LocalDate dueOn, int returnedTimes, long candidates, long entered, long graded, String secondExaminer, UUID lecturerId,
-                   long openQueries, long bankQuestions, long caEntered) {
+                   long openQueries, long bankQuestions, long caEntered, long heldScripts) {
     }
 
     List<MineRow> mine(UUID person, String session, Integer sem, boolean all) {
@@ -265,7 +266,8 @@ class ResultsRepository {
                        o.lecturer_id,
                        (SELECT count(*) FROM assessment.result_query rq WHERE rq.sheet_id = s.id AND rq.state = 'RAISED') AS open_queries,
                        (SELECT count(*) FROM assessment.question q WHERE q.course_code = c.code AND q.active) AS bank_questions,
-                       (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE ca IS NOT NULL) AS ca_entered
+                       (SELECT count(*) FROM assessment.latest_scores(s.id) WHERE ca IS NOT NULL) AS ca_entered,
+                       (SELECT count(*) FROM assessment.held_script h WHERE h.sheet_id = s.id AND h.state = 'HELD') AS held_scripts
                   FROM assessment.score_sheet s
                   JOIN catalogue.offering o ON o.id = s.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code

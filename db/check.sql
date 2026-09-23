@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 138
+\set EXPECTED 139
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2909,6 +2909,44 @@ BEGIN
     DELETE FROM catalogue.offering WHERE id IN (offR, offS);
     DELETE FROM catalogue.course WHERE code IN ('ZZR 401', 'ZZS 401');
     DELETE FROM policy.academic_session WHERE name = sess;
+END $$;
+
+-- ── 17c. a script from a candidate not on the roll is held, released by an approved registration, lapsed past the date (V240) ──
+DO $$
+DECLARE sh uuid; o uuid; st uuid := gen_random_uuid(); st2 uuid := gen_random_uuid(); reg uuid := gen_random_uuid();
+        hid uuid; hid2 uuid; refused boolean := false; l record; had_sem boolean; old_late date; lapsed int; rel_state text; lap_state text;
+        held_before boolean;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    SELECT s.id, o2.id INTO sh, o FROM assessment.score_sheet s JOIN catalogue.offering o2 ON o2.id = s.offering_id WHERE o2.course_code = 'CHK 901';
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st,  'MOAUM/ADM/99/990902', 'MOAUM/CHK/99/0902', 'CHECKHELD',  'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+           (st2, 'MOAUM/ADM/99/990903', 'MOAUM/CHK/99/0903', 'CHECKLAPSE', 'Invented', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+    -- a mark over the course's split is refused even while held; the number is read whatever its case
+    BEGIN PERFORM assessment.hold_script(sh, 'MOAUM/CHK/99/0902', 35, 10, NULL, NULL); EXCEPTION WHEN check_violation THEN refused := true; END;
+    hid := assessment.hold_script(sh, 'moaum/chk/99/0902', 25, 40, NULL, 'script 7');
+    held_before := NOT EXISTS (SELECT 1 FROM assessment.latest_scores(sh) x WHERE x.student_id = st);
+    -- the registration approved: the register releases the script into the sheet
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (reg, st, '9999/0000', 1, 100, 'APPROVED', now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, o, 3, 'APPROVED');
+    SELECT state INTO rel_state FROM assessment.held_script WHERE id = hid;
+    SELECT * INTO l FROM assessment.latest_scores(sh) x WHERE x.student_id = st;
+    -- past the semester's late-registration date, a held script lapses
+    SELECT EXISTS (SELECT 1 FROM policy.semester WHERE session = '9999/0000' AND number = 1) INTO had_sem;
+    IF NOT had_sem THEN INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), '9999/0000', 1, 'CLOSED'); END IF;
+    SELECT late_registration_closes INTO old_late FROM policy.semester WHERE session = '9999/0000' AND number = 1;
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    hid2 := assessment.hold_script(sh, 'MOAUM/CHK/99/0903', 20, 30, NULL, NULL);
+    UPDATE policy.semester SET late_registration_closes = current_date - 1 WHERE session = '9999/0000' AND number = 1;
+    lapsed := assessment.lapse_held_scripts();
+    SELECT state INTO lap_state FROM assessment.held_script WHERE id = hid2;
+    UPDATE policy.semester SET late_registration_closes = old_late WHERE session = '9999/0000' AND number = 1;
+    IF NOT had_sem THEN DELETE FROM policy.semester WHERE session = '9999/0000' AND number = 1; END IF;
+    PERFORM pg_temp.assert('A script from a candidate not on the roll is held (a mark over the split refused), stays off the sheet until the registration is approved, is then released as the mark, and lapses past the late-registration date',
+        refused AND held_before AND rel_state = 'RELEASED' AND l.total = 65 AND l.version = 1 AND lapsed >= 1 AND lap_state = 'LAPSED',
+        format('refused=%s held_before=%s released=%s total=%s version=%s lapsed=%s lapse_state=%s', refused, held_before, rel_state, l.total, l.version, lapsed, lap_state));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

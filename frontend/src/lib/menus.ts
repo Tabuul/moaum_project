@@ -1074,6 +1074,11 @@ export const MENUS: Record<string, Menu> = {
             "label": "Financial clearance"
           },
           {
+            "id": "t/heldscripts",
+            "icon": "alert",
+            "label": "Held scripts"
+          },
+          {
             "id": "t/records",
             "icon": "chart",
             "label": "Records & queries"

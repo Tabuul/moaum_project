@@ -146,6 +146,7 @@ export const ROUTES: Record<string, string> = {
   "t/payments": "/finance/payments",
   "t/paymenthistory": "/finance/payments-history",
   "t/hanging": "/finance/hanging",
+  "t/heldscripts": "/finance/held-scripts",
   "t/reconcile": "/finance/reconcile",
   "t/payroll": "/payroll",
   "t/auditpayroll": "/payroll/variance",

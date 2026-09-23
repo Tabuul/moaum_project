@@ -31,6 +31,16 @@ export interface SheetListed {
   blockedForYou: boolean;
   /** the CA share of the hundred marks (V239); the examination is the rest */
   caMax: number;
+  /** scripts held from candidates not on the roll, waiting on registration (V240) */
+  heldScripts: number;
+}
+
+/** a script held from a candidate not on the roll (V240) */
+export interface HeldScript {
+  id: string; studentId: string; number: string; surname: string; otherNames: string; programmeName: string; level: number;
+  ca: number | null; exam: number | null; outcome: string; note: string | null;
+  state: "HELD" | "RELEASED" | "LAPSED" | "WITHDRAWN" | string;
+  enteredBy: string | null; enteredAt: string; releasedAt: string | null; lapsedAt: string | null; closesOn: string | null;
 }
 
 export interface SheetListing {
@@ -181,7 +191,7 @@ export interface MySheet {
   id: string; courseCode: string; courseTitle: string; units: number; session: string; semester: number; stage: string;
   spineStage: number; dueOn: string | null; daysLate: number | null; daysToDue: number | null; returnedTimes: number; candidates: number; entered: number;
   graded: number; secondExaminer: string | null; mine: boolean;
-  openQueries: number; bankQuestions: number; caEntered: number;
+  openQueries: number; bankQuestions: number; caEntered: number; heldScripts?: number;
 }
 export interface RollRow {
   studentId: string; number: string; surname: string; otherNames: string; programmeCode: string; programmeName: string; level: number;

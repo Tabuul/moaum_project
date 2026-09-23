@@ -50,6 +50,7 @@ export async function BursarDashboard({ session }: { session: string }) {
             [<Two key="a" a="Hanging at a gateway" b="Checkouts opened, nothing confirmed" />, <Link key="l" href="/finance/hanging">Hanging payments</Link>, <Pil kind={Number(t.hanging) ? "bad" : "ok"} key="s">{t.hanging}</Pil>],
             [<Two key="a" a="Bank credits" b="No reference quoted" />, <Link key="l" href="/finance/exceptions">Investigate</Link>, <Pil kind={Number(t.credits_open) ? "bad" : "ok"} key="s">{t.credits_open} open</Pil>],
             [<Two key="a" a="NELFUND" b="Remittances and suspense" />, <Link key="l" href="/finance/nelfund">NELFUND desk</Link>, <Pil kind="info" key="s">Open</Pil>],
+            [<Two key="a" a="Held scripts" b="Students who sat a paper unregistered; the mark waits on their fees" />, <Link key="l" href="/finance/held-scripts">Who owes</Link>, <Pil kind="info" key="s">Open</Pil>],
           ]} />
         </Panel>
       </div>
