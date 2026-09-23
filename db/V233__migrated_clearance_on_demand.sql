@@ -36,16 +36,33 @@ $$;
 CREATE OR REPLACE FUNCTION clearance.clear_migrated(p_from int DEFAULT 100, p_to int DEFAULT 400)
 RETURNS TABLE (students int, positions int)
 LANGUAGE plpgsql AS $$
-DECLARE r record; n int; st int := 0; po int := 0;
+DECLARE po int; st int;
 BEGIN
-    FOR r IN SELECT s.id FROM people.student s
-              WHERE s.matric_no IS NOT NULL AND s.matriculation_run IS NULL
-                AND s.current_level BETWEEN p_from AND p_to
-                AND s.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
-    LOOP
-        n := clearance.clear_on_migration(r.id);
-        IF n > 0 THEN st := st + 1; po := po + n; END IF;
-    END LOOP;
+    -- the same bulk as the V231 backfill, audit-light for the same reason: a desk pressing this for a
+    -- thousand students must not wait on a million audited rows. The act itself is on the spine — the
+    -- request that ran it carries the actor and the reason — and each row says what it is.
+    SELECT count(DISTINCT s.id) INTO st
+      FROM people.student s
+     WHERE s.matric_no IS NOT NULL AND s.matriculation_run IS NULL
+       AND s.current_level BETWEEN p_from AND p_to
+       AND s.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
+       AND EXISTS (SELECT 1 FROM ref.clearance_purpose pu CROSS JOIN clearance.unit un
+                    WHERE NOT EXISTS (SELECT 1 FROM clearance.item c
+                                       WHERE c.student_id = s.id AND c.purpose = pu.code AND c.unit = un.code AND c.superseded_by IS NULL));
+    ALTER TABLE clearance.item DISABLE TRIGGER trg_audit_clearance_item;
+    INSERT INTO clearance.item (id, student_id, purpose, unit, state, item, officer_id, decided_at, note)
+    SELECT gen_random_uuid(), s.id, pu.code, un.code, 'CLEARED', NULL, NULL, now(),
+           'Cleared on migration from the old portal — the clearance the old portal held, carried over'
+      FROM people.student s
+     CROSS JOIN ref.clearance_purpose pu
+     CROSS JOIN clearance.unit un
+     WHERE s.matric_no IS NOT NULL AND s.matriculation_run IS NULL
+       AND s.current_level BETWEEN p_from AND p_to
+       AND s.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
+       AND NOT EXISTS (SELECT 1 FROM clearance.item c
+                        WHERE c.student_id = s.id AND c.purpose = pu.code AND c.unit = un.code AND c.superseded_by IS NULL);
+    GET DIAGNOSTICS po = ROW_COUNT;
+    ALTER TABLE clearance.item ENABLE TRIGGER trg_audit_clearance_item;
     students := st; positions := po;
     RETURN NEXT;
 END $$;

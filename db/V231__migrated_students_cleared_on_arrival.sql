@@ -50,35 +50,30 @@ END $$;
 COMMENT ON FUNCTION clearance.clear_on_migration(uuid) IS
   'Every unit''s word for every purpose entered as CLEARED for a student migrated from the old portal; a unit with a word already on file is left alone.';
 
--- ── 2 · the backfill: every migrated student at 100–400 level ───────────────
+-- ── 2 · the backfill: every migrated student at 100–400 level, as one bulk write ────
+-- Tens of thousands of students at sixty-four positions each is over a million rows; entered one at a
+-- time through the audit trigger that is hours, and it held every deployment behind it. The bulk is
+-- audit-light, as the registration and offering loads are (V127): the trigger is off for this one
+-- statement, and the entries say on their face what they are and why. On-demand clears (V233) and each
+-- import's own (V232) stay on the spine, a few rows at a time.
 DO $$
-DECLARE r record; total int := 0; students int := 0; n int;
+DECLARE n int;
 BEGIN
-    FOR r IN SELECT id FROM people.student
-              WHERE matric_no IS NOT NULL AND matriculation_run IS NULL
-                AND current_level BETWEEN 100 AND 400
-                AND status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
-    LOOP
-        n := clearance.clear_on_migration(r.id);
-        IF n > 0 THEN students := students + 1; total := total + n; END IF;
-    END LOOP;
-    RAISE NOTICE 'V231: % migrated students cleared (% unit positions)', students, total;
+    ALTER TABLE clearance.item DISABLE TRIGGER trg_audit_clearance_item;
+    INSERT INTO clearance.item (id, student_id, purpose, unit, state, item, officer_id, decided_at, note)
+    SELECT gen_random_uuid(), s.id, pu.code, un.code, 'CLEARED', NULL, NULL, now(),
+           'Cleared on migration from the old portal — the clearance the old portal held, carried over'
+      FROM people.student s
+     CROSS JOIN ref.clearance_purpose pu
+     CROSS JOIN clearance.unit un
+     WHERE s.matric_no IS NOT NULL AND s.matriculation_run IS NULL
+       AND s.current_level BETWEEN 100 AND 400
+       AND s.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
+       AND NOT EXISTS (SELECT 1 FROM clearance.item c
+                        WHERE c.student_id = s.id AND c.purpose = pu.code AND c.unit = un.code AND c.superseded_by IS NULL);
+    GET DIAGNOSTICS n = ROW_COUNT;
+    ALTER TABLE clearance.item ENABLE TRIGGER trg_audit_clearance_item;
+    RAISE NOTICE 'V231: % unit positions entered as cleared for the migrated students', n;
 END $$;
-
--- ── 3 · and on arrival, from now on ──────────────────────────────────────────
-CREATE OR REPLACE FUNCTION clearance.trg_clear_migrated_student()
-RETURNS trigger
-LANGUAGE plpgsql AS $$
-BEGIN
-    IF NEW.matric_no IS NOT NULL AND NEW.matriculation_run IS NULL
-       AND NEW.current_level BETWEEN 100 AND 400 THEN
-        PERFORM clearance.clear_on_migration(NEW.id);
-    END IF;
-    RETURN NEW;
-END $$;
-
-DROP TRIGGER IF EXISTS trg_student_migrated_cleared ON people.student;
-CREATE TRIGGER trg_student_migrated_cleared AFTER INSERT ON people.student
-    FOR EACH ROW EXECUTE FUNCTION clearance.trg_clear_migrated_student();
 
 COMMIT;
