@@ -289,8 +289,8 @@ export const TITLES: Record<string, [string, string]> = {
     "Courses assigned to you"
   ],
   "t/sheet": [
-    "CSC 311 — Algorithms & Complexity",
-    "3 credit units · every registered candidate, all programmes"
+    "Score sheet",
+    "Every registered candidate, all programmes"
   ],
   "t/bulk": [
     "Upload results in bulk",

@@ -278,7 +278,7 @@ function initials(label: string): string {
   return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? "")).toUpperCase() || "MP";
 }
 
-export function Shell({ route, me, children, sub }: { route: string; me: Me | null; children: ReactNode; sub?: string }) {
+export function Shell({ route, me, children, sub, title }: { route: string; me: Me | null; children: ReactNode; sub?: string; title?: string }) {
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
   const [navSlim, setNavSlim] = useState(false);
@@ -288,8 +288,9 @@ export function Shell({ route, me, children, sub }: { route: string; me: Me | nu
   const menu = (me?.menu && MENUS[me.menu]) || (office && MENUS[office]) || FALLBACK;
   const waiting = me?.waiting ?? {};
   const current = route === "r/academic" ? menu.home : route;
-  const [t0, t1def] = TITLES[current] ?? TITLES[route] ?? ["", ""];
-  // a page may pass a live subtitle (e.g. the lecturer's real name and course count) that beats the static one
+  const [t0def, t1def] = TITLES[current] ?? TITLES[route] ?? ["", ""];
+  // a page may pass a live title and subtitle (the sheet's own course, the lecturer's real name) that beat the static ones
+  const t0 = title && title.trim() ? title : t0def;
   const t1 = sub && sub.trim() ? sub : t1def;
   const label = me?.menu && MENUS[me.menu] ? MENUS[me.menu].label : roleLabel(office);
   const who = me?.name ?? label;
