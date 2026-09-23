@@ -1,21 +1,8 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
 import "./globals.css";
 
-/* next/font downloads these at BUILD time and serves them from here, so the
-   portal never calls Google Fonts from a browser in Makurdi. */
-const plexSans = IBM_Plex_Sans({
-  variable: "--font-plex-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const plexSerif = IBM_Plex_Serif({
-  variable: "--font-plex-serif",
-  subsets: ["latin"],
-  weight: ["600", "700"],
-});
-
+/* IBM Plex is shipped with the portal (app/fonts.css → public/fonts), so neither the build nor a browser in
+   Makurdi ever calls Google Fonts — a build once failed on the CI runner for want of that fetch. */
 export const metadata: Metadata = {
   title: "MOAUM Portal",
   description: "MOAUM Unified University Portal — Rev. Fr. Moses Orshio Adasu University, Makurdi",
@@ -25,7 +12,7 @@ export const metadata: Metadata = {
    rendered by each screen with its own title (components/proto/Shell). */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${plexSans.variable} ${plexSerif.variable}`}>
+    <html lang="en">
       <body>
         <div id="app">{children}</div>
       </body>
