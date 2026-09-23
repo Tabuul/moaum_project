@@ -52,7 +52,10 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const roll = sheet.rows.length;
     const sat = sheet.rows.filter((r) => r.gpa !== null).length;
     const notSit = roll - sat;
-    const probation = sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length;   // the remark says TO GO ON PROBATION
+    // probation and withdrawal are judged on a cumulative standing, which a 100 level class does not yet have:
+    // at 100 level both rows read Nil with no percentage; from 200 level first semester they are counted
+    const standingApplies = Number(sheet.level) >= 200;
+    const probation = standingApplies ? sheet.rows.filter((r) => r.cgpa !== null && r.cgpa < 1.0).length : 0;   // the remark says TO GO ON PROBATION
     const withdraw = 0;   // no rule in force names a CGPA at which a candidate is advised to withdraw
     const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "");
     const n0 = (n: number) => (n === 0 ? "Nil" : String(n));
@@ -65,8 +68,8 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       ["Total Number of Candidates with Pass", String(sheet.passed), pc(sheet.passed)],
       ["Total Number of Candidates that Deferred", "Nil", ""],
       ["Total Number of Candidates with Carryover/Fail", String(sheet.carrying), pc(sheet.carrying)],
-      ["Total Number of Candidates on Probation", n0(probation), probation ? pc(probation) : ""],
-      ["Total Number of Candidates Advised to Withdraw", n0(withdraw), withdraw ? pc(withdraw) : ""],
+      ["Total Number of Candidates on Probation", n0(probation), standingApplies && probation ? pc(probation) : ""],
+      ["Total Number of Candidates Advised to Withdraw", n0(withdraw), standingApplies && withdraw ? pc(withdraw) : ""],
       ["Total Number of Candidates Expelled", "Nil", ""],
     ];
     const KEY: [string, string][] = hideCum ? [
