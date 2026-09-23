@@ -7,7 +7,7 @@
  * import as it lands; this is where the Registry sees that it held, and repeats it after an upload that
  * came in by another road. The clearance entered is the old portal's, carried over: no officer, a note.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -17,7 +17,7 @@ import type { Problem } from "@/lib/api";
 
 export interface MigratedSummary { migrated: number; cleared: number; uncleared: number }
 
-export function MigratedPanel({ summary }: { summary: MigratedSummary }) {
+export function MigratedPanel({ summary, reload }: { summary: MigratedSummary; reload?: () => void }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -35,7 +35,7 @@ export function MigratedPanel({ summary }: { summary: MigratedSummary }) {
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setDone({ students: n(j.students), positions: n(j.positions) });
       notify(`${n(j.students).toLocaleString()} migrated students cleared`);
-      router.refresh();
+      if (reload) reload(); else router.refresh();
     } finally { setBusy(false); }
   }
 
@@ -66,4 +66,20 @@ export function MigratedPanel({ summary }: { summary: MigratedSummary }) {
       </PBody>
     </Panel>
   );
+}
+
+/** the same panel where the page cannot read the summary on the server (the migration desk): it reads it itself */
+export function MigratedPanelLive() {
+  const [summary, setSummary] = useState<MigratedSummary | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const r = await fetch("/api/bff/api/v1/student/students/migrated?from=100&to=400", { cache: "no-store" });
+      if (live && r.ok) setSummary((await r.json()) as MigratedSummary);
+    })();
+    return () => { live = false; };
+  }, [tick]);
+  if (!summary) return <Note kind="info" title="Counting the migrated students…">One moment.</Note>;
+  return <MigratedPanel summary={summary} reload={() => setTick((t) => t + 1)} />;
 }
