@@ -15,12 +15,12 @@ const SEM = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third");
 const REG_PILL: Record<string, "ok" | "info" | "warn" | "grey" | "bad"> = { APPROVED: "ok", LOCKED: "ok", SUBMITTED: "info", DRAFT: "warn", RETURNED: "bad" };
 const day = (s: string | null) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
-/** the academic type shown in the Type column: GST, Elective or Core (Compulsory/Required → Core) */
+/** the academic type shown in the Type column: GST, Elective or Core (Core/Required → Core) */
 function courseType(e: Entry): string {
   const k = (e.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";
   if (k === "elective") return "Elective";
-  if (k === "compulsory" || k === "required") return "Core";
+  if (k === "core" || k === "compulsory" || k === "required") return "Core";
   const t = (e.entryType ?? "").toUpperCase();
   if (t === "GST") return "GST";
   if (t === "ELECTIVE") return "Elective";

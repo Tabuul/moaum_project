@@ -171,7 +171,7 @@ BEGIN
     LOOP
         IF NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = c.code) THEN
             INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
-            VALUES (c.code, c.title, c.units, 1, 300, 'MTC', 'Compulsory', 'LIVE');
+            VALUES (c.code, c.title, c.units, 1, 300, 'MTC', 'Core', 'LIVE');
         END IF;
         IF NOT EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = c.code AND programme_code = 'C00023' AND level = 300) THEN
             INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (c.code, 'C00023', 300, 'Core');
@@ -786,7 +786,7 @@ BEGIN
 
             -- ── the courses and their offerings, 200-level (prior sem 2) and 300-level (current sem 1) ──
             INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
-            SELECT d.pfx || ' ' || c.cnum, 'Demo ' || d.pfx || ' ' || c.cnum, 3, c.sem, c.lvl, d.dept, 'Compulsory', 'LIVE'
+            SELECT d.pfx || ' ' || c.cnum, 'Demo ' || d.pfx || ' ' || c.cnum, 3, c.sem, c.lvl, d.dept, 'Core', 'LIVE'
               FROM (VALUES (201,200,2),(202,200,2),(203,200,2),(204,200,2),(205,200,2),
                            (301,300,1),(302,300,1),(303,300,1),(304,300,1),(305,300,1)) c(cnum, lvl, sem)
             ON CONFLICT (code) DO NOTHING;

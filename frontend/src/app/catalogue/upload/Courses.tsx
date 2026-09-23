@@ -272,7 +272,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
             </label>
             {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C compulsory, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
+          <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
             <span className="sub2"><b>Download every uploaded course</b> across all programmes:</span>
             <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllXlsx()}>{exporting ? "Preparing…" : "All courses — Excel"}</Btn>

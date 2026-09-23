@@ -1852,7 +1852,7 @@ BEGIN
                                 entry_level, current_level, status, matriculated_at)
     VALUES (st, 'MOAUM/ADM/99/990001', 'MOAUM/CHK/99/0001', 'CHECKSTUDENT', 'Invented', 'C00061', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
     INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
-        ('CHK 101', 'Check Course One', 12, 1, 100, dept, 'Compulsory', 'LIVE'),
+        ('CHK 101', 'Check Course One', 12, 1, 100, dept, 'Core', 'LIVE'),
         ('CHK 102', 'Check Course Two', 6, 1, 100, dept, 'Elective', 'LIVE');
     INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('CHK 101', 'C00061', 100, 'Core'), ('CHK 102', 'C00061', 100, 'Elective');
     INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'CHK 101', '9999/0000', 1), (o2, 'CHK 102', '9999/0000', 1);
@@ -1934,9 +1934,9 @@ BEGIN
             '9991/9992', 100, 200, 'ACTIVE', now());
 
     INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
-        ('CHK 201', 'Check Result One',   3, 1, 100, dept, 'Compulsory', 'LIVE'),
+        ('CHK 201', 'Check Result One',   3, 1, 100, dept, 'Core', 'LIVE'),
         ('CHK 202', 'Check Result Two',   3, 1, 100, dept, 'Elective',   'LIVE'),
-        ('CHK 203', 'Check Result Three', 3, 1, 200, dept, 'Compulsory', 'LIVE');
+        ('CHK 203', 'Check Result Three', 3, 1, 200, dept, 'Core', 'LIVE');
 
     -- first session: CHK 201 failed (30 → F, 0.0), CHK 202 passed (70 → A, 5.0)
     PERFORM assessment.import_legacy_semester('9991/9992', 1, $rows$[

@@ -17,9 +17,9 @@ import { Gate, Gates, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
 
-/** the academic type shown on the form: GST, Elective or Core (Compulsory/Required → Core).
+/** the academic type shown on the form: GST, Elective or Core (Core/Required → Core).
  *  Prefer the per-programme offer basis (an elective borrowed from another department that owns
- *  it as Compulsory is still an Elective here); fall back to the course's global kind. */
+ *  it as Core is still an Elective here); fall back to the course's global kind. */
 function courseType(e: { kind?: string; basis?: string; entryType?: string }): string {
   const b = (e.basis ?? "").toLowerCase();
   if (b === "gst") return "GST";
@@ -28,7 +28,7 @@ function courseType(e: { kind?: string; basis?: string; entryType?: string }): s
   const k = (e.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";
   if (k === "elective") return "Elective";
-  if (k === "compulsory" || k === "required") return "Core";
+  if (k === "core" || k === "compulsory" || k === "required") return "Core";
   const t = (e.entryType ?? "").toUpperCase();
   if (t === "GST") return "GST";
   if (t === "ELECTIVE") return "Elective";
@@ -52,7 +52,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const chosenNow = new Set((reg?.entries ?? []).filter((e) => e.entryType !== "CARRYOVER").map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
   const carry = v.menu.filter((m) => m.carryover);
-  // Group by the PER-PROGRAMME offer basis, not the course's global kind: a course can be Compulsory for
+  // Group by the PER-PROGRAMME offer basis, not the course's global kind: a course can be Core for
   // its own department yet Elective for this programme (course_offer.basis). Core/GST are required here;
   // everything else is an elective. GST (General Studies) is a University requirement.
   const core = v.menu.filter((m) => !m.carryover && (m.basis === "Core" || m.basis === "GST"));
@@ -209,8 +209,8 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <div className="card"><div className="card__head"><span className="card__title" style={{ color: "var(--red-ink)" }}>Outstanding carryovers</span><span className="sub2">added automatically, cannot be removed</span></div>
           <div className="card__body">{carry.map((m) => pick(m, true, true, true))}</div></div>
       ) : null}
-      <div className="card"><div className="card__head"><span className="card__title">{v.level} Level compulsory</span></div>
-        <div className="card__body">{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No compulsory course is offered to your programme this semester yet. Courses appear once the Registry opens registration for the session; a lecturer does not have to be allocated first, and you can register without one.</div>}</div></div>
+      <div className="card"><div className="card__head"><span className="card__title">{v.level} Level Core Courses</span></div>
+        <div className="card__body">{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet. Courses appear once the Registry opens registration for the session; a lecturer does not have to be allocated first, and you can register without one.</div>}</div></div>
       <div className="card"><div className="card__head"><span className="card__title">Electives</span><span className="sub2">choose to reach {min}–{max} units</span></div>
         <div className="card__body">{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
           <p className="sub2" style={{ margin: "2px 0 0" }}>A course owned by another department is on your form because your programme and level were made eligible for it when it was created &mdash; you do not request it and nobody grants it to you. Register one and you appear on that lecturer&rsquo;s score sheet like any other candidate.</p></div></div>

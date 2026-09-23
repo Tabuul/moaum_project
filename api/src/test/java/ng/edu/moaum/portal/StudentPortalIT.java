@@ -117,7 +117,7 @@ class StudentPortalIT {
         // the registration: two courses offered to the programme this semester
         it.db(() -> {
             String dept = jdbc.sql("SELECT code FROM ref.department ORDER BY code LIMIT 1").query(String.class).single();
-            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ITP 101', 'Portal Course One', 12, 1, 100, :d, 'Compulsory', 'LIVE'), ('ITP 102', 'Portal Course Two', 6, 1, 100, :d, 'Elective', 'LIVE') ON CONFLICT (code) DO NOTHING")
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ITP 101', 'Portal Course One', 12, 1, 100, :d, 'Core', 'LIVE'), ('ITP 102', 'Portal Course Two', 6, 1, 100, :d, 'Elective', 'LIVE') ON CONFLICT (code) DO NOTHING")
                     .param("d", dept).update();
             jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ITP 101', 'C00061', 100, 'Core'), ('ITP 102', 'C00061', 100, 'Elective') ON CONFLICT DO NOTHING").update();
             jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ITP 101', :s, 1), (gen_random_uuid(), 'ITP 102', :s, 1) ON CONFLICT (course_code, session, semester) DO NOTHING")
@@ -239,7 +239,7 @@ class StudentPortalIT {
         // published results for two courses this session, and the charge for the session
         it.db(() -> {
             String dept = jdbc.sql("SELECT code FROM ref.department ORDER BY code LIMIT 1").query(String.class).single();
-            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('GTE 101', 'Gate Course One', 3, 1, 100, :d, 'Compulsory', 'LIVE'), ('GTE 102', 'Gate Course Two', 3, 1, 100, :d, 'Elective', 'LIVE') ON CONFLICT (code) DO NOTHING")
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('GTE 101', 'Gate Course One', 3, 1, 100, :d, 'Core', 'LIVE'), ('GTE 102', 'Gate Course Two', 3, 1, 100, :d, 'Elective', 'LIVE') ON CONFLICT (code) DO NOTHING")
                     .param("d", dept).update();
             jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, 1, :rows::jsonb, true)")
                     .param("s", ses)

@@ -51,7 +51,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="candidates" count={t.finalists} of={t.finalists} />
       {t.outstanding ? (
         <Note kind="bad" title={`${t.outstanding} finalist${t.outstanding === 1 ? " has" : "s have"} an unmet requirement`} action={<a href="#exceptions" className="btn btn--urgent btn--sm">Open the exception list</a>}>
-          The degree audit checks every curriculum rule — compulsory courses, elective credit minima, GST, project, and the minimum total credits. These {t.outstanding} cannot be presented to Senate until each gap is closed or waived.
+          The degree audit checks every curriculum rule — core courses, elective credit minima, GST, project, and the minimum total credits. These {t.outstanding} cannot be presented to Senate until each gap is closed or waived.
         </Note>
       ) : t.finalists ? (
         <Note kind="ok" title="Every finalist audited has met the requirements">Nothing stands between the list and Senate but the clearance of those still held.</Note>
