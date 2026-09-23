@@ -546,6 +546,16 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/reports",
             "icon": "chart",
             "label": "Reports & returns"
+          },
+          {
+            "id": "t/regstudents",
+            "icon": "user",
+            "label": "Student register"
+          },
+          {
+            "id": "t/regstaff",
+            "icon": "user",
+            "label": "Staff register"
           }
         ]
       },
@@ -689,6 +699,14 @@ export const MENUS: Record<string, Menu> = {
             "label": "Assets register",
             "badge": "!"
           }
+        ]
+      },
+      {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
         ]
       },
       {
@@ -932,6 +950,16 @@ export const MENUS: Record<string, Menu> = {
             "label": "Reports & returns"
           },
           {
+            "id": "t/regstudents",
+            "icon": "user",
+            "label": "Student register"
+          },
+          {
+            "id": "t/regstaff",
+            "icon": "user",
+            "label": "Staff register"
+          },
+          {
             "id": "t/college",
             "icon": "swap",
             "label": "College of Health Sciences"
@@ -1081,6 +1109,16 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/reports",
             "icon": "chart",
             "label": "Reports & returns"
+          },
+          {
+            "id": "t/regstudents",
+            "icon": "user",
+            "label": "Student register"
+          },
+          {
+            "id": "t/regstaff",
+            "icon": "user",
+            "label": "Staff register"
           }
         ]
       },
@@ -1524,6 +1562,14 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+        ]
+      },
+      {
         "name": "Me",
         "items": [
           {
@@ -1596,6 +1642,14 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+        ]
+      },
+      {
         "name": "Me",
         "items": [
           {
@@ -1663,6 +1717,16 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/reports",
             "icon": "doc",
             "label": "Reports & returns"
+          },
+          {
+            "id": "t/regstudents",
+            "icon": "user",
+            "label": "Student register"
+          },
+          {
+            "id": "t/regstaff",
+            "icon": "user",
+            "label": "Staff register"
           },
           {
             "id": "t/search",
@@ -1782,6 +1846,14 @@ export const MENUS: Record<string, Menu> = {
             "label": "Search"
           }
         ]
+      },
+      {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+        ]
       }
     ]
   },
@@ -1859,6 +1931,16 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/reports",
             "icon": "chart",
             "label": "Reports & returns"
+          },
+          {
+            "id": "t/regstudents",
+            "icon": "user",
+            "label": "Student register"
+          },
+          {
+            "id": "t/regstaff",
+            "icon": "user",
+            "label": "Staff register"
           },
           {
             "id": "t/college",
@@ -2057,6 +2139,14 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+        ]
+      },
+      {
         "name": "Me",
         "items": [
           {
@@ -2175,6 +2265,16 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/reports",
             "icon": "chart",
             "label": "Reports & returns"
+          },
+          {
+            "id": "t/regstudents",
+            "icon": "user",
+            "label": "Student register"
+          },
+          {
+            "id": "t/regstaff",
+            "icon": "user",
+            "label": "Staff register"
           }
         ]
       },
@@ -2321,6 +2421,16 @@ export const MENUS: Record<string, Menu> = {
             "id": "t/reports",
             "icon": "chart",
             "label": "Reports & returns"
+          },
+          {
+            "id": "t/regstudents",
+            "icon": "user",
+            "label": "Student register"
+          },
+          {
+            "id": "t/regstaff",
+            "icon": "user",
+            "label": "Staff register"
           },
           {
             "id": "t/budget",
@@ -2534,7 +2644,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgpanels", "icon": "doc", "label": "Examination panels" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
         ]
       },
       {
@@ -2637,7 +2749,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgsenate", "icon": "check", "label": "Results to Senate" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
         ]
       },
       {

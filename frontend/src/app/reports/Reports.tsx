@@ -40,6 +40,21 @@ export function Reports({ session, sessions, activeOffice, byFaculty }: {
         </PBody>
       </Panel>
 
+      <Panel title="Registers — view all" right="Filter, search, print or take to Excel">
+        <DTable cols={["Register", "Filter by", "|num"]} rows={[
+          [
+            <span key="t"><span style={{ fontWeight: 600 }}>Student register</span><div className="sub2">Every student on the books, with a count of what matched</div></span>,
+            <span key="f" className="sub2">Faculty · department · programme · level · sex · status · entry mode · entry session · name or number</span>,
+            <Btn kind="primary" key="o" onClick={() => router.push("/reports/students")}>Open</Btn>,
+          ],
+          [
+            <span key="t"><span style={{ fontWeight: 600 }}>Staff register</span><div className="sub2">Every member of staff, academic and non-teaching, with rank and offices held</div></span>,
+            <span key="f" className="sub2">Faculty · department · rank · category · status · office held · name, staff number or email</span>,
+            <Btn kind="primary" key="o" onClick={() => router.push("/reports/staff")}>Open</Btn>,
+          ],
+        ]} />
+      </Panel>
+
       <Panel title="Standard reports" right="Run against the register, never a copy of it">
         {mine.length ? (
           <DTable cols={["Report", "Owner", "Frequency|mid", "Last run|mid", "|num"]}
