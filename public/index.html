@@ -15850,71 +15850,173 @@ body.has-cta .tst { bottom: 132px; }
   }
 
   /* ══ THE COLLEGE OF HEALTH SCIENCES SYSTEM ════════════════════════
-     A link out, and the reason there is a link rather than a menu.
+     A link out, and the reason there is a link rather than a menu —
+     and, since 24 September 2026, the programme as the CHS Prospectus
+     2023–2025 states it (pp. 24–154, extraction v2), which is what the
+     College's system must hold.
 
      The College has its own academic system by decision of 6 September
      2026 (CHS-MOAUMPP-001). Presenting it as another section of this
      portal would be a lie about the architecture, and a costly one:
      the failure this boundary risks is somebody entering a mark, a fee
      or an identifier in the wrong system. So this screen says plainly
-     what lives where, and then leaves.                              */
+     what lives where, what the prospectus prescribes, and then leaves. */
 
   function tCollege() {
     var own = [
       ["Person, identity, credentials", "One person, one identity, however many systems"],
-      ["Admission, and the admission number", "Admissions is JAMB-facing and University-wide"],
+      ["Admission, and the admission number", "Admissions is JAMB-facing and University-wide; the College&rsquo;s entry routes are checked here"],
       ["<b>The matriculation number</b>", "Permanent, never reused. Two minting systems make two students out of one person"],
       ["Fees, invoices, the ledger, clearance", "Money is audited centrally and the Bursary is one office"],
       ["The identity card", "One photograph, one record, one card"],
-      ["<b>Senate approval of a result</b>", "The Registrar signs one transcript from one record"],
-      ["The transcript and the certificate", "A degree is the University&rsquo;s award, not the College&rsquo;s"]
+      ["<b>Senate approval of a result</b>", "The College Academic Board decides, subject to Senate; the Registrar signs one transcript from one record"],
+      ["The transcript and the certificate", "A degree is the University&rsquo;s award &mdash; unclassified for MBBS, distinctions and Honours shown on it"]
     ];
-    var theirs = [
-      ["Academic periods, and their states", "The Third Semester, the 24- and 30-week posting levels"],
-      ["Course offerings within the College", "And registration against them"],
-      ["Continuous and clinical assessment", "Five components on a posting, not two"],
-      ["Clinical postings", "Schedules, groups, supervisors, attendance, completion"],
-      ["Promotion evaluation", "The rules recommend; the College Board decides"],
-      ["Professional examinations", "Gated on completed postings"]
+    var model = [
+      ["Programme, Session, Level, Semester", "MBBS: six years UTME, five Direct Entry, 160 CU, regulations from 29 September 2021. Levels 100&ndash;600 with a phase and a clinical year. Semesters of 17, 17 and 20 weeks; &#9674; start dates."],
+      ["Department, DepartmentUnit, Course", "Departments under their block (Medicine, Surgery, Paediatrics, O&amp;G, Pathology, Community, PHT&hellip;); units under a consultant; courses with credit units where the prospectus gives them, a status of C, E, EPS or core, and whether carry-over is allowed."],
+      ["Registration", "By course, session, semester and attempt number &mdash; &#9674; the mode itself (per semester or session, through the portal, whether posting codes are registered) is unconfirmed."],
+      ["Block, Posting, PostingCourse, RotationGroup, PostingAllocation", "Internal Medicine 34 weeks and the rest; each posting with its tier (intro, junior, intermediate, senior, revision), level, duration and order, &#9674; dates; the courses it carries; groups A and B; the student&rsquo;s allocation with supervisor."],
+      ["TimetableSlot", "Week, weekday, start, end and type &mdash; lecture, ward round, clinic, bedside, seminar, departmental seminar, call duty, examination. Psychiatry&rsquo;s eight weeks are the only full data."],
+      ["ProcedureRequirement, ProcedureLog, CaseClerking, MandatoryEvent, EventAttendance", "The Paediatrics minimum procedures (&times;5, observe or perform), verified by a supervisor; six cases clerked a posting; the Wednesday Grand Round."],
+      ["AttendanceRule, AttendanceRecord", "75% pre-clinical, 70% clinical, 80% Surgery &mdash; by activity type; every session recorded."],
+      ["ProfessionalExam, ExamSubject, AssessmentItem, AssessmentScore", "CPE and the four Professionals with their papers, external examiners, resit rules, the three-month window and the Senate appeal; each subject&rsquo;s departments, CA weight (30, or Pharmacology&rsquo;s 50?) and pass marks; each CA item with &#9674; its weight within the 30 and whether it gates eligibility; every score by attempt."],
+      ["Project, ExamResult, ProgressionDecision", "The Community Medicine project as an exam prerequisite; the result by attempt (first, resit, repeat, Senate appeal) with its distinction at 70; the decision &mdash; promote, resit, repeat, withdrawal advised or required, appeal &mdash; with the carry-overs and the rule it rests on."]
     ];
+    var phases = [
+      ["Pre-Medical", "100", "Semester, credit-unit registration under the Faculty of Science. A fixed course list, each course C (compulsory) or E (essential, GST); one credit unit is fifteen one-hour lectures or tutorials; each course examined at the end of its semester in a one- to three-hour paper marked out of 100 (CA 30, examination 70)."],
+      ["Pre-clinical", "200, 300", "A fixed programme over three semesters &mdash; two of seventeen weeks at 200 Level and a twenty-week Third Semester at 300. Every course compulsory, no electives; assessed by subject in the 200 Level Comprehensive Promotional Examination and then the 1st Professional. Credit units not shown."],
+      ["Clinical", "400, 500, 600", "Block and posting enrolment, not free course registration: Years 4, 5 and 6 begin after the 1st Professional is passed; clinical clerkship runs 152&ndash;156 weeks in all, split into Blocks, each into Junior and Senior Postings, with rotation groups where a department names them (Family Medicine A and B)."]
+    ];
+    var progression = [
+      ["100 &rarr; 200", "100 Level sessional examinations", "C group: Mathematics 6, Physics 11, Chemistry 11, Biology 6 (34 CU). E group: GST (12 CU)", "30 / 70", "Pass all 46 CU, or all 34 C-group CU at 50% or more (GST carried over)", "Not stated", "No", "Advised to withdraw; may transfer within the University"],
+      ["200 &rarr; 300", "Comprehensive Promotional Examination &mdash; essay, MCQ, practical; oral optional", "Anatomy, Biochemistry, Physiology (plus EPS)", "30 / 70", "50% or more per subject; the EPS pass mark is the Centre for Entrepreneurial Studies&rsquo;", "75% in each activity and overall", "No", "Failing any subject: repeat 200 Level with fresh CA, a second and final attempt; failing again, advice to withdraw. A failed EPS course is carried over"],
+      ["300 &rarr; 400", "1st Professional MBBS &mdash; essay, MCQ, practical, oral; external examiners", "Anatomy, Medical Biochemistry, Physiology", "30 / 70 &mdash; the CA is the 300 Level comprehensive examination plus other tests", "50% or more per subject", "75%", "Yes, within three months, unless all three subjects are failed", "Fail all three: repeat 300 Level. Fail one or two: resit with fresh CA; fail the resit: repeat 300; fail after repeating: advised to withdraw"],
+      ["400 &rarr; 500", "2nd Professional MBBS &mdash; essay, MCQ, practical, oral", "Pathology; Pharmacology &amp; Therapeutics", "30 / 70 (Pharmacology&rsquo;s own chapter says 50 / 50 &mdash; a conflict)", "50% or more per subject", "70%", "Yes, within three months, with fresh CA", "Fail the resit: repeat the class with fresh 400 Level CA; fail after repeating: must withdraw"],
+      ["500 &rarr; 600", "3rd Professional MBBS &mdash; essay, MCQ, clinical", "Paediatrics; Obstetrics &amp; Gynaecology", "30 / 70", "50% or more per subject and 50% or more in the clinical component", "70%", "Yes, within three months, with fresh CA", "Fail the resit: repeat with fresh 500 Level CA; fail after repeating: must withdraw"],
+      ["600 &rarr; Graduation", "4th Professional (Final) MBBS &mdash; essay, MCQ, clinical", "Medicine (with Psychiatry and Family Medicine); Surgery (with Anaesthesia, Ophthalmology, ENT, Radiology); Community Medicine &amp; Epidemiology", "30 / 70", "50% or more per subject and 50% or more in the clinical component", "Not stated; Surgery requires 80%", "Yes, within three months, with fresh CA", "Fail the resit: repeat 600 Level; fail after repeating: advised to withdraw, with an appeal to Senate for a fourth and final attempt"]
+    ];
+    var blocks = [
+      ["Internal Medicine", "34 weeks", [["M0", "Introduction to Clinical Medicine", "400", "MED 401, MED 402", "2"], ["M1", "Junior Clerkship", "400", "MED 403&ndash;409", "8"], ["M2", "Intermediate Clerkship", "500", "MED 501&ndash;508", "8"], ["M3", "Senior Clerkship", "600", "MED 601&ndash;604", "8"], ["Psychiatry", "Psychiatry posting", "600", "MED 605 &mdash; the only posting with an hour-by-hour weekly timetable", "8"]]],
+      ["Surgery", "Stated as 30 weeks; the phases add to 26, or 34 with the revision block", [["S0", "Introductory Clerkship", "400", "SUG 401", "2"], ["S1", "Junior Surgery Posting", "400", "SUG 402, 403", "8"], ["S2", "Intermediate &mdash; major sub-specialties", "500", "SUG 501&ndash;507", "8"], ["S3", "Senior &mdash; minor sub-specialties", "600", "SUG 601 ENT, 602 Ophthalmology, 605 Anaesthesia (603/604 not seen)", "8"], ["SUG 606", "Surgery Three revision", "600", "Revision", "8"]]],
+      ["Paediatrics", "16 weeks at 500 Level", [["P1", "Junior Posting", "500", "Lectures PAE 501&ndash;511", "8"], ["P2", "Senior Posting &mdash; clinical clerkship", "500", "Seminars and clerkship; 7&ndash;14 days in the Newborn Unit", "8"]]],
+      ["Obstetrics &amp; Gynaecology", "16 weeks at 500 Level", [["Posting I", "Junior", "500", "OBG 501&ndash;504", "8"], ["Posting II", "Senior", "500", "OBG 505, 506", "8"]]],
+      ["Pharmacology &amp; Therapeutics", "Three 8-week postings; the 2nd Professional in Pharmacology falls 42&ndash;44 weeks after the clinical programme begins", [["PHT I", "First posting", "300, second semester", "PHT 301 (2 CU), PHT 302 (3 CU)", "8"], ["PHT II", "Second posting", "400", "PHT 401&ndash;403 (3 CU each)", "8"], ["PHT III", "Senior posting", "400 or 500 &mdash; not stated", "PHT 404&ndash;406 (3 CU each)", "8"]]],
+      ["Pathology disciplines", "Three 8-week postings each, 300&ndash;400 Level; 24 weeks a discipline", [["Chemical Pathology", "Postings I&ndash;III", "300&ndash;400", "CPY 302, 304, 306; 401, 402; 403, 404", "8 each"], ["Haematology", "Postings I&ndash;III", "300&ndash;400", "HAE 302; 401, 402; 403, 404", "8 each"], ["Medical Microbiology", "Postings I&ndash;III", "300&ndash;400", "Introductory; systemic; diagnosis, management and control", "8 each"], ["Anatomical Pathology", "Postings I&ndash;III", "300&ndash;400", "PAT 302, 304; 401, 403; 402, 404 (Forensic)", "8 each"]]],
+      ["Family Medicine", "3 weeks", [["FAM I", "Posting I", "500", "Groups A and B rotate through GOPD and the special clinics", "2"], ["FAM II", "Posting II", "600", "The same clinics", "1"]]],
+      ["Community Medicine", "200&ndash;600 Level", [["COM", "COM 201&ndash;204, 301&ndash;304, 401&ndash;407, 501&ndash;510, 601&ndash;602", "200&ndash;600", "COM 510 Field Activities; COM 602 Community Diagnosis", "&mdash;"]]]
+    ];
+    var deptCa = [
+      ["Paediatrics", "Continuous assessment in all areas; junior end-of-posting MCQ at week 8; senior end-of-posting clinical and orals; six cases clerked a posting; the procedures logbook; Wednesday Grand Round and Case Management Conferences", "30% of the overall evaluation; the split is not stated", "3rd Professional"],
+      ["Pharmacology", "Course tests of about 32 MCQs, at least two essays and an oral; at least four CA tests; attendance at every test compulsory; a CA test each semester", "<span style='color:var(--red-ink);font-weight:600'>50% &mdash; conflicts with 30/70</span>", "Paper I essays; Paper II MCQs and practical theory; three hours each"],
+      ["Psychiatry", "Attendance and participation; the week-8 end-of-posting clinical examination counts as CA", "Not stated", "With Medicine in the Final"],
+      ["Obstetrics &amp; Gynaecology", "MCQs, essays, electronic and non-electronic OSCE", "Not stated", "&ldquo;Together with Community Health and Paediatrics&rdquo;"],
+      ["Surgery", "End-of-lecture-group tests form the CA; 80% attendance to sit the final", "<span style='color:var(--red-ink);font-weight:600'>Not stated; 80% attendance against the 70% rule</span>", "Final"],
+      ["Community Medicine", "Attendance; the community study project (two bound copies, graded by neutral lecturers, defended at the orals, a prerequisite for the final); continuous assessment", "Not stated", "&ldquo;At 300 and 600 levels&rdquo;"],
+      ["Chemical Pathology", "Knowledge 40%, Comprehension 30%, Application 30% by contact time &mdash; teaching time, not assessment", "&mdash;", "2nd Professional"]
+    ];
+    var conflicts = [
+      "Pharmacology CA weight: its chapter says 50%, the regulations 30% everywhere.",
+      "Surgery attendance: 80% required, against the regulations&rsquo; 70% for clinical stages.",
+      "Surgery duration: stated as 30 weeks; the phases add to 26, or 34 with the SUG 606 revision block.",
+      "O&amp;G examination grouping: &ldquo;together with Community Health and Paediatrics&rdquo;, but the regulations put Community Medicine in the 4th examination.",
+      "Community Medicine examination levels: its chapter says 300 and 600; the regulations list it only in the 4th.",
+      "Pharmacology timing: a revision session &ldquo;in the 5th year&rdquo; and an examination called &ldquo;Part II&rdquo;, yet the examination falls at the end of 400 Level; PHT III&rsquo;s level is not stated.",
+      "Surgery refers to &ldquo;the final 5th MB.BS examination&rdquo;; there are four Professionals.",
+      "The Final&rsquo;s rules say &ldquo;one or both subjects&rdquo; for three subjects, and point back to the &ldquo;Third Professional&rdquo; and to &ldquo;500 Level&rdquo; CA.",
+      "100 Level credit totals: the table sums to 45 CU (Physics 10), the text says 46 (Physics 11).",
+      "Chemical Pathology levels: the description says 400/500, the codes and posting table 300/400.",
+      "Missing: calendar dates and the rotation order between blocks; how the 30% CA splits inside each department; SUG 603/604 titles; the registration procedure; pages 1&ndash;23, 68&ndash;69 and 120&ndash;123 (blurred)."
+    ];
+    var sub2 = function (s) { return '<span class="sub2">' + s + '</span>'; };
 
     return note('info', 'The College of Health Sciences runs a separate system, and this is the seam',
-      'The MBBS programme does not fit a two-semester calendar, and not marginally: 300 Level runs a twenty-week Third Semester, 400 and 500 run twenty-four-week clinical postings, 600 runs thirty weeks, different levels of one programme run to different lengths inside one session, and a level can split into an A and a B cohort mid-session. A <code>semester</code> column cannot hold any of that. The College therefore has <b>CHS-AMS</b>, integrated with this portal for identity, fees and transcripts.',
+      'The MBBS programme does not fit a two-semester calendar, and not marginally. The prospectus says so in figures: 200 Level runs two semesters of seventeen weeks and 300 Level a twenty-week Third Semester; from 400 Level the student is not registered on courses but allocated to Blocks and Postings &mdash; Internal Medicine thirty-four weeks, Surgery thirty, Paediatrics sixteen, Obstetrics sixteen, three Pharmacology postings, four Pathology disciplines of twenty-four weeks each &mdash; and clinical clerkship runs 152 to 156 weeks in all, with a level split into rotation groups mid-session. A <code>semester</code> column cannot hold any of that. The College therefore has <b>CHS-AMS</b>, integrated with this portal for identity, fees and transcripts. What follows is the programme as the CHS Prospectus 2023&ndash;2025 states it (pp. 24&ndash;154, extracted 24 September 2026), which is what CHS-AMS must hold.',
       '<a class="btn btn--primary btn--sm" href="' + CHS_URL + '" target="_blank" rel="noopener">Open CHS-AMS &rarr;</a>') +
 
     tiles([
       ["Held by this portal", "7 concerns", null, "Everything that outlives the College"],
-      ["Held by CHS-AMS", "6 concerns", "var(--chrome)", "The academic machinery peculiar to it"],
-      ["Integration points", "5", null, "Two synchronous, one event, two batch"],
+      ["Held by CHS-AMS", "9 concerns", "var(--chrome)", "The programme&rsquo;s own machinery, from the prospectus"],
+      ["Professional examinations", "4 + CPE", null, "Resit within three months; fresh CA every attempt"],
       ["Students in the College", "971", null, "Across six levels and three faculties"]
     ]) +
 
+    panel('The programme', 'MB.BS &middot; regulations effective 29 September 2021',
+      dtable(["Item", "As the prospectus states it"], [
+        ["<strong>Duration</strong>", "6 years (12 semesters) for UTME entrants; 5 years (10 semesters) for Direct Entry"],
+        ["<strong>Graduation</strong>", "At least 160 credit units. All courses compulsory. No carry-over except GST and EPS courses; both passed before graduation"],
+        ["<strong>Classification</strong>", "Unclassified. Distinction at 70% or more in a subject, shown on the certificate. MBBS Honours for at least one distinction in each of the four Professionals"],
+        ["<strong>Governance</strong>", "The College Academic Board is the highest academic body, subject to Senate; the Teaching Hospital is represented. 100 Level results go from the Chief Examiner, through the Dean of Science, to the Provost; an examiners&rsquo; meeting ends each session"],
+        ["<strong>Entry &mdash; O&rsquo;Level</strong>", "Credit passes in English, Mathematics, Physics, Chemistry, Biology in no more than two sittings"],
+        ["<strong>Entry &mdash; UTME</strong>", "English, Physics, Biology and Chemistry, plus the cut-off and screening"],
+        ["<strong>Entry &mdash; Direct Entry</strong>", "Three A&rsquo;Level passes (at least 10 points) in Physics, Chemistry and Biology or Zoology in one sitting; or a Second Class Upper in a relevant science, plus the O&rsquo;Level credits"],
+        ["<strong>Entry &mdash; Special</strong>", "Transfer with a CGPA of 3.50 or more"]
+      ])) +
+
+    panel('Three phases, three ways of registering', 'Pre-Medical &middot; Pre-clinical &middot; Clinical',
+      dtable(["Phase", "Levels|mid", "How the student is enrolled"], phases.map(function (p) { return ['<strong>' + p[0] + '</strong>', '<span class="tnum">' + p[1] + '</span>', p[2]]; })) +
+      pbody(sub2('The prospectus pages read contain no section on registration &mdash; no portal, no deadlines, no add and drop. To confirm with the College: is registration per semester or per session, and through the University portal? Do clinical students register posting codes such as MED 403 as courses? What happens to registration when a student repeats a year?'))) +
+
+    panel('The pre-clinical calendar', 'Lengths, not dates &mdash; the prospectus gives no calendar dates anywhere',
+      dtable(["Period", "Weeks|mid", "Subjects"], [
+        ["<strong>200 Level, semester 1</strong>", '<span class="tnum">17</span>', '<span class="tnum">ANA 201/203/205, BCM 201/203/205, PHS 201/203/205/207</span>'],
+        ["<strong>200 Level, semester 2</strong>", '<span class="tnum">17</span>', '<span class="tnum">ANA 202/204/206/208, BCM 202/204/206, PHS 202/204/206/208</span>'],
+        ["<strong>300 Level, the Third Semester</strong>", '<span class="tnum">20</span>', '<span class="tnum">ANA 301/303/305, BCM 301/303/305, PHS 301/303/305/307</span>']
+      ])) +
+
+    panel('Progression, 100 Level to graduation', 'Promotion and progression are one rule',
+      dtable(["From|mid", "Examination", "Subjects", "CA / Exam|mid", "Pass", "Attendance|mid", "Resit", "On failure"],
+        progression.map(function (r) { return ['<strong class="tnum">' + r[0] + '</strong>', r[1], sub2(r[2]), '<span class="tnum">' + r[3] + '</span>', r[4], '<span class="tnum">' + r[5] + '</span>', r[6], sub2(r[7])]; })) +
+      pbody(sub2('The resit window is three months from the release of results. A resit or repeat candidate earns fresh CA; the old CA is never overwritten. A student who withdraws may transfer to another programme of the University.'))) +
+
+    panel('Blocks and postings', 'Durations, sequence and level; Psychiatry alone has a weekly timetable',
+      blocks.map(function (b) {
+        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 14px 2px;flex-wrap:wrap;align-items:baseline"><strong>' + b[0] + '</strong>' + sub2(b[1]) + '</div>' +
+          dtable(["Posting|mid", "Name", "Level|mid", "Courses", "Weeks|mid"], b[2].map(function (p) { return ['<strong class="tnum">' + p[0] + '</strong>', p[1], '<span class="tnum">' + p[2] + '</span>', sub2(p[3]), '<span class="tnum">' + p[4] + '</span>']; }));
+      }).join('')) +
+
+    '<div class="grid grid--2">' +
+      panel('The Psychiatry week', 'Eight weeks; each weekday follows this template',
+        dtable(["Slot|mid", "Activity"], [["08:00&ndash;09:00", "Lecture"], ["10:00&ndash;12:00", "Ward-round teaching, clinic teaching or departmental academic seminar"], ["14:00&ndash;15:00", "Lecture"], ["15:00&ndash;16:00", "Seminar or bedside teaching"], ["17:00&ndash;20:00", "Teaching at call duty"]].map(function (s) { return ['<span class="tnum">' + s[0] + '</span>', s[1]]; })) +
+        dtable(["Week|mid", "Lecture themes"], [["1", "Introduction; history taking; aetiology and classification; psychopathology I&ndash;II"], ["2", "Psychopharmacology I&ndash;II; schizophrenia I&ndash;II"], ["3", "Alcohol and substance disorders; organic mental disorders; delirium; Alzheimer&rsquo;s; somatoform"], ["4", "Mood, depressive and bipolar disorders; sleep disorders"], ["5", "Emergency psychiatry; anxiety; molecular biology; personality disorders"], ["6", "Transcultural and forensic psychiatry; autism; mental retardation; sex and gender identity; HIV neuropsychiatry"], ["7", "Suicide; old-age psychiatry; mental health and PHC; PTSD; psychological therapy I&ndash;II"], ["8", "Uncommon disorders; postpartum disorders; revision; Friday: end-of-posting clinical examination, counted as CA"]].map(function (w) { return ['<span class="tnum">' + w[0] + '</span>', sub2(w[1])]; }))) +
+      panel('Year by year', 'A reconstruction from the postings &mdash; to confirm with the College',
+        dtable(["Level|mid", "Blocks and postings (weeks)"], [["300", "Pre-clinical Third Semester (20). Pathology Posting I in each discipline and PHT I (8 each; concurrency not stated)."], ["400", "M0 (2) + M1 (8); S0 (2) + S1 (8); Pathology Postings II&ndash;III; PHT II (and PHT III?). 2nd Professional."], ["500", "M2 (8); S2 (8); Paediatrics P1 + P2 (16); O&amp;G I + II (16); FAM I (2). 3rd Professional."], ["600", "M3 (8); Psychiatry (8); S3 (8) + SUG 606 revision (8); FAM II (1); COM 601&ndash;602. Final."]].map(function (y) { return ['<strong class="tnum">' + y[0] + '</strong>', y[1]]; }))) +
+    '</div>' +
+
+    panel('Assessment: CA and the Professional examinations', 'CA 30, examination 70, at every stage',
+      pbody('CA 30% and Professional examination 70% at every stage. Pass mark 50% or more per subject; for the clinical subjects of the 3rd and 4th examinations, 50% or more in the clinical component as well. Clinical CA is the supervisors&rsquo; periodic evaluation plus end-of-posting examinations.') +
+      dtable(["Department", "CA components", "Stated weight", "Examination"], deptCa.map(function (d) { return ['<strong>' + d[0] + '</strong>', d[1], d[2], sub2(d[3])]; })) +
+      pbody('<strong>Paediatrics minimum procedures</strong> ' + sub2('Observed or performed, five times each: lumbar puncture; scalp or peripheral IV infusion; venepuncture; exchange blood transfusion; nasogastric tube insertion; PCV/haematocrit; urinalysis; malaria RDT; random blood sugar.') +
+        '<div style="margin-top:6px"><strong>Family Medicine skills checklist</strong> ' + sub2('Stethoscope, sphygmomanometer, thermometer, diagnostic set; venepuncture, parenteral drug administration, basic lung-function testing, nebuliser use, point-of-care testing.') + '</div>')) +
+
     '<div class="grid grid--2">' +
       panel('This portal is the system of record for', 'Anything that outlives the College',
-        dtable(["Concern", "Why it sits here|num"],
-          own.map(function (r) { return [r[0], '<span class="sub2">' + r[1] + '</span>']; }), 620)) +
-
-      panel('CHS-AMS holds', 'The academic machinery peculiar to the College',
-        dtable(["Concern", "Why it sits there|num"],
-          theirs.map(function (r) { return [r[0], '<span class="sub2">' + r[1] + '</span>']; }), 620)) +
+        dtable(["Concern", "Why it sits here|num"], own.map(function (r) { return [r[0], sub2(r[1])]; }))) +
+      panel('CHS-AMS holds', 'The document&rsquo;s data model &mdash; &#9674; marks a value the prospectus does not give',
+        dtable(["Concern", "What it carries|num"], model.map(function (r) { return ['<strong class="tnum" style="font-size:12.5px">' + r[0] + '</strong>', sub2(r[1])]; }))) +
     '</div>' +
+
+    panel('Rules the College&rsquo;s system must implement', 'From the regulations, as extracted',
+      pbody('<ol style="margin:0;padding-left:20px"><li>Eligibility: attendance against every rule that applies; Pharmacology also requires every course test sat.</li><li>Pass: total 50 or more; for the 3rd and 4th examinations the clinical component 50 or more as well.</li><li>1st Professional with all three subjects failed: repeat directly, no resit. CPE and 100 Level: no resit.</li><li>A resit or repeat creates a new CA attempt; the old CA is never overwritten.</li><li>Carry-over: GST and EPS only. Honours: a distinction in each of the four Professionals. Senate appeal: only after failing the Final after a repeat.</li></ol>')) +
+
+    note('bad', 'Conflicts and gaps to resolve with the College before any of this is built',
+      '<ol style="margin:4px 0 0;padding-left:20px">' + conflicts.map(function (c) { return '<li>' + c + '</li>'; }).join('') + '</ol>') +
 
     panel('Where the two systems touch', 'Each with what happens when it fails',
       dtable(["Ref|mid", "What it is", "Direction|mid", "On failure|num"], [
         ["I-1", "<strong>Identity, at sign-in</strong><div class='sub2'>OIDC. The token carries the identifier, the matriculation number and the offices held.</div>", "CHS &rarr; here",
-         "New sign-ins stop. <b>No fallback to a local password store</b> — a fallback is a permanent second door"],
-        ["I-2", "<strong>Clearance, before registration</strong><div class='sub2'>Asked synchronously and never cached.</div>", "CHS &rarr; here",
-         "Registration is refused, never allowed provisionally. A provisional registration is an unpaid student holding a place"],
-        ["I-3", "<strong>Matriculation</strong><div class='sub2'><code>StudentMatriculated</code>. The College creates its record on receipt and never before.</div>", "here &rarr; CHS",
+         "New sign-ins stop. <b>No fallback to a local password store</b> &mdash; a fallback is a permanent second door"],
+        ["I-2", "<strong>Clearance, before registration or a posting allocation</strong><div class='sub2'>Asked synchronously and never cached.</div>", "CHS &rarr; here",
+         "Refused, never allowed provisionally. A provisional registration is an unpaid student holding a place"],
+        ["I-3", "<strong>Matriculation</strong><div class='sub2'><code>StudentMatriculated</code>. The College creates its record on receipt and never before &mdash; at 200 Level, since 100 Level is the Faculty of Science&rsquo;s.</div>", "here &rarr; CHS",
          "Redelivered from the outbox; handlers are idempotent"],
-        ["I-4", "<strong>Results crossing to Senate</strong><div class='sub2'>A reconciliation, not a file drop.</div>", "CHS &rarr; here",
+        ["I-4", "<strong>Results crossing to Senate</strong><div class='sub2'>A reconciliation, not a file drop: each Professional&rsquo;s subjects by attempt, with the distinction and the progression decision.</div>", "CHS &rarr; here",
          "The set does not reach Exams &amp; Records until every registered candidate is accounted for"],
         ["I-5", "<strong>Enrolment reconciliation</strong><div class='sub2'>Nightly, both directions.</div>", "Both ways",
-         "Discrepancies go to the College Secretary <b>and</b> the Registrar — a divergence is a records question before it is a technical one"]
+         "Discrepancies go to the College Secretary <b>and</b> the Registrar &mdash; a divergence is a records question before it is a technical one"]
       ].map(function (r) {
-        return ['<b class="tnum">' + r[0] + '</b>', r[1], '<span class="sub2">' + r[2] + '</span>',
-          '<span class="sub2">' + r[3] + '</span>'];
-      }), 1120)) +
+        return ['<b class="tnum">' + r[0] + '</b>', r[1], sub2(r[2]), sub2(r[3])];
+      }))) +
 
     note('bad', 'Why the results crossing is a reconciliation and not a file drop',
       'This portal established that a score roll must be the whole register and not a filtered subset, because a filtered sheet <i>looks complete</i> at every desk it passes and the student finds out at graduation. <b>A set arriving from another system is a filtered subset by construction</b> &mdash; it contains exactly what the College chose to send. So the crossing counts both directions: entries matched, entries on the register with no mark, and entries submitted for somebody not on the register. The set waits until the last two are zero or explained. Without that, this boundary would reintroduce precisely the failure the University spent this month eliminating.') +
@@ -15922,6 +16024,7 @@ body.has-cta .tst { bottom: 132px; }
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">' +
       '<a class="btn btn--primary" href="' + CHS_URL + '" target="_blank" rel="noopener">Open CHS-AMS &rarr;</a>' +
       '<span class="sub2">Opens in a new tab. It is a separate system and it looks like one.</span>' +
+      pil('grey', 'Source: CHS Prospectus 2023&ndash;2025, pp. 24&ndash;154, extraction v2') +
     '</div>';
   }
 
