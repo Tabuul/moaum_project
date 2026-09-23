@@ -5,7 +5,7 @@ import { DTable } from "@/components/proto/DTable";
 
 export interface PgHome {
   session: string;
-  counts: { total: number; submitted: number; recommended: number; offered: number; accepted: number; admitted: number };
+  counts: { total: number; submitted: number; recommended: number; faculty?: number; offered: number; accepted: number; admitted: number };
   pgStudents: number;
   byProgramme: { programme_name: string; pg_award: string | null; applications: number; in_progress: number; offered: number; taken: number }[];
   recent?: {
@@ -15,25 +15,38 @@ export interface PgHome {
   }[];
 }
 
+/** the Secretary's home (V211/V209): what waits on the Secretary this session, with the lists behind the figures */
+export interface PgSecHome {
+  session: string;
+  counts: { toRegister: number; toEndorse: number; feesToConfirm: number; examsPending: number; clearances: number };
+  toEndorse: { id: string; semester: number; mode: string; updated_at: string; surname: string; other_names: string; matric_no: string | null; programme_name: string; pg_award: string | null; courses: number }[];
+  feesToConfirm: { reference: string; kind: string; amount: number; expires_at: string; application_no: string; surname: string; other_names: string }[];
+  clearances: { id: string; degree_kind: string; topic: string | null; final_submitted_at: string | null; updated_at: string; surname: string; other_names: string; matric_no: string | null; programme_name: string; pg_award: string | null }[];
+}
+
 const STATE_LABEL: Record<string, string> = {
-  DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Recommended", DEPT_DECLINED: "Declined by dept",
+  DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Dept recommended", DEPT_DECLINED: "Declined by dept",
+  FAC_RECOMMENDED: "Faculty recommended", FAC_DECLINED: "Declined by faculty",
   OFFERED: "Offered", NOT_OFFERED: "Not offered", ACCEPTED: "Accepted", ADMITTED: "Admitted",
 };
+const FEE_KIND: Record<string, string> = { APPLICATION: "Application fee", CHECKING: "Checking fee", ACCEPTANCE: "Acceptance fee" };
+const DEGREE: Record<string, string> = { PROJECT: "Project", DISSERTATION: "Dissertation", THESIS: "Thesis" };
 
 function shortDate(v: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
+const naira = (n: number) => "₦" + Number(n).toLocaleString();
 
-/** The School of Postgraduate Studies' home (V202): what waits on the School, the postgraduate register,
- *  and the pipeline by programme. Its own desk — separate from the Academic Office. */
-export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Studies" }: { me: Me | null; home: PgHome | null; role?: string }) {
+/** The Dean's home (V202): what waits on the School, the latest applicants, and the pipeline by programme —
+ *  the School's own desk, separate from the Academic Office. */
+export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null; role?: string }) {
   if (!home) {
     return <Note kind="bad" title="The postgraduate figures could not be read">This dashboard reads the postgraduate admissions register; it did not answer.</Note>;
   }
   const c = home.counts;
-  const recommended = Number(c.recommended);
+  const awaitingSchool = Number(c.faculty ?? 0);
   const toAdmit = Number(c.accepted);
   const progs = home.byProgramme ?? [];
   const recent = home.recent ?? [];
@@ -41,36 +54,27 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
   const desk = `/admissions/postgraduate?session=${encodeURIComponent(home.session)}`;
   return (
     <>
-      {toAdmit ? (
+      {awaitingSchool ? (
+        <Note kind="info" title={`${awaitingSchool} application${awaitingSchool === 1 ? "" : "s"} recommended by a faculty, awaiting the School`} action={<Link href={desk} className="btn btn--primary btn--sm">Decide them</Link>}>
+          The department and the faculty have recommended these; the School offers or refuses each.
+        </Note>
+      ) : toAdmit ? (
         <Note kind="ok" title={`${toAdmit} applicant${toAdmit === 1 ? " has" : "s have"} accepted an offer, ready to admit`} action={<Link href={desk} className="btn btn--primary btn--sm">Admit them</Link>}>
           Admitting puts each on the register as a postgraduate student, to matriculate on fees and registration.
         </Note>
       ) : (
         <Note kind="ok" title={`Nothing waits on the School for ${home.session}`} action={<Link href={desk} className="btn btn--ghost btn--sm">Postgraduate admissions</Link>}>
-          New recommendations from the departments and fresh acceptances appear here to be acted on.
+          Faculty recommendations and fresh acceptances appear here to be acted on.
         </Note>
       )}
 
       <Tiles items={[
-        ["Applications", String(c.total), null, home.session],
-        ["Awaiting the School", String(recommended), recommended ? "var(--chrome)" : null, "Recommended by a department"],
+        ["Applications", String(c.total), null, home.session, desk],
+        ["Awaiting the School", String(awaitingSchool), awaitingSchool ? "var(--chrome)" : null, "Recommended by a faculty", desk],
         ["Offered", String(c.offered), Number(c.offered) ? "var(--green-ink)" : null, "Awaiting acceptance"],
         ["To admit", String(toAdmit), toAdmit ? "var(--chrome)" : null, "Accepted, not yet on the register", desk],
-        ["PG students", String(home.pgStudents), null, "On the register"],
+        ["PG students", String(home.pgStudents), null, "On the register", "/admissions/postgraduate/students"],
       ]} />
-
-      <Panel title="By programme" right={home.session}>
-        {progs.length ? (
-          <DTable cols={["Programme", "Applications|mid", "In progress|mid", "Offered|mid", "Accepted / admitted|num"]}
-            rows={progs.map((p) => [
-              <span key="p"><span>{p.programme_name}</span><div className="sub2">{p.pg_award ?? ""}</div></span>,
-              <span className="tnum" key="a">{p.applications}</span>,
-              <span className="tnum" key="i">{p.in_progress}</span>,
-              <span className="tnum" key="o">{p.offered}</span>,
-              <span className="tnum" key="t">{p.taken}</span>,
-            ])} texts={progs.map((p) => p.programme_name)} />
-        ) : <PBody><div className="sub2">No postgraduate application has been submitted for {home.session} yet.</div></PBody>}
-      </Panel>
 
       <Panel title="Latest applications" right={<Link href={desk} className="btn btn--ghost btn--sm">Open admissions desk</Link>}>
         {recent.length ? (
@@ -87,45 +91,122 @@ export function PgSchoolDashboard({ me, home, role = "School of Postgraduate Stu
         ) : <PBody><div className="sub2">No postgraduate application has been submitted yet.</div></PBody>}
       </Panel>
 
-      <Panel title="Postgraduate desks" right={me?.name ? `Signed in as ${me.name}` : role}>
-        <PBody>
-          {DESK_GROUPS.map((g) => (
-            <div key={g.name} style={{ marginBottom: 12 }}>
-              <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".5px", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>{g.name}</div>
-              <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}>
-                {g.items.map((it) => (
-                  <Link key={it.href} href={it.href} className="btn btn--ghost btn--sm" style={{ justifyContent: "flex-start", textAlign: "left" }}>{it.label}</Link>
-                ))}
-              </div>
-            </div>
-          ))}
-          <div className="sub2" style={{ marginTop: 2 }}>You are acting for the {role}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
-        </PBody>
+      <Panel title="By programme" right={home.session}>
+        {progs.length ? (
+          <DTable cols={["Programme", "Applications|mid", "In progress|mid", "Offered|mid", "Accepted / admitted|num"]}
+            rows={progs.map((p) => [
+              <span key="p"><span>{p.programme_name}</span><div className="sub2">{p.pg_award ?? ""}</div></span>,
+              <span className="tnum" key="a">{p.applications}</span>,
+              <span className="tnum" key="i">{p.in_progress}</span>,
+              <span className="tnum" key="o">{p.offered}</span>,
+              <span className="tnum" key="t">{p.taken}</span>,
+            ])} texts={progs.map((p) => p.programme_name)} />
+        ) : <PBody><div className="sub2">No postgraduate application has been submitted for {home.session} yet.</div></PBody>}
       </Panel>
     </>
   );
 }
 
-const DESK_GROUPS: { name: string; items: { href: string; label: string }[] }[] = [
-  { name: "Admissions & register", items: [
-    { href: "/admissions/postgraduate", label: "Postgraduate admissions" },
-    { href: "/admissions/postgraduate/students", label: "PG register" },
-    { href: "/matriculation", label: "Matriculation" },
-  ]},
-  { name: "Coursework", items: [
-    { href: "/admissions/postgraduate/courses", label: "Course catalogue" },
-    { href: "/admissions/postgraduate/results", label: "Registrations & results" },
-  ]},
-  { name: "Research & examination", items: [
-    { href: "/admissions/postgraduate/research", label: "Research & thesis desk" },
-    { href: "/admissions/postgraduate/examiners", label: "External examiners" },
-  ]},
-  { name: "Awards", items: [
-    { href: "/admissions/postgraduate/board", label: "School Board & awards" },
-    { href: "/graduation", label: "Graduation list" },
-    { href: "/results/broadsheet", label: "Results broadsheet" },
-  ]},
-  { name: "Fees", items: [
-    { href: "/finance/fees", label: "Fee schedule" },
-  ]},
-];
+/** The Secretary's home: registration, fees, examinations and thesis clearance — what waits on the
+ *  Secretary this session, each figure opening the desk that clears it. */
+export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome | null }) {
+  if (!home) {
+    return <Note kind="bad" title="The Secretary's figures could not be read">This dashboard reads the postgraduate registration, fee and research registers; it did not answer.</Note>;
+  }
+  const c = home.counts;
+  const registrations = "/admissions/postgraduate/results";                 // where a registration is endorsed
+  const registrationDesk = `/admissions/postgraduate/registration?session=${encodeURIComponent(home.session)}`;
+  const examinations = `/admissions/postgraduate/examinations?session=${encodeURIComponent(home.session)}`;
+  const admissions = `/admissions/postgraduate?session=${encodeURIComponent(home.session)}`;
+  const clearance = "/admissions/postgraduate/clearance";
+  const register = registrationDesk;
+  const waiting = Number(c.toEndorse) + Number(c.feesToConfirm) + Number(c.clearances);
+  return (
+    <>
+      {waiting ? (
+        <Note kind="info" title={`${waiting} item${waiting === 1 ? "" : "s"} wait on the Secretary for ${home.session}`} action={<Link href={registrationDesk} className="btn btn--primary btn--sm">Registration desk</Link>}>
+          {Number(c.toEndorse) ? `${c.toEndorse} registration${Number(c.toEndorse) === 1 ? "" : "s"} to endorse` : null}
+          {Number(c.toEndorse) && (Number(c.feesToConfirm) || Number(c.clearances)) ? " · " : null}
+          {Number(c.feesToConfirm) ? `${c.feesToConfirm} fee${Number(c.feesToConfirm) === 1 ? "" : "s"} to confirm` : null}
+          {Number(c.feesToConfirm) && Number(c.clearances) ? " · " : null}
+          {Number(c.clearances) ? `${c.clearances} thes${Number(c.clearances) === 1 ? "is" : "es"} to clear` : null}
+          .
+        </Note>
+      ) : (
+        <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<Link href={registrationDesk} className="btn btn--ghost btn--sm">Registration desk</Link>}>
+          Submitted registrations, fee references and theses awaiting clearance appear here to be acted on.
+        </Note>
+      )}
+
+      <Tiles items={[
+        ["To register", String(c.toRegister), Number(c.toRegister) ? "var(--chrome)" : null, "PG students yet to register this session", register],
+        ["Fees to confirm", String(c.feesToConfirm), Number(c.feesToConfirm) ? "var(--chrome)" : null, "Live references awaiting confirmation", admissions],
+        ["Exams pending", String(c.examsPending), Number(c.examsPending) ? "var(--chrome)" : null, "Registered courses without a result", examinations],
+        ["Clearances", String(c.clearances), Number(c.clearances) ? "var(--chrome)" : null, "Theses awaiting the Secretary's clearance", clearance],
+      ]} />
+
+      <Panel title="What waits on the Secretary" right={home.session}>
+        <PBody style={{ display: "grid", gap: 14 }}>
+          <section>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+              <div style={{ fontWeight: 600 }}>Registrations to endorse</div>
+              <span className="sub2">{c.toEndorse} submitted</span>
+              <span style={{ flexGrow: 1 }} />
+              <Link href={registrations} className="btn btn--ghost btn--sm">Endorse on the registrations desk</Link>
+            </div>
+            {home.toEndorse.length ? (
+              <DTable cols={["Student", "Programme", "Semester|mid", "Courses|num", "Submitted|num"]}
+                rows={home.toEndorse.map((r) => [
+                  <span key="n"><span>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
+                  <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""} · {r.mode === "PART_TIME" ? "Part-time" : "Full-time"}</div></span>,
+                  <span key="s" className="tnum">{r.semester === 2 ? "Second" : r.semester === 3 ? "Summer" : "First"}</span>,
+                  <span key="c" className="tnum">{r.courses}</span>,
+                  <span key="d" className="tnum">{shortDate(r.updated_at)}</span>,
+                ])}
+                texts={home.toEndorse.map((r) => `${r.surname} ${r.other_names} ${r.matric_no ?? ""} ${r.programme_name}`)} />
+            ) : <div className="sub2">No registration is waiting to be endorsed.</div>}
+          </section>
+
+          <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+              <div style={{ fontWeight: 600 }}>Fees to confirm</div>
+              <span className="sub2">{c.feesToConfirm} live reference{Number(c.feesToConfirm) === 1 ? "" : "s"}</span>
+              <span style={{ flexGrow: 1 }} />
+              <Link href={admissions} className="btn btn--ghost btn--sm">Admissions desk</Link>
+            </div>
+            {home.feesToConfirm.length ? (
+              <DTable cols={["Applicant", "Fee", "Amount|num", "Reference", "Expires|num"]}
+                rows={home.feesToConfirm.map((f) => [
+                  <span key="n"><span>{f.surname}, {f.other_names}</span><div className="sub2 tnum">{f.application_no}</div></span>,
+                  <span key="k">{FEE_KIND[f.kind] ?? f.kind}</span>,
+                  <span key="a" className="tnum">{naira(f.amount)}</span>,
+                  <span key="r" className="tnum">{f.reference}</span>,
+                  <span key="e" className="tnum">{shortDate(f.expires_at)}</span>,
+                ])}
+                texts={home.feesToConfirm.map((f) => `${f.surname} ${f.other_names} ${f.application_no} ${f.reference}`)} />
+            ) : <div className="sub2">No fee reference is awaiting confirmation.</div>}
+          </section>
+
+          <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+              <div style={{ fontWeight: 600 }}>Theses awaiting clearance</div>
+              <span className="sub2">{c.clearances} finally submitted</span>
+              <span style={{ flexGrow: 1 }} />
+              <Link href={clearance} className="btn btn--ghost btn--sm">Thesis clearance</Link>
+            </div>
+            {home.clearances.length ? (
+              <DTable cols={["Candidate", "Programme", "Work", "Submitted|num"]}
+                rows={home.clearances.map((t) => [
+                  <span key="n"><span>{t.surname}, {t.other_names}</span><div className="sub2 tnum">{t.matric_no ?? "—"}</div></span>,
+                  <span key="p"><span>{t.programme_name}</span><div className="sub2">{t.pg_award ?? ""}</div></span>,
+                  <span key="w"><span>{DEGREE[t.degree_kind] ?? t.degree_kind}</span><div className="sub2">{t.topic ?? "—"}</div></span>,
+                  <span key="d" className="tnum">{shortDate(t.final_submitted_at ?? t.updated_at)}</span>,
+                ])}
+                texts={home.clearances.map((t) => `${t.surname} ${t.other_names} ${t.matric_no ?? ""} ${t.topic ?? ""}`)} />
+            ) : <div className="sub2">No thesis is awaiting clearance.</div>}
+          </section>
+        </PBody>
+      </Panel>
+    </>
+  );
+}

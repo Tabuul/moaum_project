@@ -15,6 +15,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface Prog { code: string; name: string; faculty_name: string; department_name: string }
 interface Course { id: string; code: string; title: string; units: number; kind: string; semester: number; active: boolean }
+interface AllCourse extends Course { programme_code: string; programme_name: string; faculty_name: string }
 
 const KIND: Record<string, string> = { CORE: "Core", ELECTIVE: "Elective", DEFICIENCY: "Deficiency", RESEARCH: "Research" };
 const KIND_PILL: Record<string, "info" | "grey" | "ok" | "warn"> = { CORE: "info", ELECTIVE: "grey", RESEARCH: "ok", DEFICIENCY: "warn" };
@@ -23,6 +24,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
   const [progs, setProgs] = useState<Prog[]>([]);
   const [programme, setProgramme] = useState("");
   const [courses, setCourses] = useState<Course[]>([]);
+  const [allCourses, setAllCourses] = useState<AllCourse[]>([]);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyUp, setBusyUp] = useState(false);
@@ -46,6 +48,14 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
 
   useEffect(() => { void (async () => { await loadCourses(programme); })(); }, [programme, loadCourses]);
 
+  const loadAll = useCallback(async () => {
+    const r = await fetch("/api/bff/api/v1/pg/coursework/courses/all", { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (r.ok && Array.isArray(j)) setAllCourses(j as AllCourse[]);
+  }, []);
+
+  useEffect(() => { void (async () => { await loadAll(); })(); }, [loadAll]);
+
   const byFaculty = useMemo(() => {
     const m = new Map<string, Prog[]>();
     for (const p of progs) { const k = p.faculty_name; if (!m.has(k)) m.set(k, []); m.get(k)!.push(p); }
@@ -64,6 +74,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setF({ code: "", title: "", units: "3", kind: "CORE", semester: "1" });
       await loadCourses(programme);
+      await loadAll();
     } finally { setBusy(false); }
   }
 
@@ -112,6 +123,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
       const c = j as { rows: number; created: number; updated: number; no_programme: number; skipped: number };
       setUpResult(`${c.created} course${c.created === 1 ? "" : "s"} added, ${c.updated} updated${c.no_programme ? ` · ${c.no_programme} row${c.no_programme === 1 ? "" : "s"} had a programme that did not match one on record` : ""}${c.skipped ? ` · ${c.skipped} skipped` : ""}.`);
       if (programme) await loadCourses(programme);
+      await loadAll();
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx built from the template." });
     } finally { setBusyUp(false); }
@@ -151,6 +163,22 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
             </div>
             {upResult ? <div style={{ marginTop: 10 }}><Note kind="ok" title="Course catalogue uploaded">{upResult}</Note></div> : null}
           </PBody>
+        </Panel>
+      ) : null}
+
+      {!programme ? (
+        <Panel title="All postgraduate courses" right={`${allCourses.length} course${allCourses.length === 1 ? "" : "s"} on record`}>
+          {allCourses.length ? (
+            <DTable cols={["Programme", "Code", "Title", "Units|num", "Type|mid", "Semester|mid"]}
+              rows={allCourses.map((c) => [
+                <span key="p"><span>{c.programme_name}</span><div className="sub2">{c.faculty_name}</div></span>,
+                <span key="c" className="tnum">{c.code}</span>, c.title,
+                <span key="u" className="tnum">{c.units}</span>,
+                <Pil key="k" kind={KIND_PILL[c.kind] ?? "grey"}>{KIND[c.kind] ?? c.kind}</Pil>,
+                <span key="s" className="sub2">{c.semester === 2 ? "Second" : "First"}</span>,
+              ])}
+              texts={allCourses.map((c) => `${c.programme_name} ${c.code} ${c.title} ${c.kind}`)} />
+          ) : <PBody><div className="sub2">No postgraduate course has been uploaded yet. Choose a programme to add courses, or upload the catalogue above.</div></PBody>}
         </Panel>
       ) : null}
 

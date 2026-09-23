@@ -38,12 +38,17 @@ class StudentController {
     private final ChangeService changes;
     private final SearchService search;
     private final RecordsService records;
+    private final ng.edu.moaum.portal.studentportal.StudentPortalService portal;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
-    StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records) {
+    StudentController(StudentService students, ChangeService changes, SearchService search, RecordsService records,
+                      ng.edu.moaum.portal.studentportal.StudentPortalService portal, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.students = students;
         this.changes = changes;
         this.search = search;
         this.records = records;
+        this.portal = portal;
+        this.jdbc = jdbc;
     }
 
     /** The register in a scope, and how many the University has on it altogether. */
@@ -58,11 +63,49 @@ class StudentController {
         return students.register(Scope.of(fac, dept, prog, level, null, session, null), q);
     }
 
+    /** The students migrated from the old portal at these levels: how many, how many stand cleared at every unit, how many do not (V233). */
+    @GetMapping("/students/migrated")
+    @PreAuthorize(READERS)
+    java.util.Map<String, Object> migrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to) {
+        return jdbc.sql("SELECT * FROM clearance.migrated_summary(:f, :t)").param("f", from).param("t", to).query().singleRow();
+    }
+
+    /** Clear the migrated students at these levels who still lack a unit's word — the old portal's clearance, carried over (V231/V233). */
+    @PostMapping("/students/migrated/clear")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')")
+    @org.springframework.transaction.annotation.Transactional
+    java.util.Map<String, Object> clearMigrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to) {
+        java.util.Map<String, Object> done = jdbc.sql("SELECT * FROM clearance.clear_migrated(:f, :t)").param("f", from).param("t", to).query().singleRow();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(done);
+        out.putAll(migrated(from, to));
+        return out;
+    }
+
     /** One record entire. The session decides which registrations it shows. */
     @GetMapping("/students/{id}")
     @PreAuthorize(READERS)
     StudentRecord record(@PathVariable UUID id, @RequestParam(required = false) String session) {
         return students.record(id, blankToNull(session));
+    }
+
+    /** The student's own portal view of themselves — fees, GPA and CGPA, standing, carryovers, this session's
+     *  registration, graduation — read by an office for the record pop-up. The same figures the student sees. */
+    @GetMapping("/students/{id}/portal")
+    @PreAuthorize(READERS)
+    java.util.Map<String, Object> portal(@PathVariable UUID id) {
+        return portal.me(id);
+    }
+
+    /** The student's passport photograph, from whichever store holds it (document, JAMB, attachment). */
+    @GetMapping("/students/{id}/passport")
+    @PreAuthorize(READERS)
+    org.springframework.http.ResponseEntity<byte[]> passport(@PathVariable UUID id) {
+        return portal.passportImage(id)
+                .map(img -> org.springframework.http.ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.IMAGE_JPEG)
+                        .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofMinutes(10)).cachePrivate())
+                        .body(img))
+                .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
     }
 
     @PutMapping("/students/{id}/biodata/{field}")

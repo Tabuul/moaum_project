@@ -54,6 +54,32 @@ class PgPortalController {
     static final Duration SESSION_LENGTH = Duration.ofHours(12);
     static final int LOCK_AFTER = 5;
     static final Duration LOCK_FOR = Duration.ofMinutes(15);
+    /** failures one connection may make in a window before it is refused, whatever accounts it names — so a
+     *  stranger cannot keep an applicant locked out by feeding five wrong passwords every quarter hour */
+    static final int SOURCE_FAILURES = 20;
+    private final java.util.concurrent.ConcurrentHashMap<String, java.util.ArrayDeque<Instant>> sourceFailures = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static String sourceOf(HttpServletRequest request) {
+        String xf = request.getHeader("X-Forwarded-For");
+        return xf != null && !xf.isBlank() ? xf.split(",")[0].trim() : String.valueOf(request.getRemoteAddr());
+    }
+
+    /** true when this source has failed too often in the last window; a failure is recorded by noteFailure */
+    private boolean sourceThrottled(String source) {
+        java.util.ArrayDeque<Instant> q = sourceFailures.get(source);
+        if (q == null) return false;
+        Instant floor = Instant.now().minus(LOCK_FOR);
+        synchronized (q) {
+            while (!q.isEmpty() && q.peekFirst().isBefore(floor)) q.pollFirst();
+            return q.size() >= SOURCE_FAILURES;
+        }
+    }
+
+    private void noteFailure(String source) {
+        java.util.ArrayDeque<Instant> q = sourceFailures.computeIfAbsent(source, k -> new java.util.ArrayDeque<>());
+        synchronized (q) { q.addLast(Instant.now()); }
+        if (sourceFailures.size() > 10_000) sourceFailures.clear();   // a bound, not a policy: the window is fifteen minutes
+    }
     static final UUID NOBODY = new UUID(0, 0);
 
     private final JdbcClient jdbc;
@@ -90,6 +116,11 @@ class PgPortalController {
     @PostMapping("/sign-in")
     SignedIn signIn(@Valid @RequestBody SignIn body, HttpServletRequest request) {
         String id = body.identifier().trim();
+        String source = sourceOf(request);
+        if (sourceThrottled(source)) {
+            throw new DomainRuleViolation("AUTH_THROTTLED", "Too many failed sign-ins from this connection; try again in fifteen minutes.",
+                    new DomainRuleViolation.Remedy("Wait fifteen minutes, or reset your password with the email you applied with.", "You"));
+        }
         Map<String, Object> a = firstOrNull(jdbc.sql("""
                 SELECT p.id, p.surname, p.other_names, p.password_hash, p.failed_attempts, p.locked_until,
                        (SELECT ap.application_no FROM admissions.pg_application ap WHERE ap.applicant_id = p.id) AS application_no
@@ -99,6 +130,7 @@ class PgPortalController {
                  LIMIT 1
                 """).param("id", id).query().listOfRows());
         if (a == null) {
+            noteFailure(source);
             throw badCredentials();
         }
         UUID applicantId = (UUID) a.get("id");
@@ -113,6 +145,7 @@ class PgPortalController {
             OffsetDateTime lock = next >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null;
             tx.execute(st -> jdbc.sql("UPDATE admissions.pg_applicant SET failed_attempts = :n, locked_until = :l WHERE id = :id")
                     .param("n", next).param("l", lock).param("id", applicantId).update());
+            noteFailure(source);
             throw badCredentials();
         }
         byte[] sid = new byte[32];

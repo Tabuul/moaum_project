@@ -125,7 +125,10 @@ BEGIN
             (300, 'MTC', 'C00023', 'Mwuese',  '9903', '08030009903', 2),
             (400, 'ECO', 'C00024', 'Sesugh',  '9904', '08030009904', 3),
             (500, 'LAW', 'C00033', 'Doosuur', '9905', '08030009905', 4),
-            (600, 'MED', 'C00061', 'Aondona', '9906', '08030009906', 5)
+            (600, 'MED', 'C00061', 'Aondona', '9906', '08030009906', 5),
+            -- a College of Health Sciences student (MBBS, faculty BAMS · college CHS) at 200 level,
+            -- so the College student login gate can be demonstrated
+            (200, 'MED', 'C00061', 'Terkimbi','9907', '08030009907', 1)
         ) AS t(level, dept, programme, given, n, phone, years_in)
     LOOP
         DECLARE v_entry_year int := (substr(v_session, 1, 4))::int - s.years_in;
@@ -168,7 +171,7 @@ BEGIN
     LOOP
         IF NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = c.code) THEN
             INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
-            VALUES (c.code, c.title, c.units, 1, 300, 'MTC', 'Compulsory', 'LIVE');
+            VALUES (c.code, c.title, c.units, 1, 300, 'MTC', 'Core', 'LIVE');
         END IF;
         IF NOT EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = c.code AND programme_code = 'C00023' AND level = 300) THEN
             INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (c.code, 'C00023', 300, 'Core');
@@ -783,7 +786,7 @@ BEGIN
 
             -- ── the courses and their offerings, 200-level (prior sem 2) and 300-level (current sem 1) ──
             INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
-            SELECT d.pfx || ' ' || c.cnum, 'Demo ' || d.pfx || ' ' || c.cnum, 3, c.sem, c.lvl, d.dept, 'Compulsory', 'LIVE'
+            SELECT d.pfx || ' ' || c.cnum, 'Demo ' || d.pfx || ' ' || c.cnum, 3, c.sem, c.lvl, d.dept, 'Core', 'LIVE'
               FROM (VALUES (201,200,2),(202,200,2),(203,200,2),(204,200,2),(205,200,2),
                            (301,300,1),(302,300,1),(303,300,1),(304,300,1),(305,300,1)) c(cnum, lvl, sem)
             ON CONFLICT (code) DO NOTHING;
@@ -1123,6 +1126,8 @@ BEGIN
         IF v_dean IS NOT NULL THEN
             PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean);
             PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean);
+            -- the applicant paid the checking fee to see the decision; the acceptance fee is still to pay
+            v_ref := admissions.pg_new_fee_reference(v_app, 'CHECKING'); PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
         END IF;
 
         -- 4 · M.Sc. Computer Science — admitted, registered, scored, and through to a cleared thesis,
@@ -1144,7 +1149,10 @@ BEGIN
         PERFORM admissions.pg_submit(v_app);
         IF v_hod  IS NOT NULL THEN PERFORM admissions.pg_dept_decide(v_app, true, 'Admit.', v_hod); END IF;
         IF v_dean IS NOT NULL THEN PERFORM admissions.pg_faculty_decide(v_app, true, 'Faculty recommends.', v_dean); PERFORM admissions.pg_spgs_decide(v_app, true, 'Offer a place.', v_dean); END IF;
-        PERFORM admissions.pg_accept(v_app);
+        -- the applicant paid the checking fee to see the decision and the acceptance fee to accept it
+        -- (confirming the acceptance fee moves the offer to ACCEPTED); then the School admits
+        v_ref := admissions.pg_new_fee_reference(v_app, 'CHECKING');   PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
+        v_ref := admissions.pg_new_fee_reference(v_app, 'ACCEPTANCE'); PERFORM admissions.pg_confirm_fee(v_ref, 'demo');
         v_student := admissions.pg_admit(v_app);
 
         -- the programme's courses (Policy 11)

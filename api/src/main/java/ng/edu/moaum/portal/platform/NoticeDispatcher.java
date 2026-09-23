@@ -84,14 +84,22 @@ public class NoticeDispatcher {
 
     /** the body the provider expects, by format */
     String payload(NoticeRepository.Queued n) {
+        return payload(n, List.of());
+    }
+
+    /** the relay payload; an email's attachments ride along base64-encoded (Resend's own shape, and ours) */
+    String payload(NoticeRepository.Queued n, List<NoticeRepository.Attachment> files) {
         boolean sms = "SMS".equals(n.channel());
         String format = sms ? smsFormat : emailFormat;
+        String att = files.isEmpty() ? "" : ",\"attachments\":[" + files.stream().map(f ->
+                "{\"filename\":" + quote(f.filename()) + ",\"content\":" + quote(java.util.Base64.getEncoder().encodeToString(f.content()))
+                + ",\"content_type\":" + quote(f.contentType()) + "}").collect(java.util.stream.Collectors.joining(",")) + "]";
         return switch (format) {
             case "termii" -> "{\"api_key\":" + quote(token) + ",\"to\":" + quote(international(n.recipient())) + ",\"from\":" + quote(smsFrom)
                     + ",\"sms\":" + quote(n.body()) + ",\"type\":\"plain\",\"channel\":\"generic\"}";
             case "resend" -> "{\"from\":" + quote(emailFrom) + ",\"to\":[" + quote(n.recipient()) + "],\"subject\":" + quote(n.subject())
-                    + ",\"text\":" + quote(n.body()) + "}";
-            default -> json(n);
+                    + ",\"text\":" + quote(n.body()) + att + "}";
+            default -> json(n, att);
         };
     }
 
@@ -124,9 +132,10 @@ public class NoticeDispatcher {
             boolean email = "EMAIL".equals(n.channel());
             String outcome = null;
             String error = null;
+            List<NoticeRepository.Attachment> files = email ? notices.attachments(n.id()) : List.of();
             if (email && smtp.isPresent()) {
                 try {
-                    smtpMailer.send(smtp.get(), n.recipient(), n.subject(), n.body());
+                    smtpMailer.send(smtp.get(), n.recipient(), n.subject(), n.body(), files);
                     outcome = "smtp " + smtp.get().host();
                 } catch (Exception e) {
                     error = e.getClass().getSimpleName() + ": " + e.getMessage();
@@ -146,7 +155,7 @@ public class NoticeDispatcher {
                     HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
                             .timeout(Duration.ofSeconds(20))
                             .header("Content-Type", "application/json")
-                            .POST(HttpRequest.BodyPublishers.ofString(payload(n)));
+                            .POST(HttpRequest.BodyPublishers.ofString(payload(n, files)));
                     if (!token.isEmpty()) {
                         req.header("Authorization", "Bearer " + token);
                     }
@@ -174,8 +183,12 @@ public class NoticeDispatcher {
     }
 
     static String json(NoticeRepository.Queued n) {
+        return json(n, "");
+    }
+
+    static String json(NoticeRepository.Queued n, String att) {
         return "{\"to\":" + quote(n.recipient()) + ",\"subject\":" + quote(n.subject()) + ",\"body\":" + quote(n.body())
-                + ",\"channel\":" + quote(n.channel()) + ",\"id\":" + quote(n.id().toString()) + "}";
+                + ",\"channel\":" + quote(n.channel()) + ",\"id\":" + quote(n.id().toString()) + att + "}";
     }
 
     private static String quote(String s) {

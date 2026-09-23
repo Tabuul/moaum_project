@@ -19,7 +19,7 @@ function originOf(req: Request): string {
   try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
 }
 
-/** GST / Elective / Core (Compulsory/Required → Core) */
+/** GST / Elective / Core (Core/Required → Core) */
 /** display order: carryover first, then GST, then Core, then Elective */
 function orderRank(e: Entry): number {
   if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
@@ -31,7 +31,7 @@ function courseType(e: Entry): string {
   const k = (e.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";
   if (k === "elective") return "Elective";
-  if (k === "compulsory" || k === "required") return "Core";
+  if (k === "core" || k === "compulsory" || k === "required") return "Core";
   const t = (e.entryType ?? "").toUpperCase();
   return t === "GST" ? "GST" : t === "ELECTIVE" ? "Elective" : "Core";
 }

@@ -3,6 +3,7 @@
 /** lCirculation — proto/part10.html: circulation today, the overdue, the fines, and what stands against a patron. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -14,6 +15,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData; patron: string; q: string; actingOffice: string | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const may = ["library", "services", "admin", "super"].includes(actingOffice ?? "");
   const librarian = actingOffice === "library" || actingOffice === "super";
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -40,7 +42,7 @@ export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData
       setBusy(false);
     }
   }
-  const go = () => { const p = new URLSearchParams(); if (who) p.set("patron", who); if (query) p.set("q", query); router.push(`/library/circulation?${p}`); };
+  const go = () => { const p = new URLSearchParams(); if (who) p.set("patron", who); if (query) p.set("q", query); queryNav(`/library/circulation?${p}`); };
   const loanRow = (x: Loan) => [
     <Two key="p" a={x.patron} b={x.number ?? x.staff_number ?? ""} />,
     <Two key="i" a={x.title} b={x.accession} />,

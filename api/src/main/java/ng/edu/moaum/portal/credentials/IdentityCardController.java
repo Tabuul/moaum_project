@@ -52,10 +52,13 @@ class IdentityCardController {
                  ORDER BY c.issued_at DESC LIMIT 300
                 """).query().listOfRows();
         List<Map<String, Object>> waiting = jdbc.sql("""
-                SELECT s.id AS student_id, s.matric_no, s.surname, s.other_names, p.name AS programme, s.current_level,
+                SELECT s.id AS student_id, s.matric_no, s.surname, s.other_names, p.name AS programme, s.current_level, s.status,
                        EXISTS (SELECT 1 FROM credentials.identity_card c WHERE c.student_id = s.id) AS had_one
                   FROM people.student s JOIN ref.programme p ON p.code = s.programme_code
-                 WHERE s.matric_no IS NOT NULL AND s.status IN ('ACTIVE','PROBATION')
+                 -- a card is keyed on the matriculation number: every matriculated student still on the books
+                 -- (admitted, active, on probation, or dormant between sessions) may be issued one; the
+                 -- withdrawn, expelled, transferred-out, graduated and deceased may not
+                 WHERE s.matric_no IS NOT NULL AND s.status IN ('ADMITTED','ACTIVE','PROBATION','DORMANT')
                    AND NOT EXISTS (SELECT 1 FROM credentials.identity_card c WHERE c.student_id = s.id AND c.state = 'ISSUED')
                    AND (:q::text IS NULL OR s.matric_no ILIKE '%' || :q || '%' OR s.surname ILIKE '%' || :q || '%')
                  ORDER BY s.surname LIMIT 200

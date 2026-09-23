@@ -2,7 +2,7 @@
 
 /** bBudget — proto/part…: commitment accounting. Budget is consumed at approval, not at
  *  payment: an approved (cleared) voucher commits its amount immediately. */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -14,8 +14,14 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface BudgetRow { cost_centre: string; budget: number; committed: number; spent: number; available: number }
 export interface BudgetView { year: number; rows: BudgetRow[] }
+/** the income and expenditure statement for the year, read off the general ledger (V145) */
+export interface Statement {
+  year: number; lines: { section: string; code: string; name: string; amount: number }[];
+  totals: { income: number; expense: number; surplus: number };
+  budget: { budget: number; committed: number; spent: number; available: number };
+}
 
-export function Budget({ d, actingOffice }: { d: BudgetView; actingOffice: string | null }) {
+export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement | null; actingOffice: string | null }) {
   const router = useRouter();
   const may = ["bursar", "super"].includes(actingOffice ?? "");
   const [add, setAdd] = useState(false);
@@ -53,7 +59,7 @@ export function Budget({ d, actingOffice }: { d: BudgetView; actingOffice: strin
 
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ minWidth: 140 }}><label htmlFor="bg-year">Financial year</label>
-          <select id="bg-year" className="ctl tnum" value={d.year} onChange={(e) => router.push(`/finance/budget?year=${e.target.value}`)}>
+          <select id="bg-year" className="ctl tnum" value={d.year} onChange={(e) => { router.push(`/finance/budget?year=${e.target.value}`); router.refresh(); }}>
             {[d.year + 1, d.year, d.year - 1, d.year - 2].map((y) => <option key={y} value={y}>{y}</option>)}
           </select></div>
         <div style={{ flexGrow: 1 }} />
@@ -84,9 +90,30 @@ export function Budget({ d, actingOffice }: { d: BudgetView; actingOffice: strin
         ) : <PBody><div className="sub2">No budget is set for {d.year}, and no voucher has been raised against a cost centre. Set a cost centre&rsquo;s budget to begin.</div></PBody>}
       </Panel>
 
-      <Note kind="bad" title="A cost centre with nothing available has its next requisition refused at budget check">
-        Commitment accounting is the point: the money an approved voucher will pay is gone from the available balance the moment it is approved, not when it is paid, so a second commitment against the same money cannot slip through in the gap.
-      </Note>
+      {ie ? (() => {
+        const income = ie.lines.filter((l) => String(l.section).toUpperCase() === "INCOME");
+        const expense = ie.lines.filter((l) => String(l.section).toUpperCase() !== "INCOME");
+        const surplus = Number(ie.totals.surplus);
+        const cell = (v: number | null, bold = false, red = false) => <span className="tnum" style={{ fontWeight: bold ? 600 : undefined, color: red ? "var(--red-ink)" : undefined }}>{v == null ? "—" : money(v)}</span>;
+        const rows: ReactNode[][] = [
+          ...income.map((l) => [<span key="n" style={{ paddingLeft: 12 }}>{l.name}</span>, cell(null), cell(Number(l.amount)), cell(null)]),
+          [<strong key="n">Total income</strong>, cell(null), cell(Number(ie.totals.income), true), cell(null)],
+          ...expense.map((l) => [<span key="n" style={{ paddingLeft: 12 }}>{l.name}</span>, cell(null), cell(Number(l.amount)), cell(null)]),
+          [<strong key="n">Total expenditure</strong>, cell(Number(ie.budget.budget), true), cell(Number(ie.totals.expense), true), cell(Number(ie.budget.budget) - Number(ie.totals.expense), true, Number(ie.budget.budget) - Number(ie.totals.expense) < 0)],
+          [<strong key="n">{surplus >= 0 ? "Surplus for the year" : "Deficit for the year"}</strong>, cell(null), cell(surplus, true, surplus < 0), cell(null)],
+        ];
+        return (
+          <Panel title="Income and expenditure" right={`Financial year ${ie.year} · against budget`}>
+            {ie.lines.length ? (
+              <>
+                <DTable cols={["", "Budget|num", "Actual|num", "Variance|num"]} rows={rows}
+                  texts={[...income.map((l) => l.name), "Total income", ...expense.map((l) => l.name), "Total expenditure", surplus >= 0 ? "Surplus for the year" : "Deficit for the year"]} />
+                <PBody><div className="sub2">Income and expenditure are read off the general ledger&rsquo;s income and expense accounts for the year. The budget is the cost-centre budget the Bursary set; the variance is what remains of it against actual expenditure. Income is not budgeted in the portal, so its budget column is blank.</div></PBody>
+              </>
+            ) : <PBody><div className="sub2">No income or expense has been posted to the ledger for {ie.year} yet.</div></PBody>}
+          </Panel>
+        );
+      })() : null}
 
       {add ? (
         <Modal title="Set a cost centre's budget" sub={`Financial year ${d.year}`} onClose={() => setAdd(false)}

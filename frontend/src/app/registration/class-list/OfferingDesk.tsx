@@ -74,7 +74,7 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
         })} texts={roll.rows.map((r) => `${r.number} ${r.surname} ${r.otherNames}`)} />
       </Panel>
       <div className="grid grid--2">
-        <Panel title="Timetable slots" right="The department's, for this offering">
+        <Panel title="Timetable slots" right="The department's, for this course">
           <DTable cols={["Day", "Time|mid", "Venue", "Kind|mid", "|num"]} rows={desk.slots.map((s) => [
             WEEKDAY[s.weekday], <span className="tnum" key="t">{String(s.starts_at).slice(0, 5)}–{String(s.ends_at).slice(0, 5)}</span>, s.venue, <span className="sub2" key="k">{s.kind.toLowerCase()}</span>,
             <Btn kind="ghost" key="e" disabled={!teaches || busy !== null} onClick={() => void send(`end-${s.id}`, "POST", `/registration/offerings/${roll.offeringId}/slots/${s.id}/end`, {}, `Slot ended for ${roll.courseCode}`)}>End</Btn>,

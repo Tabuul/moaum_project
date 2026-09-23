@@ -823,15 +823,6 @@ export function CapsIntake({
         does not carry is a finding with a candidate against it, never a guess.
       </Note>
 
-      <Note kind="bad" title="One thing to check before this file is sent anywhere">
-        The real Direct Entry file the Directorate examined was 2.4&nbsp;MB for 26 rows. The rows were 3&nbsp;KB of
-        it; the rest was Excel&rsquo;s cache of workbooks it had been linked to, carrying{" "}
-        <b>24,820 other candidates&rsquo; numbers, names, sex, state and aggregate scores</b> invisibly inside it,
-        along with the officer&rsquo;s own file path. Under the NDPA 2023 that is a disclosure of personal data every
-        time the file is e-mailed. Pasting the rows into a fresh workbook removes it, and this screen reports it on
-        every file it reads.
-      </Note>
-
       {mayLoad ? (
         <Panel title={`Reset the JAMB list for ${session}`} right="Start the intake again">
           <div style={{ padding: 16 }}>

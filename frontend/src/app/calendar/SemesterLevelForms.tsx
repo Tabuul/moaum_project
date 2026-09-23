@@ -10,7 +10,6 @@ import { useState } from "react";
 import type { Problem } from "@/lib/api";
 import type { LevelLimitRow, SemesterRow } from "@/lib/calendar";
 import { SEMESTER_NAMES } from "@/lib/calendar";
-import { Note } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { RecDay, RecFoot, RecSelect, RecText, semesterDraft, levelDraft, type Draft } from "./CalendarForms";
@@ -88,11 +87,6 @@ export function SemesterModal({
           <RecText k="query" draft={draft} set={set} ph="seven days from release" />
         </Field>
       </div>
-      <Note kind="bad" title="Moving a closing date backwards after it has passed does not un-register anybody">
-        It cannot: registrations are records, and records are not deleted. Bringing a date forward removes the ability to
-        register from that moment on, and nothing else. To remove a registration already made, the department drops it, on
-        the record, with a reason.
-      </Note>
     </Modal>
   );
 }
@@ -146,10 +140,6 @@ export function LevelModal({
           <RecText k="instrument" draft={draft} set={set} num ph="SEN/2026/…" />
         </Field>
       </div>
-      <Note kind="bad" title="The unit ceiling is what stops a student registering a timetable they cannot sit">
-        Carryovers are added to the form automatically and cannot be removed, so a student with several of them reaches the
-        ceiling before choosing anything new. That is the rule working, not the form failing.
-      </Note>
     </Modal>
   );
 }

@@ -7,7 +7,7 @@ import type { ReportColumn } from "@/lib/report";
  *  is a view of the register. It renders as a standalone document (not inside the
  *  Shell) so it prints clean; the toolbar is the only thing marked no-print. */
 export function ReportDoc({
-  title, subtitle, session, columns, rows, totals, note, issuedFor, toolbar,
+  title, subtitle, session, columns, rows, totals, note, issuedFor, toolbar, kept,
 }: {
   title: string;
   subtitle: string;
@@ -18,6 +18,8 @@ export function ReportDoc({
   note?: ReactNode;
   issuedFor?: string | null;
   toolbar?: ReactNode;
+  /** when this is a kept copy (V229): the footing says so, with the code anyone can verify it by */
+  kept?: { code: string; takenAt: string; office?: string | null; by?: string | null; filedTo?: string | null; filedAt?: string | null } | null;
 }) {
   const show = (c: ReportColumn, v: string | number | null | undefined) => {
     if (v == null || v === "") return c.money ? money(0) : "—";
@@ -25,7 +27,7 @@ export function ReportDoc({
   };
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
-  const serial = `MOAUM/RPT/${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}/${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const serial = kept ? `MOAUM/RPT/${kept.code}` : `MOAUM/RPT/${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}/${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   const generated = now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
   return (
     <div className="rpt">
@@ -85,8 +87,15 @@ export function ReportDoc({
 
         <footer className="rpt__foot">
           {note ? <div className="rpt__note">{note}</div> : null}
+          {kept ? (
+            <div className="rpt__issued" style={{ fontWeight: 600 }}>
+              Kept copy · taken {day(kept.takenAt)}{kept.by ? ` by ${kept.by}` : ""}{kept.office ? ` (${kept.office})` : ""}
+              {kept.filedAt ? ` · filed with ${kept.filedTo} on ${day(kept.filedAt)}` : " · not yet filed"}.
+              Verification code <span className="tnum">{kept.code}</span> — check it at /verify/report/{kept.code}.
+            </div>
+          ) : null}
           <div className="rpt__issued">
-            Issued by the portal on {day(new Date().toISOString())}{issuedFor ? ` · ${issuedFor}` : ""}. A return is a view of the
+            {kept ? "Printed" : "Issued"} by the portal on {day(new Date().toISOString())}{issuedFor ? ` · ${issuedFor}` : ""}. A return is a view of the
             register, verified against it — not by its appearance.
           </div>
         </footer>

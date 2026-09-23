@@ -167,12 +167,6 @@ export function BiodataChanges({
         )}
       </Panel>
 
-      <Note kind="bad" title="A refund account whose name does not match the student is refused, every time">
-        It is the single commonest route by which a refund reaches somebody other than the person owed it. The Bursary
-        verifies the account name against the name on the register before any refund is released, and a mismatch is
-        refused rather than queried &mdash; the student can supply an account in their own name.
-      </Note>
-
       <Note kind="info" title="A refusal is as much a decision as an approval">
         It is recorded with its reason, it appears in the student&rsquo;s own change history, and the student is notified.
         A request that simply sits unanswered is the failure mode this queue exists to prevent, which is why the oldest

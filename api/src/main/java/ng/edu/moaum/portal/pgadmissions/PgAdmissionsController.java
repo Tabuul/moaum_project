@@ -205,6 +205,69 @@ class PgAdmissionsController {
         return out;
     }
 
+    /**
+     * The Secretary's home: what waits on the Secretary this session — students yet to register, fee
+     * references awaiting confirmation, registered courses awaiting a result, and theses awaiting the
+     * Secretary's clearance before binding — with the lists behind the figures.
+     */
+    @GetMapping("/secretary/dashboard")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> secretaryDashboard(@RequestParam String session) {
+        long toRegister = jdbc.sql("""
+                SELECT count(*) FROM people.student s
+                 WHERE s.entry_mode = 'POSTGRADUATE' AND s.status = 'ACTIVE'
+                   AND NOT EXISTS (SELECT 1 FROM admissions.pg_registration r
+                                    WHERE r.student_id = s.id AND r.session = :s AND r.state IN ('SUBMITTED','ENDORSED'))
+                """).param("s", session).query(Long.class).single();
+        List<Map<String, Object>> toEndorse = jdbc.sql("""
+                SELECT r.id, r.semester, r.mode, r.updated_at, st.surname, st.other_names, st.matric_no,
+                       g.name AS programme_name, g.pg_award,
+                       (SELECT count(*) FROM admissions.pg_registration_entry e WHERE e.registration_id = r.id) AS courses
+                  FROM admissions.pg_registration r
+                  JOIN people.student st ON st.id = r.student_id
+                  JOIN ref.programme g ON g.code = st.programme_code
+                 WHERE r.session = :s AND r.state = 'SUBMITTED'
+                 ORDER BY r.updated_at DESC LIMIT 50
+                """).param("s", session).query().listOfRows();
+        List<Map<String, Object>> feesToConfirm = jdbc.sql("""
+                SELECT f.reference, f.kind, f.amount, f.expires_at, a.application_no, p.surname, p.other_names
+                  FROM admissions.pg_fee_reference f
+                  JOIN admissions.pg_application a ON a.id = f.application_id
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                 WHERE f.confirmed_at IS NULL AND f.expires_at > now()
+                 ORDER BY f.expires_at LIMIT 50
+                """).query().listOfRows();
+        long examsPending = jdbc.sql("""
+                SELECT count(*) FROM admissions.pg_registration_entry e
+                  JOIN admissions.pg_registration r ON r.id = e.registration_id
+                 WHERE r.session = :s AND r.state = 'ENDORSED'
+                   AND NOT EXISTS (SELECT 1 FROM admissions.pg_score sc WHERE sc.entry_id = e.id)
+                """).param("s", session).query(Long.class).single();
+        List<Map<String, Object>> clearances = jdbc.sql("""
+                SELECT rs.id, rs.degree_kind, rs.topic, rs.final_submitted_at, rs.updated_at,
+                       st.surname, st.other_names, st.matric_no, g.name AS programme_name, g.pg_award
+                  FROM admissions.pg_research rs
+                  JOIN people.student st ON st.id = rs.student_id
+                  JOIN ref.programme g ON g.code = st.programme_code
+                 WHERE rs.stage = 'FINAL_SUBMITTED'
+                 ORDER BY rs.final_submitted_at NULLS LAST, rs.updated_at DESC LIMIT 50
+                """).query().listOfRows();
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("toRegister", toRegister);
+        counts.put("toEndorse", toEndorse.size());
+        counts.put("feesToConfirm", feesToConfirm.size());
+        counts.put("examsPending", examsPending);
+        counts.put("clearances", clearances.size());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("counts", counts);
+        out.put("toEndorse", toEndorse);
+        out.put("feesToConfirm", feesToConfirm);
+        out.put("clearances", clearances);
+        return out;
+    }
+
     /** the postgraduate register: every PG student with their coursework CGPA, academic standing and research stage */
     @GetMapping("/students")
     @PreAuthorize(READERS)

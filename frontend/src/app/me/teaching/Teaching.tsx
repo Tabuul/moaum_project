@@ -3,7 +3,7 @@
 /** sTimetable / my allocation — what the lecturer teaches this session: the offerings the department
  *  allocated to them and each one's class slots (the teaching timetable), in one place. Read-only. */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { semesterName } from "@/lib/student-portal";
@@ -17,7 +17,7 @@ const ROLE: Record<string, "ok" | "info" | "grey"> = { Lecturer: "ok", "Second e
 const hhmm = (t: string) => (t ?? "").slice(0, 5);
 
 export function TeachingView({ data, sessions }: { data: Teaching; sessions: string[] }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const units = data.offerings.reduce((n, o) => n + (o.role === "Lecturer" ? o.units : 0), 0);
   const roll = data.offerings.reduce((n, o) => n + o.roll, 0);
   const slots = data.offerings.reduce((n, o) => n + o.slots.length, 0);
@@ -25,7 +25,7 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
     <>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="tt-s">Session</label>
-          <select id="tt-s" className="ctl" value={data.session} onChange={(e) => router.push(`/me/teaching?session=${encodeURIComponent(e.target.value)}`)}>
+          <select id="tt-s" className="ctl" value={data.session} onChange={(e) => queryNav(`/me/teaching?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(data.session) ? sessions : [data.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
         </div>

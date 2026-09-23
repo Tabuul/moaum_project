@@ -43,7 +43,7 @@ export default async function RevenueReport({ searchParams }: { searchParams: Pr
       totals={d.totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${d.totals.payments.toLocaleString()} payments confirmed for ${session}, totalling ${money(Number(d.totals.amount))}. Only payments the Bursary has confirmed against the bank record are counted; a reference not yet confirmed is not revenue.`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`revenue-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`revenue-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} keep={{ report: "revenue", period: session }} />}
     />
   );
 }

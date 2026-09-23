@@ -24,7 +24,7 @@ const MAY = ["ict", "super", "admin", "hod", "dean", "academic", "registrar", "d
 export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOption[]; actingOffice: string | null }) {
   const may = MAY.includes(actingOffice ?? "");
   const [programme, setProgramme] = useState("");
-  const [curriculum, setCurriculum] = useState("CCMAS");
+  const [curriculum, setCurriculum] = useState("CCMAS_MOAU");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -44,8 +44,8 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       const r = await fetch(`/api/bff/api/v1/catalogue/open-registration?session=${encodeURIComponent(openSession.trim())}&semester=${openSem}`, { method: "POST", headers: { "X-Reason": reasonHeader(`Open course registration for ${openSession.trim()} semester ${openSem}`) } });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setOpenMsg(`${Number(j?.opened ?? 0).toLocaleString()} course offering${Number(j?.opened ?? 0) === 1 ? "" : "s"} opened for ${openSession.trim()} · ${semesterText(Number(openSem))}. Students now see the real courses at registration.`);
-      notify(`Registration opened · ${Number(j?.opened ?? 0).toLocaleString()} offerings`);
+      setOpenMsg(`${Number(j?.opened ?? 0).toLocaleString()} course${Number(j?.opened ?? 0) === 1 ? "" : "s"} opened for ${openSession.trim()} · ${semesterText(Number(openSem))}. Students now see the real courses at registration.`);
+      notify(`Registration opened · ${Number(j?.opened ?? 0).toLocaleString()} courses`);
     } finally { setBusy(false); }
   }
 
@@ -162,7 +162,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
         const cur = (row.category || curriculum || "").toUpperCase();
         const key = `${pc}|${cur}`;
         let g = groups.get(key);
-        if (!g) { g = { programme: pc, curriculum: cur === "CCMAS" || cur === "BMAS" ? cur : curriculum, rows: [] }; groups.set(key, g); }
+        if (!g) { g = { programme: pc, curriculum: ["CCMAS", "BMAS", "CCMAS_BSU", "CCMAS_MOAU"].includes(cur.replace(/[- ]/g, "_")) ? cur.replace(/[- ]/g, "_") : curriculum, rows: [] }; groups.set(key, g); }
         g.rows.push(row);
       }
       const totals = { courses: 0, offers: 0, bad_code: 0, skipped: 0 };
@@ -235,7 +235,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   async function exportAllPdf() {
     const rows = await fetchAll(); if (!rows) return;
     if (!rows.length) { setMsg("No courses have been uploaded yet."); return; }
-    brandedPrint("All courses in the catalogue", `${rows.length} course offerings across all programmes`, ALL_COLS, allRows(rows), docSerial("CAT"));
+    brandedPrint("All courses in the catalogue", `${rows.length} courses across all programmes`, ALL_COLS, allRows(rows), docSerial("CAT"));
   }
 
   return (
@@ -255,10 +255,12 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
               options={programmes.map((p) => ({ value: p.code, label: `${p.name}${p.facultyName ? ` · ${p.facultyName}` : ""}` }))}
               onChange={(v) => { setProgramme(v); setLoaded(null); }} />
           </Field>
-          <Field id="cu-curr" label="Curriculum framework" hint="The framework this structure is drawn from">
+          <Field id="cu-curr" label="Curriculum" hint="The track this structure is for — a student sees only the rows of their own track; a row for any cohort is shared">
             <select id="cu-curr" className="ctl" value={curriculum} onChange={(e) => setCurriculum(e.target.value)}>
-              <option value="CCMAS">CCMAS (current)</option>
-              <option value="BMAS">BMAS (older)</option>
+              <option value="CCMAS_MOAU">CCMAS — MOAU cohorts (entered 2024/2025 on)</option>
+              <option value="CCMAS_BSU">CCMAS — BSU cohort (entered 2023/2024)</option>
+              <option value="BMAS">BMAS — cohorts up to 2022/2023</option>
+              <option value="CCMAS">CCMAS — any cohort (shared rows)</option>
             </select>
           </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -270,7 +272,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
             </label>
             {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C compulsory, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
+          <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
             <span className="sub2"><b>Download every uploaded course</b> across all programmes:</span>
             <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllXlsx()}>{exporting ? "Preparing…" : "All courses — Excel"}</Btn>
@@ -284,7 +286,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       <Panel title="Open course registration for a session" right="After the structure is uploaded">
         <PBody>
-          <div className="sub2" style={{ marginBottom: 8 }}>Registration shows a course only once it is <b>offered</b> for the session. Open the session here to create an offering for every uploaded course of that semester — then students see their real programme and level courses instead of demo data. Safe to run again; already-offered courses are skipped.</div>
+          <div className="sub2" style={{ marginBottom: 8 }}>Registration shows a course only once it is <b>offered</b> for the session. Open the session here to offer every uploaded course of that semester — then students see their real programme and level courses instead of demo data. Safe to run again; already-offered courses are skipped.</div>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
             <Field id="or-ses" label="Session"><input id="or-ses" className="ctl tnum" style={{ maxWidth: 160 }} value={openSession} placeholder="2024/2025" onChange={(e) => setOpenSession(e.target.value)} /></Field>
             <Field id="or-sem" label="Semester"><select id="or-sem" className="ctl" value={openSem} onChange={(e) => setOpenSem(e.target.value)}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>

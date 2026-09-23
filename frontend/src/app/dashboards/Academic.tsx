@@ -65,7 +65,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
         </Note>
       )}
       <Tiles items={[
-        ["Students on the register", total.toLocaleString(), null, "All levels"],
+        ["Students on the register", total.toLocaleString(), null, "All levels", "/reports/students"],
         ["Registered this session", registeredCount.toLocaleString(), null, total ? `${Math.round((100 * registeredCount) / total)}% · ${session}` : session],
         ["Transcript requests", String(openTranscripts.length), "var(--chrome)", tq ? `${tq.tiles.heldAtClearance} held` : "—"],
         ["Results to Senate", String(inWorkflow), null, "In the workflow"],

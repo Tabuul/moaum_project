@@ -59,8 +59,9 @@ export const ROUTES: Record<string, string> = {
   "t/pgcalendar": "/admissions/postgraduate/calendar",
   "t/pgstudents": "/admissions/postgraduate/students",
   "t/pgscores": "/admissions/postgraduate/results",
-  "t/pgexams": "/admissions/postgraduate/results",
-  "t/pgregistration": "/admissions/postgraduate/results",
+  "t/pgexams": "/admissions/postgraduate/examinations",
+  "t/pgregistration": "/admissions/postgraduate/registration",
+  "t/pgsenate": "/admissions/postgraduate/senate",
   "t/pgboard": "/admissions/postgraduate/board",
   "t/pgexaminers": "/admissions/postgraduate/examiners",
   "t/pgresearch": "/admissions/postgraduate/research",
@@ -69,7 +70,7 @@ export const ROUTES: Record<string, string> = {
   "t/pgseminars": "/admissions/postgraduate/research?stage=PROPOSAL_APPROVED",
   "t/pgpanels": "/admissions/postgraduate/research?stage=DRAFT_SUBMITTED",
   "t/pgtheses": "/admissions/postgraduate/research",
-  "t/pgclearance": "/admissions/postgraduate/research?stage=FINAL_SUBMITTED",
+  "t/pgclearance": "/admissions/postgraduate/clearance",
   "t/postutme": "/admissions/computed-screening",
   "t/screening": "/admissions/screening",
   "t/putme": "/admissions/scores",
@@ -80,6 +81,8 @@ export const ROUTES: Record<string, string> = {
   "t/deptstaff": "/hod/staff",
   "t/matriculation": "/matriculation",
   "t/reports": "/reports",
+  "t/regstudents": "/reports/students",
+  "t/regstaff": "/reports/staff",
   "t/college": "/college",
   "r/college": "/college/dashboard",
   "t/session": "/calendar",
@@ -216,10 +219,16 @@ const OVERRIDES: Record<string, [string, string]> = {
   "s/graduation": ["Graduation", "The audit, Senate's word, clearance and the certificate"],
   "t/support": ["Help & requests", "What students have put to this office, the oldest open first"],
   "t/reports": ["Reports & returns", "The University's statutory returns, read off the register and branded for print"],
+  "t/regstudents": ["Student register", "Every student on the books — filter by faculty, programme, level, sex, status and entry; search by name or number"],
+  "t/regstaff": ["Staff register", "Every member of staff — filter by faculty, department, rank, category and status; search by name or number"],
   "t/sms": ["SMS gateway", "The eBulkSMS account the portal sends text messages from"],
   "r/lecturer": ["Lecturer dashboard", "Your courses, marks and staff profile this session"],
   "r/hod": ["Head of Department", "Your department's desk — approvals, allocation and results"],
   "r/pgschool": ["School of Postgraduate Studies", ""],
+  "t/pgregistration": ["Registration & matriculation", "Fresh students, semester renewal and the lapsed — Policy 7–8"],
+  "t/pgexams": ["Course examinations", "Sittings and the results the Chief Examiners have submitted — Policy 17"],
+  "t/pgclearance": ["Thesis clearance", "Final versions cleared for binding — Policy 31–32"],
+  "t/pgsenate": ["Results to Senate", "Computed results with Senate, and the awarded of the session — Policy 33–34"],
   "r/college": ["College of Health Sciences", "The Provost, the Registry and the Finance of the College"],
   "t/pgcalendar": ["Postgraduate calendar", "The School's own sessions and semesters, apart from the undergraduate calendar"],
   "pg/portal": ["Your postgraduate application", "Applicant portal"],
@@ -249,6 +258,8 @@ export interface Me {
   unit?: string | null;
   /** what waits in each queue, by menu item id: the count, or "!" where an act is needed (iam/me) */
   waiting?: Record<string, string> | null;
+  /** a menu other than the office's own — a postgraduate signs in as a student but reads the School's sidebar */
+  menu?: string | null;
 }
 
 /* the prototype drew its counts as fixtures; the portal draws what the API says is waiting, and nothing else */
@@ -277,12 +288,13 @@ export function Shell({ route, me, children, sub, menuKey }: { route: string; me
   /* a caller may ask for a menu variant other than the acting office's own (e.g. a College of Health
      Sciences student, still office "student", gets the trimmed "studentchs" menu — see /college/student) */
   const menu = (menuKey && MENUS[menuKey]) || (office && MENUS[office]) || FALLBACK;
+  const menu = (me?.menu && MENUS[me.menu]) || (office && MENUS[office]) || FALLBACK;
   const waiting = me?.waiting ?? {};
   const current = route === "r/academic" ? menu.home : route;
   const [t0, t1def] = TITLES[current] ?? TITLES[route] ?? ["", ""];
   // a page may pass a live subtitle (e.g. the lecturer's real name and course count) that beats the static one
   const t1 = sub && sub.trim() ? sub : t1def;
-  const label = roleLabel(office);
+  const label = me?.menu && MENUS[me.menu] ? MENUS[me.menu].label : roleLabel(office);
   const who = me?.name ?? label;
 
   const isOpen = (g: MenuGroup) => {

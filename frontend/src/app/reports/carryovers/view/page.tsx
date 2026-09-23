@@ -32,6 +32,7 @@ export default async function CarryoverReport({ searchParams }: { searchParams: 
   ]);
   if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
+  const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
 
   const carried = Number(d.totals.students) || 0;
   const sheetHeaders = columns.map((k) => k.label);
@@ -40,7 +41,7 @@ export default async function CarryoverReport({ searchParams }: { searchParams: 
   return (
     <ReportDoc
       title={spec.title}
-      subtitle={spec.subtitle}
+      subtitle={`${scopeLabel}${spec.subtitle}`}
       session={session}
       columns={columns}
       rows={d.rows}
@@ -49,7 +50,7 @@ export default async function CarryoverReport({ searchParams }: { searchParams: 
       note={d.rows.length
         ? `${d.distinctStudents.toLocaleString()} active student${d.distinctStudents === 1 ? "" : "s"} carry ${carried.toLocaleString()} course-registration${carried === 1 ? "" : "s"} across ${d.rows.length} course${d.rows.length === 1 ? "" : "s"}. A carryover is a course whose most recent published result is an F, not yet passed; it is added to the student's registration automatically. Figures are as at today, not bound to a session.`
         : "No active student currently carries a course whose latest published result is an F."}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`carryover-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`carryover-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} keep={{ report: "carryovers", period: session }} />}
     />
   );
 }

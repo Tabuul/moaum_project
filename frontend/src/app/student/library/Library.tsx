@@ -4,6 +4,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { StudentLibrary } from "@/lib/library";
 import { Btn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -12,6 +13,7 @@ import { naira, onDay, useAct } from "../common";
 
 export function Library({ l, q }: { l: StudentLibrary; q: string }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const { act, busy, problem } = useAct();
   const [query, setQuery] = useState(q);
   const [said, setSaid] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export function Library({ l, q }: { l: StudentLibrary; q: string }) {
       ) : null}
       <Panel title="Search the catalogue">
         <PBody>
-          <form className="field" onSubmit={(e) => { e.preventDefault(); router.push(`/student/library?q=${encodeURIComponent(query)}`); }}>
+          <form className="field" onSubmit={(e) => { e.preventDefault(); queryNav(`/student/library?q=${encodeURIComponent(query)}`); }}>
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Title, author, subject or ISBN" aria-label="Search the catalogue" autoComplete="off" />
           </form>
           {q ? (l.catalogue.length ? (

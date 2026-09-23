@@ -157,10 +157,6 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
         </Panel>
       </TwoCol>
 
-      <Note kind="bad" title="A unit may hold a candidate; it may not hold one indefinitely without a reason on the record">
-        Every hold names the unit, the officer, the date and the specific item outstanding, and the candidate sees all four on their own portal. A hold with no item against it is visible as such to the Registrar, which is what stops clearance being used as leverage.
-      </Note>
-
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
         <Btn kind="primary" disabled={busy || !selected.size || !canSign} onClick={() => void clearSelected()}>Clear the selected candidates</Btn>
         <Btn kind="ghost" onClick={() => download(`held-${listing.purpose.toLowerCase()}.csv`, csv([["Matriculation number", "Name", "Programme", ...listing.units.map((u) => u.label)], ...listing.candidates.filter((c) => !c.cleared).map((c) => [c.number, `${c.surname}, ${c.otherNames}`, c.programmeName, ...c.states])]))}>Export the held list</Btn>

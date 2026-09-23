@@ -30,7 +30,7 @@ export async function GET() {
   const me = await api<PgMe>("/api/v1/pg/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const s = me.data;
-  if (!s.acceptanceConfirmedAt && s.state !== "ACCEPTED" && s.state !== "ADMITTED") {
+  if (!s.acceptanceConfirmedAt) {
     return NextResponse.json({ status: 409, title: "Offer letter not available yet", detail: "Pay the acceptance fee to accept your offer, then download your offer of admission." }, { status: 409 });
   }
 

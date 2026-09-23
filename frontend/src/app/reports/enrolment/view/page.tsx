@@ -32,6 +32,7 @@ export default async function EnrolmentReport({ searchParams }: { searchParams: 
   ]);
   if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
+  const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
 
   const rows = d.rows.map((r) => ({ ...r, level: `${r.level} Level` }));
   const sheetHeaders = columns.map((k) => k.label);
@@ -40,14 +41,14 @@ export default async function EnrolmentReport({ searchParams }: { searchParams: 
   return (
     <ReportDoc
       title={spec.title}
-      subtitle={spec.subtitle}
+      subtitle={`${scopeLabel}${spec.subtitle}`}
       session={session}
       columns={columns}
       rows={rows}
       totals={d.totals}
       issuedFor={officeLabel(me.ok ? me.data.activeOffice : null)}
       note={`${d.totals.total.toLocaleString()} students in the ${session} cohort — ${d.totals.male.toLocaleString()} male, ${d.totals.female.toLocaleString()} female${d.totals.unstated ? `, ${d.totals.unstated.toLocaleString()} unstated` : ""}. Those withdrawn, expelled, transferred out or deceased are not counted.`}
-      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`enrolment-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} />}
+      toolbar={<ReportToolbar headers={sheetHeaders} rows={sheetRows} filename={`enrolment-return-${sessionSlug(session)}`} title={`${spec.title} · ${session}`} keep={{ report: "enrolment", period: session }} />}
     />
   );
 }

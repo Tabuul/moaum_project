@@ -4,6 +4,7 @@
  *  technical threshold before price; the lowest responsive bid wins unless the Board records why. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
@@ -26,6 +27,7 @@ const METHOD: Record<string, string> = { QUOTATION: "Quotation", RESTRICTED: "Re
 
 export function Tenders({ tenders, selected, bids, actingOffice }: { tenders: Tender[]; selected: string; bids: Bid[]; actingOffice: string | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const may = ["bursar", "super"].includes(actingOffice ?? "");
   const [add, setAdd] = useState(false);
   const [f, setF] = useState({ subject: "", costCentre: "", estimate: "", threshold: "70" });
@@ -78,7 +80,7 @@ export function Tenders({ tenders, selected, bids, actingOffice }: { tenders: Te
             <span className="sub2" key="m">{METHOD[t.method] ?? t.method}</span>,
             <span className="tnum" key="b">{t.bids}{t.responsive ? ` · ${t.responsive} ok` : ""}</span>,
             <span key="st"><Pil kind={STAGE[t.stage]?.[0] ?? "grey"}>{STAGE[t.stage]?.[1] ?? t.stage}</Pil>{t.awarded_to ? <div className="sub2">{t.awarded_to} · {money(Number(t.awarded_price))}</div> : null}</span>,
-            <Btn key="a" kind={selected === t.id ? "primary" : "ghost"} onClick={() => router.push(`/finance/tenders?t=${t.id}`)}>{selected === t.id ? "Open" : "Evaluate"}</Btn>,
+            <Btn key="a" kind={selected === t.id ? "primary" : "ghost"} onClick={() => queryNav(`/finance/tenders?t=${t.id}`)}>{selected === t.id ? "Open" : "Evaluate"}</Btn>,
           ])} texts={tenders.map((t) => `${t.reference} ${t.subject}`)} />
         ) : <PBody><div className="sub2">No tender has been opened. Open one for a procurement above the quotation threshold.</div></PBody>}
       </Panel>

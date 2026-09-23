@@ -5,7 +5,8 @@
  * and the tabs that move between them. The scope is in the URL, so a link
  * says what it is a list of; the view is too.
  */
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { RECORD_VIEWS } from "@/lib/student";
 import type { RecordsResult, RefCourse } from "@/lib/student";
 import type { Scope } from "@/lib/scope";
@@ -29,7 +30,7 @@ export function Records({
   sessions: string[];
   courses: RefCourse[];
 }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const pathname = usePathname();
   const params = useSearchParams();
 
@@ -37,7 +38,7 @@ export function Records({
     const q = new URLSearchParams(params.toString());
     if (next === "students") q.delete("view");
     else q.set("view", next);
-    router.push(`${pathname}?${q.toString()}`);
+    queryNav(`${pathname}?${q.toString()}`);
   }
 
   return (

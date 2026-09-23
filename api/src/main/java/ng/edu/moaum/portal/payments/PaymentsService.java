@@ -243,6 +243,12 @@ public class PaymentsService {
         }
         String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller" : "") : gateway.trim().toLowerCase();
         String back = portalUrl + backPath(r.kind()) + "?paid=" + r.reference();
+        /* the card gateways open a checkout on an email address; a record without one (a migrated student
+           who never gave a contact) cannot be sent to them — say so, rather than fail inside the request */
+        if (("paystack".equals(g) || "flutterwave".equals(g)) && (r.email() == null || r.email().isBlank())) {
+            throw new DomainRuleViolation("PAY_NO_EMAIL", "A card checkout needs an email address on your record, and none is recorded.",
+                    new DomainRuleViolation.Remedy("Add your email under Contact and try again, or pay by Quickteller, by bank transfer, or at a branch against the reference.", "You"));
+        }
         String url;
         if ("paystack".equals(g) && paystackOn()) {
             url = paystackInitialize(r, back);
@@ -270,7 +276,7 @@ public class PaymentsService {
     private String paystackInitialize(PaymentsRepository.Reference r, String back) {
         long kobo = r.amount().movePointRight(2).longValueExact();
         String body = mapper.writeValueAsString(Map.of("email", r.email(), "amount", kobo, "reference", r.reference(), "callback_url", back,
-                "metadata", Map.of("application", r.applicationNo(), "kind", r.kind())));
+                "metadata", Map.of("application", r.applicationNo() == null ? "" : r.applicationNo(), "kind", r.kind() == null ? "" : r.kind())));
         Map<String, Object> answer = post("https://api.paystack.co/transaction/initialize", body, "Bearer " + paystackSecret());
         Object data = answer.get("data");
         if (!(data instanceof Map<?, ?> d) || d.get("authorization_url") == null) {

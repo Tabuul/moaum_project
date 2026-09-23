@@ -30,7 +30,8 @@ import org.springframework.web.bind.annotation.RestController;
  * (V021). A prospective postgraduate registers, states their first degree and (for a research degree)
  * a proposal, names referees, and gets an application number and a fee reference to pay. The writes are
  * attributed to the applicant at the door, exactly as the undergraduate applicant registration is.
- * These four endpoints are whitelisted in SecurityConfig; the rest of /api/v1/pg is office-only.
+ * These three endpoints are whitelisted in SecurityConfig; the rest of /api/v1/pg is office-only. Accepting
+ * an offer is not among them: the offer is accepted by the acceptance fee, confirmed on the signed-in portal.
  */
 @RestController
 @RequestMapping("/api/v1/pg")
@@ -62,7 +63,8 @@ class PgApplyController {
                 """).query().listOfRows();
     }
 
-    public record RefereeIn(String name, String email, String phone, String institution, String position) {
+    public record RefereeIn(@NotBlank @Size(max = 120) String name, @Email @Size(max = 160) String email, @Size(max = 20) String phone,
+                            @Size(max = 200) String institution, @Size(max = 120) String position) {
     }
 
     public record ApplyIn(@NotBlank @Size(max = 80) String surname, @Size(max = 120) String otherNames,
@@ -73,7 +75,7 @@ class PgApplyController {
                           @Size(max = 200) String priorInstitution, @Size(max = 120) String priorAward,
                           @Size(max = 60) String priorClass, @Size(max = 8) String priorCgpa, @Size(max = 8) String priorYear,
                           @Size(max = 300) String proposalTitle, @Size(max = 5000) String proposalText,
-                          List<RefereeIn> referees) {
+                          @Size(max = 5) List<@Valid RefereeIn> referees) {
     }
 
     /** apply: creates the applicant account and a submitted application, and returns the fee reference to pay */
@@ -87,13 +89,7 @@ class PgApplyController {
                  ORDER BY a.submitted_at DESC NULLS LAST LIMIT 1
                 """).param("e", body.email().trim()).query().listOfRows();
         if (!existing.isEmpty()) {
-            String no = String.valueOf(existing.get(0).get("application_no"));
-            throw new DomainRuleViolation("PG_APP_EXISTS",
-                    "An application already exists for this email — " + no + ".",
-                    new DomainRuleViolation.Remedy(
-                            "Sign in with this email to pay and continue your application (" + no + "). "
-                            + "Forgotten your password? Use “Forgot your password?” on the sign-in page to reset it with this email.",
-                            "You"));
+            throw alreadyApplied();
         }
         Map<String, Object> form = new LinkedHashMap<>();
         form.put("surname", body.surname());
@@ -115,16 +111,37 @@ class PgApplyController {
         form.put("proposalText", body.proposalText());
         form.put("referees", body.referees() == null ? List.of() : body.referees());
         String j = json.writeValueAsString(form);
-        return AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "postgraduate application", null, null),
-                () -> tx.execute(st -> jdbc.sql("SELECT * FROM admissions.pg_apply(:j::jsonb)").param("j", j).query().singleRow()));
+        try {
+            return AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "postgraduate application", null, null),
+                    () -> tx.execute(st -> jdbc.sql("SELECT * FROM admissions.pg_apply(:j::jsonb)").param("j", j).query().singleRow()));
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // two submissions of the same email raced past the check above; the unique index decided
+            throw alreadyApplied();
+        }
     }
 
-    /** check an application's status, by its number and the email it was made with (public) */
+    /** the answer to a second application on an email — without the application number, which is the
+     *  applicant's own to know (it and the email are what the status check asks for) */
+    private static DomainRuleViolation alreadyApplied() {
+        return new DomainRuleViolation("PG_APP_EXISTS",
+                "An application already exists for this email.",
+                new DomainRuleViolation.Remedy(
+                        "Sign in with this email to pay and continue your application. "
+                        + "Forgotten your password? Use “Forgot your password?” on the sign-in page to reset it with this email.",
+                        "You"));
+    }
+
+    /** check an application's status, by its number and the email it was made with (public). The admission
+     *  decision and the School's note are released only once the checking fee is confirmed — the same mask
+     *  the signed-in portal applies — and the offer is accepted only by the acceptance fee, on the portal. */
     @GetMapping("/status")
     Map<String, Object> status(@RequestParam String applicationNo, @RequestParam String email) {
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT a.application_no, a.state, a.entry_level, g.name AS programme_name, g.pg_award,
-                       p.surname, p.other_names, a.fee_confirmed_at, a.submitted_at, a.spgs_note, a.spgs_decided_at
+                SELECT a.application_no,
+                       CASE WHEN a.spgs_decided_at IS NOT NULL AND a.checking_confirmed_at IS NULL THEN 'DECISION_LOCKED' ELSE a.state END AS state,
+                       a.entry_level, g.name AS programme_name, g.pg_award,
+                       p.surname, p.other_names, a.fee_confirmed_at, a.submitted_at,
+                       CASE WHEN a.checking_confirmed_at IS NULL THEN NULL ELSE a.spgs_note END AS spgs_note
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
@@ -133,27 +150,4 @@ class PgApplyController {
         return rows.isEmpty() ? Map.of("found", false) : Map.of("found", true, "application", rows.get(0));
     }
 
-    public record AcceptIn(@NotBlank String applicationNo, @NotBlank String email) {
-    }
-
-    /** accept the offer, by application number and email (public) */
-    @PostMapping("/accept")
-    Map<String, Object> accept(@Valid @RequestBody AcceptIn body) {
-        List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT a.id, a.state FROM admissions.pg_application a
-                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
-                 WHERE a.application_no = :no AND lower(p.email) = lower(:email)
-                """).param("no", body.applicationNo().trim()).param("email", body.email().trim()).query().listOfRows();
-        if (rows.isEmpty()) {
-            return Map.of("ok", false, "reason", "No application matches that number and email.");
-        }
-        String state = String.valueOf(rows.get(0).get("state"));
-        if (!"OFFERED".equals(state)) {
-            return Map.of("ok", false, "reason", "Only an offer can be accepted; this application is " + state.toLowerCase() + ".");
-        }
-        UUID id = (UUID) rows.get(0).get("id");
-        AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "postgraduate offer accepted", null, null),
-                () -> tx.execute(st -> { jdbc.sql("SELECT admissions.pg_accept(:id)").param("id", id).query().listOfRows(); return null; }));
-        return Map.of("ok", true);
-    }
 }

@@ -4,6 +4,7 @@
  *  number; each is reconciled against the session's applicants and the matched scores are entered. */
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -36,6 +37,7 @@ function parse(text: string): { key: string; score: number }[] {
 
 export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { session: string; sessions: string[]; actingOffice: string | null; postUtme: PostUtme | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -65,7 +67,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
     }
   }
 
-  function pick(s: string) { router.push(`/admissions/scores?session=${encodeURIComponent(s)}`); }
+  function pick(s: string) { queryNav(`/admissions/scores?session=${encodeURIComponent(s)}`); }
 
   async function clearScores() {
     setBusy(true);

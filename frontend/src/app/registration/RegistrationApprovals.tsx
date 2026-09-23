@@ -30,7 +30,7 @@ const SEM = (n?: number) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? 
 function entryRank(e: RegEntry): number {
   if ((e.type ?? "").toUpperCase() === "CARRYOVER") return 0;
   const k = (e.kind ?? "").toLowerCase();
-  return k === "gst" ? 1 : (k === "compulsory" || k === "required") ? 2 : 3;
+  return k === "gst" ? 1 : (k === "core" || k === "compulsory" || k === "required") ? 2 : 3;
 }
 
 export function RegistrationApprovals({ rows, session, semester, actingOffice }: { rows: RegistrationRow[]; session: string; semester: number; actingOffice: string | null }) {

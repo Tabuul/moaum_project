@@ -29,7 +29,7 @@ const OWN: [ReactNode, string][] = [
 
 const THEIRS: [ReactNode, string][] = [
   ["Academic periods, and their states", "The Third Semester, the 24- and 30-week posting levels"],
-  ["Course offerings within the College", "And registration against them"],
+  ["Courses within the College", "And registration against them"],
   ["Continuous and clinical assessment", "Five components on a posting, not two"],
   ["Clinical postings", "Schedules, groups, supervisors, attendance, completion"],
   ["Promotion evaluation", "The rules recommend; the College Board decides"],
@@ -164,15 +164,6 @@ export function CollegeSeam({ college, problem }: { college: CollegeData | null;
           ])}
         />
       </Panel>
-
-      <Note kind="bad" title="Why the results crossing is a reconciliation and not a file drop">
-        This portal established that a score roll must be the whole register and not a filtered subset, because a filtered
-        sheet <i>looks complete</i> at every desk it passes and the student finds out at graduation.{" "}
-        <b>A set arriving from another system is a filtered subset by construction</b> &mdash; it contains exactly what the
-        College chose to send. So the crossing counts both directions: entries matched, entries on the register with no mark,
-        and entries submitted for somebody not on the register. The set waits until the last two are zero or explained.
-        Without that, this boundary would reintroduce precisely the failure the University spent this month eliminating.
-      </Note>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <OpenLink url={url} name={system} />

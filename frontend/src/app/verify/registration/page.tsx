@@ -9,13 +9,13 @@ interface RegVerify {
   session?: string; semester?: number; status?: string; approvedOn?: string | null; units?: number; courses?: Course[];
 }
 
-/** the academic type shown: GST, Elective or Core (Compulsory/Required → Core), Carryover flagged */
+/** the academic type shown: GST, Elective or Core (Core/Required → Core), Carryover flagged */
 function courseType(co: Course): string {
   if ((co.entry_type ?? "").toUpperCase() === "CARRYOVER") return "Carryover";
   const k = (co.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";
   if (k === "elective") return "Elective";
-  if (k === "compulsory" || k === "required") return "Core";
+  if (k === "core" || k === "compulsory" || k === "required") return "Core";
   const t = (co.entry_type ?? "").toUpperCase();
   return t === "GST" ? "GST" : t === "ELECTIVE" ? "Elective" : "Core";
 }

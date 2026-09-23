@@ -7,13 +7,14 @@
  * the screen says so rather than showing a row that is not there.
  */
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Register } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
 import type { Scope } from "@/lib/scope";
 import { Note, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { StudentOpen } from "@/components/StudentModal";
 import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
 
 export function Students({
@@ -31,7 +32,7 @@ export function Students({
   sessions: string[];
   ceiling?: Ceiling;
 }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const pathname = usePathname();
   const params = useSearchParams();
   const [term, setTerm] = useState(q);
@@ -42,7 +43,7 @@ export function Students({
     const next = new URLSearchParams(params.toString());
     if (term.trim()) next.set("q", term.trim());
     else next.delete("q");
-    router.push(`${pathname}?${next.toString()}`);
+    queryNav(`${pathname}?${next.toString()}`);
   }
 
   const rows = register.rows.map((s) => [
@@ -59,9 +60,7 @@ export function Students({
     <Pil kind={statusPill(s.status)} key="s">
       {statusLabel(s.status)}
     </Pil>,
-    <Link className="btn btn--primary btn--sm" href={`/students/${s.id}`} key="o">
-      Open
-    </Link>,
+    <StudentOpen id={s.id} label="Details" key="o" />,
   ]);
 
   return (

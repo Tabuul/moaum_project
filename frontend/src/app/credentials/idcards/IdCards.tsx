@@ -9,6 +9,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -18,11 +19,12 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface CardDesk {
   cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_at: string | null; ended_reason: string | null; student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number }[];
-  waiting: { student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number; had_one: boolean }[];
+  waiting: { student_id: string; matric_no: string; surname: string; other_names: string; programme: string; current_level: number; status?: string; had_one: boolean }[];
 }
 
 export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; actingOffice: string | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const may = ["library", "security", "super"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -55,9 +57,10 @@ export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; 
         The Library prints it when the Bursary&rsquo;s position releases ID_CARD &mdash; the first instalment under the recommended scheme &mdash; and Security hands it over against the photograph on file. A student with no matriculation number has no card yet; a lost card is ended here and a replacement issued.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      <Panel title="Waiting for a card" right={<form onSubmit={(e) => { e.preventDefault(); router.push(`/credentials/idcards?q=${encodeURIComponent(search)}`); }} style={{ display: "inline-flex", gap: 6 }}><input className="ws__in" value={search} placeholder="Matriculation number or surname" onChange={(e) => setSearch(e.target.value)} aria-label="Find a student" /><Btn kind="ghost" onClick={() => router.push(`/credentials/idcards?q=${encodeURIComponent(search)}`)}>Find</Btn></form>}>
-        <DTable cols={["Student", "Programme", "Level|mid", "|num"]} rows={desk.waiting.map((w) => [
+      <Panel title="Waiting for a card" right={<form onSubmit={(e) => { e.preventDefault(); queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`); }} style={{ display: "inline-flex", gap: 6 }}><input className="ws__in" value={search} placeholder="Matriculation number or surname" onChange={(e) => setSearch(e.target.value)} aria-label="Find a student" /><Btn kind="ghost" onClick={() => queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`)}>Find</Btn></form>}>
+        <DTable cols={["Student", "Programme", "Level|mid", "Status|mid", "|num"]} rows={desk.waiting.map((w) => [
           <Two key="s" a={`${w.surname}, ${w.other_names}`} b={w.matric_no} />, <span className="sub2" key="p">{w.programme}</span>, <span className="tnum" key="l">{w.current_level}</span>,
+          <Pil key="st" kind={w.status === "ACTIVE" ? "ok" : w.status === "PROBATION" ? "warn" : "grey"}>{(w.status ?? "—").charAt(0) + (w.status ?? "—").slice(1).toLowerCase()}</Pil>,
           <Btn kind="primary" key="i" disabled={!may || busy !== null} onClick={() => void act(`issue-${w.student_id}`, `/students/${w.student_id}/issue`, { reason: w.had_one ? "replacement" : null }, `Identity card issued to ${w.matric_no}`)}>{busy === `issue-${w.student_id}` ? "Issuing…" : w.had_one ? "Issue a replacement" : "Issue the card"}</Btn>,
         ])} texts={desk.waiting.map((w) => `${w.surname} ${w.other_names} ${w.matric_no} ${w.programme}`)} />
         {!desk.waiting.length ? <div className="card__body"><div className="sub2">Nobody is waiting{q ? ` for "${q}"` : ""}.</div></div> : null}

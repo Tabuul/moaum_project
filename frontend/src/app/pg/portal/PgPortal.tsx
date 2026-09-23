@@ -87,7 +87,7 @@ export function PgPortal() {
       // the fee to prepare for the current step: application, then checking (to see the decision), then acceptance
       const kind = !m.feeConfirmedAt ? "APPLICATION"
         : m.state === "DECISION_LOCKED" ? "CHECKING"
-        : (m.state === "OFFERED" && !m.acceptanceConfirmedAt) ? "ACCEPTANCE"
+        : (!m.acceptanceConfirmedAt && (m.state === "OFFERED" || m.state === "ACCEPTED" || m.state === "ADMITTED")) ? "ACCEPTANCE"
         : null;
       if (kind) {
         const fr = await fetch(`/api/bff/api/v1/pg/fee-reference?kind=${kind}`, { method: "POST", headers: { "Content-Type": "application/json" } });
@@ -196,6 +196,13 @@ export function PgPortal() {
 
       {verifying ? <Note kind="info" title="Confirming your payment…">This can take a moment after the gateway&rsquo;s success page — the page updates on its own once the payment reaches the University.</Note> : null}
 
+      <Tiles items={[
+        ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
+        ["Application fee", paid ? "Paid" : naira(me.applicationFee), paid ? "var(--green-ink)" : "var(--chrome)", paid ? "confirmed" : "unpaid"],
+        ["Documents", `${new Set(me.documents.filter((d) => d.kind !== "PASSPORT").map((d) => d.kind)).size}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
+        ["Stage", STATE_SHORT[me.state] ?? me.state, me.state === "ADMITTED" ? "var(--green-ink)" : null, me.department],
+      ]} />
+
       {/* The decision gate: once the School decides, the applicant pays the checking fee to view the
           outcome; if offered, they pay the acceptance fee to accept, and can then print the offer letter. */}
       {paid && me.state === "DECISION_LOCKED" ? (
@@ -217,7 +224,7 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      {paid && me.state === "OFFERED" ? (
+      {paid && !me.acceptanceConfirmedAt && (me.state === "OFFERED" || me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
         <Panel title="Congratulations — you have been offered a place">
           <PBody>
             <Note kind="ok" title={`Offer of provisional admission · ${me.programme}`}>
@@ -236,10 +243,10 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      {paid && (me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
+      {paid && me.acceptanceConfirmedAt ? (
         <Panel title="Offer of admission">
           <PBody>
-            <Note kind="ok" title="Your offer is accepted">You accepted your offer of admission{me.acceptanceConfirmedAt ? ` on ${fmtDate(me.acceptanceConfirmedAt)}` : ""}. Download and print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
+            <Note kind="ok" title="Your offer is accepted">You accepted your offer of admission on {fmtDate(me.acceptanceConfirmedAt)} (acceptance fee paid). Download and print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
             <div style={{ marginTop: 10 }}>
               <a href="/pg/offer/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print offer of admission (PDF)</a>
             </div>
@@ -256,12 +263,20 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      <Tiles items={[
-        ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
-        ["Application fee", paid ? "Paid" : naira(me.applicationFee), paid ? "var(--green-ink)" : "var(--chrome)", paid ? "confirmed" : "unpaid"],
-        ["Documents", `${new Set(me.documents.filter((d) => d.kind !== "PASSPORT").map((d) => d.kind)).size}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
-        ["Stage", STATE_SHORT[me.state] ?? me.state, me.state === "ADMITTED" ? "var(--green-ink)" : null, me.department],
-      ]} />
+      {/* Payment comes first; the academic record, credentials and passport unlock once the fee is confirmed */}
+      {paid ? null : reference ? (
+        <Panel title="Application fee">
+          <PBody>
+            <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University. <b>Upload your credentials and passport after payment.</b></div>
+            <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+              <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
+              <span className="sub2">Already paid? This asks the gateway to confirm it.</span>
+            </div>
+            <div className="sub2" style={{ marginTop: 8 }}>Reference: <b className="tnum">{reference}</b> · Acceptance later: {naira(me.acceptanceFee)} + checking {naira(me.checkingFee)}.</div>
+          </PBody>
+        </Panel>
+      ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
 
       <div className="grid grid--2" style={{ alignItems: "start" }}>
         <Panel title="Application">
@@ -269,8 +284,22 @@ export function PgPortal() {
             <KvGrid cls="grid--1" pairs={[
               ["Application number", me.applicationNo], ["Session", me.session], ["Programme", me.programme],
               ["Award", me.award ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
-              ["Faculty", me.faculty], ["Department", me.department], ["Submitted", fmtDate(me.submittedAt)],
+              ["Faculty", me.faculty], ["Department", me.department], ["Date applied", fmtDate(me.submittedAt)],
             ]} />
+            <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Bio-data</div>
+            <KvGrid cls="grid--2" pairs={[
+              ["Surname", me.surname], ["Other names", me.otherNames],
+              ["Sex", me.biodata.sex === "F" ? "Female" : me.biodata.sex === "M" ? "Male" : "—"],
+              ["Date of birth", fmtDate(me.biodata.dateOfBirth)], ["State of origin", val(me.biodata.stateOfOrigin)],
+              ["LGA", val(me.biodata.lga)], ["Email", me.email], ["Phone", val(me.phone)],
+            ]} />
+            {me.research || me.proposal.title ? (
+              <>
+                <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Research proposal</div>
+                <KvGrid cls="grid--1" pairs={[["Title", val(me.proposal.title)]]} />
+                {me.proposal.text ? <div className="sub2" style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
+              </>
+            ) : null}
           </PBody>
         </Panel>
         <Panel title="Progress">
@@ -287,43 +316,6 @@ export function PgPortal() {
           </PBody>
         </Panel>
       </div>
-
-      <Panel title="Bio-data">
-        <PBody>
-          <KvGrid cls="grid--2" pairs={[
-            ["Surname", me.surname], ["Other names", me.otherNames],
-            ["Sex", me.biodata.sex === "F" ? "Female" : me.biodata.sex === "M" ? "Male" : "—"],
-            ["Date of birth", fmtDate(me.biodata.dateOfBirth)], ["State of origin", val(me.biodata.stateOfOrigin)],
-            ["LGA", val(me.biodata.lga)], ["Email", me.email], ["Phone", val(me.phone)],
-          ]} />
-        </PBody>
-      </Panel>
-
-      {me.research || me.proposal.title || me.proposal.text ? (
-        <Panel title="Research proposal">
-          <PBody>
-            <KvGrid cls="grid--1" pairs={[["Title", val(me.proposal.title)]]} />
-            {me.proposal.text ? <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
-          </PBody>
-        </Panel>
-      ) : null}
-
-      {/* Payment comes first; the academic record, credentials and passport unlock once the fee is confirmed */}
-      {paid ? (
-        <Note kind="ok" title="Application fee paid">Confirmed on {fmtDate(me.feeConfirmedAt)}. The School will screen your application; its progress shows above.</Note>
-      ) : reference ? (
-        <Panel title="Application fee">
-          <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University. <b>Upload your credentials and passport after payment.</b></div>
-            <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-              <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
-              <span className="sub2">Already paid? This asks the gateway to confirm it.</span>
-            </div>
-            <div className="sub2" style={{ marginTop: 8 }}>Reference: <b className="tnum">{reference}</b> · Acceptance later: {naira(me.acceptanceFee)} + checking {naira(me.checkingFee)}.</div>
-          </PBody>
-        </Panel>
-      ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
 
       <CompleteSteps me={me} paid={paid} passport={passport} onDone={load} />
 

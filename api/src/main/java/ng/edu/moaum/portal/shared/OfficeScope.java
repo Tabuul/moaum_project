@@ -94,4 +94,79 @@ public class OfficeScope {
         String own = actingDept();
         return own != null ? own : "__none__";
     }
+
+    /** the offices that work within a single faculty */
+    private static final java.util.Set<String> FACULTY_OFFICES = java.util.Set.of("dean", "facultyofficer");
+
+    /** true when the acting office is bound to one faculty (Dean or Faculty Officer) */
+    public boolean actingFacultyOffice() {
+        return AuditContextHolder.current().map(c -> FACULTY_OFFICES.contains(c.actorOffice())).orElse(false);
+    }
+
+    /**
+     * The faculty the acting Dean or Faculty Officer works in, or null: the office's own faculty scope,
+     * else the faculty of their staff-record home department. The grant may hold the faculty code OR
+     * its name — either resolves to the code.
+     */
+    public String actingFaculty() {
+        return AuditContextHolder.current().flatMap(c -> FACULTY_OFFICES.contains(c.actorOffice())
+                ? jdbc.sql("""
+                        WITH raw AS (
+                          SELECT COALESCE(
+                            (SELECT scope_id FROM iam.office_assignment
+                              WHERE person_id = :p AND office_code IN ('dean','facultyofficer') AND scope_kind = 'faculty'
+                                AND nullif(btrim(scope_id), '') IS NOT NULL
+                                AND valid_from <= current_date AND (valid_to IS NULL OR valid_to >= current_date)
+                              ORDER BY valid_from DESC LIMIT 1),
+                            (SELECT d.faculty_code FROM hrm.staff_record sr JOIN ref.department d ON d.code = sr.home_department
+                              WHERE sr.person_id = :p AND nullif(btrim(sr.home_department), '') IS NOT NULL LIMIT 1)
+                          ) AS v)
+                        SELECT f.code FROM ref.faculty f, raw
+                         WHERE raw.v IS NOT NULL
+                           AND (upper(btrim(f.code)) = upper(btrim(raw.v)) OR lower(btrim(f.name)) = lower(btrim(raw.v)))
+                         LIMIT 1
+                        """).param("p", c.actorId()).query(String.class).optional()
+                : Optional.empty()).orElse(null);
+    }
+
+    /**
+     * What a return should be scoped to for the acting office (V229 item 4): a Dean or Faculty Officer
+     * sees their faculty, a Head of Department their department; every other office sees the whole
+     * University (null). A scoped office that resolves to nothing gets a sentinel that matches nothing.
+     */
+    public record ReportScope(String facultyCode, String facultyName, String departmentCode, String departmentName,
+                              java.util.Set<String> programmeNames) {
+        public String label() {
+            return departmentName != null ? "Department of " + departmentName : facultyName != null ? "Faculty of " + facultyName : "";
+        }
+    }
+
+    public ReportScope reportScope() {
+        if (actingDepartmentOffice()) {
+            String d = actingDept();
+            if (d == null) return new ReportScope("__none__", "__none__", "__none__", "__none__", java.util.Set.of());
+            var row = jdbc.sql("""
+                    SELECT d.code, d.name, f.code AS faculty_code, f.name AS faculty_name,
+                           coalesce((SELECT array_agg(p.name) FROM ref.programme p WHERE p.dept_code = d.code), '{}') AS programmes
+                      FROM ref.department d JOIN ref.faculty f ON f.code = d.faculty_code WHERE d.code = :d
+                    """).param("d", d).query().singleRow();
+            String[] progs = (String[]) toArray(row.get("programmes"));
+            return new ReportScope((String) row.get("faculty_code"), (String) row.get("faculty_name"),
+                    (String) row.get("code"), (String) row.get("name"), java.util.Set.of(progs));
+        }
+        if (actingFacultyOffice()) {
+            String f = actingFaculty();
+            if (f == null) return new ReportScope("__none__", "__none__", null, null, java.util.Set.of());
+            String name = jdbc.sql("SELECT name FROM ref.faculty WHERE code = :f").param("f", f).query(String.class).single();
+            return new ReportScope(f, name, null, null, null);
+        }
+        return null;
+    }
+
+    private static Object toArray(Object pgArray) {
+        try {
+            if (pgArray instanceof java.sql.Array a) return a.getArray();
+        } catch (java.sql.SQLException ignored) { /* fall through */ }
+        return pgArray instanceof String[] s ? s : new String[0];
+    }
 }

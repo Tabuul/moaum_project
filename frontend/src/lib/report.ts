@@ -21,6 +21,11 @@ export interface ReportSpec {
   subtitle: string;
   /** the offices whose sidebar carries this return (activeOffice codes) */
   offices: string[];
+  /** who owns the return, and how often it is taken — the Standard reports table (proto gReports) */
+  owner: string;
+  frequency: string;
+  /** what the return is for, in the regulator's or management's own words */
+  purpose: string;
 }
 
 export const REPORTS: ReportSpec[] = [
@@ -29,36 +34,70 @@ export const REPORTS: ReportSpec[] = [
     title: "Admissions return",
     subtitle: "Applications, offers and acceptances by faculty and programme",
     offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Registry", frequency: "Per session", purpose: "JAMB / CAPS and Council",
   },
   {
     slug: "enrolment",
-    title: "Enrolment return",
+    title: "Enrolment by programme, level and sex",
     subtitle: "The session's cohort by faculty, programme and level, split by sex",
-    offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Registry", frequency: "Per session", purpose: "NUC statutory return",
   },
   {
     slug: "registration",
     title: "Registration & fees return",
     subtitle: "Not-registered students by faculty and programme, split into fee-blocked and cleared-but-idle",
-    offices: ["academic", "registrar", "dregistrar", "records", "bursar", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "academic", "registrar", "dregistrar", "records", "bursar", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Registry", frequency: "Per semester", purpose: "Management",
   },
   {
     slug: "carryovers",
     title: "Carryover return",
     subtitle: "Outstanding carryovers by faculty, programme and course — the re-sit load, as at today",
-    offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Exams & Records", frequency: "Per session", purpose: "Senate",
+  },
+  {
+    slug: "staff-ratio",
+    title: "Staff/student ratio by department",
+    subtitle: "Students on the books against academic staff by department, with the rank mix — the NUC accreditation figures",
+    offices: ["dean", "facultyofficer", "hod", "hrm", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "HR", frequency: "Per session", purpose: "NUC accreditation",
+  },
+  {
+    slug: "postgraduate",
+    title: "Postgraduate return",
+    subtitle: "By programme: the session's applications, offers, acceptances and admissions; the register by sex and mode of study; research candidates and awards",
+    offices: ["dean", "facultyofficer", "hod", "pgschool", "pgsecretary", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    owner: "Postgraduate School", frequency: "Per session", purpose: "School Board and Senate",
   },
   {
     slug: "revenue",
-    title: "Revenue return",
-    subtitle: "Fees confirmed for the session, by category",
+    title: "IGR collections by revenue head",
+    subtitle: "Fees confirmed for the session, by category — the University's internally generated revenue",
     offices: ["bursar", "registrar", "dregistrar", "academic", "audit", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Monthly", purpose: "State treasury return",
   },
   {
     slug: "funding",
     title: "Funding return",
     subtitle: "Student funding by source and nature, and the wallet cash flow",
     offices: ["bursar", "audit", "deputyaudit", "registrar", "dregistrar", "academic", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Per session", purpose: "Management",
+  },
+  {
+    slug: "expenditure",
+    title: "Expenditure by cost centre",
+    subtitle: "The financial year's budget, commitments, spending and balance by cost centre",
+    offices: ["bursar", "audit", "deputyaudit", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Monthly", purpose: "Council finance committee",
+  },
+  {
+    slug: "income-expenditure",
+    title: "Income & expenditure statement",
+    subtitle: "Every income and expense head for the financial year, the surplus or deficit, and spending against budget",
+    offices: ["bursar", "audit", "deputyaudit", "ict", "admin", "super", "vc", "dvc"],
+    owner: "Bursary", frequency: "Monthly", purpose: "Council and management",
   },
 ];
 
@@ -71,6 +110,7 @@ const OFFICE_LABELS: Record<string, string> = {
   records: "Exams & Records", bursar: "Bursary", audit: "Internal Audit",
   ict: "ICT Directorate", admin: "Administration", super: "System Administration",
   vc: "Vice-Chancellor's Office", dvc: "Deputy Vice-Chancellor's Office",
+  dean: "the Dean's office", facultyofficer: "the Faculty Office", hod: "the Head of Department", hrm: "Human Resource Management", pgschool: "School of Postgraduate Studies", pgsecretary: "School of Postgraduate Studies",
 };
 
 /** the readable name of an office, for the return's footing; falls back to the code */

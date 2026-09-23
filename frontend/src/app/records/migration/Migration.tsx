@@ -10,9 +10,10 @@ import { xlsxRowsAsync, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { MigratedPanelLive } from "@/app/students/MigratedPanel";
 import { semesterText } from "@/lib/student-portal";
 
-type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "pgregistration" | "pgresults" | "pgresearch" | "jamb" | "passports";
+type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "pgregistration" | "pgresults" | "pgresearch" | "jamb" | "passports" | "clearance";
 const MIGRATE = ["ict", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
 /* any institutional matriculation number: a 2–6 letter prefix (MOAU / MOAUM / BSU …) then 2–8 slash
    segments. Postgraduate numbers spell out faculty/department/programme (e.g. MOAU/AM/BSM/PGDM/MSC/25/0021),
@@ -288,6 +289,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       example: ["MOAUM/CSC/22/0001", "202441922663AF"],
     },
     passports: { name: "Passport photos", headers: [], example: [] }, // no spreadsheet — image files, handled separately
+    clearance: { name: "Clearance", headers: [], example: [] }, // no spreadsheet — the panel acts on the register
   };
 
   function downloadTemplate(kind: Tab) {
@@ -334,6 +336,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     pgresearch: [["rows", "Rows read"], ["matched", "Records set"], ["created", "New records"], ["updated", "Updated"], ["supervisors", "Supervisors set"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
     jamb: [["rows", "Rows read"], ["updated", "JAMB numbers set"], ["no_student", "No such student"]],
     passports: [], // photos have their own summary
+    clearance: [], // the panel has its own tiles
   };
 
   /* map an old-portal export's own column names onto the keys the importer reads, so a real file
@@ -482,13 +485,24 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
 
       <div className="card"><div className="card__body">
         <div className="role-tabs" role="tablist">
-          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"]] as [Tab, string][]).map(([k, l]) => (
+          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"], ["clearance", "6 · Clearance"]] as [Tab, string][]).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => { setTab(k); setResult(null); setProblem(null); setPResult(null); }}>{l}</button>
           ))}
         </div>
       </div></div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
+
+      {tab === "clearance" ? (
+        <>
+          <Note kind="info" title="The last step: the students you brought over arrive cleared">
+            A student migrated from the old portal at 100 to 400 level is cleared at every unit for every purpose as the upload
+            lands — the old portal&rsquo;s clearance, carried over. This panel shows that it held, and clears any the upload
+            missed. A unit may still hold any of them afterwards; that hold stands.
+          </Note>
+          <MigratedPanelLive />
+        </>
+      ) : null}
 
       {tab === "passports" ? (
         <Panel title="Passport photos exported from the old portal" right="Matched by JAMB reg no in the file name">

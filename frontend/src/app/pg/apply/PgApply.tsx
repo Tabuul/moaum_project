@@ -20,7 +20,7 @@ interface Status { application_no: string; state: string; programme_name: string
 const naira = (n: number) => "NGN " + Number(n).toLocaleString();
 const STATE_LABEL: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted — with the department", DEPT_RECOMMENDED: "Recommended — with the School",
-  DEPT_DECLINED: "Not recommended by the department", OFFERED: "Offered a place", NOT_OFFERED: "Not offered",
+  DEPT_DECLINED: "Not recommended by the department", OFFERED: "Offered a place", NOT_OFFERED: "Not offered", DECISION_LOCKED: "Decision ready — pay the checking fee to see it",
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
 };
 
@@ -246,22 +246,12 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
   const [email, setEmail] = useState("");
   const [st, setSt] = useState<Status | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   async function check() {
     setMsg(null); setSt(null);
     const r = await fetch(`/api/bff/api/v1/pg/status?applicationNo=${encodeURIComponent(no.trim())}&email=${encodeURIComponent(email.trim())}`);
     const j = await r.json().catch(() => null);
     if (j && j.found) setSt(j.application as Status); else setMsg("No application matches that number and email.");
-  }
-  async function accept() {
-    setBusy(true); setMsg(null);
-    try {
-      const r = await fetch("/api/bff/api/v1/pg/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ applicationNo: no.trim(), email: email.trim() }) });
-      const j = await r.json().catch(() => null);
-      if (j && j.ok) { setMsg("Offer accepted. The School will admit you onto the register."); await check(); }
-      else setMsg((j && j.reason) || "That could not be accepted.");
-    } finally { setBusy(false); }
   }
 
   return (
@@ -276,7 +266,9 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
       {st ? (
         <Note kind={st.state === "OFFERED" || st.state === "ACCEPTED" || st.state === "ADMITTED" ? "ok" : st.state === "NOT_OFFERED" || st.state === "DEPT_DECLINED" ? "bad" : "info"} title={STATE_LABEL[st.state] ?? st.state}>
           {st.surname}, {st.other_names} · {st.programme_name}{st.pg_award ? ` (${st.pg_award})` : ""}. {st.spgs_note ? `Note: ${st.spgs_note}. ` : ""}{st.fee_confirmed_at ? "Application fee confirmed." : "Application fee not yet confirmed."}
-          {st.state === "OFFERED" ? <div style={{ marginTop: 8 }}><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void accept()}>{busy ? "Accepting…" : "Accept the offer"}</button></div> : null}
+          {st.state === "DECISION_LOCKED" || st.state === "OFFERED" || !st.fee_confirmed_at ? (
+            <div style={{ marginTop: 8 }}><a href="/login?next=/pg/portal" className="btn btn--primary btn--sm">{st.state === "DECISION_LOCKED" ? "Sign in to pay the checking fee and see the decision" : st.state === "OFFERED" ? "Sign in to pay the acceptance fee and accept" : "Sign in to pay the application fee"}</a></div>
+          ) : null}
         </Note>
       ) : null}
     </div></div>

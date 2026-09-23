@@ -86,9 +86,6 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
         <Panel title="Held back from this run" right={o.heldBack.length ? `${o.heldBack.length} student${o.heldBack.length === 1 ? "" : "s"}` : "Nobody held back"}>
           <PBody>
             <DTable cols={["Admission number", "Name", "Why|num"]} rows={o.heldBack.map((h) => [<span className="tnum" key="a">{h.admissionNo}</span>, <strong key="n">{h.surname}, {h.otherNames}</strong>, <span className="sub2" key="w">{h.reason} — {h.office}</span>])} />
-            <Note kind="bad" title="Held back is not rejected, and it is not silent">
-              Each of these keeps an admission number, keeps their registration and keeps their fee record. Each has a named reason and a named office to go to. They are matriculated in the next run once the reason is cleared — what they must not do is acquire a permanent number while the reason stands.
-            </Note>
           </PBody>
         </Panel>
       </TwoCol>

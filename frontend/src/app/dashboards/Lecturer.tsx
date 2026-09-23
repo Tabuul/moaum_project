@@ -4,8 +4,9 @@ import type { Me } from "@/components/proto/Shell";
 import { stageOf, type MySheet } from "@/lib/results";
 import { Ico, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 
-export function LecturerDashboard({ me, sheets, session }: { me: Me | null; sheets: MySheet[]; session: string }) {
+export function LecturerDashboard({ me, sheets, session, history = [] }: { me: Me | null; sheets: MySheet[]; session: string; history?: AllocationRow[] }) {
   const owed = sheets.filter((s) => s.stage === "ENTRY" && s.entered === 0);
   const open = sheets.filter((s) => s.stage === "ENTRY");
   const first = owed[0] ?? open[0] ?? sheets[0] ?? null;
@@ -128,6 +129,8 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
         )}
       </Panel>
 
+      <AllocationHistory rows={history} mode="me" session={session} />
+
       <Panel title="CBT question bank" right={noBank.length ? `${noBank.length} course${noBank.length === 1 ? "" : "s"} with no questions` : "Your current courses have questions"}>
         {sheets.length ? (
           <DTable cols={["Course", "Questions in bank|mid", "Readiness|num"]}
@@ -151,7 +154,7 @@ export function LecturerDashboard({ me, sheets, session }: { me: Me | null; shee
             <div className="sub2" style={{ marginTop: 8 }}>Each is generated when you ask, so it is never out of date. The class list is the roll of account: a student who is not on it is not registered, whatever they tell you.</div>
           </PBody>
         </Panel>
-        <Panel title="This week" right="From the slots the department gave your offerings">
+        <Panel title="This week" right="From the slots the department gave your courses">
           <PBody>
             <div className="sub2">The teaching timetable is drawn on the class list screen from the slots recorded against each offering. Nothing is shown here that the department has not recorded.</div>
             <div style={{ marginTop: 8 }}><Link href="/registration/class-list" className="btn btn--ghost btn--sm">Open the class list</Link></div>

@@ -20,6 +20,9 @@ export async function loadStudent(): Promise<{ me: ShellMe; student: Me } | { me
     staffNumber: mine.data.matricNo ?? mine.data.admissionNo,
     sessionId: who.ok ? who.data.sessionId ?? null : null,
     waiting: {},
+    // a postgraduate is a student to the API, but the sidebar is the School's: registration, results, research
+    menu: mine.data.entryMode === "POSTGRADUATE" ? "pgstudent" : null,
+    unit: mine.data.entryMode === "POSTGRADUATE" ? mine.data.programme : null,
   };
   return { me, student: mine.data };
 }

@@ -54,7 +54,7 @@ class PayrollController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> establishment() {
         return jdbc.sql("""
-                SELECT em.id, em.staff_no, em.grade, em.step, em.category, em.status, em.appointment_date,
+                SELECT em.id, p.id AS person_id, em.staff_no, em.grade, em.step, em.category, em.status, em.appointment_date,
                        p.surname || ', ' || p.given_names AS name, em.bank_name, em.account_last4,
                        gr.basic + gr.housing + gr.transport + gr.other_allowances AS gross
                   FROM hrm.employment em

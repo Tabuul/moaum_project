@@ -2,7 +2,7 @@
 
 /** tPipeline — proto/part26.html: the stages a result passes, and where every set in scope is now. */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Scope } from "@/lib/scope";
 import { STAGE_LABEL, type SheetListing } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
@@ -25,10 +25,10 @@ export const RP_STAGES: [string, string, string, string, string][] = [
 export function Pipeline({ scope, structure, sessions, listing, at, office }: { scope: Scope; structure: ScopeStructure; sessions: string[]; listing: SheetListing; at: number; office?: string | null }) {
   // a lecturer sees only their own courses; a HOD only their department (and the programmes under it)
   const hide: ("fac" | "dept" | "prog" | "level")[] = office === "lecturer" ? ["fac", "dept", "prog", "level"] : office === "hod" ? ["fac", "dept"] : [];
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const s = RP_STAGES[at];
   const t = listing.tiles;
-  const go = (n: number) => { const q = new URLSearchParams(window.location.search); q.set("at", String(n)); router.push(`/results/pipeline?${q.toString()}`); };
+  const go = (n: number) => { const q = new URLSearchParams(window.location.search); q.set("at", String(n)); queryNav(`/results/pipeline?${q.toString()}`); };
   const counts = RP_STAGES.map(([code]) => listing.sheets.filter((x) => x.stage === code).length);
   return (
     <>

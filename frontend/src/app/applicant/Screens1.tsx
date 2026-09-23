@@ -270,9 +270,6 @@ export function Fee({ a }: { a: Application }) {
       <Note kind="info" title="A payment always carries your reference">
         If your network drops after you pay, do not pay again. Every payment carries the reference this portal generated: a gateway payment confirms itself the moment you return, and a bank payment is confirmed against the same reference — so a successful payment always reaches your account, and the Bursary sees it.
       </Note>
-      <Note kind="bad" title="Pay only against a reference this portal generated">
-        Money sent to a personal account, an agent or a &ldquo;consultant&rdquo; does not reach the University and cannot be recovered by it. There is no fee that is paid anywhere but here.
-      </Note>
     </>
   );
 }

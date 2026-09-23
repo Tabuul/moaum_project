@@ -32,6 +32,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Postgraduate register",
     "CGPA, standing and research stage"
   ],
+  "t/pgresearch": [
+    "Research desk",
+    "Supervision, proposals, seminars, panels and theses — Policy 14–32"
+  ],
   "t/pgboard": [
     "School Board & awards",
     "Cleared → recommended → Senate award"

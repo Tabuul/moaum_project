@@ -49,7 +49,7 @@ From the JAMB list to names on the register.
 ## 5 · Courses & offerings — *Registry / Departments*
 So registration shows real courses, not demo data.
 
-- [ ] Upload the course catalogue with each course's Compulsory / Elective basis per programme — `/catalogue/upload` · **done when** a borrowed elective reads as Elective, not Core
+- [ ] Upload the course catalogue with each course's Core / Elective basis per programme — `/catalogue/upload` · **done when** a borrowed elective reads as Elective, not Core
 - [ ] Open the session to turn every uploaded course into an offering for the semester — `/catalogue/upload` · **done when** a student's My courses shows their real programme and level courses
 
 ## 6 · Lecturer allocation — *Departments*

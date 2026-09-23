@@ -55,7 +55,7 @@ class ResultsIT {
 
         // the catalogue and the offering, through the API
         ResponseEntity<Map> course = it.call(academic, HttpMethod.PUT, "/api/v1/registration/courses/ZZR 301",
-                Map.of("title", "A course for the test", "units", 3, "semester", 1, "level", 300, "deptCode", "MTC", "kind", "Compulsory", "state", "LIVE"));
+                Map.of("title", "A course for the test", "units", 3, "semester", 1, "level", 300, "deptCode", "MTC", "kind", "Core", "state", "LIVE"));
         assertThat(course.getStatusCode().value()).as(String.valueOf(course.getBody())).isEqualTo(200);
         ResponseEntity<Map> offering = it.call(academic, HttpMethod.PUT, "/api/v1/registration/offerings",
                 Map.of("courseCode", "ZZR 301", "session", SESSION, "semester", 1, "lecturerId", lecturer.toString()));

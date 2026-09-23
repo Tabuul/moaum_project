@@ -26,6 +26,10 @@ class SmtpMailer {
     }
 
     void send(MailService.Smtp s, String to, String subject, String body) throws Exception {
+        send(s, to, subject, body, java.util.List.of());
+    }
+
+    void send(MailService.Smtp s, String to, String subject, String body, java.util.List<NoticeRepository.Attachment> files) throws Exception {
         JavaMailSenderImpl sender = new JavaMailSenderImpl();
         sender.setHost(s.host());
         sender.setPort(s.port());
@@ -49,6 +53,9 @@ class SmtpMailer {
         h.setTo(to);
         h.setSubject(subject);
         h.setText(body, html(subject, body));   // plain first, then the branded HTML
+        for (NoticeRepository.Attachment f : files) {
+            h.addAttachment(f.filename(), new org.springframework.core.io.ByteArrayResource(f.content()), f.contentType());
+        }
         sender.send(mime);   // throws on failure; the dispatcher records it
     }
 

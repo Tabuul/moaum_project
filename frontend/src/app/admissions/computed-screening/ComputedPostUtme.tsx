@@ -4,6 +4,7 @@
  *  the O'Level aggregate blended with the UTME, for Direct Entry and non-exam programmes. Read-only. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -24,6 +25,7 @@ const SRC: Record<string, "ok" | "info" | "grey"> = { "O'Level + UTME": "ok", "O
 
 export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOffice = null }: { rows: Computed[]; session: string; sessions: string[]; audit?: ProgAudit[]; actingOffice?: string | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const withUtme = rows.filter((r) => r.utme != null).length;
   const de = rows.filter((r) => r.entry_mode === "DIRECT_ENTRY").length;
   const mayEnter = ["academic", "registrar", "dregistrar", "ict", "admin", "super"].includes(actingOffice ?? "");
@@ -79,7 +81,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
       </Note>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="pu-s">Session</label>
-          <select id="pu-s" className="ctl" value={session} onChange={(e) => router.push(`/admissions/computed-screening?session=${encodeURIComponent(e.target.value)}`)}>
+          <select id="pu-s" className="ctl" value={session} onChange={(e) => queryNav(`/admissions/computed-screening?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(session) ? sessions : [session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
         </div>

@@ -9,6 +9,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -57,6 +58,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
   open?: string | null;
 }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const canGrant = ["registrar", "dregistrar", "vc", "super", "ict", "admin"].includes(actingOffice ?? "");
   const canCredential = ["registrar", "dregistrar", "ict", "admin", "super"].includes(actingOffice ?? "");
   // a dashboard shortcut can ask this console to open straight into a task (?new=person|grant),
@@ -109,7 +111,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       <Panel title="People on the register" right={`${persons.length} shown`}>
         <PBody>
-          <form className="field" style={{ maxWidth: 420 }} onSubmit={(e) => { e.preventDefault(); router.push(`/people?q=${encodeURIComponent(search)}`); }}>
+          <form className="field" style={{ maxWidth: 420 }} onSubmit={(e) => { e.preventDefault(); queryNav(`/people?q=${encodeURIComponent(search)}`); }}>
             <label htmlFor="pp-q">Find a person</label>
             <input id="pp-q" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name, staff number or username" autoComplete="off" />
           </form>

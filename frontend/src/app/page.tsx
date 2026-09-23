@@ -10,20 +10,19 @@ import { LecturerDashboard } from "./dashboards/Lecturer";
 import { BursarDashboard } from "./dashboards/Bursar";
 import { HodDashboard, type HodHome } from "./dashboards/Hod";
 import { ClinicDashboard } from "./dashboards/Clinic";
-import { LibraryDashboard } from "./dashboards/Library";
 import { ExamsDashboard } from "./dashboards/Exams";
+import type { AllocationRow } from "./dashboards/AllocationHistory";
 import { HrDashboard, type HrHome } from "./dashboards/Hr";
 import { DeanDashboard, type DeanHome } from "./dashboards/Dean";
 import { SecurityDashboard } from "./dashboards/Security";
 import { HousingDashboard } from "./dashboards/Housing";
 import { SiwesDashboard, type SiwesOffering } from "./dashboards/Siwes";
 import { AuditDashboard, type AuditEntry } from "./dashboards/Audit";
-import { PgSchoolDashboard, type PgHome } from "./dashboards/PgSchool";
+import { PgSchoolDashboard, PgSecretaryDashboard, type PgHome, type PgSecHome } from "./dashboards/PgSchool";
 import type { Posture } from "./security/Security";
 import type { HostelDeskData } from "@/lib/hostel";
 import type { MySheet, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
-import type { LibraryDeskData } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +49,9 @@ export default async function DashboardPage() {
   if (office === "admin") redirect("/admin");
   /* the Vice-Chancellor's home is the institutional overview (menus.ts home t/overview) */
   if (office === "vc") redirect("/overview");
+  /* the Librarian's home is the identity-card desk — "Card printing" (menus.ts home t/idcards); the
+     circulation figures have their own desk under Library → Circulation */
+  if (office === "library") redirect("/credentials/idcards");
   /* the College of Health Sciences officers land in the College module — its own dashboard area.
      They sign in through this same login (single sign-on); the login gate routes them here. */
   if (office === "provost" || office === "collegesecretary" || office === "financecontroller") redirect("/college/dashboard");
@@ -64,10 +66,11 @@ export default async function DashboardPage() {
   const openQueries = rq && rq.ok ? rq.data.length : null;
   /* the Head of Department's dashboard, scoped to their own department */
   const hodHome = office === "hod" ? await api<HodHome>(`/api/v1/hod/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the history of teaching allocation: the lecturer's own; the department's for the Head and the Examinations Officer */
+  const allocHistory = office === "lecturer" ? await api<AllocationRow[]>("/api/v1/allocation/history?scope=me")
+    : office === "hod" || office === "exams" ? await api<AllocationRow[]>("/api/v1/allocation/history?scope=department") : null;
   /* the Support Services office's home is the clinic: its figures and the queue (V032) */
   const clinic = office === "services" ? await api<ClinicDesk>("/api/v1/health/desk") : null;
-  /* the Librarian's home is the circulation desk (V033) */
-  const library = office === "library" ? await api<LibraryDeskData>("/api/v1/library/desk") : null;
   /* the Exams Officer's home is the result-sheet pipeline in their scope (V013) */
   const examSheets = office && ["exams", "facultyexams"].includes(office) ? await api<SheetListing>(`/api/v1/results/sheets?session=${encodeURIComponent(session)}`) : null;
   /* the Director of HR's home is the establishment and what waits on the directorate (V071-V076) */
@@ -81,8 +84,10 @@ export default async function DashboardPage() {
   const hostel = office === "housing" ? await api<HostelDeskData>(`/api/v1/hostel/sessions/${encodeURIComponent(session)}`) : null;
   /* the SIWES Coordinator's department offerings this second semester (V156) */
   const siwes = office === "siwes" ? await api<SiwesOffering[]>(`/api/v1/siwes/offerings?session=${encodeURIComponent(session)}&semester=2`) : null;
-  /* the School of Postgraduate Studies' home: what waits on the School, the register, the pipeline (V202) */
-  const pg = office && ["pgschool", "pgsecretary"].includes(office) ? await api<PgHome>(`/api/v1/pg/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the School of Postgraduate Studies: the Dean's home is the admissions pipeline (V202); the Secretary's
+     home is what waits on the Secretary — registration, fees, examinations and thesis clearance */
+  const pg = office === "pgschool" ? await api<PgHome>(`/api/v1/pg/dashboard?session=${encodeURIComponent(session)}`) : null;
+  const pgSec = office === "pgsecretary" ? await api<PgSecHome>(`/api/v1/pg/secretary/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* a live subtitle for the lecturer/HOD header — real name and counts, not a fixed prototype line */
   let sub: string | undefined;
   if (office === "lecturer" && mine && mine.ok) {
@@ -91,6 +96,10 @@ export default async function DashboardPage() {
   } else if (office === "hod" && hodHome && hodHome.ok && hodHome.data.resolved) {
     const h = hodHome.data;
     sub = `${h.deptName} · ${h.approvals ?? 0} to approve · ${h.deptStudents ?? 0} students`;
+  } else if (office === "pgschool") {
+    sub = "Dean";
+  } else if (office === "pgsecretary") {
+    sub = "Secretary";
   }
   return (
     <Shell route="r/academic" me={me.ok ? me.data : null} sub={sub}>
@@ -104,15 +113,13 @@ export default async function DashboardPage() {
       ) : office === "bursar" ? (
         <BursarDashboard session={session} />
       ) : office === "lecturer" ? (
-        <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} />
+        <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
       ) : office === "hod" ? (
-        <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} />
+        <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
       ) : office === "services" ? (
         <ClinicDashboard me={me.ok ? me.data : null} desk={clinic && clinic.ok ? clinic.data : null} />
-      ) : office === "library" ? (
-        <LibraryDashboard me={me.ok ? me.data : null} desk={library && library.ok ? library.data : null} />
       ) : (office === "exams" || office === "facultyexams") ? (
-        <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} />
+        <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
       ) : office === "hrm" ? (
         <HrDashboard me={me.ok ? me.data : null} home={hr && hr.ok ? hr.data : null} />
       ) : office === "dean" ? (
@@ -127,8 +134,10 @@ export default async function DashboardPage() {
         <HousingDashboard me={me.ok ? me.data : null} desk={hostel && hostel.ok ? hostel.data : null} />
       ) : office === "siwes" ? (
         <SiwesDashboard me={me.ok ? me.data : null} offerings={siwes && siwes.ok ? siwes.data : []} semester={2} />
-      ) : (office === "pgschool" || office === "pgsecretary") ? (
-        <PgSchoolDashboard me={me.ok ? me.data : null} home={pg && pg.ok ? pg.data : null} role={office === "pgsecretary" ? "Secretary, School of Postgraduate Studies" : "Dean, School of Postgraduate Studies"} />
+      ) : office === "pgschool" ? (
+        <PgSchoolDashboard me={me.ok ? me.data : null} home={pg && pg.ok ? pg.data : null} />
+      ) : office === "pgsecretary" ? (
+        <PgSecretaryDashboard me={me.ok ? me.data : null} home={pgSec && pgSec.ok ? pgSec.data : null} />
       ) : (
         <OfficeDashboard me={me.ok ? me.data : null} requestsOpen={requestsOpen} openQueries={openQueries} />
       )}

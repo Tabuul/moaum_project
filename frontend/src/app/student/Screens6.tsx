@@ -51,7 +51,7 @@ export function GraduationScreen({ g }: { g: Graduation }) {
         </Note>
       ) : (
         <Note kind="info" title="Your final year">
-          The degree audit is computed at the end of the session from the published record: every compulsory course, the credit minima, every Senate-approved mark. Use the year to clear what the eight units below will ask for.
+          The degree audit is computed at the end of the session from the published record: every core course, the credit minima, every Senate-approved mark. Use the year to clear what the eight units below will ask for.
         </Note>
       )}
 

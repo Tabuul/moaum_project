@@ -4,6 +4,7 @@
  *  the Board and Senate make it live), and ending a course with a date rather than deleting it. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -25,13 +26,17 @@ export interface Programme { code: string; name: string }
 const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
   LIVE: ["ok", "Live"], BOARD: ["warn", "At the Faculty Board"], SENATE: ["info", "At Senate"], ENDED: ["grey", "Ended"],
 };
-const KINDS = ["Compulsory", "Required", "Elective", "GST"];
+const KINDS = ["Core", "Required", "Elective", "GST"];
+/** how a kind reads on the desk: the Registry's word for Core is "Core Courses" */
+const KIND_LABEL: Record<string, string> = { Core: "Core Courses" };
+const kindLabel = (k: string) => KIND_LABEL[k] ?? k;
 const LEVELS = [100, 200, 300, 400, 500, 600];
 
 export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const [add, setAdd] = useState(false);
-  const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" });
+  const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -68,7 +73,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
   const filtered = Boolean(fLevel || fSem || fKind || fProg);
 
   function go(nextDept: string) {
-    router.push(`/catalogue?dept=${encodeURIComponent(nextDept)}`);
+    queryNav(`/catalogue?dept=${encodeURIComponent(nextDept)}`);
   }
 
   async function send(path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
@@ -113,7 +118,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             </select></div>
           <div className="scope__f"><label htmlFor="dc-kind">Kind</label>
             <select id="dc-kind" className="ctl" value={fKind} onChange={(e) => setFKind(e.target.value)}>
-              <option value="">All kinds</option>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+              <option value="">All kinds</option>{KINDS.map((k) => <option key={k} value={k}>{kindLabel(k)}</option>)}
             </select></div>
           <div className="scope__f"><label htmlFor="dc-prog">Programme</label>
             <select id="dc-prog" className="ctl" value={fProg} onChange={(e) => setFProg(e.target.value)} disabled={!progOptions.length}>
@@ -126,7 +131,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
             {filtered ? <button className="btn btn--ghost btn--sm" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); setFProg(""); }}>Clear filters</button> : null}
             {waiting ? <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => { if (window.confirm(`Make ${waiting} awaiting course${waiting === 1 ? "" : "s"} Live? They enter the current session's registration.`)) void send(`/courses/live-all?dept=${encodeURIComponent(dept)}`, {}, `Make ${waiting} courses live in ${dept}`).then((j) => { if (j) setSaid(`${String(j.made_live ?? waiting)} course(s) made Live`); }); }}>{busy ? "Working…" : `Make ${waiting} Live`}</button> : null}
-            <button className="btn btn--primary btn--sm" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" }); setErr(null); setAdd(true); }}>+ New course</button>
+            <button className="btn btn--primary btn--sm" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" }); setErr(null); setAdd(true); }}>+ New course</button>
           </div>
         </div>
       </div>
@@ -183,7 +188,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             <span className="tnum" key="u">{c.units}</span>,
             <span className="tnum" key="s">{c.semester === 1 ? "First" : c.semester === 2 ? "Second" : "Third"}</span>,
             <span className="tnum" key="l">{c.level}</span>,
-            <span className="sub2" key="k">{c.kind}</span>,
+            <span className="sub2" key="k">{kindLabel(c.kind)}</span>,
             <select key="cur" className="ctl" style={{ minWidth: 96, padding: "3px 6px", fontSize: 12.5 }} value={c.curriculum ?? ""} disabled={busy || c.state === "ENDED"}
               onChange={(e) => void send(`/courses/${encodeURIComponent(c.code)}/curriculum`, { curriculum: e.target.value }, `Curriculum of ${c.code} set to ${e.target.value || "none"}`).then((j) => { if (j) setSaid(`${c.code} → ${e.target.value || "no curriculum"}`); })}>
               <option value="">— (shared)</option>
@@ -204,13 +209,9 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
                 </>
               )}
             </div>,
-          ])} texts={shown.map((c) => `${c.code} ${c.title} ${c.kind}`)} />
+          ])} texts={shown.map((c) => `${c.code} ${c.title} ${kindLabel(c.kind)}`)} />
         ) : <PBody><div className="sub2">{filtered ? "No course in this department matches these filters. Clear them to see all." : "This department owns no course yet. A course appears here once it is created; it starts at the Faculty Board."}</div></PBody>}
       </Panel>
-
-      <Note kind="bad" title="Ending a course is not deleting it">
-        A course that is no longer taught is ended with a date. It disappears from next session&rsquo;s registration and stays on every transcript that carries it, because a degree earned in one year was earned on the courses that existed that year. Nothing in this catalogue is ever removed.
-      </Note>
 
       {add ? (
         <Modal title="New course" sub={`For ${depts.find((d) => d.code === dept)?.name ?? dept}`} onClose={() => setAdd(false)}
@@ -225,7 +226,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           <div className="grid grid--3">
             <Field id="nc-level" label="Level"><select id="nc-level" className="ctl" value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}</select></Field>
             <Field id="nc-sem" label="Semester"><select id="nc-sem" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option></select></Field>
-            <Field id="nc-kind" label="Kind"><select id="nc-kind" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></Field>
+            <Field id="nc-kind" label="Kind"><select id="nc-kind" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{kindLabel(k)}</option>)}</select></Field>
           </div>
         </Modal>
       ) : null}

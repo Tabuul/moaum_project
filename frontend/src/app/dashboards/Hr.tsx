@@ -38,7 +38,7 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
       )}
 
       <Tiles items={[
-        ["Staff on the establishment", String(home.staffActive), null, `${home.onLeaveToday} on leave today`],
+        ["Staff on the establishment", String(home.staffActive), null, `${home.onLeaveToday} on leave today`, "/reports/staff"],
         ["Leave to decide", String(home.leavePending), home.leavePending ? "var(--red-ink)" : "var(--green-ink)", "Awaiting a decision", "/hr/leave"],
         ["Instruments to issue", String(home.movementsAwaiting), home.movementsAwaiting ? "var(--chrome)" : "var(--green-ink)", "Approved movements", "/hr/movements"],
         ["Open vacancies", String(home.vacanciesOpen), null, `${home.shortlisted} shortlisted`, "/hr/recruitment"],
