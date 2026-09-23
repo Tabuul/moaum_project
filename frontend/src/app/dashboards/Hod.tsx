@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { HodFeeDownloads } from "./HodFeeDownloads";
 import { semesterName } from "@/lib/student-portal";
 
 export interface HodHome {
@@ -77,12 +78,12 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
       )}
 
       <Tiles items={[
-        ["Registrations to approve", String(approvals), approvals ? "var(--red-ink)" : "var(--green-ink)", `${home.deptName} · ${home.session}`],
+        ["Registrations to approve", String(approvals), approvals ? "var(--red-ink)" : "var(--green-ink)", `${home.deptName} · ${home.session}`, "/results/approvals"],
         ["Courses without a lecturer", String(needLect), needLect ? "var(--chrome)" : "var(--green-ink)", `${allocated} of ${home.offeringsTotal ?? 0} allocated`],
         ["SIWES without a supervisor", String(siwesGap), siwesGap ? "var(--red-ink)" : "var(--green-ink)", "Industrial-training students"],
         ["Result sheets in progress", String(sheets), null, "Not yet published"],
         ["Students", String(home.deptStudents ?? 0), null, "Active in the department"],
-        ["Cleared for registration", String(feesCleared), feesOwing ? "var(--chrome)" : "var(--green-ink)", `${feesOwing} still owing for ${home.session}`],
+        ["Cleared for registration", String(feesCleared), feesOwing ? "var(--chrome)" : "var(--green-ink)", <HodFeeDownloads key="fees" session={home.session ?? ""} cleared={feesCleared} owing={feesOwing} deptName={home.deptName ?? ""} />],
         ["Courses", String(home.deptCourses ?? 0), null, "In the department catalogue"],
         ...(home.openQueries ? [["Result queries", String(home.openQueries), "var(--chrome)", "Awaiting your department", "/results/queries"] as [string, string, string, string, string]] : []),
         ...(requestsOpen ? [["Student requests", String(requestsOpen), "var(--chrome)", "Open, to your office"] as [string, string, string, string]] : []),

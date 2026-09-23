@@ -163,6 +163,28 @@ class HodController {
         return out;
     }
 
+    /** the department's students cleared for registration this session, or still owing — the lists behind the
+     *  dashboard's figures, for the Head of Department to download (matric, name, programme, level, charged, paid, balance) */
+    @GetMapping("/fees")
+    @PreAuthorize("hasAuthority('OFFICE_hod')")
+    @Transactional(readOnly = true)
+    java.util.List<Map<String, Object>> fees(@RequestParam(required = false) String session, @RequestParam(defaultValue = "owing") String which) {
+        String dept = scope.actingDept();
+        if (dept == null || dept.isBlank() || "__none__".equals(dept)) return java.util.List.of();
+        String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
+                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
+        boolean cleared = "cleared".equalsIgnoreCase(which);
+        return jdbc.sql("""
+                SELECT st.matric_no, st.surname, st.other_names, p.name AS programme, st.current_level AS level, st.status,
+                       coalesce((SELECT sum(c.amount) FROM finance.charges(st.id, :s) c), 0) AS charged,
+                       coalesce((SELECT sum(r.amount) FROM finance.payment_reference r WHERE r.student_id = st.id AND r.session = :s AND r.confirmed_at IS NOT NULL), 0) AS paid
+                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                 WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
+                   AND finance.clears(st.id, :s, 'REGISTRATION') = :cleared
+                 ORDER BY st.current_level, st.surname, st.other_names
+                """).param("s", s).param("d", dept).param("cleared", cleared).query().listOfRows();
+    }
+
     /** the department's academic staff, scoped to the acting HOD's own department — names and ranks only,
      *  no payroll. For the HOD to see who is on the establishment of their department. */
     @GetMapping("/staff")
