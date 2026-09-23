@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { Reports, type DueRow, type FacultyRow, type KeptRow } from "./Reports";
+import { Trends, type MonthTrend, type SessionTrend } from "./Trends";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   /* the enrolment by faculty shown on the desk itself (proto gReports): the return's rows, rolled up */
   const enrol = pg ? null : await api<{ rows: EnrolmentRow[] }>(`/api/v1/reports/enrolment?session=${encodeURIComponent(session)}`);
   /* the due register and the copies kept (V229) */
+  const trends = api<{ sessions: SessionTrend[]; months: MonthTrend[] }>("/api/v1/reports/trends");
   const [due, kept] = await Promise.all([
     api<{ asAt: string; rows: DueRow[]; overdue: number; dueSoon: number }>("/api/v1/reports/due"),
     api<KeptRow[]>("/api/v1/reports/snapshots?limit=12"),
@@ -39,7 +41,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   return (
     <Shell route="t/reports" me={me.ok ? me.data : null}>
       <Reports session={session} sessions={sessions.ok ? sessions.data : []} activeOffice={me.ok ? me.data.activeOffice : null} byFaculty={enrol && enrol.ok ? byFaculty : null}
-        due={due.ok ? due.data : null} kept={kept.ok ? kept.data : []} />
+        due={due.ok ? due.data : null} kept={kept.ok ? kept.data : []}
+        trends={await trends.then((t) => (t.ok ? <Trends sessions={t.data.sessions} months={t.data.months} /> : null))} />
     </Shell>
   );
 }

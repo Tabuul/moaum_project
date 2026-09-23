@@ -36,9 +36,11 @@ const pending = (r: DueRow) => r.state === "OVERDUE" || (r.state === "DUE" && !!
 /** The returns desk, as the prototype's Reports & returns screen lays it out: the standard reports the
  *  office may take — each with its owner, its frequency, and a Run that opens it as a branded, printable
  *  document with a CSV beside it — and the session's enrolment by faculty, read off the register. */
-export function Reports({ session, sessions, activeOffice, byFaculty, due, kept }: {
+export function Reports({ session, sessions, activeOffice, byFaculty, due, kept, trends }: {
   session: string; sessions: { name: string; state: string }[]; activeOffice: string | null; byFaculty: FacultyRow[] | null;
   due: { asAt: string; rows: DueRow[]; overdue: number; dueSoon: number } | null; kept: KeptRow[];
+  /** the period-over-period charts, rendered by the page (a server component may pass a node) */
+  trends?: React.ReactNode;
 }) {
   const router = useRouter();
   const mine = REPORTS.filter((r) => activeOffice != null && r.offices.includes(activeOffice));
@@ -148,6 +150,8 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept 
             texts={mine.map((r) => `${r.title} ${r.owner} ${r.purpose}`)} />
         ) : <PBody><div className="sub2">This office does not take any of the portal&rsquo;s returns.</div></PBody>}
       </Panel>
+
+      {trends ?? null}
 
       {byFaculty ? (
         <Panel title="Enrolment by faculty" right={`${session} · data as at ${stamp}`}>

@@ -352,4 +352,53 @@ class ReportsController {
         totals.put("ratio", academic > 0 ? Math.round((10.0 * students) / academic) / 10.0 : null);
         return Map.of("rows", rows, "totals", totals);
     }
+
+    /**
+     * Period over period, for the returns desk: the last three sessions side by side (students
+     * admitted, applications and offers, postgraduate applications, carryovers) and the last six
+     * months (fees confirmed, vouchers paid). Read off the same tables the returns are, so a
+     * figure here is the figure the return will print.
+     */
+    @GetMapping("/trends")
+    @PreAuthorize(ENROLMENT_READERS + " or " + REVENUE_READERS + " or " + PG_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> trends() {
+        List<Map<String, Object>> sessions = jdbc.sql("""
+                WITH names AS (
+                    SELECT name FROM policy.academic_session
+                    UNION SELECT entry_session FROM people.student
+                    UNION SELECT session FROM admissions.candidate
+                ),
+                last3 AS (SELECT name FROM names WHERE name ~ '^[0-9]{4}/[0-9]{4}$' ORDER BY name DESC LIMIT 3)
+                SELECT n.name AS session,
+                       (SELECT count(*) FROM people.student s WHERE s.entry_session = n.name) AS admitted,
+                       (SELECT count(*) FROM people.student s WHERE s.entry_session = n.name AND s.sex = 'F') AS female,
+                       (SELECT count(*) FROM people.student s WHERE s.entry_session = n.name AND s.sex = 'M') AS male,
+                       (SELECT count(*) FROM people.student s WHERE s.entry_session = n.name AND s.entry_mode = 'POSTGRADUATE') AS postgraduate,
+                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = n.name) AS candidates,
+                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = n.name AND c.offer_state IN ('ADMITTED','ACCEPTED')) AS offered,
+                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = n.name AND c.offer_state = 'ACCEPTED') AS accepted,
+                       (SELECT count(*) FROM admissions.pg_application a WHERE a.session = n.name AND a.state <> 'DRAFT') AS pg_applications,
+                       (SELECT count(*) FROM admissions.pg_application a WHERE a.session = n.name AND a.state IN ('OFFERED','ACCEPTED','ADMITTED')) AS pg_offered,
+                       (SELECT coalesce(sum(r.amount), 0) FROM finance.payment_reference r WHERE r.session = n.name AND r.confirmed_at IS NOT NULL) AS fees_confirmed
+                  FROM last3 n ORDER BY n.name
+                """).query().listOfRows();
+        List<Map<String, Object>> months = jdbc.sql("""
+                WITH m AS (
+                    SELECT (date_trunc('month', current_date) - (g || ' month')::interval)::date AS month
+                      FROM generate_series(5, 0, -1) g
+                )
+                SELECT to_char(m.month, 'YYYY-MM') AS month, to_char(m.month, 'Mon YYYY') AS label,
+                       (SELECT coalesce(sum(r.amount), 0) FROM finance.payment_reference r
+                         WHERE r.confirmed_at >= m.month AND r.confirmed_at < m.month + interval '1 month') AS fees,
+                       (SELECT count(*) FROM finance.payment_reference r
+                         WHERE r.confirmed_at >= m.month AND r.confirmed_at < m.month + interval '1 month') AS payments,
+                       (SELECT coalesce(sum(v.amount), 0) FROM expenditure.voucher v
+                         WHERE v.paid_at >= m.month AND v.paid_at < m.month + interval '1 month') AS paid,
+                       (SELECT coalesce(sum(v.amount), 0) FROM expenditure.voucher v
+                         WHERE v.raised_at >= m.month AND v.raised_at < m.month + interval '1 month' AND v.stage <> 'REJECTED') AS raised
+                  FROM m ORDER BY m.month
+                """).query().listOfRows();
+        return Map.of("sessions", sessions, "months", months);
+    }
 }
