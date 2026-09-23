@@ -1643,6 +1643,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Records",
         "items": [
+          { "id": "t/students", "icon": "cap", "label": "Student records" },
           {
             "id": "t/records",
             "icon": "chart",
