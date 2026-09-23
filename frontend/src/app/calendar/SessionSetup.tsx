@@ -187,6 +187,7 @@ export function SessionSetup({
         maxUnits: Number(draft.max || 0),
         carryoverCounts: draft.carry === "Yes",
         instrument: draft.instrument.trim() || null,
+        probationMaxUnits: draft.prob && draft.prob.trim() ? Number(draft.prob) : null,
       },
       `Unit limits for level ${draft.n} recorded`,
     );
@@ -374,12 +375,13 @@ export function SessionSetup({
           </div>
         ) : (
           <DTable
-            cols={["Level|mid", "Applies to", "Minimum units|mid", "Maximum units|mid", "Carryover counts toward the maximum|mid", "Action|num"]}
+            cols={["Level|mid", "Applies to", "Minimum units|mid", "Maximum units|mid", "On probation|mid", "Carryover counts toward the maximum|mid", "Action|num"]}
             rows={limits.map((l) => [
               <b className="tnum" key="l">{l.level}</b>,
               <span className="sub2" key="w">{l.appliesTo}</span>,
               <span className="tnum" key="min">{l.minUnits}</span>,
               <span className="tnum" key="max">{l.maxUnits}</span>,
+              <span className="tnum" key="prob" style={l.probationMaxUnits == null ? { color: "var(--muted)" } : undefined}>{l.probationMaxUnits ?? "not set"}</span>,
               l.carryoverCounts ? <Tick size={15} colour="var(--green-ink)" key="c" /> : <span className="sub2" key="c">No</span>,
               <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "level", row: l })}>
                 Edit

@@ -60,9 +60,10 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const total = carry.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
   const min = v.limit.min_units;
   const max = v.limit.max_units;
+  const onProbation = !!v.probation && v.probation.standing === "PROBATION";
   const ok = total >= min && total <= max;
   const meter = total < min ? { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Below minimum", hint: `You need at least ${min} credit units. Add ${min - total} more.` }
-    : total > max ? { col: "var(--red)", bg: "var(--red-bg)", fg: "var(--red-ink)", lab: "Over limit", hint: `Maximum is ${max} units. Remove ${total - max}, or request an overload from your HOD.` }
+    : total > max ? { col: "var(--red)", bg: "var(--red-bg)", fg: "var(--red-ink)", lab: "Over limit", hint: onProbation && v.probation?.probation_max_units != null && max === v.probation.probation_max_units ? `On probation the maximum is ${max} units. Remove ${total - max}; the courses you owe stay.` : `Maximum is ${max} units. Remove ${total - max}, or request an overload from your HOD.` }
       : { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: "Valid", hint: `Within the permitted range for ${v.level} Level.` };
 
   const fees = v.fees;

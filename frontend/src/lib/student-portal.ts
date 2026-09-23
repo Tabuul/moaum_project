@@ -38,7 +38,7 @@ export interface MenuItem {
   carryover: boolean; failed_in: string | null; lecturer: string | null;
 }
 export interface RegistrationView {
-  session: string; semester: number; level: number; limit: { min_units: number; max_units: number };
+  session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
   /** whether THIS semester's school fees are cleared (registration for it is gated on that) */
   clears?: boolean;
@@ -70,6 +70,12 @@ export interface Me {
   hasPhoto?: boolean;
   fees: Fees; gpa: Semester[]; cgpa: number | null; standing: string | null; carryovers: Carryover[];
   registration: Registration | null; notices: Notice[]; graduation?: Graduation | null;
+  /** the standing the record pronounces (V244): probation after a first semester at 200 level or above under 1.0 */
+  probation?: Probation | null;
+}
+export interface Probation {
+  standing: "PROBATION" | "GOOD" | string; cgpa: number | null; pronounced_session: string | null; pronounced_semester: number | null;
+  pronounced_level: number | null; probation_max_units: number | null;
 }
 export interface ClearanceUnit { unit: string; label: string; state: string; item: string | null; decided_at: string | null; clears_against: string; holds_for: string; office_code: string | null }
 export interface Graduation {

@@ -36,6 +36,8 @@ export interface LevelLimitRow {
   maxUnits: number;
   carryoverCounts: boolean;
   instrument: string | null;
+  /** the most units a student on probation registers at this level; null until the Registry sets it */
+  probationMaxUnits?: number | null;
 }
 
 export interface CalendarData {

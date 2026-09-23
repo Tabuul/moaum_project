@@ -108,6 +108,7 @@ public class StudentPortalService {
         BigDecimal cgpa = gpa.isEmpty() ? null : (BigDecimal) gpa.get(gpa.size() - 1).get("cgpa");
         v.put("cgpa", cgpa);
         v.put("standing", repo.classOf(cgpa));
+        v.put("probation", repo.standing(id, s.currentLevel()));
         v.put("carryovers", repo.carryovers(id));
         v.put("registration", repo.registration(id, session, 1).map(StudentPortalService::withEntries).orElse(null));
         v.put("notices", repo.notices(id));
@@ -206,7 +207,16 @@ public class StudentPortalService {
         out.put("level", s.currentLevel());
         // the SIWES / industrial-training semester carries exactly the SIWES units, not the 18-24 range
         Integer siwes = repo.siwesUnits(id, s.currentLevel(), semester);
-        out.put("limit", siwes != null ? Map.of("min_units", siwes, "max_units", siwes) : repo.limit(s.currentLevel()));
+        // on probation, the form's ceiling is the level's probation ceiling where the Registry has set one
+        Map<String, Object> standing = repo.standing(s.id(), s.currentLevel());
+        Map<String, Object> limit = siwes != null ? Map.of("min_units", siwes, "max_units", siwes) : new java.util.LinkedHashMap<>(repo.limit(s.currentLevel()));
+        if (siwes == null && "PROBATION".equals(standing.get("standing")) && standing.get("probation_max_units") != null) {
+            int cap = ((Number) standing.get("probation_max_units")).intValue();
+            int max = ((Number) limit.get("max_units")).intValue();
+            if (cap < max) { limit.put("max_units", cap); limit.put("min_units", Math.min(((Number) limit.get("min_units")).intValue(), cap)); }
+        }
+        out.put("limit", limit);
+        out.put("probation", standing);
         out.put("siwes", siwes != null);
         out.put("menu", repo.menu(id, session, semester));
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));

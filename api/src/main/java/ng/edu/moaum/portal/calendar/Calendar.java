@@ -30,6 +30,6 @@ public record Calendar(List<SessionRow> sessions, String current, String session
 
     /** One row of {@code policy.level_limit}: the ceiling that stops a student registering a timetable they cannot sit. */
     public record LevelLimit(int level, String appliesTo, int minUnits, int maxUnits,
-                             boolean carryoverCounts, String instrument) {
+                             boolean carryoverCounts, String instrument, Integer probationMaxUnits) {
     }
 }

@@ -67,7 +67,7 @@ class CalendarRepository {
 
     List<Calendar.LevelLimit> levelLimits() {
         return jdbc.sql("""
-                SELECT level, applies_to, min_units, max_units, carryover_counts, instrument
+                SELECT level, applies_to, min_units, max_units, carryover_counts, instrument, probation_max_units
                   FROM policy.level_limit ORDER BY level
                 """)
                 .query(Calendar.LevelLimit.class)
@@ -155,20 +155,22 @@ class CalendarRepository {
 
     void upsertLevelLimit(int level, CalendarService.LevelIn in) {
         jdbc.sql("""
-                INSERT INTO policy.level_limit (level, applies_to, min_units, max_units, carryover_counts, instrument)
-                VALUES (:level, :who, :min, :max, :carry, cast(:instrument as text))
+                INSERT INTO policy.level_limit (level, applies_to, min_units, max_units, carryover_counts, instrument, probation_max_units)
+                VALUES (:level, :who, :min, :max, :carry, cast(:instrument as text), cast(:prob as int))
                 ON CONFLICT (level) DO UPDATE SET
                        applies_to       = EXCLUDED.applies_to,
                        min_units        = EXCLUDED.min_units,
                        max_units        = EXCLUDED.max_units,
                        carryover_counts = EXCLUDED.carryover_counts,
-                       instrument       = coalesce(cast(:instrument as text), policy.level_limit.instrument)
+                       instrument       = coalesce(cast(:instrument as text), policy.level_limit.instrument),
+                       probation_max_units = EXCLUDED.probation_max_units
                 """)
                 .param("level", level)
                 .param("who", in.appliesTo().trim())
                 .param("min", in.minUnits())
                 .param("max", in.maxUnits())
                 .param("carry", in.carryoverCounts())
+                .param("prob", in.probationMaxUnits(), java.sql.Types.INTEGER)
                 .param("instrument", in.instrument() == null || in.instrument().isBlank() ? null : in.instrument().trim(),
                         Types.VARCHAR)
                 .update();

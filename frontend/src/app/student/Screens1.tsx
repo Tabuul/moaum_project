@@ -130,8 +130,14 @@ export function Dashboard({ s }: { s: Me }) {
   const noScheme = f.clearsRegistration === null;
   const reg = s.registration;
   const published = s.gpa.filter((g) => g.published_count > 0).length;
+  const prob = s.probation && s.probation.standing === "PROBATION" ? s.probation : null;
   return (
     <>
+      {prob ? (
+        <Note kind="bad" title="You are on probation" action={<Link href="/student/results" className="btn btn--ghost btn--sm">Your results</Link>}>
+          Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} first semester at {prob.pronounced_level} level, under the 1.0 the University requires. {prob.probation_max_units != null ? <>Until the next first semester pronounces again, your course registration is held to <strong>{prob.probation_max_units} units</strong>; the courses you owe stay on the form, so choose fewer new ones.</> : <>The courses you owe stay on your registration form; see your Head of Department about the load you should carry.</>}
+        </Note>
+      ) : null}
       {noScheme ? (
         <Note kind="info" title="What a payment releases is not yet stated for this session">
           {f.schemeProblem} Your charges and payments are shown on Fees &amp; payments; registration opens the moment the Bursar states the scheme.

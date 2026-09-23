@@ -200,6 +200,7 @@ export function levelDraft(row: LevelLimitRow | null): Draft {
     max: row ? String(row.maxUnits) : "",
     carry: row ? (row.carryoverCounts ? "Yes" : "No") : "Yes",
     instrument: row?.instrument ?? "",
+    prob: row?.probationMaxUnits != null ? String(row.probationMaxUnits) : "",
   };
 }
 

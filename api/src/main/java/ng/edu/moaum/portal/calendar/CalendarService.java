@@ -73,7 +73,8 @@ public class CalendarService {
                           @NotNull @Min(0) @Max(60) Integer minUnits,
                           @NotNull @Min(0) @Max(60) Integer maxUnits,
                           @NotNull Boolean carryoverCounts,
-                          @Size(max = 200) String instrument) {
+                          @Size(max = 200) String instrument,
+                          @Min(0) @Max(60) Integer probationMaxUnits) {
     }
 
     public record Minute(String senateMinute) {

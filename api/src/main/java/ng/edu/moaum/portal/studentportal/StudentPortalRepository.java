@@ -344,6 +344,22 @@ class StudentPortalRepository {
                 .orElse(Map.of("min_units", 0, "max_units", 99));
     }
 
+    /** the student's standing (V244): PROBATION or GOOD, with the semester that pronounced it and the level's probation ceiling */
+    Map<String, Object> standing(UUID student, int level) {
+        Map<String, Object> st = jdbc.sql("SELECT standing, cgpa, pronounced_session, pronounced_semester, pronounced_level FROM assessment.student_standing(:s)")
+                .param("s", student).query().listOfRows().stream().findFirst().orElse(null);
+        Integer cap = jdbc.sql("SELECT probation_max_units FROM policy.level_limit WHERE level = :l").param("l", level)
+                .query(Integer.class).optional().orElse(null);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("standing", st == null ? "GOOD" : st.get("standing"));
+        out.put("cgpa", st == null ? null : st.get("cgpa"));
+        out.put("pronounced_session", st == null ? null : st.get("pronounced_session"));
+        out.put("pronounced_semester", st == null ? null : st.get("pronounced_semester"));
+        out.put("pronounced_level", st == null ? null : st.get("pronounced_level"));
+        out.put("probation_max_units", cap);
+        return out;
+    }
+
     /* ── results ── */
 
     List<Map<String, Object>> results(UUID student) {

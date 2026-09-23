@@ -128,6 +128,9 @@ export function LevelModal({
         <Field id="rf_max" label="Maximum units per semester">
           <RecText k="max" draft={draft} set={set} num />
         </Field>
+        <Field id="rf_prob" label="Maximum units on probation" full hint="A student the broadsheet has put on probation registers no more than this at this level. Leave blank and probation is pronounced but does not cut the units.">
+          <RecText k="prob" draft={draft} set={set} num ph="e.g. 15" />
+        </Field>
         <Field
           id="rf_carry"
           label="Carryover counts toward the maximum"
