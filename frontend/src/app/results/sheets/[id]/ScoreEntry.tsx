@@ -52,6 +52,9 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
   const [saved, setSaved] = useState<string | null>(null);
   const [ask, setAsk] = useState<"submit" | null>(null);
   const [fileNote, setFileNote] = useState<{ kind: "ok" | "bad"; title: string; lines: string[] } | null>(null);
+  // lines of an upload whose candidate is not on the roll: offered as held scripts, never held on their own
+  const [offRoll, setOffRoll] = useState<{ line: number; number: string; ca: string; exam: string; outcome: string; note: string }[]>([]);
+  const [holding, setHolding] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
   const dirty = roll.filter((r) => changed(r, drafts[r.studentId]));
@@ -152,8 +155,10 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     }
     const byNumber = Object.fromEntries(roll.map((r) => [r.number.toUpperCase(), r]));
     const problems: string[] = [];
+    const aside: typeof offRoll = [];
     const next: Record<string, Draft> = { ...drafts };
     let matched = 0;
+    setOffRoll([]);
     // the header row says where the matriculation number sits (after S/N in the current template, first in
     // the old one); the heading lines above it — department, programme, course, lecturer — are passed over
     const hasHeader = cells.some((row) => row.some((c) => /matric/i.test(c)));
@@ -162,7 +167,12 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       if (!started) { const h = row.findIndex((c) => /matric/i.test(c)); if (h >= 0) { started = true; off = h; } continue; }
       if (row.every((c) => c === "")) continue;   // an empty line, or a spacer row a spreadsheet keeps
       const r = byNumber[(row[off] ?? "").toUpperCase()];
-      if (!r) { problems.push(`Line ${i + 1}: ${row[off] || "(blank)"} is not on this roll`); continue; }
+      if (!r) {
+        const num = (row[off] ?? "").toUpperCase();
+        if (!num) { problems.push(`Line ${i + 1}: no matriculation number`); continue; }
+        aside.push({ line: i + 1, number: num, ca: (row[off + 4] ?? "").trim(), exam: (row[off + 5] ?? "").trim(), outcome: (row[off + 6] ?? "").trim().toUpperCase() || "GRADED", note: "" });
+        continue;
+      }
       const ca = (row[off + 4] ?? "").trim();
       const exam = (row[off + 5] ?? "").trim();
       const outcome = (row[off + 6] ?? "").trim().toUpperCase() || "GRADED";
@@ -187,7 +197,29 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     }
     setDrafts(next);
     setSaved(null);
-    setFileNote({ kind: "ok", title: `${f.name} read: ${matched} row${matched === 1 ? "" : "s"} matched the roll`, lines: ["The marks are on the sheet below as a draft. Check them, then Save — nothing is written until you do."] });
+    setOffRoll(aside);
+    setFileNote({ kind: "ok", title: `${f.name} read: ${matched} row${matched === 1 ? "" : "s"} matched the roll${aside.length ? `; ${aside.length} candidate${aside.length === 1 ? " is" : "s are"} not on it` : ""}`,
+      lines: ["The marks are on the sheet below as a draft. Check them, then Save — nothing is written until you do.", ...(aside.length ? ["The candidates not on the roll are listed below; hold their scripts with one press if they sat the paper, or leave them."] : [])] });
+  }
+
+  /** the lines set aside become held scripts — a deliberate second press, so a typo never becomes one on its own */
+  async function holdOffRoll() {
+    if (!offRoll.length) return;
+    setHolding(true);
+    setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/held/bulk`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${s.courseCode}: ${offRoll.length} script${offRoll.length === 1 ? "" : "s"} held from the uploaded sheet`) },
+        body: JSON.stringify({ rows: offRoll.map((x) => ({ line: String(x.line), number: x.number, ca: x.ca, exam: x.exam, outcome: x.outcome, note: "From the uploaded score sheet" })) }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      notify(`${j.held} held script${j.held === 1 ? "" : "s"} from the upload`);
+      setOffRoll([]);
+      router.refresh();
+    } finally {
+      setHolding(false);
+    }
   }
 
   const ownCode = [...roll.reduce((m, r) => m.set(r.programmeCode, (m.get(r.programmeCode) ?? 0) + 1), new Map<string, number>()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -224,6 +256,14 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
       {problem ? <ProblemNotice problem={problem} /> : null}
       {fileNote ? <Note kind={fileNote.kind} title={fileNote.title}>{fileNote.lines.map((l, i) => <div key={i}>{l}</div>)}</Note> : null}
+      {offRoll.length ? (
+        <Note kind="info" title={`${offRoll.length} candidate${offRoll.length === 1 ? "" : "s"} on the upload ${offRoll.length === 1 ? "is" : "are"} not on this roll`}
+          action={atEntry && own ? <span style={{ display: "inline-flex", gap: 6 }}><Btn kind="primary" disabled={holding} onClick={() => void holdOffRoll()}>{holding ? "Holding…" : `Hold ${offRoll.length === 1 ? "this script" : `these ${offRoll.length} scripts`}`}</Btn><Btn kind="ghost" disabled={holding} onClick={() => setOffRoll([])}>Leave them</Btn></span> : undefined}>
+          {offRoll.slice(0, 12).map((x) => <div key={x.line} className="tnum">Line {x.line}: {x.number}{x.outcome === "GRADED" ? ` · CA ${x.ca || "—"} · Exam ${x.exam || "—"}` : ` · ${x.outcome}`}</div>)}
+          {offRoll.length > 12 ? <div className="sub2">… and {offRoll.length - 12} more</div> : null}
+          <div className="sub2" style={{ marginTop: 4 }}>A candidate not on the roll did not register the course. If they sat the paper, hold the scripts: each waits on the candidate&rsquo;s registration and the register releases it into this sheet when that is approved. A number the register does not know is refused by name and nothing is held.</div>
+        </Note>
+      ) : null}
       {atEntry && own && lockedCount > 0 ? (
         <Note kind="info" title={`${lockedCount} mark${lockedCount === 1 ? " is" : "s are"} on the record and locked`}>
           A mark once saved is not changed by the lecturer. Enter the candidates still without one and submit. If a saved mark is wrong, submit the sheet and ask the Examination Officer or the Head of Department to return it with the reason; every mark then opens for amendment, each change carrying its reason.

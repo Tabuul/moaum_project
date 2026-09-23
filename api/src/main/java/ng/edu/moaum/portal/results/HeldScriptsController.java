@@ -53,6 +53,49 @@ class HeldScriptsController {
         return jdbc.sql("SELECT * FROM assessment.held_scripts(:s)").param("s", sheet).query().listOfRows();
     }
 
+    /** the student is told, by email and by SMS where the register can reach them, that a script is held for
+     *  them and what releases it — the most persuasive fees reminder the University can send (V240) */
+    private void tellStudents(UUID sheet, List<UUID> heldIds) {
+        if (heldIds.isEmpty()) return;
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT h.id, h.student_id, st.surname, st.other_names, coalesce(st.matric_no, st.admission_no) AS number,
+                       o.course_code, c.title, o.session, o.semester, rc.email, rc.phone,
+                       assessment.held_scripts_close(h.sheet_id) AS closes_on
+                  FROM assessment.held_script h
+                  JOIN people.student st ON st.id = h.student_id
+                  JOIN assessment.score_sheet s ON s.id = h.sheet_id
+                  JOIN catalogue.offering o ON o.id = s.offering_id
+                  JOIN catalogue.course c ON c.code = o.course_code
+                  LEFT JOIN LATERAL people.student_reach(h.student_id) rc ON true
+                 WHERE h.sheet_id = :s AND h.id IN (:ids)
+                """).param("s", sheet).param("ids", heldIds).query().listOfRows();
+        for (Map<String, Object> r : rows) {
+            String course = r.get("course_code") + " — " + r.get("title");
+            Object close = r.get("closes_on");
+            String by = close == null ? "before late registration for the semester closes" : "on or before " + close;
+            String subject = "Your " + r.get("course_code") + " script is held until you register";
+            String body = "Dear " + r.get("surname") + ", " + r.get("other_names") + " (" + r.get("number") + "),\n\n"
+                    + "You sat the paper in " + course + " (" + r.get("session") + ", semester " + r.get("semester") + ") without registering the course. "
+                    + "Your lecturer has held your script and its mark on the portal. The mark is not on any result yet.\n\n"
+                    + "To have it counted: pay your fees, register the course on the portal, and have the registration approved by your Head of Department " + by + ". "
+                    + "The moment the registration is approved, the register releases the mark into the score sheet on its own. "
+                    + "A script not released by then lapses and the result is lost.\n\n"
+                    + "Rev. Fr. Moses Orshio Adasu University, Makurdi — the Registry";
+            String sms = "MOAUM: your " + r.get("course_code") + " script (" + r.get("session") + ") is HELD - you sat without registering. Pay fees, register the course and get it approved " + by + " or the mark lapses.";
+            UUID about = (UUID) r.get("id");
+            Object email = r.get("email");
+            Object phone = r.get("phone");
+            if (email != null && !String.valueOf(email).isBlank()) {
+                jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :s, :b, 'held_script', :a)")
+                        .param("r", String.valueOf(email)).param("s", subject).param("b", body).param("a", about).query().singleRow();
+            }
+            if (phone != null && !String.valueOf(phone).isBlank()) {
+                jdbc.sql("SELECT platform.queue_notice('SMS', :r, :s, :b, 'held_script', :a)")
+                        .param("r", String.valueOf(phone)).param("s", subject).param("b", sms).param("a", about).query().singleRow();
+            }
+        }
+    }
+
     /** the sheet's held scripts, after any past the closing date have lapsed */
     @GetMapping("/sheets/{id}/held")
     @PreAuthorize(READERS)
@@ -72,6 +115,7 @@ class HeldScriptsController {
                 .param("ca", body.ca(), Types.INTEGER).param("ex", body.exam(), Types.INTEGER)
                 .param("o", body.outcome(), Types.VARCHAR).param("note", body.note(), Types.VARCHAR)
                 .query(UUID.class).single();
+        tellStudents(id, List.of(held));
         return Map.of("id", held, "held", list(id));
     }
 
@@ -84,8 +128,11 @@ class HeldScriptsController {
     @Transactional
     Map<String, Object> holdBulk(@PathVariable UUID id, @Valid @RequestBody BulkIn body) throws tools.jackson.core.JacksonException {
         String json = new tools.jackson.databind.ObjectMapper().writeValueAsString(body.rows());
+        List<UUID> before = jdbc.sql("SELECT id FROM assessment.held_script WHERE sheet_id = :s").param("s", id).query(UUID.class).list();
         int n = jdbc.sql("SELECT assessment.hold_scripts_bulk(:s, cast(:rows as jsonb))")
                 .param("s", id).param("rows", json).query(Integer.class).single();
+        List<UUID> now = jdbc.sql("SELECT id FROM assessment.held_script WHERE sheet_id = :s AND state = 'HELD'").param("s", id).query(UUID.class).list();
+        tellStudents(id, now.stream().filter(x -> !before.contains(x)).toList());
         return Map.of("held", n, "list", list(id));
     }
 
