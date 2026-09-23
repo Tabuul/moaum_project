@@ -3,7 +3,7 @@
 /** tAuditPayroll — the variance of a month's payroll against the one before it: who
  *  joined, who left, and whose net changed. The audit directorate reads it to see
  *  that every movement in the total is explained by a movement in the establishment. */
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import type { PayRun } from "../Payroll";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -26,7 +26,7 @@ function monthLabel(period: string): string {
 }
 
 export function Variance({ runs, period, rows, problem }: { runs: PayRun[]; period: string | null; rows: VarianceRow[]; problem: Problem | null }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const moved = rows.filter((r) => r.kind !== "SAME");
   const joined = rows.filter((r) => r.kind === "JOINED").length;
   const left = rows.filter((r) => r.kind === "LEFT").length;
@@ -40,7 +40,7 @@ export function Variance({ runs, period, rows, problem }: { runs: PayRun[]; peri
       </Note>
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 200 }}><label htmlFor="v-period">Month</label>
-          <select id="v-period" className="ctl" value={period ?? ""} onChange={(e) => router.push(`/payroll/variance?period=${e.target.value}`)}>
+          <select id="v-period" className="ctl" value={period ?? ""} onChange={(e) => queryNav(`/payroll/variance?period=${e.target.value}`)}>
             {runs.length ? runs.map((r) => <option key={r.id} value={r.period.slice(0, 7)}>{monthLabel(r.period)}</option>) : <option value="">No runs yet</option>}
           </select>
         </div>

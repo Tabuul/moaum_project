@@ -7,7 +7,7 @@
  * departments. The recommendation and the award themselves are acted on the School Board desk.
  */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -24,7 +24,7 @@ const VIVA: Record<string, string> = { PASS_CLEAN: "Pass", PASS_MINOR: "Pass · 
 const fmt = (v: string | null) => { if (!v) return "—"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); };
 
 export function Senate({ session, sessions, view, problem }: { session: string; sessions: { name: string; state: string }[]; view: SenateView | null; problem: Problem | null }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const options = sessions.some((s) => s.name === session) ? sessions : [{ name: session, state: "" }, ...sessions];
   const c = view?.counts;
   return (
@@ -38,7 +38,7 @@ export function Senate({ session, sessions, view, problem }: { session: string; 
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <label htmlFor="sen-session" className="sub2" style={{ fontWeight: 600 }}>Session</label>
             <select id="sen-session" className="ctl" style={{ maxWidth: 260 }} value={session}
-              onChange={(e) => router.push(`/admissions/postgraduate/senate?session=${encodeURIComponent(e.target.value)}`)}>
+              onChange={(e) => queryNav(`/admissions/postgraduate/senate?session=${encodeURIComponent(e.target.value)}`)}>
               {options.map((s) => <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : ""}</option>)}
             </select>
           </div>

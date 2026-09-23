@@ -3,7 +3,7 @@
 /** tLedger — proto/part18.html: the day book, filtered by day, exported as the finance system takes it (V037). */
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { when, type DayBookRow } from "@/lib/bursary";
 import { csv, download } from "@/lib/results";
 import { Btn, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -11,7 +11,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 
 export function Ledger({ from, to, rows, actingOffice }: { from: string; to: string; rows: DayBookRow[]; actingOffice?: string | null }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const mayRefund = ["bursar", "super"].includes(actingOffice ?? "");
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
@@ -32,7 +32,7 @@ export function Ledger({ from, to, rows, actingOffice }: { from: string; to: str
             <Field id="lg-from" label="From"><input id="lg-from" className="ctl" type="date" value={f} onChange={(e) => setF(e.target.value)} /></Field>
             <Field id="lg-to" label="To"><input id="lg-to" className="ctl" type="date" value={t} onChange={(e) => setT(e.target.value)} /></Field>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", paddingBottom: 14 }}>
-              <Btn kind="primary" onClick={() => router.push(`/finance/ledger?from=${f}&to=${t}`)}>Apply</Btn>
+              <Btn kind="primary" onClick={() => queryNav(`/finance/ledger?from=${f}&to=${t}`)}>Apply</Btn>
               <Btn kind="ghost" disabled={!rows.length} onClick={() => download(`ledger-${from}-${to}.csv`, csv([["Reference", "Confirmed", "Payer", "Number", "Purpose", "Session", "Amount", "Channel", "Receipt", "Note"], ...rows.map((r) => [r.reference, r.confirmed_at, r.payer, r.number, r.purpose, r.session, r.amount, r.channel, r.receipt_no ?? "", r.note ?? ""])]))}>Export the journal</Btn>
             </div>
           </div>

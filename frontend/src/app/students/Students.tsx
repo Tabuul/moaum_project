@@ -8,7 +8,8 @@
  */
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Register } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
 import type { Scope } from "@/lib/scope";
@@ -31,7 +32,7 @@ export function Students({
   sessions: string[];
   ceiling?: Ceiling;
 }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const pathname = usePathname();
   const params = useSearchParams();
   const [term, setTerm] = useState(q);
@@ -42,7 +43,7 @@ export function Students({
     const next = new URLSearchParams(params.toString());
     if (term.trim()) next.set("q", term.trim());
     else next.delete("q");
-    router.push(`${pathname}?${next.toString()}`);
+    queryNav(`${pathname}?${next.toString()}`);
   }
 
   const rows = register.rows.map((s) => [

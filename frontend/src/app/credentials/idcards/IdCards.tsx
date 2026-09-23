@@ -9,6 +9,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -23,6 +24,7 @@ export interface CardDesk {
 
 export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; actingOffice: string | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const may = ["library", "security", "super"].includes(actingOffice ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -55,7 +57,7 @@ export function IdCards({ desk, q, actingOffice }: { desk: CardDesk; q: string; 
         The Library prints it when the Bursary&rsquo;s position releases ID_CARD &mdash; the first instalment under the recommended scheme &mdash; and Security hands it over against the photograph on file. A student with no matriculation number has no card yet; a lost card is ended here and a replacement issued.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      <Panel title="Waiting for a card" right={<form onSubmit={(e) => { e.preventDefault(); router.push(`/credentials/idcards?q=${encodeURIComponent(search)}`); }} style={{ display: "inline-flex", gap: 6 }}><input className="ws__in" value={search} placeholder="Matriculation number or surname" onChange={(e) => setSearch(e.target.value)} aria-label="Find a student" /><Btn kind="ghost" onClick={() => router.push(`/credentials/idcards?q=${encodeURIComponent(search)}`)}>Find</Btn></form>}>
+      <Panel title="Waiting for a card" right={<form onSubmit={(e) => { e.preventDefault(); queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`); }} style={{ display: "inline-flex", gap: 6 }}><input className="ws__in" value={search} placeholder="Matriculation number or surname" onChange={(e) => setSearch(e.target.value)} aria-label="Find a student" /><Btn kind="ghost" onClick={() => queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`)}>Find</Btn></form>}>
         <DTable cols={["Student", "Programme", "Level|mid", "Status|mid", "|num"]} rows={desk.waiting.map((w) => [
           <Two key="s" a={`${w.surname}, ${w.other_names}`} b={w.matric_no} />, <span className="sub2" key="p">{w.programme}</span>, <span className="tnum" key="l">{w.current_level}</span>,
           <Pil key="st" kind={w.status === "ACTIVE" ? "ok" : w.status === "PROBATION" ? "warn" : "grey"}>{(w.status ?? "—").charAt(0) + (w.status ?? "—").slice(1).toLowerCase()}</Pil>,

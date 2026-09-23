@@ -3,7 +3,7 @@
 /** t/readiness — go-live readiness: each configuration gate that silently blocks part of launch, checked
  *  live, with a link to fix each. Read-only; nothing here changes state. */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 
 export interface Check { key: string; label: string; status: "ok" | "warn" | "bad"; detail: string; fix: string | null }
@@ -13,7 +13,7 @@ const PILL: Record<string, "ok" | "warn" | "bad"> = { ok: "ok", warn: "warn", ba
 const WORD: Record<string, string> = { ok: "Ready", warn: "Check", bad: "Blocking" };
 
 export function ReadinessView({ data, sessions }: { data: Readiness; sessions: string[] }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const ok = data.checks.filter((c) => c.status === "ok").length;
   return (
     <>
@@ -26,7 +26,7 @@ export function ReadinessView({ data, sessions }: { data: Readiness; sessions: s
 
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="rd-s">Session</label>
-          <select id="rd-s" className="ctl" value={data.session} onChange={(e) => router.push(`/readiness?session=${encodeURIComponent(e.target.value)}`)}>
+          <select id="rd-s" className="ctl" value={data.session} onChange={(e) => queryNav(`/readiness?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(data.session) ? sessions : [data.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
         </div>

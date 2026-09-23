@@ -4,6 +4,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -23,6 +24,7 @@ const NAT: Record<string, [string, "ok" | "info" | "grey"]> = { LOAN: ["Loan", "
 
 export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: NelfundDesk; report: FundingReport | null; tab: string; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const bursary = ["bursar", "admin", "super"].includes(actingOffice ?? "");
   const registry = ["registrar", "dregistrar", "academic", "super", "bursar"].includes(actingOffice ?? "");
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -54,7 +56,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
       setBusy(false);
     }
   }
-  const go = (next: string, session = d.session) => router.push(`/finance/nelfund?tab=${next}&session=${encodeURIComponent(session)}`);
+  const go = (next: string, session = d.session) => queryNav(`/finance/nelfund?tab=${next}&session=${encodeURIComponent(session)}`);
 
   function downloadTemplate() {
     const blob = buildXlsx(

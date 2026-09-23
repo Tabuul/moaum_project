@@ -8,7 +8,8 @@
  * between screens). The ceiling is the office's: a selector the office may
  * not widen is disabled and says why.
  */
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { Ico } from "./ui";
 import { EMPTY_SCOPE, SCOPE_COOKIE, SCOPE_KEYS, type Scope } from "@/lib/scope";
 
@@ -93,7 +94,7 @@ export function ScopeBar({
   hide?: ("fac" | "dept" | "prog" | "level")[];
   onExport?: () => void;
 }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const pathname = usePathname();
   const params = useSearchParams();
 
@@ -114,7 +115,7 @@ export function ScopeBar({
       else q.delete(k);
     }
     remember(next);
-    router.push(`${pathname}?${q.toString()}`);
+    queryNav(`${pathname}?${q.toString()}`);
   }
 
   const trail: string[] = [f ? `Faculty of ${f.name}` : "The University"];

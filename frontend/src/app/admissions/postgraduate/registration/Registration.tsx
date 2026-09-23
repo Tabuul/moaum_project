@@ -7,7 +7,7 @@
  * renewed or not (Policy 7.5). Registration itself is endorsed on the registrations desk.
  */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -23,7 +23,7 @@ export interface RegView {
 const SEM: Record<number, string> = { 1: "1st", 2: "2nd", 3: "Summer" };
 
 export function Registration({ session, sessions, view, problem }: { session: string; sessions: { name: string; state: string }[]; view: RegView | null; problem: Problem | null }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const options = sessions.some((s) => s.name === session) ? sessions : [{ name: session, state: "" }, ...sessions];
   const c = view?.counts;
   return (
@@ -37,7 +37,7 @@ export function Registration({ session, sessions, view, problem }: { session: st
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <label htmlFor="reg-session" className="sub2" style={{ fontWeight: 600 }}>Session</label>
             <select id="reg-session" className="ctl" style={{ maxWidth: 260 }} value={session}
-              onChange={(e) => router.push(`/admissions/postgraduate/registration?session=${encodeURIComponent(e.target.value)}`)}>
+              onChange={(e) => queryNav(`/admissions/postgraduate/registration?session=${encodeURIComponent(e.target.value)}`)}>
               {options.map((s) => <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : ""}</option>)}
             </select>
           </div>

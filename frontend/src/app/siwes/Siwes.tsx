@@ -4,6 +4,7 @@
  *  practical report mark. The supervisor's own assessment (/40) is entered on their dashboard. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
@@ -32,6 +33,7 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
   students: SiwesStudent[]; pool: Supervisor[];
 }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<Problem | null>(null);
   const [practical, setPractical] = useState<Record<string, string>>({});
@@ -43,7 +45,7 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
     q.set("session", next.session ?? session);
     q.set("sem", String(next.sem ?? semester));
     if (next.offering ?? offeringId) q.set("offering", next.offering ?? offeringId);
-    router.push(`/siwes?${q.toString()}`);
+    queryNav(`/siwes?${q.toString()}`);
   }
 
   async function send(path: string, body: unknown, reason: string, key: string): Promise<boolean> {

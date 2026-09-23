@@ -4,7 +4,7 @@
  *  programme and entry mode, whether each has registered for post-UTME, and a per-programme
  *  breakdown — the clear admitted view. */
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -24,7 +24,7 @@ const modeLabel = (m: string) => (m === "UTME" ? "UTME" : m.charAt(0) + m.slice(
 export function Applicants({ d, session, q, faculty, programme, entryMode, programmes }: {
   d: ApplicantsView; session: string; q: string; faculty: string; programme: string; entryMode: string; programmes: ProgrammeOption[];
 }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const [search, setSearch] = useState(q);
   const total = Number(d.counts.total);
   const registered = Number(d.counts.registered);
@@ -42,7 +42,7 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
     if (state.faculty) p.set("faculty", state.faculty);
     if (state.programme) p.set("programme", state.programme);
     if (state.entryMode) p.set("entryMode", state.entryMode);
-    router.push(`/admissions/applicants?${p.toString()}`);
+    queryNav(`/admissions/applicants?${p.toString()}`);
   }
   const filtered = !!(q || faculty || programme || entryMode);
 
@@ -83,7 +83,7 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
             </Field>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
-            {filtered ? <button className="btn btn--ghost" onClick={() => { setSearch(""); router.push(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear filters</button> : null}
+            {filtered ? <button className="btn btn--ghost" onClick={() => { setSearch(""); queryNav(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear filters</button> : null}
             <button className="btn btn--primary" onClick={() => navigate({})}>Search</button>
           </div>
         </PBody>

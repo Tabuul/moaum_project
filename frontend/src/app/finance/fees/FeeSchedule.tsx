@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
@@ -151,6 +152,7 @@ function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string
 
 export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice }: { session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const may = actingOffice === "bursar" || actingOffice === "super";
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -353,7 +355,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         </Note>
       )}
       <Panel title={`The charges for ${session}`} right={<span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <select aria-label="Session" className="ctl" style={{ width: "auto" }} value={session} onChange={(e) => { if (e.target.value !== session) router.push(`/finance/fees?session=${encodeURIComponent(e.target.value)}`); }}>
+        <select aria-label="Session" className="ctl" style={{ width: "auto" }} value={session} onChange={(e) => { if (e.target.value !== session) queryNav(`/finance/fees?session=${encodeURIComponent(e.target.value)}`); }}>
           {(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <Btn kind="primary" disabled={!may} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>
@@ -460,7 +462,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
               // none chosen: the whole faculty (if one is set), else every programme
               ok = await send("add", "POST", `/sessions/${addSession}/schedule`, { ...shared, programmeCode: null }, `Fee item stated for ${addSession}: ${itemName}`);
             }
-            if (ok) { setAdding(false); setEditingId(null); if (addSession !== session) router.push(`/finance/fees?session=${encodeURIComponent(addSession)}`); }
+            if (ok) { setAdding(false); setEditingId(null); if (addSession !== session) queryNav(`/finance/fees?session=${encodeURIComponent(addSession)}`); }
           }}>{busy === "edit" ? "Saving…" : busy === "add" || (busy ?? "").startsWith("add-") ? "Stating…" : editingId ? "Save changes" : "State the item"}</Btn></>}>
           <div className="grid grid--2">
             <Field id="fi" label="Payment item" hint="A payment category; choose Other to name a one-off">

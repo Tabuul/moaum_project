@@ -4,7 +4,7 @@
  *  mark they were screened by (Post-UTME sat, or O'Level auto-screening / Direct Entry computed) and
  *  its source. JAMB number included, ordered by programme. Read-only. */
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
@@ -18,7 +18,7 @@ const SRC: Record<string, "ok" | "info" | "grey" | "bad"> = {
 };
 
 export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterRow[]; session: string; sessions: string[] }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const [prog, setProg] = useState("");
   const [src, setSrc] = useState("");
 
@@ -79,7 +79,7 @@ export function ScreeningRegister({ rows, session, sessions }: { rows: RegisterR
       <div className="scope">
         <div className="scope__row">
           <div className="scope__f"><label htmlFor="sr-s">Session</label>
-            <select id="sr-s" className="ws__select" value={session} onChange={(e) => router.push(`/admissions/screening?session=${encodeURIComponent(e.target.value)}`)}>
+            <select id="sr-s" className="ws__select" value={session} onChange={(e) => queryNav(`/admissions/screening?session=${encodeURIComponent(e.target.value)}`)}>
               {(sessions.includes(session) ? sessions : [session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>

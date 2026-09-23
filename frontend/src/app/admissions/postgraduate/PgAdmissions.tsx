@@ -5,6 +5,7 @@
  *  School admits — which puts the student on the register. Separate from the JAMB/CAPS flow. */
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -268,6 +269,7 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
   session: string; sessions?: { name: string; state: string }[]; view: PgView | null; problem: Problem | null; actingOffice: string | null;
 }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const [open, setOpen] = useState<string | null>(null);
   const c = view?.counts;
   // the session on the desk is always among the options, even if the calendar doesn't list it yet
@@ -285,7 +287,7 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <label htmlFor="pg-session" className="sub2" style={{ fontWeight: 600 }}>Admissions session</label>
             <select id="pg-session" className="ctl" style={{ maxWidth: 260 }} value={session}
-              onChange={(e) => router.push(`/admissions/postgraduate?session=${encodeURIComponent(e.target.value)}`)}>
+              onChange={(e) => queryNav(`/admissions/postgraduate?session=${encodeURIComponent(e.target.value)}`)}>
               {sessionOptions.map((s) => (
                 <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : s.state === "PLANNED" ? " · planned" : ""}</option>
               ))}

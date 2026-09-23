@@ -5,6 +5,7 @@
  *  second examiner who verifies. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
@@ -32,6 +33,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null;
 }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const [open, setOpen] = useState<Offering | null>(null);
   const [lecturer, setLecturer] = useState("");
   const [second, setSecond] = useState("");
@@ -68,7 +70,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
     q.set("sem", String(next.sem ?? semester));
     const lv = next.level !== undefined ? next.level : level;
     if (lv) q.set("level", String(lv));
-    router.push(`/allocate?${q.toString()}`);
+    queryNav(`/allocate?${q.toString()}`);
   }
 
   function openAssign(o: Offering) {

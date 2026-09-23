@@ -3,6 +3,7 @@
 /** mClinic — proto/part10.html: the waiting list, triage, the record a clinician opens (and the opening logged), the outcome. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
@@ -20,6 +21,7 @@ function when(iso: string | null): string {
 
 export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Btn kind="primary" disabled={busy || !who.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/health/visits", "POST", { number: who, presenting, triage }, `Patient ${who} arrived at the clinic`); if (j) { setSaid("On the waiting list"); setPresenting(""); router.refresh(); } }}>Add to the waiting list</Btn>
-              <Btn kind="ghost" disabled={busy} onClick={() => router.push(`/clinic?number=${encodeURIComponent(who)}`)}>Look the patient up</Btn>
+              <Btn kind="ghost" disabled={busy} onClick={() => queryNav(`/clinic?number=${encodeURIComponent(who)}`)}>Look the patient up</Btn>
             </div>
             {d.patron === null && number ? <Note kind="bad" title={`Nobody carries the number ${number}`}>The matriculation or admission number, as issued.</Note> : d.patron ? <Note kind="info" title={`${d.patron.name} · ${d.patron.number}`}>{d.patron.programme}</Note> : null}
           </PBody>

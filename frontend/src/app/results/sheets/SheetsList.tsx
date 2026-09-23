@@ -2,7 +2,7 @@
 
 /** staffScores — proto/part5.html: the sheets assigned to you, counted from the rolls, never typed beside them. */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { stageOf, type MySheet } from "@/lib/results";
 import { Note, Panel, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -11,13 +11,13 @@ import { semesterText } from "@/lib/student-portal";
 export { stageOf };
 
 export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: MySheet[]; session: string; sessions: string[]; sem: string; all: boolean }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const open = sheets.filter((s) => s.stage === "ENTRY");
   function go(next: { session?: string; sem?: string }) {
     const q = new URLSearchParams();
     q.set("session", next.session ?? session);
     if (next.sem ?? sem) q.set("sem", next.sem ?? sem);
-    router.push(`/results/sheets?${q.toString()}`);
+    queryNav(`/results/sheets?${q.toString()}`);
   }
   return (
     <>

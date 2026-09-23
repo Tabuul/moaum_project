@@ -2,7 +2,7 @@
 
 /** tEligibility — proto/part…: who may register a course. The eligible set is part of the
  *  course, assigned at creation and amended only by a curriculum change; this screen reads it. */
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -17,12 +17,12 @@ export interface EligibilityView { code: string; title: string; dept_code: strin
 export function Eligibility({ depts, dept, courses, code, view, problem }: {
   depts: Dept[]; dept: string; courses: CourseRow[]; code: string; view: EligibilityView | null; problem: Problem | null;
 }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   function go(next: { dept?: string; course?: string }) {
     const q = new URLSearchParams();
     q.set("dept", next.dept ?? dept);
     if (next.course ?? (next.dept ? "" : code)) q.set("course", next.course ?? code);
-    router.push(`/eligibility?${q.toString()}`);
+    queryNav(`/eligibility?${q.toString()}`);
   }
 
   const all = view ? view.offers.reduce((n, o) => n + o.registered, 0) : 0;

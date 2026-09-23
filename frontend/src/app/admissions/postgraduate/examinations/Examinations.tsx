@@ -7,7 +7,7 @@
  * view of what has come in.
  */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -23,9 +23,9 @@ const KIND: Record<string, string> = { CORE: "Core", ELECTIVE: "Elective", DEFIC
 const SEM: Record<number, string> = { 1: "First semester", 2: "Second semester", 3: "Summer semester" };
 
 export function Examinations({ session, semester, sessions, view, problem }: { session: string; semester: number; sessions: { name: string; state: string }[]; view: ExamView | null; problem: Problem | null }) {
-  const router = useRouter();
+  const queryNav = useQueryNav();
   const options = sessions.some((s) => s.name === session) ? sessions : [{ name: session, state: "" }, ...sessions];
-  const go = (s: string, sem: number) => router.push(`/admissions/postgraduate/examinations?session=${encodeURIComponent(s)}&semester=${sem}`);
+  const go = (s: string, sem: number) => queryNav(`/admissions/postgraduate/examinations?session=${encodeURIComponent(s)}&semester=${sem}`);
   const c = view?.counts;
   return (
     <>

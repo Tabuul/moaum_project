@@ -4,6 +4,7 @@
  *  the Board and Senate make it live), and ending a course with a date rather than deleting it. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -30,6 +31,7 @@ const LEVELS = [100, 200, 300, 400, 500, 600];
 
 export function DeptCourses({ depts, dept, courses, duplicates = [], programmes = [], problem }: { depts: Dept[]; dept: string; courses: Course[]; duplicates?: Duplicate[]; programmes?: Programme[]; problem: Problem | null }) {
   const router = useRouter();
+  const queryNav = useQueryNav();
   const [add, setAdd] = useState(false);
   const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Compulsory" });
   const [busy, setBusy] = useState(false);
@@ -68,7 +70,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
   const filtered = Boolean(fLevel || fSem || fKind || fProg);
 
   function go(nextDept: string) {
-    router.push(`/catalogue?dept=${encodeURIComponent(nextDept)}`);
+    queryNav(`/catalogue?dept=${encodeURIComponent(nextDept)}`);
   }
 
   async function send(path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
