@@ -225,7 +225,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             </label>
           </div>
           {list.length ? (
-            <DTable cols={pool !== null ? ["Lecturer", "Department", "Current load|mid", "After this|mid", "|num"] : ["Lecturer", "Current load|mid", "After this|mid", "|num"]} rows={list.map((l) => {
+            <DTable noPrint cols={pool !== null ? ["Lecturer", "Department", "Current load|mid", "After this|mid", "|num"] : ["Lecturer", "Current load|mid", "After this|mid", "|num"]} rows={list.map((l) => {
               const willBe = l.load + open.units;
               return [
                 <Two key="n" a={l.name} b={l.staff_number ?? ""} />,

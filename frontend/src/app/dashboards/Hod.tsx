@@ -5,6 +5,7 @@ import type { Me } from "@/components/proto/Shell";
 import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { HodFeeDownloads } from "./HodFeeDownloads";
+import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 import { semesterName } from "@/lib/student-portal";
 
 export interface HodHome {
@@ -30,7 +31,7 @@ export interface HodHome {
   feesOwing?: number;
 }
 
-export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: HodHome | null; requestsOpen: number | null }) {
+export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me | null; home: HodHome | null; requestsOpen: number | null; history?: AllocationRow[] }) {
   if (!home || !home.resolved) {
     return (
       <Note kind="bad" title="Your Head-of-Department office is not tied to a department yet">
@@ -121,6 +122,8 @@ export function HodDashboard({ me, home, requestsOpen }: { me: Me | null; home: 
           </PBody>
         </Panel>
       </div>
+
+      <AllocationHistory rows={history} mode="department" session={home.session ?? ""} />
 
       <Panel title="Result pipeline" right={`${sheets} sheet${sheets === 1 ? "" : "s"} not yet published`}>
         <Tiles cls="grid--4" items={[

@@ -11,6 +11,7 @@ import { BursarDashboard } from "./dashboards/Bursar";
 import { HodDashboard, type HodHome } from "./dashboards/Hod";
 import { ClinicDashboard } from "./dashboards/Clinic";
 import { ExamsDashboard } from "./dashboards/Exams";
+import type { AllocationRow } from "./dashboards/AllocationHistory";
 import { HrDashboard, type HrHome } from "./dashboards/Hr";
 import { DeanDashboard, type DeanHome } from "./dashboards/Dean";
 import { SecurityDashboard } from "./dashboards/Security";
@@ -65,6 +66,9 @@ export default async function DashboardPage() {
   const openQueries = rq && rq.ok ? rq.data.length : null;
   /* the Head of Department's dashboard, scoped to their own department */
   const hodHome = office === "hod" ? await api<HodHome>(`/api/v1/hod/dashboard?session=${encodeURIComponent(session)}`) : null;
+  /* the history of teaching allocation: the lecturer's own; the department's for the Head and the Examinations Officer */
+  const allocHistory = office === "lecturer" ? await api<AllocationRow[]>("/api/v1/allocation/history?scope=me")
+    : office === "hod" || office === "exams" ? await api<AllocationRow[]>("/api/v1/allocation/history?scope=department") : null;
   /* the Support Services office's home is the clinic: its figures and the queue (V032) */
   const clinic = office === "services" ? await api<ClinicDesk>("/api/v1/health/desk") : null;
   /* the Exams Officer's home is the result-sheet pipeline in their scope (V013) */
@@ -109,13 +113,13 @@ export default async function DashboardPage() {
       ) : office === "bursar" ? (
         <BursarDashboard session={session} />
       ) : office === "lecturer" ? (
-        <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} />
+        <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
       ) : office === "hod" ? (
-        <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} />
+        <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
       ) : office === "services" ? (
         <ClinicDashboard me={me.ok ? me.data : null} desk={clinic && clinic.ok ? clinic.data : null} />
       ) : (office === "exams" || office === "facultyexams") ? (
-        <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} />
+        <ExamsDashboard me={me.ok ? me.data : null} listing={examSheets && examSheets.ok ? examSheets.data : null} openQueries={openQueries} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
       ) : office === "hrm" ? (
         <HrDashboard me={me.ok ? me.data : null} home={hr && hr.ok ? hr.data : null} />
       ) : office === "dean" ? (

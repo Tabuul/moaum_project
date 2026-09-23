@@ -3,12 +3,13 @@ import type { Me } from "@/components/proto/Shell";
 import type { SheetListing, SheetListed } from "@/lib/results";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 
 const bucket = (st: string) => st === "ENTRY" ? "entry" : st === "PUBLISHED" ? "published" : st === "SENATE" ? "senate" : "workflow";
 
 /** The Exams Officer's home: the result-sheet pipeline in their scope, the sheets still with lecturers to
  *  chase, and the result queries awaiting an answer — from the results module (V013). */
-export function ExamsDashboard({ me, listing, openQueries, session }: { me: Me | null; listing: SheetListing | null; openQueries: number | null; session: string }) {
+export function ExamsDashboard({ me, listing, openQueries, session, history = [] }: { me: Me | null; listing: SheetListing | null; openQueries: number | null; session: string; history?: AllocationRow[] }) {
   const t = listing?.tiles;
   const sheets = listing?.sheets ?? [];
   const counts = { entry: 0, workflow: 0, senate: 0, published: 0 };
@@ -58,6 +59,8 @@ export function ExamsDashboard({ me, listing, openQueries, session }: { me: Me |
             ])} texts={notSubmitted.map((s) => `${s.courseCode} ${s.courseTitle} ${s.lecturer ?? ""}`)} />
         ) : <PBody><div className="sub2">Every sheet has left the lecturers. Nothing to chase for this Senate.</div></PBody>}
       </Panel>
+
+      <AllocationHistory rows={history} mode="department" session={session} />
 
       <Panel title="Examinations desks" right={me?.name ? `Signed in as ${me.name}` : "Examinations"}>
         <PBody>
