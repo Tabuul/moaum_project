@@ -37,6 +37,17 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
       : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F</div></span>;
   const orderCols = [...core, ...elec];
+  /* the matriculation number's prefix (everything up to the last oblique) is the class's, shared by nearly every
+     row: it sits under the MATRIC NO. heading once, and each cell carries the serial alone. A row whose number
+     does not share the prefix — a transfer, an old-format number — shows in full. */
+  const prefixOf = (n: string) => n.slice(0, n.lastIndexOf("/") + 1);
+  const matricPrefix = (() => {
+    if (!sheet) return "";
+    const counts = new Map<string, number>();
+    for (const r of sheet.rows) { const p = prefixOf(r.number); if (p) counts.set(p, (counts.get(p) ?? 0) + 1); }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  })();
+  const serialOf = (n: string) => (matricPrefix && n.startsWith(matricPrefix) ? n.slice(matricPrefix.length) : n);
 
   /* a 100 level first-semester class has no prior record: no carryover, and nothing cumulative yet */
   /* the Carryover column starts at 200 level — a 100 level student has no prior level to carry from, so
@@ -83,10 +94,10 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
 
-  const bsCols: Cell[] = ["S/N", "MATRIC NO.", "NAME OF CANDIDATE", ...(hideCarryover ? [] : ["CARRYOVER"]),
+  const bsCols: Cell[] = ["S/N", matricPrefix ? `MATRIC NO. (${matricPrefix})` : "MATRIC NO.", "NAME OF CANDIDATE", ...(hideCarryover ? [] : ["CARRYOVER"]),
     ...orderCols.map((c) => `${c.courseCode} (${c.units})`), "CUR", "CUE", "WGP", "GPA",
     ...(hideCum ? [] : ["TCR", "TCE", "TWGP", "LCGPA", "CGPA"]), "REMARKS"];
-  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, r.number, r.name,
+  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, serialOf(r.number), r.name,
     ...(hideCarryover ? [] : [r.carryovers.join(" ")]),
     ...orderCols.map((c) => markText(markOf(r, c.courseCode))),
     r.cur, r.cue, r.points, r.gpa ?? "", ...(hideCum ? [] : [r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? ""]), r.remarks];
@@ -124,11 +135,11 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const half = Math.ceil(sheet.courses.length / 2);
     const courseTwoCol = `<div class="cols2"><table class="t"><tbody>${courseCells(sheet.courses.slice(0, half))}</tbody></table>`
       + `<table class="t"><tbody>${courseCells(sheet.courses.slice(half))}</tbody></table></div>`;
-    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">MATRIC NO.</th><th rowspan="2">NAME OF CANDIDATE</th>${hideCarryover ? "" : `<th rowspan="2">CARRYOVER</th>`}`
+    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">MATRIC NO.${matricPrefix ? `<br><span style="font-weight:400;text-transform:none">${escd(matricPrefix)}</span>` : ""}</th><th rowspan="2">NAME OF CANDIDATE</th>${hideCarryover ? "" : `<th rowspan="2">CARRYOVER</th>`}`
       + (core.length ? `<th colspan="${core.length}">CORE COURSES</th>` : "") + (elec.length ? `<th colspan="${elec.length}">ELECTIVE COURSES</th>` : "")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
-    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(r.number)}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
+    const body = sheet.rows.map((r, i) => `<tr><td>${i + 1}</td><td>${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
       + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F" ? "<b>ABS</b><br><b>F</b>" : m!.counted ? `${m!.total}<br><b>${m!.grade}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(m!.grade ?? "")}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
@@ -151,7 +162,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       <h3>Courses</h3>${courseTwoCol}
       <div class="sign"><div><div class="role">Dean of Faculty</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div>
         <div><div class="role">Head of Department</div><div class="ln">Name</div><div class="ln">Sign</div><div class="ln">Date</div></div></div>
-      <div class="pb"></div><h3>Broadsheet — ${escd(cov.degree)}, ${sheet.level} Level, ${semester} semester</h3>
+      <div class="pb"></div>
       <table class="bs"><thead>${gh}</thead><tbody>${body}</tbody></table></body></html>`;
     const w = window.open("", "_blank");
     if (!w) { return; }
@@ -229,7 +240,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
               </PBody>
             </Panel>
           ) : null}
-          <Panel title={`Broadsheet — ${programme?.name ?? sheet.programme}, ${sheet.level} Level, ${semester} semester`} right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
+          <Panel title="" right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
             {sheet.rows.length === 0 ? (
               <div className="card__body sub2">No approved registration at this level in {sheet.session} {semester.toLowerCase()} semester for this programme. The broadsheet has nobody to compute.</div>
             ) : (
@@ -238,7 +249,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                   <thead>
                     <tr className="grp">
                       <th rowSpan={2} className="sn">S/N</th>
-                      <th rowSpan={2} className="l">MATRIC NO.</th>
+                      <th rowSpan={2} className="l">MATRIC NO.{matricPrefix ? <div style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{matricPrefix}</div> : null}</th>
                       <th rowSpan={2} className="l">NAME OF CANDIDATE</th>
                       {hideCarryover ? null : <th rowSpan={2}>CARRYOVER</th>}
                       {core.length ? <th colSpan={core.length} className="band">CORE COURSES</th> : null}
@@ -257,7 +268,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                     {sheet.rows.map((r, i) => (
                       <tr key={r.studentId}>
                         <td className="sn tnum">{i + 1}</td>
-                        <td className="l tnum">{r.number}</td>
+                        <td className="l tnum" title={r.number}>{serialOf(r.number)}</td>
                         <td className="l nm">{r.name}</td>
                         {hideCarryover ? null : <td className="co sub2">{r.carryovers.length ? r.carryovers.join(", ") : "—"}</td>}
                         {[...core, ...elec].map((c) => <td key={c.courseCode} className="mk">{cell(markOf(r, c.courseCode))}</td>)}
