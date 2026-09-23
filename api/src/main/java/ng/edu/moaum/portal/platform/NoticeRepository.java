@@ -21,6 +21,28 @@ public class NoticeRepository {
     public record Queued(UUID id, String channel, String recipient, String subject, String body, int attempts) {
     }
 
+    /** a file queued with a notice (V230) */
+    public record Attachment(String filename, String contentType, byte[] content) {
+    }
+
+    public List<Attachment> attachments(UUID noticeId) {
+        return jdbc.sql("SELECT filename, content_type, content FROM platform.notice_attachment WHERE notice_id = :n ORDER BY created_at")
+                .param("n", noticeId).query(Attachment.class).list();
+    }
+
+    /** queue an email with attachments, in the caller's transaction; returns the notice id */
+    public UUID queueEmail(String recipient, String subject, String body, String aboutKind, UUID aboutId, List<Attachment> files) {
+        UUID id = jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :s, :b, :k, :a)")
+                .param("r", recipient).param("s", subject).param("b", body)
+                .param("k", aboutKind, Types.VARCHAR).param("a", aboutId, Types.OTHER)
+                .query(UUID.class).single();
+        for (Attachment f : files) {
+            jdbc.sql("INSERT INTO platform.notice_attachment (notice_id, filename, content_type, content, size_bytes) VALUES (:n, :f, :t, :c, :z)")
+                    .param("n", id).param("f", f.filename()).param("t", f.contentType()).param("c", f.content()).param("z", f.content().length).update();
+        }
+        return id;
+    }
+
     public List<Queued> queued(int limit) {
         return jdbc.sql("""
                 SELECT id, channel, recipient, subject, body, attempts FROM platform.notice

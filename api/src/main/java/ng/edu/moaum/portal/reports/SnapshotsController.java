@@ -10,7 +10,9 @@ import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import ng.edu.moaum.portal.platform.NoticeRepository;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -44,10 +46,73 @@ class SnapshotsController {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final JdbcClient jdbc;
+    @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}")
+    private String portalUrl;
 
-    SnapshotsController(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final NoticeRepository notices;
+
+    SnapshotsController(JdbcClient jdbc, NoticeRepository notices) {
         this.jdbc = jdbc;
+        this.notices = notices;
+    }
+
+    public record FileIn2(@NotBlank String filename, @NotBlank String contentType, @NotBlank String base64) {
+    }
+
+    public record EmailIn(@NotNull List<String> to, String message, @NotNull List<FileIn2> attachments) {
+    }
+
+    /**
+     * Email a kept return to the people it is for, with the files attached (the PDF and the Excel
+     * workbook the portal built from the kept rows). One notice per recipient, queued in this
+     * transaction against the snapshot, so the kept copy lists every dispatch and its state.
+     */
+    @PostMapping("/snapshots/{id}/email")
+    @PreAuthorize(READERS)
+    @Transactional
+    Map<String, Object> email(Authentication authentication, @PathVariable UUID id, @Valid @RequestBody EmailIn body) {
+        Map<String, Object> s = one(id);
+        List<String> to = body.to().stream().map(String::trim).filter(t -> t.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")).distinct().toList();
+        if (to.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Give at least one email address");
+        if (to.size() > 20) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At most twenty recipients at a time");
+        List<NoticeRepository.Attachment> files = new java.util.ArrayList<>();
+        long total = 0;
+        for (FileIn2 f : body.attachments()) {
+            byte[] bytes = java.util.Base64.getDecoder().decode(f.base64());
+            total += bytes.length;
+            if (total > 15_000_000L) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "The attachments exceed 15 MB");
+            files.add(new NoticeRepository.Attachment(f.filename().replaceAll("[/\\\\]", "-"), f.contentType(), bytes));
+        }
+        String subject = s.get("title") + " · " + s.get("period") + " — Rev. Fr. Moses Orshio Adasu University";
+        String text = "Please find attached the " + s.get("title") + " for " + s.get("period") + ", kept by the portal on "
+                + String.valueOf(s.get("taken_at")).substring(0, 10) + " (" + s.get("row_count") + " rows).\n\n"
+                + (body.message() == null || body.message().isBlank() ? "" : body.message().trim() + "\n\n")
+                + "Verification code: " + s.get("verification_code") + "\n"
+                + "The figures on the attached copy can be checked against what the University kept at "
+                + portalUrl + "/verify/report/" + s.get("verification_code") + "\n";
+        List<Map<String, Object>> queued = new java.util.ArrayList<>();
+        for (String r : to) {
+            UUID nid = notices.queueEmail(r, subject, text, "report_snapshot", id, files);
+            queued.add(Map.of("notice", nid, "to", r));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("queued", queued);
+        out.put("attachments", files.stream().map(f -> Map.of("filename", f.filename(), "bytes", f.content().length)).toList());
+        return out;
+    }
+
+    /** the emails a kept copy went out by, newest first */
+    @GetMapping("/snapshots/{id}/dispatches")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> dispatches(@PathVariable UUID id) {
+        return jdbc.sql("""
+                SELECT n.id, n.recipient, n.subject, n.state, n.created_at, n.sent_at, n.last_error,
+                       (SELECT string_agg(a.filename, ', ' ORDER BY a.created_at) FROM platform.notice_attachment a WHERE a.notice_id = n.id) AS files
+                  FROM platform.notice n WHERE n.about_kind = 'report_snapshot' AND n.about_id = :id
+                 ORDER BY n.created_at DESC
+                """).param("id", id).query().listOfRows();
     }
 
     /** the due register as at today (or the day asked for): one row per return */

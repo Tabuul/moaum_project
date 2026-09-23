@@ -14,6 +14,8 @@ export interface Image { data: Uint8Array; width: number; height: number }
 
 export class Page {
   ops: Op[] = [];
+  /** the page size in points; A4 portrait unless a page says otherwise (a wide table goes landscape) */
+  size: { w: number; h: number } = A4;
   images: { name: string; img: Image }[] = [];
 
   /** text at (x, y) from the bottom-left, in points; bold uses Helvetica-Bold */
@@ -135,6 +137,7 @@ export function escapePdf(s: string): string {
     else if (c === 0x2019 || c === 0x2018) out += "'";
     else if (c === 0x201c || c === 0x201d) out += '"';
     else if (c === 0x2013 || c === 0x2014) out += "-";
+    else if (c === 0x2026) out += "...";
     else if (c === 0x20a6) out += "NGN ";
     else if (c === 0xb7 || c === 0x2022) out += "\\267";
     else if (c >= 0x20 && c <= 0x7e) out += ch;
@@ -197,7 +200,7 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
   obj(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
   for (const b of built) {
     const xobjects = b.images.map((im) => `/${im.name} ${im.id} 0 R`).join(" ");
-    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4.w} ${A4.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
+    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
     const stream = enc.encode(b.page.ops.join("\n"));
     obj(b.content, [enc.encode(`<< /Length ${stream.length} >>\nstream\n`), stream, enc.encode("\nendstream")]);
     for (const im of b.images) {
