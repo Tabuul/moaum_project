@@ -59,7 +59,7 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
 
       <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ minWidth: 140 }}><label htmlFor="bg-year">Financial year</label>
-          <select id="bg-year" className="ctl tnum" value={d.year} onChange={(e) => router.push(`/finance/budget?year=${e.target.value}`)}>
+          <select id="bg-year" className="ctl tnum" value={d.year} onChange={(e) => { router.push(`/finance/budget?year=${e.target.value}`); router.refresh(); }}>
             {[d.year + 1, d.year, d.year - 1, d.year - 2].map((y) => <option key={y} value={y}>{y}</option>)}
           </select></div>
         <div style={{ flexGrow: 1 }} />

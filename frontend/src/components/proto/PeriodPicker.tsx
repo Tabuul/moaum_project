@@ -8,7 +8,9 @@ import { useRouter } from "next/navigation";
 export function PeriodPicker({ base, sessions, session, semester }: { base: string; sessions: string[]; session: string; semester: number }) {
   const router = useRouter();
   const opts = sessions.includes(session) ? sessions : [session, ...sessions];
-  const go = (s: string, sem: number) => router.push(`${base}?session=${encodeURIComponent(s)}&sem=${sem}`);
+  /* push the new period, then refresh: the same page with new search params is otherwise liable to be
+     served from the client router cache, and the figures stay as they were */
+  const go = (s: string, sem: number) => { router.push(`${base}?session=${encodeURIComponent(s)}&sem=${sem}`); router.refresh(); };
   return (
     <div className="card"><div className="card__body" style={{ display: "flex", flexDirection: "row", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
       <div className="field" style={{ minWidth: 170, margin: 0 }}>

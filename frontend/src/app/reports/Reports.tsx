@@ -44,7 +44,7 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
 }) {
   const router = useRouter();
   const mine = REPORTS.filter((r) => activeOffice != null && r.offices.includes(activeOffice));
-  const pick = (name: string) => router.push(`/reports?session=${encodeURIComponent(name)}`);
+  const pick = (name: string) => { router.push(`/reports?session=${encodeURIComponent(name)}`); router.refresh(); };
   const open = (slug: string) => router.push(`/reports/${slug}/view?session=${encodeURIComponent(session)}`);
   const stamp = new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const grand = byFaculty ? byFaculty.reduce((s, f) => s + f.total, 0) : 0;

@@ -62,10 +62,12 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
     for (const [k, val] of Object.entries({ ...v, ...(extra ?? {}) })) if (val && val.trim()) u.set(k, val.trim());
     return u.toString();
   };
-  const search = () => router.push(`/reports/${kind}${query() ? `?${query()}` : ""}`);
-  const clear = () => { setV({}); router.push(`/reports/${kind}`); };
+  /* the same page with new search params is liable to be served from the client router cache; refresh after the push */
+  const nav = (url: string) => { router.push(url); router.refresh(); };
+  const search = () => nav(`/reports/${kind}${query() ? `?${query()}` : ""}`);
+  const clear = () => { setV({}); nav(`/reports/${kind}`); };
   const pages = Math.max(1, Math.ceil(total / size));
-  const goPage = (n: number) => router.push(`/reports/${kind}?${query({ page: String(n) })}`);
+  const goPage = (n: number) => nav(`/reports/${kind}?${query({ page: String(n) })}`);
 
   async function exportAll() {
     setExporting(true);
