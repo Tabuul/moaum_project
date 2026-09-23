@@ -26,7 +26,7 @@ export default async function StudentsPage({
     api<MigratedSummary>("/api/v1/student/students/migrated?from=100&to=400"),
   ]);
   const office = me.ok ? me.data.activeOffice : null;
-  const mayClear = office === "registrar" || office === "dregistrar" || office === "academic";
+  const mayClear = office === "registrar" || office === "dregistrar" || office === "academic" || office === "ict" || office === "super";
 
   return (
     <Shell route="t/students" me={me.ok ? me.data : null}>
