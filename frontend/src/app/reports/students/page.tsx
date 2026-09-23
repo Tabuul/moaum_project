@@ -4,7 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Pil } from "@/components/proto/ui";
 import { RegisterDesk } from "../RegisterDesk";
 import {
-  STUDENT_FILTERS, STUDENT_HEADERS, STUDENT_KEYS, registerQuery, studentSheetRow, words,
+  STUDENT_FILTERS, STUDENT_HEADERS, STUDENT_KEYS, registerQuery, words,
   type RegisterPage, type StudentOptions, type StudentRow,
 } from "@/lib/registers";
 
@@ -37,7 +37,7 @@ export default async function StudentsRegister({ searchParams }: { searchParams:
       <RegisterDesk
         kind="students" title={d.scope?.label ? `Student register · ${d.scope.label}` : "Student register"} filters={STUDENT_FILTERS} options={d.options as unknown as Record<string, unknown>}
         initial={initial} total={Number(d.total)} page={Number(d.page)} size={Number(d.size)}
-        headers={STUDENT_HEADERS} sheetRow={studentSheetRow as (r: never) => (string | number | null)[]}
+        headers={STUDENT_HEADERS}
         tiles={[
           ["Matched", Number(s.total).toLocaleString(), null, "students on the register"],
           ["Active", Number(s.active).toLocaleString(), "var(--green-ink)", "active or on probation"],

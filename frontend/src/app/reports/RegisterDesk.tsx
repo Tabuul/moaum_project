@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { Btn, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { buildXlsx, loadCrest } from "@/lib/xlsx";
-import type { FilterSpec, Opt } from "@/lib/registers";
+import { staffSheetRow, studentSheetRow, type FilterSpec, type Opt, type StaffRow, type StudentRow } from "@/lib/registers";
 
 type Options = Record<string, unknown>;
 
@@ -33,7 +33,7 @@ function optionsFor(spec: FilterSpec, options: Options, values: Record<string, s
   return list.map((o) => [o.code, o.name]);
 }
 
-export function RegisterDesk({ kind, title, filters, options, initial, total, page, size, cols, rows, texts, headers, sheetRow, tiles }: {
+export function RegisterDesk({ kind, title, filters, options, initial, total, page, size, cols, rows, texts, headers, tiles }: {
   kind: "students" | "staff";
   title: string;
   filters: FilterSpec[];
@@ -42,11 +42,11 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
   total: number; page: number; size: number;
   cols: string[]; rows: ReactNode[][]; texts: string[];
   headers: string[];
-  /** builds the Excel row from an API row — the export fetches every matching page itself */
-  sheetRow: (r: never) => (string | number | null)[];
   tiles?: [ReactNode, ReactNode, string | null | undefined, ReactNode?][];
 }) {
   const router = useRouter();
+  /* the Excel row for an API row — chosen here, not passed in: a server page cannot hand a function to a client component */
+  const sheetRow = (r: StudentRow | StaffRow) => (kind === "students" ? studentSheetRow(r as StudentRow) : staffSheetRow(r as StaffRow));
   const [v, setV] = useState<Record<string, string>>(initial);
   const [exporting, setExporting] = useState(false);
   const set = (k: string, val: string) => setV((s) => {
@@ -80,7 +80,7 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
         const u = new URLSearchParams(query()); u.set("page", String(p)); u.set("size", "500"); u.set("options", "false");
         const r = await fetch(`/api/bff/api/v1/reports/registers/${kind}?${u.toString()}`, { cache: "no-store" });
         if (!r.ok) { short = true; break; }
-        const j = (await r.json()) as { rows: never[]; total: number };
+        const j = (await r.json()) as { rows: (StudentRow | StaffRow)[]; total: number };
         expected = Number(j.total);
         all.push(...j.rows.map(sheetRow));
         if (j.rows.length === 0) break;

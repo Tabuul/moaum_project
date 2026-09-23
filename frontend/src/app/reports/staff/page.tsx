@@ -4,7 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Pil } from "@/components/proto/ui";
 import { RegisterDesk } from "../RegisterDesk";
 import {
-  STAFF_FILTERS, STAFF_HEADERS, STAFF_KEYS, registerQuery, staffSheetRow, words,
+  STAFF_FILTERS, STAFF_HEADERS, STAFF_KEYS, registerQuery, words,
   type RegisterPage, type StaffOptions, type StaffRow,
 } from "@/lib/registers";
 
@@ -34,7 +34,7 @@ export default async function StaffRegister({ searchParams }: { searchParams: Pr
       <RegisterDesk
         kind="staff" title={d.scope?.label ? `Staff register · ${d.scope.label}` : "Staff register"} filters={STAFF_FILTERS} options={d.options as unknown as Record<string, unknown>}
         initial={initial} total={Number(d.total)} page={Number(d.page)} size={Number(d.size)}
-        headers={STAFF_HEADERS} sheetRow={staffSheetRow as (r: never) => (string | number | null)[]}
+        headers={STAFF_HEADERS}
         tiles={[
           ["Matched", Number(s.total).toLocaleString(), null, "members of staff"],
           ["Academic", Number(s.academic).toLocaleString(), null, `${(Number(s.total) - Number(s.academic)).toLocaleString()} non-teaching`],
