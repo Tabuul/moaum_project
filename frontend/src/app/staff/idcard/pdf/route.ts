@@ -81,7 +81,7 @@ export async function GET(req: Request) {
   drawBack(p, x2, top - H, W, H, {
     barcode: staffNo.replace(/[^A-Za-z0-9]/g, ""), serial,
     aside: ["If found, return to the Security post", "Km 1 Gboko Road, Makurdi"],
-  });
+  }, crest);
   p.textCenter(x2 + W / 2, top - H - 18, "BACK", 7, true, C.foot);
   p.text(x1, 46, `${clean(face.name)} · ${staffNo} · generated ${day(new Date().toISOString())}`, 7, false, [0.5, 0.5, 0.5]);
 

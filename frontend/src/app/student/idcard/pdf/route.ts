@@ -55,7 +55,7 @@ export async function GET() {
   drawBack(p, x0, backTop - H, W, H, {
     barcode: matric.replace(/[^A-Za-z0-9]/g, ""), serial: live.card_no,
     aside: ["In an emergency", kin ? clean(kin) : "—"],
-  });
+  }, crest);
   p.textCenter(A4.w / 2, backTop - H - 18, "BACK", 7, true, C.foot);
   p.text(x0, 46, `${clean(s.name)} · ${matric} · generated ${day(new Date().toISOString())}`, 7, false, [0.5, 0.5, 0.5]);
 

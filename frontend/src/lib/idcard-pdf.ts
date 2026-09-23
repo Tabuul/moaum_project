@@ -24,8 +24,20 @@ export const C = {
 export const CARD_PX = { w: 323.5, h: 204.1 };
 
 export const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
-const wText = (s: string, size: number, font: "F1" | "F2" | "F3" = "F1", spacing = 0) =>
-  s.length * size * (font === "F2" ? 0.55 : font === "F3" ? 0.52 : 0.5) + Math.max(0, s.length - 1) * spacing;
+/** the width of a run of text, by character class: capitals are wide, lower case narrower, spaces and
+ *  punctuation narrower still — Helvetica's proportions, which is what the card is set in */
+const wText = (s: string, size: number, font: "F1" | "F2" | "F3" = "F1", spacing = 0) => {
+  const bold = font === "F2" || font === "F3";
+  let w = 0;
+  for (const ch of s) {
+    if (/[A-Z]/.test(ch)) w += bold ? 0.72 : 0.68;
+    else if (/[a-z]/.test(ch)) w += bold ? 0.56 : 0.52;
+    else if (/[0-9]/.test(ch)) w += 0.56;
+    else if (/[ .,:;'\-]/.test(ch)) w += 0.3;
+    else w += 0.55;
+  }
+  return w * size + Math.max(0, s.length - 1) * spacing;
+};
 
 /** greedy wrap by the same width heuristic the writer uses */
 function wrap(s: string, maxWidth: number, size: number): string[] {
@@ -90,7 +102,6 @@ export interface CardBack {
   barcode: string;
   serial: string;
   terms?: string[];
-  verifyUrl?: string;
   /** the small block under the QR: a label and a value (e.g. "In an emergency" / the kin's phone) */
   aside?: [string, string];
   signatures?: [string, string];
@@ -158,21 +169,37 @@ function grid(p: Page, x: number, top: number, width: number, k: number, fields:
   const colL = (width - gapC) * (1.55 / 2.55), colR = (width - gapC) - colL;
   let y = top;
   for (let i = 0; i < fields.length; i += 2) {
-    const rowH = labelSize * 1.2 + valueSize * 1.25;
-    for (let j = 0; j < 2 && i + j < fields.length; j++) {
-      const [label, value] = fields[i + j];
-      const cx = x + (j === 0 ? 0 : colL + gapC);
+    // each cell: the value at full size if it fits, a touch smaller if that makes it fit, else on two lines
+    const cells = [0, 1].filter((j) => i + j < fields.length).map((j) => {
       const cw = j === 0 ? colL : colR;
-      p.textStyled(cx, y - labelSize * 0.9, label.toUpperCase(), labelSize, { font: "F2", colour: C.label, spacing: 0.1 * labelSize });
-      let v = clean(value) || "—";
+      const v = clean(fields[i + j][1]) || "—";
       let vs = valueSize;
-      while (wText(v, vs, "F2") > cw && vs > 6 * k) vs -= 0.4;
-      if (wText(v, vs, "F2") > cw) v = v.slice(0, Math.max(3, Math.floor(cw / (vs * 0.55)) - 1)) + "…";
-      p.textStyled(cx, y - labelSize * 1.2 - valueSize * 0.95, v, vs, { font: "F2", colour: C.ink });
+      while (wText(v, vs, "F2") > cw && vs > 7 * k) vs -= 0.3;
+      const lines = wText(v, vs, "F2") > cw ? wrapBold(v, cw, vs).slice(0, 2) : [v];
+      return { j, cw, vs, lines };
+    });
+    const rows = Math.max(...cells.map((c) => c.lines.length));
+    const rowH = labelSize * 1.2 + valueSize * 1.25 * rows;
+    for (const c of cells) {
+      const cx = x + (c.j === 0 ? 0 : colL + gapC);
+      p.textStyled(cx, y - labelSize * 0.9, fields[i + c.j][0].toUpperCase(), labelSize, { font: "F2", colour: C.label, spacing: 0.1 * labelSize });
+      c.lines.forEach((line, li) => p.textStyled(cx, y - labelSize * 1.2 - valueSize * 0.95 - li * valueSize * 1.25, line, c.vs, { font: "F2", colour: C.ink }));
     }
     y -= rowH + gapR;
   }
   return y;
+}
+
+/** wrap a bold value to a width; a line that still overflows is cut with an ellipsis */
+function wrapBold(s: string, maxWidth: number, size: number): string[] {
+  const out: string[] = [];
+  let line = "";
+  for (const w of s.split(/\s+/)) {
+    const t = (line + " " + w).trim();
+    if (wText(t, size, "F2") > maxWidth && line) { out.push(line); line = w; } else line = t;
+  }
+  if (line) out.push(line);
+  return out.map((l) => { let x = l; while (wText(x, size, "F2") > maxWidth && x.length > 3) x = x.slice(0, -2) + "…"; return x; });
 }
 
 /** the foot: a rule, the session/validity line with its bold parts, the serial on the right */
@@ -241,60 +268,59 @@ export function drawFrontPortrait(p: Page, x0: number, y0: number, W: number, f:
   return H;
 }
 
-/** the back — the same on both cards, laid out to the given size */
-export function drawBack(p: Page, x0: number, y0: number, W: number, H: number, b: CardBack) {
+/** the back — the same on both cards, laid out to the given size: the strip, the barcode, the conditions
+ *  across the width, then the verification QR with the serial and the address beside it, and the
+ *  Registrar's signature line; the crest faintly behind, as on the front */
+export function drawBack(p: Page, x0: number, y0: number, W: number, H: number, b: CardBack, crest: Image | null = null) {
   const k = W / (W > H ? CARD_PX.w : CARD_PX.h);
   canvas(p, x0, y0, W, H, k, C.back);
+  guilloche(p, x0, y0, W, H);
+  if (crest) p.imageFaint(x0 + W - 76 * k, y0 + 8 * k, 96 * k, 96 * k, crest);
   const top = y0 + H, pad = 9 * k;
   // the strip
   const stripSize = 6.2 * k, stripH = 4 * k + stripSize * 1.2 + 4 * k;
   p.fillRgb(x0, top - stripH, W, stripH, C.strip);
-  p.textStyled(x0 + pad, top - stripH / 2 - stripSize * 0.35, "PROPERTY OF THE UNIVERSITY · NOT TRANSFERABLE", stripSize, { font: "F2", colour: C.stripText, spacing: 0.1 * stripSize });
+  const stripText = "PROPERTY OF THE UNIVERSITY · NOT TRANSFERABLE";
+  let ss = stripSize;
+  while (wText(stripText, ss, "F2", 0.1 * ss) > W - 2 * pad && ss > 4.5 * k) ss -= 0.2;
+  p.textStyled(x0 + pad, top - stripH / 2 - ss * 0.35, stripText, ss, { font: "F2", colour: C.stripText, spacing: 0.1 * ss });
   // the barcode, full width with its quiet zones
   const runs = c128Runs(b.barcode);
   const units = runs.reduce((a, c) => a + c, 0) + 20;
-  const bw = W - 2 * pad, unit = bw / units, bh = 38 * k, by = top - stripH - 7 * k - bh;
+  const bw = W - 2 * pad, unit = bw / units, bh = 34 * k, by = top - stripH - 7 * k - bh;
   p.fill(x0 + pad, by, bw, bh, 1);
   let bx = x0 + pad + 10 * unit; let dark = true;
   for (const r of runs) { if (dark) p.fill(bx, by, r * unit, bh, 0.07); bx += r * unit; dark = !dark; }
   const numSize = 8.6 * k;
   p.textStyled(x0 + W / 2 - wText(b.barcode, numSize, "F2", 0.22 * numSize) / 2, by - 2 * k - numSize * 0.95, b.barcode, numSize, { font: "F2", colour: C.ink, spacing: 0.22 * numSize });
-  // the columns: terms left, verification right (the right column is 74 px on the landscape card)
-  const colsTop = by - 2 * k - numSize * 1.2 - 3 * k - 3 * k;
-  const vfyW = 74 * k, gap = 8 * k;
-  const termsW = W - 2 * pad - vfyW - gap;
+  // the conditions, across the width
   const hSize = 6 * k, pSize = 5.9 * k;
-  let ty = colsTop;
+  let ty = by - 2 * k - numSize * 1.2 - 6 * k;
   p.textStyled(x0 + pad, ty - hSize * 0.9, "CONDITIONS", hSize, { font: "F2", colour: C.foot, spacing: 0.1 * hSize });
   ty -= hSize * 1.2 + 2 * k;
   for (const t of b.terms ?? CONDITIONS) {
-    for (const line of wrap(t, termsW, pSize)) { p.textStyled(x0 + pad, ty - pSize * 0.9, line, pSize, { colour: C.terms }); ty -= pSize * 1.5; }
-    ty -= 3 * k;
+    for (const line of wrap(t, W - 2 * pad, pSize)) { p.textStyled(x0 + pad, ty - pSize * 0.9, line, pSize, { colour: C.terms }); ty -= pSize * 1.5; }
+    ty -= 2 * k;
   }
-  // the QR and what is under it, centred in the right column
-  const vx = x0 + W - pad - vfyW, qDim = 38 * k;
+  // the verification QR, the serial and the address beside it
+  const sigSize = 5.6 * k;
+  const sigTop = y0 + 6 * k + sigSize * 1.2 + 2 * k + 10 * k;      // the top of the signature block
+  const qDim = Math.min(34 * k, Math.max(22 * k, ty - 4 * k - sigTop - 4 * k));
   const { size, dark: qd } = qrMatrix(`MOAUM ID ${b.serial}`);
-  const cell = qDim / size, qx = vx + (vfyW - qDim) / 2, qy = colsTop - qDim;
+  const cell = qDim / size, qx = x0 + pad, qy = ty - 4 * k - qDim;
   p.fill(qx, qy, qDim, qDim, 1);
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (qd[rr * size + cc]) p.fill(qx + cc * cell, qy + qDim - (rr + 1) * cell, cell, cell, 0.09);
-  const vt = 5.5 * k;
-  let vy = qy - 2 * k - vt * 0.95;
-  const url = b.verifyUrl ?? "moaum.edu.ng/verify";
-  p.textStyled(vx + vfyW / 2 - wText(url, vt) / 2, vy, url, vt, { colour: C.foot }); vy -= vt * 1.35;
-  p.textStyled(vx + vfyW / 2 - wText(b.serial, vt, "F2") / 2, vy, b.serial, vt, { font: "F2", colour: C.foot }); vy -= vt * 1.35 + 1 * k;
+  const tx = qx + qDim + 6 * k, vt = 5.5 * k;
+  let vy = qy + qDim - vt * 0.95;
+  p.textStyled(tx, vy, b.serial, vt, { font: "F2", colour: C.ink }); vy -= vt * 1.4;
   if (b.aside) {
-    const ks = 5.6 * k, kv = 7.4 * k;
-    p.textStyled(vx + vfyW / 2 - wText(b.aside[0], ks) / 2, vy, b.aside[0], ks, { colour: C.foot }); vy -= ks * 1.3;
-    p.textStyled(vx + vfyW / 2 - wText(b.aside[1], kv, "F2") / 2, vy, b.aside[1], kv, { font: "F2", colour: C.ink });
+    const ks = 5.6 * k, kv = 6.6 * k;
+    p.textStyled(tx, vy, b.aside[0], ks, { colour: C.foot }); vy -= ks * 1.35;
+    for (const line of wrap(b.aside[1], x0 + W - pad - tx, kv)) { p.textStyled(tx, vy, line, kv, { font: "F2", colour: C.ink }); vy -= kv * 1.3; }
   }
-  // the signature lines, at the foot
-  const [s1, s2] = b.signatures ?? ["Holder's signature", "Registrar"];
-  const sigSize = 5.6 * k, sigGap = 14 * k, colW = (W - 2 * pad - sigGap) / 2;
-  const lineY = y0 + 6 * k + sigSize * 1.2 + 2 * k + 12 * k;
-  for (const [i, label] of [s1, s2].entries()) {
-    const sx = x0 + pad + i * (colW + sigGap);
-    p.ops.push(`q ${C.sig.map((v) => v.toFixed(3)).join(" ")} RG 0.8 w ${sx.toFixed(2)} ${lineY.toFixed(2)} m ${(sx + colW).toFixed(2)} ${lineY.toFixed(2)} l S Q`);
-    p.textStyled(sx, y0 + 6 * k + sigSize * 0.25, label, sigSize, { colour: C.label, spacing: 0.04 * sigSize });
-  }
+  // the Registrar's signature line, on the right
+  const lineW = (W - 2 * pad) * 0.48, sx = x0 + W - pad - lineW;
+  p.ops.push(`q ${C.sig.map((v) => v.toFixed(3)).join(" ")} RG 0.8 w ${sx.toFixed(2)} ${sigTop.toFixed(2)} m ${(sx + lineW).toFixed(2)} ${sigTop.toFixed(2)} l S Q`);
+  p.textStyled(sx, y0 + 6 * k + sigSize * 0.25, b.signatures?.[1] ?? "Registrar", sigSize, { colour: C.label, spacing: 0.04 * sigSize });
   p.restore();
 }
