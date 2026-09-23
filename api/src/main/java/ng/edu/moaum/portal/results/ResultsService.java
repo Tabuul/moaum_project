@@ -577,8 +577,9 @@ public class ResultsService {
             List<String> parts = new ArrayList<>();
             if (!coreOwed.isEmpty()) parts.add("CO: " + String.join(", ", coreOwed));
             if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
-            // any student whose CGPA is under 1.0 is to go on probation — said after the courses owed
-            if (cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
+            // probation is judged from 200 level first semester on: a student whose CGPA is still under 1.0 by then is
+            // to go on probation — said after the courses owed; a 100 level class has no standing to judge yet
+            if (level >= 200 && cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)
                     : anyUnreleased ? "PENDING"
                     : "PASS";
