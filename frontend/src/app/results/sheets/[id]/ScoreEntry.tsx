@@ -25,6 +25,9 @@ interface Draft { ca: string; exam: string; outcome: string; reason: string }
 const PASS = 40;
 /** the grace mark: a total one short of the pass mark is raised to it (V238) */
 const graced = (raw: number): number => (raw === PASS - 1 ? PASS : raw);
+/** the grade with its weight: A5, B4, C3, D2, E1, F0 */
+const gw = (grade: string | null | undefined, points: number | null | undefined) =>
+  grade == null ? "" : points == null ? grade : `${grade}${Number.isInteger(Number(points)) ? Number(points) : Number(points).toFixed(2)}`;
 
 function draftOf(r: RollRow): Draft {
   return { ca: r.ca === null ? "" : String(r.ca), exam: r.exam === null ? "" : String(r.exam), outcome: r.outcome ?? "GRADED", reason: "" };
@@ -281,7 +284,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                       <td className="mid">{editable ? <><input id={`ca-${i}`} className="ctl tnum" style={caOver ? overStyle : { width: 64, textAlign: "center" }} aria-invalid={caOver || undefined} title={caOver ? `${s.courseCode} assesses CA out of ${CA_MAX}` : undefined} inputMode="numeric" value={d.ca} disabled={!graded} onKeyDown={(e) => move(e, "ca")} onChange={(e) => set(r.studentId, { ca: e.target.value.replace(/[^0-9]/g, "") })} />{caOver ? overNote(CA_MAX) : null}</> : <span className="tnum">{r.ca ?? "—"}</span>}</td>
                       <td className="mid">{editable ? <><input id={`ex-${i}`} className="ctl tnum" style={exOver ? overStyle : { width: 64, textAlign: "center" }} aria-invalid={exOver || undefined} title={exOver ? `${s.courseCode} examines out of ${EXAM_MAX}` : undefined} inputMode="numeric" value={d.exam} disabled={!graded} onKeyDown={(e) => move(e, "ex")} onChange={(e) => set(r.studentId, { exam: e.target.value.replace(/[^0-9]/g, "") })} />{exOver ? overNote(EXAM_MAX) : null}</> : <span className="tnum">{r.exam ?? "—"}</span>}</td>
                       <td className="mid"><b className="tnum" title={isChanged && raw !== null && total !== raw ? `${raw} + 1 grace mark` : r.ca !== null && r.exam !== null && r.total !== null && r.total !== r.ca + r.exam ? `${r.ca + r.exam} + 1 grace mark` : undefined}>{isChanged ? (total ?? "—") : (r.total ?? (r.outcome && r.outcome !== "GRADED" ? r.outcome : "—"))}{(isChanged && raw !== null && total !== raw) || (!isChanged && r.ca !== null && r.exam !== null && r.total !== null && r.total !== r.ca + r.exam) ? <sup style={{ fontWeight: 400, marginLeft: 2 }}>+1</sup> : null}</b></td>
-                      <td className="mid">{!isChanged && r.grade ? <Pil kind={(r.points ?? 0) >= 4 ? "ok" : (r.points ?? 0) >= 1 ? "info" : "bad"}>{r.grade}</Pil> : <span className="sub2">{isChanged ? "on save" : "—"}</span>}</td>
+                      <td className="mid">{!isChanged && r.grade ? <Pil kind={(r.points ?? 0) >= 4 ? "ok" : (r.points ?? 0) >= 1 ? "info" : "bad"}>{gw(r.grade, r.points)}</Pil> : <span className="sub2">{isChanged ? "on save" : "—"}</span>}</td>
                       <td className="mid tnum">{!isChanged && r.points !== null ? r.points : "—"}</td>
                       <td>{editable ? (
                         <select className="ctl" value={d.outcome} onChange={(e) => set(r.studentId, { outcome: e.target.value, ...(e.target.value !== "GRADED" ? { ca: "", exam: "" } : {}) })}>

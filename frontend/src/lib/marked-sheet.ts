@@ -15,6 +15,9 @@ export interface MarkedSheet {
 
 export const MARKED_HEADERS = ["S/N", "Matriculation number", "Name", "Programme", "Level", "CA", "Exam", "Total", "Grade", "Points", "Outcome"];
 
+/** the grade with its weight: A5, B4, C3, D2, E1, F0 */
+const gw = (grade: string | null | undefined, points: number | null | undefined) =>
+  grade == null ? "" : points == null ? grade : `${grade}${Number.isInteger(Number(points)) ? Number(points) : Number(points).toFixed(2)}`;
 const outcomeWord = (o: string | null) => (o == null ? "Not entered" : o === "GRADED" ? "Graded" : o.charAt(0) + o.slice(1).toLowerCase());
 
 /** the roll as rows for a table, in the order the register gives it (matriculation number) */
@@ -23,7 +26,7 @@ export function markedRows(roll: RollRow[]): (string | number | null)[][] {
     i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level,
     r.ca ?? null, r.exam ?? null,
     r.outcome === "GRADED" ? r.total ?? null : null,
-    r.outcome === "GRADED" ? r.grade ?? null : null,
+    r.outcome === "GRADED" && r.grade ? gw(r.grade, r.points) : null,
     r.outcome === "GRADED" && r.points != null ? Number(r.points) : null,
     outcomeWord(r.outcome),
   ]);
@@ -49,11 +52,12 @@ export interface Performance {
 export function performance(roll: RollRow[]): Performance {
   const graded = roll.filter((r) => r.outcome === "GRADED" && r.total != null);
   const byGrade = new Map<string, number>();
-  for (const r of graded) byGrade.set(r.grade ?? "?", (byGrade.get(r.grade ?? "?") ?? 0) + 1);
+  const weight = new Map<string, number | null>();
+  for (const r of graded) { byGrade.set(r.grade ?? "?", (byGrade.get(r.grade ?? "?") ?? 0) + 1); if (r.grade && !weight.has(r.grade)) weight.set(r.grade, r.points == null ? null : Number(r.points)); }
   const order = ["A", "B", "C", "D", "E", "F"];
   const seen = [...byGrade.keys()];
   const gradesInOrder = [...order.filter((g) => seen.includes(g)), ...seen.filter((g) => !order.includes(g)).sort()];
-  const grades = gradesInOrder.map((g) => ({ grade: g, count: byGrade.get(g) ?? 0, share: graded.length ? Math.round((1000 * (byGrade.get(g) ?? 0)) / graded.length) / 10 : 0 }));
+  const grades = gradesInOrder.map((g) => ({ grade: gw(g, weight.get(g)), count: byGrade.get(g) ?? 0, share: graded.length ? Math.round((1000 * (byGrade.get(g) ?? 0)) / graded.length) / 10 : 0 }));
   const passed = graded.filter((r) => Number(r.points ?? 0) > 0).length;
   const byOutcome = new Map<string, number>();
   for (const r of roll) if (r.outcome && r.outcome !== "GRADED") byOutcome.set(r.outcome, (byOutcome.get(r.outcome) ?? 0) + 1);
