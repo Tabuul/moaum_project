@@ -118,14 +118,14 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
   function template() {
     download(`${s.courseCode.replace(" ", "-")}-score-sheet.csv`, csv([
+      ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
+      ...roll.map((r, i) => [i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level, r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : ""]),
+    ], [
       ["Department", s.deptName],
       ["Programme", ownProgramme?.programmeName ?? ""],
       ["Course", `${s.courseCode} — ${s.courseTitle}`],
       ["Lecturer", s.lecturer ?? "Not allocated"],
       ["Session", `${s.session} · ${semesterName(s.semester)} semester`],
-      [],
-      ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
-      ...roll.map((r, i) => [i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level, r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : ""]),
     ]));
   }
 

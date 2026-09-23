@@ -286,7 +286,11 @@ const isNum = (v: Cell): v is number => typeof v === "number" && Number.isFinite
 /** the crest as PNG bytes + its pixel size, for the header of a workbook */
 export interface XlsxLogo { png: Uint8Array; w: number; h: number }
 /** a branded header above the table: the crest, the University name, a title and a date */
-export interface XlsxHead { school?: string; title?: string; date?: string; logo?: XlsxLogo }
+export interface XlsxHead {
+  school?: string; title?: string; date?: string; logo?: XlsxLogo;
+  /** labelled lines between the brand and the table — Department, Programme, Course, Lecturer… */
+  meta?: [string, string][];
+}
 
 /** fetch /crest.png and read its dimensions, for embedding as a workbook logo; null if unavailable */
 export async function loadCrest(url = "/crest.png"): Promise<XlsxLogo | null> {
@@ -318,7 +322,9 @@ export function buildXlsx(headers: string[], rows: Cell[][], sheetName = "Sheet1
   }
 
   const hb = !!(head && (head.school || head.title || head.date || head.logo));
-  const off = hb ? 4 : 0; // header rows before the table (school, title, date, spacer)
+  const meta = hb && head!.meta && head!.meta.length ? head!.meta : [];
+  if (meta.length) widths[0] = Math.max(widths[0], Math.min(Math.max(...meta.map(([k]) => k.length)) + 2, 24));
+  const off = (hb ? 4 : 0) + (meta.length ? meta.length + 1 : 0); // rows before the table: brand, the labelled block, a spacer each
   if (hb && head!.logo) widths[0] = Math.max(widths[0], 12);
   const cols = "<cols>" + widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("") + "</cols>";
 
@@ -330,6 +336,9 @@ export function buildXlsx(headers: string[], rows: Cell[][], sheetName = "Sheet1
         `<row r="2" ht="16" customHeight="1"><c r="${colLetter(tCol)}2" s="4" t="inlineStr"><is><t xml:space="preserve">${xesc(head!.title ?? "")}</t></is></c></row>`,
         `<row r="3" ht="15" customHeight="1"><c r="${colLetter(tCol)}3" s="5" t="inlineStr"><is><t xml:space="preserve">${xesc(head!.date ?? "")}</t></is></c></row>`,
         `<row r="4"><c r="A4" s="0"/></row>`,
+        ...meta.map(([k, v], i) =>
+          `<row r="${5 + i}" ht="17" customHeight="1"><c r="A${5 + i}" s="6" t="inlineStr"><is><t xml:space="preserve">${xesc(k)}</t></is></c><c r="B${5 + i}" s="7" t="inlineStr"><is><t xml:space="preserve">${xesc(v)}</t></is></c></row>`),
+        ...(meta.length ? [`<row r="${5 + meta.length}"><c r="A${5 + meta.length}" s="0"/></row>`] : []),
       ].join("")
     : "";
 
@@ -345,31 +354,36 @@ export function buildXlsx(headers: string[], rows: Cell[][], sheetName = "Sheet1
           return `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xesc(String(v))}</t></is></c>`;
         })
         .join("");
-      return `<row r="${rowNum}">${cells}</row>`;
+      return ri === 0 ? `<row r="${rowNum}" ht="22" customHeight="1">${cells}</row>` : `<row r="${rowNum}">${cells}</row>`;
     })
     .join("");
 
+  const metaMerges = nCols > 2 ? meta.map((_, i) => `<mergeCell ref="B${5 + i}:${lastCol}${5 + i}"/>`) : [];
   const merges = hb && nCols > 1
-    ? `<mergeCells count="3"><mergeCell ref="${colLetter(tCol)}1:${lastCol}1"/><mergeCell ref="${colLetter(tCol)}2:${lastCol}2"/><mergeCell ref="${colLetter(tCol)}3:${lastCol}3"/></mergeCells>`
+    ? `<mergeCells count="${3 + metaMerges.length}"><mergeCell ref="${colLetter(tCol)}1:${lastCol}1"/><mergeCell ref="${colLetter(tCol)}2:${lastCol}2"/><mergeCell ref="${colLetter(tCol)}3:${lastCol}3"/>${metaMerges.join("")}</mergeCells>`
     : "";
+  // the header row stays in view as the reader scrolls the table
+  const views = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${off + 1}" topLeftCell="A${off + 2}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
 
   const withLogo = hb && !!head!.logo;
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${cols}<sheetData>${headRows}${tableRows}</sheetData>${merges}${withLogo ? `<drawing r:id="rId1"/>` : ""}</worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${views}${cols}<sheetData>${headRows}${tableRows}</sheetData>${merges}${withLogo ? `<drawing r:id="rId1"/>` : ""}</worksheet>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<fonts count="5"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="13"/><color rgb="FF0E3F55"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF122019"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF5C6570"/><name val="Calibri"/></font></fonts>
-<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0E3F55"/><bgColor indexed="64"/></patternFill></fill></fills>
+<fonts count="5"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="13"/><color rgb="FF0E3F55"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF122019"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF5C6570"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF0E3F55"/><name val="Calibri"/></font></fonts>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0E3F55"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEAF1F5"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFB4C2CC"/></left><right style="thin"><color rgb="FFB4C2CC"/></right><top style="thin"><color rgb="FFB4C2CC"/></top><bottom style="thin"><color rgb="FFB4C2CC"/></bottom><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="6">
+<cellXfs count="8">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
 <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
 <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
 <xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+<xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
 </cellXfs>
 </styleSheet>`;
 

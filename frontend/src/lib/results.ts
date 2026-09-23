@@ -137,10 +137,11 @@ export const RS_STAGES: [string, string, string][] = [
 
 /** a table for download: the first row is the header. csv() tags the rows so
  *  download() writes a formatted .xlsx (auto column widths, bordered cells). */
-export interface SheetData { __sheet: (string | number | null | undefined)[][] }
+export interface SheetData { __sheet: (string | number | null | undefined)[][]; __meta?: [string, string][] }
 
-export function csv(rows: (string | number | null | undefined)[][]): SheetData {
-  return { __sheet: rows };
+/** rows (the first is the header); meta is the labelled block written above the table — Department, Programme… */
+export function csv(rows: (string | number | null | undefined)[][], meta?: [string, string][]): SheetData {
+  return meta && meta.length ? { __sheet: rows, __meta: meta } : { __sheet: rows };
 }
 
 function saveBlob(name: string, blob: Blob) {
@@ -161,7 +162,7 @@ export function download(name: string, data: string | SheetData) {
     const sheet = base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet1";
     const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
     void loadCrest().then((logo) =>
-      saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL, title: humanize(base), date, logo: logo ?? undefined })),
+      saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL, title: humanize(base), date, logo: logo ?? undefined, meta: data.__meta })),
     );
     return;
   }
