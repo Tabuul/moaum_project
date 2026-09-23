@@ -40,35 +40,35 @@ export const REPORTS: ReportSpec[] = [
     slug: "enrolment",
     title: "Enrolment by programme, level and sex",
     subtitle: "The session's cohort by faculty, programme and level, split by sex",
-    offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
     owner: "Registry", frequency: "Per session", purpose: "NUC statutory return",
   },
   {
     slug: "registration",
     title: "Registration & fees return",
     subtitle: "Not-registered students by faculty and programme, split into fee-blocked and cleared-but-idle",
-    offices: ["academic", "registrar", "dregistrar", "records", "bursar", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "academic", "registrar", "dregistrar", "records", "bursar", "dvc", "vc", "ict", "admin", "super"],
     owner: "Registry", frequency: "Per semester", purpose: "Management",
   },
   {
     slug: "carryovers",
     title: "Carryover return",
     subtitle: "Outstanding carryovers by faculty, programme and course — the re-sit load, as at today",
-    offices: ["academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
     owner: "Exams & Records", frequency: "Per session", purpose: "Senate",
   },
   {
     slug: "staff-ratio",
     title: "Staff/student ratio by department",
     subtitle: "Students on the books against academic staff by department, with the rank mix — the NUC accreditation figures",
-    offices: ["hrm", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "hrm", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
     owner: "HR", frequency: "Per session", purpose: "NUC accreditation",
   },
   {
     slug: "postgraduate",
     title: "Postgraduate return",
     subtitle: "By programme: the session's applications, offers, acceptances and admissions; the register by sex and mode of study; research candidates and awards",
-    offices: ["pgschool", "pgsecretary", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
+    offices: ["dean", "facultyofficer", "hod", "pgschool", "pgsecretary", "academic", "registrar", "dregistrar", "records", "dvc", "vc", "ict", "admin", "super"],
     owner: "Postgraduate School", frequency: "Per session", purpose: "School Board and Senate",
   },
   {
@@ -110,7 +110,7 @@ const OFFICE_LABELS: Record<string, string> = {
   records: "Exams & Records", bursar: "Bursary", audit: "Internal Audit",
   ict: "ICT Directorate", admin: "Administration", super: "System Administration",
   vc: "Vice-Chancellor's Office", dvc: "Deputy Vice-Chancellor's Office",
-  hrm: "Human Resource Management", pgschool: "School of Postgraduate Studies", pgsecretary: "School of Postgraduate Studies",
+  dean: "the Dean's office", facultyofficer: "the Faculty Office", hod: "the Head of Department", hrm: "Human Resource Management", pgschool: "School of Postgraduate Studies", pgsecretary: "School of Postgraduate Studies",
 };
 
 /** the readable name of an office, for the return's footing; falls back to the code */

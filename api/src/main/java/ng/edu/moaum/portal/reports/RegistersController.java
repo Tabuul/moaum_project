@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import ng.edu.moaum.portal.shared.OfficeScope;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,14 +31,34 @@ class RegistersController {
     private static final String READERS =
             "hasAnyAuthority('OFFICE_vc','OFFICE_dvc','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_records',"
             + "'OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super',"
-            + "'OFFICE_pgschool','OFFICE_pgsecretary')";
+            + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod')";
 
     private static final int PAGE_MAX = 500;
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
 
-    RegistersController(JdbcClient jdbc) {
+    RegistersController(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
+    }
+
+    /** the option lists narrowed to the acting office's faculty or department, so a Dean is not offered another faculty */
+    @SuppressWarnings("unchecked")
+    private static void narrow(Map<String, Object> options, OfficeScope.ReportScope sc) {
+        if (sc == null) return;
+        for (String key : List.of("faculties", "departments", "programmes")) {
+            Object v = options.get(key);
+            if (!(v instanceof List<?> list)) continue;
+            options.put(key, ((List<Map<String, Object>>) list).stream().filter(o ->
+                    key.equals("faculties") ? sc.facultyCode().equals(o.get("code"))
+                  : sc.departmentCode() != null ? sc.departmentCode().equals(o.get(key.equals("departments") ? "code" : "department_code"))
+                  : sc.facultyCode().equals(o.get("faculty_code"))).toList());
+        }
+    }
+
+    private static Map<String, Object> scopeOut(OfficeScope.ReportScope sc) {
+        return sc == null ? null : Map.of("label", sc.label(), "faculty", sc.facultyName(), "department", sc.departmentName() == null ? "" : sc.departmentName());
     }
 
     private static String clean(String v) {
@@ -64,6 +86,8 @@ class RegistersController {
         Map<String, Object> params = new LinkedHashMap<>();
         String f = clean(faculty), d = clean(department), p = clean(programme), sx = clean(sex), st = clean(status),
                em = clean(entryMode), ss = clean(session), qq = clean(q);
+        OfficeScope.ReportScope sc = scope.reportScope();
+        if (sc != null) { f = sc.facultyCode(); if (sc.departmentCode() != null) d = sc.departmentCode(); }
         if (f != null)  { where.append(" AND p.faculty_code = :faculty"); params.put("faculty", f); }
         if (d != null)  { where.append(" AND p.dept_code = :department"); params.put("department", d); }
         if (p != null)  { where.append(" AND s.programme_code = :programme"); params.put("programme", p); }
@@ -103,7 +127,10 @@ class RegistersController {
         out.put("size", lim);
         out.put("rows", rows);
         out.put("summary", summary);
-        out.put("options", studentOptions());
+        Map<String, Object> options = studentOptions();
+        narrow(options, sc);
+        out.put("options", options);
+        out.put("scope", scopeOut(sc));
         return out;
     }
 
@@ -143,6 +170,8 @@ class RegistersController {
         Map<String, Object> params = new LinkedHashMap<>();
         String f = clean(faculty), d = clean(department), r = clean(rank), c = clean(category), st = clean(status),
                of = clean(office), qq = clean(q);
+        OfficeScope.ReportScope sc = scope.reportScope();
+        if (sc != null) { f = sc.facultyCode(); if (sc.departmentCode() != null) d = sc.departmentCode(); }
         if (f != null)  { where.append(" AND dp.faculty_code = :faculty"); params.put("faculty", f); }
         if (d != null)  { where.append(" AND sr.home_department = :department"); params.put("department", d); }
         if (r != null)  { where.append(" AND upper(sr.present_rank) = :rank"); params.put("rank", r.toUpperCase()); }
@@ -207,7 +236,10 @@ class RegistersController {
         out.put("size", lim);
         out.put("rows", rows);
         out.put("summary", summary);
-        out.put("options", staffOptions());
+        Map<String, Object> options = staffOptions();
+        narrow(options, sc);
+        out.put("options", options);
+        out.put("scope", scopeOut(sc));
         return out;
     }
 

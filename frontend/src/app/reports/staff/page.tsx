@@ -21,7 +21,7 @@ export default async function StaffRegister({ searchParams }: { searchParams: Pr
   const page = typeof p.page === "string" && /^\d+$/.test(p.page) ? Number(p.page) : 1;
   const [me, data] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
-    api<RegisterPage<StaffRow, StaffOptions> & { summary: Summary }>(`/api/v1/reports/registers/staff?${q}${q ? "&" : ""}page=${page}&size=100`),
+    api<RegisterPage<StaffRow, StaffOptions> & { summary: Summary; scope?: { label: string } | null }>(`/api/v1/reports/registers/staff?${q}${q ? "&" : ""}page=${page}&size=100`),
   ]);
   if (!data.ok) return <Shell route="t/regstaff" me={me.ok ? me.data : null}><ProblemNotice problem={data.problem} /></Shell>;
   const d = data.data;
@@ -32,7 +32,7 @@ export default async function StaffRegister({ searchParams }: { searchParams: Pr
   return (
     <Shell route="t/regstaff" me={me.ok ? me.data : null}>
       <RegisterDesk
-        kind="staff" title="Staff register" filters={STAFF_FILTERS} options={d.options as unknown as Record<string, unknown>}
+        kind="staff" title={d.scope?.label ? `Staff register · ${d.scope.label}` : "Staff register"} filters={STAFF_FILTERS} options={d.options as unknown as Record<string, unknown>}
         initial={initial} total={Number(d.total)} page={Number(d.page)} size={Number(d.size)}
         headers={STAFF_HEADERS} sheetRow={staffSheetRow as (r: never) => (string | number | null)[]}
         tiles={[

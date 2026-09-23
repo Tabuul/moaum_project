@@ -45,6 +45,7 @@ export default async function PostgraduateReport({ searchParams }: { searchParam
   ]);
   if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
+  const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
   const t = d.totals;
   const pct = (a: number, b: number) => (Number(b) > 0 ? `${Math.round((100 * Number(a)) / Number(b))}%` : "—");
 
@@ -57,7 +58,7 @@ export default async function PostgraduateReport({ searchParams }: { searchParam
   return (
     <ReportDoc
       title={spec.title}
-      subtitle={`${spec.subtitle} — ${d.session}`}
+      subtitle={`${scopeLabel}${spec.subtitle} — ${d.session}`}
       session={d.session}
       columns={columns}
       rows={d.rows as unknown as Record<string, string | number | null>[]}

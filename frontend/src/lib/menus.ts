@@ -323,6 +323,14 @@ export const MENUS: Record<string, Menu> = {
             "label": "Leave & payslip"
           }
         ]
+      },
+      {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+        ]
       }
     ]
   },
@@ -464,6 +472,14 @@ export const MENUS: Record<string, Menu> = {
             "icon": "box",
             "label": "Requisitions"
           }
+        ]
+      },
+      {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
         ]
       },
       {
@@ -1449,6 +1465,14 @@ export const MENUS: Record<string, Menu> = {
             "icon": "doc",
             "label": "Score sheets"
           }
+        ]
+      },
+      {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
         ]
       },
       {

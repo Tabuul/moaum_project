@@ -24,7 +24,7 @@ export default async function StudentsRegister({ searchParams }: { searchParams:
   const page = typeof p.page === "string" && /^\d+$/.test(p.page) ? Number(p.page) : 1;
   const [me, data] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
-    api<RegisterPage<StudentRow, StudentOptions> & { summary: Summary }>(`/api/v1/reports/registers/students?${q}${q ? "&" : ""}page=${page}&size=100`),
+    api<RegisterPage<StudentRow, StudentOptions> & { summary: Summary; scope?: { label: string } | null }>(`/api/v1/reports/registers/students?${q}${q ? "&" : ""}page=${page}&size=100`),
   ]);
   if (!data.ok) return <Shell route="t/regstudents" me={me.ok ? me.data : null}><ProblemNotice problem={data.problem} /></Shell>;
   const d = data.data;
@@ -35,7 +35,7 @@ export default async function StudentsRegister({ searchParams }: { searchParams:
   return (
     <Shell route="t/regstudents" me={me.ok ? me.data : null}>
       <RegisterDesk
-        kind="students" title="Student register" filters={STUDENT_FILTERS} options={d.options as unknown as Record<string, unknown>}
+        kind="students" title={d.scope?.label ? `Student register · ${d.scope.label}` : "Student register"} filters={STUDENT_FILTERS} options={d.options as unknown as Record<string, unknown>}
         initial={initial} total={Number(d.total)} page={Number(d.page)} size={Number(d.size)}
         headers={STUDENT_HEADERS} sheetRow={studentSheetRow as (r: never) => (string | number | null)[]}
         tiles={[

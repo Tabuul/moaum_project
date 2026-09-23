@@ -35,6 +35,7 @@ export default async function RegistrationReport({ searchParams }: { searchParam
   ]);
   if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
+  const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
 
   const pct = (r: { expected: number; registered: number }) => (r.expected ? `${Math.round((100 * r.registered) / r.expected)}%` : "—");
   const rows = d.rows.map((r) => ({ ...r, pct: pct(r) }));
@@ -49,7 +50,7 @@ export default async function RegistrationReport({ searchParams }: { searchParam
   return (
     <ReportDoc
       title={spec.title}
-      subtitle={`${spec.subtitle} · ${session} · ${semesterText(semester)}`}
+      subtitle={`${scopeLabel}${spec.subtitle} · ${session} · ${semesterText(semester)}`}
       session={session}
       columns={columns}
       rows={rows}

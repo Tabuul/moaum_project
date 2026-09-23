@@ -66,6 +66,7 @@ export function ReportToolbar({ headers, rows, filename, title, keep }: {
         }),
       });
       const j = await r.json().catch(() => null);
+      if (r.status === 403) { setErr("Your office reads this return; the office that owns it keeps and files the copy."); return; }
       if (!r.ok) { setErr((j && (j.detail || j.title)) || `Could not keep the copy (${r.status})`); return; }
       setKept(j);
     } finally {

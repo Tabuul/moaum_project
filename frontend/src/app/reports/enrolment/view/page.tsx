@@ -32,6 +32,7 @@ export default async function EnrolmentReport({ searchParams }: { searchParams: 
   ]);
   if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
+  const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
 
   const rows = d.rows.map((r) => ({ ...r, level: `${r.level} Level` }));
   const sheetHeaders = columns.map((k) => k.label);
@@ -40,7 +41,7 @@ export default async function EnrolmentReport({ searchParams }: { searchParams: 
   return (
     <ReportDoc
       title={spec.title}
-      subtitle={spec.subtitle}
+      subtitle={`${scopeLabel}${spec.subtitle}`}
       session={session}
       columns={columns}
       rows={rows}

@@ -4,6 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import ng.edu.moaum.portal.shared.OfficeScope;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,22 +25,57 @@ import org.springframework.web.bind.annotation.RestController;
 class ReportsController {
 
     private static final String ENROLMENT_READERS =
-            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super',"
+            + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod')";
     private static final String REVENUE_READERS =
             "hasAnyAuthority('OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
 
     /** the School of Postgraduate Studies' own return is read by the School and the Registry */
     private static final String PG_READERS =
-            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super',"
+            + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod')";
 
     /** the accreditation return is the Registry's and HR's, read by management */
     private static final String STAFF_RATIO_READERS =
-            "hasAnyAuthority('OFFICE_hrm','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_hrm','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super',"
+            + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod')";
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
 
-    ReportsController(JdbcClient jdbc) {
+    ReportsController(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
+    }
+
+    /* ── a Dean or Head of Department reads the same returns, scoped to their faculty or department ── */
+
+    /** the rows that fall within the acting office's scope: by department or programme name for a
+     *  department office, by faculty name for a faculty office; every row for anyone else */
+    private List<Map<String, Object>> inScope(List<Map<String, Object>> rows, OfficeScope.ReportScope sc) {
+        if (sc == null) return rows;
+        return rows.stream().filter(r -> {
+            if (sc.departmentName() != null) {
+                if (r.containsKey("department")) return sc.departmentName().equals(r.get("department"));
+                if (r.containsKey("programme")) return sc.programmeNames().contains(String.valueOf(r.get("programme")));
+            }
+            return sc.facultyName().equals(r.get("faculty"));
+        }).toList();
+    }
+
+    /** the totals of a scoped row set: every numeric key summed */
+    private static Map<String, Object> sums(List<Map<String, Object>> rows, String... keys) {
+        Map<String, Object> t = new LinkedHashMap<>();
+        for (String k : keys) t.put(k, rows.stream().mapToLong(r -> r.get(k) instanceof Number n ? n.longValue() : 0L).sum());
+        return t;
+    }
+
+    /** the response with the scope it was read at, so the return can say "Faculty of Science" */
+    private static Map<String, Object> withScope(Map<String, Object> out, OfficeScope.ReportScope sc) {
+        Map<String, Object> m = new LinkedHashMap<>(out);
+        m.put("scope", sc == null ? null : Map.of("label", sc.label(), "faculty", sc.facultyName(),
+                "department", sc.departmentName() == null ? "" : sc.departmentName()));
+        return m;
     }
 
     /** Enrolment for a session's cohort: students admitted that session, by faculty, programme and level, split by sex. */
@@ -60,6 +97,11 @@ class ReportsController {
                  GROUP BY f.name, p.name, s.current_level
                  ORDER BY f.name, p.name, s.current_level
                 """).param("s", session).query().listOfRows();
+        OfficeScope.ReportScope sc = scope.reportScope();
+        if (sc != null) {
+            rows = inScope(rows, sc);
+            return withScope(Map.of("session", session, "rows", rows, "totals", sums(rows, "male", "female", "unstated", "total")), sc);
+        }
         Map<String, Object> totals = jdbc.sql("""
                 SELECT count(*) FILTER (WHERE s.sex = 'M') AS male,
                        count(*) FILTER (WHERE s.sex = 'F') AS female,
@@ -69,7 +111,7 @@ class ReportsController {
                  WHERE s.entry_session = :s
                    AND s.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED')
                 """).param("s", session).query().singleRow();
-        return Map.of("session", session, "rows", rows, "totals", totals);
+        return withScope(Map.of("session", session, "rows", rows, "totals", totals), null);
     }
 
     /** Registration cause: the not-registered students per faculty/programme split into fee-blocked
@@ -83,6 +125,8 @@ class ReportsController {
                 SELECT faculty, programme, expected, registered, not_registered, fee_blocked, cleared_idle
                   FROM registration.registration_cause(:s, :sem)
                 """).param("s", session).param("sem", semester).query().listOfRows();
+        OfficeScope.ReportScope sc = scope.reportScope();
+        rows = inScope(rows, sc);
         long exp = 0, reg = 0, nr = 0, fb = 0, ci = 0;
         for (Map<String, Object> r : rows) {
             exp += ((Number) r.get("expected")).longValue();
@@ -98,7 +142,7 @@ class ReportsController {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", session); out.put("semester", semester); out.put("rows", rows);
         out.put("totals", totals); out.put("schemeInForce", inForce);
-        return out;
+        return withScope(out, sc);
     }
 
     /** Outstanding carryovers, as at now: for every active student, a course whose LATEST published attempt is
@@ -127,19 +171,32 @@ class ReportsController {
                       FROM attempts ORDER BY student_id, course, ses DESC, sem DESC
                 )
                 """;
-        List<Map<String, Object>> rows = jdbc.sql(cte + """
+        OfficeScope.ReportScope sc = scope.reportScope();
+        String scopeWhere = sc == null ? "" : sc.departmentName() != null ? " AND programme = ANY(:progs::text[])" : " AND faculty = :fac";
+        var rowsQ = jdbc.sql(cte + """
                 SELECT faculty, programme, course, title, max(units) AS units, count(*) AS students
-                  FROM latest WHERE points = 0
+                  FROM latest WHERE points = 0""" + scopeWhere + """
+
                  GROUP BY faculty, programme, course, title
                  ORDER BY faculty, programme, course
-                """).query().listOfRows();
-        Map<String, Object> tally = jdbc.sql(cte + """
+                """);
+        var tallyQ = jdbc.sql(cte + """
                 SELECT count(*) AS carried, count(DISTINCT student_id) AS students
-                  FROM latest WHERE points = 0
-                """).query().singleRow();
+                  FROM latest WHERE points = 0""" + scopeWhere);
+        if (sc != null && sc.departmentName() != null) {
+            // a Postgres array literal, each name quoted (a programme name may carry a comma)
+            String progs = sc.programmeNames().stream()
+                    .map(n -> "\"" + n.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                    .collect(java.util.stream.Collectors.joining(",", "{", "}"));
+            rowsQ = rowsQ.param("progs", progs); tallyQ = tallyQ.param("progs", progs);
+        } else if (sc != null) {
+            rowsQ = rowsQ.param("fac", sc.facultyName()); tallyQ = tallyQ.param("fac", sc.facultyName());
+        }
+        List<Map<String, Object>> rows = rowsQ.query().listOfRows();
+        Map<String, Object> tally = tallyQ.query().singleRow();
         Map<String, Object> totals = Map.of("students", tally.getOrDefault("carried", 0L), "units", "");
-        return Map.of("session", session, "rows", rows, "totals", totals,
-                "distinctStudents", tally.getOrDefault("students", 0L));
+        return withScope(Map.of("session", session, "rows", rows, "totals", totals,
+                "distinctStudents", tally.getOrDefault("students", 0L)), sc);
     }
 
     /** Revenue confirmed for a session: student fees and applicant fees, by category. */
@@ -292,12 +349,13 @@ class ReportsController {
                  WHERE coalesce(app.applications, 0) + coalesce(reg.on_register, 0) > 0
                  ORDER BY prog.faculty, prog.programme
                 """;
-        List<Map<String, Object>> rows = jdbc.sql(sql).param("s", s).query().listOfRows();
+        OfficeScope.ReportScope sc = scope.reportScope();
+        List<Map<String, Object>> rows = inScope(jdbc.sql(sql).param("s", s).query().listOfRows(), sc);
         Map<String, Object> totals = new LinkedHashMap<>();
         for (String k : List.of("applications", "offered", "accepted", "admitted", "on_register", "female", "male", "full_time", "part_time", "researching", "awarded")) {
             totals.put(k, rows.stream().mapToLong(r -> ((Number) r.get(k)).longValue()).sum());
         }
-        return Map.of("session", s, "rows", rows, "totals", totals);
+        return withScope(Map.of("session", s, "rows", rows, "totals", totals), sc);
     }
 
     /**
@@ -344,13 +402,15 @@ class ReportsController {
                  WHERE d.ended_on IS NULL AND (coalesce(st.students, 0) + coalesce(sf.academic, 0)) > 0
                  ORDER BY f.name, d.name
                 """).query().listOfRows();
+        OfficeScope.ReportScope sc = scope.reportScope();
+        rows = inScope(rows, sc);
         Map<String, Object> totals = new LinkedHashMap<>();
         for (String k : List.of("students", "postgraduates", "academic", "professorial", "senior", "lecturers", "junior")) {
             totals.put(k, rows.stream().mapToLong(r -> ((Number) r.get(k)).longValue()).sum());
         }
         long students = (Long) totals.get("students"), academic = (Long) totals.get("academic");
         totals.put("ratio", academic > 0 ? Math.round((10.0 * students) / academic) / 10.0 : null);
-        return Map.of("rows", rows, "totals", totals);
+        return withScope(Map.of("rows", rows, "totals", totals), sc);
     }
 
     /**

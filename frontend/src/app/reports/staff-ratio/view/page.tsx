@@ -39,6 +39,7 @@ export default async function StaffRatioReport({ searchParams }: { searchParams:
   const [me, data] = await Promise.all([api<Me>("/api/v1/iam/me"), api<StaffRatio>("/api/v1/reports/staff-ratio")]);
   if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
+  const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
   const t = d.totals;
   const rows = d.rows.map((r) => ({ ...r, ratio_text: ratioText(r.ratio) }));
   const unstaffed = d.rows.filter((r) => Number(r.academic) === 0 && Number(r.students) > 0).length;
@@ -54,7 +55,7 @@ export default async function StaffRatioReport({ searchParams }: { searchParams:
   return (
     <ReportDoc
       title={spec.title}
-      subtitle={`${spec.subtitle} — as at ${today}`}
+      subtitle={`${scopeLabel}${spec.subtitle} — as at ${today}`}
       session={session || "as at today"}
       columns={columns}
       rows={rows as unknown as Record<string, string | number | null>[]}
