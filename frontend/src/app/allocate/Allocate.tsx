@@ -45,6 +45,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   // cross-department: the department can assign its course to a lecturer from another department
   const [pool, setPool] = useState<Lecturer[] | null>(null);
   const [loadingPool, setLoadingPool] = useState(false);
+  // the Head of Department finds a lecturer by name, staff number or department rather than scroll the register
+  const [lecQ, setLecQ] = useState("");
 
   async function toggleAllDepartments(on: boolean) {
     if (!on) { setPool(null); return; }
@@ -76,6 +78,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   function openAssign(o: Offering) {
     setOpen(o);
     setLecturer(o.lecturer_id ?? "");
+    setLecQ("");
     setSecond(o.second_examiner_id ?? "");
     setCo(o.co_lecturers ?? []);
     setAddCoId("");
@@ -92,7 +95,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
         method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) },
         body: method === "DELETE" ? undefined : JSON.stringify(body ?? {}), signal: ctl.signal,
       });
-    } catch (e) {
+    } catch {
       setErr({ status: 0, title: ctl.signal.aborted ? "The portal did not answer within 30 seconds" : "The portal could not be reached",
         detail: "Nothing was saved. Try again in a moment; if the portal has just been updated, sign in again first." } as Problem);
       return null;
@@ -144,6 +147,10 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
   }
 
   const chosenLoad = list.find((l) => l.id === lecturer)?.load ?? 0;
+  const lecTerms = lecQ.toLowerCase().trim().split(/s+/).filter(Boolean);
+  const shownLecturers = lecTerms.length
+    ? list.filter((l) => { const hay = `${l.name} ${l.staff_number ?? ""} ${l.department ?? ""}`.toLowerCase(); return lecTerms.every((t) => hay.includes(t)); })
+    : list;
   const after = open ? chosenLoad + open.units : 0;
   const overloaded = after > MAX_UNITS;
   const coCandidates = list.filter((l) => l.id !== lecturer && !co.some((c) => c.id === l.id));
@@ -237,8 +244,14 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
               {loadingPool ? "Loading…" : "Lecturers from other departments"}
             </label>
           </div>
-          {list.length ? (
-            <DTable noPrint cols={pool !== null ? ["Lecturer", "Department", "Current load|mid", "After this|mid", "|num"] : ["Lecturer", "Current load|mid", "After this|mid", "|num"]} rows={list.map((l) => {
+          {list.length ? (<>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+              <input id="al-find" className="ctl" type="search" value={lecQ} onChange={(e) => setLecQ(e.target.value)} autoComplete="off"
+                placeholder={pool !== null ? "Search a lecturer by name, staff number or department…" : "Search a lecturer by name or staff number…"} aria-label="Search a lecturer" style={{ flex: "1 1 260px" }} />
+              <span className="sub2 tnum" style={{ whiteSpace: "nowrap" }}>{lecTerms.length ? `${shownLecturers.length} of ${list.length} lecturers` : `${list.length} lecturers`}</span>
+            </div>
+            {shownLecturers.length ? (
+            <DTable noPrint cols={pool !== null ? ["Lecturer", "Department", "Current load|mid", "After this|mid", "|num"] : ["Lecturer", "Current load|mid", "After this|mid", "|num"]} rows={shownLecturers.map((l) => {
               const willBe = l.load + open.units;
               return [
                 <Two key="n" a={l.name} b={l.staff_number ?? ""} />,
@@ -250,7 +263,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                 </label>,
               ];
             })} />
-          ) : <Note kind="bad" title="No lecturer is on record for this department">A lecturer appears here once the Registry grants them the lecturer office scoped to this department. Tick &ldquo;Lecturers from other departments&rdquo; to assign from elsewhere.</Note>}
+            ) : <div className="sub2" style={{ padding: "8px 0" }}>No lecturer matches &ldquo;{lecQ}&rdquo;{pool === null ? " in this department — tick “Lecturers from other departments” to look further" : ""}.</div>}
+          </>) : <Note kind="bad" title="No lecturer is on record for this department">A lecturer appears here once the Registry grants them the lecturer office scoped to this department. Tick &ldquo;Lecturers from other departments&rdquo; to assign from elsewhere.</Note>}
 
           <Field id="al-second" label="Second examiner" hint="Verifies the marks. Cannot be the lead. Set now so verification is not blocked later.">
             <SearchSelect id="al-second" value={second} allLabel="Not set yet" placeholder="Search a lecturer…"
