@@ -3,6 +3,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Pil } from "@/components/proto/ui";
 import { RegisterDesk } from "../RegisterDesk";
+import { StaffOpen } from "@/components/StaffModal";
 import {
   STAFF_FILTERS, STAFF_HEADERS, STAFF_KEYS, registerQuery, words,
   type RegisterPage, type StaffOptions, type StaffRow,
@@ -44,7 +45,7 @@ export default async function StaffRegister({ searchParams }: { searchParams: Pr
         cols={["Staff no.", "Name", "Rank", "Faculty / department", "Category|mid", "Status|mid", "Offices held", "Contact"]}
         rows={d.rows.map((r) => [
           <span key="n" className="tnum">{r.staff_number}</span>,
-          <span key="nm"><strong>{r.surname}</strong>, {r.given_names}</span>,
+          <StaffOpen key="nm" id={r.id} kind="link" label={<><strong>{r.surname}</strong>, {r.given_names}</>} />,
           <span key="r">{rankCase(r.rank)}{r.conuass_step != null ? <div className="sub2 tnum">Step {r.conuass_step}</div> : r.grade ? <div className="sub2 tnum">{r.grade} · step {r.step}</div> : null}</span>,
           <span key="f">{r.faculty ?? "—"}<div className="sub2">{r.department ?? (r.department_code ?? "")}</div></span>,
           <Pil key="c" kind={r.category === "ACADEMIC" ? "info" : "grey"}>{r.category === "ACADEMIC" ? "Academic" : "Non-teaching"}</Pil>,
