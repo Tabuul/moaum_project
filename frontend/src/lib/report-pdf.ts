@@ -47,7 +47,12 @@ export function keptReportPdf(k: KeptReport): Uint8Array {
   const cols = widths(k.headers, k.rows, W - L - R, size);
   const numeric = k.headers.map((_, i) => k.rows.length > 0 && k.rows.every((r) => r[i] == null || r[i] === "" || isNum(r[i])) && k.rows.some((r) => r[i] != null && r[i] !== ""));
   const crest = crestImage();
-  const total = Math.max(1, Math.ceil(k.rows.length / Math.floor((H - TOP - 118 - BOTTOM) / rowH)) );
+  // rows a page holds, by the same arithmetic as the loop below: the header block, the table header row,
+  // then rows while a full row still clears the footer
+  const firstRowY = H - TOP - 96 - rowH;
+  let perPage = 0;
+  for (let yy = firstRowY; yy - rowH > BOTTOM + 14; yy -= rowH) perPage++;
+  const total = Math.max(1, Math.ceil(k.rows.length / Math.max(1, perPage)));
 
   let idx = 0;
   let pageNo = 0;

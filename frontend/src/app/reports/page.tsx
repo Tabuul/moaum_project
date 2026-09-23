@@ -25,7 +25,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   /* the due register and the copies kept (V229) */
   const trends = api<{ sessions: SessionTrend[]; months: MonthTrend[] }>("/api/v1/reports/trends");
   const [due, kept] = await Promise.all([
-    api<{ asAt: string; rows: DueRow[]; overdue: number; dueSoon: number }>("/api/v1/reports/due"),
+    api<{ asAt: string; rows: DueRow[]; overdue: number; dueSoon: number; kept: number; filed: number }>("/api/v1/reports/due"),
     api<KeptRow[]>("/api/v1/reports/snapshots?limit=12"),
   ]);
   const byFaculty: FacultyRow[] = [];

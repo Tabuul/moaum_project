@@ -79,7 +79,8 @@ class RegistersController {
                                  @RequestParam(required = false) String session,
                                  @RequestParam(required = false) String q,
                                  @RequestParam(defaultValue = "1") int page,
-                                 @RequestParam(defaultValue = "100") int size) {
+                                 @RequestParam(defaultValue = "100") int size,
+                                 @RequestParam(defaultValue = "true") boolean options) {
         int lim = Math.max(1, Math.min(PAGE_MAX, size));
         int off = Math.max(0, page - 1) * lim;
         StringBuilder where = new StringBuilder(" WHERE true");
@@ -127,9 +128,11 @@ class RegistersController {
         out.put("size", lim);
         out.put("rows", rows);
         out.put("summary", summary);
-        Map<String, Object> options = studentOptions();
-        narrow(options, sc);
-        out.put("options", options);
+        if (options) {   // the desk needs the lists; an export or a printable view fetching pages does not
+            Map<String, Object> opts = studentOptions();
+            narrow(opts, sc);
+            out.put("options", opts);
+        }
         out.put("scope", scopeOut(sc));
         return out;
     }
@@ -163,7 +166,8 @@ class RegistersController {
                               @RequestParam(required = false) String office,
                               @RequestParam(required = false) String q,
                               @RequestParam(defaultValue = "1") int page,
-                              @RequestParam(defaultValue = "100") int size) {
+                              @RequestParam(defaultValue = "100") int size,
+                              @RequestParam(defaultValue = "true") boolean options) {
         int lim = Math.max(1, Math.min(PAGE_MAX, size));
         int off = Math.max(0, page - 1) * lim;
         StringBuilder where = new StringBuilder(" WHERE pe.staff_number IS NOT NULL");
@@ -236,9 +240,11 @@ class RegistersController {
         out.put("size", lim);
         out.put("rows", rows);
         out.put("summary", summary);
-        Map<String, Object> options = staffOptions();
-        narrow(options, sc);
-        out.put("options", options);
+        if (options) {
+            Map<String, Object> opts = staffOptions();
+            narrow(opts, sc);
+            out.put("options", opts);
+        }
         out.put("scope", scopeOut(sc));
         return out;
     }

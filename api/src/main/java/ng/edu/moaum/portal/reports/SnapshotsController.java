@@ -120,15 +120,27 @@ class SnapshotsController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> due(@RequestParam(required = false) String asAt) {
-        LocalDate day = asAt == null || asAt.isBlank() ? LocalDate.now() : LocalDate.parse(asAt.trim());
+        LocalDate day = asAt == null || asAt.isBlank() ? LocalDate.now() : parseDate(asAt, "asAt");
         List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM reports.due_register(:d)").param("d", day).query().listOfRows();
         long overdue = rows.stream().filter(r -> "OVERDUE".equals(r.get("state"))).count();
-        long dueSoon = rows.stream().filter(r -> "DUE".equals(r.get("state")) && r.get("days") != null && ((Number) r.get("days")).intValue() <= 30).count();
+        // due soon: the last due date still unanswered within its grace, or the next due date within thirty
+        // days with nothing kept for it yet — whatever the state the last one left the row in
+        long dueSoon = rows.stream().filter(r -> {
+            if ("ON_DEMAND".equals(r.get("state")) || "OVERDUE".equals(r.get("state"))) return false;
+            boolean lastOpen = r.get("last_due") != null && r.get("last_snapshot") == null;
+            Object nd = r.get("next_due");
+            LocalDate next = nd instanceof java.sql.Date d ? d.toLocalDate() : nd instanceof LocalDate l ? l : null;
+            boolean nextSoon = next != null && r.get("next_snapshot") == null && !next.isAfter(day.plusDays(30));
+            return lastOpen || nextSoon;
+        }).count();
+        Map<String, Object> totals = jdbc.sql("SELECT count(*) AS kept, count(*) FILTER (WHERE filed_at IS NOT NULL) AS filed FROM reports.snapshot").query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("asAt", day.toString());
         out.put("rows", rows);
         out.put("overdue", overdue);
         out.put("dueSoon", dueSoon);
+        out.put("kept", totals.get("kept"));
+        out.put("filed", totals.get("filed"));
         return out;
     }
 
@@ -144,7 +156,7 @@ class SnapshotsController {
     Map<String, Object> keep(Authentication authentication, @Valid @RequestBody KeepIn body) {
         UUID me = UUID.fromString(authentication.getName());
         String office = AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
-        LocalDate due = body.dueOn() == null || body.dueOn().isBlank() ? null : LocalDate.parse(body.dueOn().trim());
+        LocalDate due = body.dueOn() == null || body.dueOn().isBlank() ? dueFor(body.report().trim()) : parseDate(body.dueOn(), "dueOn");
         Map<String, Object> row = jdbc.sql("""
                 INSERT INTO reports.snapshot (report, title, subtitle, period, parameters, due_on, headers, rows, totals, row_count, note, taken_by, taken_office)
                 VALUES (:report, :title, :subtitle, :period, :parameters::jsonb, :due, :headers::jsonb, :rows::jsonb, :totals::jsonb, :n, :note, :by, :office)
@@ -161,6 +173,26 @@ class SnapshotsController {
                 .param("by", me).param("office", office, Types.VARCHAR)
                 .query().singleRow();
         return row;
+    }
+
+    /** a caller-supplied ISO date, or a 400 naming the field */
+    private static LocalDate parseDate(String v, String field) {
+        try {
+            return LocalDate.parse(v.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, field + " must be a date like 2026-12-31");
+        }
+    }
+
+    /**
+     * The due date a copy kept today answers when the caller names none: the last due date while it
+     * stands unanswered, else the next. On-demand returns (the registers) have none.
+     */
+    private LocalDate dueFor(String report) {
+        return jdbc.sql("""
+                SELECT CASE WHEN r.last_due IS NOT NULL AND r.last_snapshot IS NULL THEN r.last_due ELSE r.next_due END
+                  FROM reports.due_register(current_date) r WHERE r.slug = :s
+                """).param("s", report).query(LocalDate.class).optional().orElse(null);
     }
 
     /** the snapshots kept, newest first — for one return, or all */

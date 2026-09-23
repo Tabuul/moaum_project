@@ -21,10 +21,15 @@ export interface KeptRow {
 }
 const FREQ: Record<string, string> = { MONTHLY: "Monthly", PER_SEMESTER: "Per semester", PER_SESSION: "Per session", ON_DEMAND: "On demand" };
 const dmy = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+
+
 function statePill(r: DueRow) {
   switch (r.state) {
     case "OVERDUE": return <Pil kind="bad">Overdue · {r.days} days</Pil>;
-    case "DUE": return <Pil kind={r.days != null && r.days <= 30 ? "warn" : "info"}>{r.days != null && r.days < 0 ? `Due · ${-r.days} days ago` : r.days === 0 ? "Due today" : `Due in ${r.days ?? "—"} days`}</Pil>;
+    case "DUE":
+      // within the fortnight's grace, days counts how long ago it fell due; otherwise how far off the next is
+      if (pending(r)) return <Pil kind="warn">{r.days === 0 ? "Due today" : `Due · ${r.days} day${r.days === 1 ? "" : "s"} ago`}</Pil>;
+      return <Pil kind={r.days != null && r.days <= 30 ? "warn" : "info"}>{r.days === 0 ? "Due today" : `Due in ${r.days ?? "—"} days`}</Pil>;
     case "TAKEN": return <Pil kind="info">Kept · not filed</Pil>;
     case "FILED": return <Pil kind="ok">Filed</Pil>;
     default: return <Pil kind="grey">On demand</Pil>;
@@ -38,7 +43,7 @@ const pending = (r: DueRow) => r.state === "OVERDUE" || (r.state === "DUE" && !!
  *  document with a CSV beside it — and the session's enrolment by faculty, read off the register. */
 export function Reports({ session, sessions, activeOffice, byFaculty, due, kept, trends }: {
   session: string; sessions: { name: string; state: string }[]; activeOffice: string | null; byFaculty: FacultyRow[] | null;
-  due: { asAt: string; rows: DueRow[]; overdue: number; dueSoon: number } | null; kept: KeptRow[];
+  due: { asAt: string; rows: DueRow[]; overdue: number; dueSoon: number; kept?: number; filed?: number } | null; kept: KeptRow[];
   /** the period-over-period charts, rendered by the page (a server component may pass a node) */
   trends?: React.ReactNode;
 }) {
@@ -57,7 +62,6 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
     const ses = period && /^\d{4}\/\d{4}$/.test(period) ? period : session;
     router.push(`/reports/${r.slug}/view?session=${encodeURIComponent(ses)}${dueOn ? `&due=${dueOn}` : ""}`);
   };
-  const filedCount = kept.filter((k) => k.filed_at).length;
 
   return (
     <>
@@ -71,8 +75,8 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
           <Tiles items={[
             ["Overdue", String(due.overdue), due.overdue ? "var(--red-ink)" : "var(--green-ink)", due.overdue ? "past the due date, nothing kept" : "nothing is past its date"],
             ["Due within 30 days", String(due.dueSoon), due.dueSoon ? "var(--chrome)" : null, "not yet kept"],
-            ["Kept copies", String(kept.length), null, "the latest twelve, below"],
-            ["Filed", String(filedCount), filedCount ? "var(--green-ink)" : null, "of those kept"],
+            ["Kept copies", String(due.kept ?? kept.length), null, "returns kept as evidence"],
+            ["Filed", String(due.filed ?? 0), due.filed ? "var(--green-ink)" : null, "of those kept"],
           ]} />
           <Panel title="Due register" right={`As at ${dmy(due.asAt)} · a return is answered by a kept copy`}>
             <DTable cols={["Return", "Owner", "Frequency|mid", "Last due", "Next due", "State|mid", "|num"]}

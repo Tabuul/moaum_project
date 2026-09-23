@@ -420,7 +420,7 @@ class ReportsController {
      * figure here is the figure the return will print.
      */
     @GetMapping("/trends")
-    @PreAuthorize(ENROLMENT_READERS + " or " + REVENUE_READERS + " or " + PG_READERS)
+    @PreAuthorize("!hasAnyAuthority('OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod') and (" + ENROLMENT_READERS + " or " + REVENUE_READERS + " or " + PG_READERS + ")")
     @Transactional(readOnly = true)
     Map<String, Object> trends() {
         List<Map<String, Object>> sessions = jdbc.sql("""

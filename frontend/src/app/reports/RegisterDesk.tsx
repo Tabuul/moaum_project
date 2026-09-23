@@ -72,15 +72,20 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
   async function exportAll() {
     setExporting(true);
     try {
+      // every matched row, 500 a page, until the count the API states is reached — never a silent cap
       const all: (string | number | null)[][] = [];
-      for (let p = 1; p <= 40; p++) {
-        const u = new URLSearchParams(query()); u.set("page", String(p)); u.set("size", "500");
+      let expected = total;
+      let short = false;
+      for (let p = 1; all.length < expected; p++) {
+        const u = new URLSearchParams(query()); u.set("page", String(p)); u.set("size", "500"); u.set("options", "false");
         const r = await fetch(`/api/bff/api/v1/reports/registers/${kind}?${u.toString()}`, { cache: "no-store" });
-        if (!r.ok) break;
+        if (!r.ok) { short = true; break; }
         const j = (await r.json()) as { rows: never[]; total: number };
+        expected = Number(j.total);
         all.push(...j.rows.map(sheetRow));
-        if (all.length >= Number(j.total) || j.rows.length === 0) break;
+        if (j.rows.length === 0) break;
       }
+      if (short) { window.alert(`The export stopped after ${all.length.toLocaleString()} of ${expected.toLocaleString()} rows — the portal did not answer. Try again.`); if (!all.length) return; }
       const logo = await loadCrest();
       const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
       const filterLine = Object.entries(v).filter(([, val]) => val && val.trim()).map(([k, val]) => `${k}: ${val}`).join(" · ");
