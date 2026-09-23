@@ -41,6 +41,22 @@ class StaffRecordController {
         this.jdbc = jdbc;
     }
 
+    /** the acting person's own record — anyone signed in may read their own, for their identity card */
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    Map<String, Object> me(org.springframework.security.core.Authentication authentication) {
+        return one(UUID.fromString(authentication.getName()));
+    }
+
+    /** the acting person's own photograph */
+    @GetMapping("/me/photo")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> myPhoto(org.springframework.security.core.Authentication authentication) {
+        return photo(UUID.fromString(authentication.getName()));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)

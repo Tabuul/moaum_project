@@ -106,9 +106,8 @@ function drawBack(p: Page, x0: number, y0: number, W: number, H: number, f: Card
   p.text(x0 + 14, cy, "CONDITIONS", 6, true, DARK);
   let ty = cy - 10;
   const terms = [
-    "This card is issued to the named student and is not transferable. It must be produced on demand to any officer of the University, at the gate, in the Library and at the door of an examination hall.",
-    "A lost card is reported to Security at once; a card reported lost is refused at every reader from the moment it is reported.",
-    "If found, return to the Security post, Km 1 Gboko Road, Makurdi.",
+    "This ID card must always be in the owner's possession for identification at the gates, examination or wherever identification is necessary.",
+    "Any alteration or erasure renders this card invalid. Loss must be reported immediately to the Chief Security Officer of the University.",
   ];
   for (const t of terms) { ty = p.paragraph(x0 + 14, ty, t, colW - 14, 5.8, 1.3) - 4; }
   // QR + verify text

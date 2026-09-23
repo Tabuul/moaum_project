@@ -165,7 +165,7 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
 
   return (
     <Modal wide title={p ? `${p.surname}, ${p.given_names}` : "Member of staff"} sub={p ? `${p.staff_number ?? ""}${p.rank ? ` · ${rankCase(p.rank)}` : ""}` : "Reading the record"} onClose={onClose}
-      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span style={{ flexGrow: 1 }} /><button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
+      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span style={{ flexGrow: 1 }} />{p ? <a href={`/staff/idcard/pdf?id=${p.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">ID card (PDF)</a> : null}<button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
       {body}
     </Modal>
   );
