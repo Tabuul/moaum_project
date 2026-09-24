@@ -336,6 +336,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Students registered in this faculty",
     "The list the Academic Office matriculates from"
   ],
+  "t/supervision": [
+    "Postings I supervise",
+    "The logbook: procedures, cases, attendance and the block's events, verified by the supervisor"
+  ],
   "t/postings": [
     "Postings",
     "The College's students allocated to a block's postings for the session"
