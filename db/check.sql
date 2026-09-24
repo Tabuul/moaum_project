@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 142
+\set EXPECTED 143
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3027,6 +3027,54 @@ BEGIN
     PERFORM pg_temp.assert('Four consecutive closed semesters without an approved registration make a voluntary withdrawal: due at four, not after a registration in the third, closed by the Registry on the regulation, on the record',
         n0 = 4 AND due0 AND n1 = 1 AND NOT due1 AND n2 = 4 AND closed = 1 AND st_status = 'VOLUNTARY_WITHDRAWAL' AND changed = 1,
         format('missed=%s due=%s after_reg=%s due_after=%s again=%s closed=%s status=%s changes=%s', n0, due0, n1, due1, n2, closed, st_status, changed));
+END $$;
+
+-- ── 17g. the College's progression: barred by attendance, the rule applied provisionally, the Board's confirmation moves the student (V248) ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); ses text; anat uuid; bcm uuid; phs uuid; j record; barred_ok boolean; pass_ok boolean;
+        o1 text; o2 text; st1 text; en_state text; n_conf int; o3 text; lvl int; en2_state text; hist int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'collegesecretary', true);
+    SELECT name INTO ses FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1;
+    IF ses IS NULL THEN SELECT name INTO ses FROM policy.academic_session ORDER BY name DESC LIMIT 1; END IF;
+    SELECT s.id INTO anat FROM college.exam_subject s JOIN college.professional_exam e ON e.id = s.exam_id WHERE e.code = 'PE1' AND s.name = 'Anatomy';
+    SELECT s.id INTO bcm  FROM college.exam_subject s JOIN college.professional_exam e ON e.id = s.exam_id WHERE e.code = 'PE1' AND s.name = 'Medical Biochemistry';
+    SELECT s.id INTO phs  FROM college.exam_subject s JOIN college.professional_exam e ON e.id = s.exam_id WHERE e.code = 'PE1' AND s.name = 'Physiology';
+    -- attendance below the 1st Professional's 75% bars the candidate; at 75 the marks decide
+    SELECT * INTO j FROM college.judge(anat, 20, 40, NULL, 60);  barred_ok := j.barred AND j.passed = false;
+    SELECT * INTO j FROM college.judge(anat, 20, 40, NULL, 80);  pass_ok := NOT j.barred AND j.passed;
+    -- a College student at 300 Level, registered for the year
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990905', 'MOAUM/CHK/99/0905', 'CHECKCOLLEGE', 'Invented', 'C00061', 'UTME', ses, 100, 300, 'ACTIVE', now());
+    INSERT INTO college.enrolment (student_id, level, session, registered_at, registered_items) VALUES (st, 300, ses, now(), 5);
+    -- two subjects passed, Physiology failed at the first attempt: the rule says resit, applied provisionally
+    INSERT INTO college.exam_result (student_id, subject_id, session, attempt, ca_score, exam_score, attendance_pct, passed, decided_on) VALUES
+        (st, anat, ses, 'FIRST', 22, 45, 90, true, current_date), (st, bcm, ses, 'FIRST', 20, 40, 88, true, current_date);
+    o1 := college.apply_provisional(st, 'PE1', ses);                                   -- incomplete: nothing applied
+    INSERT INTO college.exam_result (student_id, subject_id, session, attempt, ca_score, exam_score, attendance_pct, passed, decided_on) VALUES
+        (st, phs, ses, 'FIRST', 12, 25, 85, false, current_date);
+    o2 := college.apply_provisional(st, 'PE1', ses);
+    SELECT state INTO st1 FROM college.progression_decision WHERE student_id = st AND from_level = 300 AND session = ses;
+    -- the Board confirms: the enrolment waits on the resit, the student stays at 300
+    n_conf := college.confirm_decisions('PE1', ses, 'CAB/CHK/1');
+    SELECT state INTO en_state FROM college.enrolment WHERE student_id = st AND level = 300 AND session = ses;
+    -- the resit passed: the rule says promote; confirmed, the student is at 400 and the year is closed
+    INSERT INTO college.exam_result (student_id, subject_id, session, attempt, ca_score, exam_score, attendance_pct, passed, decided_on) VALUES
+        (st, phs, ses, 'RESIT', 18, 40, 85, true, current_date);
+    o3 := college.apply_provisional(st, 'PE1', ses);
+    PERFORM college.confirm_decisions('PE1', ses, 'CAB/CHK/2');
+    SELECT current_level INTO lvl FROM people.student WHERE id = st;
+    SELECT state INTO en2_state FROM college.enrolment WHERE student_id = st AND level = 300 AND session = ses;
+    SELECT count(*) INTO hist FROM college.exam_result WHERE student_id = st;
+    DELETE FROM college.progression_decision WHERE student_id = st;
+    DELETE FROM college.exam_result WHERE student_id = st;
+    DELETE FROM college.enrolment WHERE student_id = st;
+    DELETE FROM people.status_change WHERE student_id = st;
+    DELETE FROM people.student WHERE id = st;
+    PERFORM pg_temp.assert('The College''s progression: attendance under the minimum bars; nothing applies until every subject is resulted; one fail at the first attempt is a provisional resit the Board confirms; the resit passed is a promotion that moves the student to 400 and closes the year',
+        barred_ok AND pass_ok AND o1 IS NULL AND o2 = 'RESIT' AND st1 = 'PROVISIONAL' AND n_conf = 1 AND en_state = 'RESIT' AND o3 = 'PROMOTE' AND lvl = 400 AND en2_state = 'CLOSED' AND hist = 4,
+        format('barred=%s pass=%s first=%s then=%s state=%s confirmed=%s enrolment=%s resit=%s level=%s closed=%s results=%s', barred_ok, pass_ok, o1, o2, st1, n_conf, en_state, o3, lvl, en2_state, hist));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -43,10 +43,27 @@ class CollegeController {
     private static final String READERS = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_records','OFFICE_dean','OFFICE_hod','OFFICE_lecturer','OFFICE_exams','OFFICE_vc','OFFICE_dvc','OFFICE_admin','OFFICE_super')";
 
-    private final JdbcClient jdbc;
+    /** the desk, and the College's own teachers — a lecturer, Head of Department or examinations officer whose department is the College's */
+    private static final String EXAMINERS = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_hod','OFFICE_exams')";
+    private static final String STUDENT = "hasAuthority('OFFICE_student')";
 
-    CollegeController(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
+
+    CollegeController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
+    }
+
+    /** a department office (lecturer, HOD, examinations officer) examines only when its department is the College's */
+    private void assertCollegeExaminer() {
+        if (!scope.actingDepartmentOffice()) return;
+        String dept = scope.actingDept();
+        boolean chs = dept != null && jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code WHERE p.dept_code = :d AND f.college_code = 'CHS')
+                """).param("d", dept).query(Boolean.class).single();
+        if (!chs) throw new DomainRuleViolation("COLLEGE_NOT_EXAMINER", "The Professional examinations are examined by the College of Health Sciences' own departments.",
+                new DomainRuleViolation.Remedy("A lecturer, Head of Department or examinations officer of a College department may enter results.", "College Secretary"));
     }
 
     /** the College's blocks with their postings, courses and rotation groups; and the levels with their phase */
@@ -460,18 +477,22 @@ class CollegeController {
     /** the candidates for an examination in a session — the College's students at its level — with each subject's
      *  results by attempt and the progression decision, if any */
     @GetMapping("/exams/{code}/candidates")
-    @PreAuthorize(DESK)
+    @PreAuthorize(EXAMINERS)
     @Transactional(readOnly = true)
     Map<String, Object> candidates(@PathVariable String code, @RequestParam String session) {
+        assertCollegeExaminer();
         Map<String, Object> e = exam(code);
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT st.id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.programme_code, st.entry_mode, st.current_level,
                        coalesce((SELECT jsonb_agg(jsonb_build_object('id', r.id, 'subject_id', r.subject_id, 'attempt', r.attempt, 'ca', r.ca_score, 'exam', r.exam_score,
-                                                                     'clinical', r.clinical_score, 'total', r.total, 'passed', r.passed, 'decided_on', r.decided_on) ORDER BY r.subject_id, r.attempt)
+                                                                     'clinical', r.clinical_score, 'attendance', r.attendance_pct, 'barred', r.barred, 'total', r.total, 'passed', r.passed, 'decided_on', r.decided_on) ORDER BY r.subject_id, r.attempt)
                                    FROM college.exam_result r JOIN college.exam_subject s ON s.id = r.subject_id
                                   WHERE r.student_id = st.id AND r.session = :s AND s.exam_id = :e), '[]'::jsonb)::text AS results,
-                       (SELECT row_to_json(d)::text FROM (SELECT d.id, d.outcome, d.carry_overs, d.rule_ref, d.minute, d.decided_on
-                                                            FROM college.progression_decision d WHERE d.student_id = st.id AND d.session = :s AND d.from_level = :l) d) AS decision
+                       (SELECT row_to_json(d)::text FROM (SELECT d.id, d.outcome, d.state, d.carry_overs, d.rule_ref, d.minute, d.decided_on, d.confirmed_on, d.honours,
+                                                                 (SELECT string_agg(s.name, ', ' ORDER BY s.ordinal) FROM college.exam_subject s WHERE s.id = ANY(d.resit_subjects)) AS resit_names
+                                                            FROM college.progression_decision d WHERE d.student_id = st.id AND d.session = :s AND d.from_level = :l) d) AS decision,
+                       college.attempt_of(st.id, :l, :s) AS attempt,
+                       (SELECT row_to_json(en)::text FROM (SELECT en.kind, en.state, en.attempt_no, en.registered_at FROM college.enrolment en WHERE en.student_id = st.id AND en.level = :l AND en.session = :s) en) AS enrolment
                   FROM people.student st
                   JOIN ref.programme p ON p.code = st.programme_code
                   JOIN ref.faculty f ON f.code = p.faculty_code
@@ -485,15 +506,25 @@ class CollegeController {
     }
 
     public record ResultIn(@NotBlank String session, @NotNull UUID studentId, @NotNull UUID subjectId, @NotBlank String attempt,
-                           java.math.BigDecimal caScore, java.math.BigDecimal examScore, java.math.BigDecimal clinicalScore) {
+                           java.math.BigDecimal caScore, java.math.BigDecimal examScore, java.math.BigDecimal clinicalScore, java.math.BigDecimal attendancePct) {
     }
 
-    /** one subject's result for one candidate at one attempt; the pass is judged by the rule, never typed */
+    /** one subject's result for one candidate at one attempt, with the attendance the examiner types; the pass is judged by
+     *  the rule, never typed (below the examination's minimum attendance the candidate is barred); once every subject has a
+     *  result the rule's decision is applied provisionally, for the Board to confirm */
     @PostMapping("/exams/{code}/results")
-    @PreAuthorize(DESK)
+    @PreAuthorize(EXAMINERS)
     @Transactional
     Map<String, Object> result(@PathVariable String code, @Valid @RequestBody ResultIn body) {
+        assertCollegeExaminer();
         Map<String, Object> e = exam(code);
+        if (body.attendancePct() != null && (body.attendancePct().signum() < 0 || body.attendancePct().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
+            throw new DomainRuleViolation("COLLEGE_ATTENDANCE_RANGE", "Attendance is a percentage, 0 to 100.", new DomainRuleViolation.Remedy("Enter it within 0 to 100.", "College Secretary"));
+        }
+        if (e.get("min_attendance_pct") != null && body.attendancePct() == null && (body.caScore() != null || body.examScore() != null)) {
+            throw new DomainRuleViolation("COLLEGE_ATTENDANCE", e.get("name") + " requires attendance of " + e.get("min_attendance_pct") + "%; the candidate's attendance is entered with the marks.",
+                    new DomainRuleViolation.Remedy("Enter the attendance percentage.", "College Secretary"));
+        }
         String attempt = body.attempt().trim().toUpperCase();
         if (!List.of("FIRST", "RESIT", "REPEAT", "SENATE_APPEAL").contains(attempt)) {
             throw new DomainRuleViolation("COLLEGE_ATTEMPT", "An attempt is the first, a resit, a repeat or a Senate appeal.", new DomainRuleViolation.Remedy("Choose one of the four.", "College Secretary"));
@@ -521,23 +552,30 @@ class CollegeController {
                  WHERE st.id = :st AND f.college_code = 'CHS'
                 """).param("st", body.studentId()).query(Long.class).single();
         if (member == 0) throw new DomainRuleViolation("COLLEGE_NOT_MEMBER", "That student is not the College's.", new DomainRuleViolation.Remedy("A Professional examination is the College's students' only.", "College Secretary"));
-        Boolean passed = body.caScore() == null && body.examScore() == null ? null
-                : jdbc.sql("SELECT college.passes(:s, :ca, :ex, :cl)").param("s", body.subjectId()).param("ca", body.caScore(), Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC)
-                        .param("cl", body.clinicalScore(), Types.NUMERIC).query(Boolean.class).single();
+        Map<String, Object> judged = jdbc.sql("SELECT passed, barred FROM college.judge(:s, :ca, :ex, :cl, :at)").param("s", body.subjectId())
+                .param("ca", body.caScore(), Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC).param("cl", body.clinicalScore(), Types.NUMERIC)
+                .param("at", body.attendancePct(), Types.NUMERIC).query().singleRow();
+        Boolean passed = (Boolean) judged.get("passed");
+        boolean barred = Boolean.TRUE.equals(judged.get("barred"));
         UUID id = jdbc.sql("""
-                INSERT INTO college.exam_result (student_id, subject_id, session, attempt, ca_score, exam_score, clinical_score, passed, decided_on)
-                VALUES (:st, :s, :ses, :a, :ca, :ex, :cl, :p, CASE WHEN :p IS NULL THEN NULL ELSE current_date END)
+                INSERT INTO college.exam_result (student_id, subject_id, session, attempt, ca_score, exam_score, clinical_score, attendance_pct, barred, passed, decided_on)
+                VALUES (:st, :s, :ses, :a, :ca, :ex, :cl, :at, :b, :p, CASE WHEN :p IS NULL THEN NULL ELSE current_date END)
                 ON CONFLICT (student_id, subject_id, session, attempt) DO UPDATE SET
                        ca_score = EXCLUDED.ca_score, exam_score = EXCLUDED.exam_score, clinical_score = EXCLUDED.clinical_score,
-                       passed = EXCLUDED.passed, decided_on = EXCLUDED.decided_on
+                       attendance_pct = EXCLUDED.attendance_pct, barred = EXCLUDED.barred, passed = EXCLUDED.passed, decided_on = EXCLUDED.decided_on
                 RETURNING id
                 """).param("st", body.studentId()).param("s", body.subjectId()).param("ses", body.session()).param("a", attempt)
                 .param("ca", body.caScore(), Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC).param("cl", body.clinicalScore(), Types.NUMERIC)
-                .param("p", passed, Types.BOOLEAN).query(UUID.class).single();
+                .param("at", body.attendancePct(), Types.NUMERIC).param("b", barred).param("p", passed, Types.BOOLEAN).query(UUID.class).single();
+        // the rule, applied provisionally the moment every subject has a result; a confirmed decision is left alone
+        String outcome = jdbc.sql("SELECT college.apply_provisional(:st, :c, :ses)").param("st", body.studentId()).param("c", e.get("code")).param("ses", body.session())
+                .query(String.class).optional().orElse(null);
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("id", id);
         out.put("passed", passed);
-        out.put("distinction", body.caScore() != null && body.examScore() != null && body.caScore().add(body.examScore()).compareTo(java.math.BigDecimal.valueOf(70)) >= 0);
+        out.put("barred", barred);
+        out.put("distinction", Boolean.TRUE.equals(passed) && body.caScore() != null && body.examScore() != null && body.caScore().add(body.examScore()).compareTo(java.math.BigDecimal.valueOf(70)) >= 0);
+        out.put("outcome", outcome);
         return out;
     }
 
@@ -551,8 +589,13 @@ class CollegeController {
     Map<String, Object> decide(@PathVariable String code, @Valid @RequestBody DecisionIn body) {
         Map<String, Object> e = exam(code);
         String outcome = body.outcome().trim().toUpperCase();
-        if (!List.of("PROMOTE", "RESIT", "REPEAT", "WITHDRAW_ADVISED", "WITHDRAW_REQUIRED", "APPEAL").contains(outcome)) {
-            throw new DomainRuleViolation("COLLEGE_OUTCOME", "A decision is promote, resit, repeat, withdrawal advised, withdrawal required or appeal.", new DomainRuleViolation.Remedy("Choose one of the six.", "College Secretary"));
+        if (!List.of("PROMOTE", "RESIT", "REPEAT", "WITHDRAW_ADVISED", "WITHDRAW_REQUIRED", "APPEAL", "GRADUATE").contains(outcome)) {
+            throw new DomainRuleViolation("COLLEGE_OUTCOME", "A decision is promote, resit, repeat, withdrawal advised, withdrawal required, appeal or graduate.", new DomainRuleViolation.Remedy("Choose one of the seven.", "College Secretary"));
+        }
+        long confirmed = jdbc.sql("SELECT count(*) FROM college.progression_decision WHERE student_id = :st AND session = :ses AND from_level = :l AND state = 'CONFIRMED'")
+                .param("st", body.studentId()).param("ses", body.session()).param("l", e.get("level")).query(Long.class).single();
+        if (confirmed > 0) {
+            throw new DomainRuleViolation("COLLEGE_CONFIRMED", "The Board has confirmed this candidate's decision; it is not changed here.", new DomainRuleViolation.Remedy("A confirmed decision is revisited by the Board on a minute.", "College Secretary"));
         }
         long subjects = jdbc.sql("SELECT count(*) FROM college.exam_subject WHERE exam_id = :e").param("e", e.get("id")).query(Long.class).single();
         long decided = jdbc.sql("""
@@ -565,8 +608,8 @@ class CollegeController {
         }
         String[] carry = body.carryOvers() == null ? new String[0] : body.carryOvers().stream().map(String::trim).filter(x -> !x.isEmpty()).toArray(String[]::new);
         UUID id = jdbc.sql("""
-                INSERT INTO college.progression_decision (student_id, from_level, session, outcome, carry_overs, rule_ref, minute)
-                VALUES (:st, :l, :ses, :o, :c, :r, :m)
+                INSERT INTO college.progression_decision (student_id, from_level, session, outcome, carry_overs, rule_ref, minute, state)
+                VALUES (:st, :l, :ses, :o, :c, :r, :m, 'PROVISIONAL')
                 ON CONFLICT (student_id, from_level, session) DO UPDATE SET outcome = EXCLUDED.outcome, carry_overs = EXCLUDED.carry_overs,
                        rule_ref = coalesce(EXCLUDED.rule_ref, college.progression_decision.rule_ref), minute = coalesce(EXCLUDED.minute, college.progression_decision.minute), decided_on = current_date
                 RETURNING id
@@ -581,23 +624,17 @@ class CollegeController {
     @Transactional(readOnly = true)
     Map<String, Object> recommend(@PathVariable String code, @RequestParam String session, @RequestParam UUID student) {
         Map<String, Object> e = exam(code);
-        List<Map<String, Object>> latest = jdbc.sql("""
-                SELECT DISTINCT ON (r.subject_id) r.subject_id, s.name, r.attempt, r.passed, r.total
-                  FROM college.exam_result r JOIN college.exam_subject s ON s.id = r.subject_id
-                 WHERE r.student_id = :st AND r.session = :ses AND s.exam_id = :e AND r.passed IS NOT NULL
-                 ORDER BY r.subject_id, CASE r.attempt WHEN 'FIRST' THEN 1 WHEN 'RESIT' THEN 2 WHEN 'REPEAT' THEN 3 ELSE 4 END DESC
-                """).param("st", student).param("ses", session).param("e", e.get("id")).query().listOfRows();
-        long subjects = jdbc.sql("SELECT count(*) FROM college.exam_subject WHERE exam_id = :e").param("e", e.get("id")).query(Long.class).single();
-        int failed = (int) latest.stream().filter(r -> Boolean.FALSE.equals(r.get("passed"))).count();
-        String latestAttempt = latest.stream().map(r -> String.valueOf(r.get("attempt"))).max(java.util.Comparator.comparingInt(a -> List.of("FIRST", "RESIT", "REPEAT", "SENATE_APPEAL").indexOf(a))).orElse("FIRST");
-        String next;
-        if (latest.size() < subjects) next = "INCOMPLETE";
-        else if (failed == 0) next = "PROMOTE";
-        else if ("FIRST".equals(latestAttempt)) next = jdbc.sql("SELECT college.next_attempt(:c, :f, :n)").param("c", e.get("code")).param("f", failed).param("n", (int) subjects).query(String.class).single();
-        else if ("RESIT".equals(latestAttempt)) next = "REPEAT";
-        else if ("REPEAT".equals(latestAttempt)) next = Boolean.TRUE.equals(e.get("appeal_to_senate")) ? "APPEAL" : ("CPE".equals(e.get("code")) || "PE1".equals(e.get("code")) || "PE4".equals(e.get("code")) ? "WITHDRAW_ADVISED" : "WITHDRAW_REQUIRED");
-        else next = "WITHDRAW_ADVISED";
-        return Map.of("recommend", next, "failed", failed, "of", subjects, "latestAttempt", latestAttempt, "onFailure", String.valueOf(e.get("on_failure")), "subjects", latest);
+        Map<String, Object> d = jdbc.sql("SELECT outcome, failed, n_subjects, latest_attempt, failed_names, rule_ref FROM college.decide(:st, :c, :ses)")
+                .param("st", student).param("c", e.get("code")).param("ses", session).query().listOfRows().stream().findFirst().orElse(Map.of());
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("recommend", d.get("outcome") == null ? "INCOMPLETE" : d.get("outcome"));
+        out.put("failed", d.getOrDefault("failed", 0));
+        out.put("of", d.getOrDefault("n_subjects", 0));
+        out.put("latestAttempt", d.getOrDefault("latest_attempt", "FIRST"));
+        out.put("failedNames", d.get("failed_names"));
+        out.put("ruleRef", d.get("rule_ref"));
+        out.put("onFailure", String.valueOf(e.get("on_failure")));
+        return out;
     }
 
     /** the reconciliation the crossing to Senate needs: every candidate accounted for in every subject, or named */
@@ -633,8 +670,10 @@ class CollegeController {
                  WHERE r.session = :ses AND s.exam_id = :e AND r.passed IS NOT NULL
                 """).param("ses", session).param("e", e.get("id")).query().singleRow();
         Map<String, Object> decisions = jdbc.sql("""
-                SELECT count(*) AS decided, count(*) FILTER (WHERE outcome = 'PROMOTE') AS promoted, count(*) FILTER (WHERE outcome = 'RESIT') AS resits,
-                       count(*) FILTER (WHERE outcome = 'REPEAT') AS repeats, count(*) FILTER (WHERE outcome IN ('WITHDRAW_ADVISED','WITHDRAW_REQUIRED')) AS withdrawals, count(*) FILTER (WHERE outcome = 'APPEAL') AS appeals
+                SELECT count(*) AS decided, count(*) FILTER (WHERE state = 'PROVISIONAL') AS provisional, count(*) FILTER (WHERE state = 'CONFIRMED') AS confirmed,
+                       count(*) FILTER (WHERE outcome IN ('PROMOTE','GRADUATE')) AS promoted, count(*) FILTER (WHERE outcome = 'RESIT') AS resits,
+                       count(*) FILTER (WHERE outcome = 'REPEAT') AS repeats, count(*) FILTER (WHERE outcome IN ('WITHDRAW_ADVISED','WITHDRAW_REQUIRED')) AS withdrawals, count(*) FILTER (WHERE outcome = 'APPEAL') AS appeals,
+                       count(*) FILTER (WHERE outcome = 'GRADUATE' AND honours) AS honours
                   FROM college.progression_decision WHERE session = :ses AND from_level = :l
                 """).param("ses", session).param("l", e.get("level")).query().singleRow();
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
@@ -643,8 +682,112 @@ class CollegeController {
         out.put("undecided", undecided);
         out.put("counts", counts);
         out.put("decisions", decisions);
-        out.put("ready", missing.isEmpty() && undecided.isEmpty());
+        out.put("ready", missing.isEmpty() && undecided.isEmpty() && ((Number) decisions.get("provisional")).intValue() == 0);
         return out;
+    }
+
+    public record ConfirmIn(@NotBlank String session, @NotBlank @Size(max = 200) String minute) {
+    }
+
+    /** the College Academic Board's act: every provisional decision of the examination in the session confirmed on its minute,
+     *  and each student moved — the next level, the resit, the repeat year, the withdrawal, graduation with or without Honours */
+    @PostMapping("/exams/{code}/confirm")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> confirm(@PathVariable String code, @Valid @RequestBody ConfirmIn body) {
+        Map<String, Object> e = exam(code);
+        int n = jdbc.sql("SELECT college.confirm_decisions(:c, :ses, :m)").param("c", e.get("code")).param("ses", body.session()).param("m", body.minute().trim()).query(Integer.class).single();
+        return Map.of("confirmed", n);
+    }
+
+    public record AppealIn(@NotBlank String session, @NotNull UUID studentId, @NotBlank @Size(max = 200) String minute) {
+    }
+
+    /** Senate's approval of an appeal after the Final: the fourth and final attempt at 600 Level opens for the session named */
+    @PostMapping("/exams/{code}/appeals")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> grantAppeal(@PathVariable String code, @Valid @RequestBody AppealIn body) {
+        Map<String, Object> e = exam(code);
+        if (!Boolean.TRUE.equals(e.get("appeal_to_senate"))) {
+            throw new DomainRuleViolation("COLLEGE_NO_APPEAL", e.get("name") + " carries no appeal to Senate.", new DomainRuleViolation.Remedy("An appeal follows the Final MBBS only.", "College Secretary"));
+        }
+        UUID id = jdbc.sql("SELECT college.grant_appeal(:st, :ses, :m)").param("st", body.studentId()).param("ses", body.session()).param("m", body.minute().trim()).query(UUID.class).single();
+        return Map.of("enrolmentId", id);
+    }
+
+    /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */
+
+    @GetMapping("/my-record")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    Map<String, Object> myRecord(Authentication auth) {
+        UUID me = UUID.fromString(auth.getName());
+        Map<String, Object> st = jdbc.sql("""
+                SELECT st.id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.programme_code, p.name AS programme,
+                       st.entry_mode, st.entry_session, st.entry_level, st.current_level, st.status, f.college_code
+                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE st.id = :me
+                """).param("me", me).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("student", me.toString()));
+        if (!"CHS".equals(st.get("college_code"))) {
+            throw new DomainRuleViolation("COLLEGE_NOT_MEMBER", "This record is not the College of Health Sciences'.", new DomainRuleViolation.Remedy("The College's journey is the MBBS student's.", "College Secretary"));
+        }
+        String session = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional()
+                .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1").query(String.class).single());
+        int level = ((Number) st.get("current_level")).intValue();
+        List<Map<String, Object>> exams = jdbc.sql("SELECT id, code, name, level, papers, resit_allowed, resit_window_months, no_resit_if_all_failed, appeal_to_senate, min_attendance_pct, on_failure FROM college.professional_exam ORDER BY ordinal").query().listOfRows();
+        List<Map<String, Object>> enrolments = jdbc.sql("""
+                SELECT e.id, e.level, e.session, e.attempt_no, e.kind, e.state, e.registered_at, e.registered_items,
+                       finance.semester_cleared(e.student_id, e.session, 1) AS first_cleared, finance.semester_cleared(e.student_id, e.session, 2) AS second_cleared,
+                       (SELECT string_agg(s.name, ', ' ORDER BY s.ordinal) FROM college.exam_subject s WHERE s.id = ANY(e.resit_subjects)) AS resit_names
+                  FROM college.enrolment e WHERE e.student_id = :me ORDER BY e.session, e.level, e.attempt_no
+                """).param("me", me).query().listOfRows();
+        List<Map<String, Object>> results = jdbc.sql("""
+                SELECT r.session, ex.level, ex.code AS exam, s.name AS subject, s.ordinal, r.attempt, r.ca_score AS ca, r.exam_score AS exam_score, r.clinical_score AS clinical,
+                       r.attendance_pct AS attendance, r.barred, r.total, r.passed, r.total >= 70 AND r.passed AS distinction
+                  FROM college.exam_result r JOIN college.exam_subject s ON s.id = r.subject_id JOIN college.professional_exam ex ON ex.id = s.exam_id
+                 WHERE r.student_id = :me ORDER BY r.session, ex.level, CASE r.attempt WHEN 'FIRST' THEN 1 WHEN 'RESIT' THEN 2 WHEN 'REPEAT' THEN 3 ELSE 4 END, s.ordinal
+                """).param("me", me).query().listOfRows();
+        List<Map<String, Object>> decisions = jdbc.sql("""
+                SELECT d.from_level AS level, d.session, d.outcome, d.state, d.rule_ref, d.minute, d.decided_on, d.confirmed_on, d.honours, d.carry_overs,
+                       (SELECT string_agg(s.name, ', ' ORDER BY s.ordinal) FROM college.exam_subject s WHERE s.id = ANY(d.resit_subjects)) AS resit_names
+                  FROM college.progression_decision d WHERE d.student_id = :me ORDER BY d.session, d.from_level
+                """).param("me", me).query().listOfRows();
+        Map<String, Object> level100 = jdbc.sql("SELECT outcome, failed, carried, published, registered FROM college.decide_100(:me)").param("me", me).query().listOfRows().stream().findFirst().orElse(Map.of());
+        List<Map<String, Object>> carry = jdbc.sql("SELECT code, from_session, note, cleared_on FROM college.carry_over WHERE student_id = :me ORDER BY code").param("me", me).query().listOfRows();
+        Map<String, Object> fees = jdbc.sql("SELECT finance.semester_cleared(:me, :s, 1) AS first_cleared, finance.semester_cleared(:me, :s, 2) AS second_cleared")
+                .param("me", me).param("s", session).query().singleRow();
+        Map<String, Object> current = enrolments.stream().filter(x -> session.equals(x.get("session")) && ((Number) x.get("level")).intValue() == level).findFirst().orElse(null);
+        boolean active = List.of("ACTIVE", "PROBATION", "ADMITTED").contains(String.valueOf(st.get("status")));
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("student", st);
+        out.put("session", session);
+        out.put("exams", exams);
+        out.put("enrolments", enrolments);
+        out.put("results", results);
+        out.put("decisions", decisions);
+        out.put("level100", level100);
+        out.put("carryOvers", carry);
+        out.put("fees", fees);
+        out.put("current", current);
+        out.put("canRegister", active && level >= 200 && Boolean.TRUE.equals(fees.get("first_cleared")) && (current == null || current.get("registered_at") == null));
+        return out;
+    }
+
+    public record RegisterIn(String session) {
+    }
+
+    /** the student's act: the level's fixed curriculum registered for the session, once the fees are cleared */
+    @PostMapping("/register")
+    @PreAuthorize(STUDENT)
+    @Transactional
+    Map<String, Object> register(Authentication auth, @RequestBody(required = false) RegisterIn body) {
+        UUID me = UUID.fromString(auth.getName());
+        String session = body != null && body.session() != null && !body.session().isBlank() ? body.session().trim()
+                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional()
+                        .orElseThrow(() -> new DomainRuleViolation("COLLEGE_NO_SESSION", "No session is current.", new DomainRuleViolation.Remedy("The Registry opens the session on the calendar.", "Registry")));
+        String r = jdbc.sql("SELECT college.register_level(:me, :s)").param("me", me).param("s", session).query(String.class).single();
+        return Map.of("result", r, "session", session);
     }
 
 }
