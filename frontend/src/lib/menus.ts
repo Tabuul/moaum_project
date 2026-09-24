@@ -2709,6 +2709,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
           { "id": "t/college", "icon": "flask", "label": "College overview" },
+          { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -2724,6 +2725,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
           { "id": "t/college", "icon": "flask", "label": "College overview" },
+          { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -2739,6 +2741,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
           { "id": "t/college", "icon": "flask", "label": "College overview" },
+          { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },

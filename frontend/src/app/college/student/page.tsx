@@ -4,6 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { loadStudent } from "../../student/load";
+import { api } from "@/lib/api";
 import { BLOCKS, COMMON_RULES, MBBS, PHASES, PROGRESSION, phaseOf, SEMESTERS } from "@/lib/mbbs";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,10 @@ export default async function CollegeStudentPage() {
   }
   const s = loaded.student;
   const level = Number(s.level);
+  const mine = await api<{ id: string; session: string; state: string; starts_on: string | null; ends_on: string | null; posting: string; posting_name: string; tier: string; duration_weeks: number | null; block_code: string; block: string; group_label: string | null; supervisor: string | null; requirements: number; requirements_met: number }[]>("/api/v1/college/my-postings");
+  const myPostings = mine.ok ? mine.data : [];
+  const stateWord: Record<string, string> = { ALLOCATED: "Allocated", IN_PROGRESS: "In progress", COMPLETED: "Completed", INCOMPLETE: "Incomplete" };
+  const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
   const phase = PHASES.find((p) => p.phase === phaseOf(level));
   const step = PROGRESSION.find((r) => r.from === level);
   const semesters = SEMESTERS.filter((x) => x.period.startsWith(`${level} Level`));
@@ -47,6 +52,21 @@ export default async function CollegeStudentPage() {
         ["Credit units to graduate", String(MBBS.minCreditUnits), null, "All courses compulsory"],
         ["CGPA", s.cgpa != null ? String(s.cgpa) : "—", null, "The degree itself is unclassified"],
       ]} />
+      {myPostings.length ? (
+        <Panel title="Your postings" right="As the College has allocated you">
+          <DTable cols={["Session|mid", "Block", "Posting", "Group|mid", "Supervisor", "From|mid", "To|mid", "Logbook|mid", "Standing|mid"]} rows={myPostings.map((a) => [
+            <span className="tnum" key="s">{a.session}</span>,
+            <strong key="b">{a.block}</strong>,
+            <span key="p"><strong className="tnum">{a.posting}</strong> <span className="sub2">{a.posting_name}{a.duration_weeks ? ` · ${a.duration_weeks} wk` : ""}</span></span>,
+            <span className="tnum" key="g">{a.group_label ?? "—"}</span>,
+            <span className="sub2" key="sv">{a.supervisor ?? "Not yet assigned"}</span>,
+            <span className="tnum" key="f">{dayOf(a.starts_on)}</span>,
+            <span className="tnum" key="t">{dayOf(a.ends_on)}</span>,
+            <span className="tnum" key="l">{a.requirements ? `${a.requirements_met} of ${a.requirements}` : "—"}</span>,
+            <span key="st">{stateWord[a.state] ?? a.state}</span>,
+          ])} />
+        </Panel>
+      ) : null}
       {phase ? (
         <Panel title={`${phase.name}: how you are enrolled`} right={`Levels ${phase.levels.join(", ")}`}>
           <PBody><div>{phase.how}</div></PBody>

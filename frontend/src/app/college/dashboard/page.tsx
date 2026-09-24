@@ -34,7 +34,10 @@ export default async function CollegeDashboardPage() {
             Basic Clinical Sciences and Clinical Sciences) sits under the College tier, and its officers — the
             Provost, the College Secretary and the Finance Controller — work here.
           </div>
-          <Link href="/college" className="btn btn--primary btn--sm">Open the College overview</Link>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Link href="/college/postings" className="btn btn--primary btn--sm">Postings desk</Link>
+            <Link href="/college" className="btn btn--ghost btn--sm">College overview</Link>
+          </div>
         </PBody>
       </Panel>
     </Shell>
