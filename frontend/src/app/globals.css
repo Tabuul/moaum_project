@@ -1,15 +1,8 @@
 @import "./fonts.css";
-/* The prototype's stylesheet, verbatim (proto/part1.html). The portal's
-   screens are the prototype's screens: same classes, same structure, same
-   CSS. Nothing is restyled here. */
+/* The portal's one stylesheet: the prototype's design (proto/part1.html) carried
+   over, with the tokens, badges and shared components harmonized in place. The
+   fonts are IBM Plex, self-hosted (fonts.css). */
 @import "../styles/prototype.css";
-
-/* The only change: IBM Plex is served from this origin by next/font, so the
-   family names the prototype's variables name are the self-hosted ones. */
-:root {
-  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  --serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
-}
 
 /* One scroll for the sidebar, at the user's request: the whole menu — crest,
    office, groups and foot — moves as one, with a thin bar in the chrome's own

@@ -34,6 +34,27 @@
     --disabled:    #E2E7EC;
     --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
     --serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* ── the scales (harmonization, September 2026): spacing, radius, shadow and type as tokens,
+       so every screen measures with the same ruler. The colours above are the University's;
+       these only name the sizes the prototype already used most. ── */
+    --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px; --s-8: 40px;
+    --r-sm: 4px; --r: 6px;    --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 999px;
+    --sh-1: 0 1px 2px rgba(14, 63, 85, .06);
+    --sh-2: 0 4px 14px rgba(14, 63, 85, .08);
+    --sh-3: 0 12px 32px rgba(14, 63, 85, .16);
+    --t-xs: 11.5px; --t-sm: 12.5px; --t-base: 14px; --t-md: 15px; --t-lg: 17px; --t-xl: 20px; --t-2xl: 24px; --t-3xl: 28px;
+    /* the warning tone — the one status colour the crest did not give; amber, kept subdued */
+    --amber:      #B7791F;
+    --amber-ink:  #8A5A12;
+    --amber-bg:   #FBF3E2;
+    --amber-line: #EFD9A6;
+    --amber-wash: #FFFBF2;
+    /* names screens reached for without a definition; each an alias of a token above, never a new colour */
+    --sunk: #F1F4F6; --slate: var(--muted); --body: var(--ink); --rule: var(--line); --sky-ink: #1F7FA8;
+    --chrome-deep: #0B3345; --panel: var(--surface); --panel-2: var(--line-2); --tint: var(--sky-bg); --chip: var(--bg);
+    --ink-3: var(--faint); --red-soft: var(--red-bg); --link: var(--chrome-2); --blue-ink: var(--chrome);
   }
 
   * { box-sizing: border-box; }
@@ -96,7 +117,6 @@
   .login-wrap .btn--primary:hover { background: var(--red-deep); }
   .login-wrap .login-help a { color: var(--red-ink); }
   .field { display: flex; flex-direction: column; gap: 6px; }
-  .field label { font-size: 12.5px; font-weight: 600; }
   .field input {
     font: inherit; padding: 12px 13px; border: 1.5px solid var(--field); border-radius: 8px;
     background: var(--surface); color: var(--ink); min-height: 46px;
@@ -230,7 +250,8 @@
       transition: transform .18s ease; box-shadow: 0 0 40px rgba(0,0,0,.3);
     }
     body.nav-open .nav { transform: none; }
-    body.nav-open .scrim { position: fixed; inset: 0; background: rgba(20,30,36,.45); z-index: 30; }
+    .scrim { display: none; }
+    body.nav-open .scrim { display: block; position: fixed; inset: 0; background: rgba(20,30,36,.45); z-index: 30; }
     .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 7px; }
     .content { padding: 16px 16px 40px; }
     .topbar { padding: 12px 16px; }
@@ -256,6 +277,8 @@
   .pill--ok { background: var(--green-bg); border: 1px solid var(--green-line); color: var(--green-ink); }
   .pill--bad { background: var(--red-bg); border: 1px solid var(--red-line); color: var(--red-ink); }
   .pill--info { background: var(--sky-bg); border: 1px solid var(--sky-line); color: var(--chrome); }
+  .pill--grey { background: var(--bg); border: 1px solid var(--line); color: var(--muted); }
+  .pill--warn { background: var(--amber-bg); border: 1px solid var(--amber-line); color: var(--amber-ink); }
   .dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
   .notice { border-radius: 10px; padding: 14px 16px; display: flex; gap: 11px; align-items: flex-start; }
   .notice--bad { background: var(--red-bg); border: 1px solid var(--red-line); border-left: 4px solid var(--red); }
@@ -463,48 +486,9 @@
     .bars__target { left: 108px; right: 60px; }
   }
 
-
-  /* ── phone: the student and applicant are mobile-first ─────────── */
-  .tabbar { display: none; }
-  .stickybar { display: none; }
-
   @media (max-width: 760px) {
     body.has-tabs .content { padding-bottom: 96px; }
     body.has-tabs.has-cta .content { padding-bottom: 152px; }
-
-    .tabbar {
-      display: grid; position: fixed; left: 0; right: 0; bottom: 0; z-index: 35;
-      grid-auto-flow: column; grid-auto-columns: 1fr;
-      background: var(--surface); border-top: 1px solid var(--line);
-      padding-bottom: env(safe-area-inset-bottom, 0);
-      box-shadow: 0 -2px 14px rgba(20,32,40,.07);
-    }
-    .tabbar button {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 3px; min-height: 58px; padding: 7px 4px; color: var(--muted);
-      font-size: 10.5px; font-weight: 600; letter-spacing: .1px; position: relative;
-    }
-    .tabbar button[aria-current] { color: var(--red-ink); }
-    .tabbar button[aria-current]::before {
-      content: ""; position: absolute; top: 0; left: 22%; right: 22%; height: 2.5px;
-      background: var(--red); border-radius: 0 0 3px 3px;
-    }
-    .tabbar .tb__badge {
-      position: absolute; top: 6px; left: 50%; margin-left: 5px;
-      min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-      background: var(--red); color: #fff; font-size: 9.5px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center;
-    }
-
-    .stickybar {
-      display: flex; position: fixed; left: 0; right: 0; bottom: 58px; z-index: 34;
-      gap: 9px; align-items: center; padding: 10px 14px;
-      background: var(--surface); border-top: 1px solid var(--line-2);
-      margin-bottom: env(safe-area-inset-bottom, 0);
-    }
-    .stickybar .lab { flex-grow: 1; min-width: 0; font-size: 11.5px; color: var(--muted); line-height: 1.35; }
-    .stickybar .lab b { display: block; font-size: 13.5px; color: var(--ink); }
-    .stickybar .btn { flex-shrink: 0; }
 
     /* ── thumb-sized controls and a phone type scale ──────────────
        Every button here was 36 to 40 pixels tall until 6 September 2026,
@@ -568,14 +552,6 @@
     .card__body { padding: 14px; }
     .doc-scrim { padding: 10px 8px 30px; }
   }
-
-  /* connection state, shown to students on a poor network */
-  .netbar {
-    display: flex; align-items: center; gap: 9px; padding: 9px 14px;
-    background: var(--red-bg); border-bottom: 1px solid var(--red-line);
-    color: var(--red-deep); font-size: 12.5px; font-weight: 600;
-  }
-  .netbar--slow { background: #FFF6E8; border-bottom-color: #F3D9A8; color: #7A5210; }
 
 
   /* ── the candidate's seat ──────────────────────────────────────── */
@@ -916,15 +892,6 @@
 
   /* ── notification channel cards ────────────────────────────────── */
   .chgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 10px; }
-  .chcard { text-align: left; background: var(--surface); border: 1px solid var(--line);
-    border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .chcard:hover { border-color: var(--chrome-2); }
-  .chcard.is-on { background: var(--sky-bg); border-color: var(--chrome); box-shadow: inset 3px 0 0 var(--chrome); }
-  .chcard__h { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-  .chcard__h b { font-size: 14px; }
-  .chcard.is-on .chcard__h b { color: var(--chrome); }
-  .chcard__v { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-  .chcard__n { font-size: 11.4px; color: var(--faint); }
 
   /* ── charts ─────────────────────────────────────────────────────
      Thin marks, 4px rounded data-ends anchored to the baseline, a 2px
@@ -981,40 +948,12 @@
     .vz__donut { gap: 14px; }
   }
 
-  /* ── a relationship chain, drawn ───────────────────────────────── */
-  .dch { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
-  .dch__s { flex: 1 1 118px; min-width: 0; display: flex; flex-direction: column; gap: 2px;
-    padding: 10px 11px; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; }
-  .dch__s.is-hot { background: var(--sky-bg); border-color: var(--sky-line); }
-  .dch__l { font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-    color: var(--faint); line-height: 1.3; overflow-wrap: anywhere; }
-  .dch__v { font-size: 18px; font-weight: 700; letter-spacing: -.4px; overflow-wrap: anywhere; }
-  .dch__s.is-hot .dch__v { color: var(--chrome); }
-  .dch__u { font-size: 10.6px; color: var(--muted); line-height: 1.35; overflow-wrap: anywhere; }
-  .dch__a { align-self: center; color: var(--field); font-size: 15px; flex: 0 0 auto; }
-  @media (max-width: 700px) {
-    .dch { flex-direction: column; }
-    .dch__a { transform: rotate(90deg); align-self: flex-start; margin-left: 16px; }
-  }
-
   /* the GPA arithmetic, spelled out */
   .gsum { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
     padding: 13px 15px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
   .gsum > div { display: flex; flex-direction: column; gap: 2px; }
   .gsum b { font-size: 24px; font-weight: 700; letter-spacing: -.6px; }
   .gsum__op { font-size: 20px; color: var(--faint); padding-bottom: 3px; }
-
-  /* ── the three faculty desks ───────────────────────────────────── */
-  .frail { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-  .frail__d { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; min-width: 0;
-    background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
-  .frail__d.is-on { background: var(--sky-bg); border-color: var(--chrome); box-shadow: inset 3px 0 0 var(--chrome); }
-  .frail__n { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--faint); }
-  .frail__d b { font-size: 13.5px; line-height: 1.25; }
-  .frail__d.is-on b { color: var(--chrome); }
-  .frail__t { font-size: 11.8px; color: var(--muted); font-weight: 600; }
-  .frail__c { font-size: 11.4px; color: var(--red-ink); line-height: 1.45; margin-top: 4px;
-    padding-top: 5px; border-top: 1px dashed var(--line); }
 
   /* ── the result pipeline, drawn as a spine ─────────────────────── */
   .rp { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 7px; }
@@ -1032,15 +971,6 @@
   .rp__s.is-now .rp__n { color: var(--chrome-dim); }
   .rp__s.is-now .rp__o { color: var(--chrome-ink); }
   .rp__s.is-todo { opacity: .72; }
-
-  /* ── grade distribution ────────────────────────────────────────── */
-  .gdist { display: flex; flex-direction: column; gap: 7px; }
-  .gdist__row { display: flex; align-items: center; gap: 10px; }
-  .gdist__g { width: 16px; flex-shrink: 0; font-size: 15px; font-weight: 700; text-align: center; }
-  .gdist__t { flex-grow: 1; min-width: 40px; height: 15px; background: var(--line-2); border-radius: 4px; overflow: hidden; }
-  .gdist__f { height: 100%; border-radius: 4px; min-width: 2px; transition: width .2s ease; }
-  .gdist__n { width: 34px; flex-shrink: 0; text-align: right; font-weight: 700; font-size: 13px; }
-  .gdist__p { width: 42px; flex-shrink: 0; text-align: right; font-size: 12px; color: var(--muted); }
 
   /* ── the checks run before a person decides ────────────────────── */
   .rchecks { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 10px; }
@@ -1549,36 +1479,8 @@
   .fs__ref { grid-template-columns: 1fr; }
   .pv__mdt { grid-template-columns: 1fr; }
 }
-
-
-/* ── the act toast ───────────────────────────────────────────────
-   The outcome of the last thing pressed. It carries the same four
-   fields the record carries — what, who, which office, when — because
-   a confirmation that says only "saved" leaves a person wondering what
-   was saved and by whom. Fixed to the bottom so it is in the same place
-   whatever the screen, and dismissed rather than timed out: a message
-   that vanishes before it is read has not been delivered.          */
-.tst { position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: 18px; z-index: 70; width: min(660px, calc(100vw - 24px));
-  display: flex; gap: 12px; align-items: flex-start; padding: 14px 15px;
-  border-radius: 10px; border: 1px solid var(--line);
-  background: var(--surface); box-shadow: 0 10px 34px rgba(12,32,42,.19);
-  animation: tstIn .18s ease-out; }
-.tst--ok  { border-left: 4px solid var(--green-ink); }
-.tst--bad { border-left: 4px solid var(--red-ink); }
-.tst__i { flex-shrink: 0; padding-top: 1px; }
-.tst__b { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.tst__b b { font-size: 14.5px; line-height: 1.35; color: var(--ink); }
-.tst__x { font-size: 13px; line-height: 1.5; color: var(--body); }
-.tst__m { font-size: 11.5px; color: var(--faint); font-family: var(--mono); }
-.tst__lnk { font-family: var(--mono); font-size: 11.5px; color: var(--chrome);
-  text-decoration: underline; padding: 0; }
-.tst__c { flex-shrink: 0; width: 30px; height: 30px; border-radius: 6px;
-  font-size: 19px; line-height: 1; color: var(--slate); }
-.tst__c:hover { background: var(--sunk); color: var(--ink); }
 @keyframes tstIn { from { opacity: 0; transform: translate(-50%, 8px); }
                    to { opacity: 1; transform: translate(-50%, 0); } }
-@media (prefers-reduced-motion: reduce) { .tst { animation: none } }
 /* ── a module process, walked end to end ─────────────────────────
    The stage strip is an ordered list because it is one: the order is
    the point, and a screen reader should get it as a sequence rather
@@ -1604,8 +1506,6 @@
 .flw__g { font-size: 12px; color: var(--red-ink); display: inline-flex;
   align-items: center; gap: 5px; padding-top: 2px; }
 .flw__acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.tst__ref { font-family: var(--mono); font-size: 11.5px; color: var(--chrome);
-  background: var(--sky-bg); padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
 @media (max-width: 660px) { .flw__acts .btn { width: 100%; justify-content: center; } }
 
 /* a control held by a rule: it looks unavailable and is still pressable,
@@ -1614,114 +1514,8 @@
 .btn[aria-disabled="true"], .btn.is-held { opacity: .5; cursor: help; }
 .btn[aria-disabled="true"]:hover, .btn.is-held:hover { opacity: .72; }
 
-/* the session-record counter in the topbar: present only once there is
-   something in it, because a counter reading zero is furniture */
-.toprec { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
-  min-height: 34px; padding: 0 10px; border-radius: 6px; font-size: 12px;
-  color: var(--slate); border: 1px solid var(--line); background: var(--surface); }
-.toprec:hover { color: var(--chrome); border-color: var(--chrome); }
-.toprec .n { font-weight: 700; }
-@media (max-width: 760px) { .toprec { min-height: 44px; } }
-
 body.has-tabs .tst { bottom: 74px; }
 body.has-cta .tst { bottom: 132px; }
-@media (max-width: 760px) {
-  .tst { padding: 13px; gap: 10px; }
-  .tst__c { width: 44px; height: 44px; }
-}
-
-
-/* ── the student identity card (proto/part25.html idCardFront/idCardBack), ported verbatim ── */
-  .idc {
-    position: relative; width: 85.6mm; height: 54mm; flex-shrink: 0;
-    border-radius: 3.2mm; overflow: hidden; background: #fff; color: #17202A;
-    border: 1px solid #C7D2DA; box-shadow: 0 3px 10px rgba(16,38,52,.16);
-    font-family: var(--sans); display: flex; flex-direction: column;
-  }
-  .idc * { box-sizing: border-box; }
-
-  /* a security tint: fine diagonal lines, the way a real card is printed */
-  .idc__guilloche {
-    position: absolute; inset: 0; pointer-events: none; opacity: .5;
-    background:
-      repeating-linear-gradient(38deg, rgba(14,63,85,.05) 0 1px, transparent 1px 5px),
-      repeating-linear-gradient(-38deg, rgba(237,27,35,.045) 0 1px, transparent 1px 7px);
-  }
-  .idc__wm { position: absolute; right: -20px; bottom: 8px; width: 96px; height: 96px;
-    opacity: .05; pointer-events: none; }
-  .idc__wm img { width: 100%; height: 100%; object-fit: contain; }
-
-  .idc__head { display: flex; align-items: center; gap: 7px; padding: 6px 9px 5px;
-    background: #0E3F55; color: #fff; position: relative; z-index: 1; }
-  .idc__uni { min-width: 0; display: flex; flex-direction: column; }
-  .idc__uni .n { font-family: var(--serif); font-size: 9.4px; font-weight: 700;
-    line-height: 1.16; text-transform: uppercase; letter-spacing: .012em; }
-  .idc__uni .a { font-size: 6.2px; letter-spacing: .06em; color: #9EC6DA; margin-top: 1.5px;
-    text-transform: uppercase; }
-  .idc__rule { display: flex; position: relative; z-index: 1; }
-  .idc__rule i { height: 2px; background: #ED1B23; flex: 3 1 0; }
-  .idc__rule b { height: 2px; background: #0CA54E; flex: 1 1 0; }
-
-  .idc__body { display: flex; gap: 8px; padding: 7px 9px 0; flex-grow: 1;
-    position: relative; z-index: 1; min-height: 0; }
-  .idc__photo { width: 62px; flex-shrink: 0; display: flex; flex-direction: column; gap: 3px; }
-  .idc__photo > svg { width: 62px; height: 76px; flex-shrink: 0; border-radius: 2px;
-    border: 1px solid #B9C8D2; display: block; }
-  .idc__tag { display: block; text-align: center; background: #D6151C; color: #fff;
-    font-size: 6.6px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-    padding: 2px 0; border-radius: 2px; }
-
-  .idc__who { min-width: 0; flex-grow: 1; display: flex; flex-direction: column; gap: 1px; }
-  .idc__name { font-size: 11.6px; font-weight: 700; letter-spacing: -.2px; line-height: 1.18;
-    text-transform: uppercase; }
-  .idc__matric { font-size: 9.6px; font-weight: 600; color: #B01218; letter-spacing: .01em;
-    margin-bottom: 3px; }
-  .idc__grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 3.5px 7px; }
-  .idc__f { display: flex; flex-direction: column; min-width: 0; }
-  .idc__l { font-size: 5.4px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-    color: #5E6B78; }
-  .idc__v { font-size: 8.2px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
-
-  .idc__foot { display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 4px 9px 5px; font-size: 6.6px; color: #56636E; position: relative; z-index: 1;
-    border-top: 1px solid #E4EAEF; }
-  .idc__foot b { color: #17202A; }
-  .idc__ser { letter-spacing: .04em; }
-
-  .idc.is-void { filter: grayscale(.35); }
-  .idc__void { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center;
-    justify-content: center; font-size: 26px; font-weight: 800; letter-spacing: .18em;
-    text-transform: uppercase; color: rgba(176,18,24,.5);
-    border: 3px solid rgba(176,18,24,.35); border-radius: 3.2mm; transform: rotate(-9deg) scale(.86); }
-
-  /* the back */
-  .idc--back { background: #FBFCFD; }
-  .idc__strip { background: #17202A; color: #C9D6DE; font-size: 6.2px; font-weight: 600;
-    letter-spacing: .1em; text-transform: uppercase; padding: 4px 9px; }
-  .idc__code { padding: 7px 9px 3px; }
-  .idc__code svg { display: block; width: 100%; height: 38px; }
-  .idc__cnum { text-align: center; font-size: 8.6px; font-weight: 700; letter-spacing: .22em;
-    margin-top: 2px; }
-  .idc__bcols { display: flex; gap: 8px; padding: 3px 9px 0; flex-grow: 1; min-height: 0; }
-  .idc__terms { min-width: 0; flex-grow: 1; }
-  .idc__terms b { font-size: 6px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-    color: #56636E; display: block; margin-bottom: 2px; }
-  .idc__terms p { font-size: 5.9px; line-height: 1.5; margin: 0 0 3px; color: #35424D; }
-  .idc__vfy { width: 74px; flex-shrink: 0; display: flex; flex-direction: column;
-    align-items: center; gap: 2px; text-align: center; }
-  .idc__qr { width: 38px; height: 38px; }
-  .idc__vt { font-size: 5.5px; line-height: 1.35; color: #56636E; }
-  .idc__kin { font-size: 5.6px; line-height: 1.3; color: #56636E; margin-top: 1px; }
-  .idc__kin b { font-size: 7.4px; color: #17202A; font-variant-numeric: tabular-nums; }
-  .idc__sig { display: flex; gap: 14px; padding: 3px 9px 6px; }
-  .idc__sig div { flex: 1 1 0; font-size: 5.6px; color: #5E6B78; letter-spacing: .04em; }
-  .idc__sig span { display: block; border-top: 1px solid #9AA8B3; margin-bottom: 2px; height: 12px; }
-
-  /* pairs, on screen and on the print sheet */
-  .idc__pair { display: flex; gap: 16px; flex-wrap: wrap; }
-  .idc__side { display: flex; flex-direction: column; gap: 5px; }
-  .idc__face { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
-    color: var(--faint); }
   @media (min-width: 900px) {
     .idc__pair.is-big { gap: 22px; }
     .idc__pair.is-big .idc { transform: scale(1.18); transform-origin: top left; }
@@ -1729,30 +1523,20 @@ body.has-cta .tst { bottom: 132px; }
   }
   @media (max-width: 400px) { .idc { width: 100%; height: auto; min-height: 54mm; } }
 
-  .idc__scan { display: flex; gap: 9px; align-items: flex-end; flex-wrap: wrap; }
-  .idc__res { display: flex; gap: 12px; align-items: center; padding: 13px 15px; border-radius: 10px; }
-  .idc__res.is-ok { background: var(--green-bg); border: 1px solid var(--green-line); }
-  .idc__res.is-bad { background: var(--red-bg); border: 1px solid var(--red-line); }
-  .idc__rt { font-size: 16px; font-weight: 700; }
-  .idc__res.is-ok .idc__rt { color: var(--green-ink); }
-  .idc__res.is-bad .idc__rt { color: var(--red-deep); }
-
-  /* the sheet the card printer receives */
-  .idc__sheet { display: flex; gap: 10mm; flex-wrap: wrap; }
-  .idc__crop { position: relative; padding: 3mm; }
-  .idc__crop::before, .idc__crop::after {
-    content: ""; position: absolute; inset: 0; pointer-events: none;
-    background:
-      linear-gradient(#9AA8B3, #9AA8B3) left 0 top 3mm / 2mm 1px no-repeat,
-      linear-gradient(#9AA8B3, #9AA8B3) right 0 top 3mm / 2mm 1px no-repeat,
-      linear-gradient(#9AA8B3, #9AA8B3) left 0 bottom 3mm / 2mm 1px no-repeat,
-      linear-gradient(#9AA8B3, #9AA8B3) right 0 bottom 3mm / 2mm 1px no-repeat;
-  }
-  .idc__crop::after {
-    background:
-      linear-gradient(#9AA8B3, #9AA8B3) left 3mm top 0 / 1px 2mm no-repeat,
-      linear-gradient(#9AA8B3, #9AA8B3) left 3mm bottom 0 / 1px 2mm no-repeat,
-      linear-gradient(#9AA8B3, #9AA8B3) right 3mm top 0 / 1px 2mm no-repeat,
-      linear-gradient(#9AA8B3, #9AA8B3) right 3mm bottom 0 / 1px 2mm no-repeat;
-  }
-
+/* ── the toast (Toast.tsx): one notification style, on the tokens ────────── */
+.toast-host { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 50%; transform: translateX(-50%);
+  z-index: 10000; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; width: min(92vw, 460px); }
+.toast { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 12px; width: 100%;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-left-width: 4px;
+  border-radius: var(--r-lg); padding: 13px 16px; box-shadow: var(--sh-3); animation: toastIn .18s ease-out; }
+.toast--ok { border-left-color: var(--green); }
+.toast--bad { border-left-color: var(--red); }
+.toast--info { border-left-color: var(--chrome); }
+.toast__i { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; color: #fff; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
+.toast--ok .toast__i { background: var(--green); }
+.toast--bad .toast__i { background: var(--red); }
+.toast--info .toast__i { background: var(--chrome); }
+.toast__m { font-size: var(--t-base); font-weight: 600; line-height: 1.35; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }

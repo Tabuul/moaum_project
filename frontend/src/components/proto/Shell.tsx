@@ -9,9 +9,9 @@
  * the prototype lays it out for each of the offices (lib/menus); items the
  * portal does not yet serve are the same buttons, and say so when pressed.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Ico } from "./ui";
 import { OFFICE_COOKIE, roleLabel, roleUnit } from "@/lib/offices";
 import { MENUS, type Menu, type MenuGroup } from "@/lib/menus";
@@ -289,8 +289,11 @@ function initials(label: string): string {
 
 export function Shell({ route, me, children, sub, title }: { route: string; me: Me | null; children: ReactNode; sub?: string; title?: string }) {
   const router = useRouter();
-  const [navOpen, setNavOpen] = useState(false);
-  const [navSlim, setNavSlim] = useState(false);
+  const pathname = usePathname();
+  // the drawer (a body class the CSS reads) closes on every navigation — the Shell remounts per page, the body does not
+  useEffect(() => { document.body.classList.remove("nav-open"); }, [pathname]);
+  // the collapsed state lives on the body too; the button's label follows it after mount
+  const [navSlim, setNavSlim] = useState(() => typeof document !== "undefined" && document.body.classList.contains("nav-slim"));
   const [navg, setNavg] = useState<Record<string, boolean>>({});
   const [said, setSaid] = useState<string | null>(null);
   const office = me?.activeOffice ?? null;
@@ -326,6 +329,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
     <div style={{ padding: "6px 10px 0" }}>
       <button
         className="nav__slim"
+        suppressHydrationWarning
         aria-label={navSlim ? "Expand the menu" : "Collapse the menu"}
         title={navSlim ? "Expand the menu" : "Collapse the menu"}
         onClick={() => {
@@ -343,7 +347,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
   return (
     <>
       <ToastHost />
-      {navOpen && <div className="scrim" onClick={() => { setNavOpen(false); document.body.classList.remove("nav-open"); }} />}
+      <div className="scrim" onClick={() => document.body.classList.remove("nav-open")} />
       <div className="shell">
         <nav className="nav" aria-label="Main">
           <div className="nav__brand">
@@ -426,7 +430,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
 
         <div className="main">
           <header className="topbar">
-            <button className="menu-btn" aria-label="Open menu" onClick={() => { setNavOpen(true); document.body.classList.add("nav-open"); }}>
+            <button className="menu-btn" aria-label="Open menu" onClick={() => document.body.classList.add("nav-open")}>
               <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M4 7h16M4 12h16M4 17h16" />
               </svg>
