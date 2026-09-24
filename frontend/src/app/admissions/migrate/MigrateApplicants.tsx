@@ -5,12 +5,12 @@
  *  small chunks; each row is created idempotently (candidate + login + submitted, paid application). The
  *  initial password is the JAMB number. The applicant fee must be set for the session first. */
 import { useState } from "react";
-import Link from "next/link";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
-import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Field } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 
 interface Fee { stated: boolean; applicationFee: number; portalCharge: number }
@@ -237,7 +237,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         </Note>
       ) : (
         <Note kind="bad" title={`The applicant fee is not set for ${session}`}
-          action={<Link href="/finance/fees" className="btn btn--urgent btn--sm">Set the fee</Link>}>
+          action={<LinkBtn kind="urgent" href="/finance/fees">Set the fee</LinkBtn>}>
           The application fee, portal charge and acceptance fee are not stated for {session}, so imported receipts would use
           the portal’s <b>fallback</b> amounts. Set the applicant fee first, then import, so every receipt shows the right money.
         </Note>
@@ -278,12 +278,12 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
           ]} />
           {rows.some((r) => r.name != null) ? (
             <div className="card"><div className="card__body row row--end">
-              <div className="field" style={{ minWidth: 240, margin: 0 }}><label htmlFor="mig-order">Name order in the single Name column</label>
+              <div style={{ minWidth: 240 }}><Field id="mig-order" label="Name order in the single Name column">
                 <select id="mig-order" className="ctl" value={nameOrder} onChange={(e) => setNameOrder(e.target.value as NameOrder)}>
                   <option value="first">Surname first — e.g. AHUMBE Aondofa Kingsley</option>
                   <option value="last">Surname last — e.g. Aondofa Kingsley Ahumbe</option>
                 </select>
-              </div>
+              </Field></div>
               <span className="sub2">A name written &ldquo;Surname, Other names&rdquo; is split on the comma either way. Check the split below before importing.</span>
             </div></div>
           ) : null}
@@ -300,11 +300,11 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
             <PBody>
               <div className="row">
                 <Btn kind="primary" disabled={busy || !may} onClick={() => void run()}>{busy ? "Importing…" : `Import ${rows.length} applicant${rows.length === 1 ? "" : "s"}`}</Btn>
-                <div className="field" style={{ minWidth: 150, margin: 0 }}><label htmlFor="mig-par">Parallel uploads</label>
+                <div style={{ minWidth: 150 }}><Field id="mig-par" label="Parallel uploads">
                   <select id="mig-par" className="ctl" value={parallel} disabled={busy} onChange={(e) => setParallel(Number(e.target.value))}>
                     {[2, 4, 6, 8, 10, 12].map((n) => <option key={n} value={n}>{n} at a time</option>)}
                   </select>
-                </div>
+                </Field></div>
                 {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may import.</span> : null}
               </div>
               <div className="sub2 mt-2">
@@ -347,7 +347,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
             ) : null}
             {result.problems.length ? (
               <>
-                <div style={{ margin: "8px 0" }}><Btn kind="ghost" onClick={downloadProblems}>Download the rows not imported</Btn></div>
+                <div className="mt-2 mb-2"><Btn kind="ghost" onClick={downloadProblems}>Download the rows not imported</Btn></div>
                 <DTable cols={["JAMB no|mid", "Name", "Why"]} rows={result.problems.slice(0, 20).map((p) => [
                   <span className="tnum sub2" key="j">{p.jambKey}</span>, <span key="n">{p.name}</span>, <span className="sub2" key="w">{p.status}</span>,
                 ])} />

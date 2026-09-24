@@ -9,7 +9,7 @@
 import Link from "next/link";
 import type { Results, ResultRow } from "@/lib/student-portal";
 import { GRADE_COLOUR, STAGE_LABEL, semesterName } from "@/lib/student-portal";
-import { Btn, Note, Panel, Pil, Tick, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { onDay } from "./common";
 
@@ -65,8 +65,8 @@ export function ResultsScreen({ r }: { r: Results }) {
                 if (c.outcome !== "GRADED") return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <Pil kind="bad" key="s">{c.outcome === "ABSENT" ? "ABS" : c.outcome}</Pil>, <b key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] ?? "var(--ink)" : undefined }}>{c.grade ?? "—"}</b>, <span className="tnum" key="p">{c.points ?? "—"}</span>, <Pil kind="ok" key="w">Published</Pil>, taught];
                 return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <b className="tnum" key="s">{c.total}</b>, <b key="g" style={{ color: GRADE_COLOUR[c.grade ?? ""] ?? "var(--ink)" }}>{c.grade}</b>, <span className="tnum" key="p">{c.points}</span>, <Pil kind="ok" key="w">Published</Pil>, taught];
               })} />
-              <div style={{ padding: "0 16px 16px", display: "flex", gap: 9, flexWrap: "wrap" }}>
-                {live.length ? <Link href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`} className="btn btn--primary">Semester Results</Link> : null}
+              <div className="row" style={{ padding: "0 var(--s-4) var(--s-4)" }}>
+                {live.length ? <LinkBtn kind="primary" size="md" href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`}>Semester Results</LinkBtn> : null}
                 <Btn kind="ghost" disabled title="Arrives with the credentials module">Official transcript</Btn>
               </div>
             </Panel>
@@ -78,10 +78,10 @@ export function ResultsScreen({ r }: { r: Results }) {
               <b className="tnum" key="g">{h.gpa ?? "—"}</b>,
               <span className="tnum" key="tcr">{h.tcr}</span>, <span className="tnum" key="tce">{h.tce}</span>, <span className="tnum" key="twgp">{h.twgp}</span>,
               <span className="tnum sub2" key="l">{h.lcgpa ?? "—"}</span>, <b className="tnum" key="c">{h.cgpa ?? "—"}</b>,
-              h.published_count ? <Link key="a" href={`/student/results/${encodeURIComponent(h.session)}/${h.semester}`} className="btn btn--ghost btn--sm">Open</Link> : <span className="sub2" key="a">—</span>,
+              h.published_count ? <LinkBtn key="a" kind="ghost" href={`/student/results/${encodeURIComponent(h.session)}/${h.semester}`}>Open</LinkBtn> : <span className="sub2" key="a">—</span>,
             ])} />
-            {!r.semesters.length ? <div className="card__body"><div className="sub2">No semester has a published result yet.</div></div> : (
-              <div className="card__body"><div className="sub2">CUR credit units registered · CUE earned · WGP weighted grade points · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA. A full semester-by-semester broadsheet is on <Link href="/student/broadsheet">Result broadsheet</Link>.</div></div>
+            {!r.semesters.length ? <PBody><div className="sub2">No semester has a published result yet.</div></PBody> : (
+              <PBody><div className="sub2">CUR credit units registered · CUE earned · WGP weighted grade points · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA. A full semester-by-semester broadsheet is on <Link href="/student/broadsheet">Result broadsheet</Link>.</div></PBody>
             )}
           </Panel>
           {r.carryovers.length ? (
@@ -108,17 +108,17 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
   return (
     <>
       <div className="card" style={{ background: "var(--chrome)", borderColor: "var(--chrome)" }}><div className="card__body">
-        <div style={{ display: "flex", gap: 26, flexWrap: "wrap" }}>
-          <div><div style={{ fontSize: 11, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--chrome-ink)" }}>Semester GPA</div><div className="tnum" style={{ fontSize: 30, fontWeight: 700, color: "#fff", letterSpacing: "-.8px" }}>{sem?.gpa ?? "—"}</div></div>
-          <div><div style={{ fontSize: 11, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--chrome-ink)" }}>Cumulative</div><div className="tnum" style={{ fontSize: 30, fontWeight: 700, color: "#fff", letterSpacing: "-.8px" }}>{sem?.cgpa ?? "—"}</div></div>
+        <div className="row" style={{ gap: "var(--s-6)" }}>
+          <div><div className="eyebrow" style={{ color: "var(--chrome-ink)" }}>Semester GPA</div><div className="tnum b700" style={{ fontSize: "var(--t-3xl)", color: "var(--surface)", letterSpacing: "-.8px" }}>{sem?.gpa ?? "—"}</div></div>
+          <div><div className="eyebrow" style={{ color: "var(--chrome-ink)" }}>Cumulative</div><div className="tnum b700" style={{ fontSize: "var(--t-3xl)", color: "var(--surface)", letterSpacing: "-.8px" }}>{sem?.cgpa ?? "—"}</div></div>
         </div>
-        {r.standing ? <div style={{ display: "flex", alignItems: "center", gap: 9, background: "var(--green)", borderRadius: 6, padding: "10px 13px" }}><Tick size={15} colour="#fff" /><span style={{ color: "#fff", fontWeight: 600 }}>{r.standing}</span></div> : null}
+        {r.standing ? <div className="row" style={{ background: "var(--green)", borderRadius: "var(--r)", padding: "var(--s-2) var(--s-3)" }}><Tick size={15} colour="#fff" /><span className="b600" style={{ color: "var(--surface)" }}>{r.standing}</span></div> : null}
       </div></div>
-      <div className="card"><div className="tablewrap"><table>
+      <div className="card"><div className="tablewrap"><table className="tbl--data">
         <thead><tr><th>Course</th><th className="mid">Unit</th><th className="mid">Score</th><th className="mid">Grade</th></tr></thead>
         <tbody>
-          {rows.map((x) => <tr key={x.course_code}><td><strong className="tnum">{x.course_code}</strong><div className="sub2">{x.title}</div></td><td className="mid tnum">{x.units}</td><td className="mid tnum">{x.outcome === "GRADED" ? x.total : x.outcome}</td><td className="mid" style={{ fontWeight: 700, color: GRADE_COLOUR[x.grade ?? ""] ?? "var(--ink)" }}>{x.grade ?? "—"}</td></tr>)}
-          <tr><td className="b700">Units registered {registered} · passed {passed}</td><td colSpan={3} className="num" style={{ fontWeight: 700, color: "var(--muted)" }}>GP {gp.toFixed(1)}</td></tr>
+          {rows.map((x) => <tr key={x.course_code}><td><strong className="tnum">{x.course_code}</strong><div className="sub2">{x.title}</div></td><td className="mid tnum">{x.units}</td><td className="mid tnum">{x.outcome === "GRADED" ? x.total : x.outcome}</td><td className="mid b700" style={{ color: GRADE_COLOUR[x.grade ?? ""] ?? "var(--ink)" }}>{x.grade ?? "—"}</td></tr>)}
+          <tr><td className="b700">Units registered {registered} · passed {passed}</td><td colSpan={3} className="num b700 ink-muted">GP {gp.toFixed(1)}</td></tr>
         </tbody>
       </table></div></div>
       {failed.length ? (
@@ -126,7 +126,7 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
       ) : null}
       <div className="row">
         <a href={`/student/results/${encodeURIComponent(session)}/${semester}/pdf`} target="_blank" rel="noopener" className="btn btn--primary">Download result slip</a>
-        <Link href="/student/results" className="btn btn--ghost">All results</Link>
+        <LinkBtn kind="ghost" size="md" href="/student/results">All results</LinkBtn>
       </div>
       <div className="sub2">Published {onDay(rows[0]?.published_at)} after Senate approval{rows[0]?.senate_minute ? ` · minute ${rows[0].senate_minute}` : ""}. The register is the thing; this slip is a view of it.</div>
     </>
@@ -137,7 +137,7 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
  *  summary line (CUR·CUE·WGP·GPA this semester; TCR·TCE·TWGP·LCGPA·CGPA cumulative). */
 export function Broadsheet({ r }: { r: Results }) {
   if (r.clearsResults === false) {
-    return <Note kind="bad" title="Your results are withheld until your fees are settled"><Link href="/student/fees" className="btn btn--urgent btn--sm">Fees &amp; payments</Link></Note>;
+    return <Note kind="bad" title="Your results are withheld until your fees are settled"><LinkBtn kind="urgent" href="/student/fees">Fees &amp; payments</LinkBtn></Note>;
   }
   const groups = group(r.rows.filter((x) => x.published));
   const semOf = (s: string, n: number) => r.semesters.find((x) => x.session === s && x.semester === n);
@@ -154,7 +154,7 @@ export function Broadsheet({ r }: { r: Results }) {
         return (
           <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`}
             right={sm ? `GPA ${sm.gpa ?? "—"} · CGPA ${sm.cgpa ?? "—"}` : undefined}>
-            <div className="tablewrap"><table style={{ minWidth: 520 }}>
+            <div className="tablewrap"><table className="tbl--data" style={{ minWidth: 520 }}>
               <thead><tr>
                 <th>Course</th><th>Title</th><th className="mid">Unit</th><th className="mid">CA</th><th className="mid">Exam</th><th className="mid">Total</th><th className="mid">Grade</th><th className="mid">Point</th>
               </tr></thead>
@@ -167,24 +167,24 @@ export function Broadsheet({ r }: { r: Results }) {
                     <td className="mid tnum">{c.outcome === "GRADED" ? (c.ca ?? "—") : "—"}</td>
                     <td className="mid tnum">{c.outcome === "GRADED" ? (c.exam ?? "—") : "—"}</td>
                     <td className="mid tnum">{c.outcome === "GRADED" ? (c.total ?? "—") : (c.outcome ? c.outcome.charAt(0) + c.outcome.slice(1).toLowerCase() : "—")}</td>
-                    <td className="mid tnum" style={{ fontWeight: 700, color: c.grade ? GRADE_COLOUR[c.grade] : undefined }}>{c.grade ?? "—"}</td>
+                    <td className="mid tnum b700" style={{ color: c.grade ? GRADE_COLOUR[c.grade] : undefined }}>{c.grade ?? "—"}</td>
                     <td className="mid tnum">{c.points ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table></div>
             {sm ? (
-              <div className="card__body" style={{ borderTop: "1px solid var(--line-2)" }}>
-                <div className="tnum" style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 12.5 }}>
+              <PBody style={{ borderTop: "1px solid var(--line-2)" }}>
+                <div className="tnum row t-sm" style={{ gap: "var(--s-1) var(--s-4)" }}>
                   <span><b>CUR</b> {sm.cur}</span><span><b>CUE</b> {sm.cue}</span><span><b>WGP</b> {sm.wgp}</span><span><b>GPA</b> {sm.gpa ?? "—"}</span>
-                  <span style={{ color: "var(--faint)" }}>|</span>
+                  <span className="ink-faint">|</span>
                   <span><b>TCR</b> {sm.tcr}</span><span><b>TCE</b> {sm.tce}</span><span><b>TWGP</b> {sm.twgp}</span><span><b>LCGPA</b> {sm.lcgpa ?? "—"}</span><span><b>CGPA</b> {sm.cgpa ?? "—"}</span>
                 </div>
-              </div>
+              </PBody>
             ) : null}
           </Panel>
         );
-      }) : <Panel title="No published results yet"><div className="card__body"><div className="sub2">A semester appears here once Senate approves its results. Nothing is shown before the minute exists.</div></div></Panel>}
+      }) : <Panel title="No published results yet"><PBody><div className="sub2">A semester appears here once Senate approves its results. Nothing is shown before the minute exists.</div></PBody></Panel>}
       <p className="sub2" style={{ maxWidth: "80ch" }}>CUR credit units registered · CUE credit units earned · WGP weighted grade points · GPA the semester average · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA · CGPA the cumulative average. This is a view of the published record.</p>
       {groups.length ? (
         <div className="row">

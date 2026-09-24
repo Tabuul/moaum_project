@@ -163,7 +163,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
       {exam ? (
         <Note kind="info" title={`${exam.name}: ${exam.papers.map((p) => word(p)).join(", ")}${exam.external_examiners ? " · external examiners" : ""}`}>
           {subjects.map((s) => `${s.name} (CA ${s.ca_weight}, examination ${s.exam_weight}, pass ${s.pass_mark}${s.clinical_component_min ? `, clinical ${s.clinical_component_min}` : ""})`).join(" · ")}. Resit {exam.resit_allowed ? `within ${exam.resit_window_months} months${exam.no_resit_if_all_failed ? ", unless every subject is failed" : ""}` : "not allowed"}{exam.min_attendance_pct ? ` · attendance ${exam.min_attendance_pct}%` : ""}. On failure: {exam.on_failure}
-          {subjects.some((s) => s.conflict_note) ? <div style={{ marginTop: 4, color: "var(--red-ink)" }}>{subjects.filter((s) => s.conflict_note).map((s) => `${s.name}: ${s.conflict_note}`).join(" · ")}</div> : null}
+          {subjects.some((s) => s.conflict_note) ? <div className="mt-1 ink-red">{subjects.filter((s) => s.conflict_note).map((s) => `${s.name}: ${s.conflict_note}`).join(" · ")}</div> : null}
         </Note>
       ) : null}
 
@@ -199,7 +199,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
         </>
       ) : null}
 
-      <Panel title={`Candidates for ${exam?.code ?? ""} · the ${session} cohort`} right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><span className="sub2">{rows.length} enrolled at {exam?.level ?? ""} Level</span><Btn kind="ghost" onClick={() => setEnrol({ ...enrol, open: !enrol.open })}>{enrol.open ? "Close" : "Enrol a student"}</Btn></span>}>
+      <Panel title={`Candidates for ${exam?.code ?? ""} · the ${session} cohort`} right={<span className="row row--inline"><span className="sub2">{rows.length} enrolled at {exam?.level ?? ""} Level</span><Btn kind="ghost" onClick={() => setEnrol({ ...enrol, open: !enrol.open })}>{enrol.open ? "Close" : "Enrol a student"}</Btn></span>}>
         {enrol.open ? (
           <PBody>
             <div className="row row--end">
@@ -234,7 +234,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
         const results = parse<Result[]>(c.results, []);
         return (
           <Panel title={`${c.surname}, ${c.other_names} · ${c.number}`} right={<span className="row row--inline"><label htmlFor="ex-attempt" className="sub2">Attempt</label><select id="ex-attempt" className="ctl" value={attempt} onChange={(e) => { setAttempt(e.target.value); setMarks(marksAt(results, e.target.value)); }}>{ATTEMPTS.map((a) => <option key={a} value={a}>{word(a)}</option>)}</select></span>}>
-            <div className="tablewrap"><table>
+            <div className="tablewrap"><table className="tbl--data">
               <thead><tr><th>Subject</th><th className="mid">CA</th><th className="mid">Examination</th><th className="mid">Clinical</th><th className="mid">Attendance %</th><th className="mid">Total</th><th className="mid">Standing</th><th>Earlier attempts</th></tr></thead>
               <tbody>
                 {subjects.map((s) => {
@@ -249,10 +249,10 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                   return (
                     <tr key={s.id}>
                       <td><strong>{s.name}</strong><div className="sub2">CA {s.ca_weight} · exam {s.exam_weight} · pass {s.pass_mark}{s.clinical_component_min ? ` · clinical ${s.clinical_component_min}` : ""}</div></td>
-                      <td className="mid"><input className="ctl tnum" style={{ width: 70, textAlign: "center", ...(caOver ? { borderColor: "var(--red-ink)", color: "var(--red-ink)", fontWeight: 700 } : {}) }} inputMode="decimal" value={m.ca} onChange={(e) => setMarks({ ...marks, [s.id]: { ...m, ca: e.target.value.replace(/[^0-9.]/g, "") } })} />{caOver ? <div style={{ color: "var(--red-ink)", fontSize: 11 }}>Over {s.ca_weight}</div> : null}</td>
-                      <td className="mid"><input className="ctl tnum" style={{ width: 70, textAlign: "center", ...(exOver ? { borderColor: "var(--red-ink)", color: "var(--red-ink)", fontWeight: 700 } : {}) }} inputMode="decimal" value={m.exam} onChange={(e) => setMarks({ ...marks, [s.id]: { ...m, exam: e.target.value.replace(/[^0-9.]/g, "") } })} />{exOver ? <div style={{ color: "var(--red-ink)", fontSize: 11 }}>Over {s.exam_weight}</div> : null}</td>
+                      <td className="mid"><input className={`ctl tnum${caOver ? " is-error ink-red b700" : ""}`} style={{ width: 70, textAlign: "center" }} inputMode="decimal" value={m.ca} onChange={(e) => setMarks({ ...marks, [s.id]: { ...m, ca: e.target.value.replace(/[^0-9.]/g, "") } })} />{caOver ? <div className="ink-red t-xs">Over {s.ca_weight}</div> : null}</td>
+                      <td className="mid"><input className={`ctl tnum${exOver ? " is-error ink-red b700" : ""}`} style={{ width: 70, textAlign: "center" }} inputMode="decimal" value={m.exam} onChange={(e) => setMarks({ ...marks, [s.id]: { ...m, exam: e.target.value.replace(/[^0-9.]/g, "") } })} />{exOver ? <div className="ink-red t-xs">Over {s.exam_weight}</div> : null}</td>
                       <td className="mid">{s.clinical_component_min ? <input className="ctl tnum" style={{ width: 70, textAlign: "center" }} inputMode="decimal" value={m.clinical} onChange={(e) => setMarks({ ...marks, [s.id]: { ...m, clinical: e.target.value.replace(/[^0-9.]/g, "") } })} placeholder="/100" /> : <span className="sub2">—</span>}</td>
-                      <td className="mid"><input className="ctl tnum" style={{ width: 70, textAlign: "center", ...(barred ? { borderColor: "var(--red-ink)", color: "var(--red-ink)", fontWeight: 700 } : {}) }} inputMode="decimal" value={m.attendance} onChange={(e) => setMarks({ ...marks, [s.id]: { ...m, attendance: e.target.value.replace(/[^0-9.]/g, "") } })} placeholder={exam.min_attendance_pct != null ? `≥ ${exam.min_attendance_pct}` : "%"} />{barred ? <div style={{ color: "var(--red-ink)", fontSize: 11 }}>Below {exam.min_attendance_pct}%</div> : null}</td>
+                      <td className="mid"><input className={`ctl tnum${barred ? " is-error ink-red b700" : ""}`} style={{ width: 70, textAlign: "center" }} inputMode="decimal" value={m.attendance} onChange={(e) => setMarks({ ...marks, [s.id]: { ...m, attendance: e.target.value.replace(/[^0-9.]/g, "") } })} placeholder={exam.min_attendance_pct != null ? `≥ ${exam.min_attendance_pct}` : "%"} />{barred ? <div className="ink-red t-xs">Below {exam.min_attendance_pct}%</div> : null}</td>
                       <td className="mid"><b className="tnum">{total ?? "—"}</b></td>
                       <td className="mid">{pass == null ? <span className="sub2">on save</span> : <Pil kind={pass ? "ok" : "bad"}>{pass ? (total! >= 70 ? "Distinction" : "Pass") : barred ? "Barred" : "Fail"}</Pil>}</td>
                       <td className="sub2">{earlier.length ? earlier.map((r) => `${word(r.attempt)}: ${r.total ?? "—"} ${r.passed ? "pass" : "fail"}`).join(" · ") : "—"}</td>
@@ -266,13 +266,13 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                 <Btn kind="primary" disabled={busy} onClick={() => void saveResults(c)}>{busy ? "Saving…" : `Save the ${word(attempt).toLowerCase()} results`}</Btn>
                 <span className="sub2">The pass is judged by the rule as the marks are saved: {subjects[0]?.pass_mark ?? 50} or more in the subject{subjects.some((s) => s.clinical_component_min) ? ", and in the clinical component where the subject has one" : ""}{exam.min_attendance_pct != null ? `, with attendance of at least ${exam.min_attendance_pct}% or the candidate is barred` : ""}. Once every subject is resulted the rule applies its decision provisionally. A resit or repeat is a new attempt; the earlier one is kept.</span>
               </div>
-              <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}><strong>CA kept during the year</strong><span className="sub2">Course tests and end-of-posting scores as they happen; graded never. The year&rsquo;s CA out of {subjects[0]?.ca_weight ?? 30} is composed from them and entered above at the end of the year.</span></div>
+              <div className="mt-3" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-3)" }}>
+                <div className="row row--base"><strong>CA kept during the year</strong><span className="sub2">Course tests and end-of-posting scores as they happen; graded never. The year&rsquo;s CA out of {subjects[0]?.ca_weight ?? 30} is composed from them and entered above at the end of the year.</span></div>
                 {ca ? (
                   <>
                     {ca.scores.length ? <div className="sub2 mt-2">{ca.scores.map((x) => `${x.subject} · ${x.item}: ${x.score} of ${x.max_score}${x.attempt_no > 1 ? ` (attempt ${x.attempt_no})` : ""}`).join(" · ")}</div> : <div className="sub2 mt-2">Nothing recorded yet.</div>}
                     {ca.items.length ? (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+                      <div className="row row--end mt-2">
                         <div className="field" style={{ flex: "1 1 260px" }}><label htmlFor="ex-ca-item">Item</label>
                           <select id="ex-ca-item" className="ctl" value={caNew.itemId} onChange={(e) => setCaNew({ ...caNew, itemId: e.target.value })}><option value="">Choose…</option>{ca.items.map((i) => <option key={i.id} value={i.id}>{i.subject} · {i.name} (of {i.max_score})</option>)}</select></div>
                         <div className="field" style={{ width: 110 }}><label htmlFor="ex-ca-score">Score</label><input id="ex-ca-score" className="ctl tnum" inputMode="decimal" value={caNew.score} onChange={(e) => setCaNew({ ...caNew, score: e.target.value.replace(/[^0-9.]/g, "") })} /></div>
@@ -282,8 +282,8 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                   </>
                 ) : <div className="sub2 mt-2">Loading…</div>}
               </div>
-              <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+              <div className="mt-3" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-3)" }}>
+                <div className="row row--base">
                   <strong>Progression decision</strong>
                   {rec ? <span className="sub2">The rule says <b>{rec.recommend === "INCOMPLETE" ? "nothing yet — results incomplete" : OUTCOMES.find((o) => o[0] === rec.recommend)?.[1] ?? rec.recommend}</b> ({rec.failed} of {rec.of} failed{rec.failedNames ? `: ${rec.failedNames}` : ""}, at {word(rec.latestAttempt).toLowerCase()}). {rec.ruleRef ?? rec.onFailure}</span> : null}
                 </div>
@@ -291,7 +291,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                   <div className="mt-2">
                     <Pil kind={d.state === "CONFIRMED" ? "ok" : "warn"}>{d.state === "CONFIRMED" ? "Confirmed by the Board" : "Provisional"}</Pil> <b>{OUTCOMES.find((o) => o[0] === d.outcome)?.[1] ?? d.outcome}</b>{d.resit_names ? <span className="sub2"> · resit: {d.resit_names}</span> : null}{d.minute ? <span className="sub2"> · minute {d.minute}</span> : null}
                     {d.state === "CONFIRMED" && d.outcome === "APPEAL" && exam.appeal_to_senate ? (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+                      <div className="row row--end mt-2">
                         <div className="field" style={{ width: 220 }}><label htmlFor="ex-appeal">Senate minute</label><input id="ex-appeal" className="ctl" value={appealMinute} onChange={(e) => setAppealMinute(e.target.value)} placeholder="SEN/2026/…" autoComplete="off" /></div>
                         <Btn kind="urgent" disabled={busy || !appealMinute.trim()} onClick={() => void grantAppeal(c)}>Record Senate&rsquo;s approval of the appeal</Btn>
                         <span className="sub2">Opens the fourth and final attempt at 600 Level for {session}; the student registers it.</span>
@@ -299,7 +299,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                     ) : null}
                   </div>
                 ) : null; })()}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+                <div className="row row--end mt-2">
                   <div className="field" style={{ width: 200 }}><label htmlFor="ex-outcome">Decision</label>
                     <select id="ex-outcome" className="ctl" value={decision.outcome} onChange={(e) => setDecision({ ...decision, outcome: e.target.value })}>
                       <option value="">Choose…</option>{OUTCOMES.map((o) => <option key={o[0]} value={o[0]}>{o[1]}</option>)}

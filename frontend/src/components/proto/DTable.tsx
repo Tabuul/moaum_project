@@ -171,9 +171,9 @@ export function DTable({ cols, rows, texts, title, noPrint }: DTableProps) {
       </div>
       <div className="tfoot">
         {rows.length > 10 ? (
-          <label className="tfoot__n" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <label className="tfoot__n row row--tight">
             Rows
-            <select className="ctl" style={{ width: "auto", padding: "2px 6px" }} value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(0); }} aria-label="Rows per page">
+            <select className="ctl tfoot__sel" value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(0); }} aria-label="Rows per page">
               {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
               <option value={0}>All</option>
             </select>

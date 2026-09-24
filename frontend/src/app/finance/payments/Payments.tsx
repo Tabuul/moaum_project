@@ -105,7 +105,7 @@ export function Payments({ d, filters }: { d: PaymentsData; filters: Filters }) 
               <SearchSelect id="pq-chn" value={filters.channel} allLabel="All channels" placeholder="Channel…"
                 options={o.channels.map((c) => ({ value: c, label: c }))} onChange={(v) => go({ channel: v })} />
             </Field>
-            <div className="grid grid--2" style={{ gap: 8 }}>
+            <div className="grid grid--2" style={{ gap: "var(--s-2)" }}>
               <Field id="pq-from" label="From"><input id="pq-from" type="date" className="ctl" value={filters.from} onChange={(e) => go({ from: e.target.value })} /></Field>
               <Field id="pq-to" label="To"><input id="pq-to" type="date" className="ctl" value={filters.to} onChange={(e) => go({ to: e.target.value })} /></Field>
             </div>
@@ -141,7 +141,7 @@ export function Payments({ d, filters }: { d: PaymentsData; filters: Filters }) 
         </Panel>
       </div>
 
-      <Panel title="Payments" right={<span style={{ display: "inline-flex", gap: 8 }}>
+      <Panel title="Payments" right={<span className="row row--inline">
         <Btn kind="ghost" disabled={!d.rows.length} onClick={() => void toExcel()}>Export Excel</Btn>
         <Btn kind="ghost" disabled={!d.rows.length} onClick={toPdf}>Export PDF</Btn>
       </span>}>

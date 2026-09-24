@@ -4,7 +4,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
-import { Note } from "@/components/proto/ui";
+import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export function Forgot() {
@@ -36,7 +36,7 @@ export function Forgot() {
           <div className="login-brand__top">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
+            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
           </div>
           <div style={{ height: 26 }} />
           <h1>Forgotten your password?</h1>
@@ -45,10 +45,7 @@ export function Forgot() {
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!sent) void ask(); }}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Reset your password</div>
-            <div className="hint mt-1">Staff, students and applicants.</div>
-          </div>
+          <PageHead title="Reset your password" description="Staff, students and applicants." />
           {sent ? (
             <Note kind="ok" title="If that names an account, a reset link is on its way">
               Check the email (and phone) on your account. The link is good for an hour. If nothing arrives, the address on your account may differ from the one you expect &mdash; ask the Registry to check it. (A staff account can only be emailed when its username is an email address.)
@@ -60,7 +57,7 @@ export function Forgot() {
                 <input id="ident" value={identifier} placeholder="e.g. MOAUM/STAFF/1234, MOAUM/SCI/24/0001, APP/26/000123 or you@example.com" autoComplete="username" onChange={(e) => setIdentifier(e.target.value)} />
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <button className="btn btn--primary" type="submit" disabled={busy || !identifier.trim()}>{busy ? "Sending…" : "Send the reset link"}</button>
+              <Btn kind="primary" size="md" type="submit" disabled={busy || !identifier.trim()}>{busy ? "Sending…" : "Send the reset link"}</Btn>
             </>
           )}
           <div className="login-help">

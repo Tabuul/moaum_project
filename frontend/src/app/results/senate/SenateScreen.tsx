@@ -2,7 +2,6 @@
 
 /** tSenate and tPublish — proto/part26.html: the schedule by faculty, the minute, and what a release does, in order. */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
@@ -10,7 +9,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { Senate } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -95,7 +94,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
               <span className="tnum" key="c">{f.candidates}</span>,
               <span className="tnum" key="a">{f.atSenate}</span>,
               <span className="tnum ink-green" key="p">{f.published}</span>,
-              <span className="tnum" key="o" style={f.outstanding ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{f.outstanding}</span>,
+              <span className={`tnum${f.outstanding ? " ink-red b700" : ""}`} key="o">{f.outstanding}</span>,
               f.atSenate === 0 ? <Pil kind="grey" key="r">{f.published === f.sets ? "All published" : "Nothing at Senate"}</Pil> : f.outstanding ? <Pil kind="ok" key="r">Approve, outstanding named</Pil> : <Pil kind="ok" key="r">Approve</Pil>,
             ])} />
         )}
@@ -129,14 +128,14 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
                 </Field>
               </div>
               <div className="row">
-                <button className="btn btn--primary" disabled={busy || !minute.trim() || senate.atSenate === 0} onClick={() => void record()}>{busy ? "Recording…" : publish ? "Release to candidates on the minute" : "Record the minute and release"}</button>
+                <Btn kind="primary" size="md" disabled={busy || !minute.trim() || senate.atSenate === 0} onClick={() => void record()}>{busy ? "Recording…" : publish ? "Release to candidates on the minute" : "Record the minute and release"}</Btn>
                 {senate.atSenate === 0 ? <span className="sub2">Nothing is waiting at Senate in this scope.</span> : null}
-                <Link href={publish ? "/results/senate" : "/results/publish"} className="btn btn--ghost">{publish ? "Go to Senate" : "Open publication"}</Link>
+                <LinkBtn href={publish ? "/results/senate" : "/results/publish"} kind="ghost" size="md">{publish ? "Go to Senate" : "Open publication"}</LinkBtn>
               </div>
             </>
           ) : (
             <div className="row">
-              <button className="btn btn--primary" disabled>{publish ? "Release to candidates" : "Record the minute"}</button>
+              <Btn kind="primary" size="md" disabled>{publish ? "Release to candidates" : "Record the minute"}</Btn>
               <span className="sub2">The Registrar records the minute; this office reads the schedule.</span>
             </div>
           )}

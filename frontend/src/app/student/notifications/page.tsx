@@ -23,7 +23,7 @@ export default async function Page() {
             {s.notices.length ? (
               <div className="card__body" style={{ gap: 0, padding: 0 }}>
                 {s.notices.map((n, i) => (
-                  <div key={n.id} style={{ padding: "14px 16px", display: "flex", gap: 11, borderBottom: i < s.notices.length - 1 ? "1px solid var(--line-2)" : undefined }}>
+                  <div key={n.id} className="row row--top" style={{ padding: "var(--s-3) var(--s-4)", gap: "var(--s-3)", borderBottom: i < s.notices.length - 1 ? "1px solid var(--line-2)" : undefined }}>
                     <span className="dot" style={{ background: n.state === "FAILED" ? "var(--red)" : n.state === "SENT" ? "var(--green)" : "var(--sky)", marginTop: 7 }} />
                     <div className="grow"><div className="b600">{n.subject}</div><div className="sub2" style={{ lineHeight: 1.5 }}>{n.body}</div></div>
                     <span className="sub2" style={{ whiteSpace: "nowrap" }}>{when(n.created_at)}</span>

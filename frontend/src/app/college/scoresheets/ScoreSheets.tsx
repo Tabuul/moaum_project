@@ -173,7 +173,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
             <PBody>
               <div className="row">
                 <Btn kind="primary" disabled={!rows.length} onClick={() => void downloadTemplate()}>Download the score sheet</Btn>
-                <label className="btn btn--ghost" style={{ cursor: "pointer" }}>Upload the filled sheet<input type="file" accept=".xlsx,.csv" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></label>
+                <label className="btn btn--ghost" style={{ cursor: "pointer" }}>Upload the filled sheet<input type="file" accept=".xlsx,.csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></label>
                 <Btn kind="ghost" disabled={!withResults} onClick={() => void downloadMarked()}>Download the marked sheet</Btn>
               </div>
               <div className="sub2 mt-2">The sheet is a workbook with the cohort as it stands: a row per candidate, and per subject the CA out of {subjects[0]?.ca_weight ?? 30}, the examination out of {subjects[0]?.exam_weight ?? 70}{subjects.some((s) => s.clinical_component_min != null) ? ", the clinical mark out of 100" : ""} and the attendance percentage{exam.min_attendance_pct != null ? ` (minimum ${exam.min_attendance_pct}%, or the candidate is barred)` : ""}. Fill it and upload it; the preview names every problem before anything is saved. Each mark is judged by the rule as it goes in, and once a candidate&rsquo;s subjects are all resulted the rule&rsquo;s decision is applied provisionally for the Board to confirm.</div>
@@ -185,7 +185,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
               <DTable cols={["Line|mid", "Matriculation number", "Name", ...subjects.map((s) => `${s.name}|mid`), "Flags"]} rows={preview.rows.map((r) => [
                 <span className="tnum" key="l">{r.line}</span>, <span className="tnum" key="n">{r.number}</span>, <span key="nm">{r.name}</span>,
                 ...r.marks.map((m) => <span className="tnum" key={m.subjectId}>{m.ca === "" && m.exam === "" ? "—" : `${m.ca || "?"} + ${m.exam || "?"}${m.clinical ? ` · cl ${m.clinical}` : ""}${m.attendance ? ` · ${m.attendance}%` : ""}`}</span>),
-                <span key="f" style={{ color: r.flags.length ? "var(--red-ink)" : undefined }}>{r.flags.length ? r.flags.join("; ") : "OK"}</span>,
+                <span key="f" className={r.flags.length ? "ink-red" : undefined}>{r.flags.length ? r.flags.join("; ") : "OK"}</span>,
               ])} />
               <PBody>
                 <div className="row">

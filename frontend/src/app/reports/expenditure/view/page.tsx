@@ -31,7 +31,7 @@ export default async function ExpenditureReport({ searchParams }: { searchParams
     api<Me>("/api/v1/iam/me"),
     api<Expenditure>(`/api/v1/reports/expenditure?year=${year}`),
   ]);
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
   const pct = (r: { budget: number; committed: number; spent: number }) => {
     const b = Number(r.budget);

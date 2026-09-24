@@ -1719,3 +1719,72 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 .skeleton { background: linear-gradient(90deg, var(--line-2) 25%, var(--bg) 37%, var(--line-2) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: var(--r); min-height: 14px; }
 @keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } a.card, a.tile { transition: none; } }
+
+/* ── the kit's last inline styles, on classes: the search select, the period picker, the table footer, the role line ── */
+.ss { position: relative; }
+.ss > .ctl { padding-right: 30px; }
+.ss__caret { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--muted); font-size: 11px; }
+.ss__list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-2); }
+.ss__opt { padding: 8px 12px; cursor: pointer; font-size: var(--t-base); color: var(--ink); }
+.ss__opt.is-hi { background: var(--sky-bg); }
+.ss__opt[aria-selected="true"] { background: var(--bg); color: var(--chrome); font-weight: 600; }
+.ss__opt[aria-selected="true"].is-hi { background: var(--sky-bg); }
+.ss__none { padding: 8px 12px; font-size: 13px; color: var(--muted); }
+.pp { gap: 14px; }
+.pp__f { min-width: 170px; margin: 0; }
+.pp__note { align-self: center; }
+.tfoot__sel { width: auto; padding: 2px 6px; min-height: 0; }
+.roleline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 9px 13px; border: 1px solid var(--line);
+  border-radius: var(--r-md); background: var(--bg); margin-bottom: 12px; }
+.ink-ink { color: var(--ink); }
+
+/* ── what the page-by-page pass asked for: the few utilities the screens still hand-built ──────────── */
+.stack--tight { gap: var(--s-1); }
+.stack--loose { gap: var(--s-3); }
+.row--gap-3 { gap: var(--s-3); } .row--gap-4 { gap: var(--s-4); } .row--gap-5 { gap: var(--s-5); } .row--gap-6 { gap: var(--s-6); }
+.mt-5 { margin-top: var(--s-5); } .mb-4 { margin-bottom: var(--s-4); } .mb-5 { margin-bottom: var(--s-5); }
+.t-base { font-size: var(--t-base); }
+.ink-surface { color: var(--surface); }
+/* a button that reads as a link */
+.lnk, .linklike { background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; font: inherit; text-decoration: none; }
+.lnk:hover, .linklike:hover { text-decoration: underline; }
+/* a card body laid out as a row (the body is a column by default) */
+.card__body--row { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: var(--s-4); }
+/* a notice with a title and no body carries no empty line */
+.notice p:empty { display: none; }
+.notice__t:last-child { margin-bottom: 0; }
+/* a document's own table header, in the chrome */
+.doc th { background: var(--chrome); color: var(--surface); }
+/* a KPI figure outside a tile */
+.kpi { font-size: var(--t-3xl); font-weight: 700; letter-spacing: -.6px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+/* a list of rows with a rule between */
+.listrow { display: flex; align-items: center; gap: var(--s-2); padding: 6px 0; border-bottom: 1px solid var(--line-2); }
+.listrow:last-child { border-bottom: 0; }
+/* the dashed passport placeholder */
+.passport-frame { display: flex; align-items: center; justify-content: center; text-align: center; color: var(--faint); font-size: var(--t-xs);
+  border: 1px dashed var(--field); border-radius: var(--r-md); background: var(--bg); width: 96px; height: 120px; flex-shrink: 0; }
+.passport-frame--lg { width: 108px; height: 132px; }
+/* a combobox's dropped list */
+.combo__list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; margin: 0; padding: 0; list-style: none;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--sh-2); }
+.combo__list > li, .combo__opt { padding: 8px 12px; cursor: pointer; font-size: var(--t-base); }
+.combo__list > li:hover, .combo__opt:hover, .combo__opt.is-hi { background: var(--sky-bg); }
+.list { margin: 0; padding-left: var(--s-5); }
+.list li + li { margin-top: var(--s-1); }
+.ink-dim { color: var(--chrome-dim); }
+.tabs--gap { margin-bottom: var(--s-3); }
+.pill + .pill, strong + .pill, .tnum + .pill { margin-left: 6px; }
+/* a filter bar: a card whose only body is a row of controls */
+.filterbar { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-1); padding: var(--s-4);
+  display: flex; align-items: flex-end; gap: var(--s-3); flex-wrap: wrap; }
+.filterbar .field { margin: 0; }
+.field.row { flex-direction: row; align-items: center; }
+.row--nowrap { flex-wrap: nowrap; }
+.row--center { justify-content: center; }
+.btn--block { width: 100%; }
+.card__head--doc { border-bottom: 2px solid var(--chrome); }
+:root { --scrim: rgba(11, 51, 69, .35); }
+.cap { text-transform: capitalize; }
+.pl-3 { padding-left: var(--s-3); } .pl-4 { padding-left: var(--s-4); }
+.scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); }

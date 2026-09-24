@@ -4,13 +4,12 @@
  *  The Bursary (and admin/super) add as many as they need; every wallet credit names one of them,
  *  and a student's wallet shows one card per source with the balance as their total (V079). */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { FundingSource } from "@/lib/wallet";
-import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine } from "@/components/proto/ui";
+import { Btn, IcoBtn, LinkBtn, Note, Panel, PBody, Pil, RoleLine } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -72,7 +71,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
             <span className="sub2" key="sp">{x.sponsor ?? "—"}</span>,
             <span className="sub2" key="ac">{x.account ?? "Main school account"}</span>,
             x.active ? <Pil kind="ok" key="a">Active</Pil> : <Pil kind="grey" key="a">Off</Pil>,
-            canEdit ? <span key="x" style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            canEdit ? <span key="x" className="row row--tight row--right">
               <IcoBtn key="e" icon="edit" label="Edit this funding source" onClick={() => edit(x)} />
               <Btn kind="ghost" disabled={busy} onClick={() => void toggle(x)}>{x.active ? "Turn off" : "Turn on"}</Btn>
             </span> : <span className="sub2" key="x">—</span>,
@@ -102,7 +101,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
                 }
               }}>{editing ? "Save the source" : "Add the source"}</Btn>
               {editing ? <Btn kind="ghost" onClick={() => { setSrc({ ...BLANK }); setEditing(null); }}>Cancel</Btn> : null}
-              <Link href="/finance/nelfund?tab=report" className="btn btn--ghost btn--sm">Funding report</Link>
+              <LinkBtn kind="ghost" href="/finance/nelfund?tab=report">Funding report</LinkBtn>
             </div>
             <div className="sub2 mt-2">NELFUND, Scholarship and Self top-up are seeded; add TETFund, a state scholarship, a sponsor or a bursary here. Add as many as you need.</div>
           </PBody>

@@ -2,6 +2,7 @@
 
 /** A branded, printable inter-departmental transfer approval letter. It renders as a
  *  standalone document (the .rpt paper styling used by the returns) so it prints clean. */
+import { Btn } from "@/components/proto/ui";
 import { naira } from "../../../common";
 
 export interface LetterApp {
@@ -13,8 +14,8 @@ export function TransferLetter({ student, app }: { student: { name: string; matr
   const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   return (
     <div className="rpt">
-      <div className="rpt__toolbar no-print" style={{ display: "flex", gap: 8 }}>
-        <button className="btn btn--primary" onClick={() => window.print()}>Print / Save as PDF</button>
+      <div className="rpt__toolbar no-print row">
+        <Btn kind="primary" size="md" onClick={() => window.print()}>Print / Save as PDF</Btn>
       </div>
       <div className="rpt__paper">
         <header className="rpt__head">
@@ -31,7 +32,7 @@ export function TransferLetter({ student, app }: { student: { name: string; matr
           <div className="rpt__meta">Session {app.session}</div>
         </div>
 
-        <div style={{ padding: "8px 4px", lineHeight: 1.7, fontSize: 14 }}>
+        <div style={{ padding: "var(--s-2) var(--s-1)", lineHeight: 1.7, fontSize: "var(--t-base)" }}>
           <p style={{ textAlign: "right" }}>{today}</p>
           <p><strong>{student.name}</strong><br />{student.matric_no ?? ""}</p>
           <p>Dear Student,</p>
@@ -48,7 +49,7 @@ export function TransferLetter({ student, app }: { student: { name: string; matr
             department to register your courses for the session. Your matriculation number remains unchanged.
           </p>
           <p>Please accept the congratulations of the University.</p>
-          <p style={{ marginTop: 36 }}>
+          <p style={{ marginTop: "var(--s-8)" }}>
             ____________________________<br />
             <strong>Deputy Registrar, Academic Office</strong><br />
             for: Registrar

@@ -1,6 +1,6 @@
 import type { Me } from "@/components/proto/Shell";
 import type { ClinicDesk } from "@/lib/health";
-import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 const at = (iso: string) => { try { return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); } catch { return "—"; } };
@@ -29,7 +29,7 @@ export function ClinicDashboard({ me, desk }: { me: Me | null; desk: ClinicDesk 
         ["Referrals this month", String(t?.referrals_month ?? 0), null, "Sent on for further care"],
       ]} />
 
-      <Panel title="Waiting now" right={<a href="/clinic" className="btn btn--primary btn--sm">Open the clinic</a>}>
+      <Panel title="Waiting now" right={<LinkBtn kind="primary" href="/clinic">Open the clinic</LinkBtn>}>
         {waiting.length ? (
           <DTable cols={["Arrived|mid", "Patient", "Presenting", "Triage|mid"]}
             rows={waiting.slice(0, 10).map((w) => [
@@ -74,10 +74,10 @@ export function ClinicDashboard({ me, desk }: { me: Me | null; desk: ClinicDesk 
       <Panel title="Support Services desks" right="What this office works">
         <PBody>
           <div className="grid--fill">
-            <a href="/clinic" className="btn btn--ghost btn--sm">Clinic</a>
-            <a href="/library/circulation" className="btn btn--ghost btn--sm">Library circulation</a>
-            <a href="/stores" className="btn btn--ghost btn--sm">Stores &amp; assets</a>
-            <a href="/clearance" className="btn btn--ghost btn--sm">Student clearance</a>
+            <LinkBtn kind="ghost" href="/clinic">Clinic</LinkBtn>
+            <LinkBtn kind="ghost" href="/library/circulation">Library circulation</LinkBtn>
+            <LinkBtn kind="ghost" href="/stores">Stores &amp; assets</LinkBtn>
+            <LinkBtn kind="ghost" href="/clearance">Student clearance</LinkBtn>
           </div>
           <div className="sub2 mt-2">{me?.name ? `Signed in as ${me.name}.` : ""} Every act is on the record, in your name.</div>
         </PBody>

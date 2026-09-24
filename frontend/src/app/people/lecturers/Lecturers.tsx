@@ -249,9 +249,9 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
               The file needs <b>PNO</b>, <b>Full Names</b> and <b>Department</b> at least; Sex, Date of 1st Appt, Present Rank,
               Phone and CONUASS are carried when present. The PNO becomes the staff id <b>P&lt;number&gt;</b>.
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+            <div className="row mt-2">
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
-              <label className={`btn btn--primary btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+              <label className={`btn btn--primary btn--sm m-0${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
                 {busy ? "Uploading…" : "Upload teaching staff (.xlsx)"}
                 <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
               </label>
@@ -286,7 +286,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
           ])} />
         ) : <PBody><div className="sub2">{staff.length ? "No staff match that search." : "No teaching staff on record yet. Upload the list above, or add one."}</div></PBody>}
         {may && shown.length ? (
-          <PBody><label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }} className="sub2">
+          <PBody><label className="sub2 row row--inline row--tight" style={{ cursor: "pointer" }}>
             <input type="checkbox" checked={allShownPicked} onChange={toggleAll} /> Select all {shown.length > 500 ? "(first 500) " : ""}shown
           </label></PBody>
         ) : null}

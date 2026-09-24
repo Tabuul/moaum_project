@@ -9,7 +9,7 @@
  * the full page (Open full record) is where the Registry edits.
  */
 import { useEffect, useState, type ReactNode } from "react";
-import { KvGrid, Note, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Pil, Tabs, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Passport, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -27,19 +27,6 @@ const SECTION: Record<string, string> = {
   identity: "Identity", contact: "Contact", origin: "Origin", family: "Next of kin & family", academic: "Academic", health: "Health", other: "Other",
 };
 const words = (s: string | null | undefined) => (s ?? "").split("_").map((w) => (w ? w.charAt(0) + w.slice(1).toLowerCase() : w)).join(" ");
-
-function Tabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
-  return (
-    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid var(--line-2)", marginBottom: 12 }}>
-      {TABS.map(([k, l]) => (
-        <button key={k} type="button" onClick={() => onTab(k)}
-          style={{ background: "none", border: "none", cursor: "pointer", font: "inherit", padding: "8px 12px", borderBottom: tab === k ? "2px solid var(--chrome)" : "2px solid transparent", fontWeight: tab === k ? 600 : 500, color: tab === k ? "var(--ink)" : "var(--muted)" }}>
-          {l}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function StudentModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [record, setRecord] = useState<StudentRecord | null>(null);
@@ -75,20 +62,20 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
   else if (!record || !s) body = <Note kind="info" title="Reading the record…">One moment.</Note>;
   else body = (
     <>
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}>
+      <div className="row row--top mb-3" style={{ gap: "var(--s-4)" }}>
         <div style={{ width: 96, height: 118, flexShrink: 0 }}>
           {photoOk ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={`/api/bff/api/v1/student/students/${s.id}/passport`} alt={`${fullName(s)} — passport photograph`} onError={() => setPhotoOk(false)}
-              style={{ width: 96, height: 118, objectFit: "cover", borderRadius: 6, border: "1px solid var(--line-2)", display: "block" }} />
+              style={{ width: 96, height: 118, objectFit: "cover", borderRadius: "var(--r)", border: "1px solid var(--line-2)", display: "block" }} />
           ) : <Passport w={96} h={118} radius={6} src={null} />}
         </div>
-        <div style={{ flexGrow: 1, minWidth: 240 }}>
-          <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{fullName(s)}</div>
+        <div className="grow" style={{ minWidth: 240 }}>
+          <div className="phead__t">{fullName(s)}</div>
           <div className="sub2 tnum mt-1">{s.matricNo ?? s.admissionNo ?? "—"}{s.jambRegNo ? ` · JAMB ${s.jambRegNo}` : ""}</div>
           <div className="sub2 mt-1">{s.programmeName} · {s.deptName}</div>
           <div className="sub2">{s.facultyName}</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <div className="row mt-2">
             <Pil kind={statusPill(s.status)}>{statusLabel(s.status)}</Pil>
             <Pil kind="info">{s.currentLevel} level</Pil>
             <Pil kind="grey">{words(s.entryMode)} · {s.entrySession}</Pil>
@@ -97,7 +84,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
         </div>
       </div>
 
-      <Tabs tab={tab} onTab={setTab} />
+      <div className="mb-3"><Tabs look="line" label="Student record" items={TABS.map(([id, label]) => ({ id, label }))} value={tab} onChange={setTab} /></div>
 
       {tab === "overview" ? (
         <>
@@ -128,7 +115,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
       {tab === "biodata" ? (
         sections.length ? sections.map((sec) => (
           <div key={sec} className="mb-3">
-            <div className="sub2" style={{ margin: "6px 0", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>{SECTION[sec] ?? words(sec)}</div>
+            <div className="sub2 eyebrow eyebrow--gap">{SECTION[sec] ?? words(sec)}</div>
             <KvGrid cls="grid--2" pairs={record.biodata.filter((b) => b.section === sec).sort((a, b) => a.ord - b.ord).map((b) => [b.label, b.value?.trim() ? b.value : <span className="sub2" key={b.field}>not recorded</span>])} />
           </div>
         )) : <div className="sub2">No bio-data fields are defined.</div>
@@ -136,7 +123,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
 
       {tab === "academic" ? (
         <>
-          <div className="sub2" style={{ margin: "0 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Results by semester</div>
+          <div className="sub2 eyebrow mb-2">Results by semester</div>
           {portal?.gpa?.length ? (
             <DTable cols={["Session", "Semester|mid", "Units|num", "GPA|num", "CGPA|num", "Published|num"]}
               rows={portal.gpa.map((g) => [g.session, String(g.semester), <span key="u" className="tnum">{g.units}</span>, <span key="g" className="tnum">{g.gpa != null ? Number(g.gpa).toFixed(2) : "—"}</span>, <span key="c" className="tnum">{g.cgpa != null ? Number(g.cgpa).toFixed(2) : "—"}</span>, <span key="p" className="tnum">{g.published_count}/{g.registered_count}</span>])}
@@ -196,7 +183,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
 
       {tab === "history" ? (
         <>
-          <div className="sub2" style={{ margin: "0 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Status history</div>
+          <div className="sub2 eyebrow mb-2">Status history</div>
           {record.statusHistory.length ? (
             <DTable cols={["From", "To", "Instrument", "Effective", "Reason"]}
               rows={record.statusHistory.map((h) => [words(h.fromStatus), <Pil key="t" kind={statusPill(h.toStatus)}>{statusLabel(h.toStatus)}</Pil>, h.instrument, <span key="d" className="sub2">{day(h.effectiveOn)}</span>, h.reason ?? "—"])}
@@ -229,7 +216,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
 
   return (
     <Modal wide title={s ? fullName(s) : "Student"} sub={s ? `${s.matricNo ?? s.admissionNo ?? ""} · ${s.programmeName}` : "Reading the record"} onClose={onClose}
-      foot={<><span className="sub2">Read from the register as it stands now.</span><span className="grow" />{s ? <a href={`/students/${s.id}`} className="btn btn--ghost btn--sm">Open full record</a> : null}<button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
+      foot={<><span className="sub2">Read from the register as it stands now.</span><span className="grow" />{s ? <LinkBtn href={`/students/${s.id}`} kind="ghost">Open full record</LinkBtn> : null}<Btn kind="primary" onClick={onClose}>Close</Btn></>}>
       {body}
     </Modal>
   );

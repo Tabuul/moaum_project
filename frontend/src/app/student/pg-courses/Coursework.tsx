@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { KvGrid, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, KvGrid, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -80,7 +80,7 @@ export function Coursework({ initialSession }: { initialSession: string }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Panel title={v.programme} right={
-        <span style={{ display: "flex", gap: 6 }}>
+        <span className="row row--tight">
           <input className="ctl tnum" style={{ width: 110 }} value={session} onChange={(e) => setSession(e.target.value)} aria-label="Session" />
           <select className="ctl" style={{ width: "auto" }} value={semester} onChange={(e) => setSemester(Number(e.target.value))} aria-label="Semester">
             <option value={1}>First semester</option><option value={2}>Second semester</option>
@@ -124,12 +124,12 @@ export function Coursework({ initialSession }: { initialSession: string }) {
             <Note kind="ok" title="Your registration is endorsed">The Head of Department has endorsed this semester&rsquo;s registration. Write to the department to change it.</Note>
           ) : v.courses.length ? (
             <>
-              <div style={{ display: "grid", gap: 6 }}>
+              <div className="stack">
                 {v.courses.map((c) => {
                   const on = picked.has(c.id);
                   const locked = v.entries.some((e) => e.course_id === c.id && e.total != null);
                   return (
-                    <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)", opacity: locked ? 0.7 : 1 }}>
+                    <label key={c.id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", opacity: locked ? 0.7 : 1 }}>
                       <input type="checkbox" className="pchk" checked={on} disabled={locked || busy} onChange={() => toggle(c.id)} />
                       <span className="tnum" style={{ width: 72 }}>{c.code}</span>
                       <span className="grow">{c.title}</span>
@@ -139,13 +139,13 @@ export function Coursework({ initialSession }: { initialSession: string }) {
                   );
                 })}
               </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+              <div className="row mt-3">
                 <select className="ctl" style={{ width: "auto" }} value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Mode">
                   <option value="FULL_TIME">Full-time</option><option value="PART_TIME">Part-time</option>
                 </select>
-                <button type="button" className="btn btn--primary btn--sm" disabled={busy || picked.size === 0} onClick={() => void register()}>
+                <Btn kind="primary" disabled={busy || picked.size === 0} onClick={() => void register()}>
                   {busy ? "Saving…" : v.registration ? "Update registration" : "Register these courses"}
-                </button>
+                </Btn>
                 <span className="sub2">Minimum coursework is 24 units for a taught programme (Policy 15).</span>
               </div>
             </>

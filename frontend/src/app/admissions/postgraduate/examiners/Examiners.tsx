@@ -9,8 +9,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface Examiner { id: string; name: string; institution: string; field: string | null; tenure_from: string | null; tenure_to: string | null; active: boolean }
@@ -74,13 +75,13 @@ export function Examiners({ mayEdit }: { mayEdit: boolean }) {
         <Panel title="Appoint an examiner">
           <PBody>
             <div className="grid grid--2">
-              <div className="field"><label htmlFor="e-name">Name</label><input id="e-name" className="ctl" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Prof. B. Okonkwo" /></div>
-              <div className="field"><label htmlFor="e-inst">Institution</label><input id="e-inst" className="ctl" value={f.institution} onChange={(e) => setF({ ...f, institution: e.target.value })} placeholder="University of Ibadan" /></div>
-              <div className="field"><label htmlFor="e-field">Field / specialization</label><input id="e-field" className="ctl" value={f.field} onChange={(e) => setF({ ...f, field: e.target.value })} placeholder="Economics" /></div>
-              <div className="field"><label htmlFor="e-tf">Tenure from</label><input id="e-tf" className="ctl" type="date" value={f.tenureFrom} onChange={(e) => setF({ ...f, tenureFrom: e.target.value })} /></div>
-              <div className="field"><label htmlFor="e-tt">Tenure to</label><input id="e-tt" className="ctl" type="date" value={f.tenureTo} onChange={(e) => setF({ ...f, tenureTo: e.target.value })} /></div>
+              <Field id="e-name" label="Name"><input id="e-name" className="ctl" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Prof. B. Okonkwo" /></Field>
+              <Field id="e-inst" label="Institution"><input id="e-inst" className="ctl" value={f.institution} onChange={(e) => setF({ ...f, institution: e.target.value })} placeholder="University of Ibadan" /></Field>
+              <Field id="e-field" label="Field / specialization"><input id="e-field" className="ctl" value={f.field} onChange={(e) => setF({ ...f, field: e.target.value })} placeholder="Economics" /></Field>
+              <Field id="e-tf" label="Tenure from"><input id="e-tf" className="ctl" type="date" value={f.tenureFrom} onChange={(e) => setF({ ...f, tenureFrom: e.target.value })} /></Field>
+              <Field id="e-tt" label="Tenure to"><input id="e-tt" className="ctl" type="date" value={f.tenureTo} onChange={(e) => setF({ ...f, tenureTo: e.target.value })} /></Field>
             </div>
-            <div className="mt-3"><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void add()}>{busy ? "Saving…" : "Appoint examiner"}</button></div>
+            <div className="mt-3"><Btn kind="primary" disabled={busy} onClick={() => void add()}>{busy ? "Saving…" : "Appoint examiner"}</Btn></div>
           </PBody>
         </Panel>
       ) : null}

@@ -74,7 +74,7 @@ export function SpaceScreen({ s }: { s: Space }) {
       {open ? (
         <Modal title={open.title} sub={`${s.course_code} · closes ${when(open.closes_at)} · ${open.weight}% of continuous assessment`} onClose={() => setOpen(null)}
           foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Cancel</Btn><span className="grow" /><Btn kind="go" disabled={busy !== null || (!text.trim() && !file)} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit"}</Btn></>}>
-          {open.brief ? <p style={{ margin: "0 0 10px", lineHeight: 1.6 }}>{open.brief}</p> : null}
+          {open.brief ? <p className="m-0 mb-2" style={{ lineHeight: 1.6 }}>{open.brief}</p> : null}
           <Field id="sb-text" label="Your answer" hint="Text, a file, or both. A marked submission is not replaced."><textarea id="sb-text" className="ctl" rows={6} value={text} onChange={(e) => setText(e.target.value)} /></Field>
           <Field id="sb-file" label="File" hint="Up to 5 MB."><input id="sb-file" type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></Field>
         </Modal>

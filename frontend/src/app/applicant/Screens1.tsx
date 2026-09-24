@@ -7,11 +7,10 @@
  * and name is the record's, and where the record has none, the screen says so.
  */
 import { useState } from "react";
-import Link from "next/link";
 import { at, confirmedReference, dob, openReference, BODY, NEXT, STAGES, type Application } from "@/lib/applicant";
-import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Gate, Gates, money, Passport } from "@/components/proto/blocks";
+import { Field, Gate, Gates, money, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, Rail, TwoCol, useAct, when } from "./common";
 
@@ -24,10 +23,10 @@ export function Dashboard({ a }: { a: Application }) {
   const photoSrc = uploaded ? `/api/bff/api/v1/applicant/me/documents/${uploaded.id}/content` : a.jambPassport ?? null;
   return (
     <>
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row" style={{ flexDirection: "row", gap: "var(--s-4)" }}>
         <Passport w={72} h={90} radius={6} src={photoSrc} alt="Your passport photograph" />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div>
+          <div className="b700 t-lg">{a.name}</div>
           <div className="sub2">{a.programme ?? "—"}{a.faculty ? ` · Faculty of ${a.faculty}` : ""}</div>
           <div className="sub2 tnum">JAMB {a.jambKey} · {a.applicationNo}</div>
           {!photoSrc ? <div className="sub2 ink-chrome">Your passport is not on record yet — it appears here once JAMB’s photograph is uploaded or you add one.</div> : null}
@@ -40,7 +39,7 @@ export function Dashboard({ a }: { a: Application }) {
         ["Stage", `${a.stage + 1} of 10`, a.stage >= 9 ? "var(--green-ink)" : "var(--chrome)", STAGES[Math.min(a.stage, 9)][0]],
       ]} />
       <Note kind={a.stage >= 8 ? "ok" : a.stage === 5 ? "bad" : "info"} title={nx[0]}
-        action={<Link href={nx[2]} className={`btn btn--${a.stage === 5 ? "urgent" : "primary"} btn--sm`}>{nx[3]}</Link>}>
+        action={<LinkBtn href={nx[2]} kind={a.stage === 5 ? "urgent" : "primary"}>{nx[3]}</LinkBtn>}>
         {nx[1]}
       </Note>
       <TwoCol>
@@ -101,7 +100,7 @@ export function Apply({ a }: { a: Application }) {
   if (!at(a, 1)) {
     return (
       <>
-        <Note kind="bad" title="The form opens when your application fee is confirmed" action={<Link href="/applicant/fee" className="btn btn--primary btn--sm">Pay the application fee</Link>}>
+        <Note kind="bad" title="The form opens when your application fee is confirmed" action={<LinkBtn kind="primary" href="/applicant/fee">Pay the application fee</LinkBtn>}>
           This is not a delay you can avoid by paying at a bank counter into a personal account. The portal releases the form the moment the Bursary confirms your payment against the reference it generated for you.
         </Note>
         <Rail a={a} />
@@ -118,13 +117,13 @@ export function Apply({ a }: { a: Application }) {
     <>
       <div className="card">
         <PBody>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div className="row row--tight">
             <Pil kind="ok">1 Biodata</Pil>
             <Pil kind={a.olevel.length ? "ok" : "info"}>2 O&rsquo;Level</Pil>
-            <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>3 Review</span>
+            <Pil kind="grey">3 Review</Pil>
           </div>
           <div className="mt-2">
-            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-.3px" }}>{a.programme ?? "Programme as JAMB recorded it"}</div>
+            <div className="phead__t">{a.programme ?? "Programme as JAMB recorded it"}</div>
             <div className="sub2">{a.faculty ? `Faculty of ${a.faculty} · ` : ""}{a.session} session. Your programme choice comes from JAMB and cannot be changed here.</div>
           </div>
         </PBody>
@@ -140,12 +139,10 @@ export function Apply({ a }: { a: Application }) {
             ["JAMB registration number", <span className="tnum" key="j">{a.jambKey}</span>],
             [a.entryMode === "UTME" ? "UTME score" : "Entry mode", <span className="tnum" key="u">{a.entryMode === "UTME" ? a.biodata.utme ?? "—" : "Direct Entry"}</span>],
           ]} />
-          <div className="field mt-1">
-            <label htmlFor="nok">Next of kin &mdash; name and phone</label>
+          <Field id="nok" label={<>Next of kin &mdash; name and phone</>} hint={busy === "nok" ? "Saving…" : "Saved when you leave the box. The person the University may call."}>
             <input id="nok" value={nok} onChange={(e) => setNok(e.target.value)} autoComplete="off" placeholder="SURNAME, Other names · 0806 552 1180"
               onBlur={() => { if (nok.trim() && nok.trim() !== (a.biodata.nextOfKin ?? "")) void act("nok", "PUT", "/me/next-of-kin", { nextOfKin: nok.trim() }, "Next of kin given by the applicant"); }} />
-            <div className="hint">{busy === "nok" ? "Saving…" : "Saved when you leave the box. The person the University may call."}</div>
-          </div>
+          </Field>
         </PBody>
       </Panel>
 
@@ -154,7 +151,7 @@ export function Apply({ a }: { a: Application }) {
           <div className="sub2">These are the results JAMB uploaded for you, shown exactly as they arrived. They are not edited here. The Registry verifies every result directly with WAEC, NECO or NABTEB before clearance; a result that does not verify voids the admission at any point, including after matriculation.</div>
           {a.olevel.length ? a.olevel.map((s, i) => (
             <div key={i}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 6px" }}>
+              <div className="row" style={{ margin: "var(--s-2) 0 var(--s-1)" }}>
                 <Pil kind="grey">{BODY[s.body] ?? s.body}</Pil>
                 <b>Sitting {i + 1}{s.type ? ` — ${s.type}` : ""}{s.year ? ` ${s.year}` : ""}</b>
                 {s.examNumber ? <span className="sub2 tnum">exam no. {s.examNumber}</span> : null}
@@ -182,12 +179,12 @@ export function Apply({ a }: { a: Application }) {
             <Note kind="ok" title="Everything is in">Read the declaration, tick it, and submit. Submitted once, the application is not edited.</Note>
           )}
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, color: "var(--muted)", marginTop: 4 }}>
+          <label className="ink-muted mt-1" style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
             <input type="checkbox" className="chk" checked={declared} onChange={(e) => setDeclared(e.target.checked)} />
             <span>I declare that the particulars I have given are true. I understand that a false declaration voids my admission at any point, including after graduation.</span>
           </label>
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 4 }}>
-            <Link href="/applicant" className="btn btn--ghost">Save and come back later</Link>
+          <div className="row mt-1">
+            <LinkBtn kind="ghost" size="md" href="/applicant">Save and come back later</LinkBtn>
             <Btn kind="primary" disabled={!ready || busy !== null} onClick={() => void act("submit", "POST", "/me/submit", { declaration: true }, "Application submitted by the applicant")}>{busy === "submit" ? "Submitting…" : "Submit application"}</Btn>
           </div>
         </PBody>
@@ -207,7 +204,7 @@ export function Fee({ a }: { a: Application }) {
   if (at(a, 1) && paid) {
     return (
       <>
-        <Note kind="ok" title={`Payment confirmed — ${money(Number(paid.amount))} received`} action={<Link href="/applicant/apply" className="btn btn--primary btn--sm">Open the application form</Link>}>
+        <Note kind="ok" title={`Payment confirmed — ${money(Number(paid.amount))} received`} action={<LinkBtn kind="primary" href="/applicant/apply">Open the application form</LinkBtn>}>
           This payment is confirmed and the Bursary can see it. Your application form is now open.
         </Note>
         <Panel title="Receipt" right={paid.reference}>
@@ -230,16 +227,16 @@ export function Fee({ a }: { a: Application }) {
         <DTable cols={["Item", "Amount|num"]} rows={[
           [<Two key="i" a="Post-UTME screening fee" b={a.fees.stated ? `As stated for the ${a.session} session` : `The standing amount for ${a.session}`} />, <span className="tnum" key="a">{money(Number(a.fees.applicationFee))}</span>],
           [<Two key="i" a="Portal and payment charge" b="Charged by the payment provider, not the University" />, <span className="tnum" key="a">{money(Number(a.fees.portalCharge))}</span>],
-          [<strong key="i">Total payable</strong>, <strong className="tnum" style={{ fontSize: 16 }} key="a">{money(total)}</strong>],
+          [<strong key="i">Total payable</strong>, <strong className="tnum t-lg" key="a">{money(total)}</strong>],
         ]} />
       </Panel>
       <Panel title="Your payment reference" right="Generated for you alone">
         <PBody>
           {open ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: "var(--s-4)" }}>
               <div style={{ minWidth: 200 }}>
                 <div className="eyebrow">Reference</div>
-                <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
+                <div className="tnum b700" style={{ fontSize: "var(--t-2xl)", letterSpacing: ".5px" }}>{open.reference}</div>
                 <div className="sub2 mt-2">Quote this reference and nothing else. It is tied to your application number and expires {when(open.expiresAt)}. You do not need a new one &mdash; pay this one now.</div>
               </div>
             </div>
@@ -247,7 +244,7 @@ export function Fee({ a }: { a: Application }) {
             <div className="sub2">No reference is open. Generate one below; it is yours alone. Pay it on the gateway and it confirms at once, or pay it at a bank and the Bursary confirms it against the reference.</div>
           )}
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}>
+          <div className="row mt-2">
             {open ? (
               <>
                 {/* an already-generated, unpaid reference proceeds straight to the gateway */}

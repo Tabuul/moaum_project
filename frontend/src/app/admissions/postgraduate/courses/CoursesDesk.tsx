@@ -11,6 +11,7 @@ import type { Problem } from "@/lib/api";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface Prog { code: string; name: string; faculty_name: string; department_name: string }
@@ -200,13 +201,13 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
         <Panel title="Add a course">
           <PBody>
             <div className="grid grid--2">
-              <div className="field"><label htmlFor="c-code">Course code</label><input id="c-code" className="ctl tnum" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} placeholder="ACC 801" /></div>
-              <div className="field"><label htmlFor="c-title">Title</label><input id="c-title" className="ctl" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Advanced Financial Accounting" /></div>
-              <div className="field"><label htmlFor="c-units">Units</label><input id="c-units" className="ctl tnum" value={f.units} onChange={(e) => setF({ ...f, units: e.target.value.replace(/[^0-9]/g, "") })} /></div>
-              <div className="field"><label htmlFor="c-kind">Type</label><select id="c-kind" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="CORE">Core</option><option value="ELECTIVE">Elective</option><option value="RESEARCH">Research</option><option value="DEFICIENCY">Deficiency</option></select></div>
-              <div className="field"><label htmlFor="c-sem">Semester</label><select id="c-sem" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option></select></div>
+              <Field id="c-code" label="Course code"><input id="c-code" className="ctl tnum" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} placeholder="ACC 801" /></Field>
+              <Field id="c-title" label="Title"><input id="c-title" className="ctl" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Advanced Financial Accounting" /></Field>
+              <Field id="c-units" label="Units"><input id="c-units" className="ctl tnum" value={f.units} onChange={(e) => setF({ ...f, units: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
+              <Field id="c-kind" label="Type"><select id="c-kind" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="CORE">Core</option><option value="ELECTIVE">Elective</option><option value="RESEARCH">Research</option><option value="DEFICIENCY">Deficiency</option></select></Field>
+              <Field id="c-sem" label="Semester"><select id="c-sem" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option></select></Field>
             </div>
-            <div className="mt-3"><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void addCourse()}>{busy ? "Saving…" : "Add course"}</button></div>
+            <div className="mt-3"><Btn kind="primary" disabled={busy} onClick={() => void addCourse()}>{busy ? "Saving…" : "Add course"}</Btn></div>
             <Note kind="info" title="Course units (Policy 11)">A course unit is one lecture/tutorial hour per week, or three laboratory hours, through a semester. Deficiency courses (max 9 units) earn no credit.</Note>
           </PBody>
         </Panel>

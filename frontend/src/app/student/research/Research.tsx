@@ -9,7 +9,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Note, Panel, PBody } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody } from "@/components/proto/ui";
+import { Field, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface Supervisor { name: string; role: string; is_external: boolean }
@@ -106,15 +107,7 @@ export function Research() {
 
       <Panel title="Progress">
         <PBody>
-          <ol className="pg-steps">
-            {steps.map((s) => (
-              <li key={s.label} className={s.done ? "pg-step pg-step--done" : "pg-step"}>
-                <span className="pg-step__dot" aria-hidden />
-                <span className="pg-step__label">{s.label}</span>
-                <span className="sub2">{s.when ? fmt(s.when) : (s.done ? "" : "pending")}</span>
-              </li>
-            ))}
-          </ol>
+          <Steps list={steps.map((s) => [s.done ? "done" : "todo", s.label, s.when ? fmt(s.when) : (s.done ? "" : "pending")])} />
         </PBody>
       </Panel>
 
@@ -148,15 +141,15 @@ export function Research() {
       <Panel title="Topic & proposal">
         <PBody>
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <div className="field"><label htmlFor="topic">Research topic</label>
+          <Field id="topic" label="Research topic">
             <input id="topic" className="ctl" value={topic} onChange={(e) => setTopic(e.target.value)} disabled={!canEditTopic || busy} placeholder="State your working topic" />
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          </Field>
+          <div className="row mt-2">
             {canEditTopic ? (
-              <button type="button" className="btn btn--ghost btn--sm" disabled={busy || !topic.trim()} onClick={() => void act("/topic", { topic: topic.trim() }, "Set research topic")}>Save topic</button>
+              <Btn kind="ghost" disabled={busy || !topic.trim()} onClick={() => void act("/topic", { topic: topic.trim() }, "Set research topic")}>Save topic</Btn>
             ) : null}
             {!proposalDone ? (
-              <button type="button" className="btn btn--primary btn--sm" disabled={busy || !topic.trim()} onClick={() => void act("/proposal", {}, "Submit research proposal")}>Submit proposal</button>
+              <Btn kind="primary" disabled={busy || !topic.trim()} onClick={() => void act("/proposal", {}, "Submit research proposal")}>Submit proposal</Btn>
             ) : (
               <span className="sub2">Proposal submitted {fmt(r.proposal_submitted_at)}{r.proposal_approved_at ? ` · approved ${fmt(r.proposal_approved_at)}` : " · awaiting the School"}.</span>
             )}
@@ -168,7 +161,7 @@ export function Research() {
       <Panel title="Milestones">
         <PBody>
           {r.events.length ? (
-            <div style={{ display: "grid", gap: 4 }}>
+            <div style={{ display: "grid", gap: "var(--s-1)" }}>
               {r.events.map((e, i) => (
                 <div key={i} className="sub2"><span className="tnum">{fmt(e.at)}</span> — {e.note ?? STAGE_LABEL[e.stage] ?? e.stage}</div>
               ))}
@@ -176,14 +169,6 @@ export function Research() {
           ) : <div className="sub2">No milestone recorded yet.</div>}
         </PBody>
       </Panel>
-
-      <style>{`
-        .pg-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-        .pg-step { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 10px; padding: 7px 0; }
-        .pg-step__dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-2); background: transparent; margin-left: 2px; }
-        .pg-step--done .pg-step__dot { background: var(--green-ink); border-color: var(--green-ink); }
-        .pg-step--done .pg-step__label { font-weight: 600; }
-      `}</style>
     </>
   );
 }

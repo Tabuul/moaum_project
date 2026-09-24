@@ -12,11 +12,10 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import type { CalendarData, LevelLimitRow, SemesterRow, SessionRow } from "@/lib/calendar";
 import { SEMESTER_NAMES, d, daysBetween, semesterName, span, withThousands, within } from "@/lib/calendar";
-import { Btn, Note, Panel, Pil, Tick, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { SessionModal, type Draft } from "./CalendarForms";
@@ -210,22 +209,22 @@ export function SessionSetup({
 
       {looking ? (
         <Panel title="Roll the register into a new session" right={<Btn kind="primary" disabled={busy} onClick={() => void rollOver()}>{busy ? "Rolling over…" : `Roll into ${looking}`}</Btn>}>
-          <div className="card__body sub2">
+          <PBody><div className="sub2">
             Promotes every active, matriculated continuing student one level (up to their programme&rsquo;s final level) and enrols
             them in <b>{looking}</b>. Fresh students still arrive through admission at 100 level; final-year, withdrawn and
             graduated students are untouched, and unpaid fees from earlier sessions still follow the student. Safe to run again.
-          </div>
+          </div></PBody>
         </Panel>
       ) : null}
 
       {looking ? (
         <Panel title="Match the loaded cohort to this session" right={<Btn kind="ghost" disabled={busy} onClick={() => void enrolAll()}>{busy ? "Enrolling…" : `Enrol all into ${looking}`}</Btn>}>
-          <div className="card__body sub2">
+          <PBody><div className="sub2">
             After a historical re-upload, this enrols every currently-studying student (ACTIVE or on probation) into <b>{looking}</b>
             at their <b>current level</b> — no promotion. Use it to match an already-loaded cohort to the session they are in now;
             for the yearly promotion use &ldquo;Roll the register&rdquo; above instead. Idempotent — a student already enrolled is left alone.
-          </div>
-          {enrolled ? <div className="card__body"><Note kind="ok" title="Cohort enrolled">{enrolled}</Note></div> : null}
+          </div></PBody>
+          {enrolled ? <PBody><Note kind="ok" title="Cohort enrolled">{enrolled}</Note></PBody> : null}
         </Panel>
       ) : null}
 
@@ -275,12 +274,12 @@ export function SessionSetup({
 
       <Panel title="Academic sessions" right="One current, the rest closed or planned">
         {sessions.length === 0 ? (
-          <div className="card__body">
+          <PBody>
             <Note kind="info" title="No session has been recorded yet">
               Nothing can be registered, examined or classified until a session exists and Senate&rsquo;s minute opening it is
               recorded against it.
             </Note>
-          </div>
+          </PBody>
         ) : (
           <DTable
             cols={["Session|mid", "Opens|mid", "Closes|mid", "Senate minute", "Students|mid", "State|mid", "Action|num"]}
@@ -308,12 +307,12 @@ export function SessionSetup({
 
       <Panel title={`Semesters of ${looking ?? "no session"}`} right="Each with its own windows">
         {semesters.length === 0 ? (
-          <div className="card__body">
+          <PBody>
             <Note kind="info" title={`No semester windows are recorded for ${looking ?? "any session"}`}>
               Registration, examinations and the results due date all read these dates, and each of them refuses while the
               date it depends on is unset. Nothing is assumed on their behalf.
             </Note>
-          </div>
+          </PBody>
         ) : (
           <DTable
             cols={["Semester", "Lectures|mid", "Registration closes|mid", "Examinations|mid", "Results due|mid", "State|mid", "Action|num"]}
@@ -346,13 +345,13 @@ export function SessionSetup({
 
       <Panel
         title="Open the examination session"
-        right={<Link href="/examinations/sessions" className="btn btn--primary btn--sm">Examinations → Sessions</Link>}
+        right={<LinkBtn href="/examinations/sessions" kind="primary">Examinations → Sessions</LinkBtn>}
       >
-        <div className="card__body sub2">
+        <PBody><div className="sub2">
           Setting the examination dates above is <b>not</b> the same as opening the examination session. Until the
           Examinations Office opens it, students see &ldquo;No examination session is open&rdquo; and no papers appear.
           To open it:
-          <ol style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+          <ol className="m-0 mt-2" style={{ paddingLeft: "var(--s-4)" }}>
             <li>Sign in as the <b>Examinations Office</b> role.</li>
             <li>Go to <b>Examinations → Sessions</b> (the button on the right, route <code>/examinations/sessions</code>).</li>
             <li>
@@ -362,17 +361,17 @@ export function SessionSetup({
               registration.
             </li>
           </ol>
-        </div>
+        </div></PBody>
       </Panel>
 
       <Panel title="Levels and unit limits" right="Per level, per semester">
         {limits.length === 0 ? (
-          <div className="card__body">
+          <PBody>
             <Note kind="info" title="No unit limits are recorded">
               Until they are, a registration has no ceiling to be measured against, and the course form refuses rather than
               accepting whatever fits.
             </Note>
-          </div>
+          </PBody>
         ) : (
           <DTable
             cols={["Level|mid", "Applies to", "Minimum units|mid", "Maximum units|mid", "On probation|mid", "Carryover counts toward the maximum|mid", "Action|num"]}
@@ -381,7 +380,7 @@ export function SessionSetup({
               <span className="sub2" key="w">{l.appliesTo}</span>,
               <span className="tnum" key="min">{l.minUnits}</span>,
               <span className="tnum" key="max">{l.maxUnits}</span>,
-              <span className="tnum" key="prob" style={l.probationMaxUnits == null ? { color: "var(--muted)" } : undefined}>{l.probationMaxUnits ?? "not set"}</span>,
+              <span className={`tnum${l.probationMaxUnits == null ? " ink-muted" : ""}`} key="prob">{l.probationMaxUnits ?? "not set"}</span>,
               l.carryoverCounts ? <Tick size={15} colour="var(--green-ink)" key="c" /> : <span className="sub2" key="c">No</span>,
               <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "level", row: l })}>
                 Edit

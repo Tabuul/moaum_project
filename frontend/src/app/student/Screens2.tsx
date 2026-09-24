@@ -10,7 +10,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { type Fees, type Me, type Receipt, receiptPurpose } from "@/lib/student-portal";
-import { Btn, Note, Panel, PBody, Pil, Tick, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
@@ -26,8 +26,8 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   return (
     <>
       {justPaid && !justPaid.confirmed_at ? (
-        <div className="card"><div className="card__body" style={{ alignItems: "center", textAlign: "center", gap: 14, padding: "26px 18px" }}>
-          <div><div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-.3px" }}>Confirming your payment</div>
+        <div className="card"><div className="card__body" style={{ alignItems: "center", textAlign: "center", gap: "var(--s-4)", padding: "var(--s-6) var(--s-5)" }}>
+          <div><div className="t-lg b700" style={{ letterSpacing: "-.3px" }}>Confirming your payment</div>
             <p className="sub2" style={{ margin: "6px auto 0", maxWidth: "44ch", lineHeight: 1.55 }}>The gateway tells the University directly when the money lands, and this page updates itself. Reference {justPaid.reference}.</p></div>
           <Btn kind="ghost" onClick={() => window.location.reload()}>Check again</Btn>
         </div></div>
@@ -49,7 +49,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       <Panel title="The charge" right={fees.session}>
         <DTable cols={["Item", "Amount|num"]} rows={[
           ...fees.charges.map((c) => [<span key="i">{c.item}</span>, <span className="tnum" key="a">{naira(c.amount)}</span>]),
-          [<strong key="t">Total</strong>, <strong className="tnum" key="a" style={{ fontSize: 15 }}>{naira(fees.due)}</strong>],
+          [<strong key="t">Total</strong>, <strong className="tnum t-md" key="a">{naira(fees.due)}</strong>],
         ]} />
       </Panel>
       {!noCharge && fees.balance > 0 ? (
@@ -58,9 +58,9 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
             {open ? (
               <>
                 <div className="eyebrow">Reference</div>
-                <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
+                <div className="tnum b700" style={{ fontSize: "var(--t-2xl)", letterSpacing: ".5px" }}>{open.reference}</div>
                 <div className="sub2">{naira(open.amount)} · expires {when(open.expires_at)}. Quote this reference and nothing else: at a bank branch, by transfer, or by card below. The Bursary confirms it against the bank&rsquo;s record; a gateway confirms it the moment the money lands.</div>
-                <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}><PayByCard reference={open.reference} amount={Number(open.amount)} /></div>
+                <div className="row mt-2"><PayByCard reference={open.reference} amount={Number(open.amount)} /></div>
               </>
             ) : (
               (() => {
@@ -103,16 +103,16 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       ) : null}
       <Panel title="Payment History" right={fees.references.length ? `${fees.references.length}` : "none yet"}>
         <DTable cols={["Reference", "Purpose", "Amount|num", "Status", "|num"]} rows={fees.references.map((r) => [
-          <span className="tnum" key="r" style={{ fontSize: 11, letterSpacing: "-.2px", color: "var(--muted)" }}>{r.reference}</span>,
+          <span className="tnum t-xs ink-muted" key="r" style={{ letterSpacing: "-.2px" }}>{r.reference}</span>,
           <Two key="p" a={r.purpose} b={r.confirmed_at ? `Confirmed ${when(r.confirmed_at)} · ${r.channel}` : `Generated ${when(r.generated_at)}`} />,
           <span className="tnum" key="a">{naira(r.amount)}</span>,
           r.confirmed_at ? <Pil kind="ok" key="s">Paid</Pil> : new Date(r.expires_at).getTime() > now ? <Pil kind="info" key="s">Awaiting confirmation</Pil> : <Pil kind="grey" key="s">Expired</Pil>,
-          r.receipt_no ? <Link key="x" href={`/student/receipt/${encodeURIComponent(r.reference)}`} className="btn btn--ghost btn--sm">Receipt</Link> : <span key="x" />,
+          r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn> : <span key="x" />,
         ])} />
         {!fees.references.length ? <PBody><div className="sub2">Every payment against a reference this portal generated appears here, with its receipt. Nothing is released against a payment the bank has not confirmed.</div></PBody> : null}
       </Panel>
       {fees.sessions.length > 1 ? (
-        <div className="sub2">Sessions with a charge: {fees.sessions.map((x) => <Link key={x} href={`/student/fees?session=${encodeURIComponent(x)}`} style={{ marginRight: 8 }}>{x}</Link>)}</div>
+        <div className="sub2">Sessions with a charge: {fees.sessions.map((x) => <Link key={x} href={`/student/fees?session=${encodeURIComponent(x)}`} style={{ marginRight: "var(--s-2)" }}>{x}</Link>)}</div>
       ) : null}
     </>
   );
@@ -124,7 +124,7 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
   }
   return (
     <>
-      <div className="notice notice--ok"><Tick size={18} colour="var(--green-ink)" /><div><p style={{ color: "var(--green-ink)", fontWeight: 600 }}>Payment confirmed on {onDay(r.confirmed_at)}</p></div></div>
+      <Note kind="ok" title={`Payment confirmed on ${onDay(r.confirmed_at)}`} />
       <div className="doc" style={{ maxWidth: 660 }}>
         <div className="doc__head">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -132,11 +132,11 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
           <div className="u">REV. FR. MOSES ORSHIO ADASU<br />UNIVERSITY, MAKURDI</div>
           <div className="eyebrow">Official Payment Receipt</div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 18 }}>
-          <div className="kv"><span className="k">Receipt number</span><span className="v tnum" style={{ fontSize: 13, overflowWrap: "anywhere" }}>{r.receipt_no}</span></div>
+        <div className="row row--between" style={{ gap: "var(--s-5)", marginBottom: "var(--s-5)" }}>
+          <div className="kv"><span className="k">Receipt number</span><span className="v tnum">{r.receipt_no}</span></div>
           <div className="kv"><span className="k">Date</span><span className="v tnum">{onDay(r.confirmed_at)}</span></div>
         </div>
-        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 18, alignItems: "flex-start" }}>
+        <div className="row row--top" style={{ gap: "var(--s-6)", marginBottom: "var(--s-5)" }}>
           <Passport w={62} h={77} radius={3} src={photoSrc ?? null} />
           <div className="kv"><span className="k">Received from</span><span className="v">{r.name}</span></div>
           <div className="kv"><span className="k">Matriculation number</span><span className="v tnum">{r.matricNo}</span></div>
@@ -144,20 +144,20 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
           <div className="kv"><span className="k">Session</span><span className="v tnum">{r.session}</span></div>
           {r.term ? <div className="kv"><span className="k">Semester</span><span className="v">{r.term}</span></div> : null}
         </div>
-        <div className="tablewrap"><table style={{ minWidth: 400 }}>
-          <thead><tr><th style={{ background: "var(--chrome)", color: "#fff" }}>Being payment for</th><th className="num" style={{ background: "var(--chrome)", color: "#fff" }}>Amount</th></tr></thead>
+        <div className="tablewrap"><table className="tbl--data" style={{ minWidth: 400 }}>
+          <thead><tr><th style={{ background: "var(--chrome)", color: "var(--surface)" }}>Being payment for</th><th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Amount</th></tr></thead>
           <tbody>
             <tr><td>{receiptPurpose(r.purpose)}<div className="sub2 tnum">Against reference {r.reference}</div></td><td className="num tnum b600">{naira(r.amount)}</td></tr>
-            <tr style={{ background: "var(--bg)" }}><td className="b700">TOTAL RECEIVED</td><td className="num tnum" style={{ fontWeight: 700, fontSize: 16 }}>{naira(r.amount)}</td></tr>
+            <tr style={{ background: "var(--bg)" }}><td className="b700">TOTAL RECEIVED</td><td className="num tnum b700 t-md">{naira(r.amount)}</td></tr>
           </tbody>
         </table></div>
-        <div style={{ display: "flex", gap: 24, flexWrap: "wrap", margin: "18px 0" }}>
+        <div className="row" style={{ gap: "var(--s-6)", margin: "var(--s-5) 0" }}>
           <div className="kv"><span className="k">Channel</span><span className="v">{r.channel}</span></div>
           <div className="kv"><span className="k">Gateway or teller reference</span><span className="v tnum">{r.note ?? "—"}</span></div>
         </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", paddingTop: 6, borderTop: "1px solid var(--line-2)" }}>
-          <div className="kv" style={{ flexGrow: 1, minWidth: 200 }}><span className="k">Verification</span><span className="v tnum" style={{ fontSize: 13, overflowWrap: "anywhere" }}>{r.receipt_no}</span><span className="sub2">Scan the QR code to verify this payment, or use the check code to confirm the authenticity of this receipt against the Bursary&rsquo;s ledger.{token ? ` Check code ${token}.` : ""}</span>
-            {verifyUrl ? <a href={verifyUrl} target="_blank" rel="noopener" className="sub2 tnum" style={{ color: "var(--blue-ink)", overflowWrap: "anywhere" }}>{verifyUrl.replace(/^https?:\/\//, "")}</a> : null}</div>
+        <div className="row" style={{ gap: "var(--s-4)", paddingTop: 6, borderTop: "1px solid var(--line-2)" }}>
+          <div className="kv grow" style={{ minWidth: 200 }}><span className="k">Verification</span><span className="v tnum">{r.receipt_no}</span><span className="sub2">Scan the QR code to verify this payment, or use the check code to confirm the authenticity of this receipt against the Bursary&rsquo;s ledger.{token ? ` Check code ${token}.` : ""}</span>
+            {verifyUrl ? <a href={verifyUrl} target="_blank" rel="noopener" className="sub2 tnum ink-chrome" style={{ overflowWrap: "anywhere" }}>{verifyUrl.replace(/^https?:\/\//, "")}</a> : null}</div>
           {qr ? (
             <div style={{ textAlign: "center" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -169,7 +169,7 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
       </div>
       <div className="row">
         <a href={`/student/receipt/${encodeURIComponent(r.reference)}/pdf`} target="_blank" rel="noopener" className="btn btn--primary">Download PDF</a>
-        <Link href="/student/fees" className="btn btn--ghost">Back to payments</Link>
+        <LinkBtn kind="ghost" size="md" href="/student/fees">Back to payments</LinkBtn>
       </div>
     </>
   );

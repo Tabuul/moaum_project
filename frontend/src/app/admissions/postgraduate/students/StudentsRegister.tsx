@@ -117,7 +117,7 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
         ))}
       </div>
       <Panel title="Postgraduate register" right={
-        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span className="row row--tight">
           <select className="ctl" style={{ width: "auto", maxWidth: 220 }} value={programme} onChange={(e) => setProgramme(e.target.value)} aria-label="Programme">
             <option value="">All programmes</option>
             {byFaculty.map(([fac, list]) => <optgroup key={fac} label={fac}>{list.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</optgroup>)}

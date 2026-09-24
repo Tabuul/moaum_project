@@ -6,6 +6,7 @@ import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -35,13 +36,13 @@ export function Eligibility({ depts, dept, courses, code, view, problem }: {
         The eligible set is part of the course, like its units and its semester. It is assigned at creation, goes to the Faculty Board with the course, and Senate approves it. Nothing here is an exception granted to a named student &mdash; an exception is how a course quietly acquires a cohort nobody accredited.
       </Note>
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="field" style={{ minWidth: 220 }}><label htmlFor="el-dept">Department</label>
+      <div className="card"><div className="card__body row row--end">
+        <div style={{ minWidth: 220 }}><Field id="el-dept" label="Department">
           <SearchSelect id="el-dept" value={dept} placeholder="Search a department…"
-            options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v, course: "" })} /></div>
-        <div className="field" style={{ minWidth: 260 }}><label htmlFor="el-course">Course</label>
+            options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v, course: "" })} /></Field></div>
+        <div style={{ minWidth: 260 }}><Field id="el-course" label="Course">
           <SearchSelect id="el-course" value={code} placeholder={courses.length ? "Search a course…" : "No course in this department"}
-            options={courses.map((c) => ({ value: c.code, label: `${c.code} — ${c.title}` }))} onChange={(v) => go({ course: v })} /></div>
+            options={courses.map((c) => ({ value: c.code, label: `${c.code} — ${c.title}` }))} onChange={(v) => go({ course: v })} /></Field></div>
       </div></div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -72,13 +73,13 @@ export function Eligibility({ depts, dept, courses, code, view, problem }: {
           <div className="grid grid--2">
             <Panel title="What a student sees" right="On the course registration form">
               <PBody>
-                <p className="sub2" style={{ margin: 0, lineHeight: 1.6 }}>If a student&rsquo;s programme and level are on the set, the course is offered on their form, beside their own department&rsquo;s courses. If they are not, the course is not on the form at all. Nobody writes to a Head of Department and nobody carries a paper form between offices.</p>
+                <p className="sub2 m-0" style={{ lineHeight: 1.6 }}>If a student&rsquo;s programme and level are on the set, the course is offered on their form, beside their own department&rsquo;s courses. If they are not, the course is not on the form at all. Nobody writes to a Head of Department and nobody carries a paper form between offices.</p>
                 <Note kind="ok" title="Eligibility is checked when the registration is made, not when the mark is entered">A registration outside the eligible set is refused at the form &mdash; the only place refusing it is cheap. Refusing it at the score sheet means a student has already sat an examination they were never registered for.</Note>
               </PBody>
             </Panel>
             <Panel title="What the lecturer sees" right="On the score sheet">
               <PBody>
-                <p className="sub2" style={{ margin: 0, lineHeight: 1.6 }}>All {all} registered candidates in one list, ordered by matriculation number. The programme is a column, not a filter. {borrowed} of them are from other departments, and they are marked exactly like the rest, because they sat exactly the same paper.</p>
+                <p className="sub2 m-0" style={{ lineHeight: 1.6 }}>All {all} registered candidates in one list, ordered by matriculation number. The programme is a column, not a filter. {borrowed} of them are from other departments, and they are marked exactly like the rest, because they sat exactly the same paper.</p>
               </PBody>
             </Panel>
           </div>

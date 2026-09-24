@@ -14,7 +14,7 @@ export default async function EthicsPage() {
       </Note>
       <Panel title="Research ethics review">
         <PBody>
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
+          <ul className="m-0" style={{ paddingLeft: "var(--s-4)", lineHeight: 1.9 }}>
             <li><b>Who reviews</b> — the University Research Ethics Committee, with delegated departmental review for low-risk studies.</li>
             <li><b>What needs it</b> — any study involving human participants, personal or health data, biological samples, or animals.</li>
             <li><b>The rule</b> — data collection may not begin before clearance; a study that touches personal data is also on the processing register under the Data governance screen.</li>
@@ -24,7 +24,7 @@ export default async function EthicsPage() {
       </Panel>
       <Panel title="Open-access repository">
         <PBody>
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
+          <ul className="m-0" style={{ paddingLeft: "var(--s-4)", lineHeight: 1.9 }}>
             <li><b>What is deposited</b> — theses, dissertations, and staff publications, with metadata for discovery.</li>
             <li><b>Access</b> — open by default; an embargo is the exception, time-boxed and reasoned.</li>
             <li><b>Integrity</b> — every deposit carries its author, department and date, and cannot be silently replaced.</li>

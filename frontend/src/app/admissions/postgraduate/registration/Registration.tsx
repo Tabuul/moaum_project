@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -64,7 +64,7 @@ export function Registration({ session, sessions, view, problem }: { session: st
                   <span key="m">{s.mode ? (s.mode === "PART_TIME" ? "Part-time" : "Full-time") : <span className="sub2">—</span>}</span>,
                   s.acceptance_paid ? <Pil key="f" kind="ok">Paid</Pil> : <span key="f" className="sub2">Owing</span>,
                   s.registered ? <Pil key="r" kind="ok">Registered</Pil> : <Pil key="r" kind="warn">Pending</Pil>,
-                  s.matric_no ? <Pil key="x" kind="ok">Matriculated</Pil> : <Link key="x" href="/matriculation" className="btn btn--ghost btn--sm">Matriculate</Link>,
+                  s.matric_no ? <Pil key="x" kind="ok">Matriculated</Pil> : <LinkBtn key="x" kind="ghost" href="/matriculation">Matriculate</LinkBtn>,
                 ])}
                 texts={view.fresh.map((s) => `${s.surname} ${s.other_names} ${s.matric_no ?? ""} ${s.admission_no ?? ""} ${s.programme_name}`)} />
             ) : <PBody><div className="sub2">No postgraduate student was admitted for {session}.</div></PBody>}

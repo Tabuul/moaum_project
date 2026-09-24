@@ -11,6 +11,7 @@ import { useQueryNav } from "@/lib/query-nav";
 import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -128,9 +129,9 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                   <div className="field" style={{ flex: "2 1 280px", position: "relative" }}><label htmlFor="st-find">Course — any department, by code or title</label>
                     <input id="st-find" className="ctl" value={pick ? `${pick.code} — ${pick.title}` : q} onChange={(e) => search(e.target.value)} placeholder="e.g. GST 111, or Use of English" autoComplete="off" />
                     {found.length && !pick ? (
-                      <div style={{ position: "absolute", zIndex: 5, left: 0, right: 0, top: "100%", background: "var(--bg, #fff)", border: "1px solid var(--line)", borderRadius: 8, maxHeight: 260, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
+                      <div style={{ position: "absolute", zIndex: 5, left: 0, right: 0, top: "100%", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "var(--r-md)", maxHeight: 260, overflowY: "auto", boxShadow: "var(--sh-3)" }}>
                         {found.map((c) => (
-                          <button key={c.code} type="button" style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", border: 0, background: "transparent", cursor: "pointer" }}
+                          <button key={c.code} type="button" style={{ display: "block", width: "100%", textAlign: "left", padding: "var(--s-2) var(--s-3)", border: 0, background: "transparent", cursor: "pointer" }}
                             onClick={() => { setPick(c); setF({ ...f, level: String(c.level || f.level), basis: c.kind === "GST" ? "GST" : ownDept && c.dept_code !== ownDept ? "Borrowed" : c.kind === "Elective" ? "Elective" : "Core" }); }}>
                             <strong className="tnum">{c.code}</strong> <span>{c.title}</span> <span className="sub2">· {c.units} units · {c.level} level · {semName(c.semester)} · {c.dept_name ?? c.dept_code}</span>
                           </button>
@@ -138,15 +139,15 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                       </div>
                     ) : null}
                   </div>
-                  <div className="field" style={{ width: 110 }}><label htmlFor="st-level">Level</label>
-                    <select id="st-level" className="ctl" value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></div>
-                  <div className="field" style={{ width: 130 }}><label htmlFor="st-basis">Basis</label>
-                    <select id="st-basis" className="ctl" value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })}>{BASES.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
-                  <div className="field" style={{ width: 170 }}><label htmlFor="st-btrack">Track</label>
-                    <select id="st-btrack" className="ctl" value={f.track} onChange={(e) => setF({ ...f, track: e.target.value })}>
+                  <Field id="st-level" label="Level">
+                    <select id="st-level" className="ctl" style={{ width: 110 }} value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></Field>
+                  <Field id="st-basis" label="Basis">
+                    <select id="st-basis" className="ctl" style={{ width: 130 }} value={f.basis} onChange={(e) => setF({ ...f, basis: e.target.value })}>{BASES.map((b) => <option key={b} value={b}>{b}</option>)}</select></Field>
+                  <Field id="st-btrack" label="Track">
+                    <select id="st-btrack" className="ctl" style={{ width: 170 }} value={f.track} onChange={(e) => setF({ ...f, track: e.target.value })}>
                       <option value="">Every track</option>
                       {data.tracks.map((t) => <option key={t.code} value={t.code}>{t.code}</option>)}
-                    </select></div>
+                    </select></Field>
                   <Btn kind="primary" disabled={busy || !pick} onClick={() => void bind()}>{busy ? "Binding…" : "Bind the course"}</Btn>
                 </div>
                 <div className="sub2 mt-2">Basis: <b>Core</b> the programme requires it; <b>Elective</b> the student chooses it and a failure is not carried; <b>Borrowed</b> another department owns it; <b>GST</b> a University requirement. A binding for a track is seen by that track&rsquo;s students only.</div>
@@ -167,10 +168,10 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                   const over = lim && coreUnits > lim.max_units;
                   const under = lim && units < lim.min_units;
                   return (
-                    <div key={String(s)} style={{ padding: "0 0 8px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 14px 4px", gap: 10, flexWrap: "wrap" }}>
+                    <div key={String(s)} style={{ padding: "0 0 var(--s-2)" }}>
+                      <div className="row row--between row--base" style={{ padding: "var(--s-3) var(--s-4) var(--s-1)" }}>
                         <strong>{semName(s)}</strong>
-                        <span className="sub2 tnum" style={over || under ? { color: "var(--red-ink)", fontWeight: 600 } : undefined}>
+                        <span className={`sub2 tnum${over || under ? " ink-red b600" : ""}`}>
                           {units} units bound · {coreUnits} core/GST{lim ? over ? ` — core alone exceeds the ${lim.max_units}-unit maximum` : under ? ` — under the ${lim.min_units}-unit minimum even with every course` : "" : ""}
                         </span>
                       </div>
@@ -180,7 +181,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                         <span className="tnum" key="u">{r.units}</span>,
                         <Pil key="b" kind={r.basis === "Core" ? "info" : r.basis === "GST" ? "ok" : "grey"}>{r.basis}</Pil>,
                         <span className="sub2 tnum" key="tr">{r.track ?? "every track"}</span>,
-                        <span className="sub2" key="o" style={ownDept && r.dept_code !== ownDept ? { color: "var(--chrome)" } : undefined}>{r.dept_name ?? r.dept_code}</span>,
+                        <span className={`sub2${ownDept && r.dept_code !== ownDept ? " ink-chrome" : ""}`} key="o">{r.dept_name ?? r.dept_code}</span>,
                         <Pil key="s" kind={r.state === "LIVE" ? "ok" : r.state === "ENDED" ? "bad" : "warn"}>{r.state === "LIVE" ? "Live" : r.state === "BOARD" ? "At the Board" : r.state === "SENATE" ? "At Senate" : r.state}</Pil>,
                         ...(may ? [<Btn key="x" kind="ghost" disabled={busy} onClick={() => unbind(r)}>Remove</Btn>] : []),
                       ])} texts={list.map((r) => `${r.code} ${r.title} ${r.basis} ${r.track ?? ""} ${r.dept_name ?? ""}`)} />

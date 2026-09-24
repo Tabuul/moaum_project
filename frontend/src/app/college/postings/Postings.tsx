@@ -12,6 +12,7 @@ import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface CollegeStructure {
@@ -129,19 +130,19 @@ export function Postings({ structure, sessions, session, level, posting, student
           <div className="grid grid--2">
             <Panel title="Students at this level not yet on it" right={`${notYet.length} of ${shown.length} shown`}>
               <PBody>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                <div className="row mb-2">
                   <input className="ctl" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by number, name or programme…" aria-label="Search students" style={{ flex: "1 1 220px" }} />
                   <Btn kind="ghost" onClick={() => toggleAll(true)} disabled={!notYet.length}>Tick all {notYet.length}</Btn>
                   <Btn kind="ghost" onClick={() => toggleAll(false)} disabled={!picked.size}>Clear</Btn>
                 </div>
                 {notYet.length ? (
-                  <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+                  <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
                     {notYet.map((s) => {
                       const other = parseAlloc(s.allocations);
                       return (
-                        <label key={s.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "6px 10px", borderBottom: "1px solid var(--line-2)", cursor: "pointer" }}>
+                        <label key={s.id} className="row row--top" style={{ padding: "6px 10px", borderBottom: "1px solid var(--line-2)", cursor: "pointer" }}>
                           <input type="checkbox" checked={picked.has(s.id)} onChange={(e) => { const n = new Set(picked); if (e.target.checked) n.add(s.id); else n.delete(s.id); setPicked(n); }} style={{ marginTop: 3 }} />
-                          <span style={{ flex: 1 }}>
+                          <span className="grow">
                             <strong>{s.surname}, {s.other_names}</strong> <span className="tnum sub2">{s.number}</span>
                             <div className="sub2">{s.programme} · {s.entry_mode === "DIRECT_ENTRY" ? "Direct Entry" : "UTME"}{other.length ? ` · this session: ${other.map((a) => `${a.block} ${a.posting}`).join(", ")}` : ""}</div>
                           </span>
@@ -155,17 +156,17 @@ export function Postings({ structure, sessions, session, level, posting, student
 
             <Panel title="Allocate the ticked students" right={`${picked.size} ticked`}>
               <PBody>
-                <div style={{ display: "grid", gap: 8 }}>
+                <div className="stack">
                   {groups.length ? (
-                    <div className="field"><label htmlFor="po-group">Rotation group</label>
+                    <Field id="po-group" label="Rotation group">
                       <select id="po-group" className="ctl" value={group} onChange={(e) => setGroup(e.target.value)}>
                         <option value="">No group</option>
                         {groups.map((g) => <option key={g.id} value={g.id}>Group {g.label}</option>)}
-                      </select></div>
+                      </select></Field>
                   ) : null}
-                  <div className="field"><label htmlFor="po-sup">Supervisor</label>
+                  <Field id="po-sup" label="Supervisor">
                     <SearchSelect id="po-sup" value={supervisor} allLabel="Not yet assigned" placeholder="Search the College's staff…"
-                      options={supervisors.map((s) => ({ value: s.id, label: `${s.surname}, ${s.given_names} · ${s.dept_name}` }))} onChange={setSupervisor} /></div>
+                      options={supervisors.map((s) => ({ value: s.id, label: `${s.surname}, ${s.given_names} · ${s.dept_name}` }))} onChange={setSupervisor} /></Field>
                   <div className="row">
                     <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-from">Starts</label><input id="po-from" className="ctl" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
                     <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-to">Ends</label><input id="po-to" className="ctl" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
@@ -187,7 +188,7 @@ export function Postings({ structure, sessions, session, level, posting, student
                 <span className="tnum" key="f">{day(a.starts_on)}</span>,
                 <span className="tnum" key="t">{day(a.ends_on)}</span>,
                 <Pil key="st" kind={STATE[a.state]?.[0] ?? "grey"}>{STATE[a.state]?.[1] ?? a.state}</Pil>,
-                <div key="a" style={{ display: "inline-flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <div key="a" className="row row--inline row--tight row--right">
                   {a.state === "ALLOCATED" ? <Btn kind="ghost" disabled={busy} onClick={() => void call("PUT", `/allocations/${a.id}`, { state: "IN_PROGRESS" }, `${a.number} began ${chosen.code}`)}>Begin</Btn> : null}
                   {a.state === "IN_PROGRESS" ? <Btn kind="go" disabled={busy} onClick={() => void call("PUT", `/allocations/${a.id}`, { state: "COMPLETED" }, `${a.number} completed ${chosen.code}`)}>Complete</Btn> : null}
                   {a.state === "IN_PROGRESS" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Mark ${a.number}'s ${chosen.code} incomplete?`)) void call("PUT", `/allocations/${a.id}`, { state: "INCOMPLETE" }, `${a.number}'s ${chosen.code} marked incomplete`); }}>Incomplete</Btn> : null}

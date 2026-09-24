@@ -45,7 +45,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
       : m.counted ? (m.total == null
           ? <span className="ink-red b700"><span className="tnum">ABS</span><div>F0</div></span>
-          : <span><span className="tnum">{m.total}</span><div style={{ color: COLOUR(m.points), fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>)
+          : <span><span className="tnum">{m.total}</span><div className="b700" style={{ color: COLOUR(m.points) }}>{gw(m.grade, m.points)}</div></span>)
       : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div className="b700">{gw(m.grade, m.points)}</div></span>
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
       : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} className="ink-red b700"><span className="tnum">ABS</span><div>F0</div></span>;
@@ -264,7 +264,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             ["Carrying over", String(sheet.carrying), sheet.carrying ? "var(--red-ink)" : null, sheet.pendingSets ? `${sheet.pendingSets} set${sheet.pendingSets === 1 ? "" : "s"} still in the chain` : "One or more F grades"],
           ]} />
           {cov ? (
-            <Panel title="Examination reporting sheet" right={<span style={{ display: "inline-flex", gap: 8 }}><Btn kind="ghost" onClick={() => void exportExcel()}>Download Excel</Btn><Btn kind="primary" onClick={exportPdf}>Download PDF</Btn></span>}>
+            <Panel title="Examination reporting sheet" right={<span className="row row--inline"><Btn kind="ghost" onClick={() => void exportExcel()}>Download Excel</Btn><Btn kind="primary" onClick={exportPdf}>Download PDF</Btn></span>}>
               <PBody>
                 <div className="ers">
                   <div className="ers__title">
@@ -315,8 +315,8 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             {sheet.rows.length === 0 ? (
               <div className="card__body sub2">No approved registration at this level in {sheet.session} {semester.toLowerCase()} semester for this programme. The broadsheet has nobody to compute.</div>
             ) : sections.map((sec, si) => (
-              <div key={si} style={{ overflowX: "auto", marginTop: si ? 18 : 0 }}>
-                {sec.title ? <div className="ers__h" style={{ margin: "8px 0 6px", display: "flex", gap: 10, alignItems: "baseline" }}>{sec.title}<span className="sub2" style={{ textTransform: "none", fontWeight: 400 }}>{sec.rows.length} candidate{sec.rows.length === 1 ? "" : "s"}</span></div> : null}
+              <div key={si} className={si ? "tablewrap mt-4" : "tablewrap"}>
+                {sec.title ? <div className="ers__h row row--base" style={{ margin: "var(--s-2) 0 6px" }}>{sec.title}<span className="sub2" style={{ textTransform: "none", fontWeight: 400 }}>{sec.rows.length} candidate{sec.rows.length === 1 ? "" : "s"}</span></div> : null}
                 <table className="bsheet">
                   <thead>
                     <tr className="grp">
@@ -354,19 +354,19 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                           <td className="tnum">{fx(r.lcgpa)}</td>
                           <td className="tnum b">{fx(r.cgpa)}</td>
                         </>}
-                        <td className="rm" style={{ fontWeight: /PROBATION|WITHDRAW|CO:|Fail:/.test(r.remarks) ? 700 : 400, color: /PROBATION|WITHDRAW|DID NOT REGISTER/.test(r.remarks) ? "var(--red-ink)" : undefined }}>{r.remarks}</td>
+                        <td className={`rm${/PROBATION|WITHDRAW|CO:|Fail:/.test(r.remarks) ? " b700" : ""}${/PROBATION|WITHDRAW|DID NOT REGISTER/.test(r.remarks) ? " ink-red" : ""}`}>{r.remarks}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {sec.rows.length === 0 ? <div className="sub2" style={{ padding: "8px 6px" }}>None</div> : null}
+                {sec.rows.length === 0 ? <div className="sub2" style={{ padding: "var(--s-2) 6px" }}>None</div> : null}
               </div>
             ))}
           </Panel>
           <style>{`
             .bsheet{border-collapse:collapse;font-size:12px;width:100%}
-            .bsheet th,.bsheet td{border:1px solid var(--line);padding:4px 6px;text-align:center;vertical-align:middle}
-            .bsheet thead th{background:var(--panel-2,var(--line-2));font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--chrome-dim)}
+            .bsheet th,.bsheet td{border:1px solid var(--line);padding:var(--s-1) 6px;text-align:center;vertical-align:middle}
+            .bsheet thead th{background:var(--line-2);font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--chrome-dim)}
             .bsheet th.band{color:var(--chrome);font-weight:700}
             .bsheet th.l,.bsheet td.l{text-align:left;white-space:nowrap}
             .bsheet th.nm,.bsheet td.nm{width:1%}
@@ -375,32 +375,33 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             .bsheet th.mt{width:1%;white-space:normal}
             .bsheet th.mt .pfx{font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;word-break:break-all;line-height:1.15}
             .bsheet td.mt{width:1%;white-space:nowrap}
-            .bsheet th.course .mono{display:block;font-family:ui-monospace,monospace;font-weight:700}
+            .bsheet th.course .mono{display:block;font-family:var(--mono);font-weight:700}
             .bsheet th.course .u{display:block;font-size:10px;color:var(--chrome-dim)}
             .bsheet td.mk{min-width:44px}
             .bsheet td.b{font-weight:700}
             .bsheet td.co{text-align:left;min-width:110px;max-width:200px;white-space:normal}
-            .bsheet td.rm{text-align:left;min-width:190px;white-space:normal;font-size:11.5px}
+            .bsheet td.rm{text-align:left;min-width:190px;white-space:normal;font-size:var(--t-xs)}
             .bsheet tbody tr:nth-child(even) td{background:var(--line-2)}
             .ers{max-width:900px;margin:0 auto}
-            .ers__title{text-align:center;margin-bottom:16px}
-            .ers__crest{height:54px;width:auto;object-fit:contain;margin-bottom:4px}
-            .ers__uni{font-weight:700;font-size:15px}
+            .ers__title{text-align:center;margin-bottom:var(--s-4)}
+            .ers__crest{height:54px;width:auto;object-fit:contain;margin-bottom:var(--s-1)}
+            .ers__uni{font-weight:700;font-size:var(--t-md)}
             .ers__sub{text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--chrome-dim);text-decoration:underline;margin-top:3px}
-            .ers__meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;margin-bottom:18px;font-size:13px}
-            .ers__meta>div>div{display:flex;gap:8px;padding:2px 0}
+            .ers__meta{display:grid;grid-template-columns:1fr 1fr;gap:6px var(--s-7);margin-bottom:var(--s-5);font-size:13px}
+            .ers__meta>div>div{display:flex;gap:var(--s-2);padding:2px 0}
             .ers__meta .k{min-width:110px;color:var(--chrome-dim);text-transform:uppercase;font-size:11px;letter-spacing:.03em;align-self:center}
             .ers__cols{display:grid;grid-template-columns:1.5fr 1fr;gap:28px}
             .ers__h{font-weight:700;text-decoration:underline;font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
-            .ers__t{width:100%;font-size:12.5px;border-collapse:collapse}
+            .ers__t{width:100%;font-size:var(--t-sm);border-collapse:collapse}
             .ers__t td{padding:2px 6px;vertical-align:top}
             .ers__t td.n{text-align:right;width:44px;font-weight:600}
             .ers__t td.p{text-align:right;width:44px;color:var(--chrome-dim)}
-            .ers__t td.ab{font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap;width:64px}
+            .ers__t td.ab{font-family:var(--mono);font-weight:700;white-space:nowrap;width:64px}
             .ers__courses td:last-child{text-align:right;color:var(--chrome-dim);white-space:nowrap}
-            .ers__sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px;font-size:13px}
+            .ers__sign{display:grid;grid-template-columns:1fr 1fr;gap:var(--s-8);margin-top:var(--s-7);font-size:13px}
             .ers__sign .role{font-style:italic;font-weight:600;margin-bottom:10px}
             .ers__sign .ln{color:var(--chrome-dim);border-bottom:1px dotted var(--line);padding:6px 0 2px;margin-bottom:6px}
+            @media (max-width:760px){.ers__meta,.ers__cols,.ers__sign{grid-template-columns:1fr}}
           `}</style>
           <Panel title="The grading scheme this sheet used" right="Effective-dated: a 2019 result is graded by the 2019 scheme">
             <DTable cols={["Grade|mid", "From|mid", "To|mid", "Points|mid", "Meaning"]}

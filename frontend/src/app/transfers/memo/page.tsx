@@ -20,7 +20,7 @@ export default async function TransferMemoPage({ searchParams }: { searchParams:
   const p = await searchParams;
   const type = p.type === "withdrawn" ? "withdrawn" : "recommended";
   const data = await api<{ rows: TransferRow[] }>("/api/v1/transfers");
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
 
   const wanted = type === "recommended" ? ["RECOMMENDED", "APPROVED", "EFFECTED"] : ["NOT_RECOMMENDED", "WITHDRAWN"];
   const cases = data.data.rows.filter((r) => wanted.includes(r.state));

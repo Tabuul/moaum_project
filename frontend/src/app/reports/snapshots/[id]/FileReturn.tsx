@@ -88,7 +88,7 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
       {mail ? (
         <Modal title="Email this return" sub={`${title} — the PDF and the Excel workbook go attached, with the verification code`} onClose={() => setMail(false)}
           foot={<><Btn kind="ghost" onClick={() => setMail(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={sending || !rcpt.trim()} onClick={() => void send()}>{sending ? "Preparing the files…" : "Send"}</Btn></>}>
-          {mailErr ? <div className="sub2" style={{ color: "var(--red-ink)", marginBottom: 8 }}>{mailErr}</div> : null}
+          {mailErr ? <div className="sub2 ink-red mb-2">{mailErr}</div> : null}
           <Field id="em-to" label="To" hint="One or more email addresses, separated by commas">
             <input id="em-to" className="ctl" value={rcpt} onChange={(e) => setToList(e.target.value)} autoComplete="off" placeholder="registrar@…, nuc-liaison@…" />
           </Field>
@@ -100,7 +100,7 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
       {open ? (
         <Modal title="Record the filing" sub={title} onClose={() => setOpen(false)}
           foot={<><Btn kind="ghost" onClick={() => setOpen(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !to.trim()} onClick={() => void file()}>{busy ? "Recording…" : "Filed"}</Btn></>}>
-          {err ? <div className="sub2" style={{ color: "var(--red-ink)", marginBottom: 8 }}>{err}</div> : null}
+          {err ? <div className="sub2 ink-red mb-2">{err}</div> : null}
           <Field id="fr-to" label="Filed with" hint="The body the return went to — NUC, JAMB, Council, the State treasury, Senate, management">
             <input id="fr-to" className="ctl" value={to} onChange={(e) => setTo(e.target.value)} autoComplete="off" list="fr-to-list" />
             <datalist id="fr-to-list">{["NUC", "JAMB", "Council", "State treasury", "Senate", "Management", "School Board"].map((x) => <option key={x} value={x} />)}</datalist>

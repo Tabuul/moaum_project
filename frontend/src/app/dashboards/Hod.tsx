@@ -2,7 +2,7 @@
  *  (registrations to approve, offerings without a lecturer) and the size of the department. */
 import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { FeeCount } from "./HodFeeDownloads";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
@@ -57,25 +57,25 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
     <>
       {approvals ? (
         <Note kind="bad" title={`${approvals} course registration${approvals === 1 ? "" : "s"} waiting for your approval`}
-          action={<Link href="/results/approvals" className="btn btn--urgent btn--sm">Open approvals</Link>}>
+          action={<LinkBtn kind="urgent" href="/results/approvals">Open approvals</LinkBtn>}>
           Students in {home.deptName} have submitted registrations for {home.session}. They cannot appear on a class list,
           an attendance register or a score sheet until you approve them.
         </Note>
       ) : needLect ? (
         <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer allocated`}
-          action={<Link href="/allocate" className="btn btn--primary btn--sm">Allocate teaching</Link>}>
+          action={<LinkBtn kind="primary" href="/allocate">Allocate teaching</LinkBtn>}>
           A score sheet opens only once a lecturer is allocated. Allocate the remaining {home.session} courses so teaching
           and assessment can begin.
         </Note>
       ) : siwesGap ? (
         <Note kind="info" title={`${siwesGap} SIWES student${siwesGap === 1 ? " has" : "s have"} no supervisor assigned`}
-          action={<Link href="/siwes" className="btn btn--primary btn--sm">Assign supervisors</Link>}>
+          action={<LinkBtn kind="primary" href="/siwes">Assign supervisors</LinkBtn>}>
           The industrial-training students on your register need a supervisor each to be assessed. Assign the remaining
           supervisors on the SIWES supervision desk.
         </Note>
       ) : (
         <Note kind="ok" title={`${home.deptName} is set up for ${home.session}`}
-          action={<Link href="/allocate" className="btn btn--ghost btn--sm">Teaching allocation</Link>}>
+          action={<LinkBtn kind="ghost" href="/allocate">Teaching allocation</LinkBtn>}>
           No registrations are waiting and every course has a lecturer. Nothing is blocking your department right now.
         </Note>
       )}
@@ -102,7 +102,7 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
         ...(requestsOpen ? [["Student requests", String(requestsOpen), "var(--chrome)", "Open, to your office"] as [string, string, string, string]] : []),
       ]} />
 
-      <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>
+      <div className="grid grid--2">
         <Panel title="Courses still needing a Lecturer" right={needLect ? `${needLect} to allocate` : "All allocated"}>
           {home.needLecturer && home.needLecturer.length ? (
             <DTable
@@ -119,16 +119,16 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
 
         <Panel title="Your department desks" right="Everything scoped to your department">
           <PBody>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <Link href="/results/approvals" className="btn btn--ghost btn--sm">Registration approvals{approvals ? ` (${approvals})` : ""}</Link>
-              <Link href="/allocate" className="btn btn--ghost btn--sm">Teaching allocation</Link>
-              <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
-              <Link href="/results/broadsheet" className="btn btn--ghost btn--sm">Broadsheet</Link>
-              <Link href="/catalogue" className="btn btn--ghost btn--sm">Department courses</Link>
-              <Link href="/siwes" className="btn btn--ghost btn--sm">SIWES supervision</Link>
-              <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>
-              <Link href="/clearance" className="btn btn--ghost btn--sm">Clearance</Link>
-              {requestsOpen ? <Link href="/support" className="btn btn--ghost btn--sm">Student requests ({requestsOpen})</Link> : null}
+            <div className="row">
+              <LinkBtn kind="ghost" href="/results/approvals">Registration approvals{approvals ? ` (${approvals})` : ""}</LinkBtn>
+              <LinkBtn kind="ghost" href="/allocate">Teaching allocation</LinkBtn>
+              <LinkBtn kind="ghost" href="/results/desk">Result desk</LinkBtn>
+              <LinkBtn kind="ghost" href="/results/broadsheet">Broadsheet</LinkBtn>
+              <LinkBtn kind="ghost" href="/catalogue">Department courses</LinkBtn>
+              <LinkBtn kind="ghost" href="/siwes">SIWES supervision</LinkBtn>
+              <LinkBtn kind="ghost" href="/students">Students</LinkBtn>
+              <LinkBtn kind="ghost" href="/clearance">Clearance</LinkBtn>
+              {requestsOpen ? <LinkBtn kind="ghost" href="/support">Student requests ({requestsOpen})</LinkBtn> : null}
             </div>
             <div className="sub2 mt-3">You are acting as Head of {home.deptName}. Every screen above shows only your department.</div>
           </PBody>
@@ -146,7 +146,7 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
         ]} />
       </Panel>
 
-      <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>
+      <div className="grid grid--2">
         <Panel title="At-risk students" right={`${home.probation ?? 0} on probation · ${carryovers} carrying a course`}>
           {atRisk.length ? (
             <DTable cols={["Student", "Number|mid", "Level|num", "Standing|mid"]}
@@ -154,7 +154,7 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
                 <span key="n">{a.name}</span>,
                 <span className="tnum" key="m">{a.number}</span>,
                 <span className="tnum" key="l">{a.level}</span>,
-                <span className="pill pill--bad" key="s">Probation</span>,
+                <Pil kind="bad" key="s">Probation</Pil>,
               ])} />
           ) : (
             <PBody><div className="sub2">No student in {home.deptName} is on probation.{carryovers ? ` ${carryovers} student${carryovers === 1 ? "" : "s"} carry a failed course into ${home.session}.` : ""}</div></PBody>

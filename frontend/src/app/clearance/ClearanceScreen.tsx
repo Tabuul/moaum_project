@@ -133,7 +133,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
               {!position.length ? <Gate state="todo" title="No candidate chosen" sub="Choose a matriculation number in the table." last /> : null}
             </Gates>
             {me && canSign ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
+              <div className="row mt-2">
                 {myUnits.length > 1
                   ? <select className="ws__select" value={unit} onChange={(e) => setUnit(e.target.value)}>{listing.units.filter((u) => myUnits.includes(u.code)).map((u) => <option key={u.code} value={u.code}>{u.label}</option>)}</select>
                   : <span className="sub2">{listing.units.find((u) => u.code === unit)?.label}</span>}

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
+import { Btn, Note } from "@/components/proto/ui";
 
 export function useAct() {
   const router = useRouter();
@@ -130,32 +131,30 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
         <div className="notice notice--info mt-2">
           <p><b>Pay {naira(amount)} to {pd.billerName} on Quickteller.</b></p>
           <p>Your Payment Reference Number (PRN) is <b className="tnum">{pd.prn}</b>. Enter it on any of these — the payment reaches the University and clears your fee automatically:</p>
-          <ul style={{ margin: "6px 0 0 18px" }}>
+          <ul style={{ margin: "6px 0 0 var(--s-4)" }}>
             <li>Online: {pd.payLink ? <a href={pd.payLink} target="_blank" rel="noreferrer">{pd.payLink}</a> : <>Quickteller, biller code <b className="tnum">{pd.billerCode}</b></>}</li>
             <li>USSD: <b className="tnum">{pd.ussd}</b></li>
             <li>Any bank branch or ATM: quote biller code <b className="tnum">{pd.billerCode}</b> and the PRN above.</li>
           </ul>
           <p className="sub2 mt-2">Keep the PRN. After you pay, use &ldquo;I&rsquo;ve paid&rdquo; below — or it is confirmed automatically once the collection reaches the University; the receipt then shows on your Fees page.</p>
           <div className="row">
-            <button type="button" className="btn btn--go btn--sm" disabled={busy} onClick={() => void check(pd.prn)}>{busy ? "Checking…" : "I've paid — check now"}</button>
-            <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={() => setPd(null)}>Choose another way to pay</button>
+            <Btn kind="go" disabled={busy} onClick={() => void check(pd.prn)}>{busy ? "Checking…" : "I've paid — check now"}</Btn>
+            <Btn kind="ghost" disabled={busy} onClick={() => setPd(null)}>Choose another way to pay</Btn>
           </div>
           {checkMsg ? <p className="sub2 mt-2">{checkMsg}</p> : null}
         </div>
       ) : choices ? (
         <div className="row">
           <span className="sub2">Pay {naira(amount)} with</span>
-          {choices.map((g) => <button key={g} type="button" className="btn btn--go" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</button>)}
-          <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setChoices(null)}>Cancel</button>
+          {choices.map((g) => <Btn key={g} kind="go" size="md" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</Btn>)}
+          <Btn kind="ghost" size="md" disabled={busy} onClick={() => setChoices(null)}>Cancel</Btn>
         </div>
       ) : (
-        <button type="button" className="btn btn--go" disabled={busy} onClick={() => void start()}>{busy ? "Opening the checkout…" : `Pay ${naira(amount)} by card or USSD`}</button>
+        <Btn kind="go" size="md" disabled={busy} onClick={() => void start()}>{busy ? "Opening the checkout…" : `Pay ${naira(amount)} by card or USSD`}</Btn>
       )}
       {problem ? (
-        <div style={{ flexBasis: "100%" }}>
-          <div className="notice notice--info mt-2">
-            <p><b>{problem.title ?? "Not now"}.</b> {problem.detail ?? ""} {problem.remedy ? <span className="sub2">{problem.remedy.message}</span> : null}</p>
-          </div>
+        <div className="mt-2" style={{ flexBasis: "100%" }}>
+          <Note kind="info" title={`${problem.title ?? "Not now"}.`}>{problem.detail ?? ""} {problem.remedy ? <span className="sub2">{problem.remedy.message}</span> : null}</Note>
         </div>
       ) : null}
     </>

@@ -194,9 +194,9 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
       <div className="grid grid--2">
         <Panel title="Photograph" right="A recent picture · JPEG or PNG, up to 2 MB">
           <PBody>
-            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+            <div className="row" style={{ gap: "var(--s-4)" }}>
               <Passport w={104} h={128} src={photo} alt={who} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="stack">
                 <label className={`btn btn--primary btn--sm${photoBusy ? " is-disabled" : ""}`} style={{ cursor: "pointer" }}>
                   {photoBusy ? "Uploading…" : photo ? "Replace photograph" : "Upload photograph"}
                   <input type="file" accept="image/jpeg,image/png" hidden disabled={photoBusy} onChange={(e) => void onPhoto(e)} />
@@ -253,7 +253,7 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
 
       <Panel title="" right={saved ? <span className="sub2 ink-green">Saved</span> : undefined}>
         <PBody>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="row" style={{ gap: "var(--s-3)" }}>
             <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save profile"}</Btn>
             <span className="sub2">Every field is optional. What you leave blank is saved as empty, not guessed.</span>
           </div>

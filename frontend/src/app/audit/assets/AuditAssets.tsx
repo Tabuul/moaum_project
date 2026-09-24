@@ -38,7 +38,7 @@ export function AuditAssets({ rows }: { rows: Asset[] }) {
               <span className="sub2" key="loc">{a.location ?? "—"}</span>,
               <span className="tnum sub2" key="c">{a.cost == null ? "—" : money(Number(a.cost))}</span>,
               <Pil kind={COND[a.condition]?.[0] ?? "grey"} key="cond">{COND[a.condition]?.[1] ?? a.condition}</Pil>,
-              <span className="tnum" key="v" style={{ color: overdue ? "var(--red-ink)" : undefined, fontWeight: overdue ? 600 : undefined }}>{a.last_verified_on ? day(a.last_verified_on) : "Never"}</span>,
+              <span className={`tnum${overdue ? " ink-red b600" : ""}`} key="v">{a.last_verified_on ? day(a.last_verified_on) : "Never"}</span>,
             ];
           })} texts={rows.map((a) => `${a.tag} ${a.name} ${a.location ?? ""} ${a.condition}`)} />
         ) : <PBody><div className="sub2">No asset is on the register yet. Assets appear here once the Bursary records them in Stores &amp; assets.</div></PBody>}

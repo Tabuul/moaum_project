@@ -7,10 +7,9 @@
  * the programme are read from that list and shown back, never asked for.
  */
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import { Note } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 /** the show/hide eye that sits inside a password field; crossed out while the text is visible */
@@ -126,7 +125,7 @@ export function Register({ session }: { session: string }) {
           <div className="login-brand__top">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>Admissions {session}</span></div>
+            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Admissions {session}</span></div>
           </div>
           <div style={{ height: 26 }} />
           <h1>Create your application account</h1>
@@ -140,10 +139,7 @@ export function Register({ session }: { session: string }) {
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (found.state === "found") void create(); }}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Post UTME Registration</div>
-            <div className="hint mt-1">Your JAMB registration number first. Everything else follows from it.</div>
-          </div>
+          <PageHead title="Post UTME Registration" description="Your JAMB registration number first. Everything else follows from it." />
           <div className="field">
             <label htmlFor="rj">JAMB registration number</label>
             <input id="rj" className="tnum" value={num} onChange={(e) => setNum(e.target.value)} placeholder="202699176777GF" maxLength={15} autoComplete="off" spellCheck={false} />
@@ -165,7 +161,7 @@ export function Register({ session }: { session: string }) {
             </Note>
           ) : null}
           {found.state === "registered" ? (
-            <Note kind="info" title="An application account already exists for this number" action={<Link href="/login" className="btn btn--primary btn--sm">Sign in</Link>}>
+            <Note kind="info" title="An application account already exists for this number" action={<LinkBtn kind="primary" href="/login">Sign in</LinkBtn>}>
               Sign in with the email and password you chose. A second account would invalidate both.
             </Note>
           ) : null}
@@ -215,16 +211,16 @@ export function Register({ session }: { session: string }) {
                 <div className="hint">{show ? "Both boxes are showing. Nobody standing behind you should be able to read them." : "Asked twice because a password mistyped once locks you out of your own application on the morning of screening, and the portal cannot tell it from a stranger. Tap the eye in the box if you would rather see what you typed."}</div>
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <button className="btn btn--primary" type="submit" disabled={busy}>{busy ? "Creating your account…" : "Continue"}</button>
+              <Btn kind="primary" size="md" type="submit" disabled={busy}>{busy ? "Creating your account…" : "Continue"}</Btn>
             </>
           ) : found.state !== "registered" ? (
             <>
-              <button className="btn btn--primary" type="button" disabled style={{ opacity: 0.45, cursor: "not-allowed" }}>Continue</button>
+              <Btn kind="primary" size="md" disabled style={{ opacity: 0.45, cursor: "not-allowed" }}>Continue</Btn>
               <div className="hint" style={{ textAlign: "center" }}>Enter your JAMB number to continue</div>
             </>
           ) : null}
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <Link href="/login" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>I already have an account</Link>
+          <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
+            <LinkBtn kind="ghost" href="/login">I already have an account</LinkBtn>
           </div>
         </form>
       </div>

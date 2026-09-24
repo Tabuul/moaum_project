@@ -12,11 +12,10 @@
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BiodataChange, ChangeQueue } from "@/lib/student";
 import type { Problem } from "@/lib/api";
-import { Btn, Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -151,12 +150,12 @@ export function BiodataChanges({
         right={state ? `${state.replace("_", " ").toLowerCase()} only` : "Every one carries its evidence, or it waits"}
       >
         {queue.rows.length === 0 ? (
-          <div className="card__body">
+          <PBody>
             <Note kind="info" title="No request has been made">
               A request appears here when a field that changes only on evidence &mdash; nationality, state of origin, the
               refund account &mdash; is asked to change. Until one is, there is nothing to decide.
             </Note>
-          </div>
+          </PBody>
         ) : (
           <DTable
             cols={["Student", "Field", "From", "To", "Evidence", "Action|num"]}
@@ -180,9 +179,9 @@ export function BiodataChanges({
           onClose={() => setDeciding(null)}
           foot={
             <>
-              <Link className="btn btn--ghost btn--sm" href={`/students/${deciding.row.studentId}`}>
+              <LinkBtn kind="ghost" href={`/students/${deciding.row.studentId}`}>
                 Open the record
-              </Link>
+              </LinkBtn>
               <Btn kind="ghost" onClick={() => setDeciding(null)}>
                 Cancel
               </Btn>

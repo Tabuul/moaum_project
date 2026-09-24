@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
+import { Btn, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export default function FirstAccountPage() {
@@ -44,7 +45,7 @@ export default function FirstAccountPage() {
           <div className="login-brand__top">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
+            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
           </div>
           <div style={{ height: 26 }} />
           <h1>The first account</h1>
@@ -53,10 +54,7 @@ export default function FirstAccountPage() {
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); void create(); }}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Create the first account</div>
-            <div className="hint mt-1">Refused once any account exists.</div>
-          </div>
+          <PageHead title="Create the first account" description="Refused once any account exists." />
           {field("secret", "Bootstrap secret", "password", "The value of MOAUM_AUTH_HMAC_SECRET on the API service. It is checked, never stored here.")}
           {field("surname", "Surname")}
           {field("givenNames", "Given names")}
@@ -64,7 +62,7 @@ export default function FirstAccountPage() {
           {field("username", "Username", "text", "The staff number or an email address; what you will type to sign in", "username")}
           {field("password", "Password", "password", "At least ten characters", "new-password")}
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <button className="btn btn--primary" type="submit" disabled={busy || !f.secret || !f.surname || !f.givenNames || !f.username || !f.password}>{busy ? "Creating…" : "Create and sign in"}</button>
+          <Btn kind="primary" size="md" type="submit" disabled={busy || !f.secret || !f.surname || !f.givenNames || !f.username || !f.password}>{busy ? "Creating…" : "Create and sign in"}</Btn>
           <div className="login-help"><a href="/login">Back to sign in</a><span /></div>
         </form>
       </div>

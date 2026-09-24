@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import type { Scope } from "@/lib/scope";
 import { STAGE_LABEL, type SheetListing } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Note, Panel, Pil } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 /** without a sheet chosen, the sheets in scope, to pick one */
@@ -21,7 +20,7 @@ export function PickSheet({ scope, structure, sessions, listing }: { scope: Scop
             <span className="sub2" key="d">{s.deptName}</span>,
             <span className="tnum" key="n">{s.candidates}</span>,
             s.stage === "PUBLISHED" ? <Pil kind="ok" key="s">Senate approved</Pil> : s.stage === "ENTRY" ? <Pil kind="bad" key="s">Not submitted</Pil> : <Pil kind="info" key="s">{STAGE_LABEL[s.stage]?.[0] ?? s.stage}</Pil>,
-            <Link key="a" href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Open</Link>,
+            <LinkBtn key="a" href={`/results/chain?sheet=${s.id}`} kind="ghost">Open</LinkBtn>,
           ])}
           texts={listing.sheets.map((s) => `${s.courseCode} ${s.courseTitle} ${s.deptName} ${s.stage}`)}
         />

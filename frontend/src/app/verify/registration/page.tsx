@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { semesterName } from "@/lib/student-portal";
+import { Note } from "@/components/proto/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -33,59 +34,58 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const approved = v.approvedOn ? new Date(v.approvedOn).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—";
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", fontFamily: "var(--sans)", color: "var(--ink)" }}>
-      <div style={{ width: "100%", maxWidth: 600, background: "#fff", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(20,39,58,.08)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: "2px solid var(--chrome)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-8) var(--s-4)" }}>
+      <div className="card" style={{ width: "100%", maxWidth: 600, overflow: "hidden" }}>
+        <div className="card__head" style={{ borderBottom: "2px solid var(--chrome)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--amber)", fontWeight: 700 }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--chrome)" }}>Course registration verification</div>
+          <div className="grow">
+            <div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+            <div className="phead__t ink-chrome">Course registration verification</div>
           </div>
         </div>
 
-        <div style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 10, marginBottom: 16,
-            background: ok ? "var(--green-bg)" : "var(--red-bg)", border: `1px solid ${ok ? "var(--green-line)" : "var(--red-line)"}`, color: ok ? "var(--green-ink)" : "var(--red-deep)" }}>
-            <span style={{ fontSize: 22 }}>{ok ? "✓" : "✕"}</span>
-            <div>
-              <div className="b700 t-md">{ok ? "Genuine form — this is the University's record" : "Not verified"}</div>
-              <div style={{ fontSize: 12.5 }}>{ok
-                ? "Check that the courses, units and approval date below match the form in hand."
-                : "No approved registration matches this code. Treat the form as not genuine."}</div>
-            </div>
-          </div>
+        <div className="card__body">
+          <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine form — this is the University's record" : "Not verified"}>
+            {ok
+              ? "Check that the courses, units and approval date below match the form in hand."
+              : "No approved registration matches this code. Treat the form as not genuine."}
+          </Note>
 
           {ok ? (
             <>
-              <div style={{ marginBottom: 16 }}>
+              <div>
                 {[["Name", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
                   ["Level", v.level ? `${v.level} Level` : "—"], ["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"],
                   ["Total credit units", v.units != null ? String(v.units) : "—"], ["Approved on", approved]].map(([k, val], i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--line-2)", fontSize: 13.5 }}>
-                    <span style={{ color: "var(--muted)", fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</span>
-                    <span style={{ fontWeight: k === "Name" ? 700 : 500, textAlign: "right" }}>{val}</span>
+                  <div key={i} className="row row--between" style={{ padding: "var(--s-2) 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <span className="eyebrow">{k}</span>
+                    <span className={k === "Name" ? "b700" : "b600"} style={{ textAlign: "right" }}>{val}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em", margin: "4px 0 6px" }}>Registered courses</div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-                <tbody>
-                  {(v.courses ?? []).map((co, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid var(--line-2)" }}>
-                      <td style={{ padding: "7px 8px 7px 0", fontWeight: 600, whiteSpace: "nowrap" }}>{co.course_code}</td>
-                      <td style={{ padding: "7px 0" }}>{co.title}</td>
-                      <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--muted)", whiteSpace: "nowrap" }}>{co.units}u</td>
-                      <td style={{ padding: "7px 0", textAlign: "right", color: "var(--muted)", whiteSpace: "nowrap" }}>{courseType(co)}</td>
-                    </tr>
-                  ))}
-                  {!(v.courses ?? []).length ? <tr><td style={{ padding: "7px 0", color: "var(--faint)" }}>No approved courses on record for this semester.</td></tr> : null}
-                </tbody>
-              </table>
+              <div>
+                <div className="eyebrow mb-1">Registered courses</div>
+                <div className="tablewrap">
+                  <table className="tbl--data">
+                    <tbody>
+                      {(v.courses ?? []).map((co, i) => (
+                        <tr key={i}>
+                          <td className="b600" style={{ whiteSpace: "nowrap" }}>{co.course_code}</td>
+                          <td>{co.title}</td>
+                          <td className="ink-muted" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{co.units}u</td>
+                          <td className="ink-muted" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{courseType(co)}</td>
+                        </tr>
+                      ))}
+                      {!(v.courses ?? []).length ? <tr><td className="ink-faint">No approved courses on record for this semester.</td></tr> : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </>
           ) : null}
 
-          <p style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 18, lineHeight: 1.5 }}>
+          <p className="sub2 ink-faint m-0 mt-1">
             This page reads the University&rsquo;s register directly. The form is a view of the register, not the register
             itself; where the printed courses, units or approval date differ from what is shown here, the record here is the
             truth. Verified {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.

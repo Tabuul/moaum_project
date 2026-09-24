@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import type { Programme } from "@/lib/caps";
 import { norm } from "@/lib/caps";
 import type { Problem } from "@/lib/api";
-import { Btn, Panel } from "@/components/proto/ui";
+import { Btn, Panel, PBody } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -118,17 +118,17 @@ export function AliasMapper({
         })}
       />
       {problem ? (
-        <div className="card__body">
+        <PBody>
           <ProblemNotice problem={problem} />
-        </div>
+        </PBody>
       ) : null}
-      <div className="card__body">
+      <PBody>
         <div className="sub2">
           A suggestion is offered where the University&rsquo;s own name matches once the award prefix is set aside; it
           is still your act, recorded against your office, because it decides what degree these candidates are
           admitted to. Once mapped, the file is read again here without re-uploading.
         </div>
-      </div>
+      </PBody>
     </Panel>
   );
 }

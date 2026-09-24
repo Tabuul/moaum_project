@@ -13,10 +13,10 @@ interface MyTransfer {
 export default async function TransferLetterPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await api<MyTransfer>("/api/v1/me/transfer");
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
   const app = data.data.applications.find((a) => a.id === id) ?? null;
   if (!app || !["APPROVED", "EFFECTED"].includes(app.state)) {
-    return <div style={{ padding: 24 }}>No approval letter is available for this application yet.</div>;
+    return <div style={{ padding: "var(--s-6)" }}>No approval letter is available for this application yet.</div>;
   }
   return <TransferLetter student={data.data.student} app={app} />;
 }

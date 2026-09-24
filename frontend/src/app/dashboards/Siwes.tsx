@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 export interface SiwesOffering { id: string; course_code: string; title: string; dept_name: string; students: number; assigned: number; sheet_stage: string | null }
@@ -15,15 +14,15 @@ export function SiwesDashboard({ me, offerings, semester }: { me: Me | null; off
   return (
     <>
       {!offerings.length ? (
-        <Note kind="info" title={`No SIWES course in your department this semester`} action={<Link href="/siwes" className="btn btn--primary btn--sm">SIWES desk</Link>}>
+        <Note kind="info" title={`No SIWES course in your department this semester`} action={<LinkBtn kind="primary" href="/siwes">SIWES desk</LinkBtn>}>
           Industrial-training courses appear here once they are offered for the semester. This dashboard shows the second-semester sitting.
         </Note>
       ) : unsupervised ? (
-        <Note kind="bad" title={`${unsupervised} SIWES student${unsupervised === 1 ? " has" : "s have"} no supervisor`} action={<Link href="/siwes" className="btn btn--urgent btn--sm">Assign supervisors</Link>}>
+        <Note kind="bad" title={`${unsupervised} SIWES student${unsupervised === 1 ? " has" : "s have"} no supervisor`} action={<LinkBtn kind="urgent" href="/siwes">Assign supervisors</LinkBtn>}>
           A student is assessed by their assigned supervisor; until one is assigned they cannot be scored. Assign the remaining supervisors on the SIWES desk.
         </Note>
       ) : (
-        <Note kind="ok" title="Every SIWES student has a supervisor" action={<Link href="/siwes" className="btn btn--ghost btn--sm">SIWES desk</Link>}>
+        <Note kind="ok" title="Every SIWES student has a supervisor" action={<LinkBtn kind="ghost" href="/siwes">SIWES desk</LinkBtn>}>
           All industrial-training students are assigned. The supervisors&rsquo; and the visit marks combine into the result.
         </Note>
       )}
@@ -53,9 +52,9 @@ export function SiwesDashboard({ me, offerings, semester }: { me: Me | null; off
       <Panel title="SIWES desks" right={me?.name ? `Signed in as ${me.name}` : "SIWES"}>
         <PBody>
           <div className="grid--fill">
-            <Link href="/siwes" className="btn btn--ghost btn--sm">SIWES supervision</Link>
-            <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
-            <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>
+            <LinkBtn kind="ghost" href="/siwes">SIWES supervision</LinkBtn>
+            <LinkBtn kind="ghost" href="/results/desk">Result desk</LinkBtn>
+            <LinkBtn kind="ghost" href="/students">Students</LinkBtn>
           </div>
         </PBody>
       </Panel>

@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export default async function ReleasePage() {
   const me = await api<Me>("/api/v1/iam/me");
   const step = (n: number, title: string, body: string) => (
-    <div style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: n > 1 ? "1px solid var(--line-2)" : undefined }}>
-      <div style={{ flex: "0 0 26px", height: 26, borderRadius: 13, background: "var(--sky-bg)", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{n}</div>
+    <div className="row row--top" style={{ gap: "var(--s-3)", padding: "var(--s-3) 0", borderTop: n > 1 ? "1px solid var(--line-2)" : undefined }}>
+      <div className="b700" style={{ flex: "0 0 26px", height: 26, borderRadius: "var(--r-pill)", background: "var(--sky-bg)", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center" }}>{n}</div>
       <div><b>{title}</b><div className="sub2">{body}</div></div>
     </div>
   );

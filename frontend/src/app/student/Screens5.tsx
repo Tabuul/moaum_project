@@ -10,10 +10,9 @@
  * issued, the transcript request staged as the Registry stages it.
  */
 import { useState } from "react";
-import Link from "next/link";
 import type { Card, Docket, Me, Queries, Results, Timetable, Transcripts } from "@/lib/student-portal";
 import { STAGE_LABEL, WEEKDAY, semesterName } from "@/lib/student-portal";
-import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -116,7 +115,7 @@ export function Exams({ d }: { d: Docket; s: Me }) {
   return (
     <>
       {d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
-        : !cleared ? <Note kind="bad" title="Your docket is withheld until your fees are settled" action={<Link href="/student/fees" className="btn btn--urgent btn--sm">Fees & payments</Link>}>Under the scheme in force, sitting an examination is released on payment in full. The papers below are what your approved registration carries; the docket prints the moment the Bursary&rsquo;s position releases it.</Note>
+        : !cleared ? <Note kind="bad" title="Your docket is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, sitting an examination is released on payment in full. The papers below are what your approved registration carries; the docket prints the moment the Bursary&rsquo;s position releases it.</Note>
           : <Note kind="info" title="Bring your identity card">Your photograph is checked against the record on file before the paper opens. Arrive 20 minutes early &mdash; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
       {!withPapers.length ? (
         <Note kind="info" title={`No examination session is open for ${d.session} yet`}>Papers appear here when the Examinations Office opens the session over your approved registration and timetables them.</Note>
@@ -128,7 +127,7 @@ export function Exams({ d }: { d: Docket; s: Me }) {
             <span key="v">{p.venue ?? "—"}</span>,
             !cleared ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Docket ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
           ])} />
-          {cleared ? <div className="card__body" style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+          {cleared ? <div className="card__body row">
             <a href={`/student/exams/card/pdf?session=${encodeURIComponent(x.session)}&semester=${x.semester}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download exam card</a>
             <Btn kind="ghost" onClick={(e) => { const card = (e.currentTarget as HTMLElement).closest(".card") as HTMLElement | null; printNode(card, card?.querySelector(".card__title")?.textContent ?? "Examination docket"); }}>Print the docket</Btn>
             <span className="sub2">The card carries your photograph and a QR the invigilator scans to verify it — it cannot be cloned.</span>
@@ -182,7 +181,7 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
       <Panel title={`Attendance · ${t.session} · ${semesterName(t.semester)} semester`} right="Recorded by the lecturer at each lecture">
         <DTable cols={["Course", "Attended|mid", "Held|mid", "Rate", "Status|num"]} rows={t.attendance.map((a) => [
           <Two key="c" a={a.course_code} b={a.title} />, <span className="tnum" key="a">{a.attended}</span>, <span className="tnum" key="h">{a.held}</span>,
-          a.rate === null ? <span className="sub2" key="r">—</span> : <div key="r" style={{ display: "flex", alignItems: "center", gap: 9 }}><Bar pct={a.rate} colour={a.rate >= 75 ? "var(--green)" : "var(--red)"} /><span className="tnum b600">{a.rate}%</span></div>,
+          a.rate === null ? <span className="sub2" key="r">—</span> : <div key="r" className="row"><Bar pct={a.rate} colour={a.rate >= 75 ? "var(--green)" : "var(--red)"} /><span className="tnum b600">{a.rate}%</span></div>,
           a.rate === null ? <Pil kind="grey" key="s">Not yet held</Pil> : a.rate >= 75 ? <Pil kind="ok" key="s">Eligible</Pil> : <Pil kind="bad" key="s">At risk</Pil>,
         ])} />
       </Panel>
@@ -222,7 +221,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
       ) : !c.matricNo ? (
         <Note kind="info" title="A card is made after matriculation">It is keyed on the matriculation number, which you do not have yet.</Note>
       ) : c.clearsIdCard === false ? (
-        <Note kind="bad" title="Your card waits on the Bursary's clearance" action={<Link href="/student/fees" className="btn btn--urgent btn--sm">Fees & payments</Link>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
+        <Note kind="bad" title="Your card waits on the Bursary's clearance" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
       ) : (
         <Note kind="info" title="Your card has not been issued yet">This is what your card will carry. The Library prints it and Security hands it over — bring your fee receipt to the Library; your photograph and signature are checked at the counter. The printable copy opens once the card is issued.</Note>
       )}
@@ -234,10 +233,10 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
           </PBody>
         </Panel>
       ) : null}
-      <div className="card"><div className="card__body" style={{ flexDirection: "row", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--top" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
         <Passport w={112} h={139} radius={5} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
-        <div style={{ flexGrow: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
+        <div className="grow" style={{ minWidth: 220 }}>
+          <div className="phead__t">{s.name}</div>
           <div className="sub2 tnum">{s.matricNo ?? s.admissionNo} &middot; {s.programme} &middot; {s.level} Level</div>
           <KvGrid cls="grid--2" pairs={[["Card number", <span className="tnum" key="n">{live?.card_no ?? "—"}</span>], ["Valid to", live ? onDay(live.valid_to) : "—"], ["Faculty", s.faculty], ["Department", s.department]]} />
         </div>
@@ -246,7 +245,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
         <div className="row">
           <a href="/student/idcard/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Open the printable copy</a>
           <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record; the Library issues a replacement."); if (!reason) return; void act("lost", "POST", "/me/id-card/lost", { reason }, `Identity card reported lost: ${reason}`); }}>{busy === "lost" ? "Reporting…" : "Report it lost"}</Btn>
-          <Link href="/student/support" className="btn btn--ghost btn--sm">Request a replacement</Link>
+          <LinkBtn kind="ghost" href="/student/support">Request a replacement</LinkBtn>
         </div>
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}

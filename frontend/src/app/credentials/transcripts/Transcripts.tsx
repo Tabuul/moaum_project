@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { DESTINATION, type TranscriptQueue } from "@/lib/credentials";
-import { Ico } from "@/components/proto/ui";
+import { Btn, Ico, Note, Panel, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; actingOffice: string | null }) {
@@ -31,26 +31,21 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
 
   return (
     <>
-      <div className="grid grid--4">
-        <div className="tile"><span className="eyebrow">Open requests</span><span className="n tnum">{t.open}</span><span className="c">Across all destinations</span></div>
-        <div className="tile"><span className="eyebrow">Held at clearance</span><span className="n tnum ink-red">{t.heldAtClearance}</span><span className="c">Cannot be produced yet</span></div>
-        <div className="tile"><span className="eyebrow">Breaching SLA</span><span className="n tnum ink-red">{t.breachingSla}</span><span className="c">Over 5 working days</span></div>
-        <div className="tile"><span className="eyebrow">Average turnaround</span><span className="n tnum">{t.averageTurnaroundDays === null ? "—" : `${t.averageTurnaroundDays} days`}</span><span className="c">Against a 10-day standard</span></div>
-      </div>
+      <Tiles items={[
+        ["Open requests", t.open, null, "Across all destinations"],
+        ["Held at clearance", t.heldAtClearance, "var(--red-ink)", "Cannot be produced yet"],
+        ["Breaching SLA", t.breachingSla, "var(--red-ink)", "Over 5 working days"],
+        ["Average turnaround", t.averageTurnaroundDays === null ? "—" : `${t.averageTurnaroundDays} days`, null, "Against a 10-day standard"],
+      ]} />
 
-      <div className="notice notice--info">
-        <Ico name="alert" size={18} stroke="var(--chrome)" w={2} />
-        <div>
-          <div className="notice__t ink-chrome">Production is never manual re-typing</div>
-          <p style={{ color: "#124A63" }}>Every transcript is generated from the approved academic record. Exams &amp; Records verifies it, the Registrar signs it — no one keys a grade at this stage.</p>
-        </div>
-      </div>
+      <Note kind="info" title="Production is never manual re-typing">
+        Every transcript is generated from the approved academic record. Exams &amp; Records verifies it, the Registrar signs it — no one keys a grade at this stage.
+      </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      <div className="card">
-        <div className="card__head"><span className="card__title">Production queue</span><span className="sub2 ml-auto">Oldest first · SLA clock runs from payment</span></div>
+      <Panel title="Production queue" right="Oldest first · SLA clock runs from payment">
         <div className="tablewrap">
-          <table style={{ minWidth: 940 }}>
+          <table className="tbl--data" style={{ minWidth: 940 }}>
             <thead><tr><th>Request</th><th>Student</th><th>Destination</th><th className="mid">Clearance</th><th className="mid">SLA</th><th>Stage</th><th className="num">Action</th></tr></thead>
             <tbody>
               {queue.requests.length === 0 ? <tr><td colSpan={7} className="sub2">No transcript request is open. Requests arrive from students and alumni; the Academic Office can raise one on a student&rsquo;s behalf through the API.</td></tr> : null}
@@ -67,14 +62,14 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
                     <td>{r.surname}, {r.otherNames}<div className="sub2 tnum">{r.number}</div></td>
                     <td>{DESTINATION[r.destination] ?? r.destination}{r.destinationName ? ` — ${r.destinationName}` : ""}<div className="sub2">{r.mode === "SEALED" ? "Sealed hard copy" : "Digital"}{r.express ? " · express" : ""} · {r.copies} cop{r.copies > 1 ? "ies" : "y"}</div></td>
                     <td className="mid">{r.unitsCleared >= 3 ? <span className="pill pill--ok">3 of 3</span> : <span className="pill pill--bad">{r.unitsCleared} of 3</span>}</td>
-                    <td className="mid tnum" style={breaching ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{slaDay === null ? "—" : actionStage === "VERIFICATION" ? "—" : `Day ${slaDay}${breaching ? " ⚠" : ""}`}</td>
+                    <td className={`mid tnum${breaching ? " ink-red b700" : ""}`}>{slaDay === null ? "—" : actionStage === "VERIFICATION" ? "—" : <>Day {slaDay}{breaching ? <> <Ico name="alert" size={14} /></> : null}</>}</td>
                     <td><span className={`pill ${stage[1]}`}>{stage[0]}</span>{r.heldBy && actionStage === "BLOCKED" ? <div className="sub2 ink-red">{r.heldBy}: {r.heldReason ?? "not cleared"}</div> : null}{breaching ? <div className="sub2 ink-red">Past the 5-day standard</div> : null}</td>
                     <td className="num">
-                      {actionStage === "NOT_PAYABLE" ? (signer ? <button className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => void post(r.id, "mark-paid", `${r.ref} recorded as paid`)}>Record payment</button> : <button className="btn btn--sm" disabled>Not payable yet</button>)
-                        : actionStage === "BLOCKED" ? <button className="btn btn--sm" disabled title={`${r.heldBy} has not cleared this student`}>Blocked — {r.heldBy}</button>
-                        : actionStage === "PRODUCE" ? <button className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void post(r.id, "produce", `${r.ref} produced and verified`)}>{busy === r.id ? "Producing…" : "Produce & verify"}</button>
-                        : actionStage === "RELEASE" ? <button className="btn btn--go btn--sm" disabled={busy !== null || !signer} title={signer ? undefined : "The Registrar signs"} onClick={() => void post(r.id, "release", `${r.ref} signed and released`)}>{busy === r.id ? "Signing…" : "Sign & release"}</button>
-                        : <button className="btn btn--ghost btn--sm">View verification</button>}
+                      {actionStage === "NOT_PAYABLE" ? (signer ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void post(r.id, "mark-paid", `${r.ref} recorded as paid`)}>Record payment</Btn> : <Btn kind="ghost" disabled>Not payable yet</Btn>)
+                        : actionStage === "BLOCKED" ? <Btn kind="ghost" disabled title={`${r.heldBy} has not cleared this student`}>Blocked — {r.heldBy}</Btn>
+                        : actionStage === "PRODUCE" ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(r.id, "produce", `${r.ref} produced and verified`)}>{busy === r.id ? "Producing…" : "Produce & verify"}</Btn>
+                        : actionStage === "RELEASE" ? <Btn kind="go" disabled={busy !== null || !signer} title={signer ? undefined : "The Registrar signs"} onClick={() => void post(r.id, "release", `${r.ref} signed and released`)}>{busy === r.id ? "Signing…" : "Sign & release"}</Btn>
+                        : <Btn kind="ghost">View verification</Btn>}
                     </td>
                   </tr>
                 );
@@ -82,7 +77,7 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
             </tbody>
           </table>
         </div>
-      </div>
+      </Panel>
     </>
   );
 }

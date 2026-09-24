@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -119,8 +119,8 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
         <Note kind="ok" title="The books are up to date">Every confirmed payment, paid refund and paid voucher is on the ledger. Run Sync again whenever new ones are confirmed.</Note>
       )}
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "12px 0" }}>
-        {TABS.map(([t, label]) => <Btn key={t} kind={tab === t ? "primary" : "ghost"} onClick={() => setTab(t)}>{label}</Btn>)}
+      <div className="row row--tight" style={{ margin: "var(--s-3) 0" }}>
+        <Tabs items={TABS.map(([t, label]) => ({ id: t, label }))} value={tab} onChange={setTab} label="The books" />
         <span className="grow" />
         {may ? <Btn kind="go" disabled={busy !== null} onClick={() => { setJDate(today()); setJMemo(""); setJLines([emptyLine(), emptyLine()]); setPosting(true); }}>New journal</Btn> : null}
         {may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void call("sync", "/sync", {}, "Ledger sync from the accounting screen")}>{busy === "sync" ? "Syncing…" : "Sync"}</Btn> : null}
@@ -132,7 +132,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
             <div className="sub2">The accounting module keeps a proper set of double-entry books over the money the finance desk records. Money enters the ledger automatically when a payment is confirmed, a refund is paid, or a voucher is paid; the Bursar posts opening balances and adjustments by hand. Use the tabs above for the trial balance and the financial statements. Everything is cash-basis: income is recognised when received, expenditure when paid.</div>
           </PBody>
           <DTable cols={["Account", "Type", "|num"]} rows={chart.map((a) => [
-            <span key="n" style={{ paddingLeft: a.parent_code ? 16 : 0 }}>{a.postable ? a.name : <strong>{a.name}</strong>} <span className="sub2">{a.code}</span></span>,
+            <span key="n" style={{ paddingLeft: a.parent_code ? "var(--s-4)" : 0 }}>{a.postable ? a.name : <strong>{a.name}</strong>} <span className="sub2">{a.code}</span></span>,
             <span className="sub2" key="t">{a.type[0] + a.type.slice(1).toLowerCase()}</span>,
             <span className="sub2" key="s">{a.normal_side === "D" ? "Debit" : "Credit"}</span>,
           ])} />
@@ -172,7 +172,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
             <span key="d" className="sub2 tnum">{j.entry_date}</span>,
             <span key="m">{j.memo} {j.source === "AUTO" ? <Pil kind="grey">Auto</Pil> : <Pil kind="info">Manual</Pil>}{j.status === "REVERSED" ? <Pil kind="bad">Reversed</Pil> : null}</span>,
             <span key="t" className="tnum">{naira(j.total)}</span>,
-            <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <span key="x" className="row row--tight row--right">
               <Btn kind="ghost" onClick={() => setExpanded(expanded === j.id ? null : j.id)}>{expanded === j.id ? "Hide" : "Lines"}</Btn>
               {may && j.status === "POSTED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { setReason(""); setReversing(j); }}>Reverse</Btn> : null}
             </span>,
@@ -199,14 +199,14 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
         <Panel title="Account ledger">
           <PBody>
             <div className="row row--end">
-              <div className="field" style={{ minWidth: 240, margin: 0 }}><label htmlFor="led-a">Account</label>
-                <select id="led-a" className="ctl" value={ledAccount} onChange={(e) => setLedAccount(e.target.value)}>
+              <Field id="led-a" label="Account">
+                <select id="led-a" className="ctl" style={{ minWidth: 240 }} value={ledAccount} onChange={(e) => setLedAccount(e.target.value)}>
                   <option value="">Choose an account…</option>
                   {postable.map((a) => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
                 </select>
-              </div>
-              <div className="field" style={{ minWidth: 140, margin: 0 }}><label htmlFor="led-f">From</label><input id="led-f" type="date" className="ctl tnum" value={ledFrom} onChange={(e) => setLedFrom(e.target.value)} /></div>
-              <div className="field" style={{ minWidth: 140, margin: 0 }}><label htmlFor="led-t">To</label><input id="led-t" type="date" className="ctl tnum" value={ledTo} onChange={(e) => setLedTo(e.target.value)} /></div>
+              </Field>
+              <Field id="led-f" label="From"><input id="led-f" type="date" className="ctl tnum" style={{ minWidth: 140 }} value={ledFrom} onChange={(e) => setLedFrom(e.target.value)} /></Field>
+              <Field id="led-t" label="To"><input id="led-t" type="date" className="ctl tnum" style={{ minWidth: 140 }} value={ledTo} onChange={(e) => setLedTo(e.target.value)} /></Field>
               <Btn kind="primary" disabled={!ledAccount || busy !== null} onClick={() => void loadLedger()}>{busy === "ledger" ? "Loading…" : "Show"}</Btn>
             </div>
           </PBody>
@@ -227,7 +227,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       {posting ? (
         <Modal title="Post a journal" sub="A balanced entry — opening balances, an adjustment, a correction" onClose={() => setPosting(false)}
           foot={<><Btn kind="ghost" onClick={() => setPosting(false)}>Cancel</Btn><span className="grow" />
-            <span className="sub2 tnum" style={{ alignSelf: "center", color: balanced ? "var(--green-ink)" : "var(--red-ink)" }}>Dr {naira(jDr)} · Cr {naira(jCr)}</span>
+            <span className={`sub2 tnum ${balanced ? "ink-green" : "ink-red"}`} style={{ alignSelf: "center" }}>Dr {naira(jDr)} · Cr {naira(jCr)}</span>
             <Btn kind="go" disabled={!balanced || !jMemo.trim() || busy !== null} onClick={async () => {
               const ok = await call("journal", "/journals", {
                 date: jDate, memo: jMemo.trim(),
@@ -242,20 +242,20 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
             <Field id="j-memo" label="Narrative"><input id="j-memo" className="ctl" value={jMemo} onChange={(e) => setJMemo(e.target.value)} placeholder="e.g. Opening balances 2025/2026" /></Field>
           </div>
           {jLines.map((l, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-end", marginBottom: 6, flexWrap: "wrap" }}>
-              <div className="field" style={{ flex: "2 1 180px", margin: 0 }}><label>Account</label>
+            <div key={i} className="row row--tight row--end mb-2">
+              <div className="field" style={{ flex: "2 1 180px" }}><label>Account</label>
                 <select className="ctl" value={l.account} onChange={(e) => setJLines(jLines.map((x, k) => k === i ? { ...x, account: e.target.value } : x))}>
                   <option value="">Choose…</option>
                   {postable.map((a) => <option key={a.code} value={a.code}>{a.code} — {a.name}</option>)}
                 </select>
               </div>
-              <div className="field" style={{ flex: "1 1 100px", margin: 0 }}><label>Debit</label><input className="ctl tnum" inputMode="decimal" value={l.debit} onChange={(e) => setJLines(jLines.map((x, k) => k === i ? { ...x, debit: e.target.value, credit: e.target.value ? "" : x.credit } : x))} /></div>
-              <div className="field" style={{ flex: "1 1 100px", margin: 0 }}><label>Credit</label><input className="ctl tnum" inputMode="decimal" value={l.credit} onChange={(e) => setJLines(jLines.map((x, k) => k === i ? { ...x, credit: e.target.value, debit: e.target.value ? "" : x.debit } : x))} /></div>
+              <div className="field" style={{ flex: "1 1 100px" }}><label>Debit</label><input className="ctl tnum" inputMode="decimal" value={l.debit} onChange={(e) => setJLines(jLines.map((x, k) => k === i ? { ...x, debit: e.target.value, credit: e.target.value ? "" : x.credit } : x))} /></div>
+              <div className="field" style={{ flex: "1 1 100px" }}><label>Credit</label><input className="ctl tnum" inputMode="decimal" value={l.credit} onChange={(e) => setJLines(jLines.map((x, k) => k === i ? { ...x, credit: e.target.value, debit: e.target.value ? "" : x.debit } : x))} /></div>
               <Btn kind="ghost" disabled={jLines.length <= 2} onClick={() => setJLines(jLines.filter((_, k) => k !== i))}>✕</Btn>
             </div>
           ))}
           <Btn kind="ghost" onClick={() => setJLines([...jLines, emptyLine()])}>Add a line</Btn>
-          {!balanced && jDr + jCr > 0 ? <div className="sub2" style={{ marginTop: 8, color: "var(--red-ink)" }}>Debits must equal credits before you can post.</div> : null}
+          {!balanced && jDr + jCr > 0 ? <div className="sub2 mt-2 ink-red">Debits must equal credits before you can post.</div> : null}
         </Modal>
       ) : null}
 
@@ -293,8 +293,8 @@ function statementRows(rows: IeRow[], kind: "ie" | "bs"): React.ReactNode[][] {
     const group = rows.filter((x) => x.section === sec);
     if (!group.length || seen.has(sec)) continue;
     seen.add(sec);
-    out.push([<span key="h" className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".04em" }}>{SECTION_LABEL[sec] ?? sec}</span>, <span key="a" />]);
-    for (const r of group) out.push([<span key="n" style={{ paddingLeft: 16 }}>{r.name}{r.code ? <span className="sub2"> {r.code}</span> : null}</span>, <span key="a" className="tnum">{naira(r.amount)}</span>]);
+    out.push([<span key="h" className="eyebrow">{SECTION_LABEL[sec] ?? sec}</span>, <span key="a" />]);
+    for (const r of group) out.push([<span key="n" style={{ paddingLeft: "var(--s-4)" }}>{r.name}{r.code ? <span className="sub2"> {r.code}</span> : null}</span>, <span key="a" className="tnum">{naira(r.amount)}</span>]);
   }
   return out;
 }

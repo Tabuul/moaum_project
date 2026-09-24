@@ -241,8 +241,8 @@ export function AdmissionSettings({
                 </Btn>
               </>
             ) : null}
-            <div className="sub2" style={{ margin: "14px 0 6px" }}>Or begin blank, with the NUC approved quota:</div>
-            <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="sub2 mt-4 mb-2">Or begin blank, with the NUC approved quota:</div>
+            <div className="row">
               <input className="tnum ws__in" style={{ width: 110 }} value={newQuota} placeholder="10198" onChange={(e) => setNewQuota(e.target.value)} disabled={!may} />
               <Btn
                 kind="ghost"
@@ -271,7 +271,7 @@ export function AdmissionSettings({
             <DTable
               cols={["Session", "State|mid"]}
               rows={sessions.map((s) => [
-                <a key="s" href={`/admissions/settings?session=${encodeURIComponent(s.session)}`} style={{ fontWeight: 600, color: "var(--chrome)" }}>{s.session}</a>,
+                <a key="s" href={`/admissions/settings?session=${encodeURIComponent(s.session)}`} className="b600" style={{ color: "var(--chrome)" }}>{s.session}</a>,
                 s.state === "IN_FORCE" ? <Pil kind="ok" key="p">in force</Pil> : <Pil kind="grey" key="p">{s.state.toLowerCase()}</Pil>,
               ])}
             />
@@ -335,7 +335,7 @@ export function AdmissionSettings({
                 <span className="sub2" key="e">68.5 of 100 &rarr; <b className="tnum">{Math.round(68.5 * policy.weightPutme) / 100}</b></span>],
               [<strong key="a">Aggregate</strong>,
                 <b className="tnum" key="t" style={{ color: policy.weightUtme + policy.weightPutme === 100 ? "var(--green-ink)" : "var(--red-ink)" }}>{policy.weightUtme + policy.weightPutme} %</b>,
-                <strong className="tnum" style={{ fontSize: 15 }} key="x">{aggregate(247, 68.5).toFixed(2)}</strong>],
+                <strong className="tnum t-md" key="x">{aggregate(247, 68.5).toFixed(2)}</strong>],
             ]}
           />
         </PBody>
@@ -357,7 +357,7 @@ export function AdmissionSettings({
                   void send("PUT", `${base}/criteria`, { ...Object.fromEntries(CRITERIA.map((c) => [c, critMap[c] ?? 0])), [k]: v ?? 0 }, `${CRIT_LABEL[k][0]} share changed`, "c"))} %
               </span>,
             ]),
-            [<strong key="t">Total</strong>, "", <b className="tnum" key="v" style={{ fontSize: 15, color: critTotal === 100 ? "var(--green-ink)" : "var(--red-ink)" }}>{critTotal} %</b>],
+            [<strong key="t">Total</strong>, "", <b className="tnum t-md" key="v" style={{ color: critTotal === 100 ? "var(--green-ink)" : "var(--red-ink)" }}>{critTotal} %</b>],
           ]}
         />
       </Panel>
@@ -575,9 +575,9 @@ export function AdmissionSettings({
                 const allow = ("pr-allow" in edits ? edits["pr-allow"] : (editingProgramme.olevelAllowances ?? []).join(",")).split(",").map((s) => s.trim()).filter(Boolean);
                 const toggle = (subject: string) => { const s = new Set(allow); if (s.has(subject)) s.delete(subject); else s.add(subject); setEdits({ ...edits, "pr-allow": [...s].join(",") }); };
                 return (
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <div className="row" style={{ gap: "var(--s-4)" }}>
                     {["English Language", "Mathematics"].map((subject) => (
-                      <label key={subject} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                      <label key={subject} className="sub2 row" style={{ cursor: "pointer" }}>
                         <input type="checkbox" className="pchk" disabled={policy.inForce} checked={allow.includes(subject)} onChange={() => toggle(subject)} /> Accept a pass in {subject}
                       </label>
                     ))}
@@ -624,16 +624,14 @@ export function AdmissionSettings({
           <div className="eyebrow">Put the {session} settings in force</div>
           {policy.inForce ? (
             <>
-              <div className="field">
-                <label htmlFor="as-reaffirm">Central Admissions Committee minute (re-affirmation)</label>
-                <input id="as-reaffirm" value={reaffirm} onChange={(e) => setReaffirm(e.target.value)} placeholder={policy.instrument ?? "CAC/2026/08"} autoComplete="off" disabled={!may} />
-                <div className="hint">
+              <Field id="as-reaffirm" label="Central Admissions Committee minute (re-affirmation)" hint={<>
                   In force under <b>{policy.instrument}</b>
                   {policy.inForceSince ? <> since {new Date(policy.inForceSince).toLocaleDateString("en-GB")}</> : null}. A placement or cut-off
                   adjusted here takes effect at once. Leave this blank to re-affirm under <b>{policy.instrument}</b>, or type a fresh minute
                   for a new decision. The earlier citation stays readable either way.
-                </div>
-              </div>
+                </>}>
+                <input id="as-reaffirm" value={reaffirm} onChange={(e) => setReaffirm(e.target.value)} placeholder={policy.instrument ?? "CAC/2026/08"} autoComplete="off" disabled={!may} />
+              </Field>
               {reaffirmRefusal ? <Note kind="bad" title="Refused">{reaffirmRefusal}</Note> : null}
               {problem ? <ProblemNotice problem={problem} /> : null}
               <Btn
@@ -651,14 +649,12 @@ export function AdmissionSettings({
             </>
           ) : (
             <>
-              <div className="field">
-                <label htmlFor="as-instr">Central Admissions Committee minute</label>
-                <input id="as-instr" value={instrument} onChange={(e) => setInstrument(e.target.value)} placeholder="CAC/2026/07" autoComplete="off" disabled={locked} />
-                <div className="hint">
+              <Field id="as-instr" label="Central Admissions Committee minute" hint={<>
                   Settings without an instrument are somebody&rsquo;s opinion about a cut-off. Every candidate admitted this session is
                   admitted under this minute, and it is what the University produces when one of them is queried in four years&rsquo; time.
-                </div>
-              </div>
+                </>}>
+                <input id="as-instr" value={instrument} onChange={(e) => setInstrument(e.target.value)} placeholder="CAC/2026/07" autoComplete="off" disabled={locked} />
+              </Field>
               {refusal ? <Note kind="bad" title="Refused">{refusal}</Note> : null}
               {problem ? <ProblemNotice problem={problem} /> : null}
               <Btn

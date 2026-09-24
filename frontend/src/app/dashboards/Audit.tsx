@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import type { Posture } from "@/app/security/Security";
-import { Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 export interface AuditEntry { occurred_at: string; actor_name: string | null; actor_office: string | null; action: string; subject_type: string; reason: string | null }
@@ -18,11 +17,11 @@ export function AuditDashboard({ me, posture, feed }: { me: Me | null; posture: 
   return (
     <>
       {off ? (
-        <Note kind="bad" title={`${off} state table${off === 1 ? " is" : "s are"} not on the audit spine`} action={<Link href="/audit" className="btn btn--urgent btn--sm">Open the audit trail</Link>}>
+        <Note kind="bad" title={`${off} state table${off === 1 ? " is" : "s are"} not on the audit spine`} action={<LinkBtn kind="urgent" href="/audit">Open the audit trail</LinkBtn>}>
           A table off the spine can be changed without a record. Everything else here rests on the spine being complete.
         </Note>
       ) : (
-        <Note kind="ok" title="The record is complete and hash-chained" action={<Link href="/audit" className="btn btn--primary btn--sm">Open the audit trail</Link>}>
+        <Note kind="ok" title="The record is complete and hash-chained" action={<LinkBtn kind="primary" href="/audit">Open the audit trail</LinkBtn>}>
           Every state table is on the spine and each entry is chained to the one before it, so a tampered row is detectable.
         </Note>
       )}
@@ -34,7 +33,7 @@ export function AuditDashboard({ me, posture, feed }: { me: Me | null; posture: 
         ["Last entry", when(a?.last_entry ?? null), null, "Most recent attributed change"],
       ]} />
 
-      <Panel title="Recent activity" right={<Link href="/audit" className="btn btn--ghost btn--sm">Full audit trail</Link>}>
+      <Panel title="Recent activity" right={<LinkBtn kind="ghost" href="/audit">Full audit trail</LinkBtn>}>
         {feed.length ? (
           <DTable cols={["When|mid", "Who", "Action", "On"]}
             rows={feed.slice(0, 12).map((e) => [
@@ -49,10 +48,10 @@ export function AuditDashboard({ me, posture, feed }: { me: Me | null; posture: 
       <Panel title="Oversight desks" right={me?.name ? `Signed in as ${me.name}` : "Internal Audit"}>
         <PBody>
           <div className="grid--fill">
-            <Link href="/audit" className="btn btn--ghost btn--sm">Audit trail</Link>
-            <Link href="/finance/exceptions" className="btn btn--ghost btn--sm">Finance exceptions</Link>
-            <Link href="/finance/reconcile" className="btn btn--ghost btn--sm">Reconciliation</Link>
-            <Link href="/people" className="btn btn--ghost btn--sm">Users &amp; roles</Link>
+            <LinkBtn kind="ghost" href="/audit">Audit trail</LinkBtn>
+            <LinkBtn kind="ghost" href="/finance/exceptions">Finance exceptions</LinkBtn>
+            <LinkBtn kind="ghost" href="/finance/reconcile">Reconciliation</LinkBtn>
+            <LinkBtn kind="ghost" href="/people">Users &amp; roles</LinkBtn>
           </div>
         </PBody>
       </Panel>

@@ -6,7 +6,7 @@
  */
 import type { ReactNode } from "react";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { ASSESSMENT_RULE, BLOCKS, COMMON_RULES, CONFLICTS, DEPARTMENT_CA, LOGBOOKS, MBBS, MODEL, PHASES, PROGRESSION, PSYCHIATRY_DAY, PSYCHIATRY_WEEKS, RULES_TO_IMPLEMENT, SEMESTERS, TO_CONFIRM, YEAR_VIEW } from "@/lib/mbbs";
@@ -34,7 +34,7 @@ function OpenLink({ url, name, small }: { url: string | null; name: string; smal
   return url ? (
     <a className={cls} href={url} target="_blank" rel="noopener">{label}</a>
   ) : (
-    <button className={cls} disabled title={`No address recorded for ${name} yet`}>{label}</button>
+    <Btn kind="primary" size={small ? "sm" : "md"} disabled title={`No address recorded for ${name} yet`}>{label}</Btn>
   );
 }
 
@@ -91,13 +91,13 @@ export function CollegeSeam({ college, problem }: { college: CollegeData | null;
           <span className="tnum" key="w">{r.weights}</span>, <span key="p">{r.pass}</span>, <span className="tnum" key="a">{r.attendance}</span>,
           <span key="r">{r.resit}</span>, <span className="sub2" key="o">{r.onFailure}</span>,
         ])} />
-        <PBody><ul className="sub2" style={{ margin: 0, paddingLeft: 18 }}>{COMMON_RULES.map((c) => <li key={c}>{c}</li>)}</ul></PBody>
+        <PBody><ul className="sub2 m-0" style={{ paddingLeft: "var(--s-5)" }}>{COMMON_RULES.map((c) => <li key={c}>{c}</li>)}</ul></PBody>
       </Panel>
 
       <Panel title="Blocks and postings" right="Durations, sequence and level; Psychiatry alone has a weekly timetable">
         {BLOCKS.map((b) => (
-          <div key={b.block} style={{ padding: "6px 0 4px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 14px 2px", flexWrap: "wrap", alignItems: "baseline" }}>
+          <div key={b.block} style={{ padding: "6px 0 var(--s-1)" }}>
+            <div className="row row--between row--base" style={{ padding: "var(--s-2) var(--s-4) 2px" }}>
               <strong>{b.block}</strong><span className="sub2">{b.total}</span>
             </div>
             <DTable cols={["Posting|mid", "Name", "Level|mid", "Courses", "Weeks|mid"]} rows={b.postings.map((p) => [
@@ -122,7 +122,7 @@ export function CollegeSeam({ college, problem }: { college: CollegeData | null;
         <PBody><div>{ASSESSMENT_RULE.general}</div></PBody>
         <DTable cols={["Department", "CA components", "Stated weight", "Examination"]} rows={DEPARTMENT_CA.map((d) => [
           <strong key="d">{d.department}</strong>, <span key="c">{d.components}</span>,
-          <span key="w" className={/conflict|against/.test(d.weight) ? "" : "sub2"} style={/conflict|against/.test(d.weight) ? { color: "var(--red-ink)", fontWeight: 600 } : undefined}>{d.weight}</span>,
+          <span key="w" className={/conflict|against/.test(d.weight) ? "ink-red b600" : "sub2"}>{d.weight}</span>,
           <span className="sub2" key="e">{d.exam}</span>,
         ])} />
         <PBody>
@@ -136,16 +136,16 @@ export function CollegeSeam({ college, problem }: { college: CollegeData | null;
           <DTable cols={["Concern", "Why it sits here|num"]} rows={OWN.map((r) => [r[0], <span className="sub2" key="w">{r[1]}</span>])} />
         </Panel>
         <Panel title={`${system} holds`} right="The document's data model — ◊ marks a value the prospectus does not give">
-          <DTable cols={["Concern", "What it carries|num"]} rows={MODEL.map((r) => [<strong key="c" className="tnum" style={{ fontSize: 12.5 }}>{r[0]}</strong>, <span className="sub2" key="w">{r[1]}</span>])} />
+          <DTable cols={["Concern", "What it carries|num"]} rows={MODEL.map((r) => [<strong key="c" className="tnum t-sm">{r[0]}</strong>, <span className="sub2" key="w">{r[1]}</span>])} />
         </Panel>
       </div>
 
       <Panel title="Rules the College's system must implement" right="From the regulations, as extracted">
-        <PBody><ol style={{ margin: 0, paddingLeft: 20 }}>{RULES_TO_IMPLEMENT.map((r) => <li key={r}>{r}</li>)}</ol></PBody>
+        <PBody><ol className="m-0" style={{ paddingLeft: "var(--s-5)" }}>{RULES_TO_IMPLEMENT.map((r) => <li key={r}>{r}</li>)}</ol></PBody>
       </Panel>
 
       <Note kind="bad" title="Conflicts and gaps to resolve with the College before any of this is built">
-        <ol style={{ margin: "4px 0 0", paddingLeft: 20 }}>{CONFLICTS.map((c) => <li key={c}>{c}</li>)}</ol>
+        <ol style={{ margin: "var(--s-1) 0 0", paddingLeft: "var(--s-5)" }}>{CONFLICTS.map((c) => <li key={c}>{c}</li>)}</ol>
       </Note>
 
       <Panel title="Where the two systems touch" right="Each with what happens when it fails">
@@ -158,7 +158,7 @@ export function CollegeSeam({ college, problem }: { college: CollegeData | null;
         ].map((r) => [<b className="tnum" key="r">{r[0]}</b>, r[1], <span className="sub2" key="d">{r[2]}</span>, <span className="sub2" key="f">{r[3]}</span>])} />
       </Panel>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="row">
         <OpenLink url={url} name={system} />
         <span className="sub2">Opens in a new tab. It is a separate system and it looks like one.</span>
         <Pil kind="grey">Source: CHS Prospectus 2023–2025, pp. 24–154, extraction v2</Pil>

@@ -62,7 +62,7 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
       ) : null}
       {data?.sittings.map((st, i) => (
         <div key={i} className="mb-3">
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <div className="row mb-2">
             <Pil kind="grey">{BODY[st.body] ?? st.body}</Pil>
             <b>{st.type ?? st.body}</b>
             <span className="sub2">{st.year ? `${st.year}` : ""}{st.examNumber ? ` · exam no. ${st.examNumber}` : ""}</span>

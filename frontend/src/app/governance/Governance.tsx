@@ -71,7 +71,7 @@ export function Governance({ register, dsr, actingOffice }: { register: Activity
             <span className="sub2" key="b">{a.lawful_basis}</span>,
             a.sensitive ? <Pil kind="bad" key="s">Yes</Pil> : <Pil kind="grey" key="s">No</Pil>,
             <span className="sub2" key="r">{a.retention}</span>,
-            <span key="d" style={{ display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+            <span key="d" className="row row--inline row--tight row--right">
               <Pil kind={DPIA[a.dpia_state]?.[0] ?? "grey"}>{DPIA[a.dpia_state]?.[1] ?? a.dpia_state}</Pil>
               {may && a.dpia_state === "OUTSTANDING" ? <Btn kind="go" disabled={busy} onClick={() => void send(`/register/${a.id}/dpia`, { state: "COMPLETE" }, `DPIA complete for ${a.activity}`).then((j) => { if (j) setSaid("DPIA recorded complete"); })}>Mark done</Btn> : null}
             </span>,
@@ -85,8 +85,8 @@ export function Governance({ register, dsr, actingOffice }: { register: Activity
             <span className="tnum" key="r">{d.reference}</span>,
             <span className="sub2" key="k">{d.kind.charAt(0) + d.kind.slice(1).toLowerCase()}</span>,
             <Two key="q" a={d.requester} b={`received ${day(d.received_on)}`} />,
-            <span className="tnum sub2" key="due" style={{ color: ["RECEIVED", "IN_PROGRESS"].includes(d.state) && d.due_on < today ? "var(--red-ink)" : undefined }}>{day(d.due_on)}</span>,
-            <span key="s" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
+            <span className={`tnum sub2${["RECEIVED", "IN_PROGRESS"].includes(d.state) && d.due_on < today ? " ink-red" : ""}`} key="due">{day(d.due_on)}</span>,
+            <span key="s" className="row row--inline row--tight row--right">
               <Pil kind={DSTATE[d.state]?.[0] ?? "grey"}>{DSTATE[d.state]?.[1] ?? d.state}</Pil>
               {may && d.state === "RECEIVED" ? <Btn kind="ghost" disabled={busy} onClick={() => void send(`/dsr/${d.id}/advance`, { state: "IN_PROGRESS" }, `Progress ${d.reference}`)}>Start</Btn> : null}
               {may && ["RECEIVED", "IN_PROGRESS"].includes(d.state) ? <Btn kind="go" disabled={busy} onClick={() => void send(`/dsr/${d.id}/advance`, { state: "COMPLETED" }, `Complete ${d.reference}`)}>Complete</Btn> : null}

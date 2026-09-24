@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -54,7 +54,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
               <span className="tnum" key="c">{c.code}</span>,
               <span key="t">{c.title}</span>,
               <span className="tnum" key="q">{c.questions}</span>,
-              <a key="o" href={`/exams/question-bank?course=${encodeURIComponent(c.code)}`} className="btn btn--primary btn--sm">Open</a>,
+              <LinkBtn key="o" href={`/exams/question-bank?course=${encodeURIComponent(c.code)}`} kind="primary">Open</LinkBtn>,
             ])} texts={courses.map((c) => `${c.code} ${c.title}`)} />
           ) : <PBody><div className="sub2">No course is on the catalogue yet.</div></PBody>}
         </Panel>
@@ -67,7 +67,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
     <>
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}
-      <div className="mb-3"><a href="/exams/question-bank" className="btn btn--ghost btn--sm">← All courses</a></div>
+      <div className="mb-3"><LinkBtn href="/exams/question-bank" kind="ghost">← All courses</LinkBtn></div>
       <Tiles items={[
         ["Course", course, null, courses.find((c) => c.code === course)?.title ?? ""],
         ["Active questions", String(active), null, `${questions.length - active} retired`],
@@ -104,9 +104,9 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
           <PBody>
             <Field id="q-stem" label="Question"><textarea id="q-stem" className="ctl" rows={2} value={q.stem} onChange={(e) => setQ({ ...q, stem: e.target.value })} /></Field>
             {q.options.map((opt, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+              <div key={i} className="row mb-2">
                 <input type="radio" name="answer" checked={q.answer === i} onChange={() => setQ({ ...q, answer: i })} title="Correct answer" />
-                <input className="ctl" style={{ flexGrow: 1 }} placeholder={`Option ${String.fromCharCode(65 + i)}`} value={opt} onChange={(e) => { const options = [...q.options]; options[i] = e.target.value; setQ({ ...q, options }); }} />
+                <input className="ctl grow" placeholder={`Option ${String.fromCharCode(65 + i)}`} value={opt} onChange={(e) => { const options = [...q.options]; options[i] = e.target.value; setQ({ ...q, options }); }} />
               </div>
             ))}
             <div className="sub2 mb-2">Select the radio beside the correct option.</div>

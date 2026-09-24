@@ -11,7 +11,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { STAGES, type Application } from "@/lib/applicant";
-import { Panel } from "@/components/proto/ui";
+import { Btn, Note, Panel } from "@/components/proto/ui";
 import { Step } from "@/components/proto/blocks";
 import { asProblem } from "@/app/student/common";
 
@@ -19,9 +19,9 @@ import { asProblem } from "@/app/student/common";
 export function Rail({ a }: { a: Application }) {
   return (
     <Panel title="Your application" right={STAGES[Math.min(a.stage, 9)][0]}>
-      <div style={{ padding: "4px 0" }}>
+      <div style={{ padding: "var(--s-1) 0" }}>
         {STAGES.map((s, i) => (
-          <div key={s[0]} style={{ padding: "9px 16px", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
+          <div key={s[0]} style={{ padding: "var(--s-2) var(--s-4)", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
             <Step state={a.stage >= i ? "done" : a.stage + 1 === i ? "now" : "todo"} title={s[0]} sub={s[1]} />
           </div>
         ))}
@@ -36,9 +36,9 @@ export function TwoCol({ children }: { children: ReactNode }) {
 
 export function StepList({ list }: { list: ["done" | "now" | "todo", ReactNode, ReactNode][] }) {
   return (
-    <div style={{ padding: "4px 0" }}>
+    <div style={{ padding: "var(--s-1) 0" }}>
       {list.map((x, i) => (
-        <div key={i} style={{ padding: "9px 16px", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
+        <div key={i} style={{ padding: "var(--s-2) var(--s-4)", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
           <Step state={x[0]} title={x[1]} sub={x[2]} />
         </div>
       ))}
@@ -142,26 +142,26 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
         <div className="notice notice--info mt-2">
           <p><b>Pay &#8358;{amount.toLocaleString()} to {pd.billerName} on Quickteller.</b></p>
           <p>Your Payment Reference Number (PRN) is <b className="tnum">{pd.prn}</b>. Enter it on any of these:</p>
-          <ul style={{ margin: "6px 0 0 18px" }}>
+          <ul style={{ margin: "var(--s-2) 0 0 var(--s-5)" }}>
             <li>Online: {pd.payLink ? <a href={pd.payLink} target="_blank" rel="noreferrer">{pd.payLink}</a> : <>Quickteller, biller code <b className="tnum">{pd.billerCode}</b></>}</li>
             <li>USSD: <b className="tnum">{pd.ussd}</b></li>
             <li>Any bank branch or ATM: quote biller code <b className="tnum">{pd.billerCode}</b> and the PRN.</li>
           </ul>
           <p className="sub2 mt-2">Keep the PRN. After you pay, use &ldquo;I&rsquo;ve paid&rdquo; below, or it is confirmed automatically once the collection reaches the University.</p>
           <div className="row">
-            <button type="button" className="btn btn--go btn--sm" disabled={busy} onClick={() => void check(pd.prn)}>{busy ? "Checking…" : "I've paid — check now"}</button>
-            <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={() => setPd(null)}>Choose another way to pay</button>
+            <Btn kind="go" disabled={busy} onClick={() => void check(pd.prn)}>{busy ? "Checking…" : "I've paid — check now"}</Btn>
+            <Btn kind="ghost" disabled={busy} onClick={() => setPd(null)}>Choose another way to pay</Btn>
           </div>
           {checkMsg ? <p className="sub2 mt-2">{checkMsg}</p> : null}
         </div>
       ) : choices ? (
         <div className="row">
           <span className="sub2">Pay &#8358;{amount.toLocaleString()} with</span>
-          {choices.map((g) => <button key={g} type="button" className="btn btn--go" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</button>)}
-          <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setChoices(null)}>Cancel</button>
+          {choices.map((g) => <Btn key={g} kind="go" size="md" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</Btn>)}
+          <Btn kind="ghost" size="md" disabled={busy} onClick={() => setChoices(null)}>Cancel</Btn>
         </div>
       ) : (
-        <button type="button" className="btn btn--go" disabled={busy} onClick={() => void start()}>{busy ? "Opening the checkout…" : `Pay ₦${amount.toLocaleString()} by card or USSD`}</button>
+        <Btn kind="go" size="md" disabled={busy} onClick={() => void start()}>{busy ? "Opening the checkout…" : `Pay ₦${amount.toLocaleString()} by card or USSD`}</Btn>
       )}
       {problem ? <div style={{ flexBasis: "100%" }}><ProblemNoticeInline problem={problem} /></div> : null}
     </>
@@ -170,8 +170,8 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
 
 function ProblemNoticeInline({ problem }: { problem: Problem }) {
   return (
-    <div className="notice notice--info mt-2">
-      <p><b>{problem.title ?? "Not now"}.</b> {problem.detail ?? ""} {problem.remedy ? <span className="sub2">{problem.remedy.message}</span> : null}</p>
+    <div className="mt-2">
+      <Note kind="info" title={`${problem.title ?? "Not now"}.`}>{problem.detail ?? ""} {problem.remedy ? <span className="sub2">{problem.remedy.message}</span> : null}</Note>
     </div>
   );
 }

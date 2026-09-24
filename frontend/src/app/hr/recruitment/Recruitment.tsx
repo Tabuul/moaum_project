@@ -4,12 +4,11 @@
  *  against the advertised criteria, shortlists, interviews and offers. The shortlist is
  *  scored, not argued. */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -61,7 +60,7 @@ export function Recruitment({ rows, applicants, actingOffice }: { rows: Vacancy[
       <>
         {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
         {err ? <ProblemNotice problem={err} /> : null}
-        <div className="mb-3"><Link href="/hr/recruitment" className="btn btn--ghost btn--sm">← All vacancies</Link></div>
+        <div className="mb-3"><LinkBtn href="/hr/recruitment" kind="ghost">← All vacancies</LinkBtn></div>
         <Panel title={a.vacancy.title} right={`${a.vacancy.department} · ${a.vacancy.grade ?? ""}`}>
           <PBody><div className="sub2"><b>Advertised criteria:</b> {a.vacancy.requirements}</div></PBody>
           {a.rows.length ? (
@@ -121,7 +120,7 @@ export function Recruitment({ rows, applicants, actingOffice }: { rows: Vacancy[
             <span className="tnum" key="a">{r.applications}<span className="sub2"> · {r.shortlisted} shortlisted</span></span>,
             <span key="s"><Pil kind={VSTATE[r.state]?.[0] ?? "grey"}>{VSTATE[r.state]?.[1] ?? r.state}</Pil>{r.closes_on ? <div className="sub2 tnum">closes {day(r.closes_on)}</div> : null}</span>,
             <span key="ac" className="row row--inline row--tight row--right">
-              <Link href={`/hr/recruitment?vacancy=${r.id}`} className="btn btn--primary btn--sm">Open</Link>
+              <LinkBtn href={`/hr/recruitment?vacancy=${r.id}`} kind="primary">Open</LinkBtn>
               {may && r.state !== "CLOSED" && r.state !== "CANCELLED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const s = window.prompt("Set state: OPEN, SHORTLISTING, INTERVIEW, OFFER, CLOSED, CANCELLED", r.state); if (s && s.trim()) void send(`/vacancies/${r.id}/state`, { state: s.trim() }, `Set ${r.title} to ${s.trim()}`); }}>State</Btn> : null}
             </span>,
           ])} texts={rows.map((r) => `${r.title} ${r.department} ${r.state}`)} />

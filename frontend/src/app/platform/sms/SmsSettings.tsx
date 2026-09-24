@@ -65,11 +65,11 @@ export function SmsSettings({ config, actingOffice }: { config: SmsConfig; actin
           <Field id="apiKey" label="API key" hint="Pasted once; it is never displayed after this.">
             <input id="apiKey" className="ctl tnum" type="password" value={f.apiKey} onChange={(e) => set("apiKey", e.target.value)} disabled={!may} autoComplete="off" placeholder={config.api_key_set ? "•••••••• (leave blank to keep)" : ""} />
           </Field>
-          <label className="field" style={{ display: "flex", gap: 8, alignItems: "center", flexDirection: "row" }}>
+          <label className="field row" style={{ flexDirection: "row" }}>
             <input type="checkbox" className="pchk" checked={f.enabled} onChange={(e) => set("enabled", e.target.checked)} disabled={!may} />
             <span>Send SMS notices through eBulkSMS</span>
           </label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <div className="row mt-2">
             <Btn kind="primary" disabled={!may || busy} onClick={async () => {
               const j = await send("/sms", { provider: "EBULKSMS", username: f.username, sender: f.sender, enabled: f.enabled, apiKey: f.apiKey || null }, "SMS gateway settings stated");
               if (j) { setSaid("SMS gateway settings saved"); setF({ ...f, apiKey: "" }); }

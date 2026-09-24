@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -101,7 +101,7 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Registrations" right={
-        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span className="row row--tight">
           <input className="ctl tnum" style={{ width: 110 }} value={session} onChange={(e) => setSession(e.target.value)} aria-label="Session" />
           <select className="ctl" style={{ width: "auto" }} value={semester} onChange={(e) => setSemester(Number(e.target.value))} aria-label="Semester">
             <option value={1}>First semester</option><option value={2}>Second semester</option>
@@ -121,18 +121,18 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
               <span key="c" className="tnum">{r.courses}</span>,
               <span key="g" className="tnum">{Number(r.gpa).toFixed(2)}</span>,
               r.state === "ENDORSED" ? <Pil key="s" kind="ok">Endorsed</Pil> : <Pil key="s" kind="info">{r.state.toLowerCase()}</Pil>,
-              <button key="o" className="btn btn--ghost btn--sm" onClick={() => void loadDetail(r.id)}>Open</button>,
+              <Btn key="o" kind="ghost" onClick={() => void loadDetail(r.id)}>Open</Btn>,
             ])} texts={regs.map((r) => `${r.surname} ${r.other_names} ${r.matric_no ?? ""} ${r.programme_name}`)} />
         ) : <PBody><div className="sub2">No registration for this session and semester.</div></PBody>}
       </Panel>
 
       {detail ? (
-        <Panel title={`${detail.name} · ${detail.programme_name}`} right={<button className="btn btn--ghost btn--sm" onClick={() => setDetail(null)}>Close</button>}>
+        <Panel title={`${detail.name} · ${detail.programme_name}`} right={<Btn kind="ghost" onClick={() => setDetail(null)}>Close</Btn>}>
           <PBody>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <div className="row mb-2">
               <span className="sub2">{detail.mode === "PART_TIME" ? "Part-time" : "Full-time"}</span>
               {detail.state === "ENDORSED" ? <Pil kind="ok">Endorsed</Pil> : <Pil kind="info">{detail.state.toLowerCase()}</Pil>}
-              {mayEdit && detail.state !== "ENDORSED" ? <button className="btn btn--primary btn--sm" disabled={busy} onClick={() => void endorse()}>Endorse registration</button> : null}
+              {mayEdit && detail.state !== "ENDORSED" ? <Btn kind="primary" disabled={busy} onClick={() => void endorse()}>Endorse registration</Btn> : null}
             </div>
             <DTable cols={["Course", "Title", "Units|num", "CA|mid", "Exam|mid", "Total|num", "Grade|mid", "|mid"]}
               rows={detail.entries.map((e) => {
@@ -143,7 +143,7 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
                   mayEdit ? <input key="ex" className="ctl tnum" style={{ width: 64 }} value={s.exam} onChange={(ev) => setScores({ ...scores, [e.entry_id]: { ...s, exam: ev.target.value.replace(/[^0-9.]/g, "") } })} /> : <span className="tnum">{e.exam ?? "—"}</span>,
                   <span key="t" className="tnum">{e.total ?? "—"}</span>,
                   e.grade ? <Pil key="g" kind={e.grade === "F" ? "bad" : e.grade === "C" ? "warn" : "ok"}>{e.grade}</Pil> : <span key="g" className="sub2">—</span>,
-                  mayEdit ? <button key="s" className="btn btn--go btn--sm" disabled={busy} onClick={() => void saveScore(e.entry_id)}>Save</button> : null,
+                  mayEdit ? <Btn key="s" kind="go" disabled={busy} onClick={() => void saveScore(e.entry_id)}>Save</Btn> : null,
                 ];
               })} />
             <Note kind="info" title="Grading (Policy 16)">Continuous assessment is 30–40% and the examination 60–70%; the total gives A 70+, B 60–69, C 50–59, F below 50. There is no resit.</Note>

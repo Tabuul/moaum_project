@@ -95,7 +95,7 @@ export function RegistrationHistory({ d }: { d: RegHistory }) {
 
       {earlier.length ? (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px" }}>
+          <div className="row mt-1">
             <Btn kind="ghost" onClick={() => setShowAll((v) => !v)}>{showAll ? "Hide history" : `History — ${earlier.length} earlier registration${earlier.length === 1 ? "" : "s"}`}</Btn>
           </div>
           {showAll ? earlier.map((r) => <RegPanel key={r.id} r={r} />) : null}

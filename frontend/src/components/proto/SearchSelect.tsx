@@ -50,7 +50,7 @@ export function SearchSelect({
   function choose(o: Opt) { onChange(o.value); setOpen(false); setQuery(""); }
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div ref={ref} className="ss">
       <input
         id={id}
         className="ctl"
@@ -70,15 +70,10 @@ export function SearchSelect({
           else if (e.key === "Enter") { if (open && filtered[hi]) { e.preventDefault(); choose(filtered[hi]); } }
           else if (e.key === "Escape") { setOpen(false); setQuery(""); }
         }}
-        style={{ paddingRight: 30 }}
       />
-      <span aria-hidden="true" style={{ position: "absolute", right: 11, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--muted)", fontSize: 11 }}>▼</span>
+      <span aria-hidden="true" className="ss__caret">▼</span>
       {open ? (
-        <div role="listbox" id={listId} style={{
-          position: "absolute", zIndex: 30, top: "calc(100% + 4px)", left: 0, right: 0,
-          maxHeight: 260, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--line)",
-          borderRadius: 8, boxShadow: "0 10px 28px rgba(16,40,52,.14)",
-        }}>
+        <div role="listbox" id={listId} className="ss__list">
           {filtered.length ? filtered.map((o, i) => (
             <div
               key={o.value || "__all"}
@@ -86,16 +81,11 @@ export function SearchSelect({
               aria-selected={o.value === value}
               onMouseDown={(e) => { e.preventDefault(); choose(o); }}
               onMouseEnter={() => setHi(i)}
-              style={{
-                padding: "8px 12px", cursor: "pointer", fontSize: 14,
-                background: i === hi ? "var(--sky-bg)" : o.value === value ? "var(--bg)" : "transparent",
-                color: o.value === value ? "var(--chrome-ink, var(--chrome))" : "var(--ink)",
-                fontWeight: o.value === value ? 600 : 400,
-              }}
+              className={`ss__opt${i === hi ? " is-hi" : ""}`}
             >
               {o.label}
             </div>
-          )) : <div style={{ padding: "8px 12px", fontSize: 13, color: "var(--muted)" }}>No match</div>}
+          )) : <div className="ss__none">No match</div>}
         </div>
       ) : null}
     </div>

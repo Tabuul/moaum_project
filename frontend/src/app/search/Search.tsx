@@ -11,12 +11,11 @@
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { KINDS } from "@/lib/student";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { SearchHit, SearchResult } from "@/lib/student";
 import { statusLabel, statusPill } from "@/lib/student";
 import { rememberSearch, useRecentSearches } from "@/lib/student-recents";
-import { Btn, Ico, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
+import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { StudentOpen } from "@/components/StudentModal";
 import { StaffOpen } from "@/components/StaffModal";
@@ -179,7 +178,7 @@ export function Search({ q, kind, result }: { q: string; kind: string; result: S
           </Panel>
           <Panel title="Recent searches" right="Yours, on this computer">
             <PBody>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7, alignItems: "flex-start" }}>
+              <div className="stack" style={{ alignItems: "flex-start" }}>
                 {recent.length === 0 ? (
                   <span className="sub2">Nothing yet. What you search for is listed here, on this computer only.</span>
                 ) : (
@@ -228,9 +227,9 @@ export function Search({ q, kind, result }: { q: string; kind: string; result: S
           kind="bad"
           title={`Nothing matches “${q}”`}
           action={
-            <Link className="btn btn--ghost btn--sm" href="/records">
+            <LinkBtn kind="ghost" href="/records">
               Browse by scope instead
-            </Link>
+            </LinkBtn>
           }
         >
           Check the spelling, or try part of the name rather than all of it. A record that exists but has not yet been

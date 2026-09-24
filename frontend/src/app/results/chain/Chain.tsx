@@ -70,10 +70,10 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
       <Panel title="You are signed in as" right="The chain is read from every desk; the action belongs to one">
         <PBody>
           <div className="row">
-            <button className="btn btn--primary btn--sm" style={{ flexDirection: "column", alignItems: "flex-start", gap: 1, textAlign: "left" }}>
+            <Btn kind="primary" style={{ flexDirection: "column", alignItems: "flex-start", gap: 1, textAlign: "left" }}>
               <span>{roleLabel(actingOffice)}</span>
-              <span style={{ fontWeight: 400, opacity: 0.8, fontSize: 11 }}>{roleUnit(actingOffice) || "The University"}</span>
-            </button>
+              <span className="t-xs" style={{ fontWeight: 400, opacity: 0.8 }}>{roleUnit(actingOffice) || "The University"}</span>
+            </Btn>
           </div>
         </PBody>
       </Panel>
@@ -116,9 +116,9 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
 
       <TwoCol>
         <Panel title="Approval chain" right={RS_STAGES[st][0]}>
-          <div style={{ padding: "4px 0" }}>
+          <div style={{ padding: "var(--s-1) 0" }}>
             {ladder.map((e, i) => (
-              <div key={i} style={{ padding: "10px 16px", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
+              <div key={i} style={{ padding: "10px var(--s-4)", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
                 <Step state={e[0]} title={e[1]} sub={e[2]} />
               </div>
             ))}

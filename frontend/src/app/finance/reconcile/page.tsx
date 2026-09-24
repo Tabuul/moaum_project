@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { api } from "@/lib/api";
 import type { BankCredit, PaymentsDesk } from "@/lib/bursary";
 import { OUTCOME, when } from "@/lib/bursary";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
 import { ReconcileLedger } from "./ReconcileLedger";
@@ -42,14 +41,14 @@ export default async function ReconcilePage() {
               <span className="tnum b600" key="a">{e.amount === null ? "—" : money(Number(e.amount))}</span>,
               <span className="sub2" key="p" style={{ textTransform: "capitalize" }}>{e.gateway} · {when(e.received_at)}</span>,
               <span key="x"><strong>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</strong><div className="sub2">{e.outcome === "UNKNOWN_REFERENCE" ? "Bank branch or another institution's code — or generated and abandoned" : e.outcome === "SHORT_PAID" ? "Amount differs from the reference — a part payment needs a reference for the part" : e.outcome === "BAD_SIGNATURE" ? "Discarded at the signature; nothing read from it" : "The gateway did not answer for the reference"}</div></span>,
-              <Link key="l" href="/finance/hanging" className="btn btn--primary btn--sm">Investigate</Link>,
+              <LinkBtn key="l" kind="primary" href="/finance/hanging">Investigate</LinkBtn>,
             ]),
             ...open.map((c) => [
               <span className="tnum" key="r">{c.instrument}</span>,
               <span className="tnum b600" key="a">{money(Number(c.amount))}</span>,
               <Two key="p" a={c.payer ?? "Not identified"} b={c.bank} />,
               <span key="x"><strong>Bank branch payment, no reference quoted</strong><div className="sub2">{c.state === "PROPOSED" ? `Proposed against ${c.proposed_reference}; awaiting a second officer` : "Recorded as it came; awaiting a proposal"}</div></span>,
-              <Link key="l" href="/finance/exceptions" className="btn btn--primary btn--sm">{c.state === "PROPOSED" ? "Approve" : "Investigate"}</Link>,
+              <LinkBtn key="l" kind="primary" href="/finance/exceptions">{c.state === "PROPOSED" ? "Approve" : "Investigate"}</LinkBtn>,
             ]),
           ]} />
         ) : <PBody><div className="sub2">Nothing to reconcile: every gateway event posted or was resolved, and no bank credit waits.</div></PBody>}

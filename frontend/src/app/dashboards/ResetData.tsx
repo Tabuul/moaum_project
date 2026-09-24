@@ -119,7 +119,7 @@ export function ResetData({ office }: { office: string | null }) {
           materials, score sheets and any registration entries on them. It touches <b>no</b> student, candidate or real
           course. Use this when the only demo left over is courses like <b>DMC 301 — Demo DMC 301</b>.
         </Note>
-        <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="row mt-2">
           <Btn kind="primary" onClick={() => { setCourseOpen(true); setCourseConfirm(""); setProblem(null); setDemoDone(null); }}>Remove demo courses only…</Btn>
           <Btn kind="primary" onClick={() => { setDemoOpen(true); setDemoConfirm(""); setProblem(null); setDemoDone(null); }}>Remove demo data only…</Btn>
           <Btn kind="urgent" onClick={() => { setOpen(true); setConfirm(""); setReason(""); setProblem(null); setDone(null); }}>Reset ALL uploaded data…</Btn>

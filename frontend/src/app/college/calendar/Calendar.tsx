@@ -52,7 +52,7 @@ export function Calendar({ sessions, session, rows, mayEdit, problem }: { sessio
       </Note>
       {levels.map((L) => (
         <Panel key={L} title={`${L} Level · ${session}`} right={rows.find((r) => r.level === L)?.phase === "CLINICAL" ? "Clinical year: block and posting enrolment" : "Pre-clinical: the prospectus's semesters"}>
-          <div className="tablewrap"><table>
+          <div className="tablewrap"><table className="tbl--data">
             <thead><tr><th>Semester</th><th className="mid">Weeks</th><th>Subjects</th><th className="mid">Starts</th><th className="mid">Ends</th><th className="mid">Standing</th><th></th></tr></thead>
             <tbody>
               {rows.filter((r) => r.level === L).map((r) => {

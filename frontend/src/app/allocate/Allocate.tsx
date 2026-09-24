@@ -165,7 +165,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
               <SearchSelect id="al-dept" value={dept} placeholder="Search a department…"
                 options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go({ dept: v })} />
             ) : (
-              <div className="ws__select" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{deptName}</div>
+              <div className="ws__select row b600">{deptName}</div>
             )}
           </div>
           <div className="scope__f"><label htmlFor="al-session">Session</label>
@@ -209,7 +209,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
               <span key="l">
                 <strong>{o.lecturer}</strong>
                 {cos(o).length ? (
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 3 }}>
+                  <div className="row row--tight mt-1">
                     {cos(o).map((c) => <Pil kind="info" key={c.id}>{c.name}</Pil>)}
                   </div>
                 ) : null}
@@ -228,7 +228,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
       {open ? (
         <Modal title={`${open.lecturer_id ? "Manage" : "Assign"} teaching for ${open.course_code}`} sub={`${open.title} · ${open.level} level · ${open.units} units · ${open.registered} registered`} wide onClose={() => setOpen(null)}
           foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn>
-            <span className="sub2" style={{ flexGrow: 1, color: err ? "var(--red-ink)" : undefined }}>
+            <span className={`sub2 grow${err ? " ink-red" : ""}`}>
               {err ? `Not saved — ${err.title}` : busy ? "Saving…" : !lecturer ? "Choose the lead lecturer to save" : ""}
             </span>
             {overloaded
@@ -237,15 +237,15 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
           {err ? <ProblemNotice problem={err} /> : null}
 
           <div className="eyebrow mt-1">Lead lecturer</div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 8px" }}>
+          <div className="row row--between mt-1 mb-2">
             <div className="sub2">The lead owns the score sheet and submits it up the chain. Ordered by remaining capacity against the {MAX_UNITS}-unit maximum; a full lecturer can still be assigned as an overload.</div>
-            <label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer", whiteSpace: "nowrap" }}>
+            <label className="row row--inline row--tight" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
               <input type="checkbox" checked={pool !== null} disabled={loadingPool} onChange={(e) => void toggleAllDepartments(e.target.checked)} />
               {loadingPool ? "Loading…" : "Lecturers from other departments"}
             </label>
           </div>
           {list.length ? (<>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+            <div className="row mb-2">
               <input id="al-find" className="ctl" type="search" value={lecQ} onChange={(e) => setLecQ(e.target.value)} autoComplete="off"
                 placeholder={pool !== null ? "Search a lecturer by name, staff number or department…" : "Search a lecturer by name or staff number…"} aria-label="Search a lecturer" style={{ flex: "1 1 260px" }} />
               <span className="sub2 tnum" style={{ whiteSpace: "nowrap" }}>{lecTerms.length ? `${shownLecturers.length} of ${list.length} lecturers` : `${list.length} lecturers`}</span>
@@ -257,13 +257,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                 <Two key="n" a={l.name} b={l.staff_number ?? ""} />,
                 ...(pool !== null ? [<span className="sub2" key="d">{l.department ?? "—"}</span>] : []),
                 <span className="tnum" key="c">{l.load} units</span>,
-                <span className="tnum" key="w" style={willBe > MAX_UNITS ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{willBe} units</span>,
-                <label key="p" style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                <span className={`tnum${willBe > MAX_UNITS ? " ink-red b700" : ""}`} key="w">{willBe} units</span>,
+                <label key="p" className="row row--inline row--tight" style={{ cursor: "pointer" }}>
                   <input type="radio" name="al-lec" checked={lecturer === l.id} onChange={() => setLecturer(l.id)} /> {lecturer === l.id ? "Lead" : "Choose"}
                 </label>,
               ];
             })} />
-            ) : <div className="sub2" style={{ padding: "8px 0" }}>No lecturer matches &ldquo;{lecQ}&rdquo;{pool === null ? " in this department — tick “Lecturers from other departments” to look further" : ""}.</div>}
+            ) : <div className="sub2" style={{ padding: "var(--s-2) 0" }}>No lecturer matches &ldquo;{lecQ}&rdquo;{pool === null ? " in this department — tick “Lecturers from other departments” to look further" : ""}.</div>}
           </>) : <Note kind="bad" title="No lecturer is on record for this department">A lecturer appears here once the Registry grants them the lecturer office scoped to this department. Tick &ldquo;Lecturers from other departments&rdquo; to assign from elsewhere.</Note>}
 
           <Field id="al-second" label="Second examiner" hint="Verifies the marks. Cannot be the lead. Set now so verification is not blocked later.">
@@ -273,11 +273,11 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
 
           {/* co-teaching: additional lecturers who teach the course and enter scores on the same sheet */}
           <div className="eyebrow mt-4">Co-lecturers</div>
-          <div className="sub2" style={{ margin: "2px 0 8px" }}>A course can be taught by more than one lecturer. A co-lecturer sees the course on their dashboard and enters scores on the shared sheet; the lead still submits it.</div>
+          <div className="sub2 mb-2">A course can be taught by more than one lecturer. A co-lecturer sees the course on their dashboard and enters scores on the shared sheet; the lead still submits it.</div>
           {co.length ? (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <div className="row mb-2">
               {co.map((c) => (
-                <span key={c.id} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid var(--line)", borderRadius: 999, padding: "3px 6px 3px 12px" }}>
+                <span key={c.id} className="chip row row--inline" style={{ border: "1px solid var(--line)", borderRadius: "var(--r-pill)", padding: "3px 6px 3px 12px" }}>
                   {c.name}
                   <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => void removeCoLecturer(c.id)} aria-label={`Remove ${c.name}`}>Remove</button>
                 </span>
@@ -285,12 +285,12 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             </div>
           ) : <div className="sub2 mb-2">No co-lecturer yet — this course is taught by the lead alone.</div>}
           <div className="row row--end">
-            <div className="field" style={{ flex: "1 1 240px" }}><label htmlFor="al-co">Add a co-lecturer</label>
+            <div style={{ flex: "1 1 240px" }}><Field id="al-co" label="Add a co-lecturer">
               <SearchSelect id="al-co" value={addCoId} placeholder="Search a lecturer…"
-                options={coCandidates.map((l) => ({ value: l.id, label: pool !== null && l.department ? `${l.name} · ${l.department}` : l.name }))} onChange={setAddCoId} /></div>
+                options={coCandidates.map((l) => ({ value: l.id, label: pool !== null && l.department ? `${l.name} · ${l.department}` : l.name }))} onChange={setAddCoId} /></Field></div>
             <Btn kind="primary" disabled={busy || !addCoId} onClick={() => void addCoLecturer()}>{busy ? "Adding…" : "Add co-lecturer"}</Btn>
           </div>
-          {!open.lecturer_id ? <div className="sub2" style={{ marginTop: 6, color: "var(--muted)" }}>Tip: save the lead first, then co-lecturers are added to the same course.</div> : null}
+          {!open.lecturer_id ? <div className="sub2 ink-muted mt-2">Tip: save the lead first, then co-lecturers are added to the same course.</div> : null}
         </Modal>
       ) : null}
     </>

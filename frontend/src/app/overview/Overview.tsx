@@ -89,7 +89,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
             {expected ? (
               <>
                 <Donut capLabel="approved" capValue={`${pastPct}%`} items={[
-                  { l: "Approved by Senate", v: appr, c: VZ.good, i: <Tick size={13} colour="#0a7a3b" /> },
+                  { l: "Approved by Senate", v: appr, c: VZ.good, i: <Tick size={13} colour="var(--green-ink)" /> },
                   { l: "Pending in the chain", v: pend, c: VZ.warn, i: <Ico name="clock" size={13} stroke="var(--amber-ink)" w={2.2} /> },
                   { l: "Never submitted", v: miss, c: VZ.crit, i: <WarnIcon size={13} /> },
                 ]} />
@@ -136,8 +136,8 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
               <span className="tnum" key="s">{f.submitted}</span>,
               <span className="tnum ink-green b700" key="a">{f.approved}</span>,
               <span className="tnum" key="p">{f.pending}</span>,
-              <span className="tnum" key="n" style={f.never > 30 ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{f.never}</span>,
-              <b className="tnum" key="r" style={pct < 55 ? { color: "var(--red-ink)" } : undefined}>{pct}%</b>,
+              <span className={`tnum${f.never > 30 ? " ink-red b700" : ""}`} key="n">{f.never}</span>,
+              <b className={`tnum${pct < 55 ? " ink-red" : ""}`} key="r">{pct}%</b>,
             ];
           })} />
         ) : <PBody><div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester yet.</div></PBody>}

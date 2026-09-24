@@ -128,17 +128,17 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
         {err ? <ProblemNotice problem={err} /> : null}
         {fileNote ? <Note kind={fileNote.kind} title={fileNote.title}>{fileNote.lines.map((l, i) => <div key={i}>{l}</div>)}</Note> : null}
         {own && !closed ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          <div className="row mb-2">
             <span className="sub2">Many candidates? Fill the template and upload it — every line holds, or none does and each refusal is named.</span>
-            <button className="btn btn--ghost btn--sm" onClick={template}>Download the held-scripts template</button>
-            <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => file.current?.click()}>{busy ? "Working…" : "Upload held scripts"}</button>
+            <Btn kind="ghost" onClick={template}>Download the held-scripts template</Btn>
+            <Btn kind="ghost" disabled={busy} onClick={() => file.current?.click()}>{busy ? "Working…" : "Upload held scripts"}</Btn>
             <input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} />
           </div>
         ) : null}
         {own ? closed ? (
           <Note kind="bad" title="Late registration has closed for this semester">No more scripts can be held for {courseCode}. A script still held has lapsed; the Registry can move the date on the calendar if Senate extends it.</Note>
         ) : (
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 10 }}>
+          <div className="row row--end mb-2">
             <div className="field" style={{ flex: "1 1 200px" }}><label htmlFor="hs-num">Matriculation number</label>
               <input id="hs-num" className="ctl tnum" value={f.number} onChange={(e) => setF({ ...f, number: e.target.value.toUpperCase() })} placeholder="BSU/SC/CMP/23/70049" autoComplete="off" /></div>
             <div className="field" style={{ width: 110 }}><label htmlFor="hs-out">Outcome</label>
@@ -146,11 +146,11 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
                 {OUTCOMES.map((o) => <option key={o} value={o}>{o === "GRADED" ? "Graded" : o.charAt(0) + o.slice(1).toLowerCase()}</option>)}
               </select></div>
             <div className="field" style={{ width: 96 }}><label htmlFor="hs-ca">CA — {caMax}</label>
-              <input id="hs-ca" className="ctl tnum" inputMode="numeric" value={f.ca} disabled={!graded} style={caOver ? { borderColor: "var(--red-ink)", color: "var(--red-ink)", fontWeight: 700 } : undefined} onChange={(e) => setF({ ...f, ca: e.target.value.replace(/[^0-9]/g, "") })} />
-              {caOver ? <div style={{ color: "var(--red-ink)", fontSize: 11 }}>More than {caMax}</div> : null}</div>
+              <input id="hs-ca" className={`ctl tnum${caOver ? " is-error ink-red b700" : ""}`} inputMode="numeric" value={f.ca} disabled={!graded} onChange={(e) => setF({ ...f, ca: e.target.value.replace(/[^0-9]/g, "") })} />
+              {caOver ? <div className="ink-red t-xs">More than {caMax}</div> : null}</div>
             <div className="field" style={{ width: 96 }}><label htmlFor="hs-ex">Exam — {examMax}</label>
-              <input id="hs-ex" className="ctl tnum" inputMode="numeric" value={f.exam} disabled={!graded} style={exOver ? { borderColor: "var(--red-ink)", color: "var(--red-ink)", fontWeight: 700 } : undefined} onChange={(e) => setF({ ...f, exam: e.target.value.replace(/[^0-9]/g, "") })} />
-              {exOver ? <div style={{ color: "var(--red-ink)", fontSize: 11 }}>More than {examMax}</div> : null}</div>
+              <input id="hs-ex" className={`ctl tnum${exOver ? " is-error ink-red b700" : ""}`} inputMode="numeric" value={f.exam} disabled={!graded} onChange={(e) => setF({ ...f, exam: e.target.value.replace(/[^0-9]/g, "") })} />
+              {exOver ? <div className="ink-red t-xs">More than {examMax}</div> : null}</div>
             <div className="field" style={{ flex: "2 1 220px" }}><label htmlFor="hs-note">Note (optional)</label>
               <input id="hs-note" className="ctl" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="e.g. script no. 47, sat in LT 2" autoComplete="off" /></div>
             <Btn kind="primary" disabled={busy || !canHold} onClick={() => void hold()}>{busy ? "Holding…" : "Hold the script"}</Btn>

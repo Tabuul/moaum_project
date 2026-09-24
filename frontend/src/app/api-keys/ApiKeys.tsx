@@ -60,7 +60,7 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
         ["", "", null, ""],
       ]} />
 
-      <div><button className="btn btn--primary" onClick={() => { setF({ name: "", owner: "", scopes: "", quotaDay: "" }); setErr(null); setAdd(true); }}>+ Register a consumer</button></div>
+      <div><Btn kind="primary" size="md" onClick={() => { setF({ name: "", owner: "", scopes: "", quotaDay: "" }); setErr(null); setAdd(true); }}>+ Register a consumer</Btn></div>
 
       {consumers.length ? consumers.map((c) => (
         <Panel key={c.id} title={c.name} right={`${c.owner} · ${c.status === "ACTIVE" ? "active" : "deprecated"}`}>
@@ -70,7 +70,7 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
               ["Daily quota", <span className="tnum" key="q">{c.quota_day ? c.quota_day.toLocaleString() : "—"}</span>],
               ["Registered", day(c.created_at)],
             ]} />
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+            <div className="row mt-1">
               {c.status === "ACTIVE" ? <Btn kind="primary" disabled={busy} onClick={() => { const dstr = window.prompt("Days until this key expires (max 366):", "365"); if (dstr === null) return; void send(`/consumers/${c.id}/keys`, { days: Number(dstr) || 365 }, `Issue an API key for ${c.name}`).then((j) => { if (j && typeof j.key === "string") setIssued(j.key); }); }}>Issue a key</Btn> : null}
               {c.status === "ACTIVE" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Deprecate ${c.name}? Its live keys are revoked.`)) void send(`/consumers/${c.id}/deprecate`, {}, `Deprecate consumer ${c.name}`).then((j) => { if (j) setSaid(`${c.name} deprecated`); }); }}>Deprecate</Btn> : null}
             </div>
@@ -79,7 +79,7 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
             <DTable cols={["Key", "Issued|mid", "Expires|mid", "State|num"]} rows={c.keys.map((k) => [
               <span className="tnum sub2" key="k">••••{k.last4}</span>,
               <span className="tnum sub2" key="i">{day(k.issued_at)}</span>,
-              <span className="tnum" key="e" style={k.due ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{day(k.expires_at)}</span>,
+              <span className={`tnum${k.due ? " ink-red b700" : ""}`} key="e">{day(k.expires_at)}</span>,
               k.revoked_at ? <Pil kind="grey" key="s">Revoked</Pil> : !k.live ? <Pil kind="bad" key="s">Expired</Pil> : k.due ? <span key="s" className="row row--inline row--tight"><Pil kind="bad">Due to rotate</Pil><Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm("Revoke this key now? Do it after the consumer has switched to a new one.")) void send(`/keys/${k.id}/revoke`, {}, "Revoke API key"); }}>Revoke</Btn></span> : <span key="s" className="row row--inline row--tight"><Pil kind="ok">Live</Pil><Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm("Revoke this key now?")) void send(`/keys/${k.id}/revoke`, {}, "Revoke API key"); }}>Revoke</Btn></span>,
             ])} />
           ) : <PBody><div className="sub2">No key issued yet.</div></PBody>}
@@ -103,7 +103,7 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
         <Modal title="The key, shown once" sub="Copy it now — it is never displayed again" onClose={() => setIssued(null)}
           foot={<Btn kind="primary" onClick={() => setIssued(null)}>I have copied it</Btn>}>
           <Note kind="bad" title="This is the only time this key is shown">Only its hash is kept. If it is lost, revoke it and issue another.</Note>
-          <div className="ctl tnum" style={{ userSelect: "all", wordBreak: "break-all", padding: "10px 12px" }}>{issued}</div>
+          <div className="ctl tnum" style={{ userSelect: "all", wordBreak: "break-all", padding: "var(--s-2) var(--s-3)" }}>{issued}</div>
         </Modal>
       ) : null}
     </>

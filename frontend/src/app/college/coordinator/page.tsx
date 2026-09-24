@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 export const dynamic = "force-dynamic";
@@ -45,11 +44,11 @@ export default async function CoordinatorPage() {
       <Panel title="Your doors">
         <PBody>
           <div className="row">
-            <Link href="/college/scoresheets" className="btn btn--primary btn--sm">Score sheet</Link>
-            <Link href={`/college/examinations${ex.code ? `?exam=${encodeURIComponent(ex.code)}` : ""}`} className="btn btn--ghost btn--sm">Professional examination</Link>
-            <Link href={`/college/postings?level=${s.level}`} className="btn btn--ghost btn--sm">Postings</Link>
-            <Link href="/college/calendar" className="btn btn--ghost btn--sm">College calendar</Link>
-            <Link href="/college" className="btn btn--ghost btn--sm">College overview</Link>
+            <LinkBtn href="/college/scoresheets" kind="primary">Score sheet</LinkBtn>
+            <LinkBtn href={`/college/examinations${ex.code ? `?exam=${encodeURIComponent(ex.code)}` : ""}`} kind="ghost">Professional examination</LinkBtn>
+            <LinkBtn href={`/college/postings?level=${s.level}`} kind="ghost">Postings</LinkBtn>
+            <LinkBtn href="/college/calendar" kind="ghost">College calendar</LinkBtn>
+            <LinkBtn href="/college" kind="ghost">College overview</LinkBtn>
           </div>
         </PBody>
       </Panel>

@@ -362,28 +362,28 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       </span>}>
         <PBody>
           <div className="row row--end">
-            <div className="field" style={{ minWidth: 180, margin: 0 }}><label htmlFor="flt-fac">Faculty</label>
-              <select id="flt-fac" className="ctl" value={filterFac} onChange={(e) => { setFilterFac(e.target.value); setPage(0); }}>
+            <Field id="flt-fac" label="Faculty">
+              <select id="flt-fac" className="ctl" style={{ minWidth: 180 }} value={filterFac} onChange={(e) => { setFilterFac(e.target.value); setPage(0); }}>
                 <option value="">Every faculty</option>
                 <option value="__none__">No faculty (all students)</option>
                 {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
               </select>
-            </div>
-            <div className="field" style={{ minWidth: 130, margin: 0 }}><label htmlFor="flt-sem">Semester</label>
-              <select id="flt-sem" className="ctl" value={filterSem} onChange={(e) => { setFilterSem(e.target.value); setPage(0); }}>
+            </Field>
+            <Field id="flt-sem" label="Semester">
+              <select id="flt-sem" className="ctl" style={{ minWidth: 130 }} value={filterSem} onChange={(e) => { setFilterSem(e.target.value); setPage(0); }}>
                 <option value="">Whole session</option><option value="1">First semester</option><option value="2">Second semester</option><option value="3">Third semester</option>
               </select>
-            </div>
-            <div className="field" style={{ minWidth: 140, margin: 0 }}><label htmlFor="flt-spill">Spillover</label>
-              <select id="flt-spill" className="ctl" value={filterSpill} onChange={(e) => { setFilterSpill(e.target.value); setPage(0); }}>
+            </Field>
+            <Field id="flt-spill" label="Spillover">
+              <select id="flt-spill" className="ctl" style={{ minWidth: 140 }} value={filterSpill} onChange={(e) => { setFilterSpill(e.target.value); setPage(0); }}>
                 <option value="">All students</option><option value="normal">Exclude spillover</option><option value="spill">Spillover only</option>
               </select>
-            </div>
-            <div className="field" style={{ minWidth: 120, margin: 0 }}><label htmlFor="flt-size">Per page</label>
-              <select id="flt-size" className="ctl" value={String(pageSize)} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
+            </Field>
+            <Field id="flt-size" label="Per page">
+              <select id="flt-size" className="ctl" style={{ minWidth: 120 }} value={String(pageSize)} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}>
                 {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}<option value="0">All</option>
               </select>
-            </div>
+            </Field>
             <span className="grow" />
             <Btn kind="ghost" onClick={exportExcel}>Download Excel</Btn>
             <Btn kind="ghost" onClick={exportPdf}>Download PDF</Btn>
@@ -394,7 +394,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">Spillover</Pil> : null}</strong>,
           <span className="sub2" key="a">{appliesTo(i)}</span>,
           <span className="tnum" key="m">{naira(i.amount)}</span>,
-          <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          <span key="x" className="row row--tight row--right">
             <IcoBtn key="e" icon="edit" label={`Edit ${i.item}`} disabled={!may || busy !== null} onClick={() => openEdit(i)} />
             <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>
           </span>,
@@ -403,7 +403,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           : !filteredItems.length ? <PBody><div className="sub2">No fee line matches the filters.</div></PBody> : null}
         {pageSize > 0 && filteredItems.length > pageSize ? (
           <PBody>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
+            <div className="row row--right">
               <Btn kind="ghost" disabled={page <= 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</Btn>
               <span className="sub2">Page {Math.min(page, pageCount - 1) + 1} of {pageCount}</span>
               <Btn kind="ghost" disabled={page >= pageCount - 1} onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}>Next</Btn>
@@ -416,7 +416,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <PBody>
             <div className="sub2 mb-2">Upload the approved fees spreadsheet — a block per faculty, with 1st and 2nd Semester rows and a column for each level, split Indigene / Non-indigene. Each cell becomes a fee line above: a student is charged the cell for their faculty, level, semester and state of origin (an indigene is of the University&rsquo;s State). A student can pay the semester due or the full session at once. <b>Uploading replaces the whole structure for {session}.</b> Accepts a real Excel workbook (.xlsx) or the same sheet saved as CSV (.csv) — if a file will not read, in Excel choose <i>Save As → Excel Workbook</i> or <i>CSV (Comma delimited)</i>. Two shapes work: this faculty×level cross-tab, or a plain <b>one-row-per-fee</b> table with columns <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i> (the clearer format — one line, charged once).</div>
             <div className="row">
-              <label className={`btn btn--primary${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer", margin: 0 }}>
+              <label className={`btn btn--primary m-0${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer" }}>
                 {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx / .csv)"}
                 <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
               </label>
@@ -493,14 +493,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <Field id="fp" label="Programmes" hint={facultyPick ? `Tick a single programme, two or more, or none for all programmes in ${facultyName ?? "the faculty"}` : "Choose a faculty above to target specific programmes; otherwise the charge applies to every programme"}>
             {facultyPick ? (
               <>
-                <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEdits({ ...edits, progs: facProgrammes.map((pr) => pr.code).join(",") })}>Select all</button>
-                  {selectedProgs.length ? <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEdits({ ...edits, progs: "" })}>Clear (all in faculty)</button> : null}
-                  <span className="sub2" style={{ alignSelf: "center" }}>{selectedProgs.length ? `${selectedProgs.length} selected` : `All programmes in ${facultyName ?? "the faculty"}`}</span>
+                <div className="row mb-2">
+                  <Btn kind="ghost" onClick={() => setEdits({ ...edits, progs: facProgrammes.map((pr) => pr.code).join(",") })}>Select all</Btn>
+                  {selectedProgs.length ? <Btn kind="ghost" onClick={() => setEdits({ ...edits, progs: "" })}>Clear (all in faculty)</Btn> : null}
+                  <span className="sub2">{selectedProgs.length ? `${selectedProgs.length} selected` : `All programmes in ${facultyName ?? "the faculty"}`}</span>
                 </div>
-                <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line-2)", borderRadius: 8, padding: 8, display: "grid", gap: 4 }}>
+                <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line-2)", borderRadius: "var(--r-md)", padding: "var(--s-2)", display: "grid", gap: "var(--s-1)" }}>
                   {facProgrammes.length ? facProgrammes.map((pr) => (
-                    <label key={pr.code} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                    <label key={pr.code} className="sub2 row" style={{ cursor: "pointer" }}>
                       <input type="checkbox" className="pchk" checked={selectedProgs.includes(pr.code)} onChange={() => toggleProg(pr.code)} /> {pr.name}
                     </label>
                   )) : <span className="sub2">No programme in this faculty.</span>}
@@ -544,7 +544,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Field id="af-acc" label="Acceptance fee" hint="Paid on an offer; credited to first-session charges"><input id="af-acc" className="ctl tnum" inputMode="numeric" value={af.acceptanceFee} onChange={(e) => setAf({ ...af, acceptanceFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="30000" disabled={!may} /></Field>
             <Field id="af-chk" label="Admission checking fee" hint="Paid at acceptance, alongside the acceptance fee"><input id="af-chk" className="ctl tnum" inputMode="numeric" value={af.checkingFee} onChange={(e) => setAf({ ...af, checkingFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="0" disabled={!may} /></Field>
           </div>
-          <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+          <div className="row mt-2">
             <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim()} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : "State the applicant fees"}</Btn>
             <span className="sub2">Applying costs the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))}. Accepting an offer costs the acceptance fee plus the checking fee &mdash; {naira((Number(af.acceptanceFee) || 0) + (Number(af.checkingFee) || 0))}.</span>
           </div>
@@ -560,7 +560,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Field id="pgf-acc" label="PG acceptance fee" hint="Paid on an offer"><input id="pgf-acc" className="ctl tnum" inputMode="numeric" value={pgf.acceptanceFee} onChange={(e) => setPgf({ ...pgf, acceptanceFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="50000" disabled={!may} /></Field>
             <Field id="pgf-chk" label="PG checking fee" hint="Paid on acceptance, with the acceptance fee"><input id="pgf-chk" className="ctl tnum" inputMode="numeric" value={pgf.checkingFee} onChange={(e) => setPgf({ ...pgf, checkingFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="3000" disabled={!may} /></Field>
           </div>
-          <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+          <div className="row mt-2">
             <Btn kind="primary" disabled={!may || busy !== null || !pgf.applicationFee.trim()} onClick={() => void savePgFees()}>{busy === "pgf" ? "Saving…" : "State the postgraduate fees"}</Btn>
             <span className="sub2">A postgraduate applicant pays {naira(Number(pgf.applicationFee) || 0)} to apply; accepting an offer costs {naira((Number(pgf.acceptanceFee) || 0) + (Number(pgf.checkingFee) || 0))} (acceptance {naira(Number(pgf.acceptanceFee) || 0)} + checking {naira(Number(pgf.checkingFee) || 0)}).</span>
           </div>
@@ -573,7 +573,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             Bursary and read by the transfer desk and the student&rsquo;s page. There is no default: until you set it, a
             student can apply but cannot pay, so no transfer can proceed.
           </div>
-          <div style={{ display: "flex", gap: 9, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div className="row row--end">
             <Field id="tf-amt" label="Transfer processing fee"><input id="tf-amt" className="ctl tnum" inputMode="numeric" value={tf} onChange={(e) => setTf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>
             <Btn kind="primary" disabled={!may || busy !== null || !tf.trim()} onClick={() => void saveTransferFee()}>{busy === "tf" ? "Saving…" : "Set the transfer fee"}</Btn>
             <span className="sub2">A student who transfers will pay {naira(Number(tf) || 0)}.</span>

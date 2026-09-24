@@ -161,6 +161,8 @@ export function Field({
   full,
   required,
   error,
+  className,
+  style,
   children,
 }: {
   id: string;
@@ -171,10 +173,13 @@ export function Field({
   required?: boolean;
   /** an error line under the control, and the control drawn in the error state */
   error?: ReactNode;
+  /** a layout class or width for the field's box (never for the control) */
+  className?: string;
+  style?: React.CSSProperties;
   children: ReactNode;
 }) {
   return (
-    <div className={`field${full ? " rf--full" : ""}${error ? " is-error" : ""}`}>
+    <div className={`field${full ? " rf--full" : ""}${error ? " is-error" : ""}${className ? " " + className : ""}`} style={style}>
       <label htmlFor={id}>{label}{required ? <span className="req" aria-hidden="true"> *</span> : null}</label>
       {children}
       {error ? <span className="ferr" role="alert">{error}</span> : null}

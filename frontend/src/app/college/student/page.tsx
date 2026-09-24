@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Ico, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { loadStudent } from "../../student/load";
 import { api } from "@/lib/api";
@@ -83,9 +83,9 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
     return { L, st, ex, sub };
   });
   const dot = (st: string) => ({
-    width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, boxSizing: "border-box" as const,
-    ...(st === "done" ? { background: "var(--green-ink)", color: "#fff" } : st === "cur" ? { background: "var(--panel)", color: "var(--green-ink)", border: "2px solid var(--green-ink)" }
-      : st === "stop" ? { background: "var(--red-soft, #fbe7e4)", color: "var(--red-ink)", border: "2px solid var(--red-ink)" } : { background: "var(--panel-2, var(--line-2))", color: "var(--chrome-dim)", border: "1px solid var(--line)" }),
+    width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "var(--t-sm)", boxSizing: "border-box" as const,
+    ...(st === "done" ? { background: "var(--green-ink)", color: "var(--surface)" } : st === "cur" ? { background: "var(--surface)", color: "var(--green-ink)", border: "2px solid var(--green-ink)" }
+      : st === "stop" ? { background: "var(--red-bg)", color: "var(--red-ink)", border: "2px solid var(--red-ink)" } : { background: "var(--line-2)", color: "var(--chrome-dim)", border: "1px solid var(--line)" }),
   });
 
   // ── the three steps at the level in hand ──
@@ -107,9 +107,9 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   const items = (r.current?.registered_items ?? 0) || (BLOCKS.flatMap((b) => b.postings).filter((x) => (x.level.match(/\d{3}/g) ?? []).some((n) => Number(n) === level)).length + SEMESTERS.filter((x) => x.period.startsWith(`${level} Level`)).length + r.carryOvers.filter((c) => !c.cleared_on).length);
 
   const nav = (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "0 0 12px" }}>
-      {VIEWS.map((v) => <Link key={v[0]} href={`/college/student?view=${v[0]}`} className={`btn btn--sm ${view === v[0] ? "btn--primary" : "btn--ghost"}`}>{v[1]}</Link>)}
-      <Link href="/student" className="btn btn--sm btn--ghost">University record</Link>
+    <div className="row row--tight mb-3">
+      {VIEWS.map((v) => <LinkBtn key={v[0]} href={`/college/student?view=${v[0]}`} kind={view === v[0] ? "primary" : "ghost"}>{v[1]}</LinkBtn>)}
+      <LinkBtn href="/student" kind="ghost">University record</LinkBtn>
     </div>
   );
 
@@ -131,11 +131,11 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
             <PBody>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
                 {ladder.map((x) => (
-                  <div key={x.L} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textAlign: "center" }}>
-                    <div style={dot(x.st)}>{x.st === "done" ? "✓" : x.L}</div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{x.L} Level</div>
+                  <div key={x.L} className="stack" style={{ alignItems: "center", textAlign: "center" }}>
+                    <div style={dot(x.st)}>{x.st === "done" ? <Ico name="check" size={20} w={2.6} /> : x.L}</div>
+                    <div className="b600 t-sm">{x.L} Level</div>
                     <div className="sub2">{x.ex}</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: x.st === "done" ? "var(--green-ink)" : x.st === "stop" ? "var(--red-ink)" : x.st === "cur" ? "var(--chrome)" : "var(--chrome-dim)" }}>{x.sub}</div>
+                    <div className="t-sm b600" style={{ color: x.st === "done" ? "var(--green-ink)" : x.st === "stop" ? "var(--red-ink)" : x.st === "cur" ? "var(--chrome)" : "var(--chrome-dim)" }}>{x.sub}</div>
                   </div>
                 ))}
               </div>
@@ -144,15 +144,15 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
           {level >= 200 ? (
             <Panel title={`${level} Level · ${r.session}`} right={stageLabel}>
               <PBody>
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="stack">
                   {steps.map((x, i) => (
-                    <div key={x.label} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                      <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, boxSizing: "border-box", ...(x.done ? { background: "var(--green-ink)", color: "#fff" } : i === stageIdx && active ? { border: "2px solid var(--green-ink)", color: "var(--green-ink)" } : { border: "1px solid var(--line)", color: "var(--chrome-dim)" }) }}>{x.done ? "✓" : i + 1}</div>
-                      <div><div className="b600">{x.label}</div><div className="sub2">{x.sub}</div></div>
+                    <div key={x.label} className="row row--top" style={{ gap: "var(--s-3)" }}>
+                      <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "var(--t-base)", boxSizing: "border-box", ...(x.done ? { background: "var(--green-ink)", color: "var(--surface)" } : i === stageIdx && active ? { border: "2px solid var(--green-ink)", color: "var(--green-ink)" } : { border: "1px solid var(--line)", color: "var(--chrome-dim)" }) }}>{x.done ? <Ico name="check" size={16} w={2.6} /> : i + 1}</div>
+                      <div className="grow"><div className="b600">{x.label}</div><div className="sub2">{x.sub}</div></div>
                     </div>
                   ))}
                 </div>
-                {active && next && !next.cleared ? <div className="mt-3"><Link href="/student/fees" className="btn btn--primary btn--sm">Pay {next.name} fees · {next.session}</Link></div> : null}
+                {active && next && !next.cleared ? <div className="mt-3"><LinkBtn href="/student/fees" kind="primary">Pay {next.name} fees · {next.session}</LinkBtn></div> : null}
                 {active && r.canRegister ? <div className="mt-3"><RegisterButton session={yearSession} level={level} items={items} label={registerLabel} /></div> : null}
               </PBody>
             </Panel>
@@ -161,7 +161,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
               <PBody>
                 <div>You register by semester on the University&rsquo;s form and your results stand on the University&rsquo;s GPA sheet. Promotion to 200 Level follows the College&rsquo;s rule: every C-group course (Mathematics, Physics, Chemistry, Biology) passed at 50 or more, with no resit; a GST course failed is carried over.</div>
                 <div className="mt-2">{r.level100.published} of {r.level100.registered} courses published{r.level100.failed ? <> · <b className="ink-red">below 50: {r.level100.failed}</b></> : null}{r.level100.carried ? <> · GST carried: {r.level100.carried}</> : null}</div>
-                <div className="mt-3"><Link href="/student/results" className="btn btn--ghost btn--sm">Your University results</Link></div>
+                <div className="mt-3"><LinkBtn href="/student/results" kind="ghost">Your University results</LinkBtn></div>
               </PBody>
             </Panel>
           )}
@@ -177,7 +177,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
                 ["Subjects", step.subjects], ["CA / Examination", step.weights], ["To pass", step.pass], ["Minimum attendance", step.attendance],
                 ["Resit", step.resit], ["On failure", step.onFailure],
               ].map(([k, v]) => [<strong key="k">{k}</strong>, <span key="v">{v}</span>])} />
-              <PBody><ul className="sub2" style={{ margin: 0, paddingLeft: 18 }}>{COMMON_RULES.map((c) => <li key={c}>{c}</li>)}</ul></PBody>
+              <PBody><ul className="sub2 m-0" style={{ paddingLeft: "var(--s-5)" }}>{COMMON_RULES.map((c) => <li key={c}>{c}</li>)}</ul></PBody>
             </Panel>
           ) : null}
           {myPostings.length ? (
@@ -209,7 +209,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
               <Pil key="f" kind={e.first_cleared ? "ok" : "bad"}>{e.first_cleared ? "Paid" : "Due"}</Pil>, <Pil key="g" kind={e.second_cleared ? "ok" : "warn"}>{e.second_cleared ? "Paid" : "Due"}</Pil>,
             ])} />
             <PBody><div className="sub2">The level&rsquo;s fees are set by the Bursary and paid on the University&rsquo;s Fees &amp; payments page; the position here updates the moment a payment is confirmed. The whole session may be paid at once, or by semester as on the main portal.</div>
-              <div className="mt-2"><Link href="/student/fees" className="btn btn--primary btn--sm">Fees &amp; payments</Link></div></PBody>
+              <div className="mt-2"><LinkBtn href="/student/fees" kind="primary">Fees &amp; payments</LinkBtn></div></PBody>
           </Panel>
         </>
       ) : null}
@@ -231,7 +231,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
                   </div>
                 ) : null}
                 {!active ? <div className="sub2 mt-2">Registration is closed: {word(status)}.</div>
-                  : next && !next.cleared ? <div className="mt-3"><span className="sub2">{next.name} opens after its fees are paid for {next.session}. </span><Link href="/student/fees" className="btn btn--primary btn--sm">Pay fees</Link></div>
+                  : next && !next.cleared ? <div className="mt-3"><span className="sub2">{next.name} opens after its fees are paid for {next.session}. </span><LinkBtn href="/student/fees" kind="primary">Pay fees</LinkBtn></div>
                   : next ? <div className="mt-3"><RegisterButton session={yearSession} level={level} items={items} disabled={!r.canRegister} label={registerLabel} /></div>
                   : registered ? <div className="sub2 mt-2">{cur?.registered_items ?? 0} items registered. {cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}.` : ""}</div>
                   : null}
@@ -269,7 +269,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
             return (
               <Panel key={`${h.level}-${h.session}`} title={`${h.level} Level · ${h.session}`} right={`${en ? (en.kind === "REPEAT" ? `Repeat year, attempt ${en.attempt_no}` : en.kind === "APPEAL" ? "Senate-approved final attempt" : "First attempt") : "First attempt"} · ${ex?.name ?? ""}`}>
                 {main.length ? <DTable cols={["Subject", "CA|mid", "Exam|mid", "Clinical|mid", "Attend.|mid", "Total|mid", "Remark"]} rows={main.map(row)} /> : <PBody><div className="sub2">{en?.registered_at ? `Registered. Awaiting the ${ex?.name ?? "examination"}.` : en ? "Not yet registered." : "No results."}</div></PBody>}
-                {resit.length ? <><div className="sub2" style={{ padding: "8px 14px 0", fontWeight: 600 }}>Resit · fresh CA</div><DTable cols={["Subject", "CA|mid", "Exam|mid", "Clinical|mid", "Attend.|mid", "Total|mid", "Remark"]} rows={resit.map(row)} /></> : null}
+                {resit.length ? <><div className="sub2 b600" style={{ padding: "var(--s-2) var(--s-4) 0" }}>Resit · fresh CA</div><DTable cols={["Subject", "CA|mid", "Exam|mid", "Clinical|mid", "Attend.|mid", "Total|mid", "Remark"]} rows={resit.map(row)} /></> : null}
                 {d ? (
                   <PBody>
                     <Note kind={OUTCOME[d.outcome]?.[1] === "ok" ? "ok" : OUTCOME[d.outcome]?.[1] === "bad" ? "bad" : "info"} title={`${OUTCOME[d.outcome]?.[0] ?? d.outcome}${d.honours ? " with MBBS Honours" : ""}${d.state === "CONFIRMED" ? "" : " (provisional)"}`}>

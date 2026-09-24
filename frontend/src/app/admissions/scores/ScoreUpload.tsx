@@ -10,6 +10,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { buildXlsx } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
@@ -190,9 +191,9 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
             <Btn kind="ghost" disabled={busy} onClick={() => void zeroMissing(null, "all programmes", postUtme.programmes.reduce((n, r) => n + Number(r.awaiting), 0))}>Score remaining as zero</Btn>
           </> : null}
         </span>}>
-          <div className="card__body" style={{ paddingBottom: 0 }}>
+          <PBody style={{ paddingBottom: 0 }}>
             <div className="sub2">These are the programmes whose applicants have registered for Post-UTME for {session}. Every one must have its screening scores uploaded and released before the admission process (merit list, offers) proceeds for it. A programme still awaiting scores is highlighted.</div>
-          </div>
+          </PBody>
           {postUtme.programmes.length ? (
             <DTable
               cols={["Faculty", "Programme", "Registered|num", "Scored|num", "Released|num", "Awaiting|num", "Status|mid"]}
@@ -202,7 +203,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
                 <span className="tnum" key="rg">{Number(r.registered).toLocaleString()}</span>,
                 <span className="tnum" key="sc">{Number(r.scored).toLocaleString()}</span>,
                 <span className="tnum" key="rl">{Number(r.released).toLocaleString()}</span>,
-                Number(r.awaiting) ? <button key="aw" onClick={() => void downloadAwaiting(r.programme_code, r.programme)} title={`Download the ${Number(r.awaiting).toLocaleString()} applicants awaiting a score`} className="tnum" style={{ background: "none", border: 0, padding: 0, color: "var(--red-ink)", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{Number(r.awaiting).toLocaleString()}</button> : <span className="tnum" key="aw">0</span>,
+                Number(r.awaiting) ? <button key="aw" onClick={() => void downloadAwaiting(r.programme_code, r.programme)} title={`Download the ${Number(r.awaiting).toLocaleString()} applicants awaiting a score`} className="tnum ink-red b700" style={{ background: "none", border: 0, padding: 0, textDecoration: "underline", cursor: "pointer" }}>{Number(r.awaiting).toLocaleString()}</button> : <span className="tnum" key="aw">0</span>,
                 Number(r.awaiting) ? <Pil kind="bad" key="s">Scores due</Pil> : Number(r.released) >= Number(r.registered) ? <Pil kind="ok" key="s">Released</Pil> : <Pil kind="warn" key="s">Uploaded, release</Pil>,
               ])}
               texts={postUtme.programmes.map((r) => `${r.faculty ?? ""} ${r.programme}`)}
@@ -221,7 +222,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
           <textarea className="ctl" rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"20261234AB, 68.5\n20265678CD, 72\nAPP/26/000002, 55"} style={{ fontFamily: "var(--mono, monospace)", width: "100%" }} />
           <input ref={file} type="file" accept=".csv,text/csv,text/plain" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadFile(f); e.target.value = ""; }} />
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+          <div className="row mt-2">
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
             <Btn kind="ghost" onClick={() => file.current?.click()}>Load a CSV</Btn>
             <Btn kind="primary" disabled={busy || !rows.length} onClick={() => void upload()}>{busy ? "Uploading…" : `Upload ${rows.length} score${rows.length === 1 ? "" : "s"}`}</Btn>
@@ -269,15 +270,15 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
           </Note>
           {cleared !== null ? <Note kind="ok" title={`${cleared} score${cleared === 1 ? "" : "s"} cleared`}>Those candidates no longer carry a Post-UTME score for {session}.</Note> : null}
           <div className="row row--end">
-            <div className="field" style={{ minWidth: 260, margin: 0 }}><label htmlFor="cs-prog">Programme</label>
+            <div style={{ minWidth: 260 }}><Field id="cs-prog" label="Programme">
               <select id="cs-prog" className="ctl" value={clearProg} onChange={(e) => { setClearProg(e.target.value); setCleared(null); }}>
                 <option value="">All programmes ({session})</option>
                 {(postUtme?.programmes ?? []).filter((p) => Number(p.scored) > 0).map((p) => <option key={p.programme_code} value={p.programme_code}>{p.programme} — {p.scored} scored</option>)}
               </select>
-            </div>
-            <div className="field" style={{ minWidth: 180, margin: 0 }}><label htmlFor="cs-confirm">Type CLEAR SCORES</label>
+            </Field></div>
+            <div style={{ minWidth: 180 }}><Field id="cs-confirm" label="Type CLEAR SCORES">
               <input id="cs-confirm" className="ctl tnum" value={clearConfirm} onChange={(e) => setClearConfirm(e.target.value)} placeholder="CLEAR SCORES" autoComplete="off" />
-            </div>
+            </Field></div>
             <Btn kind="urgent" disabled={!mayRelease || busy || clearConfirm.trim().toUpperCase() !== "CLEAR SCORES"} onClick={() => void clearScores()}>{busy ? "Clearing…" : "Clear scores"}</Btn>
           </div>
           {!mayRelease ? <div className="sub2 mt-2">Only the Academic Office or Registry may clear scores.</div> : null}

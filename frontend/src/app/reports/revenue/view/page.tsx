@@ -27,7 +27,7 @@ export default async function RevenueReport({ searchParams }: { searchParams: Pr
     api<Me>("/api/v1/iam/me"),
     api<Revenue>(`/api/v1/reports/revenue?session=${encodeURIComponent(session)}`),
   ]);
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
 
   const sheetHeaders = ["Category", "Payments", "Amount (NGN)"];

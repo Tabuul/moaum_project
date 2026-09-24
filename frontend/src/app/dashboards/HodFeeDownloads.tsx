@@ -47,7 +47,7 @@ export function FeeCount({ which, count, session, deptName, size, colour }: {
           fontSize: size, lineHeight: 1.1, borderBottom: "2px dotted currentColor", opacity: busy ? 0.6 : 1 }}>
         {count.toLocaleString()}
       </button>
-      {err ? <span style={{ display: "block", fontSize: 12, color: "var(--red-ink)", fontWeight: 400 }}>{err}</span> : null}
+      {err ? <span className="t-sm ink-red" style={{ display: "block", fontWeight: 400 }}>{err}</span> : null}
     </>
   );
 }

@@ -11,6 +11,7 @@ import { useQueryNav } from "@/lib/query-nav";
 import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Supervised {
@@ -106,7 +107,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
               <span key="s"><strong>{r.surname}, {r.other_names}</strong><div className="sub2 tnum">{r.number}</div></span>,
               <span className="tnum" key="g">{r.group_label ?? "—"}</span>,
               <span className="sub2" key="sv">{r.supervisor ?? "Not yet assigned"}</span>,
-              <span className="tnum" key="l" style={r.requirements && r.requirements_met >= r.requirements ? { color: "var(--green-ink)", fontWeight: 600 } : undefined}>{r.requirements ? `${r.requirements_met} of ${r.requirements}` : "—"}</span>,
+              <span className={`tnum${r.requirements && r.requirements_met >= r.requirements ? " ink-green b600" : ""}`} key="l">{r.requirements ? `${r.requirements_met} of ${r.requirements}` : "—"}</span>,
               <span className="tnum" key="a">{r.sessions_recorded ? `${r.sessions_present} of ${r.sessions_recorded}` : "—"}</span>,
               <span className="tnum" key="c">{r.min_cases ? `${r.cases} of ${r.min_cases}` : String(r.cases)}</span>,
               <Pil key="st" kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>,
@@ -130,18 +131,18 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
                 <DTable cols={["Procedure", "Required|mid", "Verified|mid", "Awaiting|mid"]} rows={lb.requirements.map((r) => [
                   <span key="n">{r.name}<div className="sub2">{r.mode === "OBSERVE" ? "Observe" : r.mode === "PERFORM" ? "Perform" : "Observe or perform"}</div></span>,
                   <span className="tnum" key="m">{r.min_count}</span>,
-                  <span className="tnum" key="d" style={r.done >= r.min_count ? { color: "var(--green-ink)", fontWeight: 700 } : undefined}>{r.done}</span>,
-                  <span className="tnum" key="u" style={r.unverified ? { color: "var(--red-ink)" } : undefined}>{r.unverified || "—"}</span>,
+                  <span className={`tnum${r.done >= r.min_count ? " ink-green b700" : ""}`} key="d">{r.done}</span>,
+                  <span className={`tnum${r.unverified ? " ink-red" : ""}`} key="u">{r.unverified || "—"}</span>,
                 ])} />
               ) : null}
               {lb.requirements.length ? (
                 <PBody>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div className="field"><label htmlFor="pr-req">Procedure</label>
+                  <div className="stack">
+                    <Field id="pr-req" label="Procedure">
                       <select id="pr-req" className="ctl" value={proc.requirementId} onChange={(e) => setProc({ ...proc, requirementId: e.target.value })}>
                         <option value="">Choose…</option>{lb.requirements.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                      </select></div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      </select></Field>
+                    <div className="row row--tight">
                       <div className="field" style={{ flex: "1 1 130px" }}><label htmlFor="pr-date">Date</label><input id="pr-date" className="ctl" type="date" value={proc.doneOn} onChange={(e) => setProc({ ...proc, doneOn: e.target.value })} /></div>
                       <div className="field" style={{ width: 130 }}><label htmlFor="pr-mode">Mode</label>
                         <select id="pr-mode" className="ctl" value={proc.mode} onChange={(e) => setProc({ ...proc, mode: e.target.value })}><option value="PERFORM">Performed</option><option value="OBSERVE">Observed</option></select></div>
@@ -164,10 +165,10 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
 
             <Panel title="Cases clerked" right={lb.minCases ? `${lb.cases.length} of ${lb.minCases} required` : `${lb.cases.length} on record`}>
               <PBody>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="row row--tight row--end">
                   <div className="field" style={{ flex: "1 1 130px" }}><label htmlFor="cs-date">Date</label><input id="cs-date" className="ctl" type="date" value={kase.doneOn} onChange={(e) => setKase({ ...kase, doneOn: e.target.value })} /></div>
                   <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="cs-ref">Patient reference</label><input id="cs-ref" className="ctl" value={kase.patientRef} onChange={(e) => setKase({ ...kase, patientRef: e.target.value })} placeholder="Hospital number" autoComplete="off" /></div>
-                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center", paddingBottom: 8 }}><input type="checkbox" checked={kase.presented} onChange={(e) => setKase({ ...kase, presented: e.target.checked })} /> Presented</label>
+                  <label className="row row--inline row--tight" style={{ paddingBottom: "var(--s-2)" }}><input type="checkbox" checked={kase.presented} onChange={(e) => setKase({ ...kase, presented: e.target.checked })} /> Presented</label>
                   <Btn kind="primary" disabled={busy || !kase.doneOn} onClick={() => void call("POST", `/allocations/${lb.allocation.id}/cases`, kase, `${lb.allocation.number}: a case clerked${kase.presented ? " and presented" : ""}`).then((ok) => { if (ok) setKase({ doneOn: "", patientRef: "", presented: false }); })}>Record the case</Btn>
                 </div>
               </PBody>
@@ -178,7 +179,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
           <div className="grid grid--2">
             <Panel title="Attendance" right={attPct == null ? "Nothing recorded yet" : `${attPct}% present of ${lb.attendance.length} recorded`}>
               <PBody>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="row row--tight row--end">
                   <div className="field" style={{ flex: "1 1 130px" }}><label htmlFor="at-date">Date</label><input id="at-date" className="ctl" type="date" value={att.heldOn} onChange={(e) => setAtt({ ...att, heldOn: e.target.value })} /></div>
                   <div className="field" style={{ width: 140 }}><label htmlFor="at-type">Activity</label>
                     <select id="at-type" className="ctl" value={att.activityType} onChange={(e) => setAtt({ ...att, activityType: e.target.value })}>{ACTIVITIES.map((a) => <option key={a} value={a}>{word(a)}</option>)}</select></div>
@@ -195,15 +196,15 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
                 </div>
                 <div className="sub2 mt-2">The prospectus requires 75% attendance pre-clinical, 70% clinical and 80% in Surgery to sit the examination; the record here is what that is judged on.</div>
               </PBody>
-              {lb.attendance.length ? <DTable cols={["Date|mid", "Activity", "Slot", "Present|mid"]} rows={lb.attendance.map((a) => [<span className="tnum" key="d">{day(a.held_on)}</span>, <span key="t">{word(a.activity_type)}</span>, <span className="sub2" key="s">{a.starts_at ? `${String(a.starts_at).slice(0, 5)}–${String(a.ends_at).slice(0, 5)} · ${word(a.slot_type ?? "")}${a.topic ? ` · ${a.topic}` : ""}` : "—"}</span>, <span key="p" style={{ color: a.present ? "var(--green-ink)" : "var(--red-ink)", fontWeight: 600 }}>{a.present ? "Present" : "Absent"}</span>])} /> : null}
+              {lb.attendance.length ? <DTable cols={["Date|mid", "Activity", "Slot", "Present|mid"]} rows={lb.attendance.map((a) => [<span className="tnum" key="d">{day(a.held_on)}</span>, <span key="t">{word(a.activity_type)}</span>, <span className="sub2" key="s">{a.starts_at ? `${String(a.starts_at).slice(0, 5)}–${String(a.ends_at).slice(0, 5)} · ${word(a.slot_type ?? "")}${a.topic ? ` · ${a.topic}` : ""}` : "—"}</span>, <span key="p" className={`b600 ${a.present ? "ink-green" : "ink-red"}`}>{a.present ? "Present" : "Absent"}</span>])} /> : null}
             </Panel>
 
             <Panel title="Mandatory events" right={lb.events.length ? `${lb.events.length} of the block` : "None for this block"}>
               {lb.events.length ? (
                 <>
-                  <DTable cols={["Event", "Day|mid", "Held|mid", "Present|mid"]} rows={lb.events.map((e) => [<strong key="n">{e.name}</strong>, <span key="d">{e.weekday ? DAYS[e.weekday] : "—"}</span>, <span className="tnum" key="h">{e.held}</span>, <span className="tnum" key="p" style={e.held && e.present < e.held ? { color: "var(--red-ink)" } : undefined}>{e.present}</span>])} />
+                  <DTable cols={["Event", "Day|mid", "Held|mid", "Present|mid"]} rows={lb.events.map((e) => [<strong key="n">{e.name}</strong>, <span key="d">{e.weekday ? DAYS[e.weekday] : "—"}</span>, <span className="tnum" key="h">{e.held}</span>, <span className={`tnum${e.held && e.present < e.held ? " ink-red" : ""}`} key="p">{e.present}</span>])} />
                   <PBody>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
+                    <div className="row row--tight row--end">
                       <div className="field" style={{ flex: "1 1 180px" }}><label htmlFor="ev-id">Event</label>
                         <select id="ev-id" className="ctl" value={evt.eventId} onChange={(e) => setEvt({ ...evt, eventId: e.target.value })}><option value="">Choose…</option>{lb.events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
                       <div className="field" style={{ flex: "1 1 130px" }}><label htmlFor="ev-date">Date</label><input id="ev-date" className="ctl" type="date" value={evt.heldOn} onChange={(e) => setEvt({ ...evt, heldOn: e.target.value })} /></div>

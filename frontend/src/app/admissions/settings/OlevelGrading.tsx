@@ -132,14 +132,14 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
                 ];
               })}
             />
-            <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, flexWrap: "wrap" }}>
+            <div className="row mt-3">
               <Btn kind="primary" disabled={!may || !dirty || busy} onClick={() => void save()}>{busy ? "Saving…" : `State the grading for ${session}`}</Btn>
               {dirty ? <Btn kind="ghost" disabled={busy} onClick={() => { setEdits({}); setExam(null); }}>Discard</Btn> : null}
               {!may ? <span className="sub2">The grading is stated by the Academic Office or the Registrar.</span> : null}
             </div>
             <div className="mt-4">
               <div className="eyebrow">Programmes screened by the post-UTME examination</div>
-              <div className="sub2" style={{ margin: "4px 0 8px" }}>
+              <div className="sub2 mt-1 mb-2">
                 The departments named here sit the examination. Their candidates are scored on the examination alone, and the O&rsquo;Level grading above is not applied to them. Every other programme is screened on its O&rsquo;Level results.
               </div>
               <DTable cols={["Programme", "Faculty", "|num"]} rows={examCodes.map((code) => {

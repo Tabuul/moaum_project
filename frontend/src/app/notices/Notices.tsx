@@ -69,7 +69,7 @@ export function Notices({ d, actingOffice }: { d: Outbox; actingOffice: string |
       </Panel>
 
       <Panel title="The outbox" right={`${d.recent.length} most recent${may && d.failed ? "" : ""}`}>
-        {may && d.failed ? <div className="card__body" style={{ borderBottom: "1px solid var(--line-2)" }}><Btn kind="ghost" disabled={busy} onClick={() => void retry("/retry-failed", "Requeue all failed notices")}>Put all {d.failed} failed back in the queue</Btn></div> : null}
+        {may && d.failed ? <PBody style={{ borderBottom: "1px solid var(--line-2)" }}><Btn kind="ghost" disabled={busy} onClick={() => void retry("/retry-failed", "Requeue all failed notices")}>Put all {d.failed} failed back in the queue</Btn></PBody> : null}
         {d.recent.length ? (
           <DTable cols={["When|mid", "To", "Notice", "Channel|mid", "Attempts|mid", "State|num"]} rows={d.recent.map((n) => [
             <span className="tnum sub2" key="w">{when(n.created_at)}</span>,
@@ -78,7 +78,7 @@ export function Notices({ d, actingOffice }: { d: Outbox; actingOffice: string |
             <span className="sub2" key="c">{n.channel}</span>,
             <span className="tnum" key="a">{n.attempts}</span>,
             n.state === "SENT" ? <Pil kind="ok" key="x">Sent</Pil> : n.state === "FAILED" ? (
-              <span key="x" style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <span key="x" className="row row--inline row--tight">
                 <Pil kind="bad">Failed</Pil>{n.last_error ? <span className="sub2">{n.last_error}</span> : null}
                 {may ? <Btn kind="ghost" disabled={busy} onClick={() => void retry(`/${n.id}/retry`, `Requeue notice to ${n.recipient}`)}>Requeue</Btn> : null}
               </span>

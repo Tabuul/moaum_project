@@ -1,12 +1,11 @@
 "use client";
 
 /** tPipeline — proto/part26.html: the stages a result passes, and where every set in scope is now. */
-import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Scope } from "@/lib/scope";
 import { STAGE_LABEL, type SheetListing } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 /** the nine stages, with what happens and what each cannot pass without (proto/part26 RP_STAGES, read against the chain V013 carries) */
@@ -38,12 +37,12 @@ export function Pipeline({ scope, structure, sessions, listing, at, office }: { 
       </Note>
       <Panel title="The result pipeline" right={`${scope.session}${scope.sem ? ` · ${scope.sem === "1" ? "First" : "Second"} semester` : ""}`}>
         <PBody>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div className="row row--tight">
             {RP_STAGES.map(([code, label], i) => (
-              <button key={code} className={`btn btn--sm ${i === at ? "btn--primary" : "btn--ghost"}`} onClick={() => go(i)} style={{ flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
+              <Btn key={code} kind={i === at ? "primary" : "ghost"} onClick={() => go(i)} style={{ flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
                 <span>{i + 1}. {label}</span>
-                <span style={{ fontWeight: 400, opacity: 0.8, fontSize: 11 }} className="tnum">{counts[i]} set{counts[i] === 1 ? "" : "s"} here</span>
-              </button>
+                <span className="tnum t-xs" style={{ fontWeight: 400, opacity: 0.8 }}>{counts[i]} set{counts[i] === 1 ? "" : "s"} here</span>
+              </Btn>
             ))}
           </div>
         </PBody>
@@ -51,13 +50,13 @@ export function Pipeline({ scope, structure, sessions, listing, at, office }: { 
       <Panel title={`Stage ${at + 1} · ${s[1]}`} right={s[2]}>
         <PBody>
           <div className="grid grid--2">
-            <div><div className="eyebrow">What happens here</div><p style={{ margin: "5px 0 0", lineHeight: 1.6 }}>{s[3]}</p></div>
-            <div><div className="eyebrow">What it cannot pass without</div><p style={{ margin: "5px 0 0", lineHeight: 1.6 }}>{s[4]}</p></div>
+            <div><div className="eyebrow">What happens here</div><p style={{ margin: "var(--s-1) 0 0", lineHeight: 1.6 }}>{s[3]}</p></div>
+            <div><div className="eyebrow">What it cannot pass without</div><p style={{ margin: "var(--s-1) 0 0", lineHeight: 1.6 }}>{s[4]}</p></div>
           </div>
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 6 }}>
-            <button className="btn btn--ghost btn--sm" disabled={at === 0} onClick={() => go(at - 1)}>← Previous stage</button>
-            <button className="btn btn--primary btn--sm" disabled={at === RP_STAGES.length - 1} onClick={() => go(at + 1)}>Next stage →</button>
-            <Link href="/results/chain" className="btn btn--ghost btn--sm">Open the approval chain</Link>
+          <div className="row mt-2">
+            <Btn kind="ghost" disabled={at === 0} onClick={() => go(at - 1)}>← Previous stage</Btn>
+            <Btn kind="primary" disabled={at === RP_STAGES.length - 1} onClick={() => go(at + 1)}>Next stage →</Btn>
+            <LinkBtn href="/results/chain" kind="ghost">Open the approval chain</LinkBtn>
           </div>
         </PBody>
       </Panel>
@@ -76,17 +75,17 @@ export function Pipeline({ scope, structure, sessions, listing, at, office }: { 
                 <Two key="c" a={<span className="tnum">{x.courseCode}</span>} b={x.courseTitle} />,
                 <span className="sub2" key="d">{x.deptName}</span>,
                 <span className="tnum" key="n">{x.candidates}</span>,
-                x.failRate === null ? <span className="sub2" key="f">—</span> : <span className="tnum" key="f" style={hot ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{x.failRate}%</span>,
+                x.failRate === null ? <span className="sub2" key="f">—</span> : <span className={`tnum${hot ? " ink-red b700" : ""}`} key="f">{x.failRate}%</span>,
                 <Pil key="s" kind={x.stage === "PUBLISHED" ? "ok" : x.stage === "ENTRY" ? "bad" : "info"}>{STAGE_LABEL[x.stage]?.[0] ?? x.stage}</Pil>,
                 <span className="sub2" key="w">{x.stage === "PUBLISHED" ? "Nobody — published" : STAGE_LABEL[x.stage]?.[1] ?? ""}</span>,
-                <Link key="a" href={`/results/chain?sheet=${x.id}`} className="btn btn--ghost btn--sm">Open</Link>,
+                <LinkBtn key="a" href={`/results/chain?sheet=${x.id}`} kind="ghost">Open</LinkBtn>,
               ];
             })}
             texts={listing.sheets.map((x) => `${x.courseCode} ${x.courseTitle} ${x.deptName} ${x.stage}`)} />
         )}
       </Panel>
       {listing.sheets.some((x) => x.failRate !== null && x.failRate > 50) ? (
-        <Note kind="bad" title="A set is failing more than half its candidates" action={<Link href="/results/approvals" className="btn btn--primary btn--sm">Open the queue</Link>}>
+        <Note kind="bad" title="A set is failing more than half its candidates" action={<LinkBtn href="/results/approvals" kind="primary">Open the queue</LinkBtn>}>
           {listing.sheets.filter((x) => x.failRate !== null && x.failRate > 50).map((x) => `${x.courseCode} at ${x.failRate}% of ${x.candidates}`).join(", ")}. That is not a result to approve on the nod, and it is not a result to refuse either: it is a result to ask a question about, with the lecturer present. The portal carries it forward if the Board approves it — it simply refuses to let it pass unremarked.
         </Note>
       ) : null}

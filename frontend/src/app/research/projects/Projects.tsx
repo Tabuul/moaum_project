@@ -67,7 +67,7 @@ export function Projects({ rows, actingOffice }: { rows: Grant[]; actingOffice: 
             <Two key="p" a={r.principal_investigator} b={r.sponsor} />,
             <b className="tnum" key="a">{r.currency === "NGN" ? money(Number(r.amount)) : `${r.currency} ${Number(r.amount).toLocaleString()}`}</b>,
             <span className="sub2 tnum" key="w">{r.starts_on ? day(r.starts_on) : "—"}{r.ends_on ? ` – ${day(r.ends_on)}` : ""}</span>,
-            <span key="s" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
+            <span key="s" className="row row--inline row--tight row--right">
               <Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>
               {may && r.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const s = window.prompt("State: PROPOSED, ACTIVE, COMPLETED, CLOSED, SUSPENDED", r.state); if (s && s.trim()) void send(`/${r.id}/state`, { state: s.trim() }, `Set ${r.reference} to ${s.trim()}`); }}>State</Btn> : null}
             </span>,

@@ -119,7 +119,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
               <Btn kind="primary" disabled={busy || !code.trim() || !name.trim() || !faculty.trim()} onClick={async () => { const j = await post("/departments", { code: code.trim(), name: name.trim(), faculty: faculty.trim() }, `Department ${code.trim()} ${editing ? "edited" : "created"}`); if (j) { setMsg(`Department ${j.code} saved.`); setCode(""); setName(""); setFaculty(""); setEditing(false); } }}>{editing ? "Save changes" : "Save the department"}</Btn>
               {editing ? <Btn kind="ghost" onClick={() => { setCode(""); setName(""); setFaculty(""); setEditing(false); }}>Cancel</Btn> : null}
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
-              <label className={`btn btn--ghost btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+              <label className={`btn btn--ghost btn--sm m-0${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
                 Upload departments (.xlsx / .csv)
                 <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
               </label>
@@ -137,7 +137,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
           <DTable cols={["Code|mid", "Name", "Faculty", "Programmes|num", "Courses|num", "|num"]} rows={departments.map((d) => [
             <span className="tnum" key="c">{d.code}</span>, <strong key="n">{d.name}</strong>, <span key="f">{d.faculty_name}</span>,
             <span className="tnum" key="p">{d.programmes}</span>, <span className="tnum" key="k">{d.courses}</span>,
-            may ? <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            may ? <span key="x" className="row row--tight row--right">
               <IcoBtn key="e" icon="edit" label={`Edit ${d.name}`} disabled={busy} onClick={() => { setCode(d.code); setName(d.name); setFaculty(d.faculty_code); setEditing(true); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }} />
               <IcoBtn key="x" icon="trash" danger label={d.programmes || d.courses ? "Empty the department first" : `Remove ${d.name}`} disabled={busy || !!d.programmes || !!d.courses} onClick={() => void remove(d)} />
             </span> : <span className="sub2" key="x">—</span>,

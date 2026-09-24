@@ -13,7 +13,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
-import { Btn, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 
@@ -129,7 +129,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
     const belowNote = cutoff != null;
     return (
       <>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <div className="row mb-3">
           <Btn kind="ghost" onClick={() => { setOpen(null); setDetail(null); }}>← All courses</Btn>
           <span className="grow" />
           <Btn kind="ghost" disabled={!detail?.length} onClick={() => void exportDetailExcel()}>Export Excel</Btn>
@@ -189,8 +189,8 @@ export function Screened({ session, summary }: { session: string; summary: Scree
 
   return (
     <>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <Link href={`/admissions`} className="btn btn--ghost btn--sm">← Admissions</Link>
+      <div className="row mb-3">
+        <LinkBtn kind="ghost" href={`/admissions`}>← Admissions</LinkBtn>
         <div style={{ minWidth: 260, maxWidth: 340 }}>
           <SearchSelect value={faculty} allLabel="All departments (faculties)" placeholder="Search a faculty…"
             options={faculties.map((f) => ({ value: f.code, label: f.name }))}

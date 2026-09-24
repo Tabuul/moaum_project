@@ -7,7 +7,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { ServiceRequest } from "@/app/student/support/Support";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Ico, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -87,13 +87,13 @@ export function SupportDesk({ requests }: { requests: ServiceRequest[] }) {
           foot={done
             ? <><span className="grow" /><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn></>
             : <><Btn kind="ghost" onClick={() => setOpen(null)}>Cancel</Btn><span className="grow" /><Btn kind="go" disabled={busy || !answer.trim()} onClick={() => void send()}>{resolved ? "Answer and resolve" : "Answer, keep open"}</Btn></>}>
-          {open.detail ? <p style={{ margin: "0 0 10px", lineHeight: 1.6 }}>{open.detail}</p> : null}
+          {open.detail ? <p className="m-0 mb-2" style={{ lineHeight: 1.6 }}>{open.detail}</p> : null}
           {open.documents ? (
-            <div style={{ margin: "0 0 12px" }}>
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Supporting documents</div>
+            <div className="mb-3">
+              <div className="b600 t-sm mb-1">Supporting documents</div>
               {docs.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {docs.map((d) => <a key={d.id} href={`/api/bff/api/v1/support/requests/${open.id}/documents/${d.id}/content`} target="_blank" rel="noreferrer" className="sub2">📎 {d.filename} <span className="tnum">({human(d.bytes)})</span></a>)}
+                <div className="stack" style={{ gap: "var(--s-1)" }}>
+                  {docs.map((d) => <a key={d.id} href={`/api/bff/api/v1/support/requests/${open.id}/documents/${d.id}/content`} target="_blank" rel="noreferrer" className="sub2"><Ico name="doc" size={14} /> {d.filename} <span className="tnum">({human(d.bytes)})</span></a>)}
                 </div>
               ) : <div className="sub2">Loading {open.documents} attached file{open.documents === 1 ? "" : "s"}…</div>}
             </div>
@@ -103,7 +103,7 @@ export function SupportDesk({ requests }: { requests: ServiceRequest[] }) {
           ) : (
             <>
               <Field id="an-text" label="Your answer" hint="Sent to the student by email and SMS, and shown against the reference."><textarea id="an-text" className="ctl" rows={5} value={answer} onChange={(e) => setAnswer(e.target.value)} /></Field>
-              <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, color: "var(--muted)" }}><input type="checkbox" className="chk" checked={resolved} onChange={(e) => setResolved(e.target.checked)} /><span>This resolves the request.</span></label>
+              <label className="row row--top ink-muted" style={{ fontSize: 13.5 }}><input type="checkbox" className="chk" checked={resolved} onChange={(e) => setResolved(e.target.checked)} /><span>This resolves the request.</span></label>
             </>
           )}
         </Modal>

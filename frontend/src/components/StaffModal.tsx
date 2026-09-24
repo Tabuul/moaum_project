@@ -8,7 +8,7 @@
  * Teaching (the courses they carry, with class sizes) and Leave. Read-only; pay is not shown here.
  */
 import { useEffect, useState, type ReactNode } from "react";
-import { KvGrid, Note, Pil } from "@/components/proto/ui";
+import { Btn, KvGrid, Note, Pil, Tabs } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Passport, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -45,20 +45,7 @@ function list(json: string | null | undefined): string[] {
   try { const v = JSON.parse(json ?? "[]"); return Array.isArray(v) ? v.map((x) => (typeof x === "string" ? x : JSON.stringify(x))) : []; } catch { return []; }
 }
 
-function Tabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
-  return (
-    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid var(--line-2)", marginBottom: 12 }}>
-      {TABS.map(([k, l]) => (
-        <button key={k} type="button" onClick={() => onTab(k)}
-          style={{ background: "none", border: "none", cursor: "pointer", font: "inherit", padding: "8px 12px", borderBottom: tab === k ? "2px solid var(--chrome)" : "2px solid transparent", fontWeight: tab === k ? 600 : 500, color: tab === k ? "var(--ink)" : "var(--muted)" }}>
-          {l}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-const H = ({ children }: { children: ReactNode }) => <div className="sub2 eyebrow eyebrow--gap">{children}</div>;
+const H =({ children }: { children: ReactNode }) => <div className="sub2 eyebrow eyebrow--gap">{children}</div>;
 
 export function StaffModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [rec, setRec] = useState<StaffRecord | null>(null);
@@ -86,20 +73,20 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
   else if (!rec || !p) body = <Note kind="info" title="Reading the record…">One moment.</Note>;
   else body = (
     <>
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 12 }}>
+      <div className="row row--top mb-3" style={{ gap: "var(--s-4)" }}>
         <div style={{ width: 96, height: 118, flexShrink: 0 }}>
           {p.has_photo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={`/api/bff/api/v1/hr/staff/${p.id}/photo`} alt={`${p.surname}, ${p.given_names} — photograph`}
-              style={{ width: 96, height: 118, objectFit: "cover", borderRadius: 6, border: "1px solid var(--line-2)", display: "block" }} />
+              style={{ width: 96, height: 118, objectFit: "cover", borderRadius: "var(--r)", border: "1px solid var(--line-2)", display: "block" }} />
           ) : <Passport w={96} h={118} radius={6} src={null} />}
         </div>
-        <div style={{ flexGrow: 1, minWidth: 240 }}>
-          <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{p.surname}, {p.given_names}</div>
+        <div className="grow" style={{ minWidth: 240 }}>
+          <div className="phead__t">{p.surname}, {p.given_names}</div>
           <div className="sub2 tnum mt-1">{p.staff_number ?? "—"}{p.pno ? ` · PNO ${p.pno}` : ""}</div>
           <div className="sub2 mt-1">{rankCase(p.rank)}{p.department ? ` · ${p.department}` : ""}</div>
           <div className="sub2">{p.faculty ?? ""}</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <div className="row mt-2">
             <Pil kind={p.status === "ACTIVE" ? "ok" : p.status === "SUSPENDED" ? "warn" : "grey"}>{words(p.status)}</Pil>
             <Pil kind={p.category === "ACADEMIC" ? "info" : "grey"}>{p.category === "ACADEMIC" ? "Academic" : p.category ? "Non-teaching" : live.some((o) => ["lecturer", "hod", "dean"].includes(o.office_code)) ? "Academic" : "Staff"}</Pil>
             {p.sex ? <Pil kind="grey">{p.sex === "F" ? "Female" : "Male"}</Pil> : null}
@@ -108,7 +95,7 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
         </div>
       </div>
 
-      <Tabs tab={tab} onTab={setTab} />
+      <div className="mb-3"><Tabs look="line" label="Staff record" items={TABS.map(([id, label]) => ({ id, label }))} value={tab} onChange={setTab} /></div>
 
       {tab === "overview" ? (
         <>
@@ -139,7 +126,7 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
               ["Master's graduated", String(pf.masters_graduated ?? 0)], ["PhDs graduated", String(pf.phd_graduated ?? 0)],
               ["ORCID", pf.orcid ?? "—"], ["Google Scholar", pf.scholar_url ? <a key="s" href={pf.scholar_url} target="_blank" rel="noopener">{pf.scholar_url}</a> : "—"],
             ]} />
-            {LISTS.map(([k, label]) => { const items = list(pf[k] as string); return items.length ? (<div key={k}><H>{label} ({items.length})</H><ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.5 }}>{items.map((x, i) => <li key={i}>{x}</li>)}</ol></div>) : null; })}
+            {LISTS.map(([k, label]) => { const items = list(pf[k] as string); return items.length ? (<div key={k}><H>{label} ({items.length})</H><ol className="m-0" style={{ paddingLeft: "var(--s-5)", lineHeight: 1.5 }}>{items.map((x, i) => <li key={i}>{x}</li>)}</ol></div>) : null; })}
             <div className="sub2 mt-3">Profile kept by the member of staff · last updated {day(pf.updated_at)}.</div>
           </>
         ) : <div className="sub2">This member of staff has not filled their academic profile.</div>
@@ -165,7 +152,7 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
 
   return (
     <Modal wide title={p ? `${p.surname}, ${p.given_names}` : "Member of staff"} sub={p ? `${p.staff_number ?? ""}${p.rank ? ` · ${rankCase(p.rank)}` : ""}` : "Reading the record"} onClose={onClose}
-      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span className="grow" />{p ? <a href={`/staff/idcard/pdf?id=${p.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">ID card (PDF)</a> : null}<button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
+      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span className="grow" />{p ? <a href={`/staff/idcard/pdf?id=${p.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">ID card (PDF)</a> : null}<Btn kind="primary" onClick={onClose}>Close</Btn></>}>
       {body}
     </Modal>
   );

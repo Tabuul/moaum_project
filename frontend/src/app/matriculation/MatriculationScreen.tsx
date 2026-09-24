@@ -4,11 +4,10 @@
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { MatriculationOverview } from "@/lib/matriculation";
-import { Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Steps, TwoCol, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -65,9 +64,9 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
           rows={o.faculties.map((f) => [
             <strong key="f">{f.name}</strong>, <span className="sub2" key="o">{f.officer ?? "—"}</span>,
             <span className="tnum" key="r">{f.registered}</span>,
-            <span className="tnum" key="c" style={f.confirmed < f.registered ? { color: "var(--red-ink)" } : undefined}>{f.confirmed}</span>,
+            <span className={`tnum${f.confirmed < f.registered ? " ink-red" : ""}`} key="c">{f.confirmed}</span>,
             f.state === "CONFIRMED" ? <Pil kind="ok" key="s">Confirmed</Pil> : f.queried ? <Pil kind="bad" key="s">{f.queried} under query</Pil> : f.registered ? <Pil kind="info" key="s">Not returned</Pil> : <Pil kind="grey" key="s">Nobody registered</Pil>,
-            <Link key="a" href={`/matriculation/faculty/${f.code}?session=${encodeURIComponent(o.session)}`} className="btn btn--ghost btn--sm">Open</Link>,
+            <LinkBtn key="a" href={`/matriculation/faculty/${f.code}?session=${encodeURIComponent(o.session)}`} kind="ghost">Open</LinkBtn>,
           ])}
           texts={o.faculties.map((f) => `${f.name} ${f.officer ?? ""}`)}
         />
@@ -90,7 +89,7 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
         </Panel>
       </TwoCol>
       <div className="row">
-        <button className="btn btn--primary" disabled={busy || !may || t.pending > 0 || t.confirmed === 0} onClick={() => void run()}>{busy ? "Running…" : `Run matriculation for ${t.confirmed.toLocaleString()} students`}</button>
+        <Btn kind="primary" size="md" disabled={busy || !may || t.pending > 0 || t.confirmed === 0} onClick={() => void run()}>{busy ? "Running…" : `Run matriculation for ${t.confirmed.toLocaleString()} students`}</Btn>
         <span className="sub2">{t.pending ? `Disabled while ${outstanding.map((f) => f.name).join(", ")} ${outstanding.length === 1 ? "is" : "are"} outstanding` : t.confirmed === 0 ? (done ? `Run ${last.ref} · ${day(last.runAt)} · nobody is waiting for the next run` : "Nobody is on a confirmed list yet") : "This cannot be undone. A matriculation number is permanent."}</span>
       </div>
       {done ? (

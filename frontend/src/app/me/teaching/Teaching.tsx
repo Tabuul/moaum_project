@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
 import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { semesterName } from "@/lib/student-portal";
 
 interface Slot { weekday: number; starts_at: string; ends_at: string; venue: string; kind: string }
@@ -24,11 +25,11 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
   return (
     <>
       <div className="card"><div className="card__body row row--end">
-        <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="tt-s">Session</label>
+        <div style={{ minWidth: 160 }}><Field id="tt-s" label="Session">
           <select id="tt-s" className="ctl" value={data.session} onChange={(e) => queryNav(`/me/teaching?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(data.session) ? sessions : [data.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
-        </div>
+        </Field></div>
       </div></div>
 
       {data.offerings.length === 0 ? (
@@ -48,7 +49,7 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
             <DTable
               cols={["Course|mid", "Title", "Role|mid", "Level|num", "Semester|mid", "Roll|num", "Timetable"]}
               rows={data.offerings.map((o) => [
-                <Link key="c" href={`/lms/${o.id}`} className="tnum" style={{ fontWeight: 600 }}>{o.code}</Link>,
+                <Link key="c" href={`/lms/${o.id}`} className="tnum b600">{o.code}</Link>,
                 <span className="sub2" key="t">{o.title}</span>,
                 <Pil kind={ROLE[o.role] ?? "grey"} key="r">{o.role}</Pil>,
                 <span className="tnum" key="l">{o.level}</span>,

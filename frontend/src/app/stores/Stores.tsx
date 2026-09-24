@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -56,12 +56,12 @@ export function Stores({ items, assets, actingOffice }: { items: StoreItem[]; as
         ["Fixed assets", String(assets.length), null, "On the register"],
         ["Not verified in a year", String(staleAssets), staleAssets ? "var(--chrome)" : null, "Due a physical check"],
       ]} />
-      <div className="card"><div className="card__body">
-        <div className="role-tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === "items" ? "true" : "false"} onClick={() => setTab("items")}>Inventory ({items.length})</button>
-          <button type="button" role="tab" aria-selected={tab === "assets" ? "true" : "false"} onClick={() => setTab("assets")}>Fixed assets ({assets.length})</button>
-        </div>
-      </div></div>
+      <div className="card"><PBody>
+        <Tabs look="segmented" value={tab} onChange={setTab} items={[
+          { id: "items" as const, label: "Inventory", count: items.length },
+          { id: "assets" as const, label: "Fixed assets", count: assets.length },
+        ]} />
+      </PBody></div>
 
       {tab === "items" ? (
         <>

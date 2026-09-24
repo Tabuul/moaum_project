@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import type { LibraryDeskData } from "@/lib/library";
-import { Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
 
@@ -19,11 +18,11 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
     <>
       {(t?.overdue ?? 0) || finesUnpaid ? (
         <Note kind="bad" title={`${t?.overdue ?? 0} loan${(t?.overdue ?? 0) === 1 ? "" : "s"} overdue · ${money(finesUnpaid)} in unpaid fines`}
-          action={<Link href="/library/circulation" className="btn btn--urgent btn--sm">Open circulation</Link>}>
+          action={<LinkBtn kind="urgent" href="/library/circulation">Open circulation</LinkBtn>}>
           A fine is posted on return at the rate in force, settled against a reference the student generates or waived with a reason. A patron with a fine outstanding does not clear.
         </Note>
       ) : (
-        <Note kind="ok" title="Nothing overdue, and no fine outstanding" action={<Link href="/library/circulation" className="btn btn--primary btn--sm">Open circulation</Link>}>
+        <Note kind="ok" title="Nothing overdue, and no fine outstanding" action={<LinkBtn kind="primary" href="/library/circulation">Open circulation</LinkBtn>}>
           Loans, returns, renewals and reservations are handled on the circulation desk.
         </Note>
       )}
@@ -63,9 +62,9 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
       <Panel title="Library desks" right={me?.name ? `Signed in as ${me.name}` : "University Library"}>
         <PBody>
           <div className="grid--fill">
-            <Link href="/library/circulation" className="btn btn--ghost btn--sm">Circulation</Link>
-            <Link href="/clearance" className="btn btn--ghost btn--sm">Student clearance</Link>
-            <Link href="/support" className="btn btn--ghost btn--sm">Help &amp; requests</Link>
+            <LinkBtn kind="ghost" href="/library/circulation">Circulation</LinkBtn>
+            <LinkBtn kind="ghost" href="/clearance">Student clearance</LinkBtn>
+            <LinkBtn kind="ghost" href="/support">Help &amp; requests</LinkBtn>
           </div>
         </PBody>
       </Panel>

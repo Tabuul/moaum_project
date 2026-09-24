@@ -1,11 +1,10 @@
-import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Register } from "@/lib/student";
 import type { TranscriptQueue, CertificateRegister, GraduationView } from "@/lib/credentials";
 import type { SheetListing } from "@/lib/results";
 import type { AdmissionCycle, MatriculationOverview } from "@/lib/matriculation";
 import type { PersonRow } from "@/app/people/People";
-import { Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/lib/format";
 
@@ -33,7 +32,7 @@ export async function RegistrarDashboard({ session }: { session: string }) {
   return (
     <>
       <Note kind="bad" title="The NDPA Compliance Audit Return is due on 31 March"
-        action={<Link href="/people" className="btn btn--urgent btn--sm">Open users &amp; roles</Link>}>
+        action={<LinkBtn kind="urgent" href="/people">Open users &amp; roles</LinkBtn>}>
         The return is filed by the Data Protection Officer under your signature. The record of processing activities and the impact assessments arrive with the governance module; until then, the offices held under your grants are the part of it this portal can already show.
       </Note>
       <Tiles items={[

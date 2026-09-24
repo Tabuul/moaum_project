@@ -28,7 +28,7 @@ export default async function AdmissionsReport({ searchParams }: { searchParams:
     api<Me>("/api/v1/iam/me"),
     api<AdmissionCycle>(`/api/v1/admissions/sessions/${session}/cycle`),
   ]);
-  if (!cycle.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={cycle.problem} /></div>;
+  if (!cycle.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={cycle.problem} /></div>;
   const c = cycle.data;
 
   const progs = [...c.programmes].sort((a, b) => a.facultyName.localeCompare(b.facultyName) || a.name.localeCompare(b.name));

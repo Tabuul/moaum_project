@@ -57,13 +57,13 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
       {said ? <Note kind="ok" title={said} /> : null}
       {err ? <ProblemNotice problem={err} /> : null}
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="field" style={{ minWidth: 140 }}><label htmlFor="bg-year">Financial year</label>
-          <select id="bg-year" className="ctl tnum" value={d.year} onChange={(e) => { router.push(`/finance/budget?year=${e.target.value}`); router.refresh(); }}>
+      <div className="card"><div className="card__body row row--end" style={{ flexDirection: "row" }}>
+        <Field id="bg-year" label="Financial year">
+          <select id="bg-year" className="ctl tnum" style={{ minWidth: 140 }} value={d.year} onChange={(e) => { router.push(`/finance/budget?year=${e.target.value}`); router.refresh(); }}>
             {[d.year + 1, d.year, d.year - 1, d.year - 2].map((y) => <option key={y} value={y}>{y}</option>)}
-          </select></div>
+          </select></Field>
         <div className="grow" />
-        {may ? <button className="btn btn--primary" onClick={() => { setF({ costCentre: "", amount: "" }); setErr(null); setAdd(true); }}>+ Set a cost centre&rsquo;s budget</button> : null}
+        {may ? <Btn kind="primary" size="md" onClick={() => { setF({ costCentre: "", amount: "" }); setErr(null); setAdd(true); }}>+ Set a cost centre&rsquo;s budget</Btn> : null}
       </div></div>
 
       <Tiles items={[
@@ -83,8 +83,8 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
               <span className="tnum" key="b">{money(Number(r.budget))}</span>,
               <span className="tnum" key="cm">{money(Number(r.committed))}</span>,
               <span className="tnum" key="sp">{money(Number(r.spent))}</span>,
-              <span className="tnum" key="av" style={{ fontWeight: 600, color: Number(r.available) < 0 ? "var(--red-ink)" : undefined }}>{money(Number(r.available))}</span>,
-              <span key="u" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={Math.min(100, pct)} colour={pct >= 100 ? "var(--red)" : pct >= 85 ? "var(--chrome)" : "var(--green)"} /><span className="tnum sub2">{pct}%</span></span>,
+              <span className={`tnum b600${Number(r.available) < 0 ? " ink-red" : ""}`} key="av">{money(Number(r.available))}</span>,
+              <span key="u" className="row"><Bar pct={Math.min(100, pct)} colour={pct >= 100 ? "var(--red)" : pct >= 85 ? "var(--chrome)" : "var(--green)"} /><span className="tnum sub2">{pct}%</span></span>,
             ];
           })} texts={d.rows.map((r) => r.cost_centre)} />
         ) : <PBody><div className="sub2">No budget is set for {d.year}, and no voucher has been raised against a cost centre. Set a cost centre&rsquo;s budget to begin.</div></PBody>}
@@ -94,11 +94,11 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
         const income = ie.lines.filter((l) => String(l.section).toUpperCase() === "INCOME");
         const expense = ie.lines.filter((l) => String(l.section).toUpperCase() !== "INCOME");
         const surplus = Number(ie.totals.surplus);
-        const cell = (v: number | null, bold = false, red = false) => <span className="tnum" style={{ fontWeight: bold ? 600 : undefined, color: red ? "var(--red-ink)" : undefined }}>{v == null ? "—" : money(v)}</span>;
+        const cell = (v: number | null, bold = false, red = false) => <span className={`tnum${bold ? " b600" : ""}${red ? " ink-red" : ""}`}>{v == null ? "—" : money(v)}</span>;
         const rows: ReactNode[][] = [
-          ...income.map((l) => [<span key="n" style={{ paddingLeft: 12 }}>{l.name}</span>, cell(null), cell(Number(l.amount)), cell(null)]),
+          ...income.map((l) => [<span key="n" style={{ paddingLeft: "var(--s-3)" }}>{l.name}</span>, cell(null), cell(Number(l.amount)), cell(null)]),
           [<strong key="n">Total income</strong>, cell(null), cell(Number(ie.totals.income), true), cell(null)],
-          ...expense.map((l) => [<span key="n" style={{ paddingLeft: 12 }}>{l.name}</span>, cell(null), cell(Number(l.amount)), cell(null)]),
+          ...expense.map((l) => [<span key="n" style={{ paddingLeft: "var(--s-3)" }}>{l.name}</span>, cell(null), cell(Number(l.amount)), cell(null)]),
           [<strong key="n">Total expenditure</strong>, cell(Number(ie.budget.budget), true), cell(Number(ie.totals.expense), true), cell(Number(ie.budget.budget) - Number(ie.totals.expense), true, Number(ie.budget.budget) - Number(ie.totals.expense) < 0)],
           [<strong key="n">{surplus >= 0 ? "Surplus for the year" : "Deficit for the year"}</strong>, cell(null), cell(surplus, true, surplus < 0), cell(null)],
         ];

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -59,13 +59,10 @@ export function LeaveDesk({ rows, actingOffice }: { rows: LeaveRow[]; actingOffi
         ["Approved", String(count("APPROVED")), "var(--green-ink)", "All time"],
         ["Requests", String(rows.length), null, "All"],
       ]} />
-      <div className="card"><div className="card__body">
-        <div className="role-tabs" role="tablist">
-          {[["REQUESTED", "Awaiting"], ["APPROVED", "Approved"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => setTab(k)}>{l}{k !== "ALL" && count(k) ? ` (${count(k)})` : ""}</button>
-          ))}
-        </div>
-      </div></div>
+      <div className="card"><PBody>
+        <Tabs look="segmented" value={tab} onChange={setTab}
+          items={[["REQUESTED", "Awaiting"], ["APPROVED", "Approved"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => ({ id: k, label: l, count: k !== "ALL" && count(k) ? count(k) : undefined }))} />
+      </PBody></div>
       <Panel title="Leave requests" right={may ? undefined : "You are reading this queue"}>
         {shown.length ? (
           <DTable cols={["Staff", "Type", "Period|mid", "Days|num", "Cover", "Stage", "Action|num"]} rows={shown.map((r) => [

@@ -30,8 +30,8 @@ export default async function Page() {
     <Shell route="s/courses" me={loaded.me} sub={sub}>
       {loaded.student && c && c.ok ? <Courses session={c.data.session} spaces={c.data.spaces} /> : <ProblemNotice problem={c && !c.ok ? c.problem : loaded.student ? { status: 500, title: "Unreadable" } : loaded.problem} />}
       {loaded.student && h && h.ok ? (
-        <div style={{ marginTop: 22 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 10px" }}>Course history</h2>
+        <div style={{ marginTop: "var(--s-6)" }}>
+          <h2 className="phead__t mb-2">Course history</h2>
           <RegistrationHistory d={h.data} />
         </div>
       ) : null}

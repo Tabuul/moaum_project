@@ -11,7 +11,7 @@ import { useState } from "react";
 import type { Problem } from "@/lib/api";
 import type { LevelLimitRow, SemesterRow, SessionRow } from "@/lib/calendar";
 import { semesterName } from "@/lib/calendar";
-import { Note } from "@/components/proto/ui";
+import { Btn, Note } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -52,18 +52,18 @@ function Sel({ k, draft, set, options }: { k: string; draft: Draft; set: (k: str
 function Foot({ onClose, onEnd, endLabel, save, busy }: { onClose: () => void; onEnd?: () => void; endLabel?: string; save: () => void; busy: boolean }) {
   return (
     <>
-      <button className="btn btn--ghost btn--sm" onClick={onClose}>
+      <Btn kind="ghost" onClick={onClose}>
         Cancel
-      </button>
+      </Btn>
       {onEnd ? (
-        <button className="btn btn--ghost btn--sm" onClick={onEnd}>
+        <Btn kind="ghost" onClick={onEnd}>
           {endLabel}
-        </button>
+        </Btn>
       ) : null}
       <span className="grow" />
-      <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
+      <Btn kind="primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save the change"}
-      </button>
+      </Btn>
     </>
   );
 }
@@ -108,13 +108,13 @@ export function SessionModal({
         wide
         foot={
           <>
-            <button className="btn btn--ghost btn--sm" onClick={() => setEnding(false)}>
+            <Btn kind="ghost" onClick={() => setEnding(false)}>
               &larr; Back to the form
-            </button>
+            </Btn>
             <span className="grow" />
-            <button className="btn btn--urgent btn--sm" onClick={() => onEnd(reason)} disabled={busy}>
+            <Btn kind="urgent" onClick={() => onEnd(reason)} disabled={busy}>
               {busy ? "Closing…" : "End it"}
-            </button>
+            </Btn>
           </>
         }
       >

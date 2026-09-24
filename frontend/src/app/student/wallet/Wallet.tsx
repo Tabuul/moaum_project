@@ -3,9 +3,8 @@
 /** studentWallet — proto/part37.html: the balance, its sources, the statement, applying it to the
  *  invoice, and — once the fees are cleared — withdrawing the balance to a bank account (V033, V079). */
 import { useState } from "react";
-import Link from "next/link";
 import { type StudentWallet } from "@/lib/wallet";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -96,7 +95,7 @@ export function Wallet({ w }: { w: StudentWallet }) {
             <Two key="e" a={<Pil kind={KIND[e.kind]?.[1] ?? "grey"}>{KIND[e.kind]?.[0] ?? e.kind}</Pil>} b={e.note ?? ""} />,
             e.source_name ? <Two key="s" a={<span>{e.source_name}</span>} b={e.nature ? <Pil kind={NATURE[e.nature]?.[1] ?? "grey"}>{NATURE[e.nature]?.[0] ?? e.nature}</Pil> : ""} /> : <span className="sub2" key="s">—</span>,
             <span className="tnum sub2" key="r">{e.reference ?? "—"}</span>,
-            e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="tnum" key="i" style={{ color: "var(--green-ink)", fontWeight: 600 }}>{naira(e.amount)}</span> : <span className="sub2" key="i">—</span>,
+            e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="tnum ink-green b600" key="i">{naira(e.amount)}</span> : <span className="sub2" key="i">—</span>,
             e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="sub2" key="o">—</span> : <span className="tnum" key="o">{naira(e.amount)}</span>,
             <b className="tnum" key="b">{naira(e.balance)}</b>,
           ])} />
@@ -106,9 +105,9 @@ export function Wallet({ w }: { w: StudentWallet }) {
         <Panel title="Top up the wallet" right="When funding does not cover the whole fee">
           <PBody>
             <Field id="wt-amt" label="Amount" hint="A payment reference like any other; confirmed, it credits the wallet."><input id="wt-amt" className="ctl tnum" value={topup} onChange={(e) => setTopup(e.target.value.replace(/[^0-9.]/g, ""))} /></Field>
-            <div><Btn kind="ghost" disabled={busy !== null || !Number(topup)} onClick={async () => { const amt = Number(topup); const r = await act("topup", "POST", "/me/wallet/topup-reference", { session: w.session, amount: amt }, "Wallet top-up reference"); if (r) { setTopupRef({ reference: String(r.reference), amount: amt }); setSaid(`Reference ${r.reference} generated — pay it by card below, or on the Fees page.`); } }}>Generate the reference</Btn> <Link href="/student/fees" className="btn btn--ghost btn--sm">Fees &amp; payments</Link></div>
+            <div><Btn kind="ghost" disabled={busy !== null || !Number(topup)} onClick={async () => { const amt = Number(topup); const r = await act("topup", "POST", "/me/wallet/topup-reference", { session: w.session, amount: amt }, "Wallet top-up reference"); if (r) { setTopupRef({ reference: String(r.reference), amount: amt }); setSaid(`Reference ${r.reference} generated — pay it by card below, or on the Fees page.`); } }}>Generate the reference</Btn> <LinkBtn kind="ghost" href="/student/fees">Fees &amp; payments</LinkBtn></div>
             {topupRef ? (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line-2)" }}>
+              <div className="mt-2" style={{ paddingTop: "var(--s-2)", borderTop: "1px solid var(--line-2)" }}>
                 <div className="sub2 mb-2">Reference <span className="tnum">{topupRef.reference}</span> for {naira(topupRef.amount)}. Pay it by card or USSD; the moment the gateway confirms, your wallet is credited.</div>
                 <PayByCard reference={topupRef.reference} amount={topupRef.amount} />
               </div>

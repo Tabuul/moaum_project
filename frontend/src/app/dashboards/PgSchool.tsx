@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 export interface PgHome {
@@ -55,15 +54,15 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
   return (
     <>
       {awaitingSchool ? (
-        <Note kind="info" title={`${awaitingSchool} application${awaitingSchool === 1 ? "" : "s"} recommended by a faculty, awaiting the School`} action={<Link href={desk} className="btn btn--primary btn--sm">Decide them</Link>}>
+        <Note kind="info" title={`${awaitingSchool} application${awaitingSchool === 1 ? "" : "s"} recommended by a faculty, awaiting the School`} action={<LinkBtn kind="primary" href={desk}>Decide them</LinkBtn>}>
           The department and the faculty have recommended these; the School offers or refuses each.
         </Note>
       ) : toAdmit ? (
-        <Note kind="ok" title={`${toAdmit} applicant${toAdmit === 1 ? " has" : "s have"} accepted an offer, ready to admit`} action={<Link href={desk} className="btn btn--primary btn--sm">Admit them</Link>}>
+        <Note kind="ok" title={`${toAdmit} applicant${toAdmit === 1 ? " has" : "s have"} accepted an offer, ready to admit`} action={<LinkBtn kind="primary" href={desk}>Admit them</LinkBtn>}>
           Admitting puts each on the register as a postgraduate student, to matriculate on fees and registration.
         </Note>
       ) : (
-        <Note kind="ok" title={`Nothing waits on the School for ${home.session}`} action={<Link href={desk} className="btn btn--ghost btn--sm">Postgraduate admissions</Link>}>
+        <Note kind="ok" title={`Nothing waits on the School for ${home.session}`} action={<LinkBtn kind="ghost" href={desk}>Postgraduate admissions</LinkBtn>}>
           Faculty recommendations and fresh acceptances appear here to be acted on.
         </Note>
       )}
@@ -76,7 +75,7 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
         ["PG students", String(home.pgStudents), null, "On the register", "/admissions/postgraduate/students"],
       ]} />
 
-      <Panel title="Latest applications" right={<Link href={desk} className="btn btn--ghost btn--sm">Open admissions desk</Link>}>
+      <Panel title="Latest applications" right={<LinkBtn kind="ghost" href={desk}>Open admissions desk</LinkBtn>}>
         {recent.length ? (
           <DTable cols={["Applicant", "Programme", "Session|mid", "Fee|mid", "Status|mid", "Applied|num"]}
             rows={recent.map((a) => [
@@ -124,7 +123,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
   return (
     <>
       {waiting ? (
-        <Note kind="info" title={`${waiting} item${waiting === 1 ? "" : "s"} wait on the Secretary for ${home.session}`} action={<Link href={registrationDesk} className="btn btn--primary btn--sm">Registration desk</Link>}>
+        <Note kind="info" title={`${waiting} item${waiting === 1 ? "" : "s"} wait on the Secretary for ${home.session}`} action={<LinkBtn kind="primary" href={registrationDesk}>Registration desk</LinkBtn>}>
           {Number(c.toEndorse) ? `${c.toEndorse} registration${Number(c.toEndorse) === 1 ? "" : "s"} to endorse` : null}
           {Number(c.toEndorse) && (Number(c.feesToConfirm) || Number(c.clearances)) ? " · " : null}
           {Number(c.feesToConfirm) ? `${c.feesToConfirm} fee${Number(c.feesToConfirm) === 1 ? "" : "s"} to confirm` : null}
@@ -133,7 +132,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
           .
         </Note>
       ) : (
-        <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<Link href={registrationDesk} className="btn btn--ghost btn--sm">Registration desk</Link>}>
+        <Note kind="ok" title={`Nothing waits on the Secretary for ${home.session}`} action={<LinkBtn kind="ghost" href={registrationDesk}>Registration desk</LinkBtn>}>
           Submitted registrations, fee references and theses awaiting clearance appear here to be acted on.
         </Note>
       )}
@@ -146,13 +145,13 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
       ]} />
 
       <Panel title="What waits on the Secretary" right={home.session}>
-        <PBody style={{ display: "grid", gap: 14 }}>
+        <PBody style={{ display: "grid", gap: "var(--s-4)" }}>
           <section>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+            <div className="row row--base mb-2">
               <div className="b600">Registrations to endorse</div>
               <span className="sub2">{c.toEndorse} submitted</span>
               <span className="grow" />
-              <Link href={registrations} className="btn btn--ghost btn--sm">Endorse on the registrations desk</Link>
+              <LinkBtn kind="ghost" href={registrations}>Endorse on the registrations desk</LinkBtn>
             </div>
             {home.toEndorse.length ? (
               <DTable cols={["Student", "Programme", "Semester|mid", "Courses|num", "Submitted|num"]}
@@ -167,12 +166,12 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
             ) : <div className="sub2">No registration is waiting to be endorsed.</div>}
           </section>
 
-          <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: 12 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+          <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: "var(--s-3)" }}>
+            <div className="row row--base mb-2">
               <div className="b600">Fees to confirm</div>
               <span className="sub2">{c.feesToConfirm} live reference{Number(c.feesToConfirm) === 1 ? "" : "s"}</span>
               <span className="grow" />
-              <Link href={admissions} className="btn btn--ghost btn--sm">Admissions desk</Link>
+              <LinkBtn kind="ghost" href={admissions}>Admissions desk</LinkBtn>
             </div>
             {home.feesToConfirm.length ? (
               <DTable cols={["Applicant", "Fee", "Amount|num", "Reference", "Expires|num"]}
@@ -187,12 +186,12 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
             ) : <div className="sub2">No fee reference is awaiting confirmation.</div>}
           </section>
 
-          <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: 12 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+          <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: "var(--s-3)" }}>
+            <div className="row row--base mb-2">
               <div className="b600">Theses awaiting clearance</div>
               <span className="sub2">{c.clearances} finally submitted</span>
               <span className="grow" />
-              <Link href={clearance} className="btn btn--ghost btn--sm">Thesis clearance</Link>
+              <LinkBtn kind="ghost" href={clearance}>Thesis clearance</LinkBtn>
             </div>
             {home.clearances.length ? (
               <DTable cols={["Candidate", "Programme", "Work", "Submitted|num"]}

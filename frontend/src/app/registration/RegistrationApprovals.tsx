@@ -10,7 +10,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Panel, Pil, Two } from "@/components/proto/ui";
+import { Btn, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -58,10 +58,10 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
   return (
     <>
     <Panel title="Course registrations submitted by students" right={`${rows.length} waiting · ${session}${semester ? ` · ${semesterText(semester)}` : " · all semesters"}`}>
-      {problem ? <div className="card__body"><ProblemNotice problem={problem} /></div> : null}
+      {problem ? <PBody><ProblemNotice problem={problem} /></PBody> : null}
       <DTable cols={["Student", "Programme", "Level|mid", "Semester|mid", "Courses", "Units|mid", "Submitted|mid", "|num"]} rows={rows.map((r) => [
         <button key="s" onClick={() => setOpen(r)} title="View the full course registration" style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}>
-          <Two a={<span style={{ color: "var(--link, var(--chrome))", textDecoration: "underline" }}>{`${r.surname}, ${r.other_names}`}</span>} b={r.matric_no ?? r.admission_no ?? ""} />
+          <Two a={<span style={{ color: "var(--link)", textDecoration: "underline" }}>{`${r.surname}, ${r.other_names}`}</span>} b={r.matric_no ?? r.admission_no ?? ""} />
         </button>,
         <span className="sub2" key="p">{r.programme}</span>,
         <span className="tnum" key="l">{r.level}</span>,
@@ -74,7 +74,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
           <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${r.id}`, `${r.id}/return`, { comment }, `Registration of ${r.matric_no ?? r.admission_no} returned: ${comment}`); }}>Return</Btn>
         </span>,
       ])} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.matric_no} ${r.admission_no} ${r.programme} ${r.courses ?? ""}`)} />
-      {!rows.length ? <div className="card__body"><div className="sub2">Nothing submitted is waiting. A student&rsquo;s registration appears here the moment they submit it; approving it puts them on every class list it carries. <Pil kind="grey">Approved ones are on the class lists</Pil></div></div> : null}
+      {!rows.length ? <PBody><div className="sub2">Nothing submitted is waiting. A student&rsquo;s registration appears here the moment they submit it; approving it puts them on every class list it carries. <Pil kind="grey">Approved ones are on the class lists</Pil></div></PBody> : null}
     </Panel>
 
     {open ? (
@@ -94,7 +94,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
           <span className="sub2" key="k">{e.kind ?? "—"}</span>,
           <span key="b">{e.type === "CARRYOVER" ? <Pil kind="warn">Carryover</Pil> : <span className="sub2">{e.type === "REGISTERED" || e.type === "NORMAL" ? "Normal" : e.type}</span>}</span>,
         ])} />
-        <div className="sub2" style={{ marginTop: 10, display: "flex", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div className="sub2 row row--between mt-2">
           <span><b className="tnum">{open.entries?.length ?? 0}</b> course{(open.entries?.length ?? 0) === 1 ? "" : "s"}</span>
           <span>Total <b className="tnum">{open.units}</b> units of {open.range ?? "—"} · submitted {open.submitted_at ? new Date(open.submitted_at).toLocaleDateString("en-GB") : "—"}</span>
         </div>

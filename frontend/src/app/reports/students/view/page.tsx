@@ -28,7 +28,7 @@ export default async function StudentsRegisterView({ searchParams }: { searchPar
   let total = 0;
   for (let page = 1; page <= 10; page++) {
     const r = await api<RegisterPage<StudentRow, StudentOptions>>(`/api/v1/reports/registers/students?${q}${q ? "&" : ""}page=${page}&size=500&options=false`);
-    if (!r.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={r.problem} /></div>;
+    if (!r.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={r.problem} /></div>;
     total = Number(r.data.total);
     rows.push(...r.data.rows);
     if (rows.length >= total || r.data.rows.length === 0) break;

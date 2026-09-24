@@ -9,9 +9,9 @@
  * and the fee. Every call is scoped to the signed-in applicant.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Tiles, KvGrid } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Tiles, KvGrid, Tick, Ico } from "@/components/proto/ui";
+import { Field } from "@/components/proto/blocks";
 import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
@@ -153,7 +153,7 @@ export function PgPortal() {
     return (
       <Bare>
         <Note kind="info" title="Sign in to see your application">Sign in with the email you applied with (or your PG application number) and the password you chose when you applied.</Note>
-        <div className="mt-3"><Link href="/login?next=/pg/portal" className="btn btn--primary btn--sm">Sign in</Link></div>
+        <div className="mt-3"><LinkBtn kind="primary" href="/login?next=/pg/portal">Sign in</LinkBtn></div>
       </Bare>
     );
   }
@@ -181,8 +181,8 @@ export function PgPortal() {
     <Shell route="pg/portal" me={shellMe}>
       <style>{`
         .pg-steps { list-style:none; margin:0; padding:0; display:grid; gap:2px; }
-        .pg-step { display:grid; grid-template-columns:20px 1fr auto; align-items:center; gap:10px; padding:7px 0; }
-        .pg-step__dot { width:12px; height:12px; border-radius:50%; border:2px solid var(--line-2); background:transparent; margin-left:2px; }
+        .pg-step { display:grid; grid-template-columns:20px 1fr auto; align-items:center; gap:var(--s-2); padding:var(--s-2) 0; }
+        .pg-step__dot { width:12px; height:12px; border-radius:var(--r-pill); border:2px solid var(--line-2); background:transparent; margin-left:2px; }
         .pg-step--done .pg-step__dot { background:var(--green-ink); border-color:var(--green-ink); }
         .pg-step--done .pg-step__label { font-weight:600; }
       `}</style>
@@ -214,8 +214,8 @@ export function PgPortal() {
             {reference ? (
               <>
                 <PayByCard reference={reference} amount={Number(me.checkingFee ?? 0)} />
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-                  <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — show my status"}</button>
+                <div className="row mt-2">
+                  <Btn kind="go" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — show my status"}</Btn>
                   <span className="sub2">Reference: <b className="tnum">{reference}</b></span>
                 </div>
               </>
@@ -233,8 +233,8 @@ export function PgPortal() {
             {reference ? (
               <div className="mt-3">
                 <PayByCard reference={reference} amount={Number(me.acceptanceFee ?? 0)} />
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-                  <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
+                <div className="row mt-2">
+                  <Btn kind="go" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</Btn>
                   <span className="sub2">Reference: <b className="tnum">{reference}</b></span>
                 </div>
               </div>
@@ -269,8 +269,8 @@ export function PgPortal() {
           <PBody>
             <div className="sub2 mb-2">Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University. <b>Upload your credentials and passport after payment.</b></div>
             <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-              <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
+            <div className="row mt-2">
+              <Btn kind="go" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</Btn>
               <span className="sub2">Already paid? This asks the gateway to confirm it.</span>
             </div>
             <div className="sub2 mt-2">Reference: <b className="tnum">{reference}</b> · Acceptance later: {naira(me.acceptanceFee)} + checking {naira(me.checkingFee)}.</div>
@@ -297,7 +297,7 @@ export function PgPortal() {
               <>
                 <div className="sub2 eyebrow eyebrow--gap">Research proposal</div>
                 <KvGrid cls="grid--1" pairs={[["Title", val(me.proposal.title)]]} />
-                {me.proposal.text ? <div className="sub2" style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
+                {me.proposal.text ? <div className="sub2 mt-2" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
               </>
             ) : null}
           </PBody>
@@ -325,7 +325,7 @@ export function PgPortal() {
             <div className="sub2 mb-3">Print your completed application, or download it as a PDF. You can also have the summary emailed to you.</div>
             <div className="row">
               <a href="/pg/summary/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print summary (PDF)</a>
-              <button type="button" className="btn btn--ghost btn--sm" disabled={emailing} onClick={() => void emailSummary()}>{emailing ? "Sending…" : "Email me the summary"}</button>
+              <Btn kind="ghost" disabled={emailing} onClick={() => void emailSummary()}>{emailing ? "Sending…" : "Email me the summary"}</Btn>
               {emailed ? <span className="sub2 ink-green">Sent to {emailed}.</span> : null}
             </div>
           </PBody>
@@ -334,8 +334,8 @@ export function PgPortal() {
 
       {me.spgsNote && me.state !== "NOT_OFFERED" ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
 
-      <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 6 }}>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={() => void load()}>Refresh</button>
+      <div className="row mt-2">
+        <Btn kind="ghost" onClick={() => void load()}>Refresh</Btn>
       </div>
     </Shell>
   );
@@ -393,25 +393,25 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
                 const on = documents.filter((d) => d.kind === t.kind);
                 const single = on[0] ?? null;
                 return (
-                  <div key={t.kind} style={{ padding: "9px 0", borderBottom: "1px solid var(--line-2)" }}>
-                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div key={t.kind} style={{ padding: "var(--s-2) 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <div className="row" style={{ gap: "var(--s-3)" }}>
                       <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.label}{t.optional ? <span className="sub2" style={{ fontWeight: 400 }}> · optional</span> : null}{t.multi ? <span className="sub2" style={{ fontWeight: 400 }}> · you may add more than one</span> : null}</div>
+                        <div className="b600">{t.label}{t.optional ? <span className="sub2" style={{ fontWeight: 400 }}> · optional</span> : null}{t.multi ? <span className="sub2" style={{ fontWeight: 400 }}> · you may add more than one</span> : null}</div>
                         {t.multi
                           ? <div className="sub2">{on.length ? `${on.length} uploaded` : "Not uploaded"}</div>
                           : <div className="sub2">{single ? <>On record: {single.filename} · uploaded {fmtDate(single.uploaded_at)}</> : "Not uploaded"}</div>}
                       </div>
-                      <label className={`btn btn--sm ${!t.multi && single ? "btn--ghost" : "btn--primary"}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+                      <label className={`btn btn--sm m-0 ${!t.multi && single ? "btn--ghost" : "btn--primary"}`} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
                         {busy === t.kind ? "Uploading…" : t.multi ? (on.length ? "Add another" : "Upload PDF") : single ? "Replace" : "Upload PDF"}
                         <input type="file" accept="application/pdf" hidden disabled={busy !== null} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(t.kind, f); e.target.value = ""; }} />
                       </label>
                     </div>
                     {t.multi && on.length ? (
-                      <div style={{ display: "grid", gap: 3, marginTop: 6, paddingLeft: 4 }}>
+                      <div className="mt-2" style={{ display: "grid", gap: 3, paddingLeft: "var(--s-1)" }}>
                         {on.map((d) => (
                           <div key={d.id} className="sub2 row">
-                            <span>• {d.filename} · uploaded {fmtDate(d.uploaded_at)}</span>
-                            <button type="button" className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => void remove(d.id)}>{busy === d.id ? "Removing…" : "Remove"}</button>
+                            <span className="row row--inline row--tight" style={{ flexWrap: "nowrap" }}><Ico name="doc" size={13} /> {d.filename} · uploaded {fmtDate(d.uploaded_at)}</span>
+                            <Btn kind="ghost" disabled={busy !== null} onClick={() => void remove(d.id)}>{busy === d.id ? "Removing…" : "Remove"}</Btn>
                           </div>
                         ))}
                       </div>
@@ -471,7 +471,7 @@ function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: 
               <div className="sub2 mb-2">On record: <b>{passport.filename}</b> — uploaded {fmtDate(passport.uploaded_at)}. Uploading again replaces it.</div>
             ) : <div className="sub2 mb-2">No passport uploaded yet.</div>}
             <input ref={inputRef} type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
-            <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : passport ? "Replace the photo" : "Upload the photo"}</button>
+            <Btn kind="primary" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : passport ? "Replace the photo" : "Upload the photo"}</Btn>
           </>
         )}
       </PBody>
@@ -508,14 +508,14 @@ function CompleteSteps({ me, paid, passport, onDone }: { me: Me; paid: boolean; 
   const cur = Math.min(step, steps.length);
   return (
     <Panel title="Complete your application">
-      <PBody style={{ display: "grid", gap: 14 }}>
+      <PBody style={{ display: "grid", gap: "var(--s-4)" }}>
         <PortalStepper steps={steps.map((s) => ({ label: s.label, done: s.done }))} current={cur} onGo={setStep} />
         {steps[cur - 1].node}
         <div className="row">
-          <button type="button" className="btn btn--ghost btn--sm" disabled={cur === 1} onClick={() => setStep(cur - 1)}>Back</button>
+          <Btn kind="ghost" disabled={cur === 1} onClick={() => setStep(cur - 1)}>Back</Btn>
           <span className="grow" />
           <span className="sub2">Step {cur} of {steps.length}</span>
-          <button type="button" className="btn btn--primary btn--sm" disabled={cur === steps.length} onClick={() => setStep(cur + 1)}>Next</button>
+          <Btn kind="primary" disabled={cur === steps.length} onClick={() => setStep(cur + 1)}>Next</Btn>
         </div>
       </PBody>
     </Panel>
@@ -525,16 +525,16 @@ function CompleteSteps({ me, paid, passport, onDone }: { me: Me; paid: boolean; 
 /** a step indicator with a tick on completed steps; any step can be opened directly */
 function PortalStepper({ steps, current, onGo }: { steps: { label: string; done: boolean }[]; current: number; onGo: (n: number) => void }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ display: "flex", gap: "var(--s-2)" }}>
       {steps.map((s, i) => {
         const n = i + 1, cur = current === n;
         const on = cur || s.done;
         return (
           <button key={s.label} type="button" onClick={() => onGo(n)}
             style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, var(--sky-ink))" : "var(--line-2, var(--line))" }} />
-            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, var(--faint))" }}>
-              {s.done ? "✓ " : `${n}. `}{s.label}
+            <div style={{ height: 5, borderRadius: "var(--r-sm)", background: on ? "var(--chrome)" : "var(--line-2)" }} />
+            <div className="sub2 mt-2 row row--tight" style={{ fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome)" }}>
+              {s.done ? <Tick size={11} colour="var(--green-ink)" /> : `${n}. `}{s.label}
             </div>
           </button>
         );
@@ -585,11 +585,11 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
         {!paid ? (
           <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you supply your first degree and other qualifications here.</Note>
         ) : (
-          <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "grid", gap: "var(--s-4)" }}>
             {err ? <ProblemNotice problem={err} /> : null}
             {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
             <div>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>First degree <span className="sub2" style={{ fontWeight: 400 }}>· the related / relevant Bachelor’s degree the admission rests on</span></div>
+              <div className="b600 mb-2">First degree <span className="sub2" style={{ fontWeight: 400 }}>· the related / relevant Bachelor’s degree the admission rests on</span></div>
               <div className="grid grid--2">
                 <Fld id="fd-inst" label="Institution" v={fd.institution} on={(v) => setFd({ ...fd, institution: v })} />
                 <Fld id="fd-award" label="Degree / award" v={fd.award} on={(v) => setFd({ ...fd, award: v })} ph="B.Sc." />
@@ -598,15 +598,15 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
                 <Fld id="fd-cgpa" label="CGPA (if known)" v={fd.cgpa} on={(v) => setFd({ ...fd, cgpa: v })} ph="3.80" num />
                 <Fld id="fd-year" label="Year awarded" v={fd.year} on={(v) => setFd({ ...fd, year: v })} ph="2018" num />
               </div>
-              <div className="mt-2"><button type="button" className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void saveFirst()}>{busy === "first" ? "Saving…" : "Save first degree"}</button></div>
+              <div className="mt-2"><Btn kind="primary" disabled={busy !== null} onClick={() => void saveFirst()}>{busy === "first" ? "Saving…" : "Save first degree"}</Btn></div>
             </div>
 
-            <div style={{ borderTop: "1px solid var(--line-2)", paddingTop: 14 }}>
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>Other qualifications</div>
+            <div style={{ borderTop: "1px solid var(--line-2)", paddingTop: "var(--s-4)" }}>
+              <div className="b600" style={{ marginBottom: 2 }}>Other qualifications</div>
               <div className="sub2 mb-2">Any qualification beyond the first degree that bears on this application — a prior Master’s, a Postgraduate Diploma, an HND / ND, or an NCE. A PhD applicant should give their Master’s here.</div>
-              <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: "var(--s-3)" }}>
                 {quals.map((q, i) => (
-                  <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 10, padding: 12 }}>
+                  <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-lg)", padding: "var(--s-3)" }}>
                     <div className="grid grid--2">
                       <Sel id={`q-kind-${i}`} label="Qualification" v={q.kind} on={(v) => setQ(i, "kind", v)} options={QUAL_KINDS} />
                       <Fld id={`q-inst-${i}`} label="Institution" v={q.institution} on={(v) => setQ(i, "institution", v)} />
@@ -616,12 +616,12 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
                       <Fld id={`q-cgpa-${i}`} label="CGPA (if known)" v={q.cgpa} on={(v) => setQ(i, "cgpa", v)} num />
                       <Fld id={`q-year-${i}`} label="Year awarded" v={q.year} on={(v) => setQ(i, "year", v)} num />
                     </div>
-                    <div className="mt-2"><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove</button></div>
+                    <div className="mt-2"><Btn kind="ghost" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove</Btn></div>
                   </div>
                 ))}
                 <div className="row">
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals([...quals, emptyQ()])}>+ Add a qualification</button>
-                  <button type="button" className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void saveQuals()}>{busy === "quals" ? "Saving…" : "Save other qualifications"}</button>
+                  <Btn kind="ghost" onClick={() => setQuals([...quals, emptyQ()])}>+ Add a qualification</Btn>
+                  <Btn kind="primary" disabled={busy !== null} onClick={() => void saveQuals()}>{busy === "quals" ? "Saving…" : "Save other qualifications"}</Btn>
                 </div>
               </div>
             </div>
@@ -662,19 +662,19 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
         {!paid ? (
           <Note kind="info" title="Pay the application fee first">Once your payment is confirmed you name your referees here.</Note>
         ) : (
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: "var(--s-3)" }}>
             <div className="sub2">Each referee with an email is sent a private link to complete a short, confidential reference for you. You can update referees who have not yet responded.</div>
             {err ? <ProblemNotice problem={err} /> : null}
             {ok ? <Note kind="ok" title={ok}>Thank you.</Note> : null}
             {submitted.length ? (
-              <div style={{ display: "grid", gap: 4 }}>
+              <div style={{ display: "grid", gap: "var(--s-1)" }}>
                 {submitted.map((r, i) => (
-                  <div key={i} className="sub2 ink-green">✓ Reference received from <b>{r.name}</b>{r.email ? ` · ${r.email}` : ""}.</div>
+                  <div key={i} className="sub2 ink-green row row--tight" style={{ flexWrap: "nowrap" }}><Tick size={12} colour="var(--green-ink)" /><span>Reference received from <b>{r.name}</b>{r.email ? ` · ${r.email}` : ""}.</span></div>
                 ))}
               </div>
             ) : null}
             {rows.map((r, i) => (
-              <div className="grid grid--2" key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? 10 : 0 }}>
+              <div className="grid grid--2" key={i} style={{ borderTop: i ? "1px solid var(--line-2)" : "none", paddingTop: i ? "var(--s-3)" : 0 }}>
                 <Fld id={`rf-n-${i}`} label={`Referee ${i + 1} — name`} v={r.name} on={(v) => setR(i, "name", v)} />
                 <Fld id={`rf-e-${i}`} label="Email" v={r.email} on={(v) => setR(i, "email", v)} />
                 <Fld id={`rf-p-${i}`} label="Phone number" v={r.phone} on={(v) => setR(i, "phone", v)} />
@@ -683,8 +683,8 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
               </div>
             ))}
             <div className="row">
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setRows([...rows, { name: "", email: "", phone: "", institution: "", position: "" }])}>+ Add a referee</button>
-              <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save referees & send requests"}</button>
+              <Btn kind="ghost" onClick={() => setRows([...rows, { name: "", email: "", phone: "", institution: "", position: "" }])}>+ Add a referee</Btn>
+              <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save referees & send requests"}</Btn>
             </div>
           </div>
         )}
@@ -695,22 +695,20 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
 
 function Fld({ id, label, v, on, ph, num }: { id: string; label: string; v: string; on: (v: string) => void; ph?: string; num?: boolean }) {
   return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
+    <Field id={id} label={label}>
       <input id={id} className={`ctl${num ? " tnum" : ""}`} value={v} placeholder={ph} onChange={(e) => on(e.target.value)} />
-    </div>
+    </Field>
   );
 }
 function Sel({ id, label, v, on, options }: { id: string; label: string; v: string; on: (v: string) => void; options: string[] | [string, string][] }) {
   const opts: [string, string][] = options.map((o) => (Array.isArray(o) ? o : [o, o]));
   return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
+    <Field id={id} label={label}>
       <select id={id} className="ctl" value={v} onChange={(e) => on(e.target.value)}>
         <option value="">—</option>
         {opts.map(([val2, lab]) => <option key={val2} value={val2}>{lab}</option>)}
       </select>
-    </div>
+    </Field>
   );
 }
 
@@ -718,15 +716,15 @@ function Sel({ id, label, v, on, options }: { id: string; label: string; v: stri
 function Bare({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <header style={{ background: "var(--chrome-deep, #0b1f3a)", color: "#fff", padding: "16px 22px", display: "flex", alignItems: "center", gap: 14 }}>
+      <header className="row" style={{ background: "var(--chrome-deep)", color: "var(--surface)", padding: "var(--s-4) var(--s-6)", gap: "var(--s-4)" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, letterSpacing: ".6px", textTransform: "uppercase", opacity: .7 }}>School of Postgraduate Studies</div>
-          <h1 style={{ fontFamily: "var(--serif, Georgia)", fontSize: 20, fontWeight: 700, margin: "2px 0 0" }}>Your postgraduate application</h1>
+        <div className="grow">
+          <div className="eyebrow" style={{ color: "var(--chrome-ink)" }}>School of Postgraduate Studies</div>
+          <h1 className="phead__t" style={{ fontFamily: "var(--serif)", marginTop: 2 }}>Your postgraduate application</h1>
         </div>
       </header>
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "18px 16px 56px", display: "grid", gap: 14 }}>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "var(--s-5) var(--s-4) calc(var(--s-8) + var(--s-4))", display: "grid", gap: "var(--s-4)" }}>
         {children}
       </div>
     </div>

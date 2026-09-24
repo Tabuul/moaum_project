@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { Note } from "@/components/proto/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -33,37 +34,32 @@ export default async function Page({ params }: { params: Promise<{ code: string 
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", fontFamily: "var(--sans)", color: "var(--ink)" }}>
-      <div style={{ width: "100%", maxWidth: 560, background: "#fff", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(20,39,58,.08)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: "2px solid var(--chrome)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-8) var(--s-4)" }}>
+      <div className="card" style={{ width: "100%", maxWidth: 560, overflow: "hidden" }}>
+        <div className="card__head" style={{ borderBottom: "2px solid var(--chrome)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--amber)", fontWeight: 700 }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--chrome)" }}>Return verification</div>
+          <div className="grow">
+            <div className="eyebrow" style={{ color: "var(--amber)" }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+            <div className="phead__t ink-chrome">Return verification</div>
           </div>
         </div>
-        <div style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 10, marginBottom: 16,
-            background: ok ? "var(--green-bg)" : "var(--red-bg)", border: `1px solid ${ok ? "var(--green-line)" : "var(--red-line)"}`, color: ok ? "var(--green-ink)" : "var(--red-deep)" }}>
-            <span style={{ fontSize: 22 }}>{ok ? "✓" : "✕"}</span>
-            <div>
-              <div className="b700 t-md">{ok ? "Genuine — this return was kept by the portal" : "Not verified"}</div>
-              <div style={{ fontSize: 12.5 }}>{ok
-                ? "Check that the return, the period, the row count and the totals below match the copy in hand."
-                : "No kept return carries this code. A return is genuine only if it appears here — check the code, or treat the copy as not verified."}</div>
-            </div>
-          </div>
+        <div className="card__body">
+          <Note kind={ok ? "ok" : "bad"} title={ok ? "Genuine — this return was kept by the portal" : "Not verified"}>
+            {ok
+              ? "Check that the return, the period, the row count and the totals below match the copy in hand."
+              : "No kept return carries this code. A return is genuine only if it appears here — check the code, or treat the copy as not verified."}
+          </Note>
           {ok ? (
-            <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "8px 16px", margin: 0, fontSize: 14 }}>
-              <dt style={{ color: "var(--muted)" }}>Return</dt><dd style={{ margin: 0, fontWeight: 600 }}>{v.title}</dd>
-              {v.subtitle ? <><dt style={{ color: "var(--muted)" }}>Scope</dt><dd style={{ margin: 0 }}>{v.subtitle}</dd></> : null}
-              <dt style={{ color: "var(--muted)" }}>Period</dt><dd style={{ margin: 0 }}>{v.period}</dd>
-              <dt style={{ color: "var(--muted)" }}>Taken</dt><dd style={{ margin: 0 }}>{day(v.taken_at)}{v.taken_office ? ` · ${OFFICE[v.taken_office] ?? v.taken_office}` : ""}</dd>
-              <dt style={{ color: "var(--muted)" }}>Rows</dt><dd style={{ margin: 0 }}>{Number(v.row_count).toLocaleString()}</dd>
-              {totals.length ? <><dt style={{ color: "var(--muted)" }}>Totals</dt><dd style={{ margin: 0 }}>{totals.map(([k, val]) => <div key={k}><span className="ink-muted">{k}:</span> {val}</div>)}</dd></> : null}
-              <dt style={{ color: "var(--muted)" }}>Filed</dt><dd style={{ margin: 0 }}>{v.filed_at ? `${v.filed_to} · ${day(v.filed_at)}` : "Not yet filed"}</dd>
-              <dt style={{ color: "var(--muted)" }}>Code</dt><dd style={{ margin: 0, fontFamily: "ui-monospace, monospace" }}>{v.verification_code}</dd>
+            <dl className="m-0" style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "var(--s-2) var(--s-4)" }}>
+              <dt className="ink-muted">Return</dt><dd className="m-0 b600">{v.title}</dd>
+              {v.subtitle ? <><dt className="ink-muted">Scope</dt><dd className="m-0">{v.subtitle}</dd></> : null}
+              <dt className="ink-muted">Period</dt><dd className="m-0">{v.period}</dd>
+              <dt className="ink-muted">Taken</dt><dd className="m-0">{day(v.taken_at)}{v.taken_office ? ` · ${OFFICE[v.taken_office] ?? v.taken_office}` : ""}</dd>
+              <dt className="ink-muted">Rows</dt><dd className="m-0">{Number(v.row_count).toLocaleString()}</dd>
+              {totals.length ? <><dt className="ink-muted">Totals</dt><dd className="m-0">{totals.map(([k, val]) => <div key={k}><span className="ink-muted">{k}:</span> {val}</div>)}</dd></> : null}
+              <dt className="ink-muted">Filed</dt><dd className="m-0">{v.filed_at ? `${v.filed_to} · ${day(v.filed_at)}` : "Not yet filed"}</dd>
+              <dt className="ink-muted">Code</dt><dd className="m-0" style={{ fontFamily: "var(--mono)" }}>{v.verification_code}</dd>
             </dl>
           ) : null}
         </div>

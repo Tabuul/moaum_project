@@ -27,7 +27,7 @@ export default async function FundingReport({ searchParams }: { searchParams: Pr
     api<Me>("/api/v1/iam/me"),
     api<FundingReport>(`/api/v1/funding/sessions/${session}/report`),
   ]);
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
   const c = d.cashflow;
 

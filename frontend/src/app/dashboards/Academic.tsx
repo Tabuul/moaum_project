@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Register, RecordsResult, ChangeQueue } from "@/lib/student";
 import type { TranscriptQueue, CertificateRegister } from "@/lib/credentials";
 import type { SheetListing } from "@/lib/results";
-import { Note, Panel, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 
@@ -56,11 +55,11 @@ export async function AcademicDashboard({ session }: { session: string }) {
     <>
       {openTranscripts.length || inWorkflow ? (
         <Note kind="info" title={`${openTranscripts.length} transcript request${openTranscripts.length === 1 ? "" : "s"} and ${inWorkflow} result set${inWorkflow === 1 ? "" : "s"} are with Academic Affairs`}
-          action={<Link href="/credentials/transcripts" className="btn btn--primary btn--sm">Open transcripts</Link>}>
+          action={<LinkBtn kind="primary" href="/credentials/transcripts">Open transcripts</LinkBtn>}>
           {tq && tq.tiles.heldAtClearance ? `${tq.tiles.heldAtClearance} of the transcripts ${tq.tiles.heldAtClearance === 1 ? "is" : "are"} held at clearance, and cannot be produced until the unit holding the candidate signs.` : "Nothing is held at clearance."}
         </Note>
       ) : (
-        <Note kind="info" title="Nothing is waiting on Academic Affairs today" action={<Link href="/admissions" className="btn btn--primary btn--sm">Open admissions</Link>}>
+        <Note kind="info" title="Nothing is waiting on Academic Affairs today" action={<LinkBtn kind="primary" href="/admissions">Open admissions</LinkBtn>}>
           Transcript requests and result sets arrive here as the session runs. The register fills when the admitted candidates are brought onto it.
         </Note>
       )}
@@ -71,10 +70,10 @@ export async function AcademicDashboard({ session }: { session: string }) {
         ["Results to Senate", String(inWorkflow), null, "In the workflow"],
       ]} />
       {poolTotal ? (
-        <Panel title="Committed admission list" right={<Link href="/admissions/applicants" className="btn btn--primary btn--sm">Open the applicants</Link>}>
-          <div className="card__body" style={{ borderBottom: "1px solid var(--line-2)" }}>
+        <Panel title="Committed admission list" right={<LinkBtn kind="primary" href="/admissions/applicants">Open the applicants</LinkBtn>}>
+          <PBody style={{ borderBottom: "1px solid var(--line-2)" }}>
             <div className="sub2">{poolTotal.toLocaleString()} applicant{poolTotal === 1 ? "" : "s"} JAMB admitted for {session}. {poolRegistered.toLocaleString()} {poolRegistered === 1 ? "has" : "have"} registered for post-UTME; {(poolTotal - poolRegistered).toLocaleString()} {poolTotal - poolRegistered === 1 ? "has" : "have"} not yet opened their application.</div>
-          </div>
+          </PBody>
           {pool && pool.applicants.length ? (
             <DTable cols={["Applicant", "JAMB number|mid", "Programme", "Post-UTME|num"]} rows={pool.applicants.map((a) => [
               <span key="n">{a.surname}, {a.other_names}</span>,
@@ -94,7 +93,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
             <Bar key="p" pct={f.expected ? Math.round((100 * f.registered) / f.expected) : 0} colour={f.expected && f.registered / f.expected < 0.75 ? "var(--red)" : "var(--green)"} />,
           ])}
         />
-        {!faculties.length ? <div className="card__body"><div className="sub2">Nobody is on the register yet. Bring the admitted candidates onto it from Admissions.</div></div> : null}
+        {!faculties.length ? <PBody><div className="sub2">Nobody is on the register yet. Bring the admitted candidates onto it from Admissions.</div></PBody> : null}
       </Panel>
       {short.length ? (
         <Note kind="bad" title={`${short.map((f) => f.name).join(", ")} ${short.length === 1 ? "is" : "are"} under three-quarters registered`}>

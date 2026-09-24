@@ -7,11 +7,10 @@
  * query. The student reads the answer on their own screen.
  */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -61,7 +60,7 @@ export function Queries({ rows, state, dept, actingOffice }: { rows: QueryRow[];
         ["Upheld", String(rows.filter((r) => r.state === "UPHELD").length), "var(--green-ink)", "The mark stood"],
       ]} />
       <div className="row">
-        {["open", "answered", "all"].map((s) => <Link key={s} href={`/results/queries?state=${s}${dept ? `&dept=${encodeURIComponent(dept)}` : ""}`} className={`btn btn--sm ${state === s ? "btn--primary" : "btn--ghost"}`}>{s === "open" ? "Open" : s === "answered" ? "Answered" : "All"}</Link>)}
+        {["open", "answered", "all"].map((s) => <LinkBtn key={s} href={`/results/queries?state=${s}${dept ? `&dept=${encodeURIComponent(dept)}` : ""}`} kind={state === s ? "primary" : "ghost"}>{s === "open" ? "Open" : s === "answered" ? "Answered" : "All"}</LinkBtn>)}
       </div>
       <Note kind="info" title="A query is against one mark, and the answer says what was checked">
         Upheld: the script was re-totalled and the entry matched it. Corrected: the mark is amended on the sheet and the set goes back through the department, the faculty and Senate for an amendment minute; the published result changes when that finishes. Closed: not a query &mdash; &ldquo;I expected a better grade&rdquo;.
@@ -77,7 +76,7 @@ export function Queries({ rows, state, dept, actingOffice }: { rows: QueryRow[];
           r.state === "RAISED" ? <Pil kind="bad" key="t">Open</Pil> : r.state === "UPHELD" ? <Pil kind="ok" key="t">Upheld</Pil> : r.state === "CORRECTED" ? <Pil kind="info" key="t">Corrected</Pil> : <Pil kind="grey" key="t">Closed</Pil>,
           r.state === "RAISED" ? <Btn kind="primary" key="a" disabled={!may} onClick={() => { setAnswering(r); setVerdict("UPHELD"); setAnswer(""); }}>Answer</Btn> : <span className="sub2" key="a">{r.answer}</span>,
         ])} texts={rows.map((r) => `${r.ref} ${r.surname} ${r.other_names} ${r.matric_no} ${r.course_code} ${r.title}`)} />
-        {!rows.length ? <div className="card__body"><div className="sub2">Nothing here.</div></div> : null}
+        {!rows.length ? <PBody><div className="sub2">Nothing here.</div></PBody> : null}
       </Panel>
       {answering ? (
         <Modal title={`Answer ${answering.ref}`} sub={`${answering.surname}, ${answering.other_names} · ${answering.course_code} · ${PART[answering.part] ?? answering.part}`} onClose={() => setAnswering(null)}

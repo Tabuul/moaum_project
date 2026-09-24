@@ -8,7 +8,7 @@
  */
 import { useState } from "react";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -73,32 +73,32 @@ export function PgCalendar({ initial }: { initial: CalData }) {
         ["Sessions on record", String(data.sessions.length), null, "PG calendar"],
       ]} cls="grid--3" />
 
-      <Panel title="Sessions" right={<button type="button" className="btn btn--primary btn--sm" onClick={() => setSessionModal("new")}>Setup new session</button>}>
+      <Panel title="Sessions" right={<Btn kind="primary" onClick={() => setSessionModal("new")}>Setup new session</Btn>}>
         <PBody>
-          <div style={{ overflowX: "auto" }}>
-            <table className="tbl" style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div className="tablewrap">
+            <table className="tbl tbl--data">
               <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid var(--line-2)" }}>
-                  <th style={{ padding: "8px 10px" }}>Session</th><th style={{ padding: "8px 10px" }}>Opens</th>
-                  <th style={{ padding: "8px 10px" }}>Closes</th><th style={{ padding: "8px 10px" }}>Semesters</th>
-                  <th style={{ padding: "8px 10px" }}>State</th><th style={{ padding: "8px 10px" }} />
+                <tr>
+                  <th>Session</th><th>Opens</th>
+                  <th>Closes</th><th>Semesters</th>
+                  <th>State</th><th />
                 </tr>
               </thead>
               <tbody>
                 {data.sessions.map((s) => (
-                  <tr key={s.name} className={s.name === looking ? "is-on" : ""} style={{ borderBottom: "1px solid var(--line-2)", background: s.name === looking ? "var(--tint, #f5f7fb)" : undefined }}>
-                    <td style={{ padding: "8px 10px" }}><button type="button" className="lnk" style={{ fontWeight: 600, background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }} onClick={() => void pick(s.name)}>{s.name}</button></td>
-                    <td style={{ padding: "8px 10px" }} className="tnum">{day(s.starts_on)}</td>
-                    <td style={{ padding: "8px 10px" }} className="tnum">{day(s.ends_on)}</td>
-                    <td style={{ padding: "8px 10px" }}>{s.semesters}{s.semesters === 3 ? " (Summer)" : ""}</td>
-                    <td style={{ padding: "8px 10px" }}><span style={{ color: STATE_PILL[s.state] ?? "inherit", fontWeight: 600 }}>{s.state[0] + s.state.slice(1).toLowerCase()}</span></td>
-                    <td style={{ padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button type="button" className="btn btn--ghost btn--sm" onClick={() => setSessionModal(s)}>Edit</button>{" "}
-                      {s.state !== "CURRENT" ? <button type="button" className="btn btn--go btn--sm" onClick={() => { const [a, b] = parts(s.name); void send(`/api/bff/api/v1/pg/calendar/sessions/${a}/${b}/make-current`, "POST"); }}>Make current</button> : null}
+                  <tr key={s.name} className={s.name === looking ? "is-on" : ""} style={{ background: s.name === looking ? "var(--sunk)" : undefined }}>
+                    <td><button type="button" className="lnk b600" style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", padding: 0 }} onClick={() => void pick(s.name)}>{s.name}</button></td>
+                    <td className="tnum">{day(s.starts_on)}</td>
+                    <td className="tnum">{day(s.ends_on)}</td>
+                    <td>{s.semesters}{s.semesters === 3 ? " (Summer)" : ""}</td>
+                    <td><span className="b600" style={{ color: STATE_PILL[s.state] ?? "inherit" }}>{s.state[0] + s.state.slice(1).toLowerCase()}</span></td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <Btn kind="ghost" onClick={() => setSessionModal(s)}>Edit</Btn>{" "}
+                      {s.state !== "CURRENT" ? <Btn kind="go" onClick={() => { const [a, b] = parts(s.name); void send(`/api/bff/api/v1/pg/calendar/sessions/${a}/${b}/make-current`, "POST"); }}>Make current</Btn> : null}
                     </td>
                   </tr>
                 ))}
-                {data.sessions.length === 0 ? <tr><td colSpan={6} style={{ padding: "14px 10px", color: "var(--chrome)" }}>No sessions yet. Set one up to start the PG calendar.</td></tr> : null}
+                {data.sessions.length === 0 ? <tr><td colSpan={6} className="ink-chrome">No sessions yet. Set one up to start the PG calendar.</td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -112,12 +112,12 @@ export function PgCalendar({ initial }: { initial: CalData }) {
               {Array.from({ length: lookingRow.semesters }, (_, i) => i + 1).map((n) => {
                 const row = data.semesters.find((s) => s.number === n) ?? null;
                 return (
-                  <div key={n} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", padding: "10px 0", borderBottom: "1px solid var(--line-2)" }}>
+                  <div key={n} className="row" style={{ gap: "var(--s-3)", padding: "var(--s-2) 0", borderBottom: "1px solid var(--line-2)" }}>
                     <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-                      <div className="b600">{SEM_NAME[n]} {row ? <span style={{ color: SEM_STATE[row.state] ?? "inherit", fontWeight: 600, fontSize: 12.5 }}>· {row.state.replace(/_/g, " ").toLowerCase()}</span> : <span className="sub2" style={{ fontWeight: 400 }}>· not set</span>}</div>
+                      <div className="b600">{SEM_NAME[n]} {row ? <span className="b600 t-sm" style={{ color: SEM_STATE[row.state] ?? "inherit" }}>· {row.state.replace(/_/g, " ").toLowerCase()}</span> : <span className="sub2" style={{ fontWeight: 400 }}>· not set</span>}</div>
                       <div className="sub2">{row ? <>Registration {day(row.registration_opens)} – {day(row.registration_closes)} · Exams {day(row.exams_from)} – {day(row.exams_to)}</> : "No windows set yet"}</div>
                     </div>
-                    <button type="button" className="btn btn--primary btn--sm" onClick={() => setSemesterModal(row ?? n)}>{row ? "Edit windows" : "Set windows"}</button>
+                    <Btn kind="primary" onClick={() => setSemesterModal(row ?? n)}>{row ? "Edit windows" : "Set windows"}</Btn>
                   </div>
                 );
               })}
@@ -170,7 +170,7 @@ function SessionForm({ row, onClose, onSaved, send }: { row: SessionRow | null; 
 
   return (
     <Modal title={row ? `Edit ${row.name}` : "Setup new session"} onClose={onClose}
-      foot={<><button className="btn btn--ghost btn--sm" onClick={onClose}>Cancel</button><span className="grow" /><button className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save session"}</button></>}>
+      foot={<><Btn kind="ghost" onClick={onClose}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save session"}</Btn></>}>
       <div className="rf">
         <Field id="rf_name" label="Session" hint="Two academic years, as 2026/2027.">
           <input id="rf_name" className="ctl tnum" value={d.name} readOnly={!!row} placeholder="2026/2027" onChange={(e) => set("name", e.target.value)} />
@@ -221,7 +221,7 @@ function SemesterForm({ session, row, number, onClose, onSaved, send }: { sessio
 
   return (
     <Modal title={`${SEM_NAME[number]} — ${session}`} onClose={onClose}
-      foot={<><button className="btn btn--ghost btn--sm" onClick={onClose}>Cancel</button><span className="grow" /><button className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save windows"}</button></>}>
+      foot={<><Btn kind="ghost" onClick={onClose}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save windows"}</Btn></>}>
       <div className="rf">
         {dayField("registrationOpens", "Registration opens")}
         {dayField("registrationCloses", "Registration closes")}

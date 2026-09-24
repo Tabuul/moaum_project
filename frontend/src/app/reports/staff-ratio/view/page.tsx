@@ -37,7 +37,7 @@ export default async function StaffRatioReport({ searchParams }: { searchParams:
   const p = await searchParams;
   const session = typeof p.session === "string" ? p.session : "";
   const [me, data] = await Promise.all([api<Me>("/api/v1/iam/me"), api<StaffRatio>("/api/v1/reports/staff-ratio")]);
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
   const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
   const t = d.totals;

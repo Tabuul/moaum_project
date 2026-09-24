@@ -71,7 +71,7 @@ export function Support({ requests }: { requests: ServiceRequest[] }) {
         <PBody>
           <div className="field"><label>Which office?</label>
             <div className="row">
-              {OFFICES.map(([c, l]) => <button type="button" key={c} className={`pill ${office === c ? "pill--info" : ""}`} style={office === c ? { cursor: "pointer" } : { background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)", cursor: "pointer" }} onClick={() => setOffice(c)}>{l}</button>)}
+              {OFFICES.map(([c, l]) => <button type="button" key={c} className={`pill pill--pick ${office === c ? "pill--info" : "pill--grey"}`} onClick={() => setOffice(c)}>{l}</button>)}
             </div></div>
           <Field id="hl-problem" label="What is the problem?"><input id="hl-problem" className="ctl" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Describe it in one line" autoComplete="off" /></Field>
           <Field id="hl-detail" label="Anything more the office should know" hint="A reference, a date, an amount."><textarea id="hl-detail" className="ctl" rows={3} value={detail} onChange={(e) => setDetail(e.target.value)} /></Field>

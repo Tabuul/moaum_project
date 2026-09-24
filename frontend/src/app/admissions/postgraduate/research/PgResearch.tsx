@@ -195,8 +195,8 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
       {detail ? (
         <Panel title={`${detail.name} · ${STAGE_LABEL[detail.stage] ?? detail.stage}`} right={<button className="linklike" onClick={() => { setSelected(null); setDetail(null); }}>Close</button>}>
           <PBody>
-            <div className="grid grid--2" style={{ alignItems: "start", gap: 16 }}>
-              <div style={{ display: "grid", gap: 4 }}>
+            <div className="grid grid--2" style={{ alignItems: "start", gap: "var(--s-4)" }}>
+              <div className="stack" style={{ gap: "var(--s-1)" }}>
                 <Two a="Programme" b={`${detail.programme_name} · ${KIND[detail.degree_kind] ?? detail.degree_kind}`} />
                 <Two a="Department" b={`${detail.department_name} · ${detail.faculty_name}`} />
                 <Two a="Number" b={detail.matric_no ?? detail.admission_no ?? "—"} />
@@ -209,19 +209,19 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                 <Two a="Award" b={detail.awarded_at ? `Awarded ${fmt(detail.awarded_at)}` : detail.award_recommended_at ? `Recommended ${fmt(detail.award_recommended_at)}` : "—"} />
               </div>
 
-              <div style={{ display: "grid", gap: 12 }}>
+              <div className="stack" style={{ gap: "var(--s-3)" }}>
                 <div>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Supervisors</div>
+                  <div className="b600 mb-2">Supervisors</div>
                   {sups.length ? sups.map((s, i) => (
                     <div key={i} className="sub2">{s.name} — {s.role.toLowerCase()}{s.is_external ? " (external)" : ""}</div>
                   )) : <div className="sub2">None assigned yet.</div>}
                   {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                    <div className="row row--tight mt-2">
                       <input className="ctl" placeholder="Supervisor name" value={sup.name} onChange={(e) => setSup({ ...sup, name: e.target.value })} style={{ maxWidth: 200 }} />
                       <select className="ctl" value={sup.role} onChange={(e) => setSup({ ...sup, role: e.target.value })} style={{ maxWidth: 120 }}>
                         <option value="FIRST">First</option><option value="SECOND">Second</option><option value="CO">Co</option>
                       </select>
-                      <label className="sub2" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <label className="sub2 row" style={{ gap: "var(--s-1)" }}>
                         <input type="checkbox" checked={sup.external} onChange={(e) => setSup({ ...sup, external: e.target.checked })} /> external
                       </label>
                       <Btn kind="ghost" disabled={busy || !sup.name.trim()} onClick={() => { void post("/supervisor", { name: sup.name.trim(), role: sup.role, external: sup.external }, `Assigned supervisor ${sup.name.trim()}`); setSup({ name: "", role: "FIRST", external: false }); }}>Add</Btn>
@@ -230,19 +230,19 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                 </div>
 
                 <div>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Panel of examiners</div>
+                  <div className="b600 mb-2">Panel of examiners</div>
                   {panel.length ? panel.map((p, i) => (
                     <div key={i} className="sub2">{p.name} — {PANEL_ROLE[p.role] ?? p.role.toLowerCase()}{p.is_external ? " (external)" : ""}</div>
                   )) : <div className="sub2">Not constituted yet — six for a Master&rsquo;s, seven for a PhD (Policy 24.3).</div>}
                   {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                    <div className="row row--tight mt-2">
                       <input className="ctl" placeholder="Member name" value={pan.name} onChange={(e) => setPan({ ...pan, name: e.target.value })} style={{ maxWidth: 190 }} />
                       <select className="ctl" value={pan.role} onChange={(e) => setPan({ ...pan, role: e.target.value })} style={{ maxWidth: 150 }}>
                         <option value="CHAIR">Chair / HOD</option><option value="EXTERNAL">External examiner</option>
                         <option value="SUPERVISOR">Supervisor</option><option value="CO_SUPERVISOR">Co-supervisor</option>
                         <option value="INTERNAL">Internal examiner</option><option value="PGSR">PGSR</option><option value="COORDINATOR">PG Coordinator</option>
                       </select>
-                      <label className="sub2" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <label className="sub2 row" style={{ gap: "var(--s-1)" }}>
                         <input type="checkbox" checked={pan.external} onChange={(e) => setPan({ ...pan, external: e.target.checked })} /> external
                       </label>
                       <Btn kind="ghost" disabled={busy || !pan.name.trim()} onClick={() => { void post("/panel-member", { name: pan.name.trim(), role: pan.role, external: pan.external }, `Added ${pan.name.trim()} to the panel`); setPan({ name: "", role: "EXTERNAL", external: false }); }}>Add</Btn>
@@ -252,10 +252,10 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
 
                 {may && nexts.length ? (
                   <div>
-                    <div style={{ fontWeight: 600, marginBottom: 6 }}>Advance</div>
-                    <div style={{ display: "grid", gap: 8 }}>
+                    <div className="b600 mb-2">Advance</div>
+                    <div className="stack">
                       {nexts.map((n) => (
-                        <div key={n.action} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                        <div key={n.action} className="row row--tight">
                           {n.needs?.includes("pgsr") ? <input className="ctl" placeholder="PGSR (representative)" value={pgsr} onChange={(e) => setPgsr(e.target.value)} style={{ maxWidth: 200 }} /> : null}
                           {n.needs?.includes("plagiarism") ? <input className="ctl tnum" placeholder="Originality %" value={plag} onChange={(e) => setPlag(e.target.value.replace(/[^0-9.]/g, ""))} style={{ maxWidth: 120 }} /> : null}
                           {n.needs?.includes("viva") ? (
@@ -282,9 +282,9 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                 ) : null}
 
                 <div>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Milestones</div>
+                  <div className="b600 mb-2">Milestones</div>
                   {detail.events.length ? (
-                    <div style={{ display: "grid", gap: 4 }}>
+                    <div className="stack" style={{ gap: "var(--s-1)" }}>
                       {detail.events.map((e, i) => (
                         <div key={i} className="sub2"><span className="tnum">{fmt(e.at)}</span> — {e.note ?? STAGE_LABEL[e.stage] ?? e.stage}</div>
                       ))}

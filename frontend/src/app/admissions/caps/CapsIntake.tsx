@@ -14,7 +14,6 @@
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useMemo, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { xlsxRows } from "@/lib/xlsx";
 import { CAPS_DEMO } from "@/lib/caps-demo";
@@ -31,7 +30,7 @@ import {
 } from "@/lib/caps";
 import type { Problem } from "@/lib/api";
 import { officeLabel } from "@/lib/offices";
-import { Btn, IcoBtn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, IcoBtn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AliasMapper } from "./AliasMapper";
@@ -377,8 +376,8 @@ export function CapsIntake({
               return (
                 <div className="card" key={kk} style={{ borderColor: kind === kk ? "var(--chrome)" : "var(--line)" }}>
                   <div className="card__body">
-                    <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                      <b style={{ fontSize: 15 }}>{c.label}</b>
+                    <div className="row">
+                      <b className="t-md">{c.label}</b>
                       <Pil kind="grey">{c.level} Level</Pil>
                       {isBusy ? (
                         <Pil kind="info">Reading…</Pil>
@@ -450,9 +449,9 @@ export function CapsIntake({
           kind="info"
           title={`No admission settings exist for ${session} yet`}
           action={
-            <Link href={`/admissions/settings?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
+            <LinkBtn kind="ghost" href={`/admissions/settings?session=${encodeURIComponent(session)}`}>
               Go to the admission settings
-            </Link>
+            </LinkBtn>
           }
         >
           The list loads under the general cut-off above. The faculty&rsquo;s and the programme&rsquo;s own cut-offs, the quotas and the rules
@@ -464,9 +463,9 @@ export function CapsIntake({
           kind="info"
           title={`The admission settings for ${session} are a draft — the list still loads, nobody is screened until they are in force`}
           action={
-            <Link href={`/admissions/settings?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
+            <LinkBtn kind="ghost" href={`/admissions/settings?session=${encodeURIComponent(session)}`}>
               Go to the admission settings
-            </Link>
+            </LinkBtn>
           }
         >
           {policy.findings.length} finding{policy.findings.length === 1 ? "" : "s"} keep{policy.findings.length === 1 ? "s" : ""} them
@@ -488,12 +487,12 @@ export function CapsIntake({
             ])}
           />
           {policy.programmeCutoffs.length > 0 && (
-            <div className="card__body">
+            <PBody>
               <div className="eyebrow">Programmes with a cut-off of their own</div>
               <div className="sub2">
                 {policy.programmeCutoffs.map((p) => `${p.name} ${p.cutoff}`).join(" · ")}
               </div>
-            </div>
+            </PBody>
           )}
         </Panel>
       )}
@@ -661,7 +660,7 @@ export function CapsIntake({
                     <div className="sub2">{r.programme.deptCode}</div>
                   </span>
                 ) : (
-                  <span style={{ color: "var(--red-ink)", fontWeight: 600 }} key="p">not a programme here</span>
+                  <span className="ink-red b600" key="p">not a programme here</span>
                 ),
                 <span className="sub2" key="f">{r.programme?.facultyName ?? "—"}</span>,
                 <Btn kind={r.programme ? "ghost" : "urgent"} key="b" disabled title="Corrections arrive with the candidate record">
@@ -675,9 +674,9 @@ export function CapsIntake({
             kind="info"
             title="Upload the passports to see them beside the names"
             action={
-              <Link href={`/admissions/candidate-data?session=${encodeURIComponent(session)}`} className="btn btn--ghost btn--sm">
+              <LinkBtn kind="ghost" href={`/admissions/candidate-data?session=${encodeURIComponent(session)}`}>
                 Go to the passports
-              </Link>
+              </LinkBtn>
             }
           >
             JAMB sends the photographs as a separate folder, each file named with the candidate&rsquo;s registration
@@ -704,21 +703,21 @@ export function CapsIntake({
       {/* ── what the register holds for this session ── */}
       <Panel title={`Lists loaded for ${session}`} right={batches.length ? `${batches.length} upload${batches.length === 1 ? "" : "s"}` : "nothing yet"}>
         {problem ? (
-          <div className="card__body">
+          <PBody>
             <ProblemNotice problem={problem} />
-          </div>
+          </PBody>
         ) : null}
         {batchesProblem ? (
-          <div className="card__body">
+          <PBody>
             <ProblemNotice problem={batchesProblem} />
-          </div>
+          </PBody>
         ) : batches.length === 0 ? (
-          <div className="card__body">
+          <PBody>
             <div className="sub2">
               No admission list has been loaded for {session}. Loaded lists are held here until the database says
               they reconcile, and are committed by a second, deliberate act.
             </div>
-          </div>
+          </PBody>
         ) : (
           <DTable
             cols={["Kind|mid", "File", "Rows|num", "Downloaded|mid", "Loaded|mid", "By", "State|mid", "|num"]}
@@ -825,7 +824,7 @@ export function CapsIntake({
 
       {mayLoad ? (
         <Panel title={`Reset the JAMB list for ${session}`} right="Start the intake again">
-          <div style={{ padding: 16 }}>
+          <PBody>
             {resetMsg ? <Note kind="ok" title="Done">{resetMsg}</Note> : null}
             <Note kind="bad" title="This clears the uploaded list so you can upload again">
               It deletes, for {session}, the CAPS/JAMB list and its candidates, their O&rsquo;Level, photos and attachments,
@@ -839,7 +838,7 @@ export function CapsIntake({
                 {resetting ? "Resetting…" : `Delete the ${session} list, applications and O'Level`}
               </Btn>
             </div>
-          </div>
+          </PBody>
         </Panel>
       ) : null}
     </>

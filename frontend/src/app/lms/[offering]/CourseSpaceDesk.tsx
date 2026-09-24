@@ -62,15 +62,15 @@ export function CourseSpaceDesk({ d, upload }: { d: Desk; upload: boolean }) {
           <Field id="um-kind" label="Kind"><select id="um-kind" className="ctl" value={m.kind} onChange={(e) => setM({ ...m, kind: e.target.value })}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         </div>
         <Field id="um-desc" label="Description shown to students"><input id="um-desc" className="ctl" value={m.description} onChange={(e) => setM({ ...m, description: e.target.value })} autoComplete="off" /></Field>
-        <div style={{ border: "2px dashed var(--field)", borderRadius: 10, padding: 24, textAlign: "center", background: "var(--bg)" }}>
+        <div style={{ border: "2px dashed var(--field)", borderRadius: "var(--r-md)", padding: "var(--s-6)", textAlign: "center", background: "var(--bg)" }}>
           <Ico name="box" size={26} stroke="var(--faint)" w={1.7} />
-          <div style={{ fontWeight: 600, marginTop: 8 }}>{file ? file.name : "Choose a file"}</div>
+          <div className="b600 mt-2">{file ? file.name : "Choose a file"}</div>
           <div className="sub2">PDF, slides, documents, images, audio or video · up to 5 MB here; larger material is linked by address below</div>
           <div className="mt-3"><input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
           {file ? <div className="sub2 tnum mt-2">{file.name} · {size(file.size)}</div> : null}
         </div>
         <Field id="um-link" label="Or an address" hint="A video or a large file published elsewhere."><input id="um-link" className="ctl" value={m.link} onChange={(e) => setM({ ...m, link: e.target.value })} placeholder="https://…" autoComplete="off" /></Field>
-        <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, color: "var(--muted)" }}><input type="checkbox" className="chk" checked={m.publish} onChange={(e) => setM({ ...m, publish: e.target.checked })} /><span>Publish to the {d.enrolled} registered students now; unticked, it is saved as a draft.</span></label>
+        <label className="row row--top ink-muted" style={{ fontSize: 13.5 }}><input type="checkbox" className="chk" checked={m.publish} onChange={(e) => setM({ ...m, publish: e.target.checked })} /><span>Publish to the {d.enrolled} registered students now; unticked, it is saved as a draft.</span></label>
         <div className="row"><Btn kind="primary" disabled={busy || !m.title.trim() || (!file && !m.link.trim())} onClick={() => void publishMaterial()}>{m.publish ? "Publish to the course space" : "Save as a draft"}</Btn></div>
       </PBody>
     </Panel>
@@ -155,15 +155,15 @@ export function CourseSpaceDesk({ d, upload }: { d: Desk; upload: boolean }) {
         <Modal title={`Mark — ${marking.title}`} sub={`${marking.rows.length} submission${marking.rows.length === 1 ? "" : "s"}`} onClose={() => setMarking(null)}
           foot={<><Btn kind="ghost" onClick={() => setMarking(null)}>Close</Btn></>}>
           {marking.rows.length ? marking.rows.map((s) => (
-            <div key={s.id} style={{ padding: "10px 0", borderTop: "1px solid var(--line-2)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div key={s.id} style={{ padding: "var(--s-3) 0", borderTop: "1px solid var(--line-2)" }}>
+              <div className="row row--between row--top">
                 <Two a={s.name} b={`${s.number} · ${day(s.submitted_at)}${s.late ? " · late" : ""}`} />
                 {s.filename ? <a className="btn btn--ghost btn--sm" href={`/api/bff/api/v1/lms/offerings/${d.offering_id}/submissions/${s.id}/content`} target="_blank" rel="noreferrer">{s.filename} · {size(s.bytes)}</a> : null}
               </div>
-              {s.text ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{s.text}</div> : null}
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+              {s.text ? <div className="sub2 mt-2" style={{ whiteSpace: "pre-wrap" }}>{s.text}</div> : null}
+              <div className="row mt-2">
                 <input className="ctl tnum" style={{ width: 90 }} placeholder="Mark" value={marks[s.id]?.mark ?? ""} onChange={(e) => setMarks({ ...marks, [s.id]: { mark: e.target.value, feedback: marks[s.id]?.feedback ?? "" } })} />
-                <input className="ctl" style={{ flexGrow: 1, minWidth: 200 }} placeholder="Feedback" value={marks[s.id]?.feedback ?? ""} onChange={(e) => setMarks({ ...marks, [s.id]: { mark: marks[s.id]?.mark ?? "", feedback: e.target.value } })} />
+                <input className="ctl grow" style={{ minWidth: 200 }} placeholder="Feedback" value={marks[s.id]?.feedback ?? ""} onChange={(e) => setMarks({ ...marks, [s.id]: { mark: marks[s.id]?.mark ?? "", feedback: e.target.value } })} />
                 <Btn kind="go" disabled={busy || marks[s.id]?.mark === ""} onClick={async () => { if (await send(`/assignments/${marking.assignment}/submissions/${s.id}/mark`, { mark: Number(marks[s.id].mark), feedback: marks[s.id].feedback || null }, `${d.course_code}: ${marking.title} marked for ${s.number}`)) setSaid(`Marked ${s.number}`); }}>{s.mark !== null ? "Re-mark" : "Mark"}</Btn>
               </div>
             </div>

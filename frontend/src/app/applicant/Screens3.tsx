@@ -8,9 +8,8 @@
  * confirmed faculty lists. Neither is shown in the other's box.
  */
 import { useState } from "react";
-import Link from "next/link";
 import { at, confirmedReference, openReference, CLEARANCE_ITEMS, type Application } from "@/lib/applicant";
-import { Btn, Note, Panel, PBody, Pil, Tick, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -39,7 +38,7 @@ export function Accept({ a }: { a: Application }) {
   if (at(a, 6) && paid) {
     return (
       <>
-        <Note kind="ok" title={`Offer accepted — ${money(Number(paid.amount))} received`} action={<Link href="/applicant/clearance" className="btn btn--primary btn--sm">Clearance checklist</Link>}>
+        <Note kind="ok" title={`Offer accepted — ${money(Number(paid.amount))} received`} action={<LinkBtn kind="primary" href="/applicant/clearance">Clearance checklist</LinkBtn>}>
           Your place is held. Bring your original documents to the Registry for clearance.
         </Note>
         <Panel title="Receipt" right={paid.reference}>
@@ -66,7 +65,7 @@ export function Accept({ a }: { a: Application }) {
       <Panel title="Undertaking" right="Read it before you sign">
         <PBody>
           <div className="sub2" style={{ lineHeight: 1.65 }}>I accept the offer of provisional admission on the terms stated. I declare that the particulars and results I submitted are true and complete, and I understand that the University verifies them with the examination bodies. I undertake to abide by the statutes, regulations and disciplinary code of the University, and I accept that admission obtained on a false declaration is void at any time, including after the award of a degree.</div>
-          <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, color: "var(--muted)", marginTop: 6 }}>
+          <label className="ink-muted mt-2" style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
             <input type="checkbox" className="chk" checked={agreed} disabled={!!a.undertakingAt} onChange={(e) => setAgreed(e.target.checked)} />
             <span>I have read the undertaking and I accept it.</span>
           </label>
@@ -89,9 +88,9 @@ export function Accept({ a }: { a: Application }) {
         <Panel title="Your payment reference" right="Generated for you alone">
           <PBody>
             <div className="eyebrow">Reference</div>
-            <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
+            <div className="tnum b700" style={{ fontSize: "var(--t-2xl)", letterSpacing: ".5px" }}>{open.reference}</div>
             <div className="sub2 mt-2">Quote this reference and nothing else. You do not need a new one &mdash; pay this one now: on the gateway it confirms at once and your place is held (the undertaking signed), or pay it at a bank and the Bursary confirms it against the reference.</div>
-            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}><PayByCard reference={open.reference} amount={fee} /></div>
+            <div className="row mt-2"><PayByCard reference={open.reference} amount={fee} /></div>
           </PBody>
         </Panel>
       ) : null}
@@ -116,7 +115,7 @@ export function Clearance({ a }: { a: Application }) {
   return (
     <>
       <Note kind={done ? "ok" : "info"} title={done ? "You are cleared" : "Clearance is in person, at the Registry"}
-        action={done ? <Link href="/applicant/matric" className="btn btn--primary btn--sm">What happens next</Link> : null}>
+        action={done ? <LinkBtn kind="primary" href="/applicant/matric">What happens next</LinkBtn> : null}>
         {done ? "Every document has been seen and verified. You may now pay your fees and register your courses — under your admission number. Your matriculation number is issued afterwards, over the list of students who actually registered." : "Bring the originals, not photocopies. Nothing is paid at clearance."}
       </Note>
       <Panel title="Documents" right={`${verified} of 6 verified`}>
@@ -151,7 +150,7 @@ export function Matric({ a }: { a: Application }) {
           <Panel title="What you carry now" right="Your admission number">
             <PBody>
               {a.admissionNo ? (
-                <div className="tnum" style={{ fontFamily: "var(--serif)", fontSize: "clamp(19px,4vw,26px)", fontWeight: 700, letterSpacing: ".6px" }}>{a.admissionNo}</div>
+                <div className="tnum b700" style={{ fontFamily: "var(--serif)", fontSize: "clamp(19px,4vw,26px)", letterSpacing: ".6px" }}>{a.admissionNo}</div>
               ) : (
                 <div className="sub2"><b>Not issued yet.</b> The Academic Office issues it when it brings the accepted candidates onto the register.</div>
               )}
@@ -189,11 +188,11 @@ export function Matric({ a }: { a: Application }) {
     <>
       <div className="card" style={{ borderTop: "4px solid var(--green)" }}>
         <PBody>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ width: 26, height: 26, borderRadius: 13, background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center" }}><Tick size={14} colour="#fff" /></div>
+          <div className="row">
+            <div style={{ width: 26, height: 26, borderRadius: "var(--r-pill)", background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center" }}><Tick size={14} colour="var(--surface)" /></div>
             <span className="eyebrow ink-green">Matriculation number issued</span>
           </div>
-          <div className="tnum" style={{ fontFamily: "var(--serif)", fontSize: "clamp(24px,5vw,34px)", fontWeight: 700, letterSpacing: "1px" }}>{a.matricNo}</div>
+          <div className="tnum b700" style={{ fontFamily: "var(--serif)", fontSize: "clamp(24px,5vw,34px)", letterSpacing: "1px" }}>{a.matricNo}</div>
           <div className="sub2">{a.name} &middot; {a.programme} &middot; {a.entryLevel} Level</div>
           <div className="hr" />
           <div className="sub2">This number identifies you for the rest of your studies and beyond &mdash; on every course registration, every score sheet, every result slip, your certificate and your transcript. Quote it in all correspondence. It never changes.</div>

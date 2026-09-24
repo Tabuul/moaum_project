@@ -24,6 +24,13 @@ const I: Record<string, string> = {
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   upload: '<path d="M12 16V4M6 10l6-6 6 6M4 20h16"/>',
+  "arrow-right": '<path d="M4 12h16M13 5l7 7-7 7"/>',
+  "arrow-left": '<path d="M20 12H4M11 5l-7 7 7 7"/>',
+  "arrow-down": '<path d="M12 4v16M5 13l7 7 7-7"/>',
+  "arrow-up": '<path d="M12 20V4M5 11l7-7 7 7"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  clip: '<path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3l8-8"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   bell: '<path d="M18 15V10a6 6 0 1 0-12 0v5l-2 3h16l-2-3Z"/><path d="M10 21h4"/>',
   bed: '<path d="M3 19v-9h13a4 4 0 0 1 4 4v5M3 14h17M3 10V7"/>',
   heart: '<path d="M12 20s-7-4.6-7-9.5A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.5C19 15.4 12 20 12 20Z"/>',
@@ -133,6 +140,8 @@ export function Btn({
   title,
   type = "button",
   style,
+  className,
+  "aria-label": ariaLabel,
 }: {
   kind: BtnKind;
   size?: BtnSize;
@@ -142,20 +151,22 @@ export function Btn({
   title?: string;
   type?: "button" | "submit";
   style?: CSSProperties;
+  className?: string;
+  "aria-label"?: string;
 }) {
   return (
-    <button type={type} className={`btn btn--${kind} btn--${size}`} onClick={onClick} disabled={disabled} title={title} style={style}>
+    <button type={type} className={`btn btn--${kind} btn--${size}${className ? " " + className : ""}`} onClick={onClick} disabled={disabled} title={title} style={style} aria-label={ariaLabel}>
       {children}
     </button>
   );
 }
 
 /** a link that looks like a button — the same hierarchy and sizes, for a route rather than an act */
-export function LinkBtn({ kind = "ghost", size = "sm", href, children, title, prefetch }: {
-  kind?: BtnKind; size?: BtnSize; href: string; children: ReactNode; title?: string; prefetch?: boolean;
+export function LinkBtn({ kind = "ghost", size = "sm", href, children, title, prefetch, className, "aria-label": ariaLabel }: {
+  kind?: BtnKind; size?: BtnSize; href: string; children: ReactNode; title?: string; prefetch?: boolean; className?: string; "aria-label"?: string;
 }) {
   return (
-    <Link href={href} className={`btn btn--${kind} btn--${size}`} title={title} prefetch={prefetch}>
+    <Link href={href} className={`btn btn--${kind} btn--${size}${className ? " " + className : ""}`} title={title} prefetch={prefetch} aria-label={ariaLabel}>
       {children}
     </Link>
   );
@@ -217,16 +228,10 @@ export function RoleLine({
   const names = allowed.map((o) => roleLabel(o)).join(", ");
   const can = canAct ?? allowed.includes(actingOffice ?? "");
   return (
-    <div
-      style={{
-        display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
-        padding: "9px 13px", border: "1px solid var(--line)", borderRadius: 8,
-        background: "var(--bg)", marginBottom: 12,
-      }}
-    >
+    <div className="roleline">
       <Ico name={can ? "check" : "eye"} size={16} stroke={can ? "var(--green-ink)" : "var(--muted)"} />
       <span className="sub2">
-        <strong style={{ color: "var(--ink)" }}>{action ?? "These actions"}</strong> {allowed.length === 1 ? "is worked by the " : "are worked by the "}{names}.
+        <strong className="ink-ink">{action ?? "These actions"}</strong> {allowed.length === 1 ? "is worked by the " : "are worked by the "}{names}.
       </span>
       <span className="grow" />
       <Pil kind={can ? "ok" : "grey"}>
@@ -237,8 +242,8 @@ export function RoleLine({
 }
 
 /** pil(kind, text) */
-export function Pil({ kind, children }: { kind: "grey" | "info" | "ok" | "bad" | "warn"; children: ReactNode }) {
-  return <span className={`pill pill--${kind}`}>{children}</span>;
+export function Pil({ kind, children, className, title }: { kind: "grey" | "info" | "ok" | "bad" | "warn"; children: ReactNode; className?: string; title?: string }) {
+  return <span className={`pill pill--${kind}${className ? " " + className : ""}`} title={title}>{children}</span>;
 }
 
 /** two(a, b) */
@@ -298,9 +303,9 @@ export function Panel({ title, right, children }: { title: ReactNode; right?: Re
 }
 
 /** pbody(inner, style) */
-export function PBody({ children, style }: { children: ReactNode; style?: CSSProperties }) {
+export function PBody({ children, style, className }: { children: ReactNode; style?: CSSProperties; className?: string }) {
   return (
-    <div className="card__body" style={style}>
+    <div className={`card__body${className ? " " + className : ""}`} style={style}>
       {children}
     </div>
   );

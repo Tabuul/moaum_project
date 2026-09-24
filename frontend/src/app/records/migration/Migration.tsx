@@ -7,7 +7,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { xlsxRowsAsync, buildXlsx } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tabs, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { MigratedPanelLive } from "@/app/students/MigratedPanel";
@@ -483,13 +483,10 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the ICT Directorate, the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
 
-      <div className="card"><div className="card__body">
-        <div className="role-tabs" role="tablist">
-          {([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"], ["clearance", "6 · Clearance"]] as [Tab, string][]).map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => { setTab(k); setResult(null); setProblem(null); setPResult(null); }}>{l}</button>
-          ))}
-        </div>
-      </div></div>
+      <div className="card"><PBody>
+        <Tabs look="segmented" value={tab} onChange={(k) => { setTab(k); setResult(null); setProblem(null); setPResult(null); }}
+          items={([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"], ["clearance", "6 · Clearance"]] as [Tab, string][]).map(([k, l]) => ({ id: k, label: l }))} />
+      </PBody></div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
 
@@ -514,7 +511,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               guessed at. JPEG or PNG; the photo then shows on the student&rsquo;s dashboard, course form and receipts.
             </div>
             <div className="row">
-              <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
+              <label className={`btn btn--primary m-0${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", opacity: !may ? 0.6 : 1 }}>
                 {busy
                   ? (progress ? `${progress.label} — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}…` : "Uploading…")
                   : "Upload passport photos"}
@@ -549,7 +546,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           </div>
           <div className="row">
             <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
-            <label className={`btn btn--primary${!may || (needScope && !scopeReady) || busy ? " btn--disabled" : ""}`} style={{ cursor: may && scopeReady && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || (needScope && !scopeReady) ? 0.6 : 1 }}>
+            <label className={`btn btn--primary m-0${!may || (needScope && !scopeReady) || busy ? " btn--disabled" : ""}`} style={{ cursor: may && scopeReady && !busy ? "pointer" : "not-allowed", opacity: !may || (needScope && !scopeReady) ? 0.6 : 1 }}>
               {busy
                 ? (progress
                     ? (progress.of > 0

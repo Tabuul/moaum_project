@@ -51,7 +51,7 @@ export function MigratedPanel({ summary, reload }: { summary: MigratedSummary; r
           ["Cleared everywhere", n(summary.cleared).toLocaleString(), n(summary.cleared) ? "var(--green-ink)" : null, "every unit, every purpose"],
           ["Not yet cleared", n(summary.uncleared).toLocaleString(), n(summary.uncleared) ? "var(--red-ink)" : "var(--green-ink)", n(summary.uncleared) ? "a unit's word is missing or held" : "nothing to clear"],
         ]} />
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+        <div className="row mt-1">
           <Btn kind={n(summary.uncleared) ? "primary" : "ghost"} disabled={busy || !n(summary.uncleared)} onClick={() => void clearNow()}>
             {busy ? "Clearing…" : n(summary.uncleared) ? `Clear the ${n(summary.uncleared).toLocaleString()} not yet cleared` : "Nothing to clear"}
           </Btn>

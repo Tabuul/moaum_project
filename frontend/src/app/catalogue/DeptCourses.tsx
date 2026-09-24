@@ -113,7 +113,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
                 options={depts.map((d) => ({ value: d.code, label: d.name }))} onChange={(v) => go(v)} />
             ) : (
               // a Head of Department owns one department — show it, do not ask them to pick it
-              <div className="ctl" style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>{depts[0]?.name ?? "—"}</div>
+              <div className="ctl row b600">{depts[0]?.name ?? "—"}</div>
             )}
           </div>
           <div className="scope__f"><label htmlFor="dc-level">Level</label>
@@ -136,10 +136,10 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
         <div className="scope__sum">
           <span className="trail">{depts.find((d) => d.code === dept)?.name ?? dept}</span>
           <span className="count"><b>{shown.length}</b> {filtered ? `of ${courses.length}` : `course${courses.length === 1 ? "" : "s"}`} shown</span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-            {filtered ? <button className="btn btn--ghost btn--sm" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); setFProg(""); }}>Clear filters</button> : null}
-            {waiting ? <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => { if (window.confirm(`Make ${waiting} awaiting course${waiting === 1 ? "" : "s"} Live? They enter the current session's registration.`)) void send(`/courses/live-all?dept=${encodeURIComponent(dept)}`, {}, `Make ${waiting} courses live in ${dept}`).then((j) => { if (j) setSaid(`${String(j.made_live ?? waiting)} course(s) made Live`); }); }}>{busy ? "Working…" : `Make ${waiting} Live`}</button> : null}
-            <button className="btn btn--primary btn--sm" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" }); setErr(null); setAdd(true); }}>+ New course</button>
+          <div className="row ml-auto">
+            {filtered ? <Btn kind="ghost" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); setFProg(""); }}>Clear filters</Btn> : null}
+            {waiting ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Make ${waiting} awaiting course${waiting === 1 ? "" : "s"} Live? They enter the current session's registration.`)) void send(`/courses/live-all?dept=${encodeURIComponent(dept)}`, {}, `Make ${waiting} courses live in ${dept}`).then((j) => { if (j) setSaid(`${String(j.made_live ?? waiting)} course(s) made Live`); }); }}>{busy ? "Working…" : `Make ${waiting} Live`}</Btn> : null}
+            <Btn kind="primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" }); setErr(null); setAdd(true); }}>+ New course</Btn>
           </div>
         </div>
       </div>
@@ -161,10 +161,10 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             {dupGroups.map((g, i) => (
               <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                 <div className="b600">{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                <div className="row mt-1">
                   {g.codes.map((c) => (
-                    <span key={c.code} className="tnum" style={{ fontSize: 12.5 }}>
-                      {c.keeper ? <Pil kind="ok">Keep {c.code}</Pil> : <span style={{ color: "var(--red-ink)", textDecoration: "line-through" }}>{c.code}</span>}
+                    <span key={c.code} className="tnum t-sm">
+                      {c.keeper ? <Pil kind="ok">Keep {c.code}</Pil> : <span className="ink-red" style={{ textDecoration: "line-through" }}>{c.code}</span>}
                     </span>
                   ))}
                 </div>
@@ -188,7 +188,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
               }}>Set to {cur}</Btn>
             ))}
           </div>
-          <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+          <div className="sub2 row mt-2">
             <span>Assessment split — how a course&rsquo;s hundred marks divide between continuous assessment and the examination; the score sheet holds every mark to it. Set {fLevel ? `${fLevel} Level` : "the department's"} courses:</span>
             {SPLITS.map(([m, label]) => (
               <Btn key={m} kind="ghost" disabled={busy} onClick={() => {
@@ -201,25 +201,25 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
         {shown.length ? (
           <DTable cols={["Code|mid", "Title", "Units|mid", "Semester|mid", "Level|mid", "Kind", "Curriculum|mid", "CA / Exam|mid", "Lecturer", "State|mid", "Action|num"]} rows={shown.map((c) => [
             <b className="tnum" key="c">{c.code}</b>,
-            <span key="t">{c.title}{c.bindings && c.bindings.length ? <div className="sub2" style={{ marginTop: 2, display: "flex", gap: 4, flexWrap: "wrap" }}>{c.bindings.map((b) => <Link key={`${b.programme_code}-${b.level}`} href={`/catalogue/structure?prog=${encodeURIComponent(b.programme_code)}`} className="pill" style={{ fontSize: 11, textDecoration: "none" }} title={`${b.programme} · ${b.level} level · ${b.basis}${b.track ? ` · ${b.track}` : ""}`}>{b.programme_code} · {b.level}{b.basis !== "Core" ? ` · ${b.basis}` : ""}{b.track ? ` · ${b.track}` : ""}</Link>)}</div> : <div className="sub2" style={{ marginTop: 2, color: "var(--red-ink)" }}>Not bound to any programme — no student sees it at registration</div>}</span>,
+            <span key="t">{c.title}{c.bindings && c.bindings.length ? <div className="sub2 row" style={{ marginTop: 2, gap: "var(--s-1)" }}>{c.bindings.map((b) => <Link key={`${b.programme_code}-${b.level}`} href={`/catalogue/structure?prog=${encodeURIComponent(b.programme_code)}`} className="pill t-xs" style={{ textDecoration: "none" }} title={`${b.programme} · ${b.level} level · ${b.basis}${b.track ? ` · ${b.track}` : ""}`}>{b.programme_code} · {b.level}{b.basis !== "Core" ? ` · ${b.basis}` : ""}{b.track ? ` · ${b.track}` : ""}</Link>)}</div> : <div className="sub2 ink-red" style={{ marginTop: 2 }}>Not bound to any programme — no student sees it at registration</div>}</span>,
             <span className="tnum" key="u">{c.units}</span>,
             <span className="tnum" key="s">{c.semester === 1 ? "First" : c.semester === 2 ? "Second" : "Third"}</span>,
             <span className="tnum" key="l">{c.level}</span>,
             <span className="sub2" key="k">{kindLabel(c.kind)}</span>,
-            <select key="cur" className="ctl" style={{ minWidth: 96, padding: "3px 6px", fontSize: 12.5 }} value={c.curriculum ?? ""} disabled={busy || c.state === "ENDED"}
+            <select key="cur" className="ctl t-sm" style={{ minWidth: 96, padding: "3px 6px" }} value={c.curriculum ?? ""} disabled={busy || c.state === "ENDED"}
               onChange={(e) => void send(`/courses/${encodeURIComponent(c.code)}/curriculum`, { curriculum: e.target.value }, `Curriculum of ${c.code} set to ${e.target.value || "none"}`).then((j) => { if (j) setSaid(`${c.code} → ${e.target.value || "no curriculum"}`); })}>
               <option value="">— (shared)</option>
               <option value="CCMAS">CCMAS</option>
               <option value="BMAS">BMAS</option>
             </select>,
-            <select key="split" className="ctl" style={{ minWidth: 128, padding: "3px 6px", fontSize: 12.5 }} value={String(c.ca_max ?? 40)} disabled={busy || c.state === "ENDED"} aria-label={`Assessment split of ${c.code}`}
+            <select key="split" className="ctl t-sm" style={{ minWidth: 128, padding: "3px 6px" }} value={String(c.ca_max ?? 40)} disabled={busy || c.state === "ENDED"} aria-label={`Assessment split of ${c.code}`}
               onChange={(e) => { const m = Number(e.target.value); void send(`/courses/${encodeURIComponent(c.code)}/split`, { caMax: m }, `${c.code} set to ${splitLabel(m)}`).then((j) => { if (j) setSaid(`${c.code} → ${splitLabel(m)}`); }); }}>
               {SPLITS.some(([m]) => m === (c.ca_max ?? 40)) ? null : <option value={String(c.ca_max ?? 40)}>{splitLabel(c.ca_max ?? 40)}</option>}
               {SPLITS.map(([m, label]) => <option key={m} value={String(m)}>{label}</option>)}
             </select>,
             c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2 ink-red" key="lec">Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,
-            <div key="a" style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            <div key="a" className="row row--tight row--right">
               {c.state === "ENDED" ? (
                 <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live and re-enters registration.`)) void send(`/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`).then((j) => { if (j) setSaid(`${c.code} restored — Live again`); }); }}>Restore</Btn>
               ) : (

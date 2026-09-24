@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { AdmissionCycle } from "@/lib/matriculation";
-import { Btn, Note, Panel, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -67,7 +67,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       <Tiles items={[
         ["Applications", cycle.applications.toLocaleString(), null, `${cycle.session} cycle · on the CAPS lists`],
         ["Screened", cycle.screened.toLocaleString(), null,
-          <>{pct(cycle.screened, cycle.applications)} carry a screening aggregate · <span style={{ color: "var(--sky)", fontWeight: 600 }}>View all →</span></>,
+          <>{pct(cycle.screened, cycle.applications)} carry a screening aggregate · <span className="b600" style={{ color: "var(--sky)" }}>View all →</span></>,
           `/admissions/screened?session=${encodeURIComponent(cycle.session)}`],
         ["Offers issued", cycle.offers.toLocaleString(), "var(--chrome)", cycle.capacity ? `Against ${cycle.capacity.toLocaleString()} capacity` : "No NUC capacity in force"],
         ["Accepted", cycle.accepted.toLocaleString(), "var(--green-ink)", `${pct(cycle.accepted, cycle.offers)} conversion`],
@@ -103,16 +103,16 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
           ])}
           texts={cycle.programmes.filter((p) => p.applied || p.offered).map((p) => `${p.name} ${p.facultyName} ${p.code}`)}
         />
-        {!cycle.programmes.some((p) => p.applied || p.offered) ? <div className="card__body"><div className="sub2">No programme has an application in this session yet. <Link href={`/admissions/caps?session=${encodeURIComponent(cycle.session)}`}>Upload the CAPS list</Link>.</div></div> : null}
+        {!cycle.programmes.some((p) => p.applied || p.offered) ? <PBody><div className="sub2">No programme has an application in this session yet. <Link href={`/admissions/caps?session=${encodeURIComponent(cycle.session)}`}>Upload the CAPS list</Link>.</div></PBody> : null}
       </Panel>
       <Panel title="JAMB reconciliation" right="Candidates whose portal data disagrees with the CAPS record">
         <DTable
           cols={["Finding", "Candidates|mid", "What it means", "Action|num"]}
           rows={cycle.reconciliation.map((f) => [
             <strong key="f">{f.finding}</strong>,
-            <span className="tnum" key="n" style={f.n ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{f.n}</span>,
+            <span className={`tnum${f.n ? " ink-red b700" : ""}`} key="n">{f.n}</span>,
             <span className="sub2" key="w">{f.whatItMeans}</span>,
-            <Link key="a" href={`/admissions/caps?session=${encodeURIComponent(cycle.session)}`} className={`btn btn--${f.n ? "primary" : "ghost"} btn--sm`}>{f.n ? "Resolve" : "Open"}</Link>,
+            <LinkBtn key="a" kind={f.n ? "primary" : "ghost"} href={`/admissions/caps?session=${encodeURIComponent(cycle.session)}`}>{f.n ? "Resolve" : "Open"}</LinkBtn>,
           ])}
         />
       </Panel>

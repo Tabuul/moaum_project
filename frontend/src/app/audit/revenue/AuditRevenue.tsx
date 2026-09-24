@@ -51,7 +51,7 @@ export function AuditRevenue({ session, bursary, revenue }: { session: string; b
             <span className="tnum sub2" key="s">{Number(f.students).toLocaleString()}</span>,
             <span className="tnum sub2" key="p">{Number(f.paid_students).toLocaleString()}</span>,
             <span className="tnum" key="c">{money(Number(f.collected))}</span>,
-            <b className="tnum" key="d" style={{ color: Number(f.due) ? "var(--red-ink)" : undefined }}>{money(Number(f.due))}</b>,
+            <b className={`tnum${Number(f.due) ? " ink-red" : ""}`} key="d">{money(Number(f.due))}</b>,
           ])} texts={bursary.byFaculty.map((f) => f.faculty_name)} />
         ) : <PBody><div className="sub2">No collection recorded for {session} yet.</div></PBody>}
       </Panel>

@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
-import { Note, Panel, PBody } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody } from "@/components/proto/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +34,10 @@ export default async function CollegeDashboardPage() {
             Provost, the College Secretary and the Finance Controller — work here.
           </div>
           <div className="row">
-            <Link href="/college/postings" className="btn btn--primary btn--sm">Postings desk</Link>
-            <Link href="/college/supervision" className="btn btn--ghost btn--sm">Logbooks</Link>
-            <Link href="/college/examinations" className="btn btn--ghost btn--sm">Professional examinations</Link>
-            <Link href="/college" className="btn btn--ghost btn--sm">College overview</Link>
+            <LinkBtn href="/college/postings" kind="primary">Postings desk</LinkBtn>
+            <LinkBtn href="/college/supervision" kind="ghost">Logbooks</LinkBtn>
+            <LinkBtn href="/college/examinations" kind="ghost">Professional examinations</LinkBtn>
+            <LinkBtn href="/college" kind="ghost">College overview</LinkBtn>
           </div>
         </PBody>
       </Panel>

@@ -5,9 +5,8 @@
  * units and the Registry close, seen from the end where the student stands.
  * Every line is computed from the record (records.student_graduation, V029).
  */
-import Link from "next/link";
 import type { Graduation } from "@/lib/student-portal";
-import { KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Steps } from "@/components/proto/blocks";
 import { onDay } from "./common";
@@ -109,7 +108,7 @@ export function GraduationScreen({ g }: { g: Graduation }) {
         </Panel>
       ) : null}
 
-      <Note kind="info" title="A transcript is requested separately, and paid for" action={<Link href="/student/transcript" className="btn btn--ghost btn--sm">Request a transcript</Link>}>
+      <Note kind="info" title="A transcript is requested separately, and paid for" action={<LinkBtn kind="ghost" href="/student/transcript">Request a transcript</LinkBtn>}>
         The certificate names the award; the transcript lists every result behind it. Both are cleared by the same units, and neither is produced while any unit holds you.
       </Note>
     </>

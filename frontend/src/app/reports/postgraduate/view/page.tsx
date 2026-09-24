@@ -43,7 +43,7 @@ export default async function PostgraduateReport({ searchParams }: { searchParam
     api<Me>("/api/v1/iam/me"),
     api<Postgraduate>(`/api/v1/reports/postgraduate${asked ? `?session=${encodeURIComponent(asked)}` : ""}`),
   ]);
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
   const scopeLabel = (d as { scope?: { label?: string } | null }).scope?.label ? `${(d as { scope?: { label?: string } }).scope!.label} · ` : "";
   const t = d.totals;

@@ -5,9 +5,8 @@
  *  level or an honours classification. Reuses the register's data (fees, registration, results) with
  *  postgraduate framing, and links to the shared student pages. Shape as the prototype's s/pgdash:
  *  the record, four tiles, the one thing to do next, and this session at a glance. */
-import Link from "next/link";
 import type { Me } from "@/lib/student-portal";
-import { KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Passport } from "@/components/proto/blocks";
 import { naira } from "./common";
 
@@ -69,14 +68,14 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
     <>
       <Panel title="Postgraduate student" right="Your record on the register">
         <PBody>
-          <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div className="row row--top" style={{ gap: "var(--s-4)" }}>
             <Passport w={96} h={118} radius={6} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
-            <div style={{ flexGrow: 1, minWidth: 240 }}>
-              <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
+            <div className="grow" style={{ minWidth: 240 }}>
+              <div className="phead__t">{s.name}</div>
               <div className="sub2 tnum mt-1">{s.matricNo ?? s.admissionNo}</div>
               <div className="sub2 mt-1">{s.programme} &middot; {s.department}</div>
               <div className="sub2">{s.faculty}</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              <div className="row mt-2">
                 <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
                 <Pil kind="info">{stage}</Pil>
                 <Pil kind="grey">Postgraduate · {s.entrySession}</Pil>
@@ -94,19 +93,19 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
       ]} />
 
       {pg?.standing === "PROBATION" ? (
-        <Note kind="bad" title="On academic probation" action={<Link href="/student/pg-courses" className="btn btn--primary btn--sm">My results</Link>}>
+        <Note kind="bad" title="On academic probation" action={<LinkBtn kind="primary" href="/student/pg-courses">My results</LinkBtn>}>
           Your CGPA is below 2.50. You are on probation for a semester and are advised to withdraw if it does not improve (Policy 15.5 / 20).
         </Note>
       ) : !registered ? (
-        <Note kind="info" title={reg ? `Complete your registration for ${reg.session}` : "Register your courses"} action={<Link href="/student/pg-courses" className="btn btn--primary btn--sm">Course registration</Link>}>
+        <Note kind="info" title={reg ? `Complete your registration for ${reg.session}` : "Register your courses"} action={<LinkBtn kind="primary" href="/student/pg-courses">Course registration</LinkBtn>}>
           Register the courses your programme carries this semester; the department endorses the form. {feeLine}
         </Note>
       ) : step ? (
-        <Note kind={step[2]} title={step[0]} action={<Link href="/student/research" className="btn btn--ghost btn--sm">Research &amp; thesis</Link>}>
+        <Note kind={step[2]} title={step[0]} action={<LinkBtn kind="ghost" href="/student/research">Research &amp; thesis</LinkBtn>}>
           {step[1]}
         </Note>
       ) : (
-        <Note kind="ok" title={`Registered for ${reg!.session} · ${SEM[reg!.semester] ?? `semester ${reg!.semester}`}`} action={<Link href="/student/pg-courses" className="btn btn--ghost btn--sm">Registration &amp; results</Link>}>
+        <Note kind="ok" title={`Registered for ${reg!.session} · ${SEM[reg!.semester] ?? `semester ${reg!.semester}`}`} action={<LinkBtn kind="ghost" href="/student/pg-courses">Registration &amp; results</LinkBtn>}>
           {reg!.courses} course{reg!.courses === 1 ? "" : "s"} registered ({modeWord!.toLowerCase()}){reg!.state === "ENDORSED" ? ", endorsed by the department" : ""}. {feeLine}
         </Note>
       )}

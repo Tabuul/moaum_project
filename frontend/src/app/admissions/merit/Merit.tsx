@@ -10,6 +10,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface ProgrammeOption { code: string; name: string; facultyName: string; archived: boolean }
@@ -34,8 +35,7 @@ function ProgrammePicker({ programmes, chosen, onPick }: { programmes: Programme
   const matches = (term ? live.filter((p) => `${p.name} ${p.facultyName} ${p.code}`.toLowerCase().includes(term)) : live).slice(0, 60);
   const label = chosen ? `${chosen.name} · ${chosen.facultyName}` : "";
   return (
-    <div className="field" style={{ flexGrow: 1, minWidth: 300, position: "relative" }}>
-      <label htmlFor="mr-prog">Programme</label>
+    <div className="grow" style={{ minWidth: 300, position: "relative" }}><Field id="mr-prog" label="Programme">
       <input
         id="mr-prog" className="ctl" autoComplete="off" role="combobox" aria-controls="mr-prog-list" aria-expanded={open} aria-autocomplete="list"
         value={open ? q : label}
@@ -52,19 +52,19 @@ function ProgrammePicker({ programmes, chosen, onPick }: { programmes: Programme
         }}
       />
       {open ? (
-        <ul id="mr-prog-list" role="listbox" style={{ position: "absolute", zIndex: 30, top: "100%", left: 0, right: 0, margin: "2px 0 0", padding: 0, listStyle: "none", maxHeight: 300, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,.12)" }}>
+        <ul id="mr-prog-list" role="listbox" style={{ position: "absolute", zIndex: 30, top: "100%", left: 0, right: 0, margin: "2px 0 0", padding: 0, listStyle: "none", maxHeight: 300, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--r-md)", boxShadow: "var(--sh-2)" }}>
           {matches.length ? matches.map((p, i) => (
             <li key={p.code} role="option" aria-selected={i === hi}
               onMouseDown={(e) => { e.preventDefault(); onPick(p.code); setOpen(false); }}
               onMouseEnter={() => setHi(i)}
-              style={{ padding: "8px 10px", cursor: "pointer", borderTop: i ? "1px solid var(--line-2)" : undefined, background: i === hi ? "var(--line-2)" : "transparent" }}>
+              style={{ padding: "var(--s-2) var(--s-3)", cursor: "pointer", borderTop: i ? "1px solid var(--line-2)" : undefined, background: i === hi ? "var(--line-2)" : "transparent" }}>
               <div>{p.name}</div>
               <div className="sub2 tnum">{p.code} · {p.facultyName}</div>
             </li>
-          )) : <li className="sub2" style={{ padding: "8px 10px" }}>No programme matches &ldquo;{q}&rdquo;.</li>}
+          )) : <li className="sub2" style={{ padding: "var(--s-2) var(--s-3)" }}>No programme matches &ldquo;{q}&rdquo;.</li>}
         </ul>
       ) : null}
-    </div>
+    </Field></div>
   );
 }
 

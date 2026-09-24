@@ -52,8 +52,8 @@ export function LeaveSelf({ d }: { d: MyLeave }) {
 
   return (
     <Panel title="Leave" right={`Annual balance: ${d.balance} days`}>
-      {said ? <div style={{ padding: "0 16px" }}><Note kind="ok" title={said}>It waits for your office to decide.</Note></div> : null}
-      {err ? <div style={{ padding: "0 16px" }}><ProblemNotice problem={err} /></div> : null}
+      {said ? <div style={{ padding: "0 var(--s-4)" }}><Note kind="ok" title={said}>It waits for your office to decide.</Note></div> : null}
+      {err ? <div style={{ padding: "0 var(--s-4)" }}><ProblemNotice problem={err} /></div> : null}
       <PBody>
         <div className="grid grid--3">
           <Field id="lv-type" label="Type"><select id="lv-type" className="ctl" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>{d.types.map((t) => <option key={t.code} value={t.code}>{t.name} (max {t.max_days}d{t.paid ? "" : ", unpaid"})</option>)}</select></Field>

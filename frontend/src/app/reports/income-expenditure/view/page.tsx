@@ -34,7 +34,7 @@ export default async function IncomeExpenditureReport({ searchParams }: { search
     api<Me>("/api/v1/iam/me"),
     api<Statement>(`/api/v1/reports/income-expenditure?year=${year}`),
   ]);
-  if (!data.ok) return <div style={{ padding: 24 }}><ProblemNotice problem={data.problem} /></div>;
+  if (!data.ok) return <div style={{ padding: "var(--s-6)" }}><ProblemNotice problem={data.problem} /></div>;
   const d = data.data;
   const income = d.lines.filter((l) => String(l.section).toUpperCase() === "INCOME");
   const expense = d.lines.filter((l) => String(l.section).toUpperCase() !== "INCOME");

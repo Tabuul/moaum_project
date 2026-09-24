@@ -4,12 +4,12 @@
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { STAGE_LABEL, type SheetListing } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { Btn, LinkBtn, Note, Panel, Tiles } from "@/components/proto/ui";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -63,23 +63,15 @@ export function Approvals({
     <>
       <ScopeBar scope={scope} structure={structure} sessions={sessions} courses={courses} what="result sets" count={listing.sheets.length} of={t.expected} withCourse />
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {said ? (
-        <div className="notice notice--info">
-          <div>
-            <div className="notice__t ink-chrome">Nothing was sent</div>
-            <p style={{ color: "#124A63" }}>{said}</p>
-          </div>
-        </div>
-      ) : null}
-      <div className="grid grid--4">
-        <div className="tile"><span className="eyebrow">Expected sheets</span><span className="n tnum">{t.expected}</span><span className="c">In this scope</span></div>
-        <div className="tile"><span className="eyebrow">Senate approved</span><span className="n tnum ink-green">{t.senateApproved}</span><span className="c">{t.expected ? `${Math.round((100 * t.senateApproved) / t.expected)}% complete` : "Nothing expected yet"}</span></div>
-        <div className="tile"><span className="eyebrow">In workflow</span><span className="n tnum ink-chrome">{t.inWorkflow}</span><span className="c">Moving through stages</span></div>
-        <div className="tile"><span className="eyebrow">Not submitted</span><span className="n tnum ink-red">{t.notSubmitted}</span><span className="c">{t.notSubmitted ? "Waiting on lecturers" : "Nothing outstanding"}</span></div>
-      </div>
+      {said ? <Note kind="info" title="Nothing was sent">{said}</Note> : null}
+      <Tiles items={[
+        ["Expected sheets", String(t.expected), null, "In this scope"],
+        ["Senate approved", String(t.senateApproved), "var(--green-ink)", t.expected ? `${Math.round((100 * t.senateApproved) / t.expected)}% complete` : "Nothing expected yet"],
+        ["In workflow", String(t.inWorkflow), "var(--chrome)", "Moving through stages"],
+        ["Not submitted", String(t.notSubmitted), "var(--red-ink)", t.notSubmitted ? "Waiting on lecturers" : "Nothing outstanding"],
+      ]} />
 
-      <div className="card">
-        <div className="card__head"><span className="card__title">{title}</span><span className="sub2">{sub}</span></div>
+      <Panel title={title} right={sub}>
         <div className="tablewrap">
           <table style={{ minWidth: 840 }}>
             <thead><tr><th>Course</th><th>Department</th><th className="mid">Students</th><th className="mid">Fail rate</th><th>Stage</th><th className="num">Action</th></tr></thead>
@@ -94,7 +86,7 @@ export function Approvals({
                     <td><strong className="tnum">{s.courseCode}</strong>{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}<div className="sub2">{s.courseTitle}</div></td>
                     <td className="sub2">{s.deptName}</td>
                     <td className="mid tnum">{s.candidates}</td>
-                    <td className="mid">{s.failRate === null ? <span style={{ color: "var(--faint)" }}>—</span> : high ? <span className="pill pill--bad tnum">{s.failRate}%</span> : <span className="tnum">{s.failRate}%</span>}</td>
+                    <td className="mid">{s.failRate === null ? <span className="ink-faint">—</span> : high ? <span className="pill pill--bad tnum">{s.failRate}%</span> : <span className="tnum">{s.failRate}%</span>}</td>
                     <td>
                       {s.stage === "ENTRY" ? (
                         <><strong className="ink-red">Not submitted</strong><div className="sub2">{s.lecturer ?? "No lecturer allocated"}{s.daysLate ? ` · ${s.daysLate} days overdue` : ""}</div></>
@@ -104,17 +96,17 @@ export function Approvals({
                     </td>
                     <td className="num">
                       {s.stage === "ENTRY" ? (
-                        <><button className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Reminder for ${s.courseCode}`, s.id)}>Remind</button> <button className="btn btn--urgent btn--sm" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Escalation for ${s.courseCode}`, s.id)}>Escalate</button></>
+                        <><Btn kind="ghost" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Reminder for ${s.courseCode}`, s.id)}>Remind</Btn> <Btn kind="urgent" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/remind`, {}, `Escalation for ${s.courseCode}`, s.id)}>Escalate</Btn></>
                       ) : s.stage === "PUBLISHED" ? (
-                        <Link href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Chain</Link>
+                        <LinkBtn href={`/results/chain?sheet=${s.id}`} kind="ghost">Chain</LinkBtn>
                       ) : s.stage === "SENATE" ? (
-                        <><Link href="/results/senate" className="btn btn--primary btn--sm">Record Senate minute</Link> <Link href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Review</Link></>
+                        <><LinkBtn href="/results/senate" kind="primary">Record Senate minute</LinkBtn> <LinkBtn href={`/results/chain?sheet=${s.id}`} kind="ghost">Review</LinkBtn></>
                       ) : s.blockedForYou || !s.mayAct ? (
-                        <><button className="btn btn--sm" disabled>Not available to you</button> <Link href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Review</Link></>
+                        <><Btn kind="ghost" disabled>Not available to you</Btn> <LinkBtn href={`/results/chain?sheet=${s.id}`} kind="ghost">Review</LinkBtn></>
                       ) : high ? (
-                        <><button className="btn btn--ghost btn--sm" onClick={() => { setReturning(s.id); setComment(""); }}>Return</button> <Link href={`/results/chain?sheet=${s.id}`} className="btn btn--primary btn--sm">Review</Link></>
+                        <><Btn kind="ghost" onClick={() => { setReturning(s.id); setComment(""); }}>Return</Btn> <LinkBtn href={`/results/chain?sheet=${s.id}`} kind="primary">Review</LinkBtn></>
                       ) : (
-                        <><button className="btn btn--ghost btn--sm" onClick={() => { setReturning(s.id); setComment(""); }}>Return</button> <button className="btn btn--go btn--sm" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, {}, `${s.courseCode} approved at ${s.stage.toLowerCase()} by ${actingOffice}`, s.id)}>{busy === s.id ? "Approving…" : "Approve"}</button></>
+                        <><Btn kind="ghost" onClick={() => { setReturning(s.id); setComment(""); }}>Return</Btn> <Btn kind="go" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, {}, `${s.courseCode} approved at ${s.stage.toLowerCase()} by ${actingOffice}`, s.id)}>{busy === s.id ? "Approving…" : "Approve"}</Btn></>
                       )}
                     </td>
                   </tr>
@@ -123,11 +115,11 @@ export function Approvals({
             </tbody>
           </table>
         </div>
-      </div>
+      </Panel>
 
       {returning ? (
         <Modal title="Return the sheet to the lecturer" sub="The reason goes on the record" onClose={() => setReturning(null)}
-          foot={<><button className="btn btn--ghost btn--sm" onClick={() => setReturning(null)}>Cancel</button><span className="grow" /><button className="btn btn--urgent btn--sm" disabled={!comment.trim() || busy !== null} onClick={async () => { if (await post(`/api/bff/api/v1/results/sheets/${returning}/return`, { comment }, "Sheet returned", returning)) setReturning(null); }}>Return it</button></>}>
+          foot={<><Btn kind="ghost" onClick={() => setReturning(null)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={!comment.trim() || busy !== null} onClick={async () => { if (await post(`/api/bff/api/v1/results/sheets/${returning}/return`, { comment }, "Sheet returned", returning)) setReturning(null); }}>Return it</Btn></>}>
           <Field id="ret-why" label="Why it is returned" hint="The lecturer sees this, and so does the audit trail. It re-enters the chain at verification, not at the stage it left.">
             <input id="ret-why" className="ctl" value={comment} onChange={(e) => setComment(e.target.value)} autoComplete="off" />
           </Field>

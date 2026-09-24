@@ -142,12 +142,12 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
               }}>{editing ? "Save changes" : "Save the programme"}</Btn>
               {editing ? <Btn kind="ghost" onClick={() => { setF({ code: "", name: "", faculty: "", deptCode: "", department: "", category: "UNDER GRADUATE", minScore: "" }); setEditing(false); }}>Cancel</Btn> : null}
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
-              <label className={`btn btn--ghost btn--sm${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer", margin: 0 }}>
+              <label className={`btn btn--ghost btn--sm m-0${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
                 Upload programmes (.xlsx)
                 <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy} onChange={(e) => { const x = e.target.files?.[0]; if (x) void upload(x); e.target.value = ""; }} />
               </label>
             </div>
-            {f.code && !/^C[0-9]{5}$/.test(f.code.trim()) ? <div className="sub2" style={{ marginTop: 6, color: "var(--red-ink)" }}>The code must be C followed by five digits, e.g. C00101.</div> : null}
+            {f.code && !/^C[0-9]{5}$/.test(f.code.trim()) ? <div className="sub2 ink-red mt-2">The code must be C followed by five digits, e.g. C00101.</div> : null}
           </PBody>
         </Panel>
       ) : null}
@@ -165,7 +165,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
             <span className="sub2" key="d">{p.department_name ?? p.dept_code ?? "—"}</span>,
             <span className="sub2" key="cat">{p.category === "POST GRADUATE" ? "PG" : "UG"}</span>,
             <span className="tnum" key="m">{p.min_score}</span>,
-            may ? <span key="x" style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            may ? <span key="x" className="row row--tight row--right">
               <IcoBtn key="e" icon="edit" label={`Edit ${p.name}`} disabled={busy} onClick={() => edit(p)} />
               <Btn kind="ghost" disabled={busy} onClick={() => void archive(p, !p.archived)}>{p.archived ? "Restore" : "Archive"}</Btn>
               <IcoBtn key="x" icon="trash" danger label={`Delete ${p.name} (only if nothing hangs on it)`} disabled={busy} onClick={() => void remove(p)} />

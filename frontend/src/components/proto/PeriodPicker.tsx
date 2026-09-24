@@ -12,21 +12,21 @@ export function PeriodPicker({ base, sessions, session, semester }: { base: stri
      served from the client router cache, and the figures stay as they were */
   const go = (s: string, sem: number) => { router.push(`${base}?session=${encodeURIComponent(s)}&sem=${sem}`); router.refresh(); };
   return (
-    <div className="card"><div className="card__body" style={{ display: "flex", flexDirection: "row", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
-      <div className="field" style={{ minWidth: 170, margin: 0 }}>
+    <div className="card"><div className="card__body row row--end pp">
+      <div className="field pp__f">
         <label htmlFor="pp-session">Session</label>
         <select id="pp-session" className="ctl" value={session} onChange={(e) => go(e.target.value, semester)}>
           {opts.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
       </div>
-      <div className="field" style={{ minWidth: 170, margin: 0 }}>
+      <div className="field pp__f">
         <label htmlFor="pp-sem">Semester</label>
         <select id="pp-sem" className="ctl" value={String(semester)} onChange={(e) => go(session, Number(e.target.value))}>
           <option value="1">First semester</option>
           <option value="2">Second semester</option>
         </select>
       </div>
-      <div className="sub2" style={{ marginLeft: "auto", alignSelf: "center" }}>Every figure below is for the session and semester chosen here.</div>
+      <div className="sub2 ml-auto pp__note">Every figure below is for the session and semester chosen here.</div>
     </div></div>
   );
 }

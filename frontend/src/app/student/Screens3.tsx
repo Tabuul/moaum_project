@@ -9,11 +9,10 @@
  * Head of Department has approved.
  */
 import { useState } from "react";
-import Link from "next/link";
 import type { Me, RegistrationView } from "@/lib/student-portal";
 import { semesterName, semesterText } from "@/lib/student-portal";
-import { Btn, Note, Pil, Tick, WarnIcon } from "@/components/proto/ui";
-import { Gate, Gates, Passport } from "@/components/proto/blocks";
+import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tick } from "@/components/proto/ui";
+import { Gate, Gates, Passport, Row } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
 
@@ -81,13 +80,13 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
     <div className="card"><div className="card__body row">
       <span className="eyebrow">Register semester</span>
       {Array.from({ length: openSem }, (_, i) => i + 1).map((n) => (
-        <Link key={n} href={`/student/register?session=${encodeURIComponent(v.session)}&semester=${n}`}
-          className={`btn btn--sm ${n === v.semester ? "btn--primary" : "btn--ghost"}`}>
-          {semName(n)}{done.has(n) ? " ✓" : ""}
-        </Link>
+        <LinkBtn key={n} href={`/student/register?session=${encodeURIComponent(v.session)}&semester=${n}`}
+          kind={n === v.semester ? "primary" : "ghost"}>
+          {semName(n)}{done.has(n) ? <Ico name="check" size={14} /> : null}
+        </LinkBtn>
       ))}
       {missingEarlier.length && !done.has(v.semester) && v.semester >= openSem ? (
-        <span className="sub2" style={{ color: "var(--red-ink)", flexBasis: "100%" }}>
+        <span className="sub2 ink-red" style={{ flexBasis: "100%" }}>
           You have not registered {missingEarlier.map(semName).join(" or ")} yet — register {missingEarlier.length > 1 ? "them" : "it"} first, then this semester. Both semesters&rsquo; fees are cleared.
         </span>
       ) : null}
@@ -98,27 +97,26 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
     return (
       <>
         {switcher}
-        <div className="notice notice--bad"><WarnIcon size={19} /><div><div className="notice__t" style={{ color: "var(--red-deep)" }}>You cannot register yet</div>
-          <p style={{ color: "var(--red-deep)" }}>One of the requirements below is outstanding. Clear it and registration opens immediately.</p></div></div>
+        <Note kind="bad" title="You cannot register yet">One of the requirements below is outstanding. Clear it and registration opens immediately.</Note>
         <div className="card"><div className="card__body" style={{ gap: 0, padding: 0 }}>
           <Gates>
             <Gate state={["ADMITTED", "ACTIVE", "PROBATION"].includes(s.status) ? "done" : "todo"} title="Student status" sub={`${s.status.charAt(0) + s.status.slice(1).toLowerCase()} · ${s.level} Level`} />
             <Gate state="done" title="On the register" sub={`${s.matricNo ?? s.admissionNo} · entered ${s.entrySession}`} />
           </Gates>
-          <div style={{ padding: 16, borderBottom: "1px solid var(--line-2)", background: "var(--red-wash)", display: "flex", gap: 12 }}>
+          <div style={{ padding: "var(--s-4)", borderBottom: "1px solid var(--line-2)", background: "var(--red-wash)", display: "flex", gap: "var(--s-3)" }}>
             <div className="step__mark" style={{ background: "var(--red)" }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.4" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg></div>
-            <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: 11 }}>
-              <div><div style={{ fontWeight: 600, color: "var(--red-ink)" }}>Financial clearance</div>
-                <div style={{ fontSize: 13, marginTop: 3 }}>{fees.schemeProblem ? fees.schemeProblem : fees.due === 0 ? `No charge is stated for ${fees.session} yet, so nothing can be paid or released.` : fees.hasArrears ? "Arrears from an earlier session stand against you." : <>Outstanding balance of <strong className="tnum">{naira(fees.balance)}</strong> on the {fees.session} charge.</>}</div></div>
+            <div className="grow stack">
+              <div><div className="b600 ink-red">Financial clearance</div>
+                <div className="t-sm mt-1">{fees.schemeProblem ? fees.schemeProblem : fees.due === 0 ? `No charge is stated for ${fees.session} yet, so nothing can be paid or released.` : fees.hasArrears ? "Arrears from an earlier session stand against you." : <>Outstanding balance of <strong className="tnum">{naira(fees.balance)}</strong> on the {fees.session} charge.</>}</div></div>
               {fees.due > 0 ? (
-                <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 7 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}><span className="sub2">School fees, {fees.session}</span><span className="tnum" style={{ fontWeight: 600, fontSize: 12.5 }}>{naira(fees.due)}</span></div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}><span className="sub2">Paid</span><span className="tnum" style={{ fontWeight: 600, fontSize: 12.5, color: "var(--green-ink)" }}>− {naira(fees.paid)}</span></div>
+                <div className="stack" style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--r-md)", padding: "var(--s-3)" }}>
+                  <Row k={<>School fees, {fees.session}</>} v={naira(fees.due)} />
+                  <Row k="Paid" v={<>− {naira(fees.paid)}</>} colour="var(--green-ink)" />
                   <div className="hr" />
-                  <div style={{ display: "flex", justifyContent: "space-between" }}><strong>Outstanding</strong><strong className="tnum" style={{ fontSize: 15, color: "var(--red-ink)" }}>{naira(fees.balance)}</strong></div>
+                  <div className="row row--between"><strong>Outstanding</strong><strong className="tnum t-md ink-red">{naira(fees.balance)}</strong></div>
                 </div>
               ) : null}
-              <div><Link href="/student/fees" className="btn btn--urgent">{fees.due > 0 ? `Pay ${naira(fees.balance)}` : "See fees & payments"}</Link></div>
+              <div><LinkBtn kind="urgent" size="md" href="/student/fees">{fees.due > 0 ? `Pay ${naira(fees.balance)}` : "See fees & payments"}</LinkBtn></div>
               <div className="sub2">Responsible office: <strong style={{ color: "var(--ink)" }}>Bursary Department</strong>. Payments are confirmed against the bank&rsquo;s record, not by this page.</div>
             </div>
           </div>
@@ -136,7 +134,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
         <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
-      <div className="tnum" style={{ fontWeight: 700, color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
+      <div className="tnum b700" style={{ color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>
   );
 
@@ -150,7 +148,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       ) : null}
       {locked ? (
         <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"} title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? `Approved on ${onDay(reg!.approved_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Head of Department`}
-          action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <Link href={`/student/form?session=${encodeURIComponent(v.session)}&semester=${v.semester}`} className="btn btn--primary btn--sm">Course form</Link> : null}>
+          action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <LinkBtn kind="primary" href={`/student/form?session=${encodeURIComponent(v.session)}&semester=${v.semester}`}>Course form</LinkBtn> : null}>
           {reg!.units} units. {reg!.status === "SUBMITTED" ? "It goes to your Head of Department for approval; a return comes back here with the reason." : "The register carries these courses; the class lists and the score sheets are drawn from them."}
         </Note>
       ) : reg?.status === "RETURNED" ? (
@@ -165,15 +163,15 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.entryType !== "CARRYOVER"));
         const addable = v.menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
         return (
-          <div className="card"><div className="card__head"><span className="card__title">Add or drop courses</span><span className="sub2">the add/drop window is open</span></div>
-            <div className="card__body">
+          <Panel title="Add or drop courses" right="the add/drop window is open">
+            <PBody>
               {problem ? <ProblemNotice problem={problem} /> : null}
               <div className="sub2">You can still add a course or drop one (not a carryover, and not one you already have a mark in). The change is on the record at once; your total stays within {min}–{max} units.</div>
               {droppable.length ? (<>
                 <div className="eyebrow mt-2">Registered — drop</div>
                 {droppable.map((e) => (
-                  <div key={e.offeringId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
-                    <span className="tnum" style={{ fontWeight: 600, minWidth: 92 }}>{e.courseCode}</span>
+                  <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
                     <span className="grow">{e.title} <span className="sub2">· {e.units}u · {courseType(e)}</span></span>
                     <Btn kind="ghost" disabled={busy !== null} onClick={() => void act(`drop-${e.offeringId}`, "POST", "/me/registration/drop", { session: v.session, semester: v.semester, offering: e.offeringId }, `Dropped ${e.courseCode}`)}>{busy === `drop-${e.offeringId}` ? "Dropping…" : "Drop"}</Btn>
                   </div>
@@ -182,22 +180,23 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
               {addable.length ? (<>
                 <div className="eyebrow mt-3">Offered — add</div>
                 {addable.map((m) => (
-                  <div key={m.offering_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
-                    <span className="tnum" style={{ fontWeight: 600, minWidth: 92 }}>{m.course_code}</span>
+                  <div key={m.offering_id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                    <span className="tnum b600" style={{ minWidth: 92 }}>{m.course_code}</span>
                     <span className="grow">{m.title} <span className="sub2">· {m.units}u · {m.lecturer ?? "no lecturer yet"}</span></span>
                     <Btn kind="primary" disabled={busy !== null} onClick={() => void act(`add-${m.offering_id}`, "POST", "/me/registration/add", { session: v.session, semester: v.semester, offering: m.offering_id }, `Added ${m.course_code}`)}>{busy === `add-${m.offering_id}` ? "Adding…" : "Add"}</Btn>
                   </div>
                 ))}
               </>) : null}
               {!droppable.length && !addable.length ? <div className="sub2">Nothing to add or drop.</div> : null}
-            </div></div>
+            </PBody>
+          </Panel>
         );
       })() : null}
 
       <div className="card"><div className="card__body">
         <div className="meter">
-          <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
-            <span className="tnum" style={{ fontSize: 27, fontWeight: 700, letterSpacing: "-.6px", color: meter.col }}>{total}</span>
+          <div className="row row--base">
+            <span className="tnum b700" style={{ fontSize: "var(--t-3xl)", letterSpacing: "-.6px", color: meter.col }}>{total}</span>
             <span className="ink-muted">of {min}–{max} credit units</span>
             <span className="grow" />
             <span className="pill" style={{ background: meter.bg, color: meter.fg }}>{meter.lab}</span>
@@ -207,14 +206,14 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         </div>
       </div></div>
       {carry.length ? (
-        <div className="card"><div className="card__head"><span className="card__title ink-red">Outstanding carryovers</span><span className="sub2">added automatically, cannot be removed</span></div>
-          <div className="card__body">{carry.map((m) => pick(m, true, true, true))}</div></div>
+        <Panel title={<span className="ink-red">Outstanding carryovers</span>} right="added automatically, cannot be removed">
+          <PBody>{carry.map((m) => pick(m, true, true, true))}</PBody></Panel>
       ) : null}
-      <div className="card"><div className="card__head"><span className="card__title">{v.level} Level Core Courses</span></div>
-        <div className="card__body">{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet. Courses appear once the Registry opens registration for the session; a lecturer does not have to be allocated first, and you can register without one.</div>}</div></div>
-      <div className="card"><div className="card__head"><span className="card__title">Electives</span><span className="sub2">choose to reach {min}–{max} units</span></div>
-        <div className="card__body">{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
-          <p className="sub2" style={{ margin: "2px 0 0" }}>A course owned by another department is on your form because your programme and level were made eligible for it when it was created &mdash; you do not request it and nobody grants it to you. Register one and you appear on that lecturer&rsquo;s score sheet like any other candidate.</p></div></div>
+      <Panel title={`${v.level} Level Core Courses`}>
+        <PBody>{core.length ? core.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No core course is offered to your programme this semester yet. Courses appear once the Registry opens registration for the session; a lecturer does not have to be allocated first, and you can register without one.</div>}</PBody></Panel>
+      <Panel title="Electives" right={<>choose to reach {min}–{max} units</>}>
+        <PBody>{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
+          <p className="sub2" style={{ margin: "2px 0 0" }}>A course owned by another department is on your form because your programme and level were made eligible for it when it was created &mdash; you do not request it and nobody grants it to you. Register one and you appear on that lecturer&rsquo;s score sheet like any other candidate.</p></PBody></Panel>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!locked ? (
         <div className="row">
@@ -246,14 +245,14 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
   const pdfUrl = `/student/form/pdf?session=${encodeURIComponent(v.session)}&semester=${v.semester}`;
   if (!reg || !(reg.status === "APPROVED" || reg.status === "LOCKED")) {
     return (
-      <Note kind="info" title="The course form is issued when your registration is approved" action={<Link href="/student/register" className="btn btn--primary btn--sm">Course registration</Link>}>
+      <Note kind="info" title="The course form is issued when your registration is approved" action={<LinkBtn kind="primary" href="/student/register">Course registration</LinkBtn>}>
         {reg ? `Your registration is ${reg.status.toLowerCase()}.` : "You have not registered for this semester yet."} The form prints what the Head of Department approved, and nothing else.
       </Note>
     );
   }
   return (
     <>
-      <div className="notice notice--ok"><Tick size={18} colour="var(--green-ink)" /><div><p style={{ color: "var(--green-ink)", fontWeight: 600 }}>Approved by your Head of Department on {onDay(reg.approved_at)}</p></div></div>
+      <Note kind="ok" title={`Approved by your Head of Department on ${onDay(reg.approved_at)}`} />
       <div className="doc">
         <div className="doc__head">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -261,7 +260,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="u">REV. FR. MOSES ORSHIO ADASU<br />UNIVERSITY, MAKURDI</div>
           <div className="eyebrow">Course Registration Form</div>
         </div>
-        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 16, alignItems: "flex-start" }}>
+        <div className="row row--top" style={{ gap: "var(--s-5)", marginBottom: "var(--s-4)" }}>
           <Passport w={62} h={77} radius={3} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
           <div className="kv"><span className="k">Name</span><span className="v">{s.name}</span></div>
           <div className="kv"><span className="k">Matriculation number</span><span className="v tnum">{s.matricNo ?? s.admissionNo}</span></div>
@@ -269,11 +268,11 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="kv"><span className="k">Session</span><span className="v tnum">{v.session}</span></div>
           <div className="kv"><span className="k">Semester</span><span className="v">{semesterName(v.semester)}</span></div>
         </div>
-        <div className="tablewrap"><table style={{ minWidth: 520 }}>
+        <div className="tablewrap"><table className="tbl--data" style={{ minWidth: 520 }}>
           <thead><tr>
-            {["Course code", "Course title", "Lecturer"].map((h) => <th key={h} style={{ background: "var(--chrome)", color: "#fff" }}>{h}</th>)}
-            <th className="mid" style={{ background: "var(--chrome)", color: "#fff" }}>Unit</th>
-            <th className="num" style={{ background: "var(--chrome)", color: "#fff" }}>Type</th>
+            {["Course code", "Course title", "Lecturer"].map((h) => <th key={h} style={{ background: "var(--chrome)", color: "var(--surface)" }}>{h}</th>)}
+            <th className="mid" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Unit</th>
+            <th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Type</th>
           </tr></thead>
           <tbody>
             {byOrder(reg.entries).map((e) => { const co = e.entryType === "CARRYOVER"; return (
@@ -282,12 +281,12 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
                 <td>{e.title}</td>
                 <td className="sub2">{e.lecturer ?? "—"}</td>
                 <td className="mid tnum">{e.units}</td>
-                <td className="num" style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)" }}>{courseType(e)}</td>
+                <td className="num t-xs b600 ink-muted">{courseType(e)}</td>
               </tr>); })}
-            <tr style={{ background: "var(--bg)" }}><td className="b700" colSpan={3}>TOTAL CREDIT UNITS</td><td className="mid tnum" style={{ fontWeight: 700, fontSize: 14 }}>{reg.units}</td><td /></tr>
+            <tr style={{ background: "var(--bg)" }}><td className="b700" colSpan={3}>TOTAL CREDIT UNITS</td><td className="mid tnum b700" style={{ fontSize: "var(--t-base)" }}>{reg.units}</td><td /></tr>
           </tbody>
         </table></div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 18, flexWrap: "wrap" }}>
+        <div className="row mt-4">
           <div className="kv"><span className="k">Verification</span><span className="v tnum" style={{ letterSpacing: ".5px" }}>{reg.id.slice(0, 8).toUpperCase()}</span></div>
         </div>
       </div>

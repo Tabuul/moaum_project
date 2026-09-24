@@ -111,7 +111,7 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
       <Panel title="Filter the register" right={active ? `${active} filter${active === 1 ? "" : "s"} set` : "Every row until you narrow it"}>
         <PBody>
           <form onSubmit={(e) => { e.preventDefault(); search(); }}>
-            <div className="grid grid--4" style={{ gap: 10 }}>
+            <div className="grid grid--4" style={{ gap: "var(--s-3)" }}>
               {filters.map((f) => (
                 <div className="field" key={f.key} style={f.wide ? { gridColumn: "span 2" } : undefined}>
                   <label htmlFor={`rf-${f.key}`}>{f.label}</label>
@@ -127,8 +127,8 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
                   placeholder={kind === "students" ? "Name, matric, admission or JAMB number" : "Name, staff number or email"} autoComplete="off" />
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
-              <button type="submit" className="btn btn--primary">Search</button>
+            <div className="row mt-3">
+              <Btn kind="primary" size="md" type="submit">Search</Btn>
               <Btn kind="ghost" onClick={clear}>Clear filters</Btn>
               <span className="grow" />
               <Btn kind="ghost" onClick={() => void exportAll()} disabled={exporting || !total}>{exporting ? "Preparing…" : `Download Excel (${total.toLocaleString()} rows)`}</Btn>

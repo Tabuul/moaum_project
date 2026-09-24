@@ -62,10 +62,10 @@ export function HostelDesk({ d, sessions, actingOffice }: { d: HostelDeskData; s
       <RoleLine allowed={["services", "housing", "bursar"]} actingOffice={actingOffice} canAct={may}
         action="Allocating hostel places and rooms" />
       <div className="card"><div className="card__body row row--end">
-        <div className="field" style={{ minWidth: 160 }}><label htmlFor="hd-s">Session</label>
+        <div style={{ minWidth: 160 }}><Field id="hd-s" label="Session">
           <select id="hd-s" className="ctl" value={d.session} onChange={(e) => queryNav(`/hostel?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(d.session) ? sessions : [d.session, ...sessions]).map((s) => <option key={s} value={s}>{s}</option>)}
-          </select></div>
+          </select></Field></div>
       </div></div>
       <Note kind="info" title="Allocation is where discretion does the most damage, so it is designed out">
         Priority categories are filled first, by rule and by name. What is left is drawn by ballot from a <b>published seed</b>, and the order is a function of the seed and the applicants, and of nothing else. When an allocation lapses unpaid, the bed does not return to this office: it goes to the next name on the same list.

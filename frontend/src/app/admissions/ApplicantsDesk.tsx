@@ -9,14 +9,13 @@
  * own template. Every act is the office's, on the record.
  */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
 import { loadCrest, xlsxRowsAsync } from "@/lib/xlsx";
-import { Btn, IcoBtn, KvGrid, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
+import { Btn, IcoBtn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -282,7 +281,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         The Post-UTME screening fee and the acceptance fee are stated on the Bursary&rsquo;s fee-setup screen, under &ldquo;Applicant · Post-UTME fees&rdquo;. An applicant generates a reference and pays it on the payment gateway; the payment confirms itself and the Bursary sees it &mdash; there is no confirmation step here.
       </Note>
       {feeUnset ? (
-        <Note kind="bad" title="The acceptance fee is not set for this session" action={<Link href="/finance/fees" className="btn btn--urgent btn--sm">Set the fee</Link>}>
+        <Note kind="bad" title="The acceptance fee is not set for this session" action={<LinkBtn kind="urgent" href="/finance/fees">Set the fee</LinkBtn>}>
           An applicant you admit will see the offer but cannot pay the acceptance fee until the Bursary states it for {desk.session} &mdash; the Accept page opens with nothing to pay, and clearance and matriculation cannot follow. Set the acceptance fee before you release decisions.
         </Note>
       ) : null}
@@ -295,11 +294,11 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
             <span className="sub2" key="v">{b.venue}</span>,
             <span className="tnum" key="s">{b.seated} / {b.capacity}</span>,
             <span key="a" className="row row--inline row--tight">
-              <Link href={`/admissions/screening/${b.id}?session=${encodeURIComponent(desk.session)}`} className="btn btn--ghost btn--sm">Hall list</Link>
+              <LinkBtn kind="ghost" href={`/admissions/screening/${b.id}?session=${encodeURIComponent(desk.session)}`}>Hall list</LinkBtn>
               <Btn kind="ghost" disabled={!office || busy !== null || Number(b.seated) >= b.capacity} onClick={() => void send(`seat-${b.id}`, "POST", `/screening-batches/${b.id}/assign`, {}, `Seats assigned in batch ${b.label}`)}>{busy === `seat-${b.id}` ? "Seating…" : "Seat the submitted"}</Btn>
             </span>,
           ])} />
-        ) : <div className="card__body"><div className="sub2">No batch yet. Make one, then seat the submitted applications over it; the slip appears on each applicant&rsquo;s screen the moment they are seated.</div></div>}
+        ) : <PBody><div className="sub2">No batch yet. Make one, then seat the submitted applications over it; the slip appears on each applicant&rsquo;s screen the moment they are seated.</div></PBody>}
       </Panel>
 
       <Panel title="Applicants" right={<span className="row row--inline">{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => { if (feeUnset && !window.confirm(`The acceptance fee is not set for ${desk.session}. Applicants can accept their offer but cannot pay the acceptance fee. Release decisions anyway?`)) return; void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`); }}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
@@ -310,12 +309,12 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               <span className="sub2" key="p">{r.programme}</span>,
               <span key="s" style={{ display: "inline-flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
                 {r.registered ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                  <span className="row row--inline row--tight" style={{ whiteSpace: "nowrap" }}>
                     <Pil kind={r.stage >= 6 ? "ok" : r.stage >= 2 ? "info" : "grey"}>{r.stage + 1}</Pil>
                     <span className="sub2">{stageOf(r.stage)}</span>
                   </span>
                 ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+                  <span className="row row--inline row--tight" style={{ whiteSpace: "nowrap" }}>
                     <Pil kind="grey">Admitted</Pil>
                     <span className="sub2">not yet registered</span>
                   </span>
@@ -327,13 +326,13 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               r.decision ? <Pil kind={r.decision === "OFFERED" ? "ok" : r.decision === "WAITING" ? "info" : "bad"} key="d">{r.decision}{r.decision_released_at ? "" : " · held"}</Pil> : <span className="sub2" key="d">—</span>,
               r.id ? <IcoBtn key="v" icon="eye" label="View this applicant’s details" onClick={() => void view(r.id as string)} /> : <IcoBtn key="v" icon="eye" label="View this candidate’s details" onClick={() => void viewCandidate(r.jamb_key)} />,
             ])} />
-        ) : <div className="card__body"><div className="sub2">No applicant on a committed admission list for {desk.session} yet. Upload and commit the CAPS admission list on the JAMB admission lists screen.</div></div>}
+        ) : <PBody><div className="sub2">No applicant on a committed admission list for {desk.session} yet. Upload and commit the CAPS admission list on the JAMB admission lists screen.</div></PBody>}
       </Panel>
 
       <Panel title="The list that goes back to JAMB" right="JAMB’s admission template, five sheets">
         <PBody>
           <div className="sub2">Admission summary, merit list, other qualified cases and non-qualified cases, per programme, with the UTME subjects as CAPS sent them, the O&rsquo;Level grades and points under this session&rsquo;s grading, the sittings and their bonus, both ratios under the session&rsquo;s weighting, and the Board&rsquo;s decision as the remark. Built from the record, never typed.</div>
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+          <div className="row mt-2">
             <select className="ws__select" style={{ maxWidth: 420 }} value={val("export", "")} onChange={(e) => setEdits({ ...edits, export: e.target.value })} aria-label="Programme to export">
               <option value="">Every programme in one workbook</option>
               {programmes.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -347,7 +346,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         <Panel title="Admission status from JAMB" right="The list of candidates who accepted, uploaded back">
           <PBody>
             <div className="sub2">After JAMB offers admission and the candidates accept on JAMB&rsquo;s portal, download the admission-status list from JAMB and upload it here. Each row is matched to the candidate the University screened, by registration number. A candidate JAMB records as <b>Accepted</b> is offered admission here and the offer released &mdash; so the applicant can pay the acceptance fee, pay school fees, register and be matriculated. A number not on the register is held, not admitted on a guess.</div>
-            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+            <div className="row mt-2">
               <label className="btn btn--primary" style={{ cursor: "pointer", margin: 0 }}>
                 {jambBusy
                   ? (jambProg
@@ -416,15 +415,15 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           {problem ? <ProblemNotice problem={problem} /> : null}
           <Panel title="Applicant — read from JAMB" right={open.jambKey}>
             <PBody>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <div className="row row--top" style={{ gap: "var(--s-4)" }}>
                 {(() => {
                   const p = open.documents.find((d) => d.kind === "PASSPORT");
                   const src = p ? `${base}/applications/${open.id}/documents/${p.id}/content` : open.jambPassport ?? null;
                   return src ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={src} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+                    <img src={src} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: "var(--r-md)", border: "1px solid var(--line-2)" }} />
                   ) : (
-                    <div className="sub2" style={{ width: 96, height: 120, borderRadius: 8, border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: 6 }}>No passport yet</div>
+                    <div className="sub2" style={{ width: 96, height: 120, borderRadius: "var(--r-md)", border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: "var(--s-2)" }}>No passport yet</div>
                   );
                 })()}
                 <div style={{ flex: "1 1 320px" }}>
@@ -448,7 +447,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
             <PBody>
               {open.olevel.length ? open.olevel.map((s, i) => (
                 <div key={i}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 6px" }}>
+                  <div className="row" style={{ margin: "var(--s-2) 0 6px" }}>
                     <Pil kind="grey">{BODY[s.body] ?? s.body}</Pil>
                     <b>Sitting {i + 1}{s.type ? ` — ${s.type}` : ""}{s.year ? ` ${s.year}` : ""}</b>
                     {s.examNumber ? <span className="sub2 tnum">exam no. {s.examNumber}</span> : null}
@@ -460,7 +459,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           </Panel>
           <Panel title="Screening" right={open.screeningSlip ? `Batch ${open.screeningSlip.batch} · seat ${open.screeningSlip.seat}` : "Not seated"}>
             <PBody>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div className="row row--end" style={{ gap: "var(--s-3)" }}>
                 <Field id="score" label="CBT score, of 100" hint={open.scoreReleasedAt ? "Released; corrected by the Board on the record" : "Leave blank where the O’Level score is the screening"}>
                   <input id="score" className="ctl tnum" style={{ width: 120 }} value={val("score", open.screeningScore === null || open.screeningScore === undefined ? "" : String(open.screeningScore))} disabled={!office || !!open.scoreReleasedAt || !open.screeningSlip} onChange={(e) => setEdits({ ...edits, score: e.target.value })} />
                 </Field>
@@ -508,12 +507,12 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
           foot={<><span className="grow" /><Btn kind="ghost" onClick={() => setOpenCand(null)}>Close</Btn></>}>
           <Panel title="Candidate — from the CAPS admission list">
             <PBody>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <div className="row row--top" style={{ gap: "var(--s-4)" }}>
                 {openCand.passport ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={openCand.passport} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+                  <img src={openCand.passport} alt="Passport photograph" style={{ width: 96, height: 120, objectFit: "cover", borderRadius: "var(--r-md)", border: "1px solid var(--line-2)" }} />
                 ) : (
-                  <div className="sub2" style={{ width: 96, height: 120, borderRadius: 8, border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: 6 }}>No passport on file</div>
+                  <div className="sub2" style={{ width: 96, height: 120, borderRadius: "var(--r-md)", border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: "var(--s-2)" }}>No passport on file</div>
                 )}
                 <div style={{ flex: "1 1 320px" }}>
               <KvGrid cls="grid--2" pairs={[
@@ -543,7 +542,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                 try { subs = JSON.parse(s.subjects ?? "[]") as { subject: string; grade: string }[]; } catch { subs = []; }
                 return (
                   <div key={i}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 6px" }}>
+                    <div className="row" style={{ margin: "var(--s-2) 0 6px" }}>
                       <Pil kind="grey">{BODY[s.exam_body] ?? s.exam_body}</Pil>
                       <b>Sitting {i + 1}{s.exam_year ? ` ${s.exam_year}` : ""}</b>
                       {s.exam_number ? <span className="sub2 tnum">exam no. {s.exam_number}</span> : null}

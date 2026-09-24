@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { FacultyList } from "@/lib/matriculation";
 import { csv, download } from "@/lib/results";
-import { Btn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -64,22 +64,22 @@ export function FacultyListScreen({ list, actingOffice }: { list: FacultyList; a
           rows={list.rows.map((r) => [
             <span className="tnum" key="a">{r.admissionNo}</span>, <strong key="n">{r.surname}, {r.otherNames}</strong>,
             <span className="sub2" key="d">{r.deptName}</span>,
-            <span className="tnum" key="u" style={r.units < min ? { color: "var(--red-ink)" } : undefined}>{r.units}</span>,
+            <span className={`tnum${r.units < min ? " ink-red" : ""}`} key="u">{r.units}</span>,
             <span className="sub2" key="f">—</span>,
             r.queryReason ? <Pil kind="bad" key="s">Query</Pil> : <Pil kind="ok" key="s">For matriculation</Pil>,
             r.queryReason
               ? <Btn kind="ghost" key="q" disabled={busy || !may || conf} onClick={() => void send("POST", `${base}/queries/${r.studentId}/withdraw`, {}, `Query withdrawn for ${r.admissionNo}`)}>Withdraw query</Btn>
-              : <span key="act" style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+              : <span key="act" className="row row--inline row--tight row--right">
                   <Btn kind="go" disabled={busy || !mayIssue} onClick={() => void send("POST", `/api/bff/api/v1/matriculation/sessions/${list.session}/students/${r.studentId}/matriculate`, {}, `Matriculation number issued for ${r.admissionNo}`)}>Issue number</Btn>
                   <Btn kind="ghost" disabled={busy || !may || conf} onClick={() => { setQuery(r.studentId); setReason(r.units < min ? `Registered ${r.units} units. The minimum at 100 level is ${min}` : ""); }}>Query</Btn>
                 </span>,
           ])}
           texts={list.rows.map((r) => `${r.admissionNo} ${r.surname} ${r.otherNames} ${r.deptName}`)}
         />
-        {!list.rows.length ? <div className="card__body"><div className="sub2">No student of this faculty has an approved registration for {list.session} yet.</div></div> : null}
+        {!list.rows.length ? <PBody><div className="sub2">No student of this faculty has an approved registration for {list.session} yet.</div></PBody> : null}
       </Panel>
       <div className="row">
-        <button className="btn btn--primary" disabled={busy || conf || !may || !list.rows.length} onClick={() => void send("POST", `${base}/confirm`, {}, `${list.name} list confirmed for ${list.session}`)}>{conf ? `Confirmed ${day(list.confirmedAt, false)}` : `Confirm ${ready} students to the Academic Office`}</button>
+        <Btn kind="primary" size="md" disabled={busy || conf || !may || !list.rows.length} onClick={() => void send("POST", `${base}/confirm`, {}, `${list.name} list confirmed for ${list.session}`)}>{conf ? `Confirmed ${day(list.confirmedAt, false)}` : `Confirm ${ready} students to the Academic Office`}</Btn>
         <Btn kind="ghost" onClick={() => download(`${list.code}-${list.session.replace("/", "-")}-list.csv`, csv([["Admission number", "Name", "Department", "Units", "State"], ...list.rows.map((r) => [r.admissionNo, `${r.surname}, ${r.otherNames}`, r.deptName, r.units, r.queryReason ? `Query: ${r.queryReason}` : "For matriculation"])]))}>Export the list</Btn>
       </div>
       {query ? (

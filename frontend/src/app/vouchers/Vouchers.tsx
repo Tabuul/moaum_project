@@ -73,7 +73,7 @@ export function Vouchers({ vouchers, actingOffice }: { vouchers: Voucher[]; acti
         ["All", String(vouchers.length), null, "Newest 300"],
       ]} />
 
-      {isBursar ? <div><button className="btn btn--primary" onClick={() => { setF({ title: "", kind: "CONTRACT", source: "IGR", costCentre: "", payee: "", amount: "" }); setErr(null); setAdd(true); }}>+ Raise a voucher</button></div> : null}
+      {isBursar ? <div><Btn kind="primary" size="md" onClick={() => { setF({ title: "", kind: "CONTRACT", source: "IGR", costCentre: "", payee: "", amount: "" }); setErr(null); setAdd(true); }}>+ Raise a voucher</Btn></div> : null}
 
       <Panel title="Payment vouchers" right="Bursary raises → Director → Deputy → auditor → back to the Bursary">
         {vouchers.length ? (

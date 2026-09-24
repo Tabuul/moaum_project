@@ -11,9 +11,9 @@ import Link from "next/link";
 import type { Me } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import type { StudentRecord } from "@/lib/student";
-import { Btn, Ico, KvGrid, Note, Panel, PBody, Pil, Tick, Two, WarnIcon } from "@/components/proto/ui";
+import { Btn, Ico, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Passport, Step } from "@/components/proto/blocks";
+import { Field, Passport, Step } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct, when } from "./common";
 
@@ -67,19 +67,19 @@ function StudentDetails({ s }: { s: Me }) {
   return (
     <Panel title="Student details" right="Your record on the register">
       <PBody>
-        <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div className="row row--top" style={{ gap: "var(--s-4)" }}>
           <Passport w={104} h={128} radius={6} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
-          <div style={{ flexGrow: 1, minWidth: 240 }}>
-            <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
+          <div className="grow" style={{ minWidth: 240 }}>
+            <div className="phead__t">{s.name}</div>
             <div className="sub2 tnum mt-1">{s.matricNo ?? s.admissionNo}</div>
             <div className="sub2 mt-1">{s.programme} &middot; {s.department}</div>
             <div className="sub2">{s.faculty}</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            <div className="row mt-2">
               <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
               <Pil kind="info">{s.level} Level</Pil>
               <Pil kind="grey">{s.entryMode} · {s.entrySession}</Pil>
             </div>
-            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "2px 18px" }}>
+            <div className="mt-3" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "2px var(--s-4)" }}>
               {([["Matriculation number", s.matricNo], ["Admission number", s.admissionNo], jamb ? ["JAMB registration number", jamb] : null, ["CGPA", s.cgpa != null ? String(s.cgpa) : null]].filter(Boolean) as [string, string | null][]).map(([k, val]) => val ? (
                 <div key={k} className="kv"><span className="k">{k}</span><span className="v tnum">{val}</span></div>
               ) : null)}
@@ -91,13 +91,13 @@ function StudentDetails({ s }: { s: Me }) {
         {/* one uniform column track for every section, so the columns line up down the whole card and a
             section with two fields reads as tidily as one with eight (auto-fill packs left, never stretches) */}
         {sections.map((sec, si) => (
-          <div key={sec.title} style={{ marginTop: si ? 18 : 20, paddingTop: si ? 16 : 0, borderTop: si ? "1px solid var(--line-2)" : undefined }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 12 }}>{sec.title}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", columnGap: 32, rowGap: 16, maxWidth: 1160 }}>
+          <div key={sec.title} style={{ marginTop: "var(--s-5)", paddingTop: si ? "var(--s-4)" : 0, borderTop: si ? "1px solid var(--line-2)" : undefined }}>
+            <div className="eyebrow mb-3">{sec.title}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", columnGap: "var(--s-7)", rowGap: "var(--s-4)", maxWidth: 1160 }}>
               {sec.pairs.map(([k, val], i) => (
-                <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--faint)" }}>{k}</span>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere" }}>{val}</span>
+                <div key={i} className="kv">
+                  <span className="k">{k}</span>
+                  <span className="v">{val}</span>
                 </div>
               ))}
             </div>
@@ -116,7 +116,7 @@ function Quick({ icon, title, sub, href }: { icon: string; title: string; sub: s
   const inner = (
     <>
       <Ico name={icon} size={20} stroke={href ? "var(--chrome)" : "var(--faint)"} w={1.7} />
-      <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{title}</div>
+      <div className="b600 mt-1" style={{ fontSize: "var(--t-base)" }}>{title}</div>
       <div className="c">{sub}</div>
     </>
   );
@@ -136,12 +136,12 @@ export function Dashboard({ s }: { s: Me }) {
   return (
     <>
       {adv ? (
-        <Note kind="bad" title="The result sheet advises your withdrawal" action={<Link href="/student/results" className="btn btn--ghost btn--sm">Your results</Link>}>
+        <Note kind="bad" title="The result sheet advises your withdrawal" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
           Your CGPA stood at <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester at {adv.pronounced_level} level, still under 1.0 after the level&rsquo;s probation list. Senate&rsquo;s rule advises withdrawal from the programme. The decision is Senate&rsquo;s; your Head of Department will tell you of it. Until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
         </Note>
       ) : null}
       {prob ? (
-        <Note kind="bad" title="You are on probation" action={<Link href="/student/results" className="btn btn--ghost btn--sm">Your results</Link>}>
+        <Note kind="bad" title="You are on probation" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
           Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} {semWord(prob.pronounced_semester)} semester at {prob.pronounced_level} level, under the 1.0 the University requires. {prob.probation_max_units != null ? <>Until the next semester&rsquo;s results pronounce again, your course registration is held to <strong>{prob.probation_max_units} units</strong>; the courses you owe stay on the form, so choose fewer new ones.</> : <>The courses you owe stay on your registration form; see your Head of Department about the load you should carry.</>}
         </Note>
       ) : null}
@@ -150,53 +150,39 @@ export function Dashboard({ s }: { s: Me }) {
           {f.schemeProblem} Your charges and payments are shown on Fees &amp; payments; registration opens the moment the Bursar states the scheme.
         </Note>
       ) : !cleared ? (
-        <div className="notice notice--bad">
-          <WarnIcon size={19} />
-          <div>
-            <div className="notice__t" style={{ color: "var(--red-deep)" }}>Action required</div>
-            <p style={{ color: "var(--red-deep)" }}>{f.balance > 0 ? <>Your balance of <strong className="tnum">{naira(f.balance)}</strong> for {f.session} is outstanding. Course registration waits on the Bursary&rsquo;s clearance.</> : f.hasArrears ? <>Arrears from an earlier session stand against you, and the scheme blocks everything while they do.</> : <>The Bursary has not cleared you for registration.</>}</p>
-            <div style={{ display: "flex", gap: 8, marginTop: 11, flexWrap: "wrap" }}>
-              <Link href="/student/fees" className="btn btn--urgent btn--sm">Pay now</Link>
-              <Link href="/student/fees" className="btn btn--ghost btn--sm">See breakdown</Link>
-            </div>
-          </div>
-        </div>
+        <Note kind="bad" title="Action required" action={<div className="row"><LinkBtn kind="urgent" href="/student/fees">Pay now</LinkBtn><LinkBtn kind="ghost" href="/student/fees">See breakdown</LinkBtn></div>}>
+          {f.balance > 0 ? <>Your balance of <strong className="tnum">{naira(f.balance)}</strong> for {f.session} is outstanding. Course registration waits on the Bursary&rsquo;s clearance.</> : f.hasArrears ? <>Arrears from an earlier session stand against you, and the scheme blocks everything while they do.</> : <>The Bursary has not cleared you for registration.</>}
+        </Note>
       ) : (
-        <div className="notice notice--ok">
-          <Tick size={19} colour="var(--green-ink)" />
-          <div>
-            <div className="notice__t ink-green">You are cleared to register</div>
-            <p className="ink-green">{f.paidInFull ? `School fees settled in full for ${f.session}.` : `Your payment so far releases registration for ${f.session}; ${naira(f.balance)} remains.`}</p>
-            <div style={{ marginTop: 11 }}><Link href="/student/register" className="btn btn--go btn--sm">Register courses</Link></div>
-          </div>
-        </div>
+        <Note kind="ok" title="You are cleared to register" action={<LinkBtn kind="go" href="/student/register">Register courses</LinkBtn>}>
+          {f.paidInFull ? `School fees settled in full for ${f.session}.` : `Your payment so far releases registration for ${f.session}; ${naira(f.balance)} remains.`}
+        </Note>
       )}
 
       <div className="grid grid--2">
         <div className="card"><div className="card__body">
-          <div style={{ display: "flex", gap: 13, alignItems: "flex-start" }}>
+          <div className="row row--top" style={{ gap: "var(--s-3)" }}>
             <Passport w={52} h={64} radius={6} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
             <div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>{s.name}</div>
+              <div className="t-lg b600">{s.name}</div>
               <div className="sub2 tnum">{s.matricNo ?? s.admissionNo}</div>
               <div className="sub2">{s.programme} &middot; {s.level} Level</div>
             </div>
           </div>
           <div className="row">
             <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
-            <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>CGPA {s.cgpa ?? "—"}</span>
-            {s.curriculumVersion ? <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>Curriculum {s.curriculumVersion}</span> : null}
+            <Pil kind="grey">CGPA {s.cgpa ?? "—"}</Pil>
+            {s.curriculumVersion ? <Pil kind="grey">Curriculum {s.curriculumVersion}</Pil> : null}
           </div>
         </div></div>
-        <div className="card">
-          <div className="card__head"><span className="card__title">This session</span><span className="sub2">{s.session}</span></div>
-          <div className="card__body"><div className="steps">
+        <Panel title="This session" right={s.session}>
+          <PBody><div className="steps">
             <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : "Admitted"} · entered ${s.entrySession}`} />
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"
               sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Head of Department" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
             <Step state="todo" title="Examination docket" sub="Available after approval" />
-          </div></div>
-        </div>
+          </div></PBody>
+        </Panel>
       </div>
 
       <StudentDetails s={s} />
@@ -232,7 +218,7 @@ export function Dashboard({ s }: { s: Me }) {
   );
 }
 
-const pwToggle: CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: 0, color: "var(--chrome, var(--chrome))", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4 };
+const pwToggle: CSSProperties = { position: "absolute", right: "var(--s-2)", top: "50%", transform: "translateY(-50%)", background: "none", border: 0, color: "var(--chrome)", fontSize: "var(--t-sm)", fontWeight: 700, cursor: "pointer", padding: "var(--s-1)" };
 
 export function Profile({ s, change }: { s: Me; change: boolean }) {
   const { act, busy, problem } = useAct();
@@ -248,10 +234,10 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
   return (
     <>
       {change ? <Note kind="bad" title="Choose your own password before you go on">The Registry gave you a first password. Change it below; it is yours alone from then on.</Note> : null}
-      <div className="card"><div className="card__body" style={{ flexDirection: "row", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--top" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
         <Passport w={112} h={139} radius={5} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 9, flexGrow: 1, minWidth: 230 }}>
-          <div><div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
+        <div className="stack grow" style={{ minWidth: 230 }}>
+          <div><div className="phead__t">{s.name}</div>
             <div className="sub2 tnum">{s.matricNo ?? s.admissionNo} &middot; {s.programme} &middot; {s.level} Level</div></div>
           <div className="row">
             <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: "var(--green)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
@@ -262,32 +248,31 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
         </div>
       </div></div>
       <div className="grid grid--2">
-        <div className="card"><div className="card__head"><span className="card__title">You can change these</span></div><div className="card__body">
-          <div className="field"><label htmlFor="ph">Phone</label><input id="ph" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off" /></div>
-          <div className="field"><label htmlFor="em">Personal email</label><input id="em" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" /></div>
-          <div className="field"><label htmlFor="ad">Contact address</label><input id="ad" value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="off" /></div>
+        <Panel title="You can change these"><PBody>
+          <Field id="ph" label="Phone"><input id="ph" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off" /></Field>
+          <Field id="em" label="Personal email"><input id="em" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" /></Field>
+          <Field id="ad" label="Contact address"><input id="ad" value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="off" /></Field>
           <Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("contact", "PUT", "/me/contact", { phone, email, address }, "Contact details changed by the student", "Contact details saved"); setErrFor(r ? null : "contact"); }}>{busy === "contact" ? "Saving…" : "Save changes"}</Btn>
           {problem && errFor === "contact" ? <ProblemNotice problem={problem} /> : null}
           <div className="hr" />
           <div className="b600">Password</div>
-          <div className="field"><label htmlFor="pw0">Current password</label>
+          <Field id="pw0" label="Current password">
             <div style={{ position: "relative" }}>
               <input id="pw0" type={showCur ? "text" : "password"} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ paddingRight: 62 }} />
               <button type="button" aria-label={showCur ? "Hide password" : "Show password"} onClick={() => setShowCur((v) => !v)} style={pwToggle}>{showCur ? "Hide" : "Show"}</button>
             </div>
-          </div>
-          <div className="field"><label htmlFor="pw1">New password</label>
+          </Field>
+          <Field id="pw1" label="New password" hint="Eight characters at the very least.">
             <div style={{ position: "relative" }}>
               <input id="pw1" type={showNext ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" style={{ paddingRight: 62 }} />
               <button type="button" aria-label={showNext ? "Hide password" : "Show password"} onClick={() => setShowNext((v) => !v)} style={pwToggle}>{showNext ? "Hide" : "Show"}</button>
             </div>
-            <div className="hint">Eight characters at the very least.</div>
-          </div>
+          </Field>
           <Btn kind="ghost" disabled={busy !== null || !cur || next.length < 8} onClick={async () => { const ok = await act("pw", "POST", "/student-auth/change-password", { current: cur, next }, "Password changed by the student", "Password changed"); if (ok) { setSaidPw(true); setCur(""); setNext(""); setErrFor(null); } else { setErrFor("pw"); } }}>{busy === "pw" ? "Changing…" : "Change the password"}</Btn>
           {saidPw ? <Note kind="ok" title="Password changed">Sign in with the new one from now on.</Note> : null}
           {problem && errFor === "pw" ? <ProblemNotice problem={problem} /> : null}
-        </div></div>
-        <div className="card"><div className="card__head"><span className="card__title">Only Registry can change these</span></div><div className="card__body">
+        </PBody></Panel>
+        <Panel title="Only Registry can change these"><PBody>
           <KvGrid cls="grid--2" pairs={[
             ["Full name", s.name],
             ["Matriculation number", <span className="tnum" key="m">{s.matricNo ?? "Not yet issued"}</span>],
@@ -299,7 +284,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
             ["On the register since", onDay(s.entrySession ? undefined : null)],
           ]} />
           <div className="sub2 mt-1">Your curriculum version was fixed when you were admitted, so you are always assessed against the rules that applied then. To change a name or programme, apply through Registry with supporting documents.</div>
-        </div></div>
+        </PBody></Panel>
       </div>
     </>
   );

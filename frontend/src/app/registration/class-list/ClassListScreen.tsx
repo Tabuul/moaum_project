@@ -5,7 +5,7 @@ import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { csv, download, type ClassList } from "@/lib/results";
 import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Btn, Note, Panel, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterName } from "@/lib/student-portal";
@@ -61,7 +61,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
               ])}
               texts={roll.rows.map((r) => `${r.number} ${r.surname} ${r.otherNames} ${r.programmeName}`)}
             />
-            {!roll.rows.length ? <div className="card__body"><div className="sub2">Nobody has an approved registration for this course in {roll.session}, {semesterName(roll.semester).toLowerCase()} semester.</div></div> : null}
+            {!roll.rows.length ? <PBody><div className="sub2">Nobody has an approved registration for this course in {roll.session}, {semesterName(roll.semester).toLowerCase()} semester.</div></PBody> : null}
           </Panel>
           {notCleared.length ? (
             <Note kind="bad" title={`${notCleared.length} registered student${notCleared.length === 1 ? " is" : "s are"} not cleared to sit the examination`}>

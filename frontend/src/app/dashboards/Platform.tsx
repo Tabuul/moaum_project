@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { api, API_URL } from "@/lib/api";
 import type { Me } from "@/components/proto/Shell";
-import { KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { officeLabel } from "@/lib/offices";
@@ -75,7 +74,7 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
                   return [
                     <span key="f">{f.faculty}</span>,
                     <span className="tnum" key="u">{f.uploaded} of {f.total}</span>,
-                    <span className="tnum" key="p" style={pend ? { color: "var(--red-ink)" } : undefined}>{pend}</span>,
+                    <span className={`tnum${pend ? " ink-red" : ""}`} key="p">{pend}</span>,
                     <span className="tnum sub2" key="s">{pct}%</span>,
                   ];
                 })} />
@@ -102,10 +101,10 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
             <Note kind="info" title="Create a person, give them an account, grant the office they hold">
               A person is created once, however many offices they come to hold. Creating the account sets a first password the holder must change. Granting an office is bounded, dated and carries the authority that made it &mdash; every act here is recorded against your name.
             </Note>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-              <Link href="/people?new=person" className="btn btn--primary btn--sm">+ New person</Link>
-              <Link href="/people?new=grant" className="btn btn--primary btn--sm">+ Grant an office</Link>
-              <Link href="/people" className="btn btn--ghost btn--sm">Open the people console</Link>
+            <div className="row mt-1">
+              <LinkBtn kind="primary" href="/people?new=person">+ New person</LinkBtn>
+              <LinkBtn kind="primary" href="/people?new=grant">+ Grant an office</LinkBtn>
+              <LinkBtn kind="ghost" href="/people">Open the people console</LinkBtn>
             </div>
           </PBody>
           <KvGrid cls="grid--4" pairs={[
@@ -152,7 +151,7 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
           ]} />
         </PBody>
         {ob && !ob.emailProvider && !ob.smsProvider ? (
-          <div className="card__body"><div className="sub2">Every notice the portal would send is queued here, on the record, and shown to the applicant on their own dashboard. None leaves until a provider is named: an endpoint that takes a POST of to, subject and body with a bearer token, one for email and one for SMS.</div></div>
+          <PBody><div className="sub2">Every notice the portal would send is queued here, on the record, and shown to the applicant on their own dashboard. None leaves until a provider is named: an endpoint that takes a POST of to, subject and body with a bearer token, one for email and one for SMS.</div></PBody>
         ) : null}
         {ob && ob.recent.length ? (
           <DTable cols={["When|mid", "To", "Notice", "Channel|mid", "State|num"]} rows={ob.recent.map((n) => [

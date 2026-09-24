@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import type { SheetListing, SheetListed } from "@/lib/results";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 
@@ -19,15 +18,15 @@ export function ExamsDashboard({ me, listing, openQueries, session, history = []
   return (
     <>
       {q ? (
-        <Note kind="bad" title={`${q} result quer${q === 1 ? "y" : "ies"} awaiting an answer`} action={<Link href="/results/queries" className="btn btn--urgent btn--sm">Answer queries</Link>}>
+        <Note kind="bad" title={`${q} result quer${q === 1 ? "y" : "ies"} awaiting an answer`} action={<LinkBtn kind="urgent" href="/results/queries">Answer queries</LinkBtn>}>
           A student has questioned a published mark. Each is routed to the department that owns the course and answered on the record; the corrected mark flows back through the chain.
         </Note>
       ) : (t?.notSubmitted ?? 0) ? (
-        <Note kind="info" title={`${t?.notSubmitted} score sheet${(t?.notSubmitted ?? 0) === 1 ? " is" : "s are"} still with lecturers`} action={<Link href="/results/desk" className="btn btn--primary btn--sm">Result desk</Link>}>
+        <Note kind="info" title={`${t?.notSubmitted} score sheet${(t?.notSubmitted ?? 0) === 1 ? " is" : "s are"} still with lecturers`} action={<LinkBtn kind="primary" href="/results/desk">Result desk</LinkBtn>}>
           A sheet that misses this Senate waits for the next sitting, and its candidates carry an incomplete result. Chase the ones below before the deadline.
         </Note>
       ) : (
-        <Note kind="ok" title="Every sheet is submitted" action={<Link href="/results/desk" className="btn btn--primary btn--sm">Result desk</Link>}>
+        <Note kind="ok" title="Every sheet is submitted" action={<LinkBtn kind="primary" href="/results/desk">Result desk</LinkBtn>}>
           No sheet is still with a lecturer this session. Move the ones in the workflow along, and record the Senate minute when the Board sits.
         </Note>
       )}
@@ -52,7 +51,7 @@ export function ExamsDashboard({ me, listing, openQueries, session, history = []
         {notSubmitted.length ? (
           <DTable cols={["Course", "Lecturer", "Candidates|mid", "Status|num"]}
             rows={notSubmitted.slice(0, 12).map((s: SheetListed) => [
-              <span key="c"><strong className="tnum">{s.courseCode}</strong>{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}<div className="sub2">{s.courseTitle}</div></span>,
+              <span key="c"><strong className="tnum">{s.courseCode}</strong>{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: "var(--s-2)" }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}<div className="sub2">{s.courseTitle}</div></span>,
               <span className="sub2" key="l">{s.lecturer ?? "No lecturer allocated"}</span>,
               <span className="tnum" key="n">{s.candidates}</span>,
               (s.daysLate ?? 0) > 0 ? <Pil kind="bad" key="s">{s.daysLate} days overdue</Pil> : <Pil kind="info" key="s">Not submitted</Pil>,
@@ -65,11 +64,11 @@ export function ExamsDashboard({ me, listing, openQueries, session, history = []
       <Panel title="Examinations desks" right={me?.name ? `Signed in as ${me.name}` : "Examinations"}>
         <PBody>
           <div className="grid--fill">
-            <Link href="/examinations/sessions" className="btn btn--ghost btn--sm">Examination sessions</Link>
-            <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
-            <Link href="/results/approvals" className="btn btn--ghost btn--sm">Approvals</Link>
-            <Link href="/results/queries" className="btn btn--ghost btn--sm">Result queries{q ? ` (${q})` : ""}</Link>
-            <Link href="/exams/question-bank" className="btn btn--ghost btn--sm">CBT question bank</Link>
+            <LinkBtn kind="ghost" href="/examinations/sessions">Examination sessions</LinkBtn>
+            <LinkBtn kind="ghost" href="/results/desk">Result desk</LinkBtn>
+            <LinkBtn kind="ghost" href="/results/approvals">Approvals</LinkBtn>
+            <LinkBtn kind="ghost" href="/results/queries">Result queries{q ? ` (${q})` : ""}</LinkBtn>
+            <LinkBtn kind="ghost" href="/exams/question-bank">CBT question bank</LinkBtn>
           </div>
         </PBody>
       </Panel>

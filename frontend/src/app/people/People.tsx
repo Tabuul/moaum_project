@@ -134,7 +134,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
           texts={persons.map((p) => `${p.surname} ${p.givenNames} ${p.staffNumber ?? ""} ${p.username ?? ""}`)}
         />
         <div className="rfbar">
-          <button className="btn btn--primary btn--sm" disabled={!canCredential} onClick={() => { setF({ ...f, staffNumber: "", surname: "", givenNames: "" }); setModal("person"); }}>+ New person</button>
+          <Btn kind="primary" disabled={!canCredential} onClick={() => { setF({ ...f, staffNumber: "", surname: "", givenNames: "" }); setModal("person"); }}>+ New person</Btn>
           <span className="sub2">A person is created once, however many offices they come to hold.</span>
         </div>
       </Panel>
@@ -155,7 +155,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
           texts={grants.map((g) => `${g.surname} ${g.givenNames} ${g.label} ${g.instrument}`)}
         />
         <div className="rfbar">
-          <button className="btn btn--primary btn--sm" disabled={!canGrant || !persons.length} onClick={() => { setTarget(persons[0]); setF({ ...f, office: offices[0]?.code ?? "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" }); setModal("grant"); }}>+ Grant an office</button>
+          <Btn kind="primary" disabled={!canGrant || !persons.length} onClick={() => { setTarget(persons[0]); setF({ ...f, office: offices[0]?.code ?? "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" }); setModal("grant"); }}>+ Grant an office</Btn>
           <span className="sub2">Not effective until the instrument is cited.</span>
         </div>
       </Panel>

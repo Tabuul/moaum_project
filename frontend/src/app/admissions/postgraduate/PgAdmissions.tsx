@@ -55,16 +55,16 @@ const sexLabel = (v: string | null | undefined) => (v === "F" ? "Female" : v ===
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <div className="sub2" style={{ textTransform: "uppercase", letterSpacing: ".05em", fontSize: 10.5, fontWeight: 600, color: "var(--chrome)", borderBottom: "2px solid var(--line-2)", paddingBottom: 5, marginBottom: 8 }}>{title}</div>
+      <div className="eyebrow ink-chrome" style={{ borderBottom: "2px solid var(--line-2)", paddingBottom: 5, marginBottom: "var(--s-2)" }}>{title}</div>
       {children}
     </div>
   );
 }
 function Kv({ k, v }: { k: string; v: string }) {
   return (
-    <div style={{ display: "flex", gap: 14, padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "baseline" }}>
-      <span className="sub2" style={{ minWidth: 150, textTransform: "uppercase", letterSpacing: ".04em", fontSize: 10.5 }}>{k}</span>
-      <span style={{ fontWeight: 600, fontSize: 13.5 }}>{v}</span>
+    <div className="row row--base" style={{ gap: "var(--s-4)", padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+      <span className="sub2" style={{ minWidth: 150, textTransform: "uppercase", letterSpacing: ".04em", fontSize: "var(--t-xs)" }}>{k}</span>
+      <span className="b600" style={{ fontSize: "var(--t-base)" }}>{v}</span>
     </div>
   );
 }
@@ -116,19 +116,19 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
     ? (d.priorDegrees ?? [])
     : [{ kind: "FIRST", institution: a.prior_institution, award: a.prior_award, field: null, class_of_degree: a.prior_class, cgpa: a.prior_cgpa, year: a.prior_year } as PriorQual];
   return (
-    <div className="card__body" style={{ display: "grid", gap: 20 }}>
+    <PBody style={{ gap: "var(--s-5)" }}>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       {/* identity, with the passport shown as a photograph */}
-      <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="row row--top" style={{ gap: "var(--s-5)" }}>
         {passport ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={docUrl(passport.id)} alt="Passport photograph" style={{ width: 108, height: 132, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+          <img src={docUrl(passport.id)} alt="Passport photograph" style={{ width: 108, height: 132, objectFit: "cover", borderRadius: "var(--r-md)", border: "1px solid var(--line-2)" }} />
         ) : (
-          <div className="sub2" style={{ width: 108, height: 132, borderRadius: 8, border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: 6 }}>No passport uploaded</div>
+          <div className="sub2" style={{ width: 108, height: 132, borderRadius: "var(--r-md)", border: "1px dashed var(--line-2)", display: "grid", placeItems: "center", textAlign: "center", padding: "var(--s-2)" }}>No passport uploaded</div>
         )}
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{a.surname}, {a.other_names}</div>
+          <div className="b700 t-lg">{a.surname}, {a.other_names}</div>
           <div className="sub2 mt-1">{a.application_no} · {a.programme_name}{a.pg_award ? ` (${a.pg_award})` : ""}</div>
           <div className="sub2">{a.email}{a.phone ? ` · ${a.phone}` : ""}</div>
         </div>
@@ -146,10 +146,10 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       </Section>
 
       <Section title="Institutions attended">
-        <div style={{ display: "grid", gap: 8 }}>
+        <div className="stack">
           {quals.map((q, i) => (
-            <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 8, padding: "8px 12px" }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+            <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-md)", padding: "var(--s-2) var(--s-3)" }}>
+              <div className="b600" style={{ fontSize: "var(--t-base)" }}>
                 {QUAL_LABEL[q.kind] ?? q.kind}{q.award ? ` — ${q.award}` : ""}{q.field ? ` (${q.field})` : ""}
               </div>
               <div className="sub2 mt-1">
@@ -163,23 +163,23 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       {a.pg_research ? (
         <Section title="Research proposal">
           <div className="b600">{a.proposal_title || "—"}</div>
-          {a.proposal_text ? <div className="sub2" style={{ marginTop: 4, lineHeight: 1.5 }}>{a.proposal_text}</div> : null}
+          {a.proposal_text ? <div className="sub2 mt-1" style={{ lineHeight: 1.5 }}>{a.proposal_text}</div> : null}
         </Section>
       ) : null}
 
       <Section title="Referees">
         {(d.referees ?? []).length ? (d.referees ?? []).map((r) => (
-          <div key={r.id} style={{ marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--line-2)" }}>
+          <div key={r.id} className="mb-2" style={{ paddingBottom: "var(--s-2)", borderBottom: "1px solid var(--line-2)" }}>
             <div className="sub2"><b>{r.name}</b>{r.position ? ` · ${r.position}` : ""}{r.institution ? ` · ${r.institution}` : ""}</div>
             <div className="sub2">{r.email ? `${r.email}` : ""}{r.phone ? ` · ${r.phone}` : ""}</div>
             {r.submitted_at ? (
-              <div style={{ marginTop: 6, paddingLeft: 10, borderLeft: "3px solid var(--green-ink)" }}>
-                <div className="sub2" style={{ color: "var(--green-ink)", fontWeight: 600 }}>
+              <div className="mt-2" style={{ paddingLeft: "var(--s-2)", borderLeft: "3px solid var(--green-ink)" }}>
+                <div className="sub2 ink-green b600">
                   Reference received{r.verdict ? ` · ${VERDICT_LABEL[r.verdict] ?? r.verdict}` : ""}
                 </div>
                 {r.relationship ? <div className="sub2"><b>Relationship:</b> {r.relationship}{r.known_duration ? ` · known ${r.known_duration}` : ""}</div> : null}
-                {r.attestation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Attestation:</b> {r.attestation}</div> : null}
-                {r.recommendation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Recommendation:</b> {r.recommendation}</div> : null}
+                {r.attestation ? <div className="sub2 mt-1" style={{ whiteSpace: "pre-wrap" }}><b>Attestation:</b> {r.attestation}</div> : null}
+                {r.recommendation ? <div className="sub2 mt-1" style={{ whiteSpace: "pre-wrap" }}><b>Recommendation:</b> {r.recommendation}</div> : null}
               </div>
             ) : <div className="sub2 ink-chrome">Reference not yet submitted{r.email ? " — a request was emailed" : " (no email on record)"}.</div>}
           </div>
@@ -188,8 +188,8 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
 
       <Section title="Documents">
         {otherDocs.length || passport ? (
-          <div style={{ display: "grid", gap: 6 }}>
-            <div style={{ marginBottom: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="stack">
+            <div className="row mb-1">
               <Btn kind="primary" onClick={() => setViewing({ url: `/api/bff/api/v1/pg/applications/${id}/documents.pdf`, title: "All documents — one PDF", image: false })}>View all as one PDF</Btn>
               <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} download className="btn btn--ghost btn--sm">Download</a>
             </div>
@@ -211,14 +211,14 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
 
       {viewing ? (
         <Modal title={viewing.title} sub="Opens here; close to return to the application" wide onClose={() => setViewing(null)}
-          foot={<><a href={viewing.url} download className="btn btn--ghost btn--sm">Download</a><span className="grow" /><button type="button" className="btn btn--primary btn--sm" onClick={() => setViewing(null)}>Close</button></>}>
+          foot={<><a href={viewing.url} download className="btn btn--ghost btn--sm">Download</a><span className="grow" /><Btn kind="primary" onClick={() => setViewing(null)}>Close</Btn></>}>
           {viewing.image ? (
             <div style={{ display: "flex", justifyContent: "center" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={viewing.url} alt={viewing.title} style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: 8, border: "1px solid var(--line-2)" }} />
+              <img src={viewing.url} alt={viewing.title} style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: "var(--r-md)", border: "1px solid var(--line-2)" }} />
             </div>
           ) : (
-            <iframe src={viewing.url} title={viewing.title} style={{ width: "100%", height: "72vh", border: "1px solid var(--line-2)", borderRadius: 8, background: "#fff" }} />
+            <iframe src={viewing.url} title={viewing.title} style={{ width: "100%", height: "72vh", border: "1px solid var(--line-2)", borderRadius: "var(--r-md)", background: "var(--surface)" }} />
           )}
         </Modal>
       ) : null}
@@ -258,10 +258,10 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
         {mayAdmit(office) && st === "ACCEPTED" ? (
           <Btn kind="primary" disabled={busy !== null} onClick={() => void act("admit", `Admitted ${a.surname}, ${a.other_names} onto the register`)}>Admit onto the register</Btn>
         ) : null}
-        {st === "ADMITTED" ? <span className="sub2" style={{ alignSelf: "center", color: "var(--green-ink)" }}>Admitted &mdash; on the register, awaiting matriculation on fees and registration.</span> : null}
+        {st === "ADMITTED" ? <span className="sub2 ink-green" style={{ alignSelf: "center" }}>Admitted &mdash; on the register, awaiting matriculation on fees and registration.</span> : null}
         {busy ? <span className="sub2" style={{ alignSelf: "center" }}>Working…</span> : null}
       </div>
-    </div>
+    </PBody>
   );
 }
 

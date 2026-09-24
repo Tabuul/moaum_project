@@ -6,9 +6,8 @@
  * record: the seat the Academic Office assigned, the result under the
  * session's own weighting, and the Board's decision once it is released.
  */
-import Link from "next/link";
 import { at, type Application } from "@/lib/applicant";
-import { KvGrid, Note, Panel, PBody, Tick, Tiles, Two } from "@/components/proto/ui";
+import { KvGrid, LinkBtn, Note, Panel, PBody, Tick, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, Passport } from "@/components/proto/blocks";
 import { Rail, clock, onDay, when } from "./common";
@@ -31,15 +30,15 @@ export function Screening({ a }: { a: Application }) {
   return (
     <>
       <Note kind={at(a, 4) ? "ok" : "info"} title={at(a, 4) ? `You were screened on ${onDay(slip.heldOn)}` : "Bring this slip and a valid identification document"}
-        action={<span className="row row--inline row--tight">{at(a, 4) ? <Link href="/applicant/score" className="btn btn--primary btn--sm">See your screening result</Link> : null}<a href="/applicant/screening/slip" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Download slip (PDF)</a></span>}>
+        action={<span className="row row--inline row--tight">{at(a, 4) ? <LinkBtn kind="primary" href="/applicant/score">See your screening result</LinkBtn> : null}<a href="/applicant/screening/slip" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Download slip (PDF)</a></span>}>
         {at(a, 4) ? "This slip is kept for your records. Your score is on the screening result page." : "You will not be admitted into the hall without both. Arrive thirty minutes before your session; the doors close when it begins."}
       </Note>
       <Panel title="Post-UTME screening slip" right={a.applicationNo}>
         <PBody>
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div className="row row--top" style={{ gap: "var(--s-5)" }}>
             <Passport w={84} h={104} src={passport ? `/api/bff/api/v1/applicant/me/documents/${passport.id}/content` : a.jambPassport ?? null} alt="Your passport photograph" />
             <div style={{ flexGrow: 1, minWidth: 220 }}>
-              <div style={{ fontFamily: "var(--serif)", fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{a.name}</div>
+              <div className="phead__t" style={{ fontFamily: "var(--serif)" }}>{a.name}</div>
               <div className="sub2">{a.applicationNo} &middot; JAMB {a.jambKey}</div>
               <div className="sub2">{a.programme ?? "—"}{a.faculty ? ` · Faculty of ${a.faculty}` : ""}</div>
             </div>
@@ -103,16 +102,16 @@ export function Score({ a }: { a: Application }) {
         <DTable cols={["Component", "Raw|mid", "Of|mid", "Scaled|mid", "Weight|mid", "Contribution|num"]} rows={[
           ["UTME", <span className="tnum" key="r">{r.utme ?? "—"}</span>, <span className="tnum sub2" key="o">400</span>, <span className="tnum" key="s">{r.utmeScaled ?? "—"}</span>, <span className="tnum" key="w">{r.weightUtme}%</span>, <span className="tnum" key="c">{utmeContribution ?? "—"}</span>],
           ["Post-UTME screening", <span className="tnum" key="r">{r.screening ?? "—"}</span>, <span className="tnum sub2" key="o">100</span>, <span className="tnum" key="s">{r.screening ?? "—"}</span>, <span className="tnum" key="w">{r.weightPutme}%</span>, <span className="tnum" key="c">{screeningContribution ?? "—"}</span>],
-          [<strong key="a">Aggregate</strong>, "", "", "", "", <strong className="tnum" style={{ fontSize: 15 }} key="x">{agg ?? "—"}</strong>],
+          [<strong key="a">Aggregate</strong>, "", "", "", "", <strong className="tnum t-md" key="x">{agg ?? "—"}</strong>],
         ]} />
       </Panel>
       {r.meritPosition !== null && r.applied !== null ? (
         <Panel title="Where you stand" right={`Merit list, ${a.programme ?? ""}`}>
           <PBody>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: "var(--s-4)" }}>
               <Bar pct={r.places ? Math.min(100, Math.round((r.meritPosition / r.places) * 100)) : Math.round((r.meritPosition / r.applied) * 100)} colour="var(--green)" />
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700 }}>Position {r.meritPosition} of {r.applied} with a released result{r.places ? ` · ${r.places} places` : ""}</div>
+                <div className="t-md b700">Position {r.meritPosition} of {r.applied} with a released result{r.places ? ` · ${r.places} places` : ""}</div>
                 <div className="sub2">Positions can move while the Board resolves ties and verifies results.</div>
               </div>
             </div>
@@ -161,29 +160,29 @@ export function Status({ a }: { a: Application }) {
     <>
       <div className="card" style={{ borderTop: "4px solid var(--green)" }}>
         <PBody>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ width: 26, height: 26, borderRadius: 13, background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center" }}><Tick size={14} colour="#fff" /></div>
+          <div className="row">
+            <div style={{ width: 26, height: 26, borderRadius: "var(--r-pill)", background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center" }}><Tick size={14} colour="var(--surface)" /></div>
             <span className="eyebrow ink-green">Offer of provisional admission</span>
           </div>
-          <div style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 700, letterSpacing: "-.3px" }}>{a.programme}</div>
+          <div className="phead__t" style={{ fontFamily: "var(--serif)", fontSize: "var(--t-2xl)" }}>{a.programme}</div>
           <div className="sub2">{a.faculty ? `Faculty of ${a.faculty} · ` : ""}{a.entryLevel} Level &middot; {a.session} session &middot; released {when(a.decisionReleasedAt)}</div>
           <div className="hr" />
           <KvGrid pairs={[
-            ["UTME score", <span className="tnum" style={{ fontSize: 16, fontWeight: 700 }} key="u">{r?.utme ?? "—"}</span>],
-            ["Screening", <span className="tnum" style={{ fontSize: 16, fontWeight: 700 }} key="s">{r?.screening ?? "—"}</span>],
-            ["Aggregate", <span className="tnum" style={{ fontSize: 16, fontWeight: 700 }} key="a">{r?.aggregate ?? "—"}</span>],
-            ["Merit position", <span className="tnum" style={{ fontSize: 16, fontWeight: 700 }} key="m">{r?.meritPosition ?? "—"}{r?.applied ? ` of ${r.applied}` : ""}</span>],
+            ["UTME score", <span className="tnum t-lg b700" key="u">{r?.utme ?? "—"}</span>],
+            ["Screening", <span className="tnum t-lg b700" key="s">{r?.screening ?? "—"}</span>],
+            ["Aggregate", <span className="tnum t-lg b700" key="a">{r?.aggregate ?? "—"}</span>],
+            ["Merit position", <span className="tnum t-lg b700" key="m">{r?.meritPosition ?? "—"}{r?.applied ? ` of ${r.applied}` : ""}</span>],
           ]} />
         </PBody>
       </div>
       {at(a, 6) ? (
-        <Note kind="ok" title={`You accepted this offer on ${when(a.acceptedAt)}`} action={<Link href="/applicant/clearance" className="btn btn--primary btn--sm">Clearance checklist</Link>}>
+        <Note kind="ok" title={`You accepted this offer on ${when(a.acceptedAt)}`} action={<LinkBtn kind="primary" href="/applicant/clearance">Clearance checklist</LinkBtn>}>
           Your place is held. Document clearance is the next step.
         </Note>
       ) : a.declinedAt ? (
         <Note kind="bad" title={`You declined this offer on ${when(a.declinedAt)}`}>A declined offer is not reinstated.</Note>
       ) : (
-        <Note kind="bad" title="Accept your offer" action={<Link href="/applicant/accept" className="btn btn--urgent btn--sm">Accept the offer</Link>}>
+        <Note kind="bad" title="Accept your offer" action={<LinkBtn kind="urgent" href="/applicant/accept">Accept the offer</LinkBtn>}>
           An offer that lapses cannot be reinstated, and the place goes to the next candidate on the waiting list.
         </Note>
       )}

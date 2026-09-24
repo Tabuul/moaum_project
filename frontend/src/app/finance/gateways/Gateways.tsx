@@ -160,7 +160,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
                 const ed = pdEdit[b.scope] ?? { code: b.biller_code, name: b.name, link: b.pay_link ?? "" };
                 const set = (k: "code" | "name" | "link", v: string) => setPdEdit({ ...pdEdit, [b.scope]: { ...ed, [k]: v } });
                 return (
-                  <div key={b.scope} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 6 }}>
+                  <div key={b.scope} className="row row--end mb-2">
                     <span className="sub2" style={{ minWidth: 120 }}>{b.scope === "CHS" ? "Health Sciences" : "All departments"}</span>
                     <input className="ctl tnum" style={{ width: 130 }} placeholder="Biller code" value={ed.code} onChange={(e) => set("code", e.target.value)} />
                     <input className="ctl" style={{ width: 220 }} placeholder="Name" value={ed.name} onChange={(e) => set("name", e.target.value)} />
@@ -203,7 +203,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
             </div>
             <div className="grid grid--2">
               <Field id="tg-ref" label="Ask about a reference" hint="Any reference this portal generated."><input id="tg-ref" className="ctl tnum" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="MOAUM-FEE-…" /></Field>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", paddingBottom: 14 }}>
+              <div className="row row--end" style={{ paddingBottom: "var(--s-4)" }}>
                 <Btn kind="ghost" disabled={busy || !ref.trim()} onClick={async () => { const j = await send("/verify", { reference: ref }, `Verified ${ref} with the gateway`); if (j) setSaid(`${ref}: ${j.outcome}${j.said ? ` (${j.said})` : ""}`); }}>Verify with the gateway</Btn>
                 <Btn kind="ghost" disabled={busy} onClick={async () => { if (await send("/sweep", {}, "Reconciliation sweep run by hand")) setSaid("The sweep ran; hanging payments were asked about"); }}>Run the sweep now</Btn>
               </div>

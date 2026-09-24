@@ -7,7 +7,7 @@
  *  This desk reads every module and approves none of them; that is the point of it. */
 import { useState } from "react";
 import Link from "next/link";
-import { Note, Panel, PBody, Tiles, Tick, WarnIcon, Ico } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Tiles, Tick, WarnIcon, Ico } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, money } from "@/components/proto/blocks";
 import { PeriodPicker } from "@/components/proto/PeriodPicker";
@@ -71,9 +71,9 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
       <Panel title="Scope" right={subtitle}>
         <PBody>
           <div className="row">
-            <button className={`btn btn--sm ${scope === "institution" ? "btn--primary" : "btn--ghost"}`} onClick={() => setScope("institution")}>The University</button>
+            <Btn kind={scope === "institution" ? "primary" : "ghost"} onClick={() => setScope("institution")}>The University</Btn>
             {facs.map((f) => (
-              <button key={f.code} className={`btn btn--sm ${scope === f.code ? "btn--primary" : "btn--ghost"}`} onClick={() => setScope(f.code)}>{f.name}</button>
+              <Btn key={f.code} kind={scope === f.code ? "primary" : "ghost"} onClick={() => setScope(f.code)}>{f.name}</Btn>
             ))}
           </div>
           <div className="sub2 mt-2">Every figure below is the same measure at a different level. An administrator who can only see the institution cannot tell a Dean why her faculty is behind.</div>
@@ -97,14 +97,14 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
             {agg.expected ? (
               <>
                 <Donut capLabel="past Senate" capValue={`${pubPct}%`} items={[
-                  { l: "Approved by Senate", v: agg.approved, c: VZ.good, i: <Tick size={13} colour="#0a7a3b" /> },
+                  { l: "Approved by Senate", v: agg.approved, c: VZ.good, i: <Tick size={13} colour="var(--green-ink)" /> },
                   { l: "Pending in the chain", v: aPending, c: VZ.warn, i: <Ico name="clock" size={13} stroke="var(--amber-ink)" w={2.2} /> },
                   { l: "Never submitted", v: aNever, c: VZ.crit, i: <WarnIcon size={13} /> },
                 ]} />
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                  <Link className="btn btn--ghost btn--sm" href="/results/chain">Chase the chain</Link>
-                  <Link className="btn btn--ghost btn--sm" href="/results/senate">To Senate</Link>
-                  <Link className="btn btn--ghost btn--sm" href="/results/sheets">Unraised sheets</Link>
+                <div className="row mt-1">
+                  <LinkBtn kind="ghost" href="/results/chain">Chase the chain</LinkBtn>
+                  <LinkBtn kind="ghost" href="/results/senate">To Senate</LinkBtn>
+                  <LinkBtn kind="ghost" href="/results/sheets">Unraised sheets</LinkBtn>
                 </div>
               </>
             ) : <div className="sub2">No score sheet exists for {d.session}, {semester === 1 ? "first" : "second"} semester in this scope yet. A sheet appears when a lecturer is allocated and the examination session is open.</div>}
@@ -112,10 +112,10 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
         </Panel>
         <Panel title="Money" right={`${sel ? agg.name : "The University"} · from the register`}>
           <DTable cols={["Measure", "Value|mid", "Action|num"]} rows={[
-            [<span key="k">Collected this session</span>, <span className="tnum" key="v">{money(agg.collected)}</span>, <Link key="a" className="btn btn--ghost btn--sm" href="/finance/ledger">Ledger</Link>],
-            [<span key="k">Outstanding</span>, <span className="tnum" key="v" style={{ color: agg.due - agg.collected > 0 ? "var(--red-ink)" : undefined }}>{money(Math.max(0, agg.due - agg.collected))}</span>, <Link key="a" className="btn btn--ghost btn--sm" href="/finance/hanging">Chase</Link>],
-            [<span key="k">Collection rate</span>, <span className="tnum" key="v">{agg.due ? `${colPct}%` : "—"}</span>, <Link key="a" className="btn btn--ghost btn--sm" href="/reports">Report</Link>],
-            [<span key="k">Students paid in full</span>, <span className="tnum" key="v">{agg.paid.toLocaleString()} of {agg.students.toLocaleString()}</span>, <Link key="a" className="btn btn--ghost btn--sm" href="/finance/reconcile">Reconcile</Link>],
+            [<span key="k">Collected this session</span>, <span className="tnum" key="v">{money(agg.collected)}</span>, <LinkBtn key="a" kind="ghost" href="/finance/ledger">Ledger</LinkBtn>],
+            [<span key="k">Outstanding</span>, <span className={`tnum${agg.due - agg.collected > 0 ? " ink-red" : ""}`} key="v">{money(Math.max(0, agg.due - agg.collected))}</span>, <LinkBtn key="a" kind="ghost" href="/finance/hanging">Chase</LinkBtn>],
+            [<span key="k">Collection rate</span>, <span className="tnum" key="v">{agg.due ? `${colPct}%` : "—"}</span>, <LinkBtn key="a" kind="ghost" href="/reports">Report</LinkBtn>],
+            [<span key="k">Students paid in full</span>, <span className="tnum" key="v">{agg.paid.toLocaleString()} of {agg.students.toLocaleString()}</span>, <LinkBtn key="a" kind="ghost" href="/finance/reconcile">Reconcile</LinkBtn>],
           ]} />
         </Panel>
       </div>
@@ -133,11 +133,11 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
             const fPaid = f.students ? Math.round((100 * f.paid) / f.students) : 0;
             const on = f.code === scope;
             return [
-              <button key="f" onClick={() => setScope(on ? "institution" : f.code)} className="linklike" style={{ fontWeight: on ? 700 : 400, color: on ? "var(--chrome-ink)" : undefined, background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }}>{f.name}</button>,
+              <button key="f" onClick={() => setScope(on ? "institution" : f.code)} className={`linklike${on ? " b700" : ""}`} style={{ color: on ? "var(--chrome-ink)" : undefined, background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }}>{f.name}</button>,
               <span className="tnum" key="s">{f.students.toLocaleString()}</span>,
-              <span key="p" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={fPaid} colour={fPaid < 60 ? "var(--red)" : "var(--green)"} /><span className="tnum sub2">{f.students ? `${fPaid}%` : "—"}</span></span>,
+              <span key="p" className="row"><Bar pct={fPaid} colour={fPaid < 60 ? "var(--red)" : "var(--green)"} /><span className="tnum sub2">{f.students ? `${fPaid}%` : "—"}</span></span>,
               <span className="tnum" key="c">{money(f.collected)}</span>,
-              <span key="r" style={{ display: "flex", alignItems: "center", gap: 8 }}><Bar pct={fPub} colour={fPub < 55 ? "var(--red)" : "var(--green)"} /><span className="tnum sub2">{f.expected ? `${fPub}%` : "no sheet"}</span></span>,
+              <span key="r" className="row"><Bar pct={fPub} colour={fPub < 55 ? "var(--red)" : "var(--green)"} /><span className="tnum sub2">{f.expected ? `${fPub}%` : "no sheet"}</span></span>,
             ];
           })} />
         ) : <PBody><div className="sub2">Nobody is on the register yet, so there is nothing to roll up.</div></PBody>}

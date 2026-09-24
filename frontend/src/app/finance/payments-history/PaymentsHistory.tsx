@@ -110,7 +110,7 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
         <PBody>
           <div className="row">
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
-            <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
+            <label className={`btn btn--primary m-0${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", opacity: !may ? 0.6 : 1 }}>
               {busy ? (progress ?? "Loading…") : "Choose the payment-history file (.xlsx)"}
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
             </label>

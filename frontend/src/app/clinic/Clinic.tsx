@@ -110,7 +110,7 @@ export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
           {open.history.length ? (
             <div className="mt-3">
               <div className="eyebrow">Earlier visits</div>
-              {open.history.map((x) => <div key={x.id} style={{ padding: "8px 0", borderTop: "1px solid var(--line-2)" }}><b>{day(x.arrived_at)}</b> · {x.presenting} → {x.outcome}{x.referred_to ? ` (referred to ${x.referred_to})` : ""}{x.notes ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{x.notes}</div> : null}</div>)}
+              {open.history.map((x) => <div key={x.id} style={{ padding: "var(--s-2) 0", borderTop: "1px solid var(--line-2)" }}><b>{day(x.arrived_at)}</b> · {x.presenting} → {x.outcome}{x.referred_to ? ` (referred to ${x.referred_to})` : ""}{x.notes ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{x.notes}</div> : null}</div>)}
             </div>
           ) : null}
           <Field id="ov-out" label="Outcome" hint="What the patient sees on their record."><input id="ov-out" className="ctl" value={outcome.outcome} onChange={(e) => setOutcome({ ...outcome, outcome: e.target.value })} autoComplete="off" /></Field>

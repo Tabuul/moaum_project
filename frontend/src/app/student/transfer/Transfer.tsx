@@ -3,8 +3,7 @@
 /** studentTransfer — apply to move to another department, and follow the case through the
  *  committee, Senate, the non-refundable fee, and the change on the register. */
 import { useState } from "react";
-import Link from "next/link";
-import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { Field, Step } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -71,9 +70,9 @@ export function Transfer({ d }: { d: MyTransfer }) {
 
       {live ? (
         <Panel title="Your application" right={live.to_programme}>
-          <div style={{ padding: "4px 0" }}>
+          <div style={{ padding: "var(--s-1) 0" }}>
             {STAGES.map((s, i) => (
-              <div key={s[0]} style={{ padding: "9px 16px", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
+              <div key={s[0]} style={{ padding: "var(--s-2) var(--s-4)", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
                 <Step state={stageOf(live.state, paid) > i ? "done" : stageOf(live.state, paid) === i ? "now" : "todo"} title={s[0]} sub={s[1]} />
               </div>
             ))}
@@ -107,7 +106,7 @@ export function Transfer({ d }: { d: MyTransfer }) {
       ) : null}
 
       {last && last.state === "EFFECTED" ? (
-        <Note kind="ok" title="Your transfer is complete" action={<Link href={`/student/transfer/letter/${last.id}`} className="btn btn--ghost btn--sm">Approval letter</Link>}>
+        <Note kind="ok" title="Your transfer is complete" action={<LinkBtn kind="ghost" href={`/student/transfer/letter/${last.id}`}>Approval letter</LinkBtn>}>
           You have been moved to {last.to_programme}{last.recommended_level ? ` at ${last.recommended_level} Level` : ""}. Register your courses under your department for the session.
         </Note>
       ) : null}

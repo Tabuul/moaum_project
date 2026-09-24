@@ -4,8 +4,9 @@
  *  insert and select on that store and nothing else, so the trail cannot be edited through
  *  the portal; the rows are hash-chained, so a deletion at database level is detectable. */
 import { useRouter } from "next/navigation";
-import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { officeLabel } from "@/lib/offices";
 
 export interface Entry {
@@ -45,18 +46,18 @@ export function AuditTrail({ d, facets, action, office }: { d: AuditView; facets
         ["Refusals today", String(d.tiles.refusalsToday), d.tiles.refusalsToday ? "var(--chrome)" : null, "A rule doing its job"],
       ]} />
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="field" style={{ minWidth: 180 }}><label htmlFor="au-action">Domain</label>
+      <div className="card"><div className="card__body row row--end">
+        <div style={{ minWidth: 180 }}><Field id="au-action" label="Domain">
           <select id="au-action" className="ctl" value={action} onChange={(e) => go({ action: e.target.value })}>
             <option value="">All actions</option>
             {facets.actions.map((a) => <option key={a.domain} value={a.domain}>{a.domain} ({a.n})</option>)}
-          </select></div>
-        <div className="field" style={{ minWidth: 180 }}><label htmlFor="au-office">Acting office</label>
+          </select></Field></div>
+        <div style={{ minWidth: 180 }}><Field id="au-office" label="Acting office">
           <select id="au-office" className="ctl" value={office} onChange={(e) => go({ office: e.target.value })}>
             <option value="">All offices</option>
             {facets.offices.map((o) => <option key={o.actor_office} value={o.actor_office}>{officeLabel(o.actor_office)} ({o.n})</option>)}
-          </select></div>
-        {action || office ? <button className="btn btn--ghost btn--sm" onClick={() => router.push("/audit")}>Clear</button> : null}
+          </select></Field></div>
+        {action || office ? <Btn kind="ghost" onClick={() => router.push("/audit")}>Clear</Btn> : null}
       </div></div>
 
       <Panel title="Audit trail" right={`Most recent ${d.entries.length}${action || office ? " · filtered" : ""}`}>

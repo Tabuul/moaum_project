@@ -2,11 +2,10 @@
 
 /** sLibrary — proto/part8.html: on loan to you, the fine, the catalogue — from the loans and the rule in force (V031). */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import type { StudentLibrary } from "@/lib/library";
-import { Btn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "../common";
@@ -47,7 +46,7 @@ export function Library({ l, q }: { l: StudentLibrary; q: string }) {
             <Two key="i" a={x.title} b={x.accession} />,
             <span className="sub2 tnum" key="r">{onDay(x.returned_at)}</span>,
             <b className="tnum" key="f">{naira(x.fine)}</b>,
-            <span key="p">{x.fine_reference ? <Link href="/student/fees" className="btn btn--ghost btn--sm">Pay {x.fine_reference}</Link> : <Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fine", "POST", `/me/library/loans/${x.id}/fine-reference`, {}, `Library fine reference for ${x.accession}`); if (r) { setSaid(`Pay ${naira(x.fine)} against ${r.reference} on the Fees page`); router.refresh(); } }}>Generate the reference</Btn>}</span>,
+            <span key="p">{x.fine_reference ? <LinkBtn kind="ghost" href="/student/fees">Pay {x.fine_reference}</LinkBtn> :<Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fine", "POST", `/me/library/loans/${x.id}/fine-reference`, {}, `Library fine reference for ${x.accession}`); if (r) { setSaid(`Pay ${naira(x.fine)} against ${r.reference} on the Fees page`); router.refresh(); } }}>Generate the reference</Btn>}</span>,
           ])} />
         </Panel>
       ) : null}
@@ -69,7 +68,7 @@ export function Library({ l, q }: { l: StudentLibrary; q: string }) {
             <DTable cols={["Title", "Copies|mid", "Available|mid", "|num"]} rows={l.catalogue.map((c) => [
               <Two key="t" a={c.title} b={`${c.author ?? ""}${c.year ? ` · ${c.year}` : ""}${c.edition ? ` · ${c.edition}` : ""}`} />,
               <span className="tnum" key="c">{c.copies}</span>,
-              <span className="tnum" key="a" style={{ color: c.available ? "var(--green-ink)" : "var(--red-ink)", fontWeight: 600 }}>{c.available}</span>,
+              <span className={`tnum b600 ${c.available ? "ink-green" : "ink-red"}`} key="a">{c.available}</span>,
               c.available ? <span className="sub2" key="r">On the shelf — borrow it at the desk</span> : <Btn kind="ghost" key="r" disabled={busy !== null} onClick={async () => { const r = await act("reserve", "POST", "/me/library/reservations", { itemId: c.id }, `Reserved ${c.title}`); if (r) setSaid(`Reserved — ${c.waiting} waiting ahead of you`); }}>Join the waiting list</Btn>,
             ])} />
           ) : <div className="sub2">Nothing in the catalogue matches “{q}”.</div>) : <div className="sub2">{l.standing.clear ? "Nothing stands against you at the Library." : "Items on loan or a fine unpaid stand against you; clear them before a transcript or certificate is released."}</div>}

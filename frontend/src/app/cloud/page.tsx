@@ -14,7 +14,7 @@ export default async function CloudPage() {
       </Note>
       <Panel title="What keeps the system portable">
         <PBody>
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
+          <ul className="m-0" style={{ paddingLeft: "var(--s-4)", lineHeight: 1.9 }}>
             <li><b>Data</b> — standard PostgreSQL; the whole estate is a schema and its migrations, restorable anywhere Postgres runs.</li>
             <li><b>Application</b> — a single container image (API + portal), configured by environment variables, with no dependency on a specific cloud&rsquo;s managed services.</li>
             <li><b>Secrets</b> — payment-gateway keys, mail and SMS credentials are encrypted at rest with a passphrase the University holds, not the provider.</li>

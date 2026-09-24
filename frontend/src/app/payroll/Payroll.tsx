@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { Btn, Ico, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -96,14 +96,14 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
       <Panel title="Pay runs" right={may ? undefined : "You are reading these runs"}>
         {runs.length ? (
           <DTable cols={["Month|mid", "Staff|num", "Gross|num", "Deductions|num", "Net|num", "Stage", "Action|num"]} rows={runs.map((r) => [
-            <Link key="m" href={`/payroll?run=${r.id}`} className="tnum" style={{ fontWeight: 600 }}>{monthLabel(r.period)}</Link>,
+            <Link key="m" href={`/payroll?run=${r.id}`} className="tnum b600">{monthLabel(r.period)}</Link>,
             <span className="tnum" key="c">{r.staff_count}</span>,
             <span className="tnum" key="g">{money(Number(r.gross_total))}</span>,
             <span className="tnum sub2" key="d">{money(Number(r.deduction_total))}</span>,
             <b className="tnum" key="n">{money(Number(r.net_total))}</b>,
             <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.built_by_name ? <div className="sub2">Built by {r.built_by_me ? "you" : r.built_by_name}</div> : null}{r.cancelled_why ? <div className="sub2">{r.cancelled_why}</div> : null}</span>,
             <span key="ac" className="row row--inline row--tight row--right">
-              <Link href={`/payroll?run=${r.id}`} className="btn btn--ghost btn--sm" title={`View ${monthLabel(r.period)} pay run`} aria-label={`View ${monthLabel(r.period)} pay run`} style={{ padding: "8px 10px", minWidth: 38 }}><Ico name="eye" size={16} /></Link>
+              <Link href={`/payroll?run=${r.id}`} className="btn btn--ghost btn--sm btn--icon" title={`View ${monthLabel(r.period)} pay run`} aria-label={`View ${monthLabel(r.period)} pay run`}><Ico name="eye" size={16} /></Link>
               {may && r.state === "DRAFT" && !r.built_by_me ? <Btn kind="go" disabled={busy} onClick={() => void send(`/runs/${r.id}/approve`, {}, `Approve payroll ${monthLabel(r.period)}`).then((j) => { if (j) setSaid(`${monthLabel(r.period)} approved`); })}>Approve</Btn> : null}
               {may && r.state === "DRAFT" && r.built_by_me ? <Btn kind="ghost" disabled>Awaiting another approver</Btn> : null}
               {may && r.state === "APPROVED" ? <Btn kind="primary" disabled={busy} onClick={() => { if (window.confirm(`Mark ${monthLabel(r.period)} paid? Record this once the salaries have been disbursed.`)) void send(`/runs/${r.id}/pay`, {}, `Payroll ${monthLabel(r.period)} paid`).then((j) => { if (j) setSaid(`${monthLabel(r.period)} recorded paid`); }); }}>Mark paid</Btn> : null}
@@ -114,8 +114,8 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
       </Panel>
 
       {d ? (
-        <Panel title={`Payslips · ${monthLabel(d.run.period)}`} right={<Link href="/payroll" className="btn btn--ghost btn--sm">← All runs</Link>}>
-          <div style={{ padding: "0 16px" }}>
+        <Panel title={`Payslips · ${monthLabel(d.run.period)}`} right={<LinkBtn href="/payroll" kind="ghost">← All runs</LinkBtn>}>
+          <div style={{ padding: "0 var(--s-4)" }}>
             <Tiles cls="grid--4" items={[
               ["Staff", String(d.run.staff_count), null, STATE[d.run.state]?.[1] ?? d.run.state],
               ["Gross", money(Number(d.run.gross_total)), null, "Basic and allowances"],

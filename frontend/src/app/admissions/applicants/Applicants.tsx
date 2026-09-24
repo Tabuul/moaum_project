@@ -5,7 +5,7 @@
  *  breakdown — the clear admitted view. */
 import { useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
-import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
@@ -82,9 +82,9 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
               <input id="ap-q" className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") navigate({}); }} placeholder="Surname, other names or JAMB number" autoComplete="off" />
             </Field>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
-            {filtered ? <button className="btn btn--ghost" onClick={() => { setSearch(""); queryNav(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear filters</button> : null}
-            <button className="btn btn--primary" onClick={() => navigate({})}>Search</button>
+          <div className="row row--right mt-4">
+            {filtered ? <Btn kind="ghost" size="md" onClick={() => { setSearch(""); queryNav(`/admissions/applicants?session=${encodeURIComponent(session)}`); }}>Clear filters</Btn> : null}
+            <Btn kind="primary" size="md" onClick={() => navigate({})}>Search</Btn>
           </div>
         </PBody>
       </Panel>

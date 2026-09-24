@@ -60,13 +60,13 @@ export function MySiwes({ students }: { students: MySiwesStudent[] }) {
               <span className="tnum" key="m">{s.number ?? "—"}</span>,
               <strong key="n">{s.surname}, {s.other_names}</strong>,
               <span className="sub2 tnum" key="c">{s.course_code}</span>,
-              <div key="a" style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+              <div key="a" className="row row--tight row--right">
                 <input className="ctl tnum" style={{ width: 64 }} inputMode="numeric" disabled={!entry || busy !== null || !s.sheet_id}
                   value={s.student_id in marks ? marks[s.student_id] : (s.supervisor_mark ?? "")}
                   onChange={(e) => setMarks({ ...marks, [s.student_id]: e.target.value })} />
                 <Btn kind="primary" disabled={!entry || busy !== null || !s.sheet_id} onClick={() => void save(s)}>{busy === s.student_id ? "Saving…" : "Save"}</Btn>
               </div>,
-              <span className="tnum" key="p" style={{ color: s.practical_mark == null ? "var(--muted)" : undefined }}>{s.practical_mark ?? "—"}</span>,
+              <span className={`tnum${s.practical_mark == null ? " ink-muted" : ""}`} key="p">{s.practical_mark ?? "—"}</span>,
               s.total != null ? <Pil kind="ok" key="t">{s.total}</Pil> : <span className="sub2 tnum" key="t">—</span>,
               s.sheet_stage ? <span className="sub2" key="s">{s.sheet_stage === "ENTRY" ? "Entry open" : s.sheet_stage.toLowerCase().replace(/_/g, " ")}</span> : <span className="sub2 ink-red" key="s">Not open</span>,
             ];

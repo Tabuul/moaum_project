@@ -42,8 +42,7 @@ function ProgrammePicker({ programmes, chosen, onPick }: { programmes: Programme
   const matches = (term ? live.filter((p) => `${p.name} ${p.facultyName} ${p.code}`.toLowerCase().includes(term)) : live).slice(0, 60);
   const label = chosen ? `${chosen.name} · ${chosen.facultyName}` : "";
   return (
-    <div className="field" style={{ flexGrow: 1, minWidth: 300, position: "relative" }}>
-      <label htmlFor="de-prog">Programme</label>
+    <div className="grow" style={{ minWidth: 300, position: "relative" }}><Field id="de-prog" label="Programme">
       <input
         id="de-prog" className="ctl" autoComplete="off" role="combobox" aria-controls="de-prog-list" aria-expanded={open} aria-autocomplete="list"
         value={open ? q : label}
@@ -60,19 +59,19 @@ function ProgrammePicker({ programmes, chosen, onPick }: { programmes: Programme
         }}
       />
       {open ? (
-        <ul id="de-prog-list" role="listbox" style={{ position: "absolute", zIndex: 30, top: "100%", left: 0, right: 0, margin: "2px 0 0", padding: 0, listStyle: "none", maxHeight: 300, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,.12)" }}>
+        <ul id="de-prog-list" role="listbox" style={{ position: "absolute", zIndex: 30, top: "100%", left: 0, right: 0, margin: "2px 0 0", padding: 0, listStyle: "none", maxHeight: 300, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--r-md)", boxShadow: "var(--sh-2)" }}>
           {matches.length ? matches.map((p, i) => (
             <li key={p.code} role="option" aria-selected={i === hi}
               onMouseDown={(e) => { e.preventDefault(); onPick(p.code); setOpen(false); }}
               onMouseEnter={() => setHi(i)}
-              style={{ padding: "8px 10px", cursor: "pointer", borderTop: i ? "1px solid var(--line-2)" : undefined, background: i === hi ? "var(--line-2)" : "transparent" }}>
+              style={{ padding: "var(--s-2) var(--s-3)", cursor: "pointer", borderTop: i ? "1px solid var(--line-2)" : undefined, background: i === hi ? "var(--line-2)" : "transparent" }}>
               <div>{p.name}</div>
               <div className="sub2 tnum">{p.code} · {p.facultyName}</div>
             </li>
-          )) : <li className="sub2" style={{ padding: "8px 10px" }}>No programme matches &ldquo;{q}&rdquo;.</li>}
+          )) : <li className="sub2" style={{ padding: "var(--s-2) var(--s-3)" }}>No programme matches &ldquo;{q}&rdquo;.</li>}
         </ul>
       ) : null}
-    </div>
+    </Field></div>
   );
 }
 
@@ -162,7 +161,7 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
   if (loaded === null) return <PBody><div className="sub2">Loading what is on file…</div></PBody>;
 
   return (
-    <div className="card__body" style={{ display: "grid", gap: 10 }}>
+    <PBody>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <div className="grid grid--2 rfgrid">
         <Field id="de-basis" label="Qualification (basis)">
@@ -188,7 +187,7 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
           <span className="sub2">Recorded subjects are checked against the programme&rsquo;s DE requirement.</span>
         </div>
       ) : <div className="sub2">You can view what is on file; recording is the Admissions Office&rsquo;s.</div>}
-    </div>
+    </PBody>
   );
 }
 

@@ -7,7 +7,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
-import { Note } from "@/components/proto/ui";
+import { Btn, Note } from "@/components/proto/ui";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 interface Ctx { found: boolean; refereeName: string; position: string | null; institution: string | null; applicant: string; applicationNo: string; session: string; programme: string; award: string | null; submitted: boolean }
@@ -73,31 +74,26 @@ export function RefereeForm({ token }: { token: string }) {
           </Note>
           {problem ? <ProblemNotice problem={problem} /> : null}
 
-          <div className="card"><div className="card__body" style={{ display: "grid", gap: 12 }}>
-            <div className="field">
-              <label htmlFor="relationship">Relationship to the applicant *</label>
+          <div className="card"><div className="card__body">
+            <Field id="relationship" label="Relationship to the applicant" required>
               <input id="relationship" className="ctl" placeholder="e.g. Project supervisor, Head of Department" value={f.relationship ?? ""} onChange={set("relationship")} />
-            </div>
-            <div className="field">
-              <label htmlFor="knownDuration">How long have you known the applicant? *</label>
+            </Field>
+            <Field id="knownDuration" label="How long have you known the applicant?" required>
               <input id="knownDuration" className="ctl" placeholder="e.g. 4 years" value={f.knownDuration ?? ""} onChange={set("knownDuration")} />
-            </div>
-            <div className="field">
-              <label htmlFor="attestation">Academic attestation *</label>
+            </Field>
+            <Field id="attestation" label="Academic attestation" required>
               <textarea id="attestation" className="ctl" rows={5} placeholder="The applicant's academic ability, character and suitability for postgraduate study." value={f.attestation ?? ""} onChange={set("attestation")} />
-            </div>
-            <div className="field">
-              <label htmlFor="recommendation">Recommendation (any further remarks)</label>
+            </Field>
+            <Field id="recommendation" label="Recommendation (any further remarks)">
               <textarea id="recommendation" className="ctl" rows={3} value={f.recommendation ?? ""} onChange={set("recommendation")} />
-            </div>
-            <div className="field">
-              <label htmlFor="verdict">Your recommendation *</label>
+            </Field>
+            <Field id="verdict" label="Your recommendation" required>
               <select id="verdict" className="ctl" value={f.verdict} onChange={set("verdict")}>
                 {VERDICTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-            </div>
+            </Field>
             <div className="row">
-              <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit reference"}</button>
+              <Btn kind="primary" size="md" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit reference"}</Btn>
               <span className="sub2">Once submitted, a reference cannot be changed.</span>
             </div>
           </div></div>
@@ -110,15 +106,15 @@ export function RefereeForm({ token }: { token: string }) {
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <header style={{ background: "var(--chrome-deep, #0b1f3a)", color: "#fff", padding: "16px 22px", display: "flex", alignItems: "center", gap: 14 }}>
+      <header className="row" style={{ background: "var(--chrome-deep)", color: "var(--surface)", padding: "var(--s-4) var(--s-6)", gap: "var(--s-4)" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, letterSpacing: ".6px", textTransform: "uppercase", opacity: .7 }}>School of Postgraduate Studies</div>
-          <h1 style={{ fontFamily: "var(--serif, Georgia)", fontSize: 20, fontWeight: 700, margin: "2px 0 0" }}>Referee reference</h1>
+        <div className="grow">
+          <div className="eyebrow" style={{ color: "var(--chrome-ink)" }}>School of Postgraduate Studies</div>
+          <h1 className="phead__t" style={{ fontFamily: "var(--serif)", marginTop: 2 }}>Referee reference</h1>
         </div>
       </header>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "18px 16px 56px", display: "grid", gap: 14 }}>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "var(--s-5) var(--s-4) calc(var(--s-8) + var(--s-4))", display: "grid", gap: "var(--s-4)" }}>
         {children}
       </div>
     </div>

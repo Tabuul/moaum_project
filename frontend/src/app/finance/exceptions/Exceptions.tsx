@@ -8,7 +8,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import type { BankCredit } from "@/lib/bursary";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Gate, Gates, day, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -53,8 +53,8 @@ export function Exceptions({ credits, state, gatewayExceptions, actingOffice }: 
         ["Posted", String(credits.filter((x) => x.state === "POSTED").length), "var(--green-ink)", state === "open" ? "Shown under Posted" : "In this view"],
         ["Cash ceiling", money(1000), null, "Cash below it at the counter; a draft above it"],
       ]} />
-      <div className="card"><div className="card__body" style={{ flexDirection: "row", gap: 8 }}>
-        {[["open", "Open"], ["posted", "Posted"], ["all", "All"]].map(([k, l]) => <Link key={k} href={`/finance/exceptions?state=${k}`} className={`btn btn--sm ${state === k ? "btn--primary" : "btn--ghost"}`}>{l}</Link>)}
+      <div className="card"><div className="card__body row" style={{ flexDirection: "row" }}>
+        {[["open", "Open"], ["posted", "Posted"], ["all", "All"]].map(([k, l]) => <LinkBtn key={k} kind={state === k ? "primary" : "ghost"} href={`/finance/exceptions?state=${k}`}>{l}</LinkBtn>)}
       </div></div>
       <Panel title="Bank credits" right="Recorded as they came; the bank record is never altered">
         {credits.length ? (
@@ -67,7 +67,7 @@ export function Exceptions({ credits, state, gatewayExceptions, actingOffice }: 
               {x.state === "PROPOSED" ? <div className="sub2">{x.proposed_reference} ({x.reference_amount !== null ? money(Number(x.reference_amount)) : ""}) — {x.proposed_why} · {x.proposed_by_name}</div> : null}
               {x.state === "POSTED" ? <div className="sub2">Proposed by {x.proposed_by_name}, approved by {x.approved_by_name} · {day(x.approved_at)}</div> : null}
               {x.rejected_why ? <div className="sub2">Last proposal rejected: {x.rejected_why}</div> : null}</span>,
-            <span key="r" style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span key="r" className="row row--tight row--right">
               {may && x.state === "UNMATCHED" ? <>
                 <input className="ctl tnum" style={{ width: 170 }} placeholder="Reference to post to" value={prop[x.id]?.reference ?? ""} onChange={(e) => setProp({ ...prop, [x.id]: { reference: e.target.value, why: prop[x.id]?.why ?? "" } })} />
                 <input className="ctl" style={{ width: 200 }} placeholder="On what evidence" value={prop[x.id]?.why ?? ""} onChange={(e) => setProp({ ...prop, [x.id]: { reference: prop[x.id]?.reference ?? "", why: e.target.value } })} />

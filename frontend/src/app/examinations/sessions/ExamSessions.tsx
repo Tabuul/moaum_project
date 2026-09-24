@@ -3,12 +3,11 @@
 /** tExamSession — proto/part28.html: the container everything hangs in, and the sheets it is waiting on. */
 import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import type { ExamSession, Monitor } from "@/lib/results";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, day, Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -103,18 +102,18 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
       <Panel title="Create an examination session">
         <PBody>
           <div className="grid grid--3">
-            <div className="field"><label htmlFor="es-s">Academic session</label><select id="es-s" className="ctl" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })}>{sessions.map((s) => <option key={s}>{s}</option>)}</select></div>
-            <div className="field"><label htmlFor="es-m">Semester</label><select id="es-m" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></div>
-            <div className="field"><label htmlFor="es-t">Type</label><select id="es-t" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="MAIN">Main examination</option><option value="RESIT">Re-sit</option><option value="SPECIAL">Special</option></select></div>
-            <div className="field"><label htmlFor="es-f">Examinations begin</label><input id="es-f" className="ctl" type="date" value={f.examsFrom} onChange={(e) => setF({ ...f, examsFrom: e.target.value })} /></div>
-            <div className="field"><label htmlFor="es-e">Examinations end</label><input id="es-e" className="ctl" type="date" value={f.examsTo} onChange={(e) => setF({ ...f, examsTo: e.target.value })} /></div>
-            <div className="field"><label htmlFor="es-d">Score sheets due</label><input id="es-d" className="ctl" type="date" value={f.sheetsDue} onChange={(e) => setF({ ...f, sheetsDue: e.target.value })} /></div>
+            <Field id="es-s" label="Academic session"><select id="es-s" className="ctl" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })}>{sessions.map((s) => <option key={s}>{s}</option>)}</select></Field>
+            <Field id="es-m" label="Semester"><select id="es-m" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
+            <Field id="es-t" label="Type"><select id="es-t" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="MAIN">Main examination</option><option value="RESIT">Re-sit</option><option value="SPECIAL">Special</option></select></Field>
+            <Field id="es-f" label="Examinations begin"><input id="es-f" className="ctl" type="date" value={f.examsFrom} onChange={(e) => setF({ ...f, examsFrom: e.target.value })} /></Field>
+            <Field id="es-e" label="Examinations end"><input id="es-e" className="ctl" type="date" value={f.examsTo} onChange={(e) => setF({ ...f, examsTo: e.target.value })} /></Field>
+            <Field id="es-d" label="Score sheets due"><input id="es-d" className="ctl" type="date" value={f.sheetsDue} onChange={(e) => setF({ ...f, sheetsDue: e.target.value })} /></Field>
           </div>
           <Note kind="info" title="Opening a session generates every score sheet at once">
             One sheet per course offered, over the approved register at the moment of opening, in the name of the lecturer the department allocated. A course with no allocated lecturer generates no sheet — and is counted the moment the session opens, which is where an unallocated course is found before December rather than in it.
           </Note>
           <div className="row">
-            <button className="btn btn--primary btn--sm" disabled={busy !== null || !f.examsFrom || !f.examsTo || !f.sheetsDue} onClick={() => void create(true)}>Open the session</button>
+            <Btn kind="primary" disabled={busy !== null || !f.examsFrom || !f.examsTo || !f.sheetsDue} onClick={() => void create(true)}>Open the session</Btn>
             <Btn kind="ghost" disabled={busy !== null || !f.examsFrom || !f.examsTo || !f.sheetsDue} onClick={() => void create(false)}>Save as a draft</Btn>
           </div>
         </PBody>
@@ -129,11 +128,11 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
               <span className="sub2" key="k">{e.kind === "MAIN" ? "Main" : e.kind === "RESIT" ? "Re-sit" : "Special"}</span>,
               <span className="tnum" key="x">{day(e.examsFrom, false)} – {day(e.examsTo, false)}</span>,
               <span className="tnum" key="d">{day(e.sheetsDue)}</span>, <span className="tnum" key="n">{e.sheets}</span>,
-              <span className="tnum" key="o" style={e.outstanding ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{e.outstanding}</span>,
+              <span className={`tnum${e.outstanding ? " ink-red b700" : ""}`} key="o">{e.outstanding}</span>,
               e.state === "OPEN" ? <Pil kind="ok" key="st">Open</Pil> : e.state === "DRAFT" ? <Pil kind="info" key="st">Draft</Pil> : <Pil kind="grey" key="st">Closed</Pil>,
-              <span key="a" style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+              <span key="a" className="row row--inline row--tight row--right">
                 {e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit</Btn> : null}
-                {e.state === "DRAFT" ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer.`))}>Open</Btn> : <Link href={`/examinations/sessions?exam=${e.id}`} className="btn btn--ghost btn--sm">Monitor</Link>}
+                {e.state === "DRAFT" ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer.`))}>Open</Btn> : <LinkBtn href={`/examinations/sessions?exam=${e.id}`} kind="ghost">Monitor</LinkBtn>}
               </span>,
             ])}
           />
@@ -168,7 +167,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
           rows={faculties.map((x) => [
             <strong key="f">{x.facultyName}</strong>, <span className="tnum" key="e">{x.expected}</span>, <span className="tnum" key="s">{x.submitted}</span>,
             <span className="tnum" key="v">{x.verified}</span>, <span className="tnum" key="b">{x.pastTheBoard}</span>,
-            <span className="tnum" key="o" style={x.outstanding ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{x.outstanding}</span>,
+            <span className={`tnum${x.outstanding ? " ink-red b700" : ""}`} key="o">{x.outstanding}</span>,
             <Bar key="p" pct={x.progress} colour={x.outstanding ? (x.progress < 50 ? "var(--red)" : "var(--chrome)") : "var(--green)"} />,
           ])}
         />

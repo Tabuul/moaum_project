@@ -18,7 +18,7 @@ import type { ClearanceRow, StudentRecord } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
 import { semesterText } from "@/lib/student-portal";
 import type { Problem } from "@/lib/api";
-import { Btn, Note, Pil, Tick, WarnIcon } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, Tick, WarnIcon } from "@/components/proto/ui";
 import { Field, Modal, Passport, Row, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Biodata } from "./Biodata";
@@ -31,12 +31,12 @@ const STATUSES = ["ACTIVE", "PROBATION", "DEFERRED", "SUSPENDED", "RUSTICATED", 
 /** clr(ok, label) — the round mark and its line */
 function Clr({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+    <div className="row">
       <div
         style={{
           width: 18,
           height: 18,
-          borderRadius: 9,
+          borderRadius: "var(--r-pill)",
           background: ok ? "var(--green)" : "var(--red)",
           display: "flex",
           alignItems: "center",
@@ -44,9 +44,9 @@ function Clr({ ok, label }: { ok: boolean; label: string }) {
         }}
       >
         {ok ? (
-          <Tick size={10} colour="#fff" />
+          <Tick size={10} colour="var(--surface)" />
         ) : (
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.6" strokeLinecap="round">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="var(--surface)" strokeWidth="3.6" strokeLinecap="round">
             <path d="M6 6l12 12M18 6 6 18" />
           </svg>
         )}
@@ -141,10 +141,10 @@ export function Student360({
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <div className="card">
-        <div className="card__body" style={{ flexDirection: "row", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="card__body row" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
           <Passport w={76} h={94} />
-          <div style={{ flexGrow: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-.3px" }}>{fullName(s)}</div>
+          <div className="grow" style={{ minWidth: 200 }}>
+            <div className="t-lg b700" style={{ letterSpacing: "-.3px" }}>{fullName(s)}</div>
             <div className="sub2 tnum">
               {s.matricNo ?? s.admissionNo ?? "No number yet"} · {s.programmeName} · {s.currentLevel} Level · entry{" "}
               {s.entrySession} {s.entryMode.replace("_", " ")}
@@ -178,47 +178,35 @@ export function Student360({
       </div>
 
       <div className="grid grid--3">
-        <div className="card">
-          <div className="card__head">
-            <span className="card__title">Finance</span>
-            <span className="pill pill--grey ml-auto">
-              NOT YET SERVED
-            </span>
-          </div>
-          <div className="card__body">
+        <Panel title="Finance" right={<Pil kind="grey">NOT YET SERVED</Pil>}>
+          <PBody>
             <Row k="Session charge" v="—" />
             <Row k="Paid" v="—" />
             <div className="hr" />
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div className="row row--between">
               <strong>Outstanding</strong>
-              <strong className="tnum" style={{ color: "var(--faint)" }}>
+              <strong className="tnum ink-faint">
                 —
               </strong>
             </div>
             <div className="sub2">
               The Bursary&rsquo;s ledger is not on the portal yet. Nothing is shown here until the figures come from it.
             </div>
-          </div>
-        </div>
+          </PBody>
+        </Panel>
 
-        <div className="card">
-          <div className="card__head">
-            <span className="card__title">Academic standing</span>
-            <span className="pill pill--grey ml-auto">
-              NO RESULT PUBLISHED
-            </span>
-          </div>
-          <div className="card__body">
-            <div style={{ display: "flex", gap: 22 }}>
+        <Panel title="Academic standing" right={<Pil kind="grey">NO RESULT PUBLISHED</Pil>}>
+          <PBody>
+            <div className="row row--top" style={{ gap: "var(--s-6)" }}>
               <div className="kv">
                 <span className="k">CGPA</span>
-                <span className="tnum" style={{ fontSize: 20, fontWeight: 700, color: "var(--faint)" }}>
+                <span className="tnum b700 ink-faint" style={{ fontSize: "var(--t-xl)" }}>
                   &mdash;
                 </span>
               </div>
               <div className="kv">
                 <span className="k">Units registered</span>
-                <span className="tnum" style={{ fontSize: 20, fontWeight: 700 }}>
+                <span className="tnum b700" style={{ fontSize: "var(--t-xl)" }}>
                   {record.approvedUnits}
                 </span>
               </div>
@@ -226,32 +214,20 @@ export function Student360({
             <div className="sub2">
               A CGPA follows Senate&rsquo;s approval of a result. Units are those on approved registrations.
             </div>
-          </div>
-        </div>
+          </PBody>
+        </Panel>
 
-        <div className="card">
-          <div className="card__head">
-            <span className="card__title">Clearances</span>
-            <span className="sub2 ml-auto">
-              {cleared} of {record.convocationClearance.length} · convocation
-            </span>
-          </div>
-          <div className="card__body">
+        <Panel title="Clearances" right={<>{cleared} of {record.convocationClearance.length} · convocation</>}>
+          <PBody>
             {record.convocationClearance.map((c) => (
               <Clr key={c.unit} ok={c.state === "CLEARED"} label={clearanceLine(c)} />
             ))}
-          </div>
-        </div>
+          </PBody>
+        </Panel>
       </div>
 
-      <div className="card">
-        <div className="card__head">
-          <span className="card__title">Registration</span>
-          <span className="sub2 ml-auto">
-            {session}
-          </span>
-        </div>
-        <div className="card__body">
+      <Panel title="Registration" right={session}>
+        <PBody>
           {thisSession.length === 0 ? (
             <span className="sub2">
               No registration in {session}. A registration is a record of what was submitted, and none has been.
@@ -265,18 +241,12 @@ export function Student360({
               />
             ))
           )}
-        </div>
-      </div>
+        </PBody>
+      </Panel>
 
-      <div className="card">
-        <div className="card__head">
-          <span className="card__title">Record history</span>
-          <span className="sub2 ml-auto">
-            Append-only · every entry attributable
-          </span>
-        </div>
+      <Panel title="Record history" right="Append-only · every entry attributable">
         <div className="tablewrap">
-          <table>
+          <table className="tbl--data">
             <tbody>
               {record.statusHistory.length === 0 && record.decidedChanges.length === 0 ? (
                 <tr>
@@ -306,7 +276,7 @@ export function Student360({
                   </td>
                   <td>
                     {c.label}: {c.fromValue ?? "—"} &rarr; {c.toValue}
-                    <div className="sub2" style={{ color: c.state === "REFUSED" ? "var(--red-ink)" : undefined }}>
+                    <div className={`sub2${c.state === "REFUSED" ? " ink-red" : ""}`}>
                       {c.state === "APPROVED" ? "Approved" : "Refused"} &middot; {c.decision}
                     </div>
                   </td>
@@ -318,7 +288,7 @@ export function Student360({
             </tbody>
           </table>
         </div>
-      </div>
+      </Panel>
 
       <Biodata record={record} may={may} />
 
@@ -390,7 +360,7 @@ export function Student360({
             <textarea id="reason" className="ctl" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
           </Field>
           {s.status === "ADMITTED" && to === "ACTIVE" ? (
-            <div style={{ display: "flex", gap: 9, marginTop: 6 }}>
+            <div className="row row--top mt-2">
               <WarnIcon size={17} />
               <span className="sub2">
                 A student becomes ACTIVE at matriculation, in one run over the confirmed faculty lists. Doing it here

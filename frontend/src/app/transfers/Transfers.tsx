@@ -6,11 +6,10 @@
  *  the office whose turn it is (the server decides). Once approved, the student pays the Bursary-set fee
  *  and the registry effects the change. */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -88,13 +87,10 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
         ["With Academic office", String(count("REG_OK")), count("REG_OK") ? "var(--chrome)" : null, "Final approval"],
       ]} />
 
-      <div className="card"><div className="card__body">
-        <div className="role-tabs" role="tablist">
-          {[["APPLIED", "Current dept"], ["FROM_OK", "New dept"], ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["EFFECTED", "Completed"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => setTab(k)}>{l}{k !== "ALL" && count(k) ? ` (${count(k)})` : ""}</button>
-          ))}
-        </div>
-      </div></div>
+      <div className="card"><PBody>
+        <Tabs look="segmented" value={tab} onChange={setTab}
+          items={[["APPLIED", "Current dept"], ["FROM_OK", "New dept"], ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["EFFECTED", "Completed"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => ({ id: k, label: l, count: k !== "ALL" && count(k) ? count(k) : undefined }))} />
+      </PBody></div>
 
       <Panel title="Transfer applications" right={`${shown.length} shown`}>
         {shown.length ? (

@@ -115,7 +115,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         <PBody>
           <div className="row">
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
-            <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
+            <label className={`btn btn--primary m-0${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", opacity: !may ? 0.6 : 1 }}>
               {busy ? "Reading…" : "Choose the fees file (.xlsx)"}
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
@@ -140,8 +140,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       {preview ? (
         <Panel title="Read from the file — check, then load" right={`${preview.length} row${preview.length === 1 ? "" : "s"}`}>
           <PBody>
-            <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
-              <table className="tbl" style={{ width: "100%" }}>
+            <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+              <table className="tbl--data">
                 <thead><tr><th>Matric</th><th>Session</th><th>Sem</th><th>Amount</th><th>Paid on</th></tr></thead>
                 <tbody>
                   {preview.slice(0, 200).map((r, i) => (
@@ -150,9 +150,9 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
                 </tbody>
               </table>
             </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-              <button type="button" className="btn btn--primary" disabled={busy || !may} onClick={() => void upload()}>{busy ? (progress ?? "Loading…") : `Load ${preview.length.toLocaleString()} rows`}</button>
-              <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setPreview(null)}>Cancel</button>
+            <div className="row mt-3">
+              <Btn kind="primary" size="md" disabled={busy || !may} onClick={() => void upload()}>{busy ? (progress ?? "Loading…") : `Load ${preview.length.toLocaleString()} rows`}</Btn>
+              <Btn kind="ghost" size="md" disabled={busy} onClick={() => setPreview(null)}>Cancel</Btn>
               {busy && progress ? <span className="sub2">{progress}</span> : null}
             </div>
           </PBody>

@@ -2,7 +2,6 @@
 
 /** tResultDesk — proto/part28.html: the stage this office holds, and the five acts it may perform. */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
@@ -10,7 +9,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { STAGE_LABEL, type SheetListing, type SheetListed } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Note, Panel, PBody, Pil, Tiles, Two, Tick } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two, Tick } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -75,7 +74,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
     <Two key="c" a={<span className="tnum">{s.courseCode}{s.sitting && s.sitting !== "MAIN" ? <span className="pill pill--info" style={{ marginLeft: 6 }}>{s.sitting === "RESIT" ? "Re-sit" : "Special"}</span> : null}</span>} b={s.courseTitle} />,
     <span className="sub2" key="d">{s.deptName}</span>,
     <span className="tnum" key="n">{s.candidates}</span>,
-    s.failRate === null ? <span className="sub2" key="f">—</span> : <span className="tnum" key="f" style={s.failRate > 50 ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.failRate}%</span>,
+    s.failRate === null ? <span className="sub2" key="f">—</span> : <span className={`tnum${s.failRate > 50 ? " ink-red b700" : ""}`} key="f">{s.failRate}%</span>,
   ];
 
   return (
@@ -93,7 +92,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
       <Panel title="What this office may do" right="Five acts, and no others">
         <PBody>
           <div className="grid grid--2">
-            {d.can.map((c) => <div key={c} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}><Tick size={16} colour="var(--green-ink)" /><span style={{ fontSize: 13, lineHeight: 1.5 }}>{c}</span></div>)}
+            {d.can.map((c) => <div key={c} className="row row--top"><Tick size={16} colour="var(--green-ink)" /><span className="grow t-sm" style={{ lineHeight: 1.5 }}>{c}</span></div>)}
           </div>
         </PBody>
       </Panel>
@@ -101,14 +100,14 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
         {here.length === 0 ? <div className="card__body sub2">Nothing is waiting at {STAGE_LABEL[d.stage]?.[0].toLowerCase() ?? d.stage} in this scope.</div> : (
           <DTable cols={["Course", "Department", "Candidates|mid", "Fail rate|mid", "Lecturer", "Action|num"]}
             rows={here.map((s) => [...row(s), <span className="sub2" key="l">{s.lecturer ?? "—"}</span>,
-              <span key="a">{s.blockedForYou ? <Pil kind="bad">You took the previous stage</Pil> : null} <Link href={`/results/chain?sheet=${s.id}`} className={`btn btn--sm ${s.failRate !== null && s.failRate > 50 ? "btn--urgent" : "btn--primary"}`}>Open</Link></span>])}
+              <span key="a">{s.blockedForYou ? <Pil kind="bad">You took the previous stage</Pil> : null} <LinkBtn href={`/results/chain?sheet=${s.id}`} kind={s.failRate !== null && s.failRate > 50 ? "urgent" : "primary"}>Open</LinkBtn></span>])}
             texts={here.map((s) => `${s.courseCode} ${s.courseTitle} ${s.deptName}`)} />
         )}
       </Panel>
       {late.length ? (
         <Panel title="Not yet arrived" right="These are what will hold the level, not the course">
           <DTable cols={["Course", "Department", "Candidates|mid", "Fail rate|mid", "Stopped at", "Waiting on", "Action|num"]}
-            rows={late.map((s) => [...row(s), <Pil kind="bad" key="st">{STAGE_LABEL[s.stage]?.[0] ?? s.stage}</Pil>, <span className="sub2" key="w">{STAGE_LABEL[s.stage]?.[1] ?? ""}{s.daysLate ? ` · ${s.daysLate} days late` : ""}</span>, <Link key="a" href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Chain</Link>])}
+            rows={late.map((s) => [...row(s), <Pil kind="bad" key="st">{STAGE_LABEL[s.stage]?.[0] ?? s.stage}</Pil>, <span className="sub2" key="w">{STAGE_LABEL[s.stage]?.[1] ?? ""}{s.daysLate ? ` · ${s.daysLate} days late` : ""}</span>, <LinkBtn key="a" href={`/results/chain?sheet=${s.id}`} kind="ghost">Chain</LinkBtn>])}
             texts={late.map((s) => `${s.courseCode} ${s.courseTitle} ${s.deptName}`)} />
         </Panel>
       ) : null}
@@ -116,11 +115,11 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
         <PBody>
           <div className="row">
             {d.stage === "SENATE" ? (
-              <Link href="/results/senate" className="btn btn--primary">Record the Senate minute</Link>
+              <LinkBtn href="/results/senate" kind="primary" size="md">Record the Senate minute</LinkBtn>
             ) : (
-              <button className="btn btn--primary" disabled={busy || forwardable.length === 0} onClick={() => void forward()}>{busy ? "Sending…" : `Forward ${forwardable.length} set${forwardable.length === 1 ? "" : "s"} to ${d.next}`}</button>
+              <Btn kind="primary" size="md" disabled={busy || forwardable.length === 0} onClick={() => void forward()}>{busy ? "Sending…" : `Forward ${forwardable.length} set${forwardable.length === 1 ? "" : "s"} to ${d.next}`}</Btn>
             )}
-            <Link href="/results/chain" className="btn btn--ghost">Open the approval chain</Link>
+            <LinkBtn href="/results/chain" kind="ghost" size="md">Open the approval chain</LinkBtn>
           </div>
         </PBody>
       </Panel>

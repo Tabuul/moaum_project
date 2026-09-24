@@ -139,7 +139,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
       </Panel>
 
       {may ? (
-        <div><button className="btn btn--primary" onClick={() => openModal()}>+ Raise a refund</button></div>
+        <div><Btn kind="primary" size="md" onClick={() => openModal()}>+ Raise a refund</Btn></div>
       ) : null}
 
       {add ? (
@@ -148,7 +148,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
             <Btn kind="primary" disabled={busy || !f.payer.trim() || !f.reason.trim() || !(Number(f.amount) > 0)} onClick={async () => { const j = await send("", { student, payer: f.payer, reason: f.reason, amount: Number(f.amount), bank: f.bank || null, accountName: f.accountName || null, accountLast4: f.accountLast4 || null, source: source.trim() || null }, `Raise refund for ${f.payer}`); if (j) { setSaid(`Refund ${j.reference} raised for ${f.payer}`); setAdd(false); } }}>Raise it</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <Field id="rf-src" label="From a payment reference" hint="Optional — name the transaction being refunded and the payer and amount are filled in and checked against it.">
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="row">
               <input id="rf-src" className="ctl tnum" value={source} onChange={(e) => setSource(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void fetchTxn(source); } }} placeholder="e.g. a receipt or reference" autoComplete="off" />
               <Btn kind="ghost" disabled={busy || !source.trim()} onClick={() => void fetchTxn(source)}>Fetch</Btn>
             </div>

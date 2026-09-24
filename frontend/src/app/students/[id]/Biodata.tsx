@@ -244,7 +244,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
               <div className="bio__grid">{fields.map((f) => <Fld key={f.field} field={f} value={f.section === "identity" ? (f.value ?? "") : val(f.field)} options={f.section === "identity" ? null : optionsFor(f.field, values)} may={may} pending={pending.get(f.field)} onChange={(v) => set(f.field, v)} />)}</div>
             </PBody>
             {may && EDITABLE.includes(section) ? (
-              <div className="card__body" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--line-2)" }}>
+              <div className="card__body row" style={{ flexDirection: "row", borderTop: "1px solid var(--line-2)" }}>
                 <span className="sub2">{sectionChanged ? "Unsaved changes on this section" : "No unsaved changes"}</span>
                 <span className="grow" />
                 <Btn kind="ghost" disabled={busy || !sectionChanged} onClick={() => void saveSection(false)}>{busy ? "Saving…" : "Save"}</Btn>
@@ -257,9 +257,9 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
         {section === "docs" ? (
           <Panel title="Photograph" right="The one that identifies them everywhere">
             <PBody>
-              <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div className="row row--top" style={{ gap: "var(--s-5)" }}>
                 <Passport w={104} h={128} />
-                <div style={{ flexGrow: 1, minWidth: 220 }}>
+                <div className="grow" style={{ minWidth: 220 }}>
                   <div className="sub2" style={{ lineHeight: 1.65 }}>This photograph is checked at the door of every examination hall, printed on the identity card, and the image on the certificate. Replacing it is a Registry decision, not a self-service change.</div>
                 </div>
               </div>

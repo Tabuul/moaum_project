@@ -7,13 +7,12 @@
  * same two columns in a CSV, checked before anything is written, accepted whole or not at all.
  */
 import { useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { OUTCOMES, RS_STAGES, STAGE_LABEL, csv, download, type RollRow, type SheetDetail } from "@/lib/results";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Modal, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterName } from "@/lib/student-portal";
@@ -230,7 +229,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
   return (
     <>
       {!atEntry ? (
-        <Note kind={s.stage === "PUBLISHED" ? "ok" : "info"} title={s.stage === "PUBLISHED" ? `Published under Senate minute ${detail.senateMinute}` : `This sheet has left the lecturer: ${STAGE_LABEL[s.stage]?.[0] ?? s.stage}`} action={<Link href={`/results/chain?sheet=${s.id}`} className="btn btn--ghost btn--sm">Open the approval chain</Link>}>
+        <Note kind={s.stage === "PUBLISHED" ? "ok" : "info"} title={s.stage === "PUBLISHED" ? `Published under Senate minute ${detail.senateMinute}` : `This sheet has left the lecturer: ${STAGE_LABEL[s.stage]?.[0] ?? s.stage}`} action={<LinkBtn href={`/results/chain?sheet=${s.id}`} kind="ghost">Open the approval chain</LinkBtn>}>
           {s.stage === "PUBLISHED" ? "Every mark below is what the candidate sees. A correction from here is a result query, answered on the record." : `It is with ${STAGE_LABEL[s.stage]?.[1] ?? "the next desk"}. The marks are readable, not editable; if it comes back, it comes back with the reason.`}
         </Note>
       ) : s.returnedTimes > 0 ? (
@@ -241,15 +240,15 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
       <div className="row">
         <Pil kind={ready ? "ok" : atEntry ? "bad" : "info"}>{!atEntry ? RS_STAGES[stageIdx]?.[0] ?? s.stage : ready ? "Complete — not yet submitted" : blank ? `Draft — ${blank} candidate${blank === 1 ? "" : "s"} without a mark` : "Draft — unsaved changes"}</Pil>
-        {saved ? <span className="sk__saved">✓ {saved}</span> : dirty.length ? <span className="sub2">{dirty.length} unsaved</span> : null}
+        {saved ? <span className="sk__saved"><Ico name="check" size={14} /> {saved}</span> : dirty.length ? <span className="sub2">{dirty.length} unsaved</span> : null}
         <span className="grow" />
-        <button className="btn btn--ghost btn--sm" onClick={template}>Download the template</button>
+        <Btn kind="ghost" onClick={template}>Download the template</Btn>
         {entered > 0 ? <>
           {/* the marked sheet as it stands — total, grade and point computed by the register, a performance summary at the end */}
           <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/marked?format=xlsx`} title="The roll with total, grade and point, and a summary of performance — Excel">Marked sheet · Excel</a>
           <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/marked?format=pdf`} title="The roll with total, grade and point, and a summary of performance — PDF">Marked sheet · PDF</a>
         </> : null}
-        {atEntry && own ? <><button className="btn btn--ghost btn--sm" onClick={() => file.current?.click()}>Upload a completed sheet</button><input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></> : null}
+        {atEntry && own ? <><Btn kind="ghost" onClick={() => file.current?.click()}>Upload a completed sheet</Btn><input ref={file} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></> : null}
         {atEntry && own ? <Btn kind="primary" disabled={busy || !dirty.length || invalid.length > 0 || needReason.length > 0} onClick={() => void save()}>{busy ? "Saving…" : "Save the draft"}</Btn> : null}
         {atEntry && own ? <Btn kind={ready ? "go" : "ghost"} disabled={busy || !(blank === 0) || invalid.length > 0 || needReason.length > 0} onClick={() => setAsk("submit")}>Submit and attest</Btn> : null}
       </div>
@@ -305,8 +304,8 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                   const caOver = graded && ca !== null && !Number.isNaN(ca) && ca > CA_MAX;
                   const exOver = graded && ex !== null && !Number.isNaN(ex) && ex > EXAM_MAX;
                   const raw = graded && !caOver && !exOver && ca !== null && ex !== null && !Number.isNaN(ca) && !Number.isNaN(ex) ? ca + ex : null;
-                  const overStyle = { width: 64, textAlign: "center" as const, borderColor: "var(--red-ink)", background: "var(--red-wash, #FDECEC)", color: "var(--red-ink)", fontWeight: 700 };
-                  const overNote = (n: number) => <div style={{ color: "var(--red-ink)", fontSize: 11, lineHeight: 1.2, marginTop: 3, whiteSpace: "nowrap" }}>More than {n}</div>;
+                  const overStyle = { width: 64, textAlign: "center" as const, borderColor: "var(--red-ink)", background: "var(--red-bg)", color: "var(--red-ink)", fontWeight: 700 };
+                  const overNote = (n: number) => <div className="ink-red t-xs" style={{ lineHeight: 1.2, marginTop: 3, whiteSpace: "nowrap" }}>More than {n}</div>;
                   const total = raw === null ? null : graced(raw);
                   const isChanged = changed(r, d);
                   const editable = atEntry && own && !locked(r);
@@ -315,7 +314,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
                     if (e.key === "ArrowUp") { e.preventDefault(); (document.getElementById(`${col}-${i - 1}`) as HTMLInputElement | null)?.focus(); }
                   };
                   return (
-                    <tr key={r.studentId} style={isChanged ? { background: "var(--amber-wash, #FFF7E6)" } : undefined}>
+                    <tr key={r.studentId} style={isChanged ? { background: "var(--amber-wash)" } : undefined}>
                       <td className="mid tnum">{i + 1}</td>
                       <td className="tnum">{r.number}</td>
                       <td><strong>{r.surname}, {r.otherNames}</strong></td>
@@ -358,7 +357,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       {ask === "submit" ? (
         <Modal title="Submit and attest" sub={`${s.courseCode} · ${roll.length} candidates`} onClose={() => setAsk(null)}
           foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not yet</Btn><span className="grow" /><Btn kind="go" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "I attest these marks"}</Btn></>}>
-          <p style={{ margin: 0, lineHeight: 1.6 }}>Every candidate on the roll carries a mark or an outcome. Attesting signs the sheet in your name and sends it to verification; it will not accept a further mark from you unless a desk returns it with a reason.</p>
+          <p className="m-0" style={{ lineHeight: 1.6 }}>Every candidate on the roll carries a mark or an outcome. Attesting signs the sheet in your name and sends it to verification; it will not accept a further mark from you unless a desk returns it with a reason.</p>
         </Modal>
       ) : null}
     </>

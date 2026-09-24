@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import { Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 
@@ -36,11 +35,11 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
   return (
     <>
       {needLect ? (
-        <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer across ${home.facultyName}`} action={<Link href="/allocate" className="btn btn--primary btn--sm">Teaching allocation</Link>}>
+        <Note kind="info" title={`${needLect} Course${needLect === 1 ? " has" : "s have"} no Lecturer across ${home.facultyName}`} action={<LinkBtn kind="primary" href="/allocate">Teaching allocation</LinkBtn>}>
           A score sheet opens only once a lecturer is allocated. The departments below carry the gaps; a Head of Department allocates within each.
         </Note>
       ) : (
-        <Note kind="ok" title={`${home.facultyName} is staffed for ${home.session}`} action={<Link href="/results/broadsheet" className="btn btn--ghost btn--sm">{Scope} broadsheet</Link>}>
+        <Note kind="ok" title={`${home.facultyName} is staffed for ${home.session}`} action={<LinkBtn kind="ghost" href="/results/broadsheet">{Scope} broadsheet</LinkBtn>}>
           Every course has a lecturer. Registration and results progress by department below.
         </Note>
       )}
@@ -73,7 +72,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
         ]} />
       </Panel>
 
-      <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>
+      <div className="grid grid--2">
         <Panel title="At-risk students" right={`${home.probation ?? 0} on probation`}>
           {atRisk.length ? (
             <DTable cols={["Student", "Programme", "Level|num"]}
@@ -88,12 +87,12 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
         <Panel title={`${Scope} desks`} right={`Scoped to your ${scopeNoun}`}>
           <PBody>
             <div className="grid--fill">
-              <Link href="/results/broadsheet" className="btn btn--ghost btn--sm">Broadsheet</Link>
-              <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
-              <Link href="/results/approvals" className="btn btn--ghost btn--sm">Approvals</Link>
-              <Link href="/allocate" className="btn btn--ghost btn--sm">Teaching allocation</Link>
-              <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>
-              <Link href="/catalogue" className="btn btn--ghost btn--sm">Courses</Link>
+              <LinkBtn kind="ghost" href="/results/broadsheet">Broadsheet</LinkBtn>
+              <LinkBtn kind="ghost" href="/results/desk">Result desk</LinkBtn>
+              <LinkBtn kind="ghost" href="/results/approvals">Approvals</LinkBtn>
+              <LinkBtn kind="ghost" href="/allocate">Teaching allocation</LinkBtn>
+              <LinkBtn kind="ghost" href="/students">Students</LinkBtn>
+              <LinkBtn kind="ghost" href="/catalogue">Courses</LinkBtn>
             </div>
             <div className="sub2 mt-2">You are acting as {role} of {home.facultyName}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
           </PBody>

@@ -5,10 +5,9 @@
  * a Staff module that is not on the portal yet, so the figures are an em
  * dash and the screen says why rather than showing a plausible number.
  */
-import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import { roleLabel, roleUnit } from "@/lib/offices";
-import { KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { TwoCol } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -76,7 +75,7 @@ export function Self({
       />
 
       <TwoCol>
-        <Panel title="My record" right={<span style={{ display: "flex", gap: 6 }}><a href="/staff/idcard/pdf" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">My ID card (PDF)</a><Link href="/me/profile" className="btn btn--primary btn--sm">Edit my profile</Link></span>}>
+        <Panel title="My record" right={<span className="row row--tight"><a href="/staff/idcard/pdf" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">My ID card (PDF)</a><LinkBtn href="/me/profile" kind="primary">Edit my profile</LinkBtn></span>}>
           <PBody>
             <div className="sub2 mb-3">{who}</div>
             <KvGrid

@@ -1,10 +1,9 @@
 "use client";
 
 /** staffScores — proto/part5.html: the sheets assigned to you, counted from the rolls, never typed beside them. */
-import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
 import { stageOf, type MySheet } from "@/lib/results";
-import { Note, Panel, Pil } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { semesterText } from "@/lib/student-portal";
 
@@ -24,7 +23,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
       <Note kind="info" title="This list is generated from the rolls, not typed beside them">
         Every figure below is counted from the same roll the score sheet is generated from — so the count here, the count on the dashboard and the number of rows on the sheet are one number read three times, and cannot drift apart. The stage is derived the same way: a sheet with nothing entered cannot show as approved.
       </Note>
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+      <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 160 }}>
           <label htmlFor="sh-session">Session</label>
           <select id="sh-session" className="ctl" value={session} onChange={(e) => go({ session: e.target.value })}>
@@ -50,10 +49,10 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
               return [
                 <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle} · {s.units} units{s.session !== session ? ` · ${s.session}` : ""} · {semesterText(s.semester)}</div></span>,
                 <span className="tnum" key="n">{s.candidates}</span>,
-                <span key="e"><span className="tnum" style={short ? { color: "var(--red-ink)", fontWeight: 600 } : undefined}>{s.entered}</span><span className="sub2 tnum"> of {s.candidates}</span>{s.heldScripts ? <div className="sub2 ink-chrome">{s.heldScripts} script{s.heldScripts === 1 ? "" : "s"} held</div> : null}</span>,
+                <span key="e"><span className={`tnum${short ? " ink-red b600" : ""}`}>{s.entered}</span><span className="sub2 tnum"> of {s.candidates}</span>{s.heldScripts ? <div className="sub2 ink-chrome">{s.heldScripts} script{s.heldScripts === 1 ? "" : "s"} held</div> : null}</span>,
                 <span key="s"><Pil kind={st.pill}>{st.text}</Pil>{s.daysLate ? <div className="sub2 ink-red">{s.daysLate} days overdue</div> : null}{s.returnedTimes ? <div className="sub2">Returned {s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}</div> : null}</span>,
                 <span className="sub2" key="x">{s.secondExaminer ?? "Not yet set"}</span>,
-                <Link key="a" href={`/results/sheets/${s.id}`} className={`btn btn--sm btn--${st.kind}`}>{s.mine || all ? st.act : "View"}</Link>,
+                <LinkBtn key="a" href={`/results/sheets/${s.id}`} kind={st.kind}>{s.mine || all ? st.act : "View"}</LinkBtn>,
               ];
             })}
             texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle} ${s.stage}`)}

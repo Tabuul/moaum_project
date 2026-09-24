@@ -12,7 +12,7 @@ import { useQueryNav } from "@/lib/query-nav";
 import type { Register } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
 import type { Scope } from "@/lib/scope";
-import { Note, Pil } from "@/components/proto/ui";
+import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { StudentOpen } from "@/components/StudentModal";
 import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
@@ -75,11 +75,8 @@ export function Students({
         ceiling={ceiling}
       />
 
-      <div className="card">
-        <div className="card__head">
-          <span className="card__title">Find a student</span>
-        </div>
-        <div className="card__body">
+      <Panel title="Find a student">
+        <PBody>
           <form className="field" onSubmit={find}>
             <input
               value={term}
@@ -90,9 +87,9 @@ export function Students({
               placeholder="Matriculation number, admission number or name"
             />
           </form>
-        </div>
+        </PBody>
         {register.rows.length === 0 ? (
-          <div className="card__body">
+          <PBody>
             <Note
               kind="info"
               title={q ? `Nothing on the register matches “${q}”` : "Nobody is on the register in this scope"}
@@ -101,7 +98,7 @@ export function Students({
                 ? "Check the spelling, or try part of the name rather than all of it. A student is on the register from the moment the Academic Office brings the admitted candidates onto it."
                 : "The register fills when the Academic Office brings a session’s admitted candidates onto it, each with an admission number. Until then this list is empty, and it says so rather than showing a name that is not there."}
             </Note>
-          </div>
+          </PBody>
         ) : (
           <DTable
             cols={["Matriculation no.", "Name", "Programme", "Level|mid", "Status", "|num"]}
@@ -110,7 +107,7 @@ export function Students({
             title="Students"
           />
         )}
-      </div>
+      </Panel>
     </>
   );
 }

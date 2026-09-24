@@ -6,12 +6,11 @@
  * and says why, and where a view is served but empty it says that instead of
  * showing a row that is not there.
  */
-import Link from "next/link";
 import type { ReactNode } from "react";
 import type { RecordsResult } from "@/lib/student";
 import { statusLabel, statusPill } from "@/lib/student";
 import type { Scope } from "@/lib/scope";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/components/proto/blocks";
 import { semesterText } from "@/lib/student-portal";
@@ -32,7 +31,7 @@ function Dash() {
 /** ✓ and ✗, as the prototype prints them in the clearance grid */
 function Mark({ ok }: { ok: boolean }) {
   return (
-    <span style={{ color: ok ? "var(--green-ink)" : "var(--red-ink)", fontWeight: 700 }}>{ok ? "✓" : "✗"}</span>
+    <span className={ok ? "ink-green b700" : "ink-red b700"}>{ok ? "✓" : "✗"}</span>
   );
 }
 
@@ -85,9 +84,9 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
                 {statusLabel(str(r, "status"))}
               </Pil>,
               <Dash key="c" />,
-              <Link className="btn btn--ghost btn--sm" href={`/students/${str(r, "id")}`} key="a">
+              <LinkBtn kind="ghost" href={`/students/${str(r, "id")}`} key="a">
                 Open
-              </Link>,
+              </LinkBtn>,
             ])}
             texts={rows.map((r) => `${str(r, "matricNo")} ${str(r, "name")} ${str(r, "status")}`)}
             title="Students"
@@ -167,9 +166,9 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
                 </span>
               ),
               num(r, "failRate") === null ? <Dash key="f" /> : <Tnum key="f">{num(r, "failRate")}%</Tnum>,
-              <Link className="btn btn--ghost btn--sm" href="/results/chain" key="a">
+              <LinkBtn kind="ghost" href="/results/chain" key="a">
                 Open
-              </Link>,
+              </LinkBtn>,
             ])}
             texts={rows.map((r) => `${str(r, "course")} ${str(r, "title")} ${str(r, "stage")}`)}
             title="Results"

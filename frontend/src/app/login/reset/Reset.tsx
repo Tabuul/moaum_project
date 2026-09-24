@@ -4,7 +4,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
-import { Note } from "@/components/proto/ui";
+import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export function Reset({ token }: { token: string }) {
@@ -39,7 +39,7 @@ export function Reset({ token }: { token: string }) {
           <div className="login-brand__top">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
+            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
           </div>
           <div style={{ height: 26 }} />
           <h1>Choose a new password</h1>
@@ -48,10 +48,7 @@ export function Reset({ token }: { token: string }) {
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (token && pw.length >= 8 && !mismatch) void reset(); }}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>New password</div>
-            <div className="hint mt-1">Eight characters at the very least. This one account carries you to graduation.</div>
-          </div>
+          <PageHead title="New password" description="Eight characters at the very least. This one account carries you to graduation." />
           {done ? (
             <Note kind="ok" title="Your password has been changed">Sign in with your new password. <Link href="/login">Go to sign in</Link>.</Note>
           ) : !token ? (
@@ -71,7 +68,7 @@ export function Reset({ token }: { token: string }) {
                 {mismatch ? <div className="ferr">The two do not match.</div> : null}
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <button className="btn btn--primary" type="submit" disabled={busy || pw.length < 8 || mismatch}>{busy ? "Saving…" : "Save the new password"}</button>
+              <Btn kind="primary" size="md" type="submit" disabled={busy || pw.length < 8 || mismatch}>{busy ? "Saving…" : "Save the new password"}</Btn>
             </>
           )}
           <div className="login-help">

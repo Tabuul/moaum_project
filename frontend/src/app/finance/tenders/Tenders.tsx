@@ -69,7 +69,7 @@ export function Tenders({ tenders, selected, bids, actingOffice }: { tenders: Te
         ["", may ? "" : "Read only", null, ""],
       ]} />
 
-      {may ? <div><button className="btn btn--primary" onClick={() => { setF({ subject: "", costCentre: "", estimate: "", threshold: "70" }); setErr(null); setAdd(true); }}>+ Open a tender</button></div> : null}
+      {may ? <div><Btn kind="primary" size="md" onClick={() => { setF({ subject: "", costCentre: "", estimate: "", threshold: "70" }); setErr(null); setAdd(true); }}>+ Open a tender</Btn></div> : null}
 
       <Panel title="Tenders" right="Method by value · technical threshold before price">
         {tenders.length ? (

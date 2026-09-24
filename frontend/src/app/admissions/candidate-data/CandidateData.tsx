@@ -4,14 +4,13 @@
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { AttachmentState } from "@/lib/matriculation";
 import { xlsxRows } from "@/lib/xlsx";
 import { CRED, capsMatch, dobParse, jambNumFromName, olParse, type DobRow, type OlRow } from "@/lib/candidate-data";
-import { Btn, Ico, IcoBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
-import { Passport } from "@/components/proto/blocks";
+import { Btn, Ico, IcoBtn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Field, Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { OlevelView } from "./OlevelView";
@@ -201,16 +200,16 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
     return (
       <Panel title="Passports on record" right={`${onRecord.length} of ${state.candidates.length} candidates`}>
         <PBody>
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
-            <div className="field" style={{ minWidth: 220, margin: 0 }}><label htmlFor="pg-q">Search</label>
+          <div className="row row--end mb-3">
+            <div style={{ minWidth: 220 }}><Field id="pg-q" label="Search">
               <input id="pg-q" className="ctl" value={gq} onChange={(e) => { setGq(e.target.value); setGshow(60); }} placeholder="Surname, other names or JAMB number" autoComplete="off" />
-            </div>
-            <div className="field" style={{ minWidth: 200, margin: 0 }}><label htmlFor="pg-p">Programme</label>
+            </Field></div>
+            <div style={{ minWidth: 200 }}><Field id="pg-p" label="Programme">
               <select id="pg-p" className="ctl" value={gprog} onChange={(e) => { setGprog(e.target.value); setGshow(60); }}>
                 <option value="">All programmes</option>
                 {progs.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
-            </div>
+            </Field></div>
             <span className="sub2">{shown.length} shown</span>
           </div>
           {noImage ? (
@@ -219,11 +218,11 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
             </Note>
           ) : null}
           {shown.length ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <div className="row row--top" style={{ gap: "var(--s-3)" }}>
               {page.map((c) => (
                 <div key={c.id} style={{ width: 104 }}>
                   <Passport w={104} h={119} radius={6} src={c.hasPassportImage ? `${base}/passport/${c.id}/image` : null} alt={`${c.surname} ${c.otherNames}`} />
-                  <div className="sub2" style={{ fontWeight: 600, marginTop: 4, lineHeight: 1.25 }}>{c.surname.toUpperCase()}</div>
+                  <div className="sub2 b600 mt-1" style={{ lineHeight: 1.25 }}>{c.surname.toUpperCase()}</div>
                   <div className="sub2" style={{ lineHeight: 1.25 }}>{c.otherNames}</div>
                   <div className="sub2 tnum">{c.jambKey}</div>
                   <div className="sub2" style={{ lineHeight: 1.2 }}>{c.programme}</div>
@@ -259,7 +258,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
           </label>
           {busy ? <div className="sub2">Reading…</div> : null}
           <div className="sub2">Nothing leaves this browser until you record what was read; a photograph over 64 KB is recorded by name, size and dimensions only.</div>
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <div className="mt-3" style={{ paddingTop: "var(--s-3)", borderTop: "1px solid var(--line)" }}>
             <div className="eyebrow">Thousands of photographs? Stream the folder</div>
             <div className="sub2 mb-2">
               For a large folder (a whole intake), choosing it above reads every image into the browser at once and can crash the tab.
@@ -273,13 +272,13 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
             {stream ? (
               <div className="mt-3">
                 <div className="sub2 tnum">Read {stream.read.toLocaleString()} of {stream.total.toLocaleString()} · recorded {stream.recorded.toLocaleString()} · attached to a candidate {stream.attached.toLocaleString()} · no number in the name {stream.unreadable.toLocaleString()}</div>
-                {!streaming ? <div className="sub2" style={{ color: "var(--green-ink)", marginTop: 4 }}>Done. {stream.recorded.toLocaleString()} newly recorded; the rest were already on record.</div> : null}
+                {!streaming ? <div className="sub2 ink-green mt-1">Done. {stream.recorded.toLocaleString()} newly recorded; the rest were already on record.</div> : null}
                 {streamSample.length ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                  <div className="row row--top mt-2">
                     {streamSample.map((p) => (
                       <div key={p.file} style={{ width: 72 }}>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.url} alt="" style={{ width: 72, height: 82, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 5 }} />
+                        <img src={p.url} alt="" style={{ width: 72, height: 82, objectFit: "cover", border: "1px solid var(--line)", borderRadius: "var(--r)" }} />
                         <div className="sub2 tnum" style={{ marginTop: 2, fontSize: 10 }}>{p.num}</div>
                       </div>
                     ))}
@@ -322,10 +321,10 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
             ) : null}
             <Panel title="Photographs attached" right={`${m.matched.length} of ${m.candidates} candidates`}>
               <PBody>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                <div className="row row--top" style={{ gap: "var(--s-3)" }}>
                   {m.matched.slice(0, 24).map((p) => (
                     <div key={p.file} style={{ width: 104 }}>
-                      {p.url ? <img src={p.url} alt="" style={{ width: 104, height: 119, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 6 }} /> : <div style={{ width: 104, height: 119, border: "1px solid var(--red-line)", borderRadius: 6, background: "var(--red-bg)" }} />}
+                      {p.url ? <img src={p.url} alt="" style={{ width: 104, height: 119, objectFit: "cover", border: "1px solid var(--line)", borderRadius: "var(--r)" }} /> : <div style={{ width: 104, height: 119, border: "1px solid var(--red-line)", borderRadius: "var(--r)", background: "var(--red-bg)" }} />}
                       <div className="sub2 tnum mt-1">{p.num}</div>
                       <div className="sub2" style={{ lineHeight: 1.3 }}>{(m.byNum[p.num]?.name ?? "").split(",")[0]}</div>
                       <div className="sub2">{p.w}×{p.h}</div>
@@ -446,13 +445,13 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
                   ])}
                 />
               ) : (
-                <div className="card__body"><div className="sub2">No result has attached to a candidate yet. They attach on the registration number once the admission list carries it.</div></div>
+                <PBody><div className="sub2">No result has attached to a candidate yet. They attach on the registration number once the admission list carries it.</div></PBody>
               )}
-              <div className="card__body">
+              <PBody>
                 <div className="sub2">
                   Each result is shown as JAMB sent it, sitting by sitting &mdash; WAEC, NECO and NABTEB apart. The screening score under the session&rsquo;s O&rsquo;Level grading is computed for the Academic Office and shown to nobody else, the applicant included.
                 </div>
-              </div>
+              </PBody>
             </Panel>
             {viewing ? <OlevelView session={state.session} jambKey={viewing.key} name={viewing.name} onClose={() => setViewing(null)} /> : null}
             <Note kind="info" title="The exam number is here so the result can be verified with WAEC, and it must be">
@@ -471,7 +470,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
         The passports, the dates of birth and the O’Level results come from JAMB as three different things and arrive at different times. Each is matched to a candidate already on an admission list, and each is counted <b>both ways</b>: what arrived with nobody to attach it to, and who is still waiting for it.
       </Note>
       {!cands.length ? (
-        <Note kind="bad" title="No admission list has been uploaded yet" action={<Link href={`/admissions/caps?session=${encodeURIComponent(state.session)}`} className="btn btn--primary btn--sm">Go to the admission lists</Link>}>
+        <Note kind="bad" title="No admission list has been uploaded yet" action={<LinkBtn kind="primary" href={`/admissions/caps?session=${encodeURIComponent(state.session)}`}>Go to the admission lists</LinkBtn>}>
           There is nothing to match against. Upload the UTME or Direct Entry list first — these three attach to candidates, they do not create them. A photograph is not an admission.
         </Note>
       ) : null}

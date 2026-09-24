@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import type { Posture } from "@/app/security/Security";
-import { Note, Panel, PBody, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 const when = (ts: string | null) => { if (!ts) return "—"; try { return new Date(ts).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return "—"; } };
@@ -18,15 +17,15 @@ export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Pos
   return (
     <>
       {off ? (
-        <Note kind="bad" title={`${off} state table${off === 1 ? " is" : "s are"} not on the audit spine`} action={<Link href="/security" className="btn btn--urgent btn--sm">Security posture</Link>}>
+        <Note kind="bad" title={`${off} state table${off === 1 ? " is" : "s are"} not on the audit spine`} action={<LinkBtn kind="urgent" href="/security">Security posture</LinkBtn>}>
           Every state change must be attributable. A table off the spine can be changed without a record — the first thing to close.
         </Note>
       ) : Number(s.locked) ? (
-        <Note kind="info" title={`${s.locked} account${Number(s.locked) === 1 ? " is" : "s are"} locked out`} action={<Link href="/security" className="btn btn--primary btn--sm">Security posture</Link>}>
+        <Note kind="info" title={`${s.locked} account${Number(s.locked) === 1 ? " is" : "s are"} locked out`} action={<LinkBtn kind="primary" href="/security">Security posture</LinkBtn>}>
           Five failed attempts lock an account for fifteen minutes. The accounts drawing the most failed attempts are below.
         </Note>
       ) : (
-        <Note kind="ok" title="The record is whole and sign-ins are healthy" action={<Link href="/security" className="btn btn--ghost btn--sm">Security posture</Link>}>
+        <Note kind="ok" title="The record is whole and sign-ins are healthy" action={<LinkBtn kind="ghost" href="/security">Security posture</LinkBtn>}>
           Every state table is on the audit spine and no account is locked out.
         </Note>
       )}
@@ -52,9 +51,9 @@ export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Pos
       <Panel title="Security desks" right={me?.name ? `Signed in as ${me.name}` : "Security"}>
         <PBody>
           <div className="grid--fill">
-            <Link href="/security" className="btn btn--ghost btn--sm">Security posture</Link>
-            <Link href="/audit" className="btn btn--ghost btn--sm">Audit trail</Link>
-            <Link href="/people" className="btn btn--ghost btn--sm">Users &amp; roles</Link>
+            <LinkBtn kind="ghost" href="/security">Security posture</LinkBtn>
+            <LinkBtn kind="ghost" href="/audit">Audit trail</LinkBtn>
+            <LinkBtn kind="ghost" href="/people">Users &amp; roles</LinkBtn>
           </div>
         </PBody>
       </Panel>

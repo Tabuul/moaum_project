@@ -266,14 +266,14 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
           <div className="row">
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
             <Btn kind="ghost" disabled={!programme || listing} onClick={() => void viewLoaded()}>{listing ? "Loading…" : "View loaded courses"}</Btn>
-            <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
+            <label className={`btn btn--primary m-0${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", opacity: !may ? 0.6 : 1 }}>
               {busy ? "Reading…" : "Choose the course document (.docx or .xlsx)"}
               <input type="file" accept=".docx,.xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
             {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
           <div className="sub2 mt-2">The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+          <div className="row mt-3" style={{ paddingTop: "var(--s-3)", borderTop: "1px solid var(--line)" }}>
             <span className="sub2"><b>Download every uploaded course</b> across all programmes:</span>
             <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllXlsx()}>{exporting ? "Preparing…" : "All courses — Excel"}</Btn>
             <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllPdf()}>{exporting ? "Preparing…" : "All courses — PDF"}</Btn>
@@ -299,9 +299,9 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       {unregistered.length ? (
         <Note kind="bad" title={`${unregistered.length} programme${unregistered.length === 1 ? "" : "s"} not on the register — their courses were held back`}>
           <div className="sub2 mb-2">These programme codes are in the file but not yet registered (mostly postgraduate). Register them first, then upload again — the import is idempotent, so the courses already loaded stay put.</div>
-          <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, padding: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div className="row row--tight" style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)", padding: "var(--s-2)" }}>
             {unregistered.map((u) => (
-              <span key={u.programme} className="tnum" style={{ fontSize: 12, background: "var(--chip, #eef2f7)", borderRadius: 6, padding: "2px 6px" }}>{u.programme} · {u.rows}</span>
+              <span key={u.programme} className="tnum t-sm" style={{ background: "var(--chip)", borderRadius: "var(--r)", padding: "2px 6px" }}>{u.programme} · {u.rows}</span>
             ))}
           </div>
           <div className="sub2 mt-2">
@@ -317,8 +317,8 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
           <Btn kind="ghost" disabled={!loaded.length} onClick={exportLoadedPdf}>Download PDF</Btn>
         </span>}>
           {loaded.length ? (
-            <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
-              <table className="tbl" style={{ width: "100%" }}>
+            <div className="tablewrap" style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+              <table className="tbl--data">
                 <thead><tr><th>Code</th><th>Title</th><th>Units</th><th>Level</th><th>Sem</th><th>Basis</th></tr></thead>
                 <tbody>
                   {loaded.map((c) => (
@@ -339,8 +339,8 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
               ["Levels", byLevel.length ? byLevel.join(", ") : "—", null, "From the headings"],
               ["With a code the rule rejects", String(preview.filter((r) => !/^[A-Z][A-Z0-9 /-]{2,19}$/.test(r.code.toUpperCase())).length), null, "Shown, not loaded"],
             ]} />
-            <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
-              <table className="tbl" style={{ width: "100%" }}>
+            <div className="tablewrap" style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+              <table className="tbl--data">
                 <thead><tr><th>Code</th><th>Title</th><th>Units</th><th>Status</th><th>Level</th><th>Sem</th></tr></thead>
                 <tbody>
                   {preview.slice(0, 200).map((r, i) => (
@@ -349,9 +349,9 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                 </tbody>
               </table>
             </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-              <button type="button" className="btn btn--primary" disabled={busy || !may} onClick={() => void upload()}>{busy ? "Loading…" : `Load ${preview.length} courses`}</button>
-              <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setPreview(null)}>Cancel</button>
+            <div className="row mt-3">
+              <Btn kind="primary" size="md" disabled={busy || !may} onClick={() => void upload()}>{busy ? "Loading…" : `Load ${preview.length} courses`}</Btn>
+              <Btn kind="ghost" size="md" disabled={busy} onClick={() => setPreview(null)}>Cancel</Btn>
             </div>
           </PBody>
         </Panel>

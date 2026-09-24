@@ -5,11 +5,10 @@
  * numbers, programme and the photograph the applicant uploaded, in seat
  * order. Printed from the browser; the print sheet drops the shell.
  */
-import Link from "next/link";
 import { useRef } from "react";
 import { docSerial } from "@/lib/exportbrand";
 import { printNode } from "@/lib/print";
-import { Btn, KvGrid, Note, Panel, PBody } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Passport } from "@/components/proto/blocks";
 
@@ -30,11 +29,11 @@ export function HallList({ data }: { data: HallListData }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/crest.png" alt="" />
         <div className="b700 t-md">Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-        <div style={{ textTransform: "uppercase", letterSpacing: ".06em", fontSize: 11 }}>Post-UTME Screening — Hall List</div>
-        <div style={{ fontSize: 10, color: "var(--muted)" }}>Batch {b.label} · {day} · Serial {docSerial("HALL")}</div>
+        <div style={{ textTransform: "uppercase", letterSpacing: ".06em", fontSize: "var(--t-xs)" }}>Post-UTME Screening — Hall List</div>
+        <div className="sub2">Batch {b.label} · {day} · Serial {docSerial("HALL")}</div>
       </div>
       <div className="no-print row">
-        <Link href={`/admissions?session=${encodeURIComponent(data.session)}`} className="btn btn--ghost btn--sm">Back to the Admissions desk</Link>
+        <LinkBtn kind="ghost" href={`/admissions?session=${encodeURIComponent(data.session)}`}>Back to the Admissions desk</LinkBtn>
         <Btn kind="primary" onClick={() => printNode(sheet.current, `Hall list · batch ${b.label}`)}>Print the hall list</Btn>
       </div>
       <Panel title={`Post-UTME screening · batch ${b.label}`} right={`${data.seats.length} of ${b.capacity} seats · ${data.session}`}>
@@ -58,7 +57,7 @@ export function HallList({ data }: { data: HallListData }) {
               <span className="tnum sub2" key="a">{s.application_no}</span>,
               <span className="tnum sub2" key="j">{s.jamb_key}</span>,
               <span className="sub2" key="g">{s.programme}{s.entry_mode === "DIRECT_ENTRY" ? " · DE" : ""}</span>,
-              <span key="x" style={{ display: "inline-block", width: 18, height: 18, border: "1px solid var(--line)", borderRadius: 3 }} aria-label="Present" />,
+              <span key="x" style={{ display: "inline-block", width: 18, height: 18, border: "1px solid var(--line)", borderRadius: "var(--r-sm)" }} aria-label="Present" />,
             ])}
             texts={data.seats.map((s) => `${s.seat} ${s.surname} ${s.other_names} ${s.application_no} ${s.jamb_key} ${s.programme}`)}
           />

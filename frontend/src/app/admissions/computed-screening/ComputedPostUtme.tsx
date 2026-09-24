@@ -9,6 +9,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 
 export interface Computed {
@@ -80,11 +81,11 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
         these applicants enter the merit list. A real Post-UTME score is never overwritten.
       </Note>
       <div className="card"><div className="card__body row row--end">
-        <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="pu-s">Session</label>
+        <div style={{ minWidth: 160 }}><Field id="pu-s" label="Session">
           <select id="pu-s" className="ctl" value={session} onChange={(e) => queryNav(`/admissions/computed-screening?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(session) ? sessions : [session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
-        </div>
+        </Field></div>
       </div></div>
       <Tiles items={[
         ["Non-sitters", String(rows.length), null, `${session} · did not sit the Post-UTME`],

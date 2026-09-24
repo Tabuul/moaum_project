@@ -4,13 +4,12 @@
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import type { GraduationView } from "@/lib/credentials";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Btn, Note, Panel, RoleLine, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -50,7 +49,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
         action="Confirming graduands and the Senate list" />
       <ScopeBar scope={scope} structure={structure} sessions={sessions} what="candidates" count={t.finalists} of={t.finalists} />
       {t.outstanding ? (
-        <Note kind="bad" title={`${t.outstanding} finalist${t.outstanding === 1 ? " has" : "s have"} an unmet requirement`} action={<a href="#exceptions" className="btn btn--urgent btn--sm">Open the exception list</a>}>
+        <Note kind="bad" title={`${t.outstanding} finalist${t.outstanding === 1 ? " has" : "s have"} an unmet requirement`} action={<LinkBtn href="#exceptions" kind="urgent">Open the exception list</LinkBtn>}>
           The degree audit checks every curriculum rule — core courses, elective credit minima, GST, project, and the minimum total credits. These {t.outstanding} cannot be presented to Senate until each gap is closed or waived.
         </Note>
       ) : t.finalists ? (
@@ -74,11 +73,11 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
               <Two key="s" a={`${x.surname}, ${x.otherNames}`} b={x.number} />, <span key="p">{x.programmeName}</span>,
               <span key="u" className="ink-red">{x.unmet}</span>,
               <span className="tnum" key="c">{x.cgpa == null ? "—" : Number(x.cgpa).toFixed(2)}</span>,
-              <Link key="a" href={`/students/${x.studentId}`} className="btn btn--ghost btn--sm">Review</Link>,
+              <LinkBtn key="a" href={`/students/${x.studentId}`} kind="ghost">Review</LinkBtn>,
             ])}
             texts={view.exceptions.map((x) => `${x.number} ${x.surname} ${x.otherNames} ${x.programmeName} ${x.unmet}`)}
           />
-          {!view.exceptions.length ? <div className="card__body"><div className="sub2">No exception on the list.</div></div> : null}
+          {!view.exceptions.length ? <PBody><div className="sub2">No exception on the list.</div></PBody> : null}
         </Panel>
       </div>
       <Panel title="Classification summary" right="Computed from the versioned classification table in force at each student's entry">

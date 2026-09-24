@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import { Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
 
@@ -24,15 +23,15 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
   return (
     <>
       {home.leavePending ? (
-        <Note kind="bad" title={`${home.leavePending} leave request${home.leavePending === 1 ? "" : "s"} awaiting a decision`} action={<Link href="/hr/leave" className="btn btn--urgent btn--sm">Open leave</Link>}>
+        <Note kind="bad" title={`${home.leavePending} leave request${home.leavePending === 1 ? "" : "s"} awaiting a decision`} action={<LinkBtn kind="urgent" href="/hr/leave">Open leave</LinkBtn>}>
           A request draws down the staff member&rsquo;s annual balance on approval; a second officer decides it, on the record.
         </Note>
       ) : home.movementsAwaiting ? (
-        <Note kind="info" title={`${home.movementsAwaiting} movement${home.movementsAwaiting === 1 ? " is" : "s are"} approved, awaiting an instrument`} action={<Link href="/hr/movements" className="btn btn--primary btn--sm">Issue instruments</Link>}>
+        <Note kind="info" title={`${home.movementsAwaiting} movement${home.movementsAwaiting === 1 ? " is" : "s are"} approved, awaiting an instrument`} action={<LinkBtn kind="primary" href="/hr/movements">Issue instruments</LinkBtn>}>
           A promotion or transfer changes the record only when the instrument is issued. Issue the outstanding ones so the change takes effect from its date.
         </Note>
       ) : (
-        <Note kind="ok" title="Nothing is waiting on the directorate" action={<Link href="/hr/movements" className="btn btn--ghost btn--sm">Movements</Link>}>
+        <Note kind="ok" title="Nothing is waiting on the directorate" action={<LinkBtn kind="ghost" href="/hr/movements">Movements</LinkBtn>}>
           No leave to decide and no instrument to issue. The establishment is up to date.
         </Note>
       )}
@@ -44,7 +43,7 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
         ["Open vacancies", String(home.vacanciesOpen), null, `${home.shortlisted} shortlisted`, "/hr/recruitment"],
       ]} />
 
-      <div className="grid--2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14 }}>
+      <div className="grid grid--2">
         <Panel title="Leave to decide" right={leave.length ? `${leave.length} waiting` : "None"}>
           {leave.length ? (
             <DTable cols={["Staff", "Type", "Days|mid", "From|mid"]}
@@ -72,12 +71,12 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
       <Panel title="HR desks" right={`Appraisal cycle ${home.cycle} · ${home.appraisals} recorded`}>
         <PBody>
           <div className="grid--fill">
-            <Link href="/hr/leave" className="btn btn--ghost btn--sm">Leave</Link>
-            <Link href="/hr/movements" className="btn btn--ghost btn--sm">Movements &amp; instruments</Link>
-            <Link href="/hr/appraisal" className="btn btn--ghost btn--sm">Appraisal &amp; promotion</Link>
-            <Link href="/hr/recruitment" className="btn btn--ghost btn--sm">Recruitment</Link>
-            <Link href="/payroll" className="btn btn--ghost btn--sm">Payroll{home.payDraft ? ` (${home.payDraft} draft)` : ""}</Link>
-            <Link href="/people/lecturers" className="btn btn--ghost btn--sm">Staff records</Link>
+            <LinkBtn kind="ghost" href="/hr/leave">Leave</LinkBtn>
+            <LinkBtn kind="ghost" href="/hr/movements">Movements &amp; instruments</LinkBtn>
+            <LinkBtn kind="ghost" href="/hr/appraisal">Appraisal &amp; promotion</LinkBtn>
+            <LinkBtn kind="ghost" href="/hr/recruitment">Recruitment</LinkBtn>
+            <LinkBtn kind="ghost" href="/payroll">Payroll{home.payDraft ? ` (${home.payDraft} draft)` : ""}</LinkBtn>
+            <LinkBtn kind="ghost" href="/people/lecturers">Staff records</LinkBtn>
           </div>
           <div className="sub2 mt-2">
             {home.latestRun ? `Latest pay run ${home.latestRun.period} — ${home.latestRun.state.toLowerCase()}, ${home.latestRun.staff_count} staff, ${money(Number(home.latestRun.net_total))} net.` : "No pay run recorded yet."}

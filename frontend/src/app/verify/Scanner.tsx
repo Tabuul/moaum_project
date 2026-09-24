@@ -6,6 +6,7 @@
  *  redirect the visitor elsewhere. Uses jsQR, so it works on iOS Safari (no BarcodeDetector needed). */
 import { useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
+import { Btn } from "@/components/proto/ui";
 
 /** Pull a safe in-app verification path out of whatever the QR decodes to. Accepts a full URL or a bare
  *  path; returns the "/verify/…" path with its query, or null when the QR is not one of ours. */
@@ -92,38 +93,32 @@ export function Scanner({ onResult }: { onResult: (path: string) => void }) {
     return stop;
   }, [open, onResult]);
 
-  const line = "var(--line)";
-
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => { setError(null); setOpen(true); }}
-        style={{ width: "100%", marginTop: 12, padding: "11px 14px", fontSize: 14, fontWeight: 600, color: "var(--chrome)", background: "#fff", border: `1px solid ${line}`, borderRadius: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-      >
+      <Btn kind="ghost" size="md" onClick={() => { setError(null); setOpen(true); }} style={{ width: "100%" }}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="6" height="6" rx="1" /><rect x="15" y="3" width="6" height="6" rx="1" /><rect x="3" y="15" width="6" height="6" rx="1" />
           <path d="M15 15h2v2M19 15h2M21 19v2h-2M15 21h2" />
         </svg>
         Scan the receipt QR
-      </button>
+      </Btn>
     );
   }
 
   return (
-    <div style={{ marginTop: 12, border: `1px solid ${line}`, borderRadius: 11, overflow: "hidden", background: "#0e1c26" }}>
-      <div style={{ position: "relative", aspectRatio: "1 / 1", background: "#0e1c26" }}>
+    <div style={{ border: "1px solid var(--line)", borderRadius: "var(--r-lg)", overflow: "hidden", background: "var(--chrome-deep)" }}>
+      <div style={{ position: "relative", aspectRatio: "1 / 1", background: "var(--chrome-deep)" }}>
         <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: error ? "none" : "block" }} />
         {!error ? (
-          <div aria-hidden="true" style={{ position: "absolute", inset: "18%", border: "3px solid rgba(255,255,255,.9)", borderRadius: 14, boxShadow: "0 0 0 100vmax rgba(14,28,38,.35)" }} />
+          <div aria-hidden="true" style={{ position: "absolute", inset: "18%", border: "3px solid var(--surface)", borderRadius: "var(--r-xl)", boxShadow: "0 0 0 100vmax rgba(14,28,38,.35)" }} />
         ) : null}
         {error ? (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 22, textAlign: "center", color: "#eaf0f4", fontSize: 13.5, lineHeight: 1.5 }}>{error}</div>
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--s-6)", textAlign: "center", color: "var(--chrome-ink)" }}>{error}</div>
         ) : null}
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", background: "var(--chrome)", color: "#dbe7ec" }}>
-        <span style={{ fontSize: 12.5 }}>{error ? "Camera unavailable" : "Point the receipt's QR at the camera"}</span>
-        <button type="button" onClick={() => { stop(); setOpen(false); }} style={{ padding: "6px 12px", fontSize: 13, fontWeight: 600, color: "var(--chrome)", background: "#fff", border: "none", borderRadius: 7, cursor: "pointer" }}>Close</button>
+      <div className="row row--between" style={{ padding: "var(--s-3) var(--s-4)", background: "var(--chrome)", color: "var(--chrome-ink)" }}>
+        <span className="t-sm">{error ? "Camera unavailable" : "Point the receipt's QR at the camera"}</span>
+        <Btn kind="ghost" size="sm" onClick={() => { stop(); setOpen(false); }}>Close</Btn>
       </div>
     </div>
   );

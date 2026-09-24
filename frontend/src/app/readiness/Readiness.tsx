@@ -2,9 +2,9 @@
 
 /** t/readiness — go-live readiness: each configuration gate that silently blocks part of launch, checked
  *  live, with a link to fix each. Read-only; nothing here changes state. */
-import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Field } from "@/components/proto/blocks";
 
 export interface Check { key: string; label: string; status: "ok" | "warn" | "bad"; detail: string; fix: string | null }
 export interface Readiness { session: string; ready: boolean; blocking: number; warnings: number; checks: Check[] }
@@ -25,11 +25,11 @@ export function ReadinessView({ data, sessions }: { data: Readiness; sessions: s
       </Note>
 
       <div className="card"><div className="card__body row row--end">
-        <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="rd-s">Session</label>
+        <div style={{ minWidth: 160 }}><Field id="rd-s" label="Session">
           <select id="rd-s" className="ctl" value={data.session} onChange={(e) => queryNav(`/readiness?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(data.session) ? sessions : [data.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
-        </div>
+        </Field></div>
       </div></div>
 
       <Tiles items={[
@@ -41,15 +41,15 @@ export function ReadinessView({ data, sessions }: { data: Readiness; sessions: s
 
       <Panel title="Launch gates" right={`${ok} of ${data.checks.length} ready`}>
         <PBody>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="stack">
             {data.checks.map((c) => (
-              <div key={c.key} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "10px 0", borderTop: "1px solid var(--line)" }}>
+              <div key={c.key} className="row row--top" style={{ gap: "var(--s-3)", padding: "var(--s-3) 0", borderTop: "1px solid var(--line)" }}>
                 <Pil kind={PILL[c.status]}>{WORD[c.status]}</Pil>
-                <div style={{ flexGrow: 1, minWidth: 0 }}>
+                <div className="grow">
                   <div className="b600">{c.label}</div>
                   <div className="sub2" style={{ lineHeight: 1.35 }}>{c.detail}</div>
                 </div>
-                {c.fix && c.status !== "ok" ? <Link href={c.fix} className="btn btn--ghost btn--sm">Fix</Link> : null}
+                {c.fix && c.status !== "ok" ? <LinkBtn href={c.fix} kind="ghost">Fix</LinkBtn> : null}
               </div>
             ))}
           </div>

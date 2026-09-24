@@ -2,7 +2,6 @@
 
 /** tNelfund, tNelMatch, tNelStatus — proto/part37, part49: remittances split against the register, suspense that is owned, the Fund's decisions. */
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
@@ -10,7 +9,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
 import { parseRows, type NelfundDesk, type FundingReport } from "@/lib/wallet";
 import { buildXlsx, xlsxRows } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -108,11 +107,13 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
   return (
     <>
       <div className="card"><div className="card__body row row--end">
-        <div className="field" style={{ minWidth: 160 }}><label htmlFor="nf-s">Session</label>
-          <select id="nf-s" className="ctl" value={d.session} onChange={(e) => go(tab, e.target.value)}>{(sessions.includes(d.session) ? sessions : [d.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
-        <div className="role-tabs" role="tablist" style={{ marginBottom: 2 }}>
-          {[["batches", "NELFUND remittances"], ["match", `Suspense${t.unmatched_rows ? ` (${t.unmatched_rows})` : ""}`], ["status", "The Fund's decisions"], ["withdrawals", `Withdrawals${waiting ? ` (${waiting})` : ""}`], ["sources", "Sources"], ["report", "Report"]].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k ? "true" : "false"} onClick={() => go(k)}>{l}</button>)}
-        </div>
+        <Field id="nf-s" label="Session">
+          <select id="nf-s" className="ctl" style={{ minWidth: 160 }} value={d.session} onChange={(e) => go(tab, e.target.value)}>{(sessions.includes(d.session) ? sessions : [d.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
+        <Tabs
+          items={[["batches", "NELFUND remittances"], ["match", `Suspense${t.unmatched_rows ? ` (${t.unmatched_rows})` : ""}`], ["status", "The Fund's decisions"], ["withdrawals", `Withdrawals${waiting ? ` (${waiting})` : ""}`], ["sources", "Sources"], ["report", "Report"]].map(([k, l]) => ({ id: k, label: l }))}
+          value={tab}
+          onChange={(k) => go(k)}
+        />
       </div></div>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
@@ -148,9 +149,9 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
                   <Field id="nb-on" label="Received on"><input id="nb-on" className="ctl" type="date" value={batch.receivedOn} onChange={(e) => setBatch({ ...batch, receivedOn: e.target.value })} /></Field>
                   <Field id="nb-note" label="Note"><input id="nb-note" className="ctl" value={batch.note} onChange={(e) => setBatch({ ...batch, note: e.target.value })} /></Field>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                <div className="row mb-2">
                   <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
-                  <label className="btn btn--ghost btn--sm" style={{ cursor: "pointer", margin: 0 }}>
+                  <label className="btn btn--ghost btn--sm m-0" style={{ cursor: "pointer" }}>
                     Upload filled file
                     <input type="file" accept=".xlsx" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void readTemplate(f); e.target.value = ""; }} />
                   </label>
@@ -191,12 +192,12 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
               </div>
               {ledger ? (
                 <div className="mt-3">
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "baseline", marginBottom: 8 }}>
+                  <div className="row row--base mb-2" style={{ gap: "var(--s-4)" }}>
                     <b>{ledger.student.name}</b>
                     <span className="tnum sub2">{ledger.student.number}</span>
                     <Pil kind="grey">{ledger.student.status}</Pil>
                     <span className="sub2">Wallet balance <b className="tnum">{money(Number(ledger.balance))}</b></span>
-                    <span className="sub2">Outstanding for {ledger.session} <b className="tnum" style={{ color: Number(ledger.position.balance) ? "var(--red-ink)" : undefined }}>{money(Number(ledger.position.balance))}</b></span>
+                    <span className="sub2">Outstanding for {ledger.session} <b className={`tnum${Number(ledger.position.balance) ? " ink-red" : ""}`}>{money(Number(ledger.position.balance))}</b></span>
                     {bursary ? (
                       <Btn kind="ghost" disabled={busy} onClick={async () => {
                         const who = ledger.student.number;
@@ -213,7 +214,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
                       <span className="sub2 tnum" key="d">{day(e.at)}</span>,
                       <Two key="e" a={<Pil kind={LKIND[e.kind]?.[1] ?? "grey"}>{LKIND[e.kind]?.[0] ?? e.kind}</Pil>} b={e.note ?? ""} />,
                       <span className="tnum sub2" key="r">{e.reference ?? "—"}</span>,
-                      e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="tnum" key="i" style={{ color: "var(--green-ink)", fontWeight: 600 }}>{money(Number(e.amount))}</span> : <span className="sub2" key="i">—</span>,
+                      e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="tnum ink-green b600" key="i">{money(Number(e.amount))}</span> : <span className="sub2" key="i">—</span>,
                       e.kind === "CREDIT" || e.kind === "TOPUP" ? <span className="sub2" key="o">—</span> : <span className="tnum" key="o">{money(Number(e.amount))}</span>,
                       <b className="tnum" key="b">{money(Number(e.balance))}</b>,
                     ])} />
@@ -237,7 +238,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
                 <span className="tnum" key="m">{r.matric_no}</span>, <Two key="n" a={r.name_on_remit ?? "—"} b={r.batch_ref} />, <span className="tnum" key="a">{money(Number(r.amount))}</span>,
                 <span key="w">{r.why}{r.student_name ? <div className="sub2">{r.student_name} · {r.student_status}</div> : null}</span>,
                 <Pil kind="grey" key="o">{r.owner ?? "—"}</Pil>,
-                <span key="x" style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <span key="x" className="row row--tight row--right">
                   {registry ? <><input className="ctl tnum" style={{ width: 150 }} placeholder="Number on the register" value={fix[r.id]?.number ?? ""} onChange={(e) => setFix({ ...fix, [r.id]: { number: e.target.value, note: fix[r.id]?.note ?? "" } })} /><input className="ctl" style={{ width: 170 }} placeholder="Evidence, one line" value={fix[r.id]?.note ?? ""} onChange={(e) => setFix({ ...fix, [r.id]: { number: fix[r.id]?.number ?? "", note: e.target.value } })} /><Btn kind="go" disabled={busy || !fix[r.id]?.number || !fix[r.id]?.note} onClick={async () => { if (await send(`/api/bff/api/v1/nelfund/rows/${r.id}/match`, { number: fix[r.id].number, note: fix[r.id].note }, `Remittance row ${r.matric_no} matched by hand`)) setSaid("Matched and credited"); }}>Credit</Btn></> : null}
                   {bursary ? <Btn kind="ghost" disabled={busy} onClick={async () => { const why = window.prompt("Why is it reversed to the Fund? It goes on the record."); if (why && await send(`/api/bff/api/v1/nelfund/rows/${r.id}/reverse`, { why }, `Remittance row ${r.matric_no} reversed to the Fund`)) setSaid("Reversed to the Fund"); }}>Reverse</Btn> : null}
                 </span>,
@@ -267,7 +268,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
             <Panel title="Load the Fund's list" right="All applicants, with the decision and the reason">
               <PBody>
                 <Field id="ns-rows" label="The rows" hint="Paste: number (matriculation or JAMB), name, decision (approved / not approved / pending), reason — one per line, with or without a header."><textarea id="ns-rows" className="ctl tnum" rows={6} value={statusText} onChange={(e) => setStatusText(e.target.value)} /></Field>
-                <div><Btn kind="primary" disabled={busy || !statusText.trim()} onClick={async () => { const rows = parseRows(statusText, ["number", "name", "state", "reason"]); const j = await send("/api/bff/api/v1/nelfund/status", { session: d.session, rows }, `NELFUND decision list loaded for ${d.session}`); if (j) { setSaid(`${j.loaded} loaded: ${j.approved} approved, ${j.not_approved} not approved, ${j.pending} pending`); setStatusText(""); } }}>Load the list</Btn> <Link href="/finance/nelfund?tab=batches" className="btn btn--ghost btn--sm">Remittances</Link></div>
+                <div><Btn kind="primary" disabled={busy || !statusText.trim()} onClick={async () => { const rows = parseRows(statusText, ["number", "name", "state", "reason"]); const j = await send("/api/bff/api/v1/nelfund/status", { session: d.session, rows }, `NELFUND decision list loaded for ${d.session}`); if (j) { setSaid(`${j.loaded} loaded: ${j.approved} approved, ${j.not_approved} not approved, ${j.pending} pending`); setStatusText(""); } }}>Load the list</Btn> <LinkBtn kind="ghost" href="/finance/nelfund?tab=batches">Remittances</LinkBtn></div>
               </PBody>
             </Panel>
           ) : null}
@@ -285,7 +286,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
                 <span className="tnum" key="a">{money(Number(x.amount))}</span>,
                 <Pil kind={x.state === "PAID" ? "ok" : x.state === "REJECTED" ? "bad" : x.state === "APPROVED" ? "info" : "grey"} key="st">{x.state.toLowerCase()}</Pil>,
                 <span className="sub2" key="rq">{day(x.requested_at)}</span>,
-                <span key="x" style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <span key="x" className="row row--tight row--right">
                   {bursary && x.state === "REQUESTED" ? <>
                     <Btn kind="go" disabled={busy} onClick={async () => { if (await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/approve`, {}, `Withdrawal for ${x.student_name} approved`)) setSaid("Approved — a second officer records the payout"); }}>Approve</Btn>
                     <Btn kind="ghost" disabled={busy} onClick={async () => { const why = window.prompt("Why is it declined? The student sees it."); if (why && await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/reject`, { why }, `Withdrawal for ${x.student_name} declined`)) setSaid("Declined"); }}>Decline</Btn>

@@ -2,9 +2,8 @@
 
 /** sHostel — proto/part8.html: the allocation, the maintenance requests, the history — from the draw, the hold and the fee (V030). */
 import { useState } from "react";
-import Link from "next/link";
 import { CATEGORIES, type StudentHostel } from "@/lib/hostel";
-import { Btn, KvGrid, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -64,7 +63,7 @@ export function Hostel({ h }: { h: StudentHostel }) {
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title="Done">{said}</Note> : null}
       {reference ? (
-        <Note kind="info" title={`Pay ${naira(reference.amount)} against ${reference.reference}`} action={<Link href="/student/fees" className="btn btn--primary btn--sm">Fees &amp; payments</Link>}>
+        <Note kind="info" title={`Pay ${naira(reference.amount)} against ${reference.reference}`} action={<LinkBtn kind="primary" href="/student/fees">Fees &amp; payments</LinkBtn>}>
           The reference is on your Fees page with the card option and the bank details. Confirmed, it makes the bed yours; the hold clock keeps running until then.
         </Note>
       ) : null}
@@ -104,7 +103,7 @@ export function Hostel({ h }: { h: StudentHostel }) {
                 ["Session", h.session], ["Fee", confirmed ? `${naira(v.fee)} — paid` : `${naira(v.fee)} — ${holdLeft} h left on the hold`],
                 ["Basis", v.basis === "PRIORITY" ? "Priority category" : v.basis === "RESERVE" ? `Reserve, position ${v.draw_position}` : `Ballot, position ${v.draw_position}`],
               ]} />
-              {!confirmed ? <div style={{ paddingTop: 6 }}><Btn kind="primary" disabled={busy !== null} onClick={() => void pay()}>Generate the payment reference</Btn></div> : null}
+              {!confirmed ? <div className="mt-1"><Btn kind="primary" disabled={busy !== null} onClick={() => void pay()}>Generate the payment reference</Btn></div> : null}
             </PBody>
           </Panel>
           <Panel title="Maintenance requests" right="Raised by anyone in the room">

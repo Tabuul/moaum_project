@@ -1,7 +1,6 @@
-import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import type { HostelDeskData } from "@/lib/hostel";
-import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 /** The Deputy Registrar (Housing, Welfare and Passages) home: the accommodation draw at a glance —
@@ -14,15 +13,15 @@ export function HousingDashboard({ me, desk }: { me: Me | null; desk: HostelDesk
   return (
     <>
       {!desk.setting ? (
-        <Note kind="bad" title={`Accommodation is not stated for ${desk.session}`} action={<Link href="/hostel" className="btn btn--urgent btn--sm">State the session</Link>}>
+        <Note kind="bad" title={`Accommodation is not stated for ${desk.session}`} action={<LinkBtn kind="urgent" href="/hostel">State the session</LinkBtn>}>
           Set the fee and the application close date before students can apply and the draw can run.
         </Note>
       ) : !drawn ? (
-        <Note kind="info" title={`${c.applications} application${Number(c.applications) === 1 ? "" : "s"} in, draw not yet run`} action={<Link href="/hostel" className="btn btn--primary btn--sm">Run the draw</Link>}>
+        <Note kind="info" title={`${c.applications} application${Number(c.applications) === 1 ? "" : "s"} in, draw not yet run`} action={<LinkBtn kind="primary" href="/hostel">Run the draw</LinkBtn>}>
           The draw allocates beds from a published seed, priority names first. Reserves fill the holds that lapse.
         </Note>
       ) : (
-        <Note kind="ok" title={`Draw run for ${desk.session}`} action={<Link href="/hostel" className="btn btn--ghost btn--sm">Open the hostel desk</Link>}>
+        <Note kind="ok" title={`Draw run for ${desk.session}`} action={<LinkBtn kind="ghost" href="/hostel">Open the hostel desk</LinkBtn>}>
           {c.allocated} allocated, {c.confirmed} confirmed, {c.reserves} on the reserve list. Lapse expired holds to pass beds to the next name.
         </Note>
       )}
@@ -48,9 +47,9 @@ export function HousingDashboard({ me, desk }: { me: Me | null; desk: HostelDesk
       <Panel title="Housing desks" right={me?.name ? `Signed in as ${me.name}` : "Housing & Welfare"}>
         <PBody>
           <div className="grid--fill">
-            <Link href="/hostel" className="btn btn--ghost btn--sm">Hostel &amp; allocation</Link>
-            <Link href="/clearance" className="btn btn--ghost btn--sm">Student clearance</Link>
-            <Link href="/support" className="btn btn--ghost btn--sm">Help &amp; requests</Link>
+            <LinkBtn kind="ghost" href="/hostel">Hostel &amp; allocation</LinkBtn>
+            <LinkBtn kind="ghost" href="/clearance">Student clearance</LinkBtn>
+            <LinkBtn kind="ghost" href="/support">Help &amp; requests</LinkBtn>
           </div>
         </PBody>
       </Panel>

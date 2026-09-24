@@ -9,7 +9,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import { Ico } from "@/components/proto/ui";
+import { Btn, Ico, LinkBtn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
@@ -63,7 +63,7 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
           <div className="login-brand__top">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
+            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>Unified University Portal</span></div>
           </div>
           <div style={{ height: 26 }} />
           <h1>Rev. Fr. Moses Orshio Adasu University, Makurdi</h1>
@@ -77,10 +77,7 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
       </div>
       <div className="login-panel">
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); void signIn(); }}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Sign in</div>
-            <div className="hint mt-1">One door for students, staff and applicants. The portal opens on your own side once it knows who you are.</div>
-          </div>
+          <PageHead title="Sign in" description="One door for students, staff and applicants. The portal opens on your own side once it knows who you are." />
           <div className="field">
             <label htmlFor="uid">Your number or email address</label>
             <input id="uid" value={uid} placeholder="MOAUM/CSC/23/1487 · MOAUM/STF/1142 · 202699168863AH" autoComplete="username" onChange={(e) => setUid(e.target.value)} />
@@ -88,41 +85,41 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
           </div>
           <div className="field">
             <label htmlFor="pw">Password</label>
-            <div style={{ position: "relative" }}>
-              <input id="pw" type={showPw ? "text" : "password"} value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} style={{ paddingRight: 44, width: "100%" }} />
+            <div className="pwrow">
+              <input id="pw" type={showPw ? "text" : "password"} value={pw} autoComplete="current-password" onChange={(e) => setPw(e.target.value)} />
               <button
                 type="button"
+                className="pweye"
                 onClick={() => setShowPw((v) => !v)}
                 aria-label={showPw ? "Hide password" : "Show password"}
                 aria-pressed={showPw}
                 title={showPw ? "Hide password" : "Show password"}
-                style={{ position: "absolute", top: "50%", right: 8, transform: "translateY(-50%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 4, background: "none", border: "none", cursor: "pointer", color: "var(--chrome-dim)" }}
               >
                 <Ico name={showPw ? "eyeoff" : "eye"} size={18} stroke="currentColor" w={1.9} />
               </button>
             </div>
           </div>
           {problem ? <ProblemNotice problem={problem} /> : null}
-          {ssoProblem ? <div className="notice notice--bad"><div><div className="notice__t" style={{ color: "var(--red-deep)" }}>Single sign-on did not complete</div><p style={{ color: "var(--red-deep)" }}>{ssoProblem}</p></div></div> : null}
-          <button className="btn btn--primary" type="submit" disabled={busy || !uid || !pw}>{busy ? "Signing in…" : "Sign in"}</button>
+          {ssoProblem ? <Note kind="bad" title="Single sign-on did not complete">{ssoProblem}</Note> : null}
+          <Btn kind="primary" size="md" type="submit" disabled={busy || !uid || !pw}>{busy ? "Signing in…" : "Sign in"}</Btn>
           {sso?.enabled ? (
-            <a className="btn btn--ghost" href="/api/auth/sso/start" style={{ width: "100%", textDecoration: "none" }}>{sso.label}</a>
+            <a className="btn btn--ghost btn--md" href="/api/auth/sso/start" style={{ width: "100%" }}>{sso.label}</a>
           ) : null}
           <div className="login-help">
             <Link href="/login/forgot">Forgot your password?</Link>
             <Link href="/login/first">First account</Link>
           </div>
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <Link href="/apply" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Post UTME Registration</Link>
-            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
+          <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
+            <LinkBtn kind="ghost" href="/apply">Post UTME Registration</LinkBtn>
+            <div className="hint" style={{ textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
           </div>
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <Link href="/pg/apply" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Postgraduate application</Link>
-            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>PGD, Master&rsquo;s and PhD — apply directly, no JAMB number needed</div>
+          <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
+            <LinkBtn kind="ghost" href="/pg/apply">Postgraduate application</LinkBtn>
+            <div className="hint" style={{ textAlign: "center" }}>PGD, Master&rsquo;s and PhD — apply directly, no JAMB number needed</div>
           </div>
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
-            <Link href="/verify" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Verify a payment or receipt</Link>
-            <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
+          <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
+            <LinkBtn kind="ghost" href="/verify">Verify a payment or receipt</LinkBtn>
+            <div className="hint" style={{ textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
           </div>
           <div className="notice notice--info mt-2">
             <Ico name="alert" size={17} stroke="var(--chrome)" w={2} />

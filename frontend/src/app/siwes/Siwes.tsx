@@ -10,6 +10,7 @@ import { notify } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -71,18 +72,18 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
         Each student is assigned a supervisor, who records that student&rsquo;s assessment out of 40 on their own dashboard. You record the report of the practicals out of 60 here. A student&rsquo;s mark is complete only when both parts are in; the sheet then goes through the results chain like any other.
       </Note>
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div className="field" style={{ minWidth: 150 }}><label htmlFor="sw-session">Session</label>
+      <div className="card"><div className="card__body row row--end">
+        <div style={{ minWidth: 150 }}><Field id="sw-session" label="Session">
           <select id="sw-session" className="ctl" value={session} onChange={(e) => go({ session: e.target.value })}>
             {sessions.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select></div>
-        <div className="field" style={{ minWidth: 130 }}><label htmlFor="sw-sem">Semester</label>
+          </select></Field></div>
+        <div style={{ minWidth: 130 }}><Field id="sw-sem" label="Semester">
           <select id="sw-sem" className="ctl" value={semester} onChange={(e) => go({ sem: Number(e.target.value) })}>
             <option value={1}>First</option><option value={2}>Second</option>
-          </select></div>
-        <div className="field" style={{ minWidth: 280 }}><label htmlFor="sw-off">SIWES course</label>
+          </select></Field></div>
+        <div style={{ minWidth: 280 }}><Field id="sw-off" label="SIWES course">
           <SearchSelect id="sw-off" value={offeringId} placeholder="Choose the SIWES course…"
-            options={offerings.map((o) => ({ value: o.id, label: `${o.course_code} — ${o.title} (${o.dept_name})` }))} onChange={(v) => go({ offering: v })} /></div>
+            options={offerings.map((o) => ({ value: o.id, label: `${o.course_code} — ${o.title} (${o.dept_name})` }))} onChange={(v) => go({ offering: v })} /></Field></div>
       </div></div>
 
       {err ? <ProblemNotice problem={err} /> : null}
@@ -111,8 +112,8 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
                     options={pool.map((p) => ({ value: p.id, label: p.name }))}
                     onChange={(v) => { if (v) void send(`/offerings/${offeringId}/students/${s.student_id}/supervisor`, { supervisor: v }, `SIWES supervisor assigned to ${s.surname}`, `sup-${s.student_id}`); }} />
                 </div>,
-                <span className="tnum" key="a" style={{ color: s.supervisor_mark == null ? "var(--muted)" : undefined }}>{s.supervisor_mark ?? "—"}</span>,
-                <div key="pr" style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+                <span className={`tnum${s.supervisor_mark == null ? " ink-muted" : ""}`} key="a">{s.supervisor_mark ?? "—"}</span>,
+                <div key="pr" className="row row--tight row--right">
                   <input className="ctl tnum" style={{ width: 64 }} inputMode="numeric" disabled={!entryOpen || busy !== null}
                     value={`pr-${s.student_id}` in practical ? practical[`pr-${s.student_id}`] : (s.practical_mark ?? "")}
                     onChange={(e) => setPractical({ ...practical, [`pr-${s.student_id}`]: e.target.value })} />

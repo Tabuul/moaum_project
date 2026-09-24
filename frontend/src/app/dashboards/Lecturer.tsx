@@ -2,7 +2,7 @@
 import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import { stageOf, type MySheet } from "@/lib/results";
-import { Ico, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
 
@@ -23,15 +23,15 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
           A sheet appears here when the department allocates you a course and the Academic Office opens the examination session. Until then there is nothing to enter, and nothing is shown as if there were.
         </Note>
       ) : owed.length ? (
-        <Note kind="bad" title={owed.length === 1 ? "One score sheet is not entered" : `${owed.length} score sheets are not entered`} action={<>{first ? <Link href={`/results/sheets/${first.id}`} className="btn btn--urgent btn--sm">Enter {first.courseCode} marks</Link> : null} <Link href="/results/sheets" className="btn btn--ghost btn--sm">All score sheets</Link></>}>
+        <Note kind="bad" title={owed.length === 1 ? "One score sheet is not entered" : `${owed.length} score sheets are not entered`} action={<>{first ? <LinkBtn kind="urgent" href={`/results/sheets/${first.id}`}>Enter {first.courseCode} marks</LinkBtn> : null} <LinkBtn kind="ghost" href="/results/sheets">All score sheets</LinkBtn></>}>
           {owed.map((c) => <span key={c.id}><b className="tnum">{c.courseCode}</b> ({c.candidates} candidates)</span>).reduce<React.ReactNode[]>((acc, x, i) => (i ? [...acc, " and ", x] : [x]), [])} {owed.length === 1 ? "has" : "have"} no marks against {owed.length === 1 ? "it" : "them"}. A sheet that misses Senate waits for the next sitting, and those students carry an incomplete result into the next semester.
         </Note>
       ) : open.length ? (
-        <Note kind="info" title={`${open.length} sheet${open.length === 1 ? " is" : "s are"} still with you`} action={<Link href="/results/sheets" className="btn btn--primary btn--sm">All score sheets</Link>}>
+        <Note kind="info" title={`${open.length} sheet${open.length === 1 ? " is" : "s are"} still with you`} action={<LinkBtn kind="primary" href="/results/sheets">All score sheets</LinkBtn>}>
           Marks are entered but not yet attested. A sheet leaves this desk when every candidate carries a mark or an outcome and you submit it.
         </Note>
       ) : (
-        <Note kind="ok" title="Every sheet you owe is entered" action={<Link href="/results/sheets" className="btn btn--ghost btn--sm">All score sheets</Link>}>
+        <Note kind="ok" title="Every sheet you owe is entered" action={<LinkBtn kind="ghost" href="/results/sheets">All score sheets</LinkBtn>}>
           All {sheets.length} of your sheets carry a mark or an outcome against every registered candidate. Nothing is waiting on you for this Senate.
         </Note>
       )}
@@ -51,7 +51,7 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
               return [
                 <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}</div></span>,
                 <span className="tnum" key="r">{s.candidates}</span>,
-                <span className="tnum" key="e" style={s.entered < s.candidates ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.entered}</span>,
+                <span className={`tnum${s.entered < s.candidates ? " ink-red b700" : ""}`} key="e">{s.entered}</span>,
                 <span className="tnum sub2" key="d">{s.dueOn ? new Date(s.dueOn).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—"}</span>,
                 <Pil key="l" kind={late ? "bad" : soon ? "info" : "grey"}>{dueLabel(s)}</Pil>,
               ];
@@ -66,12 +66,12 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
             <div className="way">
               <div className="way__h"><span className="way__i"><Ico name="doc" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Download score sheet</span></div>
               <div className="way__s">Get this course’s live register as a CSV — every registered candidate already on it. Fill the two columns, <b>CA</b> and <b>Exam</b>, and leave the total, grade and point to the system. Or open the sheet and type the marks straight in.</div>
-              <div className="way__b">{first ? <><a href={`/results/sheets/${first.id}/template`} className="btn btn--primary btn--sm">Download score sheet</a> <Link href={`/results/sheets/${first.id}`} className="btn btn--ghost btn--sm">Open the sheet</Link></> : <button className="btn btn--primary btn--sm" disabled>No sheet yet</button>}</div>
+              <div className="way__b">{first ? <><a href={`/results/sheets/${first.id}/template`} className="btn btn--primary btn--sm">Download score sheet</a> <LinkBtn kind="ghost" href={`/results/sheets/${first.id}`}>Open the sheet</LinkBtn></> : <Btn kind="primary" disabled>No sheet yet</Btn>}</div>
             </div>
             <div className="way">
               <div className="way__h"><span className="way__i"><Ico name="box" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Upload computed score sheet</span></div>
               <div className="way__s">Filled the sheet offline? Upload it on the score sheet — it is <b>checked before anything is written</b>, and accepted whole or not at all. The total, grade and point are computed from your CA and Exam by the scheme in force; nobody types a grade.</div>
-              <div className="way__b">{first ? <Link href={`/results/sheets/${first.id}`} className="btn btn--primary btn--sm">Upload computed score sheet</Link> : <button className="btn btn--primary btn--sm" disabled>No sheet yet</button>}</div>
+              <div className="way__b">{first ? <LinkBtn kind="primary" href={`/results/sheets/${first.id}`}>Upload computed score sheet</LinkBtn> : <Btn kind="primary" disabled>No sheet yet</Btn>}</div>
             </div>
           </div>
         </PBody>
@@ -79,13 +79,13 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
 
       <Panel title="Your staff profile" right="Your CV as the University holds it">
         <PBody>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+          <div className="row row--between" style={{ gap: "var(--s-3)" }}>
             <div className="sub2" style={{ maxWidth: 620 }}>
               Keep your own record current — a recent photograph, your department and responsibility, Google Scholar and research
               interests, and the lists that grow over a career: publications, grants, the postgraduates you have graduated,
               collaborations, conferences, assignments, innovations, patents, achievements and contributions to society.
             </div>
-            <Link href="/me/profile" className="btn btn--primary btn--sm">Upload &amp; edit my profile</Link>
+            <LinkBtn kind="primary" href="/me/profile">Upload &amp; edit my profile</LinkBtn>
           </div>
         </PBody>
       </Panel>
@@ -99,13 +99,13 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
 
       <Panel title="Your teaching desks" right="Everything for your courses">
         <PBody>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <Link href="/me/teaching" className="btn btn--ghost btn--sm">My teaching & timetable</Link>
-            <Link href="/results/sheets" className="btn btn--ghost btn--sm">All score sheets{open.length ? ` (${open.length})` : ""}</Link>
-            <Link href="/lms" className="btn btn--ghost btn--sm">Course spaces</Link>
-            <Link href="/registration/class-list" className="btn btn--ghost btn--sm">Registered students</Link>
-            <Link href="/exams/question-bank" className="btn btn--ghost btn--sm">CBT question bank</Link>
-            <Link href="/me/profile" className="btn btn--ghost btn--sm">My staff profile</Link>
+          <div className="row">
+            <LinkBtn kind="ghost" href="/me/teaching">My teaching & timetable</LinkBtn>
+            <LinkBtn kind="ghost" href="/results/sheets">All score sheets{open.length ? ` (${open.length})` : ""}</LinkBtn>
+            <LinkBtn kind="ghost" href="/lms">Course spaces</LinkBtn>
+            <LinkBtn kind="ghost" href="/registration/class-list">Registered students</LinkBtn>
+            <LinkBtn kind="ghost" href="/exams/question-bank">CBT question bank</LinkBtn>
+            <LinkBtn kind="ghost" href="/me/profile">My staff profile</LinkBtn>
           </div>
         </PBody>
       </Panel>
@@ -120,9 +120,9 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
                 <span className="tnum" key="u">{s.units}</span>,
                 <span className="tnum" key="n">{s.candidates}</span>,
                 <span className="tnum sub2" key="ca">{s.caEntered}/{s.candidates}</span>,
-                <span className="tnum" key="e" style={s.entered < s.candidates ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.entered}</span>,
+                <span className={`tnum${s.entered < s.candidates ? " ink-red b700" : ""}`} key="e">{s.entered}</span>,
                 <Pil key="p" kind={st.pill}>{st.text}</Pil>,
-                <Link key="a" href={`/results/sheets/${s.id}`} className={`btn btn--sm btn--${st.kind}`}>{st.act}</Link>,
+                <LinkBtn key="a" kind={st.kind} href={`/results/sheets/${s.id}`}>{st.act}</LinkBtn>,
               ];
             })}
             texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
@@ -136,7 +136,7 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
           <DTable cols={["Course", "Questions in bank|mid", "Readiness|num"]}
             rows={sheets.map((s) => [
               <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}</div></span>,
-              <span className="tnum" key="q" style={(s.bankQuestions ?? 0) === 0 ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{s.bankQuestions ?? 0}</span>,
+              <span className={`tnum${(s.bankQuestions ?? 0) === 0 ? " ink-red b700" : ""}`} key="q">{s.bankQuestions ?? 0}</span>,
               (s.bankQuestions ?? 0) === 0 ? <Pil kind="bad" key="s">None yet</Pil> : (s.bankQuestions ?? 0) < 20 ? <Pil kind="info" key="s">Thin</Pil> : <Pil kind="ok" key="s">Ready</Pil>,
             ])} texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
         ) : <div className="card__body sub2">No course to check.</div>}
@@ -146,9 +146,9 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
       <div className="grid grid--2">
         <Panel title="Downloads" right="Generated from the approved registrations at the moment you ask">
           <PBody>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <Link href="/registration/class-list" className="btn btn--ghost">Class list and attendance register</Link>
-              {first ? <Link href={`/results/sheets/${first.id}`} className="btn btn--ghost">Blank score sheet — {first.courseCode}</Link> : null}
+            <div className="stack">
+              <LinkBtn kind="ghost" size="md" href="/registration/class-list">Class list and attendance register</LinkBtn>
+              {first ? <LinkBtn kind="ghost" size="md" href={`/results/sheets/${first.id}`}>Blank score sheet — {first.courseCode}</LinkBtn> : null}
               <Link href="/student/exams" className="btn btn--ghost" style={{ display: "none" }}>—</Link>
             </div>
             <div className="sub2 mt-2">Each is generated when you ask, so it is never out of date. The class list is the roll of account: a student who is not on it is not registered, whatever they tell you.</div>
@@ -157,7 +157,7 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
         <Panel title="This week" right="From the slots the department gave your courses">
           <PBody>
             <div className="sub2">The teaching timetable is drawn on the class list screen from the slots recorded against each offering. Nothing is shown here that the department has not recorded.</div>
-            <div className="mt-2"><Link href="/registration/class-list" className="btn btn--ghost btn--sm">Open the class list</Link></div>
+            <div className="mt-2"><LinkBtn kind="ghost" href="/registration/class-list">Open the class list</LinkBtn></div>
           </PBody>
         </Panel>
       </div>

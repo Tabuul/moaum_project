@@ -9,7 +9,8 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
-import { Note } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note } from "@/components/proto/ui";
+import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { STATES, lgasOf } from "@/lib/nigeria";
 
@@ -50,22 +51,22 @@ function ProgrammePicker({ progs, value, onPick }: { progs: Prog[]; value: strin
         onBlur={() => window.setTimeout(() => setOpen(false), 150)}
       />
       {open ? (
-        <div id="programme-list" role="listbox" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30, maxHeight: 300, overflowY: "auto", background: "var(--bg, #fff)", border: "1px solid var(--line-2, var(--line))", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
+        <div id="programme-list" role="listbox" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30, maxHeight: 300, overflowY: "auto", background: "var(--bg)", border: "1px solid var(--line-2)", borderRadius: "var(--r-md)", boxShadow: "var(--sh-3)" }}>
           {groups.length ? groups.map(([fac, list]) => (
             <div key={fac}>
-              <div style={{ padding: "7px 12px 4px", fontSize: 11, letterSpacing: ".4px", textTransform: "uppercase", color: "var(--chrome, var(--faint))", position: "sticky", top: 0, background: "var(--bg, #fff)" }}>{fac}</div>
+              <div className="eyebrow ink-chrome" style={{ padding: "var(--s-2) var(--s-3) var(--s-1)", position: "sticky", top: 0, background: "var(--bg)" }}>{fac}</div>
               {list.map((p) => (
                 <button
                   key={p.code} type="button" role="option" aria-selected={p.code === value}
                   onMouseDown={(e) => { e.preventDefault(); onPick(p.code); setOpen(false); setQ(""); }}
-                  style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", background: p.code === value ? "var(--tint, #eef3fb)" : "transparent", cursor: "pointer", fontSize: 13.5 }}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "var(--s-2) var(--s-3)", border: "none", background: p.code === value ? "var(--tint)" : "transparent", cursor: "pointer" }}
                 >
                   <span className="b600">{p.name}</span>{p.pg_award ? <span className="sub2"> ({p.pg_award})</span> : null}
                   <div className="sub2">{p.department_name}</div>
                 </button>
               ))}
             </div>
-          )) : <div className="sub2" style={{ padding: "12px" }}>No programme matches &ldquo;{q}&rdquo;.</div>}
+          )) : <div className="sub2" style={{ padding: "var(--s-3)" }}>No programme matches &ldquo;{q}&rdquo;.</div>}
         </div>
       ) : null}
     </div>
@@ -134,9 +135,9 @@ export function PgApply() {
           <Row k="Payment reference" v={applied.reference} />
           <Row k="Amount" v={naira(applied.amount)} />
         </div></div>
-        <div style={{ textAlign: "center" }}><Link href="/login?next=/pg/portal" className="btn btn--primary">Sign in to pay and continue application</Link></div>
+        <div className="row" style={{ justifyContent: "center" }}><LinkBtn kind="primary" size="md" href="/login?next=/pg/portal">Sign in to pay and continue application</LinkBtn></div>
         <StatusCheck initialNo={applied.application_no} />
-        <div style={{ textAlign: "center", marginTop: 12 }}><Link href="/login">Back to sign in</Link></div>
+        <div className="mt-3" style={{ textAlign: "center" }}><Link href="/login">Back to sign in</Link></div>
       </Wrap>
     );
   }
@@ -151,7 +152,7 @@ export function PgApply() {
       <Stepper steps={STEPS} current={step} onGo={(n) => { if (n < step) { setProblem(null); setStep(n); } }} />
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      <div className="card"><div className="card__body" style={{ display: "grid", gap: 12 }}>
+      <div className="card"><div className="card__body">
         {step === 1 ? (
           <>
             <Section title="Programme" />
@@ -206,13 +207,13 @@ export function PgApply() {
           </>
         ) : null}
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4 }}>
-          {step > 1 ? <button type="button" className="btn btn--ghost btn--sm" onClick={back}>Back</button> : <Link href="/login" className="btn btn--ghost btn--sm">Cancel</Link>}
+        <div className="row mt-1">
+          {step > 1 ? <Btn kind="ghost" onClick={back}>Back</Btn> : <LinkBtn kind="ghost" href="/login">Cancel</LinkBtn>}
           <span className="grow" />
           <span className="sub2">Step {step} of {STEPS.length}</span>
           {last
-            ? <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</button>
-            : <button type="button" className="btn btn--primary" onClick={next}>Next</button>}
+            ? <Btn kind="primary" size="md" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</Btn>
+            : <Btn kind="primary" size="md" onClick={next}>Next</Btn>}
         </div>
       </div></div>
 
@@ -224,7 +225,7 @@ export function PgApply() {
 /** the step indicator across the top of the application wizard; a completed step can be clicked to go back */
 function Stepper({ steps, current, onGo }: { steps: string[]; current: number; onGo: (n: number) => void }) {
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ display: "flex", gap: "var(--s-2)" }}>
       {steps.map((t, i) => {
         const n = i + 1;
         const done = current > n, cur = current === n;
@@ -232,8 +233,8 @@ function Stepper({ steps, current, onGo }: { steps: string[]; current: number; o
         return (
           <button key={t} type="button" onClick={() => (done ? onGo(n) : undefined)} disabled={!done}
             style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: done ? "pointer" : "default" }}>
-            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, var(--sky-ink))" : "var(--line-2, var(--line))" }} />
-            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, var(--faint))" }}>{n}. {t}</div>
+            <div style={{ height: 5, borderRadius: "var(--r-sm)", background: on ? "var(--chrome)" : "var(--line-2)" }} />
+            <div className="sub2 mt-2" style={{ fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome)" }}>{n}. {t}</div>
           </button>
         );
       })}
@@ -255,19 +256,19 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
   }
 
   return (
-    <div className="card mt-4"><div className="card__body" style={{ display: "grid", gap: 10 }}>
+    <div className="card mt-4"><div className="card__body">
       <Section title="Check your application" />
       <div className="grid grid--2">
         <Field id="st-no" label="Application number"><input id="st-no" className="ctl" value={no} onChange={(e) => setNo(e.target.value)} placeholder="PG/25/000001" /></Field>
         <Field id="st-em" label="Email"><input id="st-em" className="ctl" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
       </div>
-      <div><button type="button" className="btn btn--ghost btn--sm" onClick={() => void check()}>Check status</button></div>
+      <div><Btn kind="ghost" onClick={() => void check()}>Check status</Btn></div>
       {msg ? <div className="hint">{msg}</div> : null}
       {st ? (
         <Note kind={st.state === "OFFERED" || st.state === "ACCEPTED" || st.state === "ADMITTED" ? "ok" : st.state === "NOT_OFFERED" || st.state === "DEPT_DECLINED" ? "bad" : "info"} title={STATE_LABEL[st.state] ?? st.state}>
           {st.surname}, {st.other_names} · {st.programme_name}{st.pg_award ? ` (${st.pg_award})` : ""}. {st.spgs_note ? `Note: ${st.spgs_note}. ` : ""}{st.fee_confirmed_at ? "Application fee confirmed." : "Application fee not yet confirmed."}
           {st.state === "DECISION_LOCKED" || st.state === "OFFERED" || !st.fee_confirmed_at ? (
-            <div className="mt-2"><a href="/login?next=/pg/portal" className="btn btn--primary btn--sm">{st.state === "DECISION_LOCKED" ? "Sign in to pay the checking fee and see the decision" : st.state === "OFFERED" ? "Sign in to pay the acceptance fee and accept" : "Sign in to pay the application fee"}</a></div>
+            <div className="mt-2"><LinkBtn kind="primary" href="/login?next=/pg/portal">{st.state === "DECISION_LOCKED" ? "Sign in to pay the checking fee and see the decision" : st.state === "OFFERED" ? "Sign in to pay the acceptance fee and accept" : "Sign in to pay the application fee"}</LinkBtn></div>
           ) : null}
         </Note>
       ) : null}
@@ -283,7 +284,7 @@ function Wrap({ children }: { children: ReactNode }) {
           <div className="login-brand__top">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/crest.png" alt="University crest" style={{ width: 56, height: 58, objectFit: "contain" }} />
-            <div><span style={{ fontSize: 12, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--chrome-dim)" }}>School of Postgraduate Studies</span></div>
+            <div><span className="eyebrow" style={{ color: "var(--chrome-dim)" }}>School of Postgraduate Studies</span></div>
           </div>
           <div style={{ height: 26 }} />
           <h1>Apply for a postgraduate programme</h1>
@@ -296,7 +297,7 @@ function Wrap({ children }: { children: ReactNode }) {
         </div>
       </div>
       <div className="login-panel">
-        <div style={{ width: "100%", maxWidth: 620, display: "grid", gap: 14 }}>
+        <div style={{ width: "100%", maxWidth: 620, display: "grid", gap: "var(--s-4)" }}>
           {children}
         </div>
       </div>
@@ -305,17 +306,8 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 function Section({ title }: { title: string }) {
-  return <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--line-2)", paddingBottom: 4 }}>{title}</div>;
-}
-function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      {children}
-      {hint ? <div className="hint">{hint}</div> : null}
-    </div>
-  );
+  return <div className="eyebrow" style={{ borderBottom: "1px solid var(--line-2)", paddingBottom: "var(--s-1)" }}>{title}</div>;
 }
 function Row({ k, v }: { k: string; v: string }) {
-  return <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}><span className="sub2">{k}</span><span className="tnum b700">{v}</span></div>;
+  return <div className="row row--between" style={{ padding: "var(--s-2) 0", borderBottom: "1px solid var(--line-2)" }}><span className="sub2">{k}</span><span className="tnum b700">{v}</span></div>;
 }
