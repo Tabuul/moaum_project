@@ -770,7 +770,8 @@ class CollegeController {
     Map<String, Object> calendar(@RequestParam String session) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT l.level, l.phase, t.ordinal, coalesce(t.name, CASE t.ordinal WHEN 1 THEN l.level || ' Level, first half of the year' ELSE l.level || ' Level, second half of the year' END) AS name,
-                       coalesce(s.length_weeks, t.length_weeks) AS length_weeks, s.starts_on, s.ends_on, t.subjects
+                       coalesce(s.length_weeks, t.length_weeks) AS length_weeks, s.starts_on, s.ends_on, t.subjects,
+                       (SELECT count(*) FROM college.enrolment e WHERE e.level = l.level AND e.session = :s AND e.state IN ('OPEN','RESIT')) AS open_years
                   FROM college.level l
                   CROSS JOIN LATERAL (SELECT t.ordinal, t.name, t.length_weeks, t.subjects FROM college.semester_template t WHERE t.level = l.level
                                       UNION ALL SELECT o, NULL, NULL, NULL FROM generate_series(1, 2) o WHERE NOT EXISTS (SELECT 1 FROM college.semester_template t2 WHERE t2.level = l.level)) t

@@ -1802,3 +1802,5 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 .cap { text-transform: capitalize; }
 .pl-3 { padding-left: var(--s-3); } .pl-4 { padding-left: var(--s-4); }
 .scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+
+.ctl.is-changed { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-bg); }
