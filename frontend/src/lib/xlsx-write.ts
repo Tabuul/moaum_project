@@ -49,7 +49,7 @@ export function sheetXml(rows: Cell[][], hasLogo = false, opts: SheetOpts = {}):
   const widths: number[] = [];
   for (let c = 0; c < nCols; c++) {
     let max = 8;
-    for (let r = hdr; r < rows.length; r++) { const v = rows[r][c]; const len = v == null ? 0 : String(v).length; if (len > max) max = len; }
+    for (let r = hdr; r < rows.length; r++) { const v = rows[r][c]; const len = v == null ? 0 : Math.max(...String(v).split("\n").map((l) => l.length)); if (len > max) max = len; }
     widths[c] = Math.min(max + 2, 70);
   }
   const cols = nCols ? "<cols>" + widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("") + "</cols>" : "";

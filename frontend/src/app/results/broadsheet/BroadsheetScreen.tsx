@@ -123,7 +123,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
 
-  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, serialOf(r.number), r.name,
+  /** "Abankwa, John Ebonyi" as its two lines: the surname, then the other names — the column keeps to the longer of the two */
+  const nameLines = (name: string): [string, string] => { const k = name.indexOf(","); return k < 0 ? [name, ""] : [name.slice(0, k + 1), name.slice(k + 1).trim()]; };
+  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, serialOf(r.number), nameLines(r.name).filter(Boolean).join("\n"),
     ...(hideCarryover ? [] : [r.carryovers.join(" ")]),
     ...orderCols.map((c) => markText(markOf(r, c.courseCode))),
     r.cur, r.cue, r.points, r.gpa ?? "", ...(hideCum ? [] : [r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? ""]), r.remarks];
@@ -192,7 +194,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       + bands.map((b) => `<th colspan="${b[1].length}">${b[0]}</th>`).join("")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
-    const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
+    const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${nameLines(r.name).filter(Boolean).map(escd).join("<br>")}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
       + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS\nF0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
@@ -205,7 +207,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       .t td.ch{font-weight:700;text-transform:uppercase;font-size:10px;color:#333;border-bottom:1px solid #999}
       table{border-collapse:collapse;width:100%}.t td{padding:2px 6px;font-size:11.5px;vertical-align:top}.t td.n,.t td.p{text-align:right;width:40px}.t td.ab{font-family:monospace;font-weight:700}
       .bs{border-collapse:collapse;width:100%;margin-top:8px}.bs th,.bs td{border:1px solid #bbb;padding:3px 5px;text-align:center;font-size:10.5px}.bs td.nm,.bs td.co{text-align:left}
-      .bs td.b{font-weight:700}.bs td.mt{white-space:nowrap;width:1%}.bs td.nm{white-space:nowrap}.bs td.co{min-width:150px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
+      .bs td.b{font-weight:700}.bs td.mt{white-space:nowrap;width:1%}.bs td.nm{white-space:nowrap;line-height:1.2}.bs td.co{min-width:150px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
       @media print{.pb{page-break-before:always}}</style></head><body>
       <div class="head"><img src="${crest}" alt=""><div class="uni">${escd(UNI)}</div><div class="st">Examination Reporting Sheet</div><div style="font-size:10px;color:#555;margin-top:3px">Serial ${escd(serial)} · generated ${escd(new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }))}</div></div>
       <div class="meta"><div><span class="k">Faculty</span><b>${escd(cov.facName)}</b></div><div><span class="k">Level</span><b>${sheet.level}</b></div>
@@ -322,7 +324,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                       <tr key={r.studentId}>
                         <td className="sn tnum">{i + 1}</td>
                         <td className="l tnum mt" title={r.number}>{serialOf(r.number)}</td>
-                        <td className="l nm">{r.name}</td>
+                        <td className="l nm">{nameLines(r.name)[0]}{nameLines(r.name)[1] ? <div className="nm2">{nameLines(r.name)[1]}</div> : null}</td>
                         {hideCarryover ? null : <td className="co sub2">{r.carryovers.length ? r.carryovers.join(", ") : "—"}</td>}
                         {orderCols.map((c) => <td key={c.courseCode} className="mk">{cell(markOf(r, c.courseCode))}</td>)}
                         <td className="tnum">{r.cur}</td>
@@ -351,7 +353,8 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             .bsheet thead th{background:var(--panel-2,var(--line-2));font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--chrome-dim)}
             .bsheet th.band{color:var(--chrome);font-weight:700}
             .bsheet th.l,.bsheet td.l{text-align:left;white-space:nowrap}
-            .bsheet td.nm{white-space:normal;min-width:170px;font-weight:600}
+            .bsheet td.nm{white-space:nowrap;font-weight:600;line-height:1.2}
+            .bsheet td.nm .nm2{font-weight:500}
             .bsheet td.mt{width:1%;white-space:nowrap}
             .bsheet th.course .mono{display:block;font-family:ui-monospace,monospace;font-weight:700}
             .bsheet th.course .u{display:block;font-size:10px;color:var(--chrome-dim)}
