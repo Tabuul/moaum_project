@@ -48,28 +48,25 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
       : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} style={{ color: "var(--red-ink)", fontWeight: 700 }}><span className="tnum">ABS</span><div>F0</div></span>;
   const orderCols = bands.flatMap((b) => b[1]);
-  /* the sheet is in lists as Senate reads it. At a first semester from 200 level: the class, the DIRECT ENTRY
-     STUDENTS (at 200 level, whose first semester has no standing to judge) and the PROBATION LIST. At a second
-     semester from 200 level: the class and the ADVISED TO WITHDRAW list — a student still under 1.0 after the
-     level's probation list. At 100 level one list; its second semester pronounces TO GO ON PROBATION in the remark.
-     The pronouncement is the record's (assessment.standing_of, V246) and arrives in the remark; a list is read from
-     the remark, never recomputed here. */
+  /* the sheet is in lists as Senate reads it, at every level from 200 and in every programme. The class first;
+     then the DIRECT ENTRY STUDENTS, listed apart at every level from 200 in both semesters; then, at a first
+     semester, the PROBATION LIST, or at a second semester the ADVISED TO WITHDRAW list — a student still under 1.0
+     after the level's probation list. A student pronounced on is on that list whatever their entry. At 100 level
+     one list; its second semester pronounces TO GO ON PROBATION in the remark. The pronouncement is the record's
+     (assessment.standing_of, V246) and arrives in the remark; a list is read from the remark, never recomputed. */
   const shLevel = sheet ? Number(sheet.level) : 0;
   const shSem = sheet ? Number(sheet.semester) : 0;
-  const deSection = shLevel === 200 && shSem === 1;
-  const isDE = (r: Broadsheet["rows"][number]) => deSection && r.entryMode === "DIRECT_ENTRY";
+  const listed = shLevel >= 200;
+  const isDE = (r: Broadsheet["rows"][number]) => listed && r.entryMode === "DIRECT_ENTRY";
   const onProbation = (r: Broadsheet["rows"][number]) => /TO GO ON PROBATION/.test(r.remarks);
   const advised = (r: Broadsheet["rows"][number]) => /ADVISED TO WITHDRAW/.test(r.remarks);
   const notRegistered = (r: Broadsheet["rows"][number]) => /DID NOT REGISTER/.test(r.remarks);
+  const pronounced = (r: Broadsheet["rows"][number]) => (shSem === 1 ? onProbation(r) : advised(r));
   const sections: { title: string; rows: Broadsheet["rows"] }[] = !sheet ? []
-    : shLevel >= 200 && shSem === 1 ? [
-      { title: "", rows: sheet.rows.filter((r) => !isDE(r) && !onProbation(r)) },
-      ...(deSection ? [{ title: "DIRECT ENTRY STUDENTS", rows: sheet.rows.filter(isDE) }] : []),
-      { title: "PROBATION LIST", rows: sheet.rows.filter(onProbation) },
-    ]
-    : shLevel >= 200 && shSem === 2 ? [
-      { title: "", rows: sheet.rows.filter((r) => !advised(r)) },
-      { title: "ADVISED TO WITHDRAW", rows: sheet.rows.filter(advised) },
+    : listed ? [
+      { title: "", rows: sheet.rows.filter((r) => !isDE(r) && !pronounced(r)) },
+      { title: "DIRECT ENTRY STUDENTS", rows: sheet.rows.filter((r) => isDE(r) && !pronounced(r)) },
+      { title: shSem === 1 ? "PROBATION LIST" : "ADVISED TO WITHDRAW", rows: sheet.rows.filter(pronounced) },
     ]
     : [{ title: "", rows: sheet.rows }];
   /* the matriculation number's prefix (everything up to the last oblique) is the class's, shared by nearly every
