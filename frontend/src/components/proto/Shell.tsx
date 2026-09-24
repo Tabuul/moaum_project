@@ -311,6 +311,21 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
     if (Object.prototype.hasOwnProperty.call(navg, g.name)) return !!navg[g.name];
     return g.items.some((it) => it.id === current);
   };
+  // the crumb above the title: the menu group the page sits in, and the page as the menu names it
+  const crumbGroup = menu.groups.find((g) => g.items.some((it) => it.id === current));
+  const crumbItem = crumbGroup?.items.find((it) => it.id === current);
+  // "/" opens the search the hint in the top bar promises — never while typing in a field
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      e.preventDefault();
+      router.push("/search");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [router]);
 
   function chooseOffice(code: string) {
     document.cookie = `${OFFICE_COOKIE}=${encodeURIComponent(code)}; path=/; max-age=31536000; samesite=lax`;
@@ -352,7 +367,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
         <nav className="nav" aria-label="Main">
           <div className="nav__brand">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/crest.png" alt="" style={{ width: 34, height: 35, objectFit: "contain", flexShrink: 0 }} />
+            <img src="/crest.png" alt="" className="nav__crest" />
             <div>
               <span className="t">MOAUM Portal</span>
               <span className="s">{label}</span>
@@ -371,7 +386,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
             </select>
           </div>
 
-          <div className="nav__list" style={{ flexGrow: 1, paddingBottom: 8 }}>
+          <div className="nav__list nav__list--all">
             {menu.groups.map((g) => {
               const open = isOpen(g);
               const folded = navWaiting(g, waiting);
@@ -416,11 +431,11 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
           {slimBtn}
           <div className="nav__foot">
             <div className="avatar">{initials(who)}</div>
-            <div style={{ minWidth: 0, flexGrow: 1 }}>
+            <div className="nav__me">
               <div className="nav__who">{who}</div>
               <div className="nav__sub">{me ? (me.unit || (me.name ? label : roleUnit(office) || `${me.offices.length} office${me.offices.length === 1 ? "" : "s"} held`)) : "Not signed in"}</div>
             </div>
-            <button title="Sign out" aria-label="Sign out" style={{ color: "var(--chrome-ink)", padding: 6 }} onClick={() => void signOut()}>
+            <button className="nav__out" title="Sign out" aria-label="Sign out" onClick={() => void signOut()}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9" />
               </svg>
@@ -435,10 +450,21 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
                 <path d="M4 7h16M4 12h16M4 17h16" />
               </svg>
             </button>
-            <div style={{ flexGrow: 1, minWidth: 0 }}>
+            <div className="topbar__t">
+              {crumbGroup && crumbItem && crumbItem.label !== t0 ? (
+                <nav className="crumb" aria-label="Breadcrumb"><span>{crumbGroup.name}</span><span className="crumb__s" aria-hidden="true">›</span><span>{crumbItem.label}</span></nav>
+              ) : crumbGroup ? (
+                <nav className="crumb" aria-label="Breadcrumb"><span>{crumbGroup.name}</span></nav>
+              ) : null}
               <h1>{t0}</h1>
               {t1 ? <div className="sub">{t1}</div> : null}
             </div>
+            {me ? (
+              <div className="topbar__me" title={label}>
+                <div className="avatar avatar--sm">{initials(who)}</div>
+                <div className="topbar__who"><div className="topbar__name">{who}</div><div className="topbar__role">{label}</div></div>
+              </div>
+            ) : null}
             <button className="topsrch" aria-label="Search" onClick={() => router.push("/search")}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <circle cx="11" cy="11" r="7" />
@@ -453,14 +479,12 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
               <div className="notice notice--info">
                 <Ico name="alert" size={18} stroke="var(--chrome)" w={2} />
                 <div>
-                  <div className="notice__t" style={{ color: "var(--chrome)" }}>
-                    {said} is still the prototype&rsquo;s screen
-                  </div>
-                  <p style={{ color: "#124A63" }}>
+                  <div className="notice__t">{said} is still the prototype&rsquo;s screen</div>
+                  <p>
                     The portal is built screen by screen against the API and the database. Until this one arrives,
                     it is the prototype&rsquo;s, exactly as designed.
                   </p>
-                  <div style={{ marginTop: 11 }}>
+                  <div className="notice__a">
                     <button className="btn btn--ghost btn--sm" onClick={() => setSaid(null)}>
                       Close
                     </button>
