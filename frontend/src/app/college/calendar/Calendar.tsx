@@ -3,7 +3,7 @@
  *  the College enters them here. The dates tell the student where their year is and when it ends, and hold the
  *  examinations desk to the end of the year: results are entered once the cohort's final semester has begun. The
  *  University's own semesters for the session stand beside, since the College's years are staggered against them. */
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { SemesterRow } from "@/lib/calendar";
@@ -19,6 +19,8 @@ export interface CalendarRow { level: number; phase: string; ordinal: number; na
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const plusYear = (iso: string | null) => { if (!iso) return ""; const d = new Date(iso); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); };
 const weeksBetween = (a: string | null, b: string | null) => (a && b ? Math.round((new Date(b).getTime() - new Date(a).getTime()) / (7 * 86400000)) : null);
+const addDays = (iso: string, n: number) => { const d = new Date(iso); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const t = (iso: string) => new Date(iso).getTime();
 
 export function Calendar({ sessions, session, rows, previous, university, mayEdit, problem }: {
   sessions: string[]; session: string; rows: CalendarRow[]; previous: CalendarRow[]; university: SemesterRow[]; mayEdit: boolean; problem: Problem | null;
@@ -59,6 +61,21 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
       if (n) { notify(`${n} semester${n === 1 ? "" : "s"} dated for ${session}`); setDraft({}); router.refresh(); }
     } finally { setBusy(null); }
   }
+  // from the first semester's start, each semester in turn by the prospectus's weeks; the reader checks and saves
+  function dateFromFirst(L: number) {
+    const rs = rows.filter((r) => r.level === L).slice().sort((a, b) => a.ordinal - b.ordinal);
+    let starts = value(rs[0]).starts;
+    if (!starts) return;
+    const next: typeof draft = { ...draft };
+    for (const r of rs) {
+      const weeks = r.length_weeks ?? 17;
+      const ends = addDays(starts, weeks * 7 - 1);
+      next[key(r)] = { starts, ends };
+      starts = addDays(ends, 1);
+    }
+    setDraft(next);
+    notify(`${L} Level dated from ${day(value(rs[0]).starts)} by the prospectus's weeks; check the dates and save`, "info");
+  }
   function copyPrevious() {
     if (!previous.length) return;
     const next: typeof draft = { ...draft };
@@ -84,6 +101,17 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
   const undated = summary.filter((s) => s.open > 0 && !s.dated).length;
   const pending = rows.filter(changed).length;
 
+  // the session at a glance: every level's year, as dated or as drafted, against the University's semesters
+  const bars = [
+    ...levels.map((L) => ({ label: `${L} Level`, bars: rows.filter((r) => r.level === L).map((r) => { const v = value(r); return { name: r.name.replace(/^\d+ Level, /, ""), starts: v.starts || null, ends: v.ends || null, ordinal: r.ordinal, draft: changed(r), uni: false }; }) })),
+    { label: "University", bars: university.map((u) => ({ name: u.number === 1 ? "First semester" : u.number === 2 ? "Second semester" : `Semester ${u.number}`, starts: u.lecturesFrom, ends: u.examsTo ?? u.lecturesTo, ordinal: u.number, draft: false, uni: true })) },
+  ];
+  const dated = bars.flatMap((l) => l.bars).filter((b) => b.starts && b.ends && b.ends > b.starts);
+  const span = dated.length ? { from: dated.map((b) => b.starts!).sort()[0], to: dated.map((b) => b.ends!).sort().reverse()[0] } : null;
+  const pct = (iso: string) => (span ? Math.max(0, Math.min(100, (100 * (t(iso) - t(span.from))) / (t(span.to) - t(span.from)))) : 0);
+  const ticks: string[] = [];
+  if (span) { const d = new Date(span.from); d.setDate(1); d.setMonth(d.getMonth() + 1); while (d.toISOString().slice(0, 10) < span.to) { ticks.push(d.toISOString().slice(0, 10)); d.setMonth(d.getMonth() + 1); } }
+
   return (
     <>
       <div className="scope">
@@ -105,6 +133,29 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
         A cohort&rsquo;s year at a level begins in the session named here and runs by these dates, whatever the University&rsquo;s semesters do. The 100 Level year is the University&rsquo;s and is shorter, so a cohort promoted from 100 opens its 200 Level year while the cohort before it is still in its second semester. The examinations desk enters results for a cohort once its final semester has begun; a level left undated blocks nothing.
       </Note>
 
+      {span ? (
+        <Panel title={`The session at a glance · ${session}`} right="Each level's year against the University's semesters; a dashed bar is an unsaved draft">
+          <PBody>
+            <div className="tl">
+              {bars.filter((l) => l.bars.some((b) => b.starts && b.ends)).map((l) => (
+                <Fragment key={l.label}>
+                  <div className="tl__label">{l.label}</div>
+                  <div className="tl__lane">
+                    {l.bars.filter((b) => b.starts && b.ends && b.ends > b.starts).map((b) => (
+                      <span key={b.ordinal} className={`tl__bar${b.uni ? " tl__bar--uni" : b.ordinal === 2 ? " tl__bar--2" : ""}${b.draft ? " tl__bar--draft" : ""}`} style={{ left: `${pct(b.starts!)}%`, width: `${Math.max(1.5, pct(b.ends!) - pct(b.starts!))}%` }} title={`${b.name}: ${day(b.starts)} to ${day(b.ends)}`}>{b.name}</span>
+                    ))}
+                    {today >= span.from && today <= span.to ? <span className="tl__today" style={{ left: `${pct(today)}%` }} title="Today" /> : null}
+                  </div>
+                </Fragment>
+              ))}
+              <div />
+              <div className="tl__axis">{ticks.map((k) => <span key={k} className="tl__tick" style={{ left: `${pct(k)}%` }}>{new Date(k).toLocaleDateString("en-GB", { month: "short", year: ticks.length > 14 ? undefined : "2-digit" })}</span>)}</div>
+            </div>
+            <div className="sub2 mt-2">{day(span.from)} to {day(span.to)}{today >= span.from && today <= span.to ? " · the red line is today" : ""}. A level absent here is undated for {session}.</div>
+          </PBody>
+        </Panel>
+      ) : null}
+
       <Panel title={`The year at each level · ${session}`} right="The span of its semesters, and what stands on it">
         <DTable cols={["Level|mid", "Phase", "Semesters dated|mid", "Begins|mid", "Ends|mid", "Weeks|mid", "Years open|mid", "Standing|mid", "Results|mid"]} rows={summary.map((s) => [
           <strong className="tnum" key="l">{s.level}</strong>,
@@ -120,7 +171,7 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
       </Panel>
 
       {levels.map((L) => (
-        <Panel key={L} title={`${L} Level · ${session}`} right={rows.find((r) => r.level === L)?.phase === "CLINICAL" ? "Clinical year: block and posting enrolment" : "Pre-clinical: the prospectus's semesters"}>
+        <Panel key={L} title={`${L} Level · ${session}`} right={<span className="row row--inline"><span className="sub2">{rows.find((r) => r.level === L)?.phase === "CLINICAL" ? "Clinical year: block and posting enrolment" : "Pre-clinical: the prospectus's semesters"}</span>{mayEdit ? <Btn kind="ghost" size="sm" disabled={busy !== null || !value(rows.filter((r) => r.level === L).slice().sort((a, b) => a.ordinal - b.ordinal)[0]).starts} onClick={() => dateFromFirst(L)}>Date the rest from the first semester</Btn> : null}</span>}>
           <div className="tablewrap"><table className="tbl--data">
             <thead><tr><th>Semester</th><th className="mid">Weeks</th><th>Subjects</th><th className="mid">Starts</th><th className="mid">Ends</th><th className="mid">Standing</th><th></th></tr></thead>
             <tbody>
@@ -128,13 +179,16 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
                 const v = value(r);
                 const standing = !r.starts_on ? "Undated" : r.starts_on > today ? "Ahead" : r.ends_on && r.ends_on < today ? "Ended" : "Running";
                 const w = weeksBetween(v.starts || null, v.ends || null);
+                const before = rows.find((x) => x.level === L && x.ordinal === r.ordinal - 1);
+                const backwards = !!(v.starts && v.ends && v.ends <= v.starts);
+                const overlaps = !!(before && v.starts && value(before).ends && v.starts <= value(before).ends);
                 return (
                   <tr key={key(r)}>
                     <td><strong>{r.name}</strong></td>
                     <td className="mid tnum">{r.length_weeks ?? "—"}{w != null && r.length_weeks != null && w !== r.length_weeks ? <div className="sub2" style={{ color: "var(--amber-ink)" }}>{w} dated</div> : null}</td>
                     <td className="sub2">{r.subjects ?? "—"}</td>
                     <td className="mid"><input type="date" className={`ctl${changed(r) ? " is-changed" : ""}`} value={v.starts} disabled={!mayEdit} onChange={(e) => setDraft({ ...draft, [key(r)]: { ...v, starts: e.target.value } })} /></td>
-                    <td className="mid"><input type="date" className="ctl" value={v.ends} disabled={!mayEdit} onChange={(e) => setDraft({ ...draft, [key(r)]: { ...v, ends: e.target.value } })} /></td>
+                    <td className="mid"><input type="date" className={`ctl${changed(r) ? " is-changed" : ""}${backwards ? " is-error" : ""}`} value={v.ends} disabled={!mayEdit} onChange={(e) => setDraft({ ...draft, [key(r)]: { ...v, ends: e.target.value } })} />{backwards ? <div className="ink-red t-xs">Ends before it starts</div> : overlaps ? <div className="t-xs" style={{ color: "var(--amber-ink)" }}>Begins before {before?.name.replace(/^\d+ Level, /, "")} ends</div> : null}</td>
                     <td className="mid"><Pil kind={standing === "Running" ? "ok" : standing === "Ahead" ? "info" : "grey"}>{standing}</Pil></td>
                     <td>{mayEdit ? <Btn kind={changed(r) ? "primary" : "ghost"} disabled={busy !== null || !changed(r)} onClick={() => void save(r)}>{busy === key(r) ? "Saving…" : "Save"}</Btn> : null}</td>
                   </tr>
@@ -142,7 +196,7 @@ export function Calendar({ sessions, session, rows, previous, university, mayEdi
               })}
             </tbody>
           </table></div>
-          <PBody><div className="sub2">Blank both dates and save to clear a semester. A dated span that differs from the prospectus&rsquo;s weeks is shown in amber, not refused.</div></PBody>
+          <PBody><div className="sub2">Blank both dates and save to clear a semester. A dated span that differs from the prospectus&rsquo;s weeks is shown in amber, not refused; a semester that ends before it starts is. &ldquo;Date the rest from the first semester&rdquo; runs each semester on from the first&rsquo;s start by the prospectus&rsquo;s weeks, for you to adjust before saving.</div></PBody>
         </Panel>
       ))}
 

@@ -1804,3 +1804,17 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 .scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
 
 .ctl.is-changed { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-bg); }
+
+/* meters fill in the chrome unless coloured; the College calendar's timeline */
+.meter__fill { background: var(--chrome); }
+.tl { display: grid; grid-template-columns: 120px 1fr; row-gap: var(--s-2); align-items: center; }
+.tl__label { font-size: var(--t-sm); color: var(--muted); }
+.tl__lane { position: relative; height: 24px; background: var(--faint); border-radius: var(--r-md); overflow: hidden; }
+.tl__bar { position: absolute; top: 3px; bottom: 3px; border-radius: 4px; background: var(--chrome); color: var(--surface); font-size: var(--t-xs); padding: 0 6px; white-space: nowrap; overflow: hidden; display: flex; align-items: center; }
+.tl__bar--2 { background: var(--chrome-dim); }
+.tl__bar--uni { background: var(--sky); color: var(--ink); border: 1px solid var(--sky-line); }
+.tl__bar--draft { outline: 2px dashed var(--amber); outline-offset: -2px; }
+.tl__today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--red); }
+.tl__axis { position: relative; height: 16px; }
+.tl__tick { position: absolute; top: 0; font-size: var(--t-xs); color: var(--muted); transform: translateX(-50%); white-space: nowrap; }
+@media (max-width: 640px) { .tl { grid-template-columns: 72px 1fr; } }
