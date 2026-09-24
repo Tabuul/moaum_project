@@ -12,7 +12,7 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
-import { Field } from "@/components/proto/blocks";
+import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface CollegeStructure {
@@ -48,6 +48,7 @@ export function Postings({ structure, sessions, session, level, posting, student
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [q, setQ] = useState("");
+  const [editing, setEditing] = useState<{ id: string; who: string; group: string; supervisor: string; from: string; to: string; all: boolean } | null>(null);
 
   const nav = (patch: Partial<{ session: string; level: number; posting: string }>) => {
     const s = patch.session ?? session; const l = patch.level ?? level; const p = patch.posting ?? posting;
@@ -74,6 +75,36 @@ export function Postings({ structure, sessions, session, level, posting, student
       return true;
     } finally { setBusy(false); }
   }
+
+  // several allocations changed in one act: each its own request, the page refreshed once
+  async function callMany(ids: string[], body: unknown, reason: string): Promise<number> {
+    setBusy(true); setErr(null);
+    let n = 0;
+    try {
+      for (const id of ids) {
+        const r = await fetch(`/api/bff/api/v1/college/allocations/${id}`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
+        if (!r.ok) { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setErr(p); notifyProblem(p); break; }
+        n++;
+      }
+      if (n) { notify(reason); router.refresh(); }
+      return n;
+    } finally { setBusy(false); }
+  }
+  function openEdit(a: Allocation) {
+    setEditing({ id: a.id, who: `${a.surname}, ${a.other_names} · ${a.number}`, group: a.group_id ?? "", supervisor: a.supervisor_id ?? "", from: a.starts_on ?? "", to: a.ends_on ?? "", all: false });
+  }
+  async function saveEdit() {
+    if (!editing || !chosen) return;
+    const body = { groupId: editing.group || null, supervisorId: editing.supervisor || null, startsOn: editing.from || null, endsOn: editing.to || null };
+    const ids = editing.all ? allocations.map((a) => a.id) : [editing.id];
+    const n = await callMany(ids, body, editing.all ? `${ids.length} allocation${ids.length === 1 ? "" : "s"} on ${chosen.code} changed: ${describe(body)}` : `${editing.who.split(" · ")[1]}'s ${chosen.code} allocation changed: ${describe(body)}`);
+    if (n) setEditing(null);
+  }
+  const describe = (b: { groupId: string | null; supervisorId: string | null; startsOn: string | null; endsOn: string | null }) => [
+    b.groupId ? `group ${groups.find((g) => g.id === b.groupId)?.label ?? ""}` : null,
+    b.supervisorId ? `supervisor ${(() => { const x = supervisors.find((v) => v.id === b.supervisorId); return x ? `${x.surname}, ${x.given_names}` : ""; })()}` : null,
+    b.startsOn || b.endsOn ? `${day(b.startsOn)} to ${day(b.endsOn)}` : null,
+  ].filter(Boolean).join(", ") || "nothing filled";
 
   async function allocate() {
     if (!chosen || !picked.size) return;
@@ -112,7 +143,7 @@ export function Postings({ structure, sessions, session, level, posting, student
         ["Students at this level", String(students.length), null, `${level} Level · the College's register`],
         ["Postings at this level", String(postingsAtLevel.length), null, `${new Set(postingsAtLevel.map((p) => p.block_id)).size} block${new Set(postingsAtLevel.map((p) => p.block_id)).size === 1 ? "" : "s"}`],
         ["On the chosen posting", chosen ? String(allocations.length) : "—", null, chosen ? `${chosenBlock?.name ?? ""} · ${chosen.code}` : "Choose a posting"],
-        ["Not yet allocated to it", chosen ? String(students.length - allocations.length) : "—", chosen && students.length - allocations.length > 0 ? "var(--red-ink)" : null, chosen ? "At this level, this session" : ""],
+        ["Not yet allocated to it", chosen ? String(students.filter((x) => !onIt.has(x.id)).length) : "—", chosen && students.some((x) => !onIt.has(x.id)) ? "var(--red-ink)" : null, chosen ? "At this level, this session" : ""],
       ]} />
 
       {!chosen ? (
@@ -220,7 +251,11 @@ export function Postings({ structure, sessions, session, level, posting, student
             </Panel>
           </div>
 
-          <Panel title={`On ${chosen.code} in ${session}`} right={`${allocations.length} allocated`}>
+          <Panel title={`On ${chosen.code} in ${session}`} right={<span className="row row--inline">
+            <span className="sub2">{allocations.length} allocated{allocations.some((a) => !a.supervisor_id) ? ` · ${allocations.filter((a) => !a.supervisor_id).length} without a supervisor` : ""}</span>
+            {allocations.some((a) => a.state === "ALLOCATED") ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { const ids = allocations.filter((a) => a.state === "ALLOCATED").map((a) => a.id); if (window.confirm(`Begin ${chosen.code} for the ${ids.length} allocated student${ids.length === 1 ? "" : "s"}?`)) void callMany(ids, { state: "IN_PROGRESS" }, `${ids.length} student${ids.length === 1 ? "" : "s"} began ${chosen.code}`); }}>Begin all allocated</Btn> : null}
+            {allocations.some((a) => a.state === "IN_PROGRESS") ? <Btn kind="go" size="sm" disabled={busy} onClick={() => { const ids = allocations.filter((a) => a.state === "IN_PROGRESS").map((a) => a.id); if (window.confirm(`Complete ${chosen.code} for the ${ids.length} student${ids.length === 1 ? "" : "s"} in progress?`)) void callMany(ids, { state: "COMPLETED" }, `${ids.length} student${ids.length === 1 ? "" : "s"} completed ${chosen.code}`); }}>Complete all in progress</Btn> : null}
+          </span>}>
             {allocations.length ? (
               <DTable cols={["Matriculation number", "Name", "Group|mid", "Supervisor", "Starts|mid", "Ends|mid", "Standing|mid", "|num"]} rows={allocations.map((a) => [
                 <span className="tnum" key="n">{a.number}</span>,
@@ -231,6 +266,7 @@ export function Postings({ structure, sessions, session, level, posting, student
                 <span className="tnum" key="t">{day(a.ends_on)}</span>,
                 <Pil key="st" kind={STATE[a.state]?.[0] ?? "grey"}>{STATE[a.state]?.[1] ?? a.state}</Pil>,
                 <div key="a" className="row row--inline row--tight row--right">
+                  {a.state !== "COMPLETED" ? <Btn kind="ghost" disabled={busy} onClick={() => openEdit(a)}>Edit</Btn> : null}
                   {a.state === "ALLOCATED" ? <Btn kind="ghost" disabled={busy} onClick={() => void call("PUT", `/allocations/${a.id}`, { state: "IN_PROGRESS" }, `${a.number} began ${chosen.code}`)}>Begin</Btn> : null}
                   {a.state === "IN_PROGRESS" ? <Btn kind="go" disabled={busy} onClick={() => void call("PUT", `/allocations/${a.id}`, { state: "COMPLETED" }, `${a.number} completed ${chosen.code}`)}>Complete</Btn> : null}
                   {a.state === "IN_PROGRESS" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Mark ${a.number}'s ${chosen.code} incomplete?`)) void call("PUT", `/allocations/${a.id}`, { state: "INCOMPLETE" }, `${a.number}'s ${chosen.code} marked incomplete`); }}>Incomplete</Btn> : null}
@@ -239,6 +275,32 @@ export function Postings({ structure, sessions, session, level, posting, student
               ])} texts={allocations.map((a) => `${a.number} ${a.surname} ${a.other_names} ${a.group_label ?? ""} ${a.supervisor ?? ""} ${a.state}`)} />
             ) : <PBody><div className="sub2">Nobody is on this posting for {session} yet. Tick students on the left and allocate them.</div></PBody>}
           </Panel>
+
+          {editing ? (
+            <Modal title={editing.all ? `Everyone on ${chosen.code}` : editing.who} sub={`${chosenBlock?.name ?? ""} · ${chosen.code} in ${session}`} onClose={() => setEditing(null)}
+              foot={<><Btn kind="ghost" onClick={() => setEditing(null)}>Cancel</Btn><Btn kind="primary" disabled={busy} onClick={() => void saveEdit()}>{busy ? "Saving…" : editing.all ? `Apply to all ${allocations.length}` : "Save the allocation"}</Btn></>}>
+              <div className="stack">
+                {groups.length ? (
+                  <Field id="po-e-group" label="Rotation group">
+                    <select id="po-e-group" className="ctl" value={editing.group} onChange={(e) => setEditing({ ...editing, group: e.target.value })}>
+                      <option value="">Leave as it is</option>
+                      {groups.map((g) => <option key={g.id} value={g.id}>Group {g.label}</option>)}
+                    </select></Field>
+                ) : null}
+                <Field id="po-e-sup" label="Supervisor">
+                  <SearchSelect id="po-e-sup" value={editing.supervisor} allLabel="Leave as it is" placeholder="Search the College's staff…"
+                    options={supervisors.map((v) => ({ value: v.id, label: `${v.surname}, ${v.given_names} · ${v.dept_name}` }))} onChange={(v) => setEditing({ ...editing, supervisor: v })} /></Field>
+                <div className="row">
+                  <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-e-from">Starts</label><input id="po-e-from" className="ctl" type="date" value={editing.from} onChange={(e) => setEditing({ ...editing, from: e.target.value })} /></div>
+                  <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-e-to">Ends</label><input id="po-e-to" className="ctl" type="date" value={editing.to} onChange={(e) => setEditing({ ...editing, to: e.target.value })} /></div>
+                </div>
+                {allocations.length > 1 ? (
+                  <label className="row row--tight"><input type="checkbox" checked={editing.all} onChange={(e) => setEditing({ ...editing, all: e.target.checked })} /> <span>Apply what is filled to everyone on {chosen.code} this session ({allocations.length})</span></label>
+                ) : null}
+                <div className="sub2">Only what is filled changes; a blank leaves the allocation as it is. An allocation that has begun keeps its standing.</div>
+              </div>
+            </Modal>
+          ) : null}
         </>
       )}
     </>
