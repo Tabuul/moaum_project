@@ -4,7 +4,7 @@
 import type { Scope } from "@/lib/scope";
 import { STAGE_LABEL, type Broadsheet } from "@/lib/results";
 import { loadCrest } from "@/lib/xlsx";
-import { xlsx, type Cell } from "@/lib/xlsx-write";
+import { colName, xlsx, type Cell } from "@/lib/xlsx-write";
 import { docSerial } from "@/lib/exportbrand";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
@@ -122,9 +122,6 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
 
-  const bsCols: Cell[] = ["S/N", matricPrefix ? `MATRIC NO. (${matricPrefix})` : "MATRIC NO.", "NAME OF CANDIDATE", ...(hideCarryover ? [] : ["CARRYOVER"]),
-    ...orderCols.map((c) => `${c.courseCode} (${c.units})`), "CUR", "CUE", "WGP", "GPA",
-    ...(hideCum ? [] : ["TCR", "TCE", "TWGP", "LCGPA", "CGPA"]), "REMARKS"];
   const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, serialOf(r.number), r.name,
     ...(hideCarryover ? [] : [r.carryovers.join(" ")]),
     ...orderCols.map((c) => markText(markOf(r, c.courseCode))),
@@ -144,10 +141,30 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       ["Summary of results", "", "%"], ...cov.SUM.map((s) => [s[0], s[1], s[2]] as Cell[]), [],
       ["Key", ""], ...cov.KEY.map((k) => [k[0], k[1]] as Cell[]), [],
       ["Courses", "", ""], ["Code", "Title", "Units"], ...orderCols.map((c) => [c.courseCode, c.title, c.units] as Cell[])];
-    const broad: Cell[][] = [...head(`Broadsheet — ${cov.degree}, ${sheet.level} Level, ${semester} semester`), ...sections.flatMap((sec) => [
-      ...(sec.title ? [[], [sec.title]] : []), bsCols, ...sec.rows.map((r, i) => bsRow(r, i)), ...(sec.rows.length ? [] : [["None"]]),
-    ] as Cell[][])];
-    const book = xlsx([["Summary", summary], ["Broadsheet", broad]], { logo: logo ?? undefined });
+    /* the heading as it stands on screen: two rows — S/N, MATRIC NO. (with the class's prefix), NAME OF CANDIDATE and
+       REMARKS spanning both; the course bands and CURRENT and CUMULATIVE DATE over their columns; each course's code
+       over its units — with the ranges merged. The heading is repeated for each list, with its own merges. */
+    const broad: Cell[][] = [...head(`Broadsheet — ${cov.degree}, ${sheet.level} Level, ${semester} semester`)];
+    const headerRows: number[] = [];
+    const merges: string[] = [];
+    const nCur = 4, nCum = hideCum ? 0 : 5;
+    for (const sec of sections) {
+      if (sec.title) { broad.push([], [sec.title]); }
+      const r1 = broad.length, r2 = r1 + 1;           // 0-based indices of the two heading rows
+      const top: Cell[] = ["S/N", `MATRIC NO.${matricPrefix ? "\n" + matricPrefix : ""}`, "NAME OF CANDIDATE"];
+      const sub: Cell[] = ["", "", ""];
+      let c = 3;
+      const span = (label: string, n: number) => { if (!n) return; top.push(label); for (let k = 1; k < n; k++) top.push(""); if (n > 1) merges.push(`${colName(c)}${r1 + 1}:${colName(c + n - 1)}${r1 + 1}`); c += n; };
+      for (const [label, list] of bands) { span(label, list.length); for (const co of list) sub.push(`${co.courseCode}\n${co.units}`); }
+      span("CURRENT", nCur); sub.push("CUR", "CUE", "WGP", "GPA");
+      if (!hideCum) { span("CUMULATIVE DATE", nCum); sub.push("TCR", "TCE", "TWGP", "LCGPA", "CGPA"); }
+      top.push("REMARKS"); sub.push("");
+      for (const col of [0, 1, 2, c]) merges.push(`${colName(col)}${r1 + 1}:${colName(col)}${r2 + 1}`);
+      headerRows.push(r1, r2);
+      broad.push(top, sub, ...sec.rows.map((r, i) => bsRow(r, i)));
+      if (!sec.rows.length) broad.push(["None"]);
+    }
+    const book = xlsx([["Summary", summary], ["Broadsheet", broad, { headerRows, merges }]], { logo: logo ?? undefined });
     const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

@@ -13,6 +13,9 @@ export type Cell = string | number | null | undefined;
 
 export interface XlsxLogo { png: Uint8Array; w: number; h: number }
 export interface XlsxOpts { logo?: XlsxLogo }
+/** what a sheet may add to its rows: further header rows (0-based indices, styled as the header) and merged ranges ("A8:A9") */
+export interface SheetOpts { headerRows?: number[]; merges?: string[] }
+export type SheetSpec = [string, Cell[][]] | [string, Cell[][], SheetOpts];
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -37,8 +40,9 @@ function headerRow(rows: Cell[][]): number {
   return i < 0 ? 0 : i;
 }
 
-export function sheetXml(rows: Cell[][], hasLogo = false): string {
-  const hdr = headerRow(rows);
+export function sheetXml(rows: Cell[][], hasLogo = false, opts: SheetOpts = {}): string {
+  const extraHeaders = new Set(opts.headerRows ?? []);
+  const hdr = Math.min(headerRow(rows), ...(opts.headerRows?.length ? [Math.min(...opts.headerRows)] : []));
   const nCols = rows.reduce((m, r) => Math.max(m, r.length), 0);
   // widths from the data grid only, so a long school name does not blow out a column
   const widths: number[] = [];
@@ -69,7 +73,7 @@ export function sheetXml(rows: Cell[][], hasLogo = false): string {
     // a "SN" row is a column-header (there are several: the summary table, the quota table, the LGA table);
     // a lone non-empty cell below a header is a section title, given a coloured band the width of the grid;
     // every other row is data, striped for the eye and bordered for the grid
-    const isHeader = isSn(row[0]);
+    const isHeader = isSn(row[0]) || extraHeaders.has(r);
     const only = nonEmpty === 1 ? row.find((v) => v !== null && v !== undefined && v !== "") : null;
     const isSection = !isHeader && nonEmpty === 1 && typeof only === "string" && !Number.isFinite(Number(only));
     let s: number;
@@ -88,7 +92,8 @@ export function sheetXml(rows: Cell[][], hasLogo = false): string {
     if (cells.length) out.push(`<row r="${r + 1}">${cells.join("")}</row>`);
   });
   const drawing = hasLogo ? `<drawing r:id="rId1"/>` : "";
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${cols}<sheetData>${out.join("")}</sheetData>${drawing}</worksheet>`;
+  const merges = opts.merges?.length ? `<mergeCells count="${opts.merges.length}">${opts.merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "";
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${cols}<sheetData>${out.join("")}</sheetData>${merges}${drawing}</worksheet>`;
 }
 
 // fonts: 0 normal · 1 white-bold (header) · 2 navy-bold-15 (school name) · 3 navy-bold-12 (title)
@@ -165,7 +170,7 @@ function drawingXml(logo: XlsxLogo): string {
 }
 
 /** a workbook: named sheets of rows, optionally with the crest on every sheet */
-export function xlsx(sheets: [string, Cell[][]][], opts: XlsxOpts = {}): Uint8Array {
+export function xlsx(sheets: SheetSpec[], opts: XlsxOpts = {}): Uint8Array {
   const logo = opts.logo;
   const hasLogo = !!logo;
   const drawRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/></Relationships>`;
@@ -181,7 +186,7 @@ export function xlsx(sheets: [string, Cell[][]][], opts: XlsxOpts = {}): Uint8Ar
     ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map(([name], i) => `<sheet name="${esc(name.slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`],
     ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
     ["xl/styles.xml", STYLES_XML],
-    ...sheets.map(([, rows], i): [string, string] => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(rows, hasLogo)]),
+    ...sheets.map((sh, i): [string, string] => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(sh[1], hasLogo, sh[2] ?? {})]),
   ];
 
   if (hasLogo && logo) {
