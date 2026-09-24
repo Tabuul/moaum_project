@@ -29,10 +29,11 @@ export function colName(i: number): string {
   return s;
 }
 
-/** the column-header row is the first row that starts with "SN"; everything
+/** the column-header row is the first row that starts with "SN" or "S/N"; everything
  *  above it is the letterhead, everything below it is data */
+const isSn = (v: Cell) => { const t = String(v ?? "").trim().toUpperCase(); return t === "SN" || t === "S/N"; };
 function headerRow(rows: Cell[][]): number {
-  const i = rows.findIndex((r) => String(r[0] ?? "").trim().toUpperCase() === "SN");
+  const i = rows.findIndex((r) => isSn(r[0]));
   return i < 0 ? 0 : i;
 }
 
@@ -68,7 +69,7 @@ export function sheetXml(rows: Cell[][], hasLogo = false): string {
     // a "SN" row is a column-header (there are several: the summary table, the quota table, the LGA table);
     // a lone non-empty cell below a header is a section title, given a coloured band the width of the grid;
     // every other row is data, striped for the eye and bordered for the grid
-    const isHeader = String(row[0] ?? "").trim().toUpperCase() === "SN";
+    const isHeader = isSn(row[0]);
     const only = nonEmpty === 1 ? row.find((v) => v !== null && v !== undefined && v !== "") : null;
     const isSection = !isHeader && nonEmpty === 1 && typeof only === "string" && !Number.isFinite(Number(only));
     let s: number;

@@ -41,11 +41,11 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   const cell = (m: ReturnType<typeof markOf>) =>
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
       : m.counted ? (m.total == null
-          ? <span><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F0</div></span>
-          : <span><span className="tnum">{m.total}</span><div className="sub2" style={{ color: COLOUR(m.points), fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>)
-      : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div style={{ fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>
+          ? <span style={{ whiteSpace: "nowrap", color: "var(--red-ink)", fontWeight: 700 }}>ABS F0</span>
+          : <span style={{ whiteSpace: "nowrap" }}><span className="tnum">{m.total}</span> <b style={{ color: COLOUR(m.points) }}>{gw(m.grade, m.points)}</b></span>)
+      : m.total != null ? <span className="sub2" style={{ whiteSpace: "nowrap" }} title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span> <b>{gw(m.grade, m.points)}</b></span>
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
-      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage}><span className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700 }}>ABS</span><div className="sub2" style={{ color: "var(--red-ink)", fontWeight: 700 }}>F0</div></span>;
+      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} style={{ whiteSpace: "nowrap", color: "var(--red-ink)", fontWeight: 700 }}>ABS F0</span>;
   const orderCols = bands.flatMap((b) => b[1]);
   /* from 200 level the sheet is in three lists: the class with no question of probation; at 200 level first
      semester the Direct Entry students, whose first semester this is (no standing to judge yet); and the
@@ -134,14 +134,17 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     if (!sheet || !cov) return;
     const logo = await loadCrest();
     const serial = docSerial("BRD");
-    const head = (t: string): Cell[][] => [[null, UNI], [null, t], [null, `${cov.degree} · ${sheet.level} Level · ${semester} semester · ${sheet.session} · Serial ${serial}`], [], [], [], []];
+    const head = (t: string): Cell[][] => [[null, UNI], [null, t],
+      [null, `${cov.degree} · ${sheet.level} Level · ${semester} semester · ${sheet.session} · Serial ${serial}`],
+      [null, `Faculty of ${cov.facName} · Department of ${cov.deptName}`],
+      [null, `Generated ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })} from the register`], [], []];
     const summary: Cell[][] = [...head("Examination Reporting Sheet"),
       ["Faculty", cov.facName], ["Department", cov.deptName], ["Degree in view", cov.degree],
       ["Level", sheet.level], ["Semester", semester], ["Session", sheet.session], [],
       ["Summary of results", "", "%"], ...cov.SUM.map((s) => [s[0], s[1], s[2]] as Cell[]), [],
       ["Key", ""], ...cov.KEY.map((k) => [k[0], k[1]] as Cell[]), [],
       ["Courses", "", ""], ["Code", "Title", "Units"], ...orderCols.map((c) => [c.courseCode, c.title, c.units] as Cell[])];
-    const broad: Cell[][] = [...head("Broadsheet"), ...sections.flatMap((sec) => [
+    const broad: Cell[][] = [...head(`Broadsheet — ${cov.degree}, ${sheet.level} Level, ${semester} semester`), ...sections.flatMap((sec) => [
       ...(sec.title ? [[], [sec.title]] : []), bsCols, ...sec.rows.map((r, i) => bsRow(r, i)), ...(sec.rows.length ? [] : [["None"]]),
     ] as Cell[][])];
     const book = xlsx([["Summary", summary], ["Broadsheet", broad]], { logo: logo ?? undefined });
@@ -170,7 +173,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
     const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
-      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
+      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F0" ? "<b>ABS F0</b>" : m!.counted ? `${m!.total} <b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total} ${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
       body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
