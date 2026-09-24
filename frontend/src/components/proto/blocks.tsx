@@ -135,8 +135,8 @@ export function Modal({
   onClose: () => void;
 }) {
   return (
-    <div className="mdl" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className={`mdl__box${wide ? " is-wide" : ""}`} onClick={(e) => e.stopPropagation()}>
+    <div className="mdl" role="dialog" aria-modal="true" onClick={onClose} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+      <div className={`mdl__box${wide ? " is-wide" : ""}`} onClick={(e) => e.stopPropagation()} tabIndex={-1} autoFocus>
         <div className="mdl__head">
           <div style={{ minWidth: 0 }}>
             <b>{title}</b>
@@ -159,19 +159,26 @@ export function Field({
   label,
   hint,
   full,
+  required,
+  error,
   children,
 }: {
   id: string;
   label: ReactNode;
   hint?: ReactNode;
   full?: boolean;
+  /** marks the label; the control's own required attribute still does the checking */
+  required?: boolean;
+  /** an error line under the control, and the control drawn in the error state */
+  error?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className={`field${full ? " rf--full" : ""}`}>
-      <label htmlFor={id}>{label}</label>
+    <div className={`field${full ? " rf--full" : ""}${error ? " is-error" : ""}`}>
+      <label htmlFor={id}>{label}{required ? <span className="req" aria-hidden="true"> *</span> : null}</label>
       {children}
-      {hint ? <span className="hint">{hint}</span> : null}
+      {error ? <span className="ferr" role="alert">{error}</span> : null}
+      {hint && !error ? <span className="hint">{hint}</span> : null}
     </div>
   );
 }

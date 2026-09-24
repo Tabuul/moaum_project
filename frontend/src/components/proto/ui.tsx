@@ -75,29 +75,58 @@ export function WarnIcon({ size }: { size: number }) {
 
 export type NoteKind = "info" | "ok" | "bad";
 
+/** the in-content page head: a title, a line of context, and the page's primary actions on the right */
+export function PageHead({ title, description, actions, eyebrow }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode }) {
+  return (
+    <div className="phead">
+      <div style={{ minWidth: 0 }}>
+        {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
+        <h2 className="phead__t">{title}</h2>
+        {description ? <div className="phead__d">{description}</div> : null}
+      </div>
+      {actions ? <div className="phead__a">{actions}</div> : null}
+    </div>
+  );
+}
+
+/** one tab strip for the whole portal: segmented by default, or a line of underlined tabs; the count is optional */
+export function Tabs<T extends string>({ items, value, onChange, look = "segmented", label }: {
+  items: { id: T; label: ReactNode; count?: ReactNode; disabled?: boolean }[]; value: T; onChange: (id: T) => void; look?: "segmented" | "line"; label?: string;
+}) {
+  return (
+    <div role="tablist" aria-label={label} className={`tabs${look === "line" ? " tabs--line" : ""}`}>
+      {items.map((t) => (
+        <button key={t.id} type="button" role="tab" className="tabs__t" aria-selected={t.id === value} disabled={t.disabled} onClick={() => onChange(t.id)}>
+          {t.label}{t.count != null ? <span className="tabs__n">{t.count}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** note(kind, title, text, action) */
 export function Note({ kind, title, children, action }: { kind: NoteKind; title: ReactNode; children?: ReactNode; action?: ReactNode }) {
   const icon = kind === "bad" ? <WarnIcon size={19} /> : kind === "ok" ? <Tick size={19} colour="var(--green-ink)" /> : <Ico name="alert" size={18} stroke="var(--chrome)" w={2} />;
-  const col = kind === "bad" ? "var(--red-deep)" : kind === "ok" ? "var(--green-ink)" : "var(--chrome)";
   return (
     <div className={`notice notice--${kind}`}>
       {icon}
-      <div>
-        <div className="notice__t" style={{ color: col }}>
-          {title}
-        </div>
-        <p style={{ color: kind === "info" ? "#124A63" : col }}>{children}</p>
-        {action ? <div style={{ marginTop: 11 }}>{action}</div> : null}
+      <div style={{ minWidth: 0 }}>
+        <div className="notice__t">{title}</div>
+        <p>{children}</p>
+        {action ? <div className="notice__a">{action}</div> : null}
       </div>
     </div>
   );
 }
 
-export type BtnKind = "primary" | "ghost" | "go" | "urgent";
+/** the button hierarchy: primary (the one act), secondary (tinted), ghost (outline), go (a completing act), urgent (a destructive one) */
+export type BtnKind = "primary" | "secondary" | "ghost" | "go" | "urgent";
+export type BtnSize = "sm" | "md";
 
-/** btn(kind, label, attrs) — always the small size, as the module screens use it */
+/** btn(kind, label, attrs) — small by default, as the desk screens use it; md for a form's or a page's main act */
 export function Btn({
   kind,
+  size = "sm",
   children,
   onClick,
   disabled,
@@ -106,6 +135,7 @@ export function Btn({
   style,
 }: {
   kind: BtnKind;
+  size?: BtnSize;
   children: ReactNode;
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
@@ -114,17 +144,23 @@ export function Btn({
   style?: CSSProperties;
 }) {
   return (
-    <button type={type} className={`btn btn--${kind} btn--sm`} onClick={onClick} disabled={disabled} title={title} style={style}>
+    <button type={type} className={`btn btn--${kind} btn--${size}`} onClick={onClick} disabled={disabled} title={title} style={style}>
       {children}
     </button>
   );
 }
 
-/** Visually hidden, but read by screen readers — the label behind an icon-only control. */
-const SR_ONLY: CSSProperties = {
-  position: "absolute", width: 1, height: 1, padding: 0, margin: -1,
-  overflow: "hidden", clip: "rect(0,0,0,0)", whiteSpace: "nowrap", border: 0,
-};
+/** a link that looks like a button — the same hierarchy and sizes, for a route rather than an act */
+export function LinkBtn({ kind = "ghost", size = "sm", href, children, title, prefetch }: {
+  kind?: BtnKind; size?: BtnSize; href: string; children: ReactNode; title?: string; prefetch?: boolean;
+}) {
+  return (
+    <Link href={href} className={`btn btn--${kind} btn--${size}`} title={title} prefetch={prefetch}>
+      {children}
+    </Link>
+  );
+}
+
 
 /**
  * An icon-only action button — Edit (pencil), View (eye), Delete (trash) and the
@@ -150,15 +186,14 @@ export function IcoBtn({
   return (
     <button
       type="button"
-      className={`btn btn--${kind} btn--sm`}
+      className={`btn btn--${kind} btn--sm btn--icon${danger ? " is-danger" : ""}`}
       title={label}
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      style={{ padding: "8px 10px", minWidth: 38, color: danger ? "var(--red-ink)" : undefined }}
     >
       <Ico name={icon} size={16} />
-      <span style={SR_ONLY}>{label}</span>
+      <span className="sr-only">{label}</span>
     </button>
   );
 }
