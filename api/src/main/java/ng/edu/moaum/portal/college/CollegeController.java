@@ -1079,6 +1079,30 @@ class CollegeController {
         return out;
     }
 
+    /** what the logbook asks, by posting and block, from the prospectus (V245): the procedures with their minimum counts and
+     *  whether observed or performed, the cases to clerk, the attendance rules by phase and block, the mandatory events */
+    @GetMapping("/requirements")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> requirements() {
+        List<Map<String, Object>> postings = jdbc.sql("""
+                SELECT p.id, p.code, p.name, p.level, p.level_note, p.tier, p.duration_weeks, p.min_cases, b.code AS block_code, b.name AS block,
+                       (SELECT count(*) FROM college.procedure_requirement r WHERE r.posting_id = p.id) AS procedures,
+                       (SELECT string_agg(r.name || ' × ' || r.min_count || CASE r.mode WHEN 'OBSERVE' THEN ' (observe)' WHEN 'PERFORM' THEN ' (perform)' ELSE '' END, '; ' ORDER BY r.name)
+                          FROM college.procedure_requirement r WHERE r.posting_id = p.id) AS procedure_list,
+                       (SELECT count(*) FROM college.timetable_slot t WHERE t.posting_id = p.id) AS slots
+                  FROM college.posting p JOIN college.block b ON b.id = p.block_id ORDER BY b.ordinal, p.ordinal
+                """).query().listOfRows();
+        List<Map<String, Object>> attendance = jdbc.sql("""
+                SELECT a.scope, a.phase, b.code AS block_code, b.name AS block, a.min_pct, a.applies_to, a.note
+                  FROM college.attendance_rule a LEFT JOIN college.block b ON b.id = a.block_id ORDER BY a.scope, a.phase, b.ordinal
+                """).query().listOfRows();
+        List<Map<String, Object>> events = jdbc.sql("""
+                SELECT e.name, e.weekday, b.code AS block_code, b.name AS block FROM college.mandatory_event e LEFT JOIN college.block b ON b.id = e.block_id ORDER BY b.ordinal, e.name
+                """).query().listOfRows();
+        return Map.of("postings", postings, "attendance", attendance, "events", events);
+    }
+
     /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */
 
     @GetMapping("/my-record")

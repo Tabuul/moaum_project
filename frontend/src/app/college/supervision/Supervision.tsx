@@ -9,7 +9,16 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
 import { notify , notifyProblem } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+
+/** what the logbook asks, from the prospectus (/college/requirements) */
+export interface Requirements {
+  postings: { id: string; code: string; name: string; level: number | null; level_note: string | null; tier: string; duration_weeks: number | null; min_cases: number | null; block_code: string; block: string; procedures: number; procedure_list: string | null; slots: number }[];
+  attendance: { scope: string; phase: string | null; block_code: string | null; block: string | null; min_pct: number; applies_to: string; note: string | null }[];
+  events: { name: string; weekday: number | null; block_code: string | null; block: string | null }[];
+}
+const WEEKDAY = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const PHASE: Record<string, string> = { PREMEDICAL: "Pre-Medical", PRECLINICAL: "Pre-clinical", CLINICAL: "Clinical" };
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -39,8 +48,8 @@ const ACTIVITIES = ["LECTURE", "PRACTICAL", "CLINICAL", "TUTORIAL", "TEST", "OTH
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const word = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 
-export function Supervision({ sessions, session, rows, allocation, logbook, problem, desk }: {
-  sessions: string[]; session: string; rows: Supervised[]; allocation: string; logbook: Logbook | null; problem: Problem | null; desk: boolean;
+export function Supervision({ sessions, session, rows, allocation, logbook, problem, desk, requirements }: {
+  sessions: string[]; session: string; rows: Supervised[]; allocation: string; logbook: Logbook | null; problem: Problem | null; desk: boolean; requirements: Requirements | null;
 }) {
   const router = useRouter();
   const go = useQueryNav();
@@ -115,11 +124,50 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
             ])} texts={rows.map((r) => `${r.number} ${r.surname} ${r.other_names} ${r.block} ${r.posting} ${r.state}`)} />
           </Panel>
         ) : (
-          <Note kind="info" title={desk ? "No posting allocation this session" : "You supervise nobody this session"}>
+          <Note kind="info" title={desk ? "No posting allocation this session" : "You supervise nobody this session"} action={desk ? <LinkBtn kind="primary" href={`/college/postings?session=${encodeURIComponent(session)}`}>Postings desk</LinkBtn> : undefined}>
             {desk ? "Allocate students on the Postings desk; each allocation names a supervisor, and the logbook opens here." : "A posting's logbook opens here once the College Secretary names you its supervisor on the allocation. If you supervise students and see none, ask the College Secretary to name you on their allocations."}
           </Note>
         )
-      ) : (
+      ) : null}
+
+      {!lb && requirements ? (
+        <>
+          <Panel title="What the logbook asks, by posting" right="From the prospectus; the supervisor verifies each entry">
+            <DTable cols={["Block", "Posting", "Level|mid", "Weeks|mid", "Cases|mid", "Procedures", "Timetable|mid"]} rows={requirements.postings.map((p) => [
+              <strong key="b">{p.block}</strong>,
+              <span key="p"><strong className="tnum">{p.code}</strong> <span className="sub2">{p.name}</span></span>,
+              <span className="tnum" key="l">{p.level ?? p.level_note ?? "—"}</span>,
+              <span className="tnum" key="w">{p.duration_weeks ?? "—"}</span>,
+              <span className="tnum" key="c">{p.min_cases ?? "—"}</span>,
+              <span className="sub2" key="r">{p.procedure_list ?? (p.procedures ? `${p.procedures} procedures` : "None named")}</span>,
+              <span className="tnum" key="t">{p.slots ? `${p.slots} slots` : "—"}</span>,
+            ])} texts={requirements.postings.map((p) => `${p.block} ${p.code} ${p.name} ${p.procedure_list ?? ""}`)} />
+          </Panel>
+          <div className="grid grid--2">
+            <Panel title="Attendance rules" right="The minimum, and what it applies to">
+              {requirements.attendance.length ? (
+                <DTable cols={["Where", "Minimum|mid", "Applies to", "Note"]} rows={requirements.attendance.map((a, i) => [
+                  <strong key={"w" + i}>{a.scope === "PHASE" ? `${PHASE[a.phase ?? ""] ?? a.phase} phase` : a.block ?? a.block_code}</strong>,
+                  <span className="tnum" key={"m" + i}>{a.min_pct}%</span>,
+                  <span className="sub2" key={"t" + i}>{a.applies_to.toLowerCase().replace(/_/g, " ")}</span>,
+                  <span className="sub2" key={"n" + i}>{a.note ?? "—"}</span>,
+                ])} />
+              ) : <PBody><div className="sub2">The prospectus names no attendance rule.</div></PBody>}
+            </Panel>
+            <Panel title="Mandatory events" right="Attendance recorded per event">
+              {requirements.events.length ? (
+                <DTable cols={["Block", "Event", "Day"]} rows={requirements.events.map((e, i) => [
+                  <strong key={"b" + i}>{e.block ?? "Every block"}</strong>,
+                  <span key={"e" + i}>{e.name}</span>,
+                  <span className="sub2" key={"d" + i}>{e.weekday ? WEEKDAY[e.weekday] : "As scheduled"}</span>,
+                ])} />
+              ) : <PBody><div className="sub2">The prospectus names no mandatory event.</div></PBody>}
+            </Panel>
+          </div>
+        </>
+      ) : null}
+
+      {lb ? (
         <>
           <Panel title={`${who} · ${lb.allocation.posting}`} right={<span className="row row--inline"><Pil kind={STATE[lb.allocation.state]?.[0] ?? "grey"}>{STATE[lb.allocation.state]?.[1] ?? lb.allocation.state}</Pil><Btn kind="ghost" onClick={() => nav({ allocation: "" })}>Back to the list</Btn></span>}>
             <PBody><div className="sub2">Everything recorded here is on the audit spine against you. A procedure you record is verified at once unless you untick it; one the student logged waits for your verification. The logbook standing the student sees is what is verified.</div></PBody>
@@ -218,7 +266,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
             </Panel>
           </div>
         </>
-      )}
+      ) : null}
     </>
   );
 }
