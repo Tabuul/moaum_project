@@ -24,6 +24,10 @@ ALTER TABLE iam.office_assignment DROP CONSTRAINT ck_grant_scope;
 ALTER TABLE iam.office_assignment ADD CONSTRAINT ck_grant_scope CHECK (scope_kind IN
         ('institution','college','faculty','department','programme','course','unit','platform','level'));
 
+-- ref.office is on the audit spine and a migration has no acting person: the one row goes in as V227's did
+SELECT set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+SELECT set_config('moaum.actor_office', 'academic', true);
+SELECT set_config('moaum.reason', 'MBBS Coordinator office (V250)', true);
 INSERT INTO ref.office (code, label, scope_kind) VALUES ('mbbscoordinator', 'MBBS Coordinator', 'level')
 ON CONFLICT (code) DO NOTHING;
 
