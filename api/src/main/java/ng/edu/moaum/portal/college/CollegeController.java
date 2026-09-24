@@ -985,6 +985,100 @@ class CollegeController {
         return out;
     }
 
+    /** the College officers' dashboard: what waits on the College — decisions for the Board, results at the end of a year, cohorts
+     *  not fully registered, undated calendars, appeals with Senate, levels without a coordinator — the fees position by level
+     *  this session, and the decisions confirmed most recently */
+    @GetMapping("/dashboard")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> dashboard() {
+        String session = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional()
+                .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1").query(String.class).single());
+        List<Map<String, Object>> waiting = new java.util.ArrayList<>();
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT x.code AS exam, d.from_level AS level, d.session, count(*) AS n FROM college.progression_decision d JOIN college.professional_exam x ON x.level = d.from_level
+                 WHERE d.state = 'PROVISIONAL' GROUP BY x.code, d.from_level, d.session ORDER BY d.session, d.from_level
+                """).query().listOfRows()) {
+            long n = ((Number) r.get("n")).longValue();
+            waiting.add(Map.of("kind", "board", "level", r.get("level"), "session", r.get("session"), "exam", r.get("exam"), "count", n,
+                    "text", n + " provisional decision" + (n == 1 ? "" : "s") + " on the " + r.get("exam") + " (" + r.get("session") + " cohort) await the College Academic Board",
+                    "href", "/college/examinations?exam=" + r.get("exam") + "&session=" + r.get("session")));
+        }
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT x.code AS exam, e.level, e.session, count(*) AS n
+                  FROM college.enrolment e JOIN college.professional_exam x ON x.level = e.level
+                 WHERE e.state IN ('OPEN','RESIT') AND e.registered_at IS NOT NULL AND college.year_reached_final(e.level, e.session)
+                   AND EXISTS (SELECT 1 FROM college.exam_subject s WHERE s.exam_id = x.id
+                                AND NOT EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = e.student_id AND r.subject_id = s.id AND r.session = e.session AND r.passed IS NOT NULL))
+                 GROUP BY x.code, e.level, e.session ORDER BY e.session, e.level
+                """).query().listOfRows()) {
+            long n = ((Number) r.get("n")).longValue();
+            waiting.add(Map.of("kind", "results", "level", r.get("level"), "session", r.get("session"), "exam", r.get("exam"), "count", n,
+                    "text", n + " candidate" + (n == 1 ? "" : "s") + " at the end of the " + r.get("level") + " Level year (" + r.get("session") + ") still without a result in every subject of the " + r.get("exam"),
+                    "href", "/college/scoresheets?session=" + r.get("session") + "&level=" + r.get("level")));
+        }
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT e.level, e.session, count(*) AS n FROM college.enrolment e
+                 WHERE e.state IN ('OPEN','RESIT') AND e.registered_at IS NULL GROUP BY e.level, e.session ORDER BY e.session, e.level
+                """).query().listOfRows()) {
+            long n = ((Number) r.get("n")).longValue();
+            waiting.add(Map.of("kind", "registration", "level", r.get("level"), "session", r.get("session"), "count", n,
+                    "text", n + " student" + (n == 1 ? "" : "s") + " at " + r.get("level") + " Level (" + r.get("session") + ") with a year open but not fully registered",
+                    "href", "/college/examinations?session=" + r.get("session")));
+        }
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT l.level FROM college.level l WHERE l.level >= 200
+                   AND EXISTS (SELECT 1 FROM college.enrolment e WHERE e.level = l.level AND e.state IN ('OPEN','RESIT'))
+                   AND NOT EXISTS (SELECT 1 FROM college.semester cs WHERE cs.level = l.level AND cs.session = :s AND cs.starts_on IS NOT NULL)
+                 ORDER BY l.level
+                """).param("s", session).query().listOfRows()) {
+            waiting.add(Map.of("kind", "calendar", "level", r.get("level"), "session", session,
+                    "text", r.get("level") + " Level has years open but no dated semester for " + session + "; the year's end and the results guard stay unknown",
+                    "href", "/college/calendar?session=" + session));
+        }
+        long appeals = jdbc.sql("""
+                SELECT count(*) FROM college.progression_decision d WHERE d.state = 'CONFIRMED' AND d.outcome = 'APPEAL'
+                   AND NOT EXISTS (SELECT 1 FROM college.enrolment e WHERE e.student_id = d.student_id AND e.level = 600 AND e.kind = 'APPEAL')
+                """).query(Long.class).single();
+        if (appeals > 0) waiting.add(Map.of("kind", "appeal", "count", appeals, "text", appeals + " appeal" + (appeals == 1 ? "" : "s") + " after the Final MBBS with Senate, awaiting its minute", "href", "/college/examinations?exam=PE4"));
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT l.level FROM college.level l WHERE l.level >= 200
+                   AND NOT EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.office_code = 'mbbscoordinator' AND a.scope_id = l.level::text
+                                    AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date))
+                 ORDER BY l.level
+                """).query().listOfRows()) {
+            waiting.add(Map.of("kind", "coordinator", "level", r.get("level"), "text", r.get("level") + " Level has no MBBS Coordinator appointed", "href", "/people"));
+        }
+        List<Map<String, Object>> fees = jdbc.sql("""
+                SELECT st.current_level AS level, count(*) AS students,
+                       count(*) FILTER (WHERE finance.semester_cleared(st.id, :s, 1)) AS first_cleared,
+                       count(*) FILTER (WHERE finance.semester_cleared(st.id, :s, 2)) AS second_cleared,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.enrolment e WHERE e.student_id = st.id AND e.state IN ('OPEN','RESIT') AND e.registered_at IS NOT NULL)) AS registered
+                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') AND st.current_level >= 200
+                 GROUP BY st.current_level ORDER BY st.current_level
+                """).param("s", session).query().listOfRows();
+        List<Map<String, Object>> recent = jdbc.sql("""
+                SELECT coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, d.from_level AS level, d.session, d.outcome, d.honours, d.confirmed_on, d.minute
+                  FROM college.progression_decision d JOIN people.student st ON st.id = d.student_id
+                 WHERE d.state = 'CONFIRMED' ORDER BY d.confirmed_on DESC NULLS LAST, d.decided_on DESC LIMIT 12
+                """).query().listOfRows();
+        Map<String, Object> totals = jdbc.sql("""
+                SELECT (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                         WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                       (SELECT count(*) FROM college.enrolment e WHERE e.state IN ('OPEN','RESIT')) AS open_years,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.state = 'PROVISIONAL') AS provisional,
+                       (SELECT count(*) FROM college.posting_allocation a WHERE a.session = :s) AS allocations
+                """).param("s", session).query().singleRow();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("totals", totals);
+        out.put("waiting", waiting);
+        out.put("fees", fees);
+        out.put("recent", recent);
+        return out;
+    }
+
     /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */
 
     @GetMapping("/my-record")
