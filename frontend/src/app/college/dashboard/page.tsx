@@ -36,6 +36,8 @@ export default async function CollegeDashboardPage() {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Link href="/college/postings" className="btn btn--primary btn--sm">Postings desk</Link>
+            <Link href="/college/supervision" className="btn btn--ghost btn--sm">Logbooks</Link>
+            <Link href="/college/examinations" className="btn btn--ghost btn--sm">Professional examinations</Link>
             <Link href="/college" className="btn btn--ghost btn--sm">College overview</Link>
           </div>
         </PBody>
