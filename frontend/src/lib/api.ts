@@ -83,6 +83,10 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
   const text = await response.text();
   const json = text ? safeJson(text) : null;
   if (response.ok) {
+    // a 2xx whose body is there but is not JSON (a response cut short, a proxy page) is a problem, never null data
+    if (text.trim() !== "" && json === null) {
+      return { ok: false, problem: { status: 502, title: "The portal API answered with an unreadable body", detail: `${API_URL}${path}: ${text.slice(0, 160)}`, remedy: { message: "Reload; if it persists the API is restarting or its answer was cut short.", office: "Directorate of ICT" } } };
+    }
     return { ok: true, data: json as T, status: response.status };
   }
   const problem: Problem =

@@ -19,8 +19,8 @@ const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("e
 
 export default async function CoordinatorPage() {
   const [me, sum] = await Promise.all([api<Me>("/api/v1/iam/me"), api<Summary>("/api/v1/college/coordinator")]);
-  if (!sum.ok) {
-    return <Shell route="r/mbbscoordinator" me={me.ok ? me.data : null}><ProblemNotice problem={sum.problem} /></Shell>;
+  if (!sum.ok || !sum.data) {
+    return <Shell route="r/mbbscoordinator" me={me.ok ? me.data : null}><ProblemNotice problem={sum.ok ? { status: 502, title: "The College API answered with nothing", detail: "The coordinator's summary came back empty; reload, and if it persists the API is restarting." } : sum.problem} /></Shell>;
   }
   const s = sum.data;
   const ex = s.exam;
