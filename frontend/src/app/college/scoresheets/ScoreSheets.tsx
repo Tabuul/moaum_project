@@ -20,8 +20,10 @@ const word = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g,
 const parse = <T,>(s: string | null, fallback: T): T => { try { return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; } };
 interface Row { number: string; name: string; line: number; marks: { subjectId: string; subject: string; ca: string; exam: string; clinical: string; attendance: string }[]; flags: string[] }
 
-export function ScoreSheets({ sessions, session, level, exams, data, problem, coordinator, summary = [] }: {
-  sessions: string[]; session: string; level: number; exams: { code: string; name: string; level: number; min_attendance_pct: number | null }[]; data: Candidates | null; problem: Problem | null; coordinator: boolean; summary?: ExamSummary[];
+export interface Upload { at: string; actor_office: string; by: string; reason: string; marks: number; written: number; changed: number }
+
+export function ScoreSheets({ sessions, session, level, exams, data, problem, coordinator, summary = [], uploads = [] }: {
+  sessions: string[]; session: string; level: number; exams: { code: string; name: string; level: number; min_attendance_pct: number | null }[]; data: Candidates | null; problem: Problem | null; coordinator: boolean; summary?: ExamSummary[]; uploads?: Upload[];
 }) {
   const router = useRouter();
   const go = useQueryNav();
@@ -221,6 +223,17 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
               {done.problems.length ? `Refused: ${done.problems.map((p) => `${p.number} — ${p.problem}`).join(" · ")}` : ""}
             </Note>
           ) : null}
+          <Panel title="Marks entered for this sheet" right={uploads.length ? `${uploads.length} act${uploads.length === 1 ? "" : "s"} on the record` : "Nothing entered yet"}>
+            {uploads.length ? (
+              <DTable cols={["When|mid", "By", "Office", "What", "Marks|mid"]} rows={uploads.map((u, i) => [
+                <span className="tnum" key={"w" + i}>{new Date(u.at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
+                <strong key={"b" + i}>{u.by}</strong>,
+                <span className="sub2" key={"o" + i}>{u.actor_office}</span>,
+                <span className="sub2" key={"r" + i}>{u.reason}</span>,
+                <span className="tnum" key={"m" + i}>{u.marks}{u.changed ? <span className="sub2"> · {u.changed} changed</span> : null}</span>,
+              ])} />
+            ) : <PBody><div className="sub2">Every mark saved on this sheet — by an upload or by hand on the examinations desk — is on the audit spine with who saved it and why, and is listed here.</div></PBody>}
+          </Panel>
           <Panel title="The cohort as it stands" right={`${rows.length} candidates`}>
             <DTable cols={["Matriculation number", "Name", "Registered|mid", ...subjects.map((s) => `${s.name}|mid`), "Decision|mid"]} rows={rows.map((c) => {
               const results = parse<Result[]>(c.results, []); const d = parse<Decision | null>(c.decision, null);

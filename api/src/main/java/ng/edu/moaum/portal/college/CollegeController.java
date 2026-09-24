@@ -1174,6 +1174,25 @@ class CollegeController {
                 """).param("s", session).query().listOfRows();
     }
 
+    /** the uploads of a cohort's score sheet, as the audit spine records them: when, by whom in which office, and how many marks
+     *  each wrote or changed — every mark saved by hand on the desk is listed too, under its own reason */
+    @GetMapping("/exams/{code}/uploads")
+    @PreAuthorize(EXAMINERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> uploads(@PathVariable String code, @RequestParam String session) {
+        Map<String, Object> e = exam(code);
+        assertLevel(e.get("level"));
+        return jdbc.sql("""
+                SELECT min(en.occurred_at) AS at, en.actor_office, coalesce(p.surname || ', ' || p.given_names, 'The portal') AS by, en.reason,
+                       count(*) AS marks, count(*) FILTER (WHERE en.action = 'INSERT') AS written, count(*) FILTER (WHERE en.action = 'UPDATE') AS changed
+                  FROM audit.entries en LEFT JOIN iam.person p ON p.id = en.actor_id
+                 WHERE en.subject_type = 'college.exam_result' AND en.occurred_at > now() - interval '18 months'
+                   AND (en.reason LIKE :sheet OR en.reason LIKE :one)
+                 GROUP BY en.correlation_id, en.actor_office, p.surname, p.given_names, en.reason
+                 ORDER BY at DESC LIMIT 30
+                """).param("sheet", e.get("code") + " " + session + ":%score sheet uploaded%").param("one", "%result — " + e.get("code")).query().listOfRows();
+    }
+
     /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */
 
     @GetMapping("/my-record")
