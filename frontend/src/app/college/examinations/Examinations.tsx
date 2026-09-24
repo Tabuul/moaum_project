@@ -22,12 +22,16 @@ export interface ExamCatalogue {
 export interface Result { id: string; subject_id: string; attempt: string; ca: number | null; exam: number | null; clinical: number | null; attendance: number | null; barred: boolean; total: number | null; passed: boolean | null; decided_on: string | null }
 export interface Decision { id: string; outcome: string; state: "PROVISIONAL" | "CONFIRMED"; carry_overs: string[]; rule_ref: string | null; minute: string | null; decided_on: string; confirmed_on: string | null; honours: boolean | null; resit_names: string | null }
 export interface Enrolment { kind: string; state: string; attempt_no: number; registered_at: string | null }
-export interface Candidate { id: string; number: string; surname: string; other_names: string; programme_code: string; entry_mode: string; current_level: number; results: string; decision: string | null; attempt: string; enrolment: string | null }
-export interface Candidates { exam: ExamCatalogue["exams"][number]; subjects: ExamCatalogue["subjects"]; candidates: Candidate[] }
+export interface Candidate { id: string; number: string; surname: string; other_names: string; programme_code: string; entry_mode: string; current_level: number; results: string; decision: string | null; attempt: string; enrolment_kind: string; attempt_no: number; enrolment_state: string; semesters: number; semesters_registered: number; fully_registered: boolean }
+export interface Candidates { exam: ExamCatalogue["exams"][number]; subjects: ExamCatalogue["subjects"]; candidates: Candidate[]; yearReached: boolean; calendar: { ordinal: number; length_weeks: number | null; starts_on: string | null; ends_on: string | null }[] }
+export interface CaScore { id: string; item_id: string; attempt_no: number; score: number; scored_on: string; item: string; subject: string; max_score: number }
+export interface CaItem { id: string; subject_id: string; subject: string; item_type: string; name: string; max_score: number; eligibility_gate: boolean; note: string | null }
 export interface Reconciliation {
   exam: ExamCatalogue["exams"][number];
   missing: { number: string; surname: string; other_names: string; subject: string }[];
   undecided: { number: string; surname: string; other_names: string }[];
+  unregistered: { number: string; surname: string; other_names: string; semesters: number; semesters_registered: number }[];
+  cohort: number; yearReached: boolean;
   counts: { candidates_with_results: number; subject_passes: number; subject_fails: number; distinctions: number };
   decisions: { decided: number; provisional: number; confirmed: number; promoted: number; resits: number; repeats: number; withdrawals: number; appeals: number; honours: number };
   ready: boolean;
@@ -54,6 +58,9 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
   const [rec, setRec] = useState<{ recommend: string; failed: number; of: number; latestAttempt: string; onFailure: string; failedNames: string | null; ruleRef: string | null } | null>(null);
   const [boardMinute, setBoardMinute] = useState("");
   const [appealMinute, setAppealMinute] = useState("");
+  const [enrol, setEnrol] = useState({ number: "", open: false });
+  const [ca, setCa] = useState<{ items: CaItem[]; scores: CaScore[] } | null>(null);
+  const [caNew, setCaNew] = useState({ itemId: "", score: "" });
 
   const exam = catalogue.exams.find((e) => e.code === code) ?? catalogue.exams[0];
   const subjects = data?.subjects ?? catalogue.subjects.filter((s) => s.exam_id === exam?.id);
@@ -89,6 +96,8 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
     const at = c.attempt || "FIRST";
     setAttempt(at);
     setMarks(marksAt(results, at));
+    setCa(null);
+    void fetch(`/api/bff/api/v1/college/assessments?student=${c.id}&exam=${encodeURIComponent(exam.code)}`).then(async (r) => { if (r.ok) setCa(await r.json()); });
     setDecision({ outcome: d?.outcome ?? "", carry: (d?.carry_overs ?? []).join(", "), minute: d?.minute ?? "" });
     void fetch(`/api/bff/api/v1/college/exams/${encodeURIComponent(exam.code)}/recommend?session=${encodeURIComponent(session)}&student=${c.id}`).then(async (r) => { if (r.ok) setRec(await r.json()); });
   }
@@ -115,6 +124,16 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
     }, `${c.number}: ${OUTCOMES.find((o) => o[0] === decision.outcome)?.[1] ?? decision.outcome} after ${exam.code}`);
   }
 
+  async function enrolStudent() {
+    if (!enrol.number.trim()) return;
+    const j = await call("POST", "/enrol", { number: enrol.number.trim(), session, level: exam.level }, `${enrol.number.trim()}: ${exam.level} Level year opened for ${session}`);
+    if (j) setEnrol({ number: "", open: false });
+  }
+  async function addCa(c: Candidate) {
+    if (!caNew.itemId || caNew.score === "") return;
+    const j = await call("POST", "/assessments", { studentId: c.id, itemId: caNew.itemId, score: Number(caNew.score) }, `${c.number}: CA item recorded`);
+    if (j) { setCaNew({ itemId: "", score: "" }); const r = await fetch(`/api/bff/api/v1/college/assessments?student=${c.id}&exam=${encodeURIComponent(exam.code)}`); if (r.ok) setCa(await r.json()); }
+  }
   async function confirmBoard() {
     if (!boardMinute.trim()) return;
     if (!window.confirm(`Confirm every provisional decision for ${exam.code} in ${session} on minute ${boardMinute.trim()}? Each student is then moved: the next level, the resit, the repeat year, withdrawal, or graduation.`)) return;
@@ -148,10 +167,15 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
         </Note>
       ) : null}
 
+      {data && !data.yearReached ? (
+        <Note kind="bad" title={`The ${exam.level} Level year for the ${session} cohort has not reached its final semester`}>
+          The College&rsquo;s students sit once, at the end of the year. Results open when the final semester has begun, by the College calendar{data.calendar.length ? `: ${data.calendar.map((c) => `semester ${c.ordinal} ${c.starts_on ?? "undated"} to ${c.ends_on ?? "undated"}`).join(" · ")}` : ""}. CA collected during the year is kept below, graded never.
+        </Note>
+      ) : null}
       {rc ? (
         <>
           <Tiles items={[
-            ["Candidates", String(rows.length), null, `${exam.level} Level · ${session}`],
+            ["Cohort", String(rc.cohort), null, `${exam.level} Level year begun in ${session} · ${rc.unregistered.length} not fully registered`],
             ["Subject results", `${rc.counts.subject_passes + rc.counts.subject_fails}`, null, `${rc.counts.subject_passes} passed · ${rc.counts.subject_fails} failed · ${rc.counts.distinctions} distinction${rc.counts.distinctions === 1 ? "" : "s"}`],
             ["Decisions", `${rc.decisions.confirmed} of ${rc.decisions.decided}`, rc.decisions.provisional ? "var(--red-ink)" : rc.decisions.decided === rows.length && rows.length ? "var(--green-ink)" : null, `${rc.decisions.provisional} provisional · ${rc.decisions.promoted} promoted · ${rc.decisions.resits} resit · ${rc.decisions.repeats} repeat · ${rc.decisions.withdrawals} withdraw · ${rc.decisions.appeals} appeal${exam.level === 600 ? ` · ${rc.decisions.honours} honours` : ""}`],
             ["Ready for Senate", rc.ready ? "Yes" : "Not yet", rc.ready ? "var(--green-ink)" : "var(--red-ink)", rc.ready ? "Every candidate accounted for in every subject, and every decision confirmed" : `${rc.missing.length} subject result${rc.missing.length === 1 ? "" : "s"} missing · ${rc.undecided.length} undecided · ${rc.decisions.provisional} to confirm`],
@@ -175,14 +199,23 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
         </>
       ) : null}
 
-      <Panel title={`Candidates for ${exam?.code ?? ""} in ${session}`} right={`${rows.length} at ${exam?.level ?? ""} Level`}>
-        {rows.length === 0 ? <PBody><div className="sub2">No student of the College is at {exam?.level} Level. Candidates are the College&rsquo;s students at the examination&rsquo;s level; the register puts them there.</div></PBody> : (
+      <Panel title={`Candidates for ${exam?.code ?? ""} · the ${session} cohort`} right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><span className="sub2">{rows.length} enrolled at {exam?.level ?? ""} Level</span><Btn kind="ghost" onClick={() => setEnrol({ ...enrol, open: !enrol.open })}>{enrol.open ? "Close" : "Enrol a student"}</Btn></span>}>
+        {enrol.open ? (
+          <PBody>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div className="field" style={{ width: 240 }}><label htmlFor="ex-enrol">Matriculation number</label><input id="ex-enrol" className="ctl" value={enrol.number} onChange={(e) => setEnrol({ ...enrol, number: e.target.value })} placeholder="MOAUM/MED/24/…" autoComplete="off" /></div>
+              <Btn kind="primary" disabled={busy || !enrol.number.trim()} onClick={() => void enrolStudent()}>Open the {exam.level} Level year for {session}</Btn>
+              <span className="sub2">For a student who registered on paper or arrived by transfer; they must be at {exam.level} Level on the register. The year&rsquo;s semesters are then registered on their fees.</span>
+            </div>
+          </PBody>
+        ) : null}
+        {rows.length === 0 ? <PBody><div className="sub2">Nobody has a {exam?.level} Level year begun in {session}. A cohort is the students enrolled at the level in that session: they enrol from their dashboard when the fees are cleared, or the desk opens the year for them above.</div></PBody> : (
           <DTable cols={["Matriculation number", "Name", ...subjects.map((s) => `${s.name}|mid`), "Decision|mid", "|num"]} rows={rows.map((c) => {
             const results = parse<Result[]>(c.results, []);
             const d = parse<Decision | null>(c.decision, null);
             return [
               <span className="tnum" key="n">{c.number}</span>,
-              <span key="nm"><strong>{c.surname}, {c.other_names}</strong><div className="sub2">{c.entry_mode === "DIRECT_ENTRY" ? "Direct Entry" : "UTME"}</div></span>,
+              <span key="nm"><strong>{c.surname}, {c.other_names}</strong><div className="sub2">{c.entry_mode === "DIRECT_ENTRY" ? "Direct Entry" : "UTME"}{c.enrolment_kind === "REPEAT" ? ` · repeat year, attempt ${c.attempt_no}` : c.enrolment_kind === "APPEAL" ? " · Senate-approved final attempt" : ""}</div>{c.fully_registered ? null : <Pil kind="bad">{c.semesters ? `Not registered: ${c.semesters_registered} of ${c.semesters} semesters` : "Not registered"}</Pil>}</span>,
               ...subjects.map((s) => {
                 const rs = results.filter((r) => r.subject_id === s.id);
                 const latest = rs[rs.length - 1];
@@ -232,6 +265,22 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <Btn kind="primary" disabled={busy} onClick={() => void saveResults(c)}>{busy ? "Saving…" : `Save the ${word(attempt).toLowerCase()} results`}</Btn>
                 <span className="sub2">The pass is judged by the rule as the marks are saved: {subjects[0]?.pass_mark ?? 50} or more in the subject{subjects.some((s) => s.clinical_component_min) ? ", and in the clinical component where the subject has one" : ""}{exam.min_attendance_pct != null ? `, with attendance of at least ${exam.min_attendance_pct}% or the candidate is barred` : ""}. Once every subject is resulted the rule applies its decision provisionally. A resit or repeat is a new attempt; the earlier one is kept.</span>
+              </div>
+              <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}><strong>CA kept during the year</strong><span className="sub2">Course tests and end-of-posting scores as they happen; graded never. The year&rsquo;s CA out of {subjects[0]?.ca_weight ?? 30} is composed from them and entered above at the end of the year.</span></div>
+                {ca ? (
+                  <>
+                    {ca.scores.length ? <div className="sub2" style={{ marginTop: 6 }}>{ca.scores.map((x) => `${x.subject} · ${x.item}: ${x.score} of ${x.max_score}${x.attempt_no > 1 ? ` (attempt ${x.attempt_no})` : ""}`).join(" · ")}</div> : <div className="sub2" style={{ marginTop: 6 }}>Nothing recorded yet.</div>}
+                    {ca.items.length ? (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+                        <div className="field" style={{ flex: "1 1 260px" }}><label htmlFor="ex-ca-item">Item</label>
+                          <select id="ex-ca-item" className="ctl" value={caNew.itemId} onChange={(e) => setCaNew({ ...caNew, itemId: e.target.value })}><option value="">Choose…</option>{ca.items.map((i) => <option key={i.id} value={i.id}>{i.subject} · {i.name} (of {i.max_score})</option>)}</select></div>
+                        <div className="field" style={{ width: 110 }}><label htmlFor="ex-ca-score">Score</label><input id="ex-ca-score" className="ctl tnum" inputMode="decimal" value={caNew.score} onChange={(e) => setCaNew({ ...caNew, score: e.target.value.replace(/[^0-9.]/g, "") })} /></div>
+                        <Btn kind="ghost" disabled={busy || !caNew.itemId || caNew.score === ""} onClick={() => void addCa(c)}>Record</Btn>
+                      </div>
+                    ) : <div className="sub2" style={{ marginTop: 6 }}>The prospectus names no CA items for this examination&rsquo;s subjects.</div>}
+                  </>
+                ) : <div className="sub2" style={{ marginTop: 6 }}>Loading…</div>}
               </div>
               <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>

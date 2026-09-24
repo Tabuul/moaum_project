@@ -9,7 +9,7 @@ import { Btn } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
 
-export function RegisterButton({ session, level, items, disabled }: { session: string; level: number; items: number; disabled?: boolean }) {
+export function RegisterButton({ session, level, items, disabled, label }: { session: string; level: number; items: number; disabled?: boolean; label?: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -30,7 +30,7 @@ export function RegisterButton({ session, level, items, disabled }: { session: s
 
   return (
     <div>
-      <Btn kind="primary" disabled={busy || disabled} onClick={() => void register()}>{busy ? "Registering…" : `Register ${level} Level · ${items} item${items === 1 ? "" : "s"}`}</Btn>
+      <Btn kind="primary" disabled={busy || disabled} onClick={() => void register()}>{busy ? "Registering…" : label ?? `Register ${level} Level · ${items} item${items === 1 ? "" : "s"}`}</Btn>
       {problem ? <div style={{ marginTop: 8 }}><ProblemNotice problem={problem} /></div> : null}
     </div>
   );

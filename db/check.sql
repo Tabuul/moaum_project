@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 143
+\set EXPECTED 144
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3075,6 +3075,45 @@ BEGIN
     PERFORM pg_temp.assert('The College''s progression: attendance under the minimum bars; nothing applies until every subject is resulted; one fail at the first attempt is a provisional resit the Board confirms; the resit passed is a promotion that moves the student to 400 and closes the year',
         barred_ok AND pass_ok AND o1 IS NULL AND o2 = 'RESIT' AND st1 = 'PROVISIONAL' AND n_conf = 1 AND en_state = 'RESIT' AND o3 = 'PROMOTE' AND lvl = 400 AND en2_state = 'CLOSED' AND hist = 4,
         format('barred=%s pass=%s first=%s then=%s state=%s confirmed=%s enrolment=%s resit=%s level=%s closed=%s results=%s', barred_ok, pass_ok, o1, o2, st1, n_conf, en_state, o3, lvl, en2_state, hist));
+END $$;
+
+-- ── 17h. two cohorts at one level, each its own year: the cohort is the session's enrolments; the year's semesters; the end-of-year guard (V249) ──
+DO $$
+DECLARE a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); s_old text; s_new text; ea uuid; eb uuid; n_old int; n_new int; sems int;
+        cur_level int; cur_session text; reached_undated boolean; reached_ahead boolean; reached_now boolean; ls text; refused boolean := false;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'collegesecretary', true);
+    SELECT name INTO s_new FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1;
+    IF s_new IS NULL THEN SELECT name INTO s_new FROM policy.academic_session ORDER BY name DESC LIMIT 1; END IF;
+    SELECT name INTO s_old FROM policy.academic_session WHERE name < s_new ORDER BY name DESC LIMIT 1;
+    IF s_old IS NULL THEN s_old := s_new; END IF;
+    -- cohort A began 200 Level in the earlier session; cohort B, promoted from 100, begins it in the current one
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/99/990906', 'MOAUM/CHK/99/0906', 'CHECKCOHORT', 'Earlier', 'C00061', 'UTME', s_old, 100, 200, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/99/990907', 'MOAUM/CHK/99/0907', 'CHECKCOHORT', 'Later',   'C00061', 'UTME', s_new, 100, 200, 'ACTIVE', now());
+    ea := college.open_enrolment(a, 200, s_old, NULL);
+    eb := college.open_enrolment(b, 200, s_new, NULL);
+    SELECT count(*) INTO sems FROM college.enrolment_semester WHERE enrolment_id = ea;                    -- the two semesters of 200 Level
+    SELECT count(*) INTO n_old FROM college.cohort(200, s_old);                                          -- A's cohort holds A, not B
+    SELECT count(*) INTO n_new FROM college.cohort(200, s_new) c WHERE c.student_id IN (a, b);           -- B's holds B, not A
+    SELECT (college.current_enrolment(a)).level, (college.current_enrolment(a)).session INTO cur_level, cur_session;   -- A's current year is the old session's
+    -- a second year cannot open while one is open
+    BEGIN PERFORM college.open_enrolment(a, 200, s_new, NULL); EXCEPTION WHEN check_violation THEN refused := true; END;
+    -- the end-of-year guard: undated, nothing blocks; the final semester ahead blocks; begun, it opens
+    reached_undated := college.year_reached_final(200, s_old);
+    INSERT INTO college.semester (session, level, ordinal, length_weeks, starts_on, ends_on) VALUES (s_old, 200, 1, 17, current_date - 200, current_date - 80), (s_old, 200, 2, 17, current_date + 10, current_date + 130);
+    reached_ahead := college.year_reached_final(200, s_old);
+    UPDATE college.semester SET starts_on = current_date - 5 WHERE session = s_old AND level = 200 AND ordinal = 2;
+    reached_now := college.year_reached_final(200, s_old);
+    ls := college.level_session(200);                                                                    -- the latest session the College dated for the level
+    DELETE FROM college.semester WHERE session = s_old AND level = 200;
+    DELETE FROM college.enrolment_semester WHERE enrolment_id IN (ea, eb);
+    DELETE FROM college.enrolment WHERE id IN (ea, eb);
+    DELETE FROM people.student WHERE id IN (a, b);
+    PERFORM pg_temp.assert('Two cohorts at one level each keep their own year: a cohort is the session''s enrolments, the year carries the prospectus''s two semesters, the current year is the open one whatever the University''s session, one year at a time, and results open only once the final semester has begun where dated',
+        sems = 2 AND n_old = 1 AND n_new = 1 AND cur_level = 200 AND cur_session = s_old AND refused AND reached_undated AND NOT reached_ahead AND reached_now AND ls = s_old,
+        format('semesters=%s old_cohort=%s new_cohort=%s current=%s/%s refused=%s undated=%s ahead=%s now=%s level_session=%s', sems, n_old, n_new, cur_level, cur_session, refused, reached_undated, reached_ahead, reached_now, ls));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

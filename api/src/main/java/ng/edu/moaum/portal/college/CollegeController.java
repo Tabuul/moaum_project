@@ -492,17 +492,23 @@ class CollegeController {
                                                                  (SELECT string_agg(s.name, ', ' ORDER BY s.ordinal) FROM college.exam_subject s WHERE s.id = ANY(d.resit_subjects)) AS resit_names
                                                             FROM college.progression_decision d WHERE d.student_id = st.id AND d.session = :s AND d.from_level = :l) d) AS decision,
                        college.attempt_of(st.id, :l, :s) AS attempt,
-                       (SELECT row_to_json(en)::text FROM (SELECT en.kind, en.state, en.attempt_no, en.registered_at FROM college.enrolment en WHERE en.student_id = st.id AND en.level = :l AND en.session = :s) en) AS enrolment
-                  FROM people.student st
-                  JOIN ref.programme p ON p.code = st.programme_code
-                  JOIN ref.faculty f ON f.code = p.faculty_code
-                 WHERE f.college_code = 'CHS' AND st.current_level = :l
-                   AND st.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
+                       c.kind AS enrolment_kind, c.attempt_no, c.state AS enrolment_state, c.semesters, c.semesters_registered, c.fully_registered
+                  FROM college.cohort(:l, :s) c
+                  JOIN people.student st ON st.id = c.student_id
                  ORDER BY coalesce(st.matric_no, st.admission_no), st.surname
                 """).param("s", session).param("e", e.get("id")).param("l", e.get("level")).query().listOfRows();
         List<Map<String, Object>> subjects = jdbc.sql("SELECT id, name, departments, ca_weight, exam_weight, pass_mark, clinical_component_min, conflict_note, ordinal FROM college.exam_subject WHERE exam_id = :e ORDER BY ordinal")
                 .param("e", e.get("id")).query().listOfRows();
-        return Map.of("exam", e, "subjects", subjects, "candidates", rows);
+        boolean reached = jdbc.sql("SELECT college.year_reached_final(:l, :s)").param("l", e.get("level")).param("s", session).query(Boolean.class).single();
+        List<Map<String, Object>> calendar = jdbc.sql("SELECT ordinal, length_weeks, starts_on, ends_on FROM college.semester WHERE level = :l AND session = :s ORDER BY ordinal")
+                .param("l", e.get("level")).param("s", session).query().listOfRows();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("exam", e);
+        out.put("subjects", subjects);
+        out.put("candidates", rows);
+        out.put("yearReached", reached);
+        out.put("calendar", calendar);
+        return out;
     }
 
     public record ResultIn(@NotBlank String session, @NotNull UUID studentId, @NotNull UUID subjectId, @NotBlank String attempt,
@@ -546,12 +552,14 @@ class CollegeController {
         if (body.clinicalScore() != null && (body.clinicalScore().signum() < 0 || body.clinicalScore().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
             throw new DomainRuleViolation("COLLEGE_CLINICAL_RANGE", "The clinical component is out of 100.", new DomainRuleViolation.Remedy("Enter it within 0 to 100.", "College Secretary"));
         }
-        // a student may not have their own department's clerks refuse them: any student of the College at the examination's level
-        long member = jdbc.sql("""
-                SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
-                 WHERE st.id = :st AND f.college_code = 'CHS'
-                """).param("st", body.studentId()).query(Long.class).single();
-        if (member == 0) throw new DomainRuleViolation("COLLEGE_NOT_MEMBER", "That student is not the College's.", new DomainRuleViolation.Remedy("A Professional examination is the College's students' only.", "College Secretary"));
+        // the candidate is a member of the cohort — a year at the examination's level in the session — and the cohort's year has reached its end
+        long member = jdbc.sql("SELECT count(*) FROM college.cohort(:l, :s) c WHERE c.student_id = :st")
+                .param("l", e.get("level")).param("s", body.session()).param("st", body.studentId()).query(Long.class).single();
+        if (member == 0) throw new DomainRuleViolation("COLLEGE_NOT_MEMBER", "That student has no " + e.get("level") + " Level year in " + body.session() + ".",
+                new DomainRuleViolation.Remedy("A candidate is a student enrolled at the examination's level in that session; open the enrolment from the desk if they registered on paper.", "College Secretary"));
+        boolean reached = jdbc.sql("SELECT college.year_reached_final(:l, :s)").param("l", e.get("level")).param("s", body.session()).query(Boolean.class).single();
+        if (!reached) throw new DomainRuleViolation("COLLEGE_YEAR_NOT_ENDED", "The " + e.get("level") + " Level year for " + body.session() + " has not reached its final semester; the College's students sit once, at the end of the year.",
+                new DomainRuleViolation.Remedy("Results are entered when the final semester has begun, by the College's calendar.", "College Secretary"));
         Map<String, Object> judged = jdbc.sql("SELECT passed, barred FROM college.judge(:s, :ca, :ex, :cl, :at)").param("s", body.subjectId())
                 .param("ca", body.caScore(), Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC).param("cl", body.clinicalScore(), Types.NUMERIC)
                 .param("at", body.attendancePct(), Types.NUMERIC).query().singleRow();
@@ -645,20 +653,16 @@ class CollegeController {
         Map<String, Object> e = exam(code);
         List<Map<String, Object>> missing = jdbc.sql("""
                 SELECT coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, s.name AS subject
-                  FROM people.student st
-                  JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code AND f.college_code = 'CHS'
+                  FROM college.cohort(:l, :ses) c JOIN people.student st ON st.id = c.student_id
                   CROSS JOIN college.exam_subject s
-                 WHERE st.current_level = :l AND s.exam_id = :e
-                   AND st.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
+                 WHERE c.fully_registered AND s.exam_id = :e
                    AND NOT EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = st.id AND r.subject_id = s.id AND r.session = :ses AND r.passed IS NOT NULL)
                  ORDER BY coalesce(st.matric_no, st.admission_no), s.ordinal
                 """).param("l", e.get("level")).param("e", e.get("id")).param("ses", session).query().listOfRows();
         List<Map<String, Object>> undecided = jdbc.sql("""
                 SELECT coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names
-                  FROM people.student st
-                  JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code AND f.college_code = 'CHS'
-                 WHERE st.current_level = :l
-                   AND st.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
+                  FROM college.cohort(:l, :ses) c JOIN people.student st ON st.id = c.student_id
+                 WHERE c.fully_registered
                    AND NOT EXISTS (SELECT 1 FROM college.progression_decision d WHERE d.student_id = st.id AND d.session = :ses AND d.from_level = :l)
                  ORDER BY coalesce(st.matric_no, st.admission_no)
                 """).param("l", e.get("level")).param("ses", session).query().listOfRows();
@@ -676,10 +680,18 @@ class CollegeController {
                        count(*) FILTER (WHERE outcome = 'GRADUATE' AND honours) AS honours
                   FROM college.progression_decision WHERE session = :ses AND from_level = :l
                 """).param("ses", session).param("l", e.get("level")).query().singleRow();
+        List<Map<String, Object>> unregistered = jdbc.sql("""
+                SELECT coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, c.semesters, c.semesters_registered
+                  FROM college.cohort(:l, :ses) c JOIN people.student st ON st.id = c.student_id
+                 WHERE NOT c.fully_registered ORDER BY coalesce(st.matric_no, st.admission_no)
+                """).param("l", e.get("level")).param("ses", session).query().listOfRows();
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("exam", e);
         out.put("missing", missing);
         out.put("undecided", undecided);
+        out.put("unregistered", unregistered);
+        out.put("cohort", jdbc.sql("SELECT count(*) FROM college.cohort(:l, :ses)").param("l", e.get("level")).param("ses", session).query(Long.class).single());
+        out.put("yearReached", jdbc.sql("SELECT college.year_reached_final(:l, :s)").param("l", e.get("level")).param("s", session).query(Boolean.class).single());
         out.put("counts", counts);
         out.put("decisions", decisions);
         out.put("ready", missing.isEmpty() && undecided.isEmpty() && ((Number) decisions.get("provisional")).intValue() == 0);
@@ -716,6 +728,103 @@ class CollegeController {
         return Map.of("enrolmentId", id);
     }
 
+    public record EnrolIn(@NotBlank String number, @NotBlank String session, @NotNull Integer level) {
+    }
+
+    /** the desk opens a student's College year for a cohort — a paper registration, a transfer — so the candidate list is complete */
+    @PostMapping("/enrol")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> enrol(@Valid @RequestBody EnrolIn body) {
+        UUID student = jdbc.sql("SELECT id FROM people.student WHERE upper(coalesce(matric_no, '')) = upper(:n) OR upper(admission_no) = upper(:n)")
+                .param("n", body.number().trim()).query(UUID.class).optional()
+                .orElseThrow(() -> new NotFound("student", body.number()));
+        UUID id = jdbc.sql("SELECT college.open_enrolment(:st, :l, :s, :by)").param("st", student).param("l", body.level()).param("s", body.session().trim())
+                .param("by", scope.actorId(), Types.OTHER).query(UUID.class).single();
+        return Map.of("enrolmentId", id, "studentId", student);
+    }
+
+    /** the College's calendar for a session: each level's semesters, dated by the College (the prospectus gives lengths, never dates) */
+    @GetMapping("/calendar")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> calendar(@RequestParam String session) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT l.level, l.phase, t.ordinal, coalesce(t.name, CASE t.ordinal WHEN 1 THEN l.level || ' Level, first half of the year' ELSE l.level || ' Level, second half of the year' END) AS name,
+                       coalesce(s.length_weeks, t.length_weeks) AS length_weeks, s.starts_on, s.ends_on, t.subjects
+                  FROM college.level l
+                  CROSS JOIN LATERAL (SELECT t.ordinal, t.name, t.length_weeks, t.subjects FROM college.semester_template t WHERE t.level = l.level
+                                      UNION ALL SELECT o, NULL, NULL, NULL FROM generate_series(1, 2) o WHERE NOT EXISTS (SELECT 1 FROM college.semester_template t2 WHERE t2.level = l.level)) t
+                  LEFT JOIN college.semester s ON s.level = l.level AND s.session = :s AND s.ordinal = t.ordinal
+                 WHERE l.level >= 200 ORDER BY l.level, t.ordinal
+                """).param("s", session).query().listOfRows();
+        return Map.of("session", session, "rows", rows);
+    }
+
+    public record CalendarIn(@NotBlank String session, @NotNull Integer level, @NotNull Integer ordinal, LocalDate startsOn, LocalDate endsOn, Integer lengthWeeks) {
+    }
+
+    /** one semester of one level dated for the session; cleared when both dates are blank */
+    @PutMapping("/calendar")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> setCalendar(@Valid @RequestBody CalendarIn body) {
+        if (body.startsOn() == null && body.endsOn() == null) {
+            jdbc.sql("DELETE FROM college.semester WHERE session = :s AND level = :l AND ordinal = :o").param("s", body.session()).param("l", body.level()).param("o", body.ordinal()).update();
+            return Map.of("cleared", true);
+        }
+        if (body.startsOn() != null && body.endsOn() != null && !body.endsOn().isAfter(body.startsOn())) {
+            throw new DomainRuleViolation("COLLEGE_CALENDAR", "A semester ends after it starts.", new DomainRuleViolation.Remedy("Enter an end date after the start.", "College Secretary"));
+        }
+        Integer weeks = body.lengthWeeks() != null ? body.lengthWeeks()
+                : jdbc.sql("SELECT length_weeks FROM college.semester_template WHERE level = :l AND ordinal = :o").param("l", body.level()).param("o", body.ordinal()).query(Integer.class).optional().orElse(17);
+        jdbc.sql("""
+                INSERT INTO college.semester (session, level, ordinal, length_weeks, starts_on, ends_on) VALUES (:s, :l, :o, :w, :a, :z)
+                ON CONFLICT (session, level, ordinal) DO UPDATE SET length_weeks = EXCLUDED.length_weeks, starts_on = EXCLUDED.starts_on, ends_on = EXCLUDED.ends_on
+                """).param("s", body.session()).param("l", body.level()).param("o", body.ordinal()).param("w", weeks).param("a", body.startsOn(), Types.DATE).param("z", body.endsOn(), Types.DATE).update();
+        return Map.of("saved", true);
+    }
+
+    /** the CA collected during a year — course tests, end-of-posting scores — kept as they happen, graded never; the examiner composes the year's CA from them */
+    @GetMapping("/assessments")
+    @PreAuthorize(EXAMINERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> assessments(@RequestParam UUID student, @RequestParam String exam) {
+        Map<String, Object> e = exam(exam);
+        List<Map<String, Object>> items = jdbc.sql("""
+                SELECT i.id, i.subject_id, s.name AS subject, i.item_type, i.name, i.max_score, i.eligibility_gate, i.note
+                  FROM college.assessment_item i JOIN college.exam_subject s ON s.id = i.subject_id WHERE s.exam_id = :e ORDER BY s.ordinal, i.name
+                """).param("e", e.get("id")).query().listOfRows();
+        List<Map<String, Object>> scores = jdbc.sql("""
+                SELECT sc.id, sc.item_id, sc.attempt_no, sc.score, sc.scored_on, i.name AS item, s.name AS subject, i.max_score
+                  FROM college.assessment_score sc JOIN college.assessment_item i ON i.id = sc.item_id JOIN college.exam_subject s ON s.id = i.subject_id
+                 WHERE sc.student_id = :st AND s.exam_id = :e ORDER BY s.ordinal, i.name, sc.attempt_no
+                """).param("st", student).param("e", e.get("id")).query().listOfRows();
+        return Map.of("items", items, "scores", scores);
+    }
+
+    public record AssessmentIn(@NotNull UUID studentId, @NotNull UUID itemId, @NotNull java.math.BigDecimal score, Integer attemptNo) {
+    }
+
+    @PostMapping("/assessments")
+    @PreAuthorize(EXAMINERS)
+    @Transactional
+    Map<String, Object> assess(@Valid @RequestBody AssessmentIn body) {
+        assertCollegeExaminer();
+        java.math.BigDecimal max = jdbc.sql("SELECT max_score FROM college.assessment_item WHERE id = :i").param("i", body.itemId()).query(java.math.BigDecimal.class).optional()
+                .orElseThrow(() -> new NotFound("assessment item", body.itemId().toString()));
+        if (body.score().signum() < 0 || body.score().compareTo(max) > 0) {
+            throw new DomainRuleViolation("COLLEGE_CA_RANGE", "The score is out of " + max.stripTrailingZeros().toPlainString() + ".", new DomainRuleViolation.Remedy("Enter it within the item's maximum.", "College Secretary"));
+        }
+        int attempt = body.attemptNo() == null ? 1 : body.attemptNo();
+        UUID id = jdbc.sql("""
+                INSERT INTO college.assessment_score (student_id, item_id, attempt_no, score, assessor_id) VALUES (:st, :i, :a, :sc, :by)
+                ON CONFLICT (student_id, item_id, attempt_no) DO UPDATE SET score = EXCLUDED.score, assessor_id = EXCLUDED.assessor_id, scored_on = current_date
+                RETURNING id
+                """).param("st", body.studentId()).param("i", body.itemId()).param("a", attempt).param("sc", body.score()).param("by", scope.actorId(), Types.OTHER).query(UUID.class).single();
+        return Map.of("id", id);
+    }
+
     /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */
 
     @GetMapping("/my-record")
@@ -739,7 +848,14 @@ class CollegeController {
         List<Map<String, Object>> enrolments = jdbc.sql("""
                 SELECT e.id, e.level, e.session, e.attempt_no, e.kind, e.state, e.registered_at, e.registered_items,
                        finance.semester_cleared(e.student_id, e.session, 1) AS first_cleared, finance.semester_cleared(e.student_id, e.session, 2) AS second_cleared,
-                       (SELECT string_agg(s.name, ', ' ORDER BY s.ordinal) FROM college.exam_subject s WHERE s.id = ANY(e.resit_subjects)) AS resit_names
+                       (SELECT string_agg(s.name, ', ' ORDER BY s.ordinal) FROM college.exam_subject s WHERE s.id = ANY(e.resit_subjects)) AS resit_names,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('ordinal', sm.ordinal, 'name', sm.name, 'length_weeks', sm.length_weeks, 'subjects', sm.subjects,
+                                                                     'registered_at', sm.registered_at, 'cleared', finance.semester_cleared(e.student_id, e.session, sm.ordinal),
+                                                                     'starts_on', cs.starts_on, 'ends_on', cs.ends_on) ORDER BY sm.ordinal)
+                                   FROM college.enrolment_semester sm LEFT JOIN college.semester cs ON cs.session = e.session AND cs.level = e.level AND cs.ordinal = sm.ordinal
+                                  WHERE sm.enrolment_id = e.id), '[]'::jsonb)::text AS semesters,
+                       (SELECT max(cs.ends_on) FROM college.semester cs WHERE cs.session = e.session AND cs.level = e.level) AS year_ends_on,
+                       college.year_reached_final(e.level, e.session) AS year_reached_final
                   FROM college.enrolment e WHERE e.student_id = :me ORDER BY e.session, e.level, e.attempt_no
                 """).param("me", me).query().listOfRows();
         List<Map<String, Object>> results = jdbc.sql("""
@@ -755,10 +871,29 @@ class CollegeController {
                 """).param("me", me).query().listOfRows();
         Map<String, Object> level100 = jdbc.sql("SELECT outcome, failed, carried, published, registered FROM college.decide_100(:me)").param("me", me).query().listOfRows().stream().findFirst().orElse(Map.of());
         List<Map<String, Object>> carry = jdbc.sql("SELECT code, from_session, note, cleared_on FROM college.carry_over WHERE student_id = :me ORDER BY code").param("me", me).query().listOfRows();
-        Map<String, Object> fees = jdbc.sql("SELECT finance.semester_cleared(:me, :s, 1) AS first_cleared, finance.semester_cleared(:me, :s, 2) AS second_cleared")
-                .param("me", me).param("s", session).query().singleRow();
-        Map<String, Object> current = enrolments.stream().filter(x -> session.equals(x.get("session")) && ((Number) x.get("level")).intValue() == level).findFirst().orElse(null);
+        // the current year is the open enrolment, whatever the University's session; a new year opens in the session the College dated for the level
+        Map<String, Object> current = enrolments.stream().filter(x -> List.of("OPEN", "RESIT").contains(String.valueOf(x.get("state")))).reduce((a, b) -> b).orElse(null);
+        String nextSession = jdbc.sql("SELECT college.level_session(:l)").param("l", level).query(String.class).single();
+        String feeSession = current != null ? String.valueOf(current.get("session")) : nextSession;
+        Map<String, Object> fees = jdbc.sql("SELECT :s AS session, finance.semester_cleared(:me, :s, 1) AS first_cleared, finance.semester_cleared(:me, :s, 2) AS second_cleared")
+                .param("me", me).param("s", feeSession).query().singleRow();
         boolean active = List.of("ACTIVE", "PROBATION", "ADMITTED").contains(String.valueOf(st.get("status")));
+        // what the next registration is: the year's next semester, or a clinical year whole, or the year to open — and whether its fees are cleared
+        java.util.Map<String, Object> next = null;
+        if (active && level >= 200) {
+            if (current == null) {
+                boolean clinical = jdbc.sql("SELECT count(*) = 0 FROM college.semester_template WHERE level = :l").param("l", level).query(Boolean.class).single();
+                String name = clinical ? level + " Level year" : jdbc.sql("SELECT name FROM college.semester_template WHERE level = :l AND ordinal = 1").param("l", level).query(String.class).single();
+                next = new java.util.LinkedHashMap<>(Map.of("kind", clinical ? "year" : "semester", "ordinal", 1, "name", name, "session", nextSession, "cleared", Boolean.TRUE.equals(fees.get("first_cleared"))));
+            } else if (((Number) current.get("level")).intValue() == level) {
+                Map<String, Object> sem = jdbc.sql("""
+                        SELECT sm.ordinal, sm.name, finance.semester_cleared(:me, :s, sm.ordinal) AS cleared FROM college.enrolment_semester sm
+                         WHERE sm.enrolment_id = :e AND sm.registered_at IS NULL ORDER BY sm.ordinal LIMIT 1
+                        """).param("me", me).param("s", feeSession).param("e", current.get("id")).query().listOfRows().stream().findFirst().orElse(null);
+                if (sem != null) next = new java.util.LinkedHashMap<>(Map.of("kind", "semester", "ordinal", sem.get("ordinal"), "name", sem.get("name"), "session", feeSession, "cleared", Boolean.TRUE.equals(sem.get("cleared"))));
+                else if (current.get("registered_at") == null) next = new java.util.LinkedHashMap<>(Map.of("kind", "year", "ordinal", 1, "name", level + " Level year", "session", feeSession, "cleared", Boolean.TRUE.equals(fees.get("first_cleared"))));
+            }
+        }
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("student", st);
         out.put("session", session);
@@ -770,7 +905,9 @@ class CollegeController {
         out.put("carryOvers", carry);
         out.put("fees", fees);
         out.put("current", current);
-        out.put("canRegister", active && level >= 200 && Boolean.TRUE.equals(fees.get("first_cleared")) && (current == null || current.get("registered_at") == null));
+        out.put("nextSession", nextSession);
+        out.put("next", next);
+        out.put("canRegister", next != null && Boolean.TRUE.equals(next.get("cleared")));
         return out;
     }
 
@@ -783,11 +920,10 @@ class CollegeController {
     @Transactional
     Map<String, Object> register(Authentication auth, @RequestBody(required = false) RegisterIn body) {
         UUID me = UUID.fromString(auth.getName());
-        String session = body != null && body.session() != null && !body.session().isBlank() ? body.session().trim()
-                : jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional()
-                        .orElseThrow(() -> new DomainRuleViolation("COLLEGE_NO_SESSION", "No session is current.", new DomainRuleViolation.Remedy("The Registry opens the session on the calendar.", "Registry")));
-        String r = jdbc.sql("SELECT college.register_level(:me, :s)").param("me", me).param("s", session).query(String.class).single();
-        return Map.of("result", r, "session", session);
+        // the session the year opens in is the College's (college.level_session) unless the student names one; a year already open registers its next semester
+        String session = body != null && body.session() != null && !body.session().isBlank() ? body.session().trim() : null;
+        String r = jdbc.sql("SELECT college.register_level(:me, :s)").param("me", me).param("s", session, Types.VARCHAR).query(String.class).single();
+        return Map.of("result", r);
     }
 
 }

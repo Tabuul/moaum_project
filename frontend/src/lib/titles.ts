@@ -336,6 +336,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Students registered in this faculty",
     "The list the Academic Office matriculates from"
   ],
+  "t/collegecalendar": [
+    "College calendar",
+    "Each level's semesters dated for the session; a cohort's year runs on these dates, and its examination sits at the end"
+  ],
   "t/collegeexams": [
     "Professional examinations",
     "Each candidate's subjects by attempt, the pass by the rule, the decision, and the reconciliation Senate needs"

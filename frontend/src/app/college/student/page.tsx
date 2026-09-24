@@ -19,7 +19,9 @@ export const dynamic = "force-dynamic";
  * provisionally, the College Academic Board confirms.
  */
 interface Exam { id: string; code: string; name: string; level: number; papers: string[]; resit_allowed: boolean; resit_window_months: number; no_resit_if_all_failed: boolean; appeal_to_senate: boolean; min_attendance_pct: number | null; on_failure: string }
-interface Enrolment { id: string; level: number; session: string; attempt_no: number; kind: string; state: string; registered_at: string | null; registered_items: number | null; first_cleared: boolean; second_cleared: boolean; resit_names: string | null }
+interface Enrolment { id: string; level: number; session: string; attempt_no: number; kind: string; state: string; registered_at: string | null; registered_items: number | null; first_cleared: boolean; second_cleared: boolean; resit_names: string | null; semesters: string; year_ends_on: string | null; year_reached_final: boolean }
+interface YearSemester { ordinal: number; name: string; length_weeks: number | null; subjects: string | null; registered_at: string | null; cleared: boolean; starts_on: string | null; ends_on: string | null }
+interface Next { kind: "semester" | "year"; ordinal: number; name: string; session: string; cleared: boolean }
 interface Result { session: string; level: number; exam: string; subject: string; ordinal: number; attempt: string; ca: number | null; exam_score: number | null; clinical: number | null; attendance: number | null; barred: boolean; total: number | null; passed: boolean | null; distinction: boolean | null }
 interface Decision { level: number; session: string; outcome: string; state: string; rule_ref: string | null; minute: string | null; decided_on: string; confirmed_on: string | null; honours: boolean | null; carry_overs: string[]; resit_names: string | null }
 interface MyRecord {
@@ -27,8 +29,9 @@ interface MyRecord {
   session: string; exams: Exam[]; enrolments: Enrolment[]; results: Result[]; decisions: Decision[];
   level100: { outcome: string | null; failed: string | null; carried: string | null; published: number; registered: number };
   carryOvers: { code: string; from_session: string; note: string | null; cleared_on: string | null }[];
-  fees: { first_cleared: boolean; second_cleared: boolean }; current: Enrolment | null; canRegister: boolean;
+  fees: { session: string; first_cleared: boolean; second_cleared: boolean }; current: Enrolment | null; canRegister: boolean; nextSession: string; next: Next | null;
 }
+const parseSem = (s: string | undefined): YearSemester[] => { try { return s ? (JSON.parse(s) as YearSemester[]) : []; } catch { return []; } };
 
 const OUTCOME: Record<string, [string, "ok" | "bad" | "info" | "warn" | "grey"]> = {
   PROMOTE: ["Promoted", "ok"], GRADUATE: ["Passed the Final MBBS", "ok"], RESIT: ["Resit required", "warn"], REPEAT: ["Repeat the level", "warn"],
@@ -60,6 +63,9 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   const step = PROGRESSION.find((x) => x.from === level);
   const examAt = r.exams.find((e) => e.level === level) ?? null;
   const cur = r.current;
+  const yearSession = cur?.session ?? r.nextSession;   // the College year's session, not the University's
+  const sems = parseSem(cur?.semesters);
+  const semNow = sems.find((x) => x.starts_on && x.starts_on <= new Date().toISOString().slice(0, 10) && (!x.ends_on || x.ends_on >= new Date().toISOString().slice(0, 10))) ?? null;
   const de = s.entryMode === "DIRECT_ENTRY";
   const status = r.student.status;
   const active = ["ACTIVE", "PROBATION", "ADMITTED"].includes(status);
@@ -86,15 +92,18 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   const paidFirst = r.fees.first_cleared;
   const paidAll = r.fees.second_cleared;
   const registered = !!cur?.registered_at;
+  const next = r.next;
   const latestDecision = [...r.decisions].reverse()[0] ?? null;
-  const decisionHere = r.decisions.find((d) => d.level === level && d.session === r.session) ?? null;
-  const stageIdx = !paidFirst ? 0 : !registered ? 1 : 2;
-  const stageLabel = !active ? word(status) : level === 100 ? "100 Level runs on the University's form" : !paidFirst ? "Awaiting fee payment" : !registered ? "Awaiting course registration" : cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}` : decisionHere ? (decisionHere.state === "CONFIRMED" ? "Decided" : "Provisional decision · awaiting the Board") : `Registered · awaiting the ${examAt?.code ?? "examination"}`;
+  const decisionHere = cur ? r.decisions.find((d) => d.level === cur.level && d.session === cur.session) ?? null : null;
+  const stageIdx = next && !next.cleared ? 0 : next ? 1 : 2;
+  const semWord = sems.length ? `semester ${semNow ? semNow.ordinal : sems.filter((x) => x.registered_at).length || 1} of ${sems.length}` : "";
+  const stageLabel = !active ? word(status) : level === 100 ? "100 Level runs on the University's form" : next && !next.cleared ? `Awaiting fee payment · ${next.name}` : next ? `Awaiting registration · ${next.name}` : cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}` : decisionHere ? (decisionHere.state === "CONFIRMED" ? "Decided" : "Provisional decision · awaiting the Board") : `Registered${semWord ? " · " + semWord : ""} · awaiting the ${examAt?.code ?? "examination"} at the end of the year`;
   const steps = [
-    { label: `Pay ${level} Level fees`, sub: paidAll ? `Paid in full · ${r.session}` : paidFirst ? `First semester cleared · the second is due before results` : "Pending", done: paidFirst },
-    { label: "Register courses and postings", sub: registered ? `${cur?.registered_items ?? 0} items registered · ${dayOf(cur?.registered_at ?? null)}` : paidFirst ? "Open now" : "Opens after payment", done: registered },
-    { label: examAt ? examAt.name : "Sessional examinations", sub: cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}` : decisionHere ? (OUTCOME[decisionHere.outcome]?.[0] ?? decisionHere.outcome) + (decisionHere.state === "CONFIRMED" ? "" : " (provisional)") : registered ? "Awaiting the examiners" : "After registration", done: !!decisionHere && decisionHere.state === "CONFIRMED" },
+    { label: next ? `Pay ${next.name} fees` : `Pay ${level} Level fees`, sub: paidAll ? `Paid in full · ${yearSession}` : paidFirst ? `First semester cleared · the second is due before its registration` : "Pending", done: next ? next.cleared : paidFirst },
+    { label: sems.length ? "Register each semester's courses" : "Register courses and postings", sub: registered ? `${cur?.registered_items ?? 0} items registered · ${dayOf(cur?.registered_at ?? null)}` : sems.length ? `${sems.filter((x) => x.registered_at).length} of ${sems.length} semesters registered${next && next.cleared ? " · open now" : ""}` : next && next.cleared ? "Open now" : "Opens after payment", done: registered },
+    { label: examAt ? `${examAt.name} · once, at the end of the year` : "Sessional examinations", sub: cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}` : decisionHere ? (OUTCOME[decisionHere.outcome]?.[0] ?? decisionHere.outcome) + (decisionHere.state === "CONFIRMED" ? "" : " (provisional)") : registered ? (cur?.year_ends_on ? `The year runs to ${dayOf(cur.year_ends_on)}` : "Awaiting the examiners") : "After registration", done: !!decisionHere && decisionHere.state === "CONFIRMED" },
   ];
+  const registerLabel = next ? (next.kind === "semester" ? `Register ${next.name}` : `Register ${level} Level · ${yearSession}`) : undefined;
   const items = (r.current?.registered_items ?? 0) || (BLOCKS.flatMap((b) => b.postings).filter((x) => (x.level.match(/\d{3}/g) ?? []).some((n) => Number(n) === level)).length + SEMESTERS.filter((x) => x.period.startsWith(`${level} Level`)).length + r.carryOvers.filter((c) => !c.cleared_on).length);
 
   const nav = (
@@ -143,8 +152,8 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
                     </div>
                   ))}
                 </div>
-                {active && !paidFirst ? <div style={{ marginTop: 12 }}><Link href="/student/fees" className="btn btn--primary btn--sm">Pay {level} Level fees</Link></div> : null}
-                {active && r.canRegister ? <div style={{ marginTop: 12 }}><RegisterButton session={r.session} level={level} items={items} /></div> : null}
+                {active && next && !next.cleared ? <div style={{ marginTop: 12 }}><Link href="/student/fees" className="btn btn--primary btn--sm">Pay {next.name} fees · {next.session}</Link></div> : null}
+                {active && r.canRegister ? <div style={{ marginTop: 12 }}><RegisterButton session={yearSession} level={level} items={items} label={registerLabel} /></div> : null}
               </PBody>
             </Panel>
           ) : (
@@ -188,9 +197,9 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
       {view === "fees" ? (
         <>
           <Tiles items={[
-            ["This session", r.session, null, `${level} Level`],
-            ["First semester fees", paidFirst ? "Cleared" : "Due", paidFirst ? "var(--green-ink)" : "var(--red-ink)", "Opens registration"],
-            ["Second semester fees", paidAll ? "Cleared" : "Due", paidAll ? "var(--green-ink)" : null, "Due before the examination's results"],
+            ["Your College year", yearSession, null, `${level} Level${yearSession !== r.session ? ` · the University's session is ${r.session}` : ""}`],
+            ["First semester fees", paidFirst ? "Cleared" : "Due", paidFirst ? "var(--green-ink)" : "var(--red-ink)", "Opens the first semester's registration"],
+            ["Second semester fees", paidAll ? "Cleared" : "Due", paidAll ? "var(--green-ink)" : null, "Opens the second semester's registration"],
             ["Status", word(status), active ? "var(--green-ink)" : "var(--red-ink)", cur ? word(cur.kind) : ""],
           ]} />
           <Panel title="Fees by session" right="The University's one ledger; the College charges through it">
@@ -208,13 +217,24 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
       {view === "registration" ? (
         <>
           {level < 200 ? <Note kind="info" title="100 Level registers on the University's form">Courses are chosen by semester under the Faculty of Science. <Link href="/student/registration">Open the registration form</Link>.</Note> : (
-            <Panel title={`${level} Level registration · ${r.session}`} right={registered ? `Registered · ${dayOf(cur?.registered_at ?? null)}` : paidFirst ? "Open" : "Opens after payment"}>
+            <Panel title={`${level} Level registration · ${yearSession}`} right={registered ? `Registered · ${dayOf(cur?.registered_at ?? null)}` : next ? (next.cleared ? `Open: ${next.name}` : `${next.name} opens after its fees`) : "—"}>
               <PBody>
-                <div>The curriculum is fixed by the prospectus: every course and posting at the level is registered together; there is nothing to choose. {r.carryOvers.filter((c) => !c.cleared_on).length ? `Carried over and registered again: ${r.carryOvers.filter((c) => !c.cleared_on).map((c) => c.code).join(", ")}.` : ""}</div>
+                <div>The curriculum is fixed by the prospectus: there is nothing to choose. {sems.length ? "Each semester's courses are registered in turn, on that semester's fees; the whole session paid at once clears every semester. Nothing is graded at a semester's end: the one examination sits at the end of the year." : "Every posting at the level is registered together, on the first semester's fees."} {r.carryOvers.filter((c) => !c.cleared_on).length ? `Carried over and registered again: ${r.carryOvers.filter((c) => !c.cleared_on).map((c) => c.code).join(", ")}.` : ""}</div>
+                {sems.length ? (
+                  <div style={{ marginTop: 10 }}>
+                    <DTable cols={["Semester", "Weeks|mid", "Courses", "Runs|mid", "Fees|mid", "Registered|mid"]} rows={sems.map((x) => [
+                      <strong key="n">{x.name}</strong>, <span className="tnum" key="w">{x.length_weeks ?? "—"}</span>, <span className="sub2 tnum" key="s">{x.subjects ?? "—"}</span>,
+                      <span className="sub2" key="r">{x.starts_on ? `${dayOf(x.starts_on)} to ${dayOf(x.ends_on)}` : "Not yet dated"}</span>,
+                      <Pil key="f" kind={x.cleared ? "ok" : "bad"}>{x.cleared ? "Cleared" : "Due"}</Pil>,
+                      <span key="g">{x.registered_at ? <Pil kind="ok">{dayOf(x.registered_at)}</Pil> : <span className="sub2">Not yet</span>}</span>,
+                    ])} />
+                  </div>
+                ) : null}
                 {!active ? <div className="sub2" style={{ marginTop: 8 }}>Registration is closed: {word(status)}.</div>
-                  : !paidFirst ? <div style={{ marginTop: 10 }}><span className="sub2">Registration opens after {level} Level fees are paid. </span><Link href="/student/fees" className="btn btn--primary btn--sm">Pay fees</Link></div>
+                  : next && !next.cleared ? <div style={{ marginTop: 10 }}><span className="sub2">{next.name} opens after its fees are paid for {next.session}. </span><Link href="/student/fees" className="btn btn--primary btn--sm">Pay fees</Link></div>
+                  : next ? <div style={{ marginTop: 10 }}><RegisterButton session={yearSession} level={level} items={items} disabled={!r.canRegister} label={registerLabel} /></div>
                   : registered ? <div className="sub2" style={{ marginTop: 8 }}>{cur?.registered_items ?? 0} items registered. {cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}.` : ""}</div>
-                  : <div style={{ marginTop: 10 }}><RegisterButton session={r.session} level={level} items={items} disabled={!r.canRegister} /></div>}
+                  : null}
               </PBody>
             </Panel>
           )}

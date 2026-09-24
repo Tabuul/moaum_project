@@ -2717,6 +2717,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/supervision", "icon": "check", "label": "Logbooks" },
           { "id": "t/collegeexams", "icon": "chart", "label": "Professional examinations" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -2735,6 +2736,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/supervision", "icon": "check", "label": "Logbooks" },
           { "id": "t/collegeexams", "icon": "chart", "label": "Professional examinations" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -2753,6 +2755,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/supervision", "icon": "check", "label": "Logbooks" },
           { "id": "t/collegeexams", "icon": "chart", "label": "Professional examinations" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
