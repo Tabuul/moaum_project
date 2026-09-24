@@ -1120,12 +1120,46 @@ class CollegeController {
                        (SELECT count(*) FROM college.progression_decision d WHERE d.state = 'PROVISIONAL') AS provisional,
                        (SELECT count(*) FROM college.posting_allocation a WHERE a.session = :s) AS allocations
                 """).param("s", session).query().singleRow();
+        // the rotation this session by clinical level: on a posting, in progress, completed, without a supervisor, and not on any
+        List<Map<String, Object>> postings = jdbc.sql("""
+                SELECT st.current_level AS level, count(DISTINCT st.id) AS students,
+                       count(DISTINCT a.student_id) AS on_posting,
+                       count(a.id) AS allocations,
+                       count(a.id) FILTER (WHERE a.state = 'IN_PROGRESS') AS in_progress,
+                       count(a.id) FILTER (WHERE a.state = 'COMPLETED') AS completed,
+                       count(a.id) FILTER (WHERE a.state = 'INCOMPLETE') AS incomplete,
+                       count(a.id) FILTER (WHERE a.supervisor_id IS NULL) AS unsupervised
+                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                  LEFT JOIN college.posting_allocation a ON a.student_id = st.id AND a.session = :s
+                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') AND st.current_level >= 400
+                 GROUP BY st.current_level ORDER BY st.current_level
+                """).param("s", session).query().listOfRows();
+        // who holds each level's coordination
+        List<Map<String, Object>> coordinators = jdbc.sql("""
+                SELECT l.level, p.surname, p.given_names, a.valid_from, a.valid_to, a.instrument
+                  FROM college.level l
+                  LEFT JOIN iam.office_assignment a ON a.office_code = 'mbbscoordinator' AND a.scope_kind = 'level' AND a.scope_id = l.level::text
+                       AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                  LEFT JOIN iam.person p ON p.id = a.person_id
+                 WHERE l.level >= 200 ORDER BY l.level, a.valid_from DESC
+                """).query().listOfRows();
+        // the College's desks lately, from the audit spine: each act once, with who and in which office
+        List<Map<String, Object>> acts = jdbc.sql("""
+                SELECT min(en.occurred_at) AS at, en.actor_office, coalesce(p.surname || ', ' || p.given_names, 'The portal') AS by, en.reason, count(*) AS n_rows
+                  FROM audit.entries en LEFT JOIN iam.person p ON p.id = en.actor_id
+                 WHERE en.subject_type LIKE 'college.%' AND en.occurred_at > now() - interval '90 days'
+                 GROUP BY en.correlation_id, en.actor_office, p.surname, p.given_names, en.reason
+                 ORDER BY at DESC LIMIT 15
+                """).query().listOfRows();
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", session);
         out.put("totals", totals);
         out.put("waiting", waiting);
         out.put("fees", fees);
         out.put("recent", recent);
+        out.put("postings", postings);
+        out.put("coordinators", coordinators);
+        out.put("acts", acts);
         return out;
     }
 
