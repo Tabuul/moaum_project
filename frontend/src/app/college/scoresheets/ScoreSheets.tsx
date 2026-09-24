@@ -13,15 +13,15 @@ import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { buildXlsx, csvRows, loadCrest, xlsxRows } from "@/lib/xlsx";
-import type { Candidates, Result, Decision } from "../examinations/Examinations";
+import type { Candidates, Result, Decision, ExamSummary } from "../examinations/Examinations";
 
 const UNI = "Moshood Abiola University of Science and Technology, Abeokuta";
 const word = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 const parse = <T,>(s: string | null, fallback: T): T => { try { return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; } };
 interface Row { number: string; name: string; line: number; marks: { subjectId: string; subject: string; ca: string; exam: string; clinical: string; attendance: string }[]; flags: string[] }
 
-export function ScoreSheets({ sessions, session, level, exams, data, problem, coordinator }: {
-  sessions: string[]; session: string; level: number; exams: { code: string; name: string; level: number; min_attendance_pct: number | null }[]; data: Candidates | null; problem: Problem | null; coordinator: boolean;
+export function ScoreSheets({ sessions, session, level, exams, data, problem, coordinator, summary = [] }: {
+  sessions: string[]; session: string; level: number; exams: { code: string; name: string; level: number; min_attendance_pct: number | null }[]; data: Candidates | null; problem: Problem | null; coordinator: boolean; summary?: ExamSummary[];
 }) {
   const router = useRouter();
   const go = useQueryNav();
@@ -149,6 +149,8 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
   }
 
   const withResults = rows.filter((c) => parse<Result[]>(c.results, []).some((r) => r.passed != null)).length;
+  const complete = rows.filter((c) => { const rs = parse<Result[]>(c.results, []); return subjects.length > 0 && subjects.every((s) => rs.some((r) => r.subject_id === s.id && r.passed != null)); }).length;
+  const perSubject = subjects.map((s) => ({ name: s.name, n: rows.filter((c) => parse<Result[]>(c.results, []).some((r) => r.subject_id === s.id && r.passed != null)).length }));
   return (
     <>
       <div className="scope">
@@ -161,12 +163,29 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
       </div>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {err ? <ProblemNotice problem={err} /> : null}
+      {!coordinator && summary.length ? (
+        <Panel title={`Score sheets by level · ${session}`} right="Each cohort's sheet: how far its results are in">
+          <DTable cols={["Level|mid", "Examination", "Cohort|mid", "Registered|mid", "With every result|mid", "Decisions|mid", "Year|mid", ""]} rows={summary.map((x) => {
+            const n = (v: number) => Number(v ?? 0);
+            return [
+              <strong className="tnum" key="l">{x.level}</strong>,
+              <span key="e"><strong className="tnum">{x.code}</strong> <span className="sub2">{x.name}</span></span>,
+              <span className="tnum" key="c">{n(x.cohort)}</span>,
+              <span className="tnum" key="r">{n(x.registered)}</span>,
+              <span key="w"><span className="tnum">{n(x.with_results)}</span>{n(x.cohort) ? <span className="sub2"> of {n(x.cohort)}</span> : null}</span>,
+              <span key="d">{n(x.provisional) ? <Pil kind="warn">{n(x.provisional)} provisional</Pil> : null}{n(x.provisional) && n(x.confirmed) ? " " : null}{n(x.confirmed) ? <Pil kind="ok">{n(x.confirmed)} confirmed</Pil> : null}{!n(x.provisional) && !n(x.confirmed) ? <span className="sub2">—</span> : null}</span>,
+              <span key="y">{n(x.cohort) === 0 ? <span className="sub2">—</span> : <Pil kind={x.year_reached ? "warn" : "ok"}>{x.year_reached ? "At its end" : "Running"}</Pil>}</span>,
+              <Btn key="o" kind={x.level === level ? "ghost" : "primary"} onClick={() => nav({ level: x.level })}>{x.level === level ? "Open" : "Open"}</Btn>,
+            ];
+          })} />
+        </Panel>
+      ) : null}
       {!exam ? <Note kind="info" title="No examination at this level">The Professional examinations run from 200 Level.</Note> : (
         <>
           <Tiles items={[
             ["Cohort", String(rows.length), null, `${level} Level year begun in ${session}`],
             ["Registered", String(rows.filter((c) => c.fully_registered).length), null, "Every semester of the year registered"],
-            ["With results", String(withResults), withResults === rows.length && rows.length ? "var(--green-ink)" : null, `${exam.code} · ${subjects.length} subjects`],
+            ["With every result", `${complete} of ${rows.length}`, complete === rows.length && rows.length ? "var(--green-ink)" : withResults ? null : null, perSubject.length ? perSubject.map((s) => `${s.name} ${s.n}`).join(" · ") : `${exam.code} · ${subjects.length} subjects`],
             ["Year", data?.yearReached ? "At its end" : "Running", data?.yearReached ? "var(--green-ink)" : "var(--red-ink)", data?.yearReached ? "Results may be entered" : "Results open when the final semester begins"],
           ]} />
           <Panel title={`${exam.code} — ${exam.name} · ${level} Level · ${session}`} right="Download, fill, upload">
