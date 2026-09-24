@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
+import { csv, download } from "@/lib/results";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -63,6 +64,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
   const [enrol, setEnrol] = useState({ number: "", open: false });
   const [ca, setCa] = useState<{ items: CaItem[]; scores: CaScore[] } | null>(null);
   const [caNew, setCaNew] = useState({ itemId: "", score: "" });
+  const [standing, setStanding] = useState("all");
 
   const exam = catalogue.exams.find((e) => e.code === code) ?? catalogue.exams[0];
   const subjects = data?.subjects ?? catalogue.subjects.filter((s) => s.exam_id === exam?.id);
@@ -149,6 +151,42 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
   const rows = data?.candidates ?? [];
   const rc = reconciliation;
 
+  // where each candidate stands, for the filter: registered, resulted in every subject, passed them all, decided
+  const latestOf = (results: Result[], subjectId: string) => { const rs = results.filter((r) => r.subject_id === subjectId); return rs[rs.length - 1]; };
+  function standingOf(c: Candidate): string {
+    const results = parse<Result[]>(c.results, []);
+    const d = parse<Decision | null>(c.decision, null);
+    if (!c.fully_registered) return "unregistered";
+    if (d?.state === "CONFIRMED") return "confirmed";
+    if (d) return "provisional";
+    const latest = subjects.map((x) => latestOf(results, x.id));
+    if (latest.every((r) => !r || r.passed == null)) return "none";
+    if (latest.some((r) => !r || r.passed == null)) return "incomplete";
+    return latest.every((r) => r && r.passed) ? "passed" : "failed";
+  }
+  const STANDINGS: [string, string][] = [["all", "Everyone"], ["unregistered", "Not fully registered"], ["none", "No results yet"], ["incomplete", "Results incomplete"], ["passed", "Passed every subject"], ["failed", "Failed a subject"], ["provisional", "Provisional decision"], ["confirmed", "Confirmed"]];
+  const standings = rows.map((c) => standingOf(c));
+  const countOf = (k: string) => (k === "all" ? rows.length : standings.filter((x) => x === k).length);
+  const shown = rows.filter((c, i) => standing === "all" || standings[i] === standing);
+  // each subject: how many of the cohort are resulted, passed, distinguished, failed, barred
+  const bySubject = subjects.map((x) => {
+    const latest = rows.map((c) => latestOf(parse<Result[]>(c.results, []), x.id)).filter((r): r is Result => !!r && r.passed != null);
+    return { name: x.name, resulted: latest.length, passed: latest.filter((r) => r.passed).length, distinctions: latest.filter((r) => r.passed && Number(r.total) >= 70).length, failed: latest.filter((r) => r.passed === false && !r.barred).length, barred: latest.filter((r) => r.barred).length };
+  });
+  const anyResulted = bySubject.some((x) => x.resulted > 0);
+  const standingWord = (r: Result | undefined) => (!r || r.passed == null ? "" : r.passed ? (Number(r.total) >= 70 ? "Distinction" : "Pass") : r.barred ? "Barred" : "Fail");
+  function downloadSheet() {
+    const header = ["Matriculation number", "Surname", "Other names", "Entry", "Registered", ...subjects.flatMap((x) => [`${x.name} total`, `${x.name} standing`]), "Decision", "State", "Minute", "Resit subjects"];
+    const body = rows.map((c) => {
+      const results = parse<Result[]>(c.results, []);
+      const d = parse<Decision | null>(c.decision, null);
+      return [c.number, c.surname, c.other_names, c.entry_mode === "DIRECT_ENTRY" ? "Direct Entry" : "UTME", c.fully_registered ? "Yes" : `${c.semesters_registered} of ${c.semesters}`,
+        ...subjects.flatMap((x) => { const r = latestOf(results, x.id); return [r?.total ?? "", standingWord(r)]; }),
+        d ? (OUTCOMES.find((o) => o[0] === d.outcome)?.[1] ?? d.outcome) + (d.outcome === "GRADUATE" && d.honours ? " (Honours)" : "") : "", d ? word(d.state) : "", d?.minute ?? "", d?.resit_names ?? ""];
+    });
+    download(`${exam.code} ${session.replace("/", "_")} ${exam.level} Level results and decisions`, csv([header, ...body], [["Examination", `${exam.code} — ${exam.name}`], ["Level", `${exam.level} Level`], ["Session", session], ["Cohort", `${rows.length} candidates`]]));
+  }
+
   return (
     <>
       <div className="scope">
@@ -219,7 +257,34 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
         </>
       ) : null}
 
-      <Panel title={`Candidates for ${exam?.code ?? ""} · the ${session} cohort`} right={<span className="row row--inline"><span className="sub2">{rows.length} enrolled at {exam?.level ?? ""} Level</span><Btn kind="ghost" onClick={() => setEnrol({ ...enrol, open: !enrol.open })}>{enrol.open ? "Close" : "Enrol a student"}</Btn></span>}>
+      {anyResulted ? (
+        <Panel title={`Results by subject · ${exam?.code ?? ""} ${session}`} right="The latest attempt of each candidate in each subject">
+          <DTable cols={["Subject", "Resulted|mid", "Passed|mid", "Distinctions|mid", "Failed|mid", "Barred|mid", "Pass rate"]} rows={bySubject.map((x, i) => {
+            const pct = x.resulted ? Math.round((100 * x.passed) / x.resulted) : 0;
+            return [
+              <strong key={"s" + i}>{x.name}</strong>,
+              <span className="tnum" key={"r" + i}>{x.resulted} of {rows.length}</span>,
+              <span className="tnum ink-green" key={"p" + i}>{x.passed}</span>,
+              <span className="tnum" key={"d" + i}>{x.distinctions}</span>,
+              <span className={`tnum${x.failed ? " ink-red" : ""}`} key={"f" + i}>{x.failed}</span>,
+              <span className={`tnum${x.barred ? " ink-red" : ""}`} key={"b" + i}>{x.barred}</span>,
+              <span key={"g" + i} className="row row--inline"><span className="meter" title={`${pct}%`}><span className="meter__bar"><span className="meter__fill" style={{ width: `${pct}%` }} /></span></span><span className="tnum sub2">{x.resulted ? `${pct}%` : "—"}</span></span>,
+            ];
+          })} />
+        </Panel>
+      ) : null}
+
+      <Panel title={`Candidates for ${exam?.code ?? ""} · the ${session} cohort`} right={<span className="row row--inline"><span className="sub2">{rows.length} enrolled at {exam?.level ?? ""} Level</span>{rows.length ? <Btn kind="ghost" onClick={downloadSheet}>Download results and decisions</Btn> : null}<Btn kind="ghost" onClick={() => setEnrol({ ...enrol, open: !enrol.open })}>{enrol.open ? "Close" : "Enrol a student"}</Btn></span>}>
+        {rows.length ? (
+          <PBody>
+            <div className="row row--base">
+              <span className="sub2">Show</span>
+              {STANDINGS.filter(([k]) => k === "all" || countOf(k) > 0).map(([k, label]) => (
+                <Btn key={k} kind={standing === k ? "primary" : "ghost"} size="sm" onClick={() => setStanding(k)}>{label} <span className="tnum">{countOf(k)}</span></Btn>
+              ))}
+            </div>
+          </PBody>
+        ) : null}
         {enrol.open ? (
           <PBody>
             <div className="row row--end">
@@ -229,8 +294,8 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
             </div>
           </PBody>
         ) : null}
-        {rows.length === 0 ? <PBody><div className="sub2">Nobody has a {exam?.level} Level year begun in {session}. A cohort is the students enrolled at the level in that session: they enrol from their dashboard when the fees are cleared, or the desk opens the year for them above.</div></PBody> : (
-          <DTable cols={["Matriculation number", "Name", ...subjects.map((s) => `${s.name}|mid`), "Decision|mid", "|num"]} rows={rows.map((c) => {
+        {rows.length === 0 ? <PBody><div className="sub2">Nobody has a {exam?.level} Level year begun in {session}. A cohort is the students enrolled at the level in that session: they enrol from their dashboard when the fees are cleared, or the desk opens the year for them above.</div></PBody> : shown.length === 0 ? <PBody><div className="sub2">Nobody stands there.</div></PBody> : (
+          <DTable cols={["Matriculation number", "Name", ...subjects.map((s) => `${s.name}|mid`), "Decision|mid", "|num"]} rows={shown.map((c) => {
             const results = parse<Result[]>(c.results, []);
             const d = parse<Decision | null>(c.decision, null);
             return [
@@ -244,7 +309,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
               <span key="d">{d ? <><Pil kind={d.outcome === "PROMOTE" || d.outcome === "GRADUATE" ? "ok" : d.outcome.startsWith("WITHDRAW") ? "bad" : "info"}>{OUTCOMES.find((o) => o[0] === d.outcome)?.[1] ?? d.outcome}{d.outcome === "GRADUATE" && d.honours ? " · Honours" : ""}</Pil><div className="sub2">{d.state === "CONFIRMED" ? `Confirmed${d.confirmed_on ? " " + d.confirmed_on : ""}` : "Provisional"}</div></> : <span className="sub2">{c.attempt !== "FIRST" ? word(c.attempt) : "Not yet"}</span>}</span>,
               <Btn key="o" kind={open === c.id ? "ghost" : "primary"} onClick={() => (open === c.id ? setOpen(null) : openCandidate(c))}>{open === c.id ? "Close" : "Open"}</Btn>,
             ];
-          })} texts={rows.map((c) => `${c.number} ${c.surname} ${c.other_names}`)} />
+          })} texts={shown.map((c) => `${c.number} ${c.surname} ${c.other_names}`)} />
         )}
       </Panel>
 
