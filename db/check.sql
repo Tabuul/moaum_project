@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 144
+\set EXPECTED 145
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3114,6 +3114,37 @@ BEGIN
     PERFORM pg_temp.assert('Two cohorts at one level each keep their own year: a cohort is the session''s enrolments, the year carries the prospectus''s two semesters, the current year is the open one whatever the University''s session, one year at a time, and results open only once the final semester has begun where dated',
         sems = 2 AND n_old = 1 AND n_new = 1 AND cur_level = 200 AND cur_session = s_old AND refused AND reached_undated AND NOT reached_ahead AND reached_now AND ls = s_old,
         format('semesters=%s old_cohort=%s new_cohort=%s current=%s/%s refused=%s undated=%s ahead=%s now=%s level_session=%s', sems, n_old, n_new, cur_level, cur_session, refused, reached_undated, reached_ahead, reached_now, ls));
+END $$;
+
+-- ── 17i. the MBBS Coordinator is held by level, by a College lecturer only (V250) ──
+DO $$
+DECLARE p1 uuid := gen_random_uuid(); p2 uuid := gen_random_uuid(); who uuid := gen_random_uuid(); refused_outsider boolean := false; refused_level boolean := false; lvl int; dept text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p1, 'MOAUM/CHK/0001', 'CHECKCOORD', 'Anatomy'), (p2, 'MOAUM/CHK/0002', 'CHECKCOORD', 'Mathematics');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), p1, 'lecturer', 'department', 'ANT', 'check', who, current_date),
+        (gen_random_uuid(), p2, 'lecturer', 'department', 'MTC', 'check', who, current_date);
+    -- a Mathematics lecturer is refused the coordinatorship; a level outside 200 to 600 is refused
+    BEGIN
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), p2, 'mbbscoordinator', 'level', '200', 'check', who, current_date);
+    EXCEPTION WHEN check_violation THEN refused_outsider := true; END;
+    BEGIN
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), p1, 'mbbscoordinator', 'level', '100', 'check', who, current_date);
+    EXCEPTION WHEN check_violation THEN refused_level := true; END;
+    -- the Anatomy lecturer holds 300 Level
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), p1, 'mbbscoordinator', 'level', ' 300 ', 'check', who, current_date);
+    lvl := iam.coordinator_level(p1);
+    dept := iam.college_lecturer_dept(p1);
+    DELETE FROM iam.office_assignment WHERE person_id IN (p1, p2);
+    DELETE FROM iam.person WHERE id IN (p1, p2);
+    PERFORM pg_temp.assert('The MBBS Coordinator is held by level, 200 to 600, by a College lecturer only: an outsider is refused, a level outside the range is refused, and the level held is read back (trimmed)',
+        refused_outsider AND refused_level AND lvl = 300 AND dept = 'ANT',
+        format('outsider_refused=%s level_refused=%s level=%s dept=%s', refused_outsider, refused_level, lvl, dept));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

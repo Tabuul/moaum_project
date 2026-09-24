@@ -47,7 +47,7 @@ export interface GrantRow {
   validTo: string | null;
 }
 
-const BOUND: Record<string, string> = { institution: "The University", college: "The College", faculty: "Faculty", department: "Department", programme: "Programme", course: "Own courses", unit: "Unit", platform: "The platform" };
+const BOUND: Record<string, string> = { institution: "The University", college: "The College", faculty: "Faculty", department: "Department", programme: "Programme", course: "Own courses", unit: "Unit", platform: "The platform", level: "Level (MBBS Coordinator: 200 to 600)" };
 
 export function People({ q, persons, grants, offices, actingOffice, open }: {
   q: string;

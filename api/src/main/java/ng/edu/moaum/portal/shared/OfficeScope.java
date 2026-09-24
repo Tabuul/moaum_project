@@ -30,6 +30,18 @@ public class OfficeScope {
         return AuditContextHolder.current().map(c -> "lecturer".equals(c.actorOffice())).orElse(false);
     }
 
+    /** true when the acting office is the MBBS Coordinator's (V250), an office held by level */
+    public boolean actingCoordinator() {
+        return AuditContextHolder.current().map(c -> "mbbscoordinator".equals(c.actorOffice())).orElse(false);
+    }
+
+    /** the level the acting MBBS Coordinator holds, or null when not acting as one (or the grant names no level) */
+    public Integer actingLevel() {
+        return AuditContextHolder.current().flatMap(c -> actingCoordinator()
+                ? jdbc.sql("SELECT iam.coordinator_level(:p)").param("p", c.actorId()).query(Integer.class).optional()
+                : Optional.empty()).orElse(null);
+    }
+
     /** true when the request is being made in the Head-of-Department office */
     public boolean actingHod() {
         return AuditContextHolder.current().map(c -> "hod".equals(c.actorOffice())).orElse(false);

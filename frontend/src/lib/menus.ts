@@ -2743,6 +2743,26 @@ export const MENUS: Record<string, Menu> = {
       { "name": "Me", "items": [{ "id": "r/self", "icon": "user", "label": "Leave & payslip" }] }
     ]
   },
+  "mbbscoordinator": {
+    "label": "MBBS Coordinator, College of Health Sciences",
+    "home": "r/mbbscoordinator",
+    "groups": [
+      {
+        "name": "My level",
+        "items": [
+          { "id": "r/mbbscoordinator", "icon": "home", "label": "Dashboard" },
+          { "id": "t/collegesheets", "icon": "chart", "label": "Score sheet" },
+          { "id": "t/collegeexams", "icon": "chart", "label": "Professional examination" },
+          { "id": "t/postings", "icon": "calendar", "label": "Postings" },
+          { "id": "t/supervision", "icon": "check", "label": "Logbooks" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" },
+          { "id": "t/college", "icon": "flask", "label": "College overview" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      { "name": "Me", "items": [{ "id": "r/self", "icon": "user", "label": "Leave & payslip" }] }
+    ]
+  },
   "financecontroller": {
     "label": "Finance Controller, College of Health Sciences",
     "home": "r/college",

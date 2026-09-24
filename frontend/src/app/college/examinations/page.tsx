@@ -17,7 +17,10 @@ export default async function ExaminationsPage({ searchParams }: { searchParams:
   const sessionList = sessions.ok ? sessions.data : [];
   const current = sessionList.find((s) => s.state === "CURRENT")?.name ?? sessionList[0]?.name ?? "";
   const session = typeof p.session === "string" && p.session ? p.session : current;
-  const code = typeof p.exam === "string" && p.exam ? p.exam : "PE1";
+  // the MBBS Coordinator's desk opens at the level they hold, and stays there
+  const mine = me.ok && me.data.activeOffice === "mbbscoordinator" ? await api<{ level: number }>("/api/v1/college/coordinator") : null;
+  const myCode = mine && mine.ok && catalogue.ok ? catalogue.data.exams.find((e) => e.level === mine.data.level)?.code : undefined;
+  const code = myCode ?? (typeof p.exam === "string" && p.exam ? p.exam : "PE1");
   const [candidates, reconciliation] = await Promise.all([
     session ? api<Candidates>(`/api/v1/college/exams/${encodeURIComponent(code)}/candidates?session=${encodeURIComponent(session)}`) : null,
     session ? api<Reconciliation>(`/api/v1/college/exams/${encodeURIComponent(code)}/reconciliation?session=${encodeURIComponent(session)}`) : null,

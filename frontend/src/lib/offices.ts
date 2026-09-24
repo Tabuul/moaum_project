@@ -20,6 +20,7 @@ export const OFFICE_LABELS: Record<string, string> = {
   housing: "Deputy Registrar (Housing, Welfare, Passages)",
   provost: "Provost, College of Health Sciences",
   collegesecretary: "College Secretary",
+  mbbscoordinator: "MBBS Coordinator",
   financecontroller: "Finance Controller, College of Health Sciences",
   library: "Librarian",
   security: "Chief Security Officer",
@@ -70,6 +71,7 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   pgsecretary: ["Secretary, Postgraduate School", "School of Postgraduate Studies"],
   provost: ["Provost", "College of Health Sciences"],
   collegesecretary: ["College Secretary", "College of Health Sciences"],
+  mbbscoordinator: ["MBBS Coordinator", "College of Health Sciences"],
   financecontroller: ["Finance Controller", "College of Health Sciences"],
 };
 

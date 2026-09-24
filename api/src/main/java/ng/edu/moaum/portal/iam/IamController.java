@@ -101,7 +101,7 @@ class IamController {
     }
 
     record NewGrant(@NotBlank String officeCode,
-                    @NotBlank @Pattern(regexp = "institution|college|faculty|department|programme|course|unit|platform") String scopeKind,
+                    @NotBlank @Pattern(regexp = "institution|college|faculty|department|programme|course|unit|platform|level") String scopeKind,
                     String scopeId,
                     @NotBlank @Size(max = 400) String instrument,
                     LocalDate validFrom,

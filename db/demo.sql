@@ -117,6 +117,31 @@ BEGIN
         IF o.office = 'hod'      THEN v_hod      := v_person; END IF;
     END LOOP;
 
+    -- ── a College lecturer (Human Anatomy, under the College of Health Sciences) who also coordinates 200 Level:
+    --    two offices on one person, signing in as demo.mbbscoordinator (V250) ──
+    DECLARE v_coord uuid;
+    BEGIN
+        SELECT id INTO v_coord FROM iam.person WHERE staff_number = 'MOAUM/DEMO/029';
+        IF v_coord IS NULL THEN
+            v_coord := gen_random_uuid();
+            INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (v_coord, 'MOAUM/DEMO/029', 'DEMO', 'MBBS Coordinator');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = v_coord AND a.office_code = 'lecturer' AND (a.valid_to IS NULL OR a.valid_to >= current_date)) THEN
+            INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+            VALUES (gen_random_uuid(), v_coord, 'lecturer', 'department', 'ANT', 'Demo account (db/demo.sql) — invented person, no instrument exists', v_actor, current_date);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = v_coord AND a.office_code = 'mbbscoordinator' AND (a.valid_to IS NULL OR a.valid_to >= current_date)) THEN
+            INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+            VALUES (gen_random_uuid(), v_coord, 'mbbscoordinator', 'level', '200', 'Demo account (db/demo.sql) — invented person, no instrument exists', v_actor, current_date);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM iam.credential WHERE person_id = v_coord) THEN
+            INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by)
+            VALUES (v_coord, 'demo.mbbscoordinator', crypt(v_pw, gen_salt('bf', 12)), false, v_actor);
+            INSERT INTO iam.credential_event (id, person_id, kind, by_person, note)
+            VALUES (gen_random_uuid(), v_coord, 'SET', v_actor, 'demo account (db/demo.sql)');
+        END IF;
+    END;
+
     -- ── the students: one at every level, ACTIVE, enrolled in the session ──
     FOR s IN
         SELECT * FROM (VALUES

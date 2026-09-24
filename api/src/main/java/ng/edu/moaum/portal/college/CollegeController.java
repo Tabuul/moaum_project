@@ -41,18 +41,33 @@ class CollegeController {
 
     private static final String DESK = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super')";
     private static final String READERS = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar',"
-            + "'OFFICE_records','OFFICE_dean','OFFICE_hod','OFFICE_lecturer','OFFICE_exams','OFFICE_vc','OFFICE_dvc','OFFICE_admin','OFFICE_super')";
+            + "'OFFICE_records','OFFICE_dean','OFFICE_hod','OFFICE_lecturer','OFFICE_exams','OFFICE_vc','OFFICE_dvc','OFFICE_admin','OFFICE_super','OFFICE_mbbscoordinator')";
 
     /** the desk, and the College's own teachers — a lecturer, Head of Department or examinations officer whose department is the College's */
-    private static final String EXAMINERS = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_hod','OFFICE_exams')";
+    private static final String EXAMINERS = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_hod','OFFICE_exams','OFFICE_mbbscoordinator')";
+    /** the desk, and the MBBS Coordinator at their level: opening a student's year, the cohort list */
+    private static final String DESK_OR_COORDINATOR = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super','OFFICE_mbbscoordinator')";
     private static final String STUDENT = "hasAuthority('OFFICE_student')";
 
     private final JdbcClient jdbc;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
+    private final org.springframework.transaction.PlatformTransactionManager transactions;
 
-    CollegeController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope) {
+    CollegeController(JdbcClient jdbc, ng.edu.moaum.portal.shared.OfficeScope scope, org.springframework.transaction.PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.transactions = transactions;
+    }
+
+    /** the MBBS Coordinator acts at their level and no other (V250); every other office passes */
+    private void assertLevel(Object level) {
+        if (!scope.actingCoordinator()) return;
+        Integer mine = scope.actingLevel();
+        int asked = level instanceof Number n ? n.intValue() : Integer.parseInt(String.valueOf(level));
+        if (mine == null || mine != asked) {
+            throw new DomainRuleViolation("COLLEGE_NOT_YOUR_LEVEL", "The MBBS Coordinator acts at " + (mine == null ? "no level" : mine + " Level") + "; this is " + asked + " Level.",
+                    new DomainRuleViolation.Remedy("Work at the level your coordinatorship names.", "College Secretary"));
+        }
     }
 
     /** a department office (lecturer, HOD, examinations officer) examines only when its department is the College's */
@@ -88,9 +103,10 @@ class CollegeController {
 
     /** the College's students at a level, each with their allocations for the session */
     @GetMapping("/students")
-    @PreAuthorize(DESK)
+    @PreAuthorize(DESK_OR_COORDINATOR)
     @Transactional(readOnly = true)
     List<Map<String, Object>> students(@RequestParam String session, @RequestParam int level) {
+        assertLevel(level);
         return jdbc.sql("""
                 SELECT st.id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.programme_code, p.name AS programme,
                        st.current_level, st.entry_mode, st.status,
@@ -482,6 +498,7 @@ class CollegeController {
     Map<String, Object> candidates(@PathVariable String code, @RequestParam String session) {
         assertCollegeExaminer();
         Map<String, Object> e = exam(code);
+        assertLevel(e.get("level"));
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT st.id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.programme_code, st.entry_mode, st.current_level,
                        coalesce((SELECT jsonb_agg(jsonb_build_object('id', r.id, 'subject_id', r.subject_id, 'attempt', r.attempt, 'ca', r.ca_score, 'exam', r.exam_score,
@@ -524,6 +541,7 @@ class CollegeController {
     Map<String, Object> result(@PathVariable String code, @Valid @RequestBody ResultIn body) {
         assertCollegeExaminer();
         Map<String, Object> e = exam(code);
+        assertLevel(e.get("level"));
         if (body.attendancePct() != null && (body.attendancePct().signum() < 0 || body.attendancePct().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
             throw new DomainRuleViolation("COLLEGE_ATTENDANCE_RANGE", "Attendance is a percentage, 0 to 100.", new DomainRuleViolation.Remedy("Enter it within 0 to 100.", "College Secretary"));
         }
@@ -733,9 +751,10 @@ class CollegeController {
 
     /** the desk opens a student's College year for a cohort — a paper registration, a transfer — so the candidate list is complete */
     @PostMapping("/enrol")
-    @PreAuthorize(DESK)
+    @PreAuthorize(DESK_OR_COORDINATOR)
     @Transactional
     Map<String, Object> enrol(@Valid @RequestBody EnrolIn body) {
+        assertLevel(body.level());
         UUID student = jdbc.sql("SELECT id FROM people.student WHERE upper(coalesce(matric_no, '')) = upper(:n) OR upper(admission_no) = upper(:n)")
                 .param("n", body.number().trim()).query(UUID.class).optional()
                 .orElseThrow(() -> new NotFound("student", body.number()));
@@ -791,6 +810,7 @@ class CollegeController {
     @Transactional(readOnly = true)
     Map<String, Object> assessments(@RequestParam UUID student, @RequestParam String exam) {
         Map<String, Object> e = exam(exam);
+        assertLevel(e.get("level"));
         List<Map<String, Object>> items = jdbc.sql("""
                 SELECT i.id, i.subject_id, s.name AS subject, i.item_type, i.name, i.max_score, i.eligibility_gate, i.note
                   FROM college.assessment_item i JOIN college.exam_subject s ON s.id = i.subject_id WHERE s.exam_id = :e ORDER BY s.ordinal, i.name
@@ -823,6 +843,101 @@ class CollegeController {
                 RETURNING id
                 """).param("st", body.studentId()).param("i", body.itemId()).param("a", attempt).param("sc", body.score()).param("by", scope.actorId(), Types.OTHER).query(UUID.class).single();
         return Map.of("id", id);
+    }
+
+    public record SheetMark(@NotNull UUID subjectId, java.math.BigDecimal caScore, java.math.BigDecimal examScore, java.math.BigDecimal clinicalScore, java.math.BigDecimal attendancePct) {
+    }
+    public record SheetRow(@NotBlank String number, @NotEmpty List<SheetMark> marks) {
+    }
+    public record SheetIn(@NotBlank String session, @NotEmpty @Size(max = 1000) List<SheetRow> rows) {
+    }
+
+    /** the level's score sheet, uploaded: every row a cohort member by number, every mark judged by the rule as it is saved, the
+     *  rule's decision applied provisionally where a candidate's subjects are then all resulted; a row that cannot be saved is
+     *  named and the rest go in — nothing is half-saved within a row */
+    @PostMapping("/exams/{code}/results/bulk")
+    @PreAuthorize(EXAMINERS)
+    @Transactional
+    Map<String, Object> bulk(@PathVariable String code, @Valid @RequestBody SheetIn body) {
+        assertCollegeExaminer();
+        Map<String, Object> e = exam(code);
+        assertLevel(e.get("level"));
+        boolean reached = jdbc.sql("SELECT college.year_reached_final(:l, :s)").param("l", e.get("level")).param("s", body.session()).query(Boolean.class).single();
+        if (!reached) throw new DomainRuleViolation("COLLEGE_YEAR_NOT_ENDED", "The " + e.get("level") + " Level year for " + body.session() + " has not reached its final semester; the College's students sit once, at the end of the year.",
+                new DomainRuleViolation.Remedy("Results are entered when the final semester has begun, by the College's calendar.", "College Secretary"));
+        List<Map<String, Object>> cohort = jdbc.sql("""
+                SELECT c.student_id, upper(coalesce(st.matric_no, st.admission_no)) AS number, c.fully_registered
+                  FROM college.cohort(:l, :s) c JOIN people.student st ON st.id = c.student_id
+                """).param("l", e.get("level")).param("s", body.session()).query().listOfRows();
+        Map<String, Map<String, Object>> byNumber = new java.util.HashMap<>();
+        for (Map<String, Object> c : cohort) byNumber.put(String.valueOf(c.get("number")), c);
+        List<Map<String, Object>> problems = new java.util.ArrayList<>();
+        List<Map<String, Object>> saved = new java.util.ArrayList<>();
+        for (SheetRow row : body.rows()) {
+            String number = row.number().trim().toUpperCase();
+            Map<String, Object> c = byNumber.get(number);
+            if (c == null) { problems.add(Map.of("number", number, "problem", "not in the " + e.get("level") + " Level cohort for " + body.session())); continue; }
+            UUID student = (UUID) c.get("student_id");
+            String attempt = jdbc.sql("SELECT college.attempt_of(:st, :l, :s)").param("st", student).param("l", e.get("level")).param("s", body.session()).query(String.class).single();
+            // each row in its own savepoint: a refused mark undoes that row's marks alone, and the rest of the sheet goes in
+            org.springframework.transaction.support.TransactionTemplate nested = new org.springframework.transaction.support.TransactionTemplate(transactions);
+            nested.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_NESTED);
+            try {
+                String outcome = nested.execute(status -> {
+                    for (SheetMark m : row.marks()) {
+                        if (m.caScore() == null && m.examScore() == null) continue;
+                        result(code, new ResultIn(body.session(), student, m.subjectId(), attempt, m.caScore(), m.examScore(), m.clinicalScore(), m.attendancePct()));
+                    }
+                    return jdbc.sql("SELECT outcome FROM college.progression_decision WHERE student_id = :st AND from_level = :l AND session = :s")
+                            .param("st", student).param("l", e.get("level")).param("s", body.session()).query(String.class).optional().orElse("");
+                });
+                saved.add(Map.of("number", number, "outcome", outcome == null ? "" : outcome, "registered", Boolean.TRUE.equals(c.get("fully_registered"))));
+            } catch (DomainRuleViolation v) {
+                problems.add(Map.of("number", number, "problem", v.getMessage()));
+            } catch (org.springframework.dao.DataAccessException v) {
+                problems.add(Map.of("number", number, "problem", v.getMostSpecificCause().getMessage()));
+            }
+        }
+        if (saved.isEmpty() && !problems.isEmpty()) {
+            throw new DomainRuleViolation("COLLEGE_SHEET_REFUSED", "No row of the sheet could be saved: " + problems.get(0).get("number") + " — " + problems.get(0).get("problem") + (problems.size() > 1 ? ", and " + (problems.size() - 1) + " more" : ""),
+                    new DomainRuleViolation.Remedy("Correct the sheet and upload it again.", "College Secretary"));
+        }
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("saved", saved);
+        out.put("problems", problems);
+        return out;
+    }
+
+    /** the MBBS Coordinator's own summary: the level held, its examination, the cohorts with years open or closed, and what each waits on */
+    @GetMapping("/coordinator")
+    @PreAuthorize(EXAMINERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> coordinator(@RequestParam(required = false) Integer level) {
+        Integer mine = scope.actingLevel();
+        Integer L = mine != null ? mine : level;
+        if (L == null) throw new DomainRuleViolation("COLLEGE_NO_LEVEL", "No level: the coordinatorship names none, and none was asked for.", new DomainRuleViolation.Remedy("Ask the Registry to bound the grant to a level.", "Registry"));
+        Map<String, Object> e = jdbc.sql("SELECT id, code, name, level, papers, min_attendance_pct, on_failure, resit_allowed, appeal_to_senate FROM college.professional_exam WHERE level = :l")
+                .param("l", L).query().listOfRows().stream().findFirst().orElse(Map.of());
+        List<Map<String, Object>> cohorts = jdbc.sql("""
+                SELECT e.session, count(*) AS students, count(*) FILTER (WHERE e.registered_at IS NOT NULL) AS registered,
+                       count(*) FILTER (WHERE e.state = 'OPEN') AS open, count(*) FILTER (WHERE e.state = 'RESIT') AS resit, count(*) FILTER (WHERE e.state = 'CLOSED') AS closed,
+                       (SELECT count(DISTINCT r.student_id) FROM college.exam_result r JOIN college.exam_subject s ON s.id = r.subject_id JOIN college.professional_exam x ON x.id = s.exam_id
+                         WHERE x.level = e.level AND r.session = e.session AND r.passed IS NOT NULL) AS with_results,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.from_level = e.level AND d.session = e.session AND d.state = 'PROVISIONAL') AS provisional,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.from_level = e.level AND d.session = e.session AND d.state = 'CONFIRMED') AS confirmed,
+                       college.year_reached_final(e.level, e.session) AS year_reached_final,
+                       (SELECT min(cs.starts_on) FROM college.semester cs WHERE cs.level = e.level AND cs.session = e.session) AS year_starts_on,
+                       (SELECT max(cs.ends_on) FROM college.semester cs WHERE cs.level = e.level AND cs.session = e.session) AS year_ends_on
+                  FROM college.enrolment e WHERE e.level = :l GROUP BY e.level, e.session ORDER BY e.session DESC
+                """).param("l", L).query().listOfRows();
+        String dept = jdbc.sql("SELECT iam.college_lecturer_dept(:p)").param("p", scope.actorId()).query(String.class).optional().orElse(null);
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("level", L);
+        out.put("exam", e);
+        out.put("cohorts", cohorts);
+        out.put("department", dept);
+        out.put("nextSession", jdbc.sql("SELECT college.level_session(:l)").param("l", L).query(String.class).single());
+        return out;
     }
 
     /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */

@@ -51,6 +51,7 @@ Sign in as the 300-level student to see the results path from the student's end.
 | Housing                   | `demo.housing`            | The University               |
 | Provost                   | `demo.provost`            | The University               |
 | College Secretary         | `demo.collegesecretary`   | The University               |
+| MBBS Coordinator, 200 Level | `demo.mbbscoordinator` | A College lecturer (Human Anatomy) holding the 200 Level coordinatorship: the level's score sheet, results and cohorts |
 | PG School (Dean)          | `demo.pgschool`           | School of Postgraduate Studies |
 | PG School (Secretary)     | `demo.pgsecretary`        | School of Postgraduate Studies |
 | Librarian                 | `demo.library`            | The University               |
