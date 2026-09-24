@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /**
  * The postgraduate referee's page (V225) — public, reached by the private link emailed to the referee.
@@ -33,7 +34,7 @@ export function RefereeForm({ token }: { token: string }) {
       const r = await fetch(`/api/bff/api/v1/pg/referee/${encodeURIComponent(token)}`, { cache: "no-store" });
       const j = await r.json().catch(() => null);
       if (r.ok && j && j.found) setCtx(j as Ctx);
-      else setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." });
+      else setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." });
     } finally { setLoading(false); }
   }, [token]);
 
@@ -42,7 +43,7 @@ export function RefereeForm({ token }: { token: string }) {
   async function submit() {
     setProblem(null);
     if (!(f.relationship ?? "").trim() || !(f.knownDuration ?? "").trim() || !(f.attestation ?? "").trim()) {
-      setProblem({ status: 400, title: "Your relationship, how long you have known the applicant, and your attestation are required." }); return;
+      setProblem({ status: 400, title: "Your relationship, how long you have known the applicant, and your attestation are required." }); notifyProblem({ status: 400, title: "Your relationship, how long you have known the applicant, and your attestation are required." }); return;
     }
     setBusy(true);
     try {
@@ -51,7 +52,7 @@ export function RefereeForm({ token }: { token: string }) {
         body: JSON.stringify({ relationship: f.relationship, knownDuration: f.knownDuration, attestation: f.attestation, recommendation: f.recommendation ?? "", verdict: f.verdict }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setDone(true);
     } finally { setBusy(false); }
   }

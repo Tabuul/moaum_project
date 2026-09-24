@@ -19,7 +19,7 @@ import { Btn, IcoBtn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles,
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 
 export interface DeskRow {
   id: string | null; application_no: string | null; surname: string; other_names: string; jamb_key: string; programme: string; entry_mode: string;
@@ -81,7 +81,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     try {
       const r = await fetch(`${base}${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return (j ?? {}) as Record<string, unknown>;
@@ -95,7 +95,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     const r = await fetch(`${base}/applications/${id}`, { cache: "no-store" });
     const j = await r.json().catch(() => null);
     if (r.ok) setOpen(j as Application);
-    else setProblem(j ?? { status: r.status, title: r.statusText });
+    else setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
   }
 
   async function refreshOpen(id: string) {
@@ -123,7 +123,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     try {
       const r = await fetch(`${base}/jamb-template${programme ? `?programme=${encodeURIComponent(programme)}` : ""}`, { cache: "no-store" });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const t = j as {
         session: string; programme: string; asAt: string; summary: Record<string, number | null>;
         quotaDistribution: { criterion: string; percent: number; quota: number; admitted: number; shortfall: number }[];
@@ -211,7 +211,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       const grid = await xlsxRowsAsync(await file.arrayBuffer(), (n) => setJambProg({ label: "Reading the file", sent: n, of: 0 }));
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim());
       if (!header.some((h) => /^rg_num$/i.test(h) || /reg/i.test(h))) {
-        setProblem({ status: 400, title: "That file is not the JAMB admission-status list.", detail: "The first row must carry RG_NUM (registration number), AdmissionStatus and the other JAMB columns." });
+        setProblem({ status: 400, title: "That file is not the JAMB admission-status list.", detail: "The first row must carry RG_NUM (registration number), AdmissionStatus and the other JAMB columns." }); notifyProblem({ status: 400, title: "That file is not the JAMB admission-status list.", detail: "The first row must carry RG_NUM (registration number), AdmissionStatus and the other JAMB columns." });
         return;
       }
       /* build the rows, yielding so a large list does not freeze the tab */
@@ -226,7 +226,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         }
         if ((i & 8191) === 8191) { setJambProg({ label: "Preparing the rows", sent: i + 1, of: dataRows.length }); await new Promise((res) => setTimeout(res)); }
       }
-      if (!body.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill or download the JAMB admission-status list, then upload it." }); return; }
+      if (!body.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill or download the JAMB admission-status list, then upload it." }); notifyProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill or download the JAMB admission-status list, then upload it." }); return; }
       /* the loader upserts on (session, registration number), so a large list goes up in idempotent batches */
       const CHUNK = 500;
       const totals = { loaded: 0, matched: 0, accepted: 0, offered: 0, unmatched: 0 };
@@ -252,7 +252,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       await refreshJamb();
       router.refresh();
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx downloaded from JAMB." });
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx downloaded from JAMB." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx downloaded from JAMB." });
     } finally {
       setJambBusy(false);
       setJambProg(null);

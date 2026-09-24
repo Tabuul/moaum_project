@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { STAGE_LABEL, type SheetListing, type SheetListed } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two, Tick } from "@/components/proto/ui";
@@ -57,7 +57,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
       for (const s of forwardable) {
         const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${s.courseCode} approved at ${d.stage.toLowerCase()} by ${actingOffice}`) }, body: "{}" });
         if (!r.ok) {
-          setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+          { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
           break;
         }
         n++;

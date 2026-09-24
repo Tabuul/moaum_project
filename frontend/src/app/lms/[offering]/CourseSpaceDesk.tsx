@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { KINDS, fileBase64, size, type Desk, type Submission } from "@/lib/lms";
 import { Btn, Ico, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -32,7 +32,7 @@ export function CourseSpaceDesk({ d, upload }: { d: Desk; upload: boolean }) {
     try {
       const r = await fetch(`/api/bff/api/v1/lms/offerings/${d.offering_id}${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j;
@@ -44,7 +44,7 @@ export function CourseSpaceDesk({ d, upload }: { d: Desk; upload: boolean }) {
   async function publishMaterial() {
     const body: Record<string, unknown> = { title: m.title, week: m.week ? Number(m.week) : null, kind: m.kind, description: m.description || null, link: m.link || null, publish: m.publish };
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { setProblem({ status: 422, title: "The file is larger than 5 MB", detail: "Publish it by address and link it here instead." }); return; }
+      if (file.size > 5 * 1024 * 1024) { setProblem({ status: 422, title: "The file is larger than 5 MB", detail: "Publish it by address and link it here instead." }); notifyProblem({ status: 422, title: "The file is larger than 5 MB", detail: "Publish it by address and link it here instead." }); return; }
       body.filename = file.name;
       body.contentType = file.type || "application/octet-stream";
       body.contentBase64 = await fileBase64(file);

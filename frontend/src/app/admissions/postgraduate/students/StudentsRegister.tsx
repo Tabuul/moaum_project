@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * The postgraduate register (V211): every postgraduate student with their coursework CGPA, academic
  * standing (good / probation below 2.50, Policy 15.5) and research stage. Filterable by programme and
@@ -49,7 +50,7 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
     const r = await fetch(`/api/bff/api/v1/pg/students${q ? `?${q}` : ""}`, { cache: "no-store" });
     setErr(null);
     const j = await r.json().catch(() => null);
-    if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+    if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
     setData(j as View);
   }, []);
 
@@ -82,7 +83,7 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
         body: JSON.stringify({ to, instrument: instrument.trim(), reason: action === "READMIT" ? "Readmitted to continue" : "" }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       await load(programme, level);
     } finally { setBusy(false); }
   }

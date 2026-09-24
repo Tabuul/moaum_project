@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day } from "@/components/proto/blocks";
@@ -41,7 +41,7 @@ export function LeaveSelf({ d }: { d: MyLeave }) {
     try {
       const r = await fetch(`/api/bff/api/v1${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return false; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return false; }
       notify(reason);
       router.refresh();
       return true;

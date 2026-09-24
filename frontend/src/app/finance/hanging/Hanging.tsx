@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { OUTCOME, when, type PaymentsDesk } from "@/lib/bursary";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -28,7 +28,7 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
     try {
       const r = await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Hanging payment ${reference} verified with the gateway`) }, body: JSON.stringify({ reference }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`${reference}: ${j.outcome}${j.said ? ` (${j.said})` : ""}`);
       notify(`${reference}: ${j.outcome}`);
       router.refresh();

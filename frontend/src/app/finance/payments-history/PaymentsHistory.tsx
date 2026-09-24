@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /** t/paymenthistory — bulk-load past students' payment (school-fees) history (V120). Bursary and ICT. */
 import { useState } from "react";
 import type { Problem } from "@/lib/api";
@@ -48,7 +49,7 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
         date: at(["date", "paid on"]), channel: at(["channel", "method"]),
         reference: at(["reference", "rrr", "transaction"]), receipt: at(["receipt"]),
       };
-      if (ci.matric < 0 || ci.amount < 0) { setProblem({ status: 400, title: "That file needs at least Matriculation Number and Amount columns.", detail: "Download the template for the full set of columns." }); return; }
+      if (ci.matric < 0 || ci.amount < 0) { setProblem({ status: 400, title: "That file needs at least Matriculation Number and Amount columns.", detail: "Download the template for the full set of columns." }); notifyProblem({ status: 400, title: "That file needs at least Matriculation Number and Amount columns.", detail: "Download the template for the full set of columns." }); return; }
       const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
       const rows = grid.slice(1)
         .filter((r) => g(r, ci.matric) && !/^matric/i.test(g(r, ci.matric)))
@@ -56,7 +57,7 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
           matric: g(r, ci.matric), session: g(r, ci.session), amount: g(r, ci.amount), purpose: g(r, ci.purpose),
           date: g(r, ci.date), channel: g(r, ci.channel), reference: g(r, ci.reference), receipt: g(r, ci.receipt),
         }));
-      if (!rows.length) { setProblem({ status: 400, title: "No payment rows were found in the file." }); return; }
+      if (!rows.length) { setProblem({ status: 400, title: "No payment rows were found in the file." }); notifyProblem({ status: 400, title: "No payment rows were found in the file." }); return; }
 
       const totals: Totals = { imported: 0, duplicate: 0, no_student: 0, bad_amount: 0, skipped: 0 };
       let firstErr: string | null = null;
@@ -87,7 +88,7 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
         + (totals.skipped ? ` · ${totals.skipped.toLocaleString()} skipped by an error (first: ${firstErr ?? "no detail"})` : "")
         + ".");
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet." });
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet." });
     } finally {
       setBusy(false); setProgress(null);
     }

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -36,7 +36,7 @@ export function Appraisal({ cycle, rows, actingOffice }: { cycle: string; rows: 
     try {
       const res = await fetch("/api/bff/api/v1/hr/appraisal", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Record appraisal for ${r.number}`) }, body: JSON.stringify({ number: r.number.trim(), cycle, aperGrade: r.aperGrade || null, publications: r.publications ? Number(r.publications) : null, selfScore: r.selfScore ? Number(r.selfScore) : null, supervisorScore: r.supervisorScore ? Number(r.supervisorScore) : null, note: r.note || null, state: "MODERATED" }) });
       const j = await res.json().catch(() => null);
-      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); return; }
+      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); notifyProblem(j ?? { status: res.status, title: res.statusText }); return; }
       setSaid(`Appraisal recorded for ${r.number.trim()}`);
       notify(`Appraisal recorded for ${r.number.trim()}`);
       setR({ number: "", aperGrade: "", publications: "", selfScore: "", supervisorScore: "", note: "" });

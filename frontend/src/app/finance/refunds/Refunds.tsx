@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -56,7 +56,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
     try {
       const res = await fetch(`/api/bff/api/v1/finance/refunds/transaction?reference=${encodeURIComponent(r)}`);
       const j = await res.json().catch(() => null);
-      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); setTxn(null); return; }
+      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); notifyProblem(j ?? { status: res.status, title: res.statusText }); setTxn(null); return; }
       const t = j as Txn;
       setTxn(t);
       setStudent(t.student_id ?? null);
@@ -79,7 +79,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
       const res = await fetch(`/api/bff/api/v1/finance/refunds/transaction?reference=${encodeURIComponent(initialRefund)}`);
       const j = await res.json().catch(() => null);
       if (!live) return;
-      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); return; }
+      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); notifyProblem(j ?? { status: res.status, title: res.statusText }); return; }
       const t = j as Txn;
       setTxn(t);
       setStudent(t.student_id ?? null);
@@ -94,7 +94,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
     try {
       const r = await fetch(`/api/bff/api/v1/finance/refunds${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j as Record<string, unknown>;

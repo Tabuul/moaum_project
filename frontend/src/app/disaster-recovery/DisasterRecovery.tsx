@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, day } from "@/components/proto/blocks";
@@ -36,7 +36,7 @@ export function DisasterRecovery({ drills, actingOffice }: { drills: Drill[]; ac
     try {
       const r = await fetch("/api/bff/api/v1/governance/dr", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Record ${f.kind} drill`) }, body: JSON.stringify({ kind: f.kind, ranOn: f.ranOn || null, rpoMinutes: f.rpoMinutes ? Number(f.rpoMinutes) : null, rtoMinutes: f.rtoMinutes ? Number(f.rtoMinutes) : null, outcome: f.outcome, note: f.note || null }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid("Drill recorded"); notify("Drill recorded"); setF({ kind: "RESTORE_VERIFY", ranOn: "", rpoMinutes: "", rtoMinutes: "", outcome: "PASSED", note: "" }); router.refresh();
     } finally {
       setBusy(false);

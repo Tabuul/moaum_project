@@ -16,7 +16,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -64,7 +64,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
     if (!form) return;
     const edit = !!form.id;
     if (!form.surname.trim() || !form.given.trim() || !form.department.trim() || (!edit && !form.pno.trim().replace(/\D/g, ""))) {
-      setProblem({ status: 400, title: "Staff id, surname, given names and department are all required." });
+      setProblem({ status: 400, title: "Staff id, surname, given names and department are all required." }); notifyProblem({ status: 400, title: "Staff id, surname, given names and department are all required." });
       return;
     }
     setBusy(true); setProblem(null);
@@ -81,9 +81,9 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
           department: form.department.trim(), present_rank: form.rank.trim(), phone: form.phone.trim(), conuass: form.conuass, email: form.email.trim() }] }) });
       }
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       if (!edit && j && Number(j.no_department) > 0) {
-        setProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Create the department first (Department upload), or check the name." });
+        setProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Create the department first (Department upload), or check the name." }); notifyProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Create the department first (Department upload), or check the name." });
         return;
       }
       setForm(null);
@@ -124,7 +124,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         body: JSON.stringify({ ids }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setDelMsg(`${j.deleted ?? 0} lecturer(s) removed${j.skipped ? ` · ${j.skipped} kept (already teaching or on record)` : ""}.`);
       notify(`${j.deleted ?? 0} lecturer(s) removed`);
       setSel(new Set());
@@ -158,7 +158,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         phone: at(["phone", "mobile", "gsm"]), conuass: at(["conuas", "connuas", "conuass"]),
       };
       if (ci.pno < 0 || ci.name < 0 || ci.dept < 0) {
-        setProblem({ status: 400, title: "That file needs PNO, Full Names and Department columns.", detail: "Download the template — it matches the List of teaching staff." });
+        setProblem({ status: 400, title: "That file needs PNO, Full Names and Department columns.", detail: "Download the template — it matches the List of teaching staff." }); notifyProblem({ status: 400, title: "That file needs PNO, Full Names and Department columns.", detail: "Download the template — it matches the List of teaching staff." });
         return;
       }
       const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
@@ -170,10 +170,10 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
           present_rank: g(r, ci.rank), phone: g(r, ci.phone), conuass: g(r, ci.conuass),
         }));
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet." });
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet." });
       return;
     }
-    if (!rows.length) { setProblem({ status: 400, title: "No teaching staff found in the file." }); return; }
+    if (!rows.length) { setProblem({ status: 400, title: "No teaching staff found in the file." }); notifyProblem({ status: 400, title: "No teaching staff found in the file." }); return; }
 
     setBusy(true);
     const sum: Tally = { rows: 0, created: 0, existing: 0, credentialed: 0, granted: 0, records: 0, no_department: 0, skipped: 0, failedRows: 0, firstError: null, missing: [] };

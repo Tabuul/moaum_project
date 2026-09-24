@@ -18,7 +18,7 @@ import { DTable } from "@/components/proto/DTable";
 import { semesterText } from "@/lib/student-portal";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 
 export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number; spillover: boolean }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
@@ -206,7 +206,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <table><thead><tr><th>Item</th><th>Applies to</th><th style="text-align:right">Amount</th></tr></thead>
       <tbody>${rowsHtml}</tbody></table></body></html>`;
     const w = window.open("", "_blank");
-    if (!w) { setProblem({ status: 400, title: "Allow pop-ups to print", detail: "Your browser blocked the print window. Allow pop-ups for this site, or use Download Excel." }); return; }
+    if (!w) { setProblem({ status: 400, title: "Allow pop-ups to print", detail: "Your browser blocked the print window. Allow pop-ups for this site, or use Download Excel." }); notifyProblem({ status: 400, title: "Allow pop-ups to print", detail: "Your browser blocked the print window. Allow pop-ups for this site, or use Download Excel." }); return; }
     w.document.write(html);
     w.document.close();
     w.focus();
@@ -264,7 +264,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         body: JSON.stringify({ applicationFee: Number(pgf.applicationFee) || 0, acceptanceFee: Number(pgf.acceptanceFee) || 0, checkingFee: Number(pgf.checkingFee) || 0 }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setPgfStated(true);
     } finally { setBusy(null); }
   }
@@ -278,7 +278,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         body: JSON.stringify({ applicationFee: Number(af.applicationFee) || 0, portalCharge: Number(af.portalCharge) || 0, acceptanceFee: Number(af.acceptanceFee) || 0, checkingFee: Number(af.checkingFee) || 0 }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       router.refresh();
     } finally {
       setBusy(null);
@@ -291,7 +291,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     try {
       const r = await fetch(`/api/bff/api/v1/finance${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return false; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return false; }
       notify(reason);
       router.refresh();
       return true;
@@ -311,22 +311,23 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         grid = isCsv ? csvRows(await file.text()) : await xlsxRows(await file.arrayBuffer());
       } catch (err) {
         setProblem({ status: 400, title: "That file could not be read.",
+          detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` }); notifyProblem({ status: 400, title: "That file could not be read.",
           detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` });
         return;
       }
       const rows = looksFlat(grid) ? parseFeeFlat(grid) : parseFeeMatrix(grid);
       if (!rows.length) {
-        setProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
+        setProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." }); notifyProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
         return;
       }
       const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-structure`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Approved fees structure uploaded for ${session}`) }, body: JSON.stringify({ rows }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as { rows: number; lines: number; faculties: number; no_faculty: number };
       setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} faculties${c.no_faculty ? ` · ${c.no_faculty} rows had a faculty name that did not match one on the register` : ""}. It replaced the previous structure for ${session}.`);
       router.refresh();
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." });
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." });
     } finally {
       setBusy(null);
     }

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, RoleLine, Tiles } from "@/components/proto/ui";
@@ -41,7 +41,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j;
@@ -49,13 +49,13 @@ export function Departments({ departments, actingOffice }: { departments: Depart
   }
 
   async function remove(d: Department) {
-    if (d.programmes || d.courses) { setProblem({ status: 400, title: `${d.name} still has ${d.programmes} programme(s) and ${d.courses} course(s).`, detail: "Remove or move them first; a department is deleted only when it is empty." }); return; }
+    if (d.programmes || d.courses) { setProblem({ status: 400, title: `${d.name} still has ${d.programmes} programme(s) and ${d.courses} course(s).`, detail: "Remove or move them first; a department is deleted only when it is empty." }); notifyProblem({ status: 400, title: `${d.name} still has ${d.programmes} programme(s) and ${d.courses} course(s).`, detail: "Remove or move them first; a department is deleted only when it is empty." }); return; }
     if (!window.confirm(`Remove ${d.name}? This cannot be undone.`)) return;
     setBusy(true); setProblem(null);
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue/departments/${encodeURIComponent(d.code)}`, { method: "DELETE", headers: { "X-Reason": reasonHeader(`Department ${d.code} removed`) } });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setMsg(`Department ${d.code} removed.`); notify(`Department ${d.code} removed`); router.refresh();
     } finally { setBusy(false); }
   }
@@ -76,21 +76,21 @@ export function Departments({ departments, actingOffice }: { departments: Depart
       try {
         grid = /\.csv$/i.test(file.name) || file.type === "text/csv" ? csvRows(await file.text()) : await xlsxRows(await file.arrayBuffer());
       } catch (err) {
-        setProblem({ status: 400, title: "That file could not be read.", detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or “CSV (Comma delimited) (.csv)” and upload that.` });
+        setProblem({ status: 400, title: "That file could not be read.", detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or “CSV (Comma delimited) (.csv)” and upload that.` }); notifyProblem({ status: 400, title: "That file could not be read.", detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or “CSV (Comma delimited) (.csv)” and upload that.` });
         return;
       }
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
       const at = (n: string[]) => header.findIndex((h) => n.some((x) => h.includes(x)));
       const ci = { code: at(["code"]), name: at(["name", "department", "dept"]), faculty: at(["faculty"]) };
-      if (ci.code < 0 || ci.name < 0 || ci.faculty < 0) { setProblem({ status: 400, title: "That file needs Code, Name and Faculty columns.", detail: "Download the template." }); return; }
+      if (ci.code < 0 || ci.name < 0 || ci.faculty < 0) { setProblem({ status: 400, title: "That file needs Code, Name and Faculty columns.", detail: "Download the template." }); notifyProblem({ status: 400, title: "That file needs Code, Name and Faculty columns.", detail: "Download the template." }); return; }
       const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
       const rows = grid.slice(1).filter((r) => g(r, ci.code) && !/^code$/i.test(g(r, ci.code))).map((r) => ({
         code: g(r, ci.code), name: g(r, ci.name), faculty: g(r, ci.faculty),
       }));
-      if (!rows.length) { setProblem({ status: 400, title: "No departments found in the file." }); return; }
+      if (!rows.length) { setProblem({ status: 400, title: "No departments found in the file." }); notifyProblem({ status: 400, title: "No departments found in the file." }); return; }
       const j = await post("/departments/import", { rows }, `${rows.length} departments uploaded`);
       if (j) { setMsg(`${j.saved ?? 0} departments saved${(j.bad_code ?? 0) ? ` · ${j.bad_code} rows had no name` : ""}${(j.no_faculty ?? 0) ? ` · ${j.no_faculty} with no matching faculty` : ""}.`); notify(`${j.saved ?? 0} departments saved`); }
-    } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
+    } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
   }
 
   return (

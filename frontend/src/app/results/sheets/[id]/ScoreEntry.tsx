@@ -10,7 +10,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { OUTCOMES, RS_STAGES, STAGE_LABEL, csv, download, type RollRow, type SheetDetail } from "@/lib/results";
 import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Modal, Steps } from "@/components/proto/blocks";
@@ -92,7 +92,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       }).filter((x) => x.outcome !== "GRADED" || (x.ca !== null && x.exam !== null));
       const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/scores`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${s.courseCode}: ${scores.length} marks entered`) }, body: JSON.stringify({ scores }) });
       if (!r.ok) {
-        setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+        { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return false;
       }
       const j = await r.json();
@@ -112,7 +112,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     try {
       const r = await fetch(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${s.courseCode}: submitted and attested by the lecturer`) }, body: "{}" });
       if (!r.ok) {
-        setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+        { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return;
       }
       setAsk(null);
@@ -212,7 +212,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         body: JSON.stringify({ rows: offRoll.map((x) => ({ line: String(x.line), number: x.number, ca: x.ca, exam: x.exam, outcome: x.outcome, note: "From the uploaded score sheet" })) }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       notify(`${j.held} held script${j.held === 1 ? "" : "s"} from the upload`);
       setOffRoll([]);
       router.refresh();

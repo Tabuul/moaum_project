@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
@@ -44,7 +44,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j;
@@ -62,7 +62,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue/programmes/${encodeURIComponent(p.code)}`, { method: "DELETE", headers: { "X-Reason": reasonHeader(`Programme ${p.code} removed`) } });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setMsg(`Programme ${p.code} removed.`); notify(`Programme ${p.code} removed`); router.refresh();
     } finally { setBusy(false); }
   }
@@ -89,16 +89,16 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
       const at = (n: string[]) => header.findIndex((h) => n.some((x) => h.includes(x)));
       const ci = { code: at(["code"]), name: at(["name", "programme"]), faculty: at(["faculty"]), deptCode: at(["department code", "dept code"]), dept: at(["department", "dept"]), cat: at(["category"]), ms: at(["score", "minimum", "min"]) };
-      if (ci.code < 0 || ci.name < 0 || ci.faculty < 0) { setProblem({ status: 400, title: "That file needs Code, Name and Faculty columns.", detail: "Download the template." }); return; }
+      if (ci.code < 0 || ci.name < 0 || ci.faculty < 0) { setProblem({ status: 400, title: "That file needs Code, Name and Faculty columns.", detail: "Download the template." }); notifyProblem({ status: 400, title: "That file needs Code, Name and Faculty columns.", detail: "Download the template." }); return; }
       const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
       const rows = grid.slice(1).filter((r) => g(r, ci.code) && !/^code$/i.test(g(r, ci.code))).map((r) => ({
         code: g(r, ci.code), name: g(r, ci.name), faculty: g(r, ci.faculty),
         departmentCode: g(r, ci.deptCode), department: g(r, ci.dept), category: g(r, ci.cat), minScore: g(r, ci.ms),
       }));
-      if (!rows.length) { setProblem({ status: 400, title: "No programmes found in the file." }); return; }
+      if (!rows.length) { setProblem({ status: 400, title: "No programmes found in the file." }); notifyProblem({ status: 400, title: "No programmes found in the file." }); return; }
       const j = await post("/programmes/import", { rows }, `${rows.length} programmes uploaded`);
       if (j) { setMsg(`${j.saved ?? 0} programmes saved${(j.bad_code ?? 0) ? ` · ${j.bad_code} bad codes` : ""}${(j.no_faculty ?? 0) ? ` · ${j.no_faculty} with no matching faculty` : ""}.`); notify(`${j.saved ?? 0} programmes saved`); }
-    } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
+    } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
   }
 
   return (

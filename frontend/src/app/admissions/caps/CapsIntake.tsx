@@ -12,7 +12,7 @@
  *   · one code, two names — the University's programmes and JAMB's aliases
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { xlsxRows } from "@/lib/xlsx";
@@ -167,7 +167,7 @@ export function CapsIntake({
         notify(`JAMB list reset for ${session}`);
         router.refresh();
       } else {
-        setProblem(asProblem(r.status, r.body));
+        setProblem(asProblem(r.status, r.body)); notifyProblem(asProblem(r.status, r.body));
       }
     } finally {
       setResetting(false);
@@ -275,7 +275,7 @@ export function CapsIntake({
         { ...whole, rows: chunks[0], rowsExpected: rows.length },
       );
       if (!first.ok) {
-        setProblem(asProblem(first.status, first.body));
+        setProblem(asProblem(first.status, first.body)); notifyProblem(asProblem(first.status, first.body));
         return;
       }
       const result = first.body as Loaded;
@@ -284,7 +284,7 @@ export function CapsIntake({
       for (const chunk of chunks.slice(1)) {
         const r = await post(`/api/v1/admissions/caps-batches/${result.batch.id}/rows`, `CAPS ${list.label} list ${f.name}: rows ${sent + 1} to ${sent + chunk.length}`, { rows: chunk });
         if (!r.ok) {
-          setProblem(asProblem(r.status, r.body));
+          setProblem(asProblem(r.status, r.body)); notifyProblem(asProblem(r.status, r.body));
           setLoaded({ ...loaded, [kind]: { ...result, outcome: `${sent} of ${rows.length} rows reached the register before the refusal; the batch stands uncommitted — withdraw it and load the file again.` } });
           return;
         }
@@ -316,7 +316,7 @@ export function CapsIntake({
         notify(`CAPS list ${b.filename ?? b.id} withdrawn`);
         router.refresh();
       } else {
-        setProblem(asProblem(r.status, r.body));
+        setProblem(asProblem(r.status, r.body)); notifyProblem(asProblem(r.status, r.body));
       }
     } finally {
       setCommitting(null);
@@ -335,7 +335,7 @@ export function CapsIntake({
         notify(`CAPS list ${outcome}`);
         router.refresh();
       } else {
-        setProblem(asProblem(r.status, r.body));
+        setProblem(asProblem(r.status, r.body)); notifyProblem(asProblem(r.status, r.body));
       }
     } finally {
       setCommitting(null);

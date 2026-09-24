@@ -11,7 +11,7 @@
  * record.
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClearanceRow, StudentRecord } from "@/lib/student";
@@ -107,7 +107,9 @@ export function Student360({
         json && typeof json === "object" && "status" in json
           ? (json as Problem)
           : { status: response.status, title: response.statusText },
-      );
+      ); notifyProblem(json && typeof json === "object" && "status" in json
+          ? (json as Problem)
+          : { status: response.status, title: response.statusText },);
     } finally {
       setBusy(false);
     }
@@ -130,7 +132,7 @@ export function Student360({
         return;
       }
       const json = await response.json().catch(() => null);
-      setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText });
+      setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText }); notifyProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText });
     } finally {
       setBusy(false);
     }
@@ -164,7 +166,7 @@ export function Student360({
                 if (!pw) return;
                 const r = await fetch(`/api/bff/api/v1/student-auth/accounts/${s.id}`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Portal account opened for ${s.matricNo}`) }, body: JSON.stringify({ password: pw }) });
                 const j = await r.json().catch(() => null);
-                if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+                if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
                 window.alert(`Portal account opened for ${s.matricNo}. The student signs in with the matriculation number and this password, and changes it at once.`);
               }}>
               Portal account

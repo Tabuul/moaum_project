@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /**
  * The School's external examiners (Policy 18), matching the prototype's pgExaminers screen. The Board
@@ -30,7 +31,7 @@ export function Examiners({ mayEdit }: { mayEdit: boolean }) {
       const r = await fetch("/api/bff/api/v1/pg/examiners", { cache: "no-store" });
       setProblem(null);
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
       setRows(Array.isArray(j) ? (j as Examiner[]) : []);
     } finally { setLoading(false); }
   }, []);
@@ -38,7 +39,7 @@ export function Examiners({ mayEdit }: { mayEdit: boolean }) {
   useEffect(() => { void load(); }, [load]);
 
   async function add() {
-    if (!f.name.trim() || !f.institution.trim()) { setProblem({ status: 400, title: "Name and institution are required." }); return; }
+    if (!f.name.trim() || !f.institution.trim()) { setProblem({ status: 400, title: "Name and institution are required." }); notifyProblem({ status: 400, title: "Name and institution are required." }); return; }
     setBusy(true); setProblem(null);
     try {
       const r = await fetch("/api/bff/api/v1/pg/examiners", {
@@ -46,7 +47,7 @@ export function Examiners({ mayEdit }: { mayEdit: boolean }) {
         body: JSON.stringify({ name: f.name.trim(), institution: f.institution.trim(), field: f.field.trim(), tenureFrom: f.tenureFrom, tenureTo: f.tenureTo }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setF({ name: "", institution: "", field: "", tenureFrom: "", tenureTo: "" });
       await load();
     } finally { setBusy(false); }

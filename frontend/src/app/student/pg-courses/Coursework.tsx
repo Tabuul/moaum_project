@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /**
  * The postgraduate student's course registration and results (V211). They register the courses their
@@ -36,7 +37,7 @@ export function Coursework({ initialSession }: { initialSession: string }) {
       const r = await fetch(`/api/bff/api/v1/pg/coursework/me?session=${encodeURIComponent(s)}&semester=${sem}`, { cache: "no-store" });
       setProblem(null);
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
       const data = j as View;
       setV(data);
       setPicked(new Set(data.entries.map((e) => e.course_id)));
@@ -58,7 +59,7 @@ export function Coursework({ initialSession }: { initialSession: string }) {
         body: JSON.stringify({ session, semester, mode, courseIds: [...picked] }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       const data = j as View;
       setV(data);
       setPicked(new Set(data.entries.map((e) => e.course_id)));

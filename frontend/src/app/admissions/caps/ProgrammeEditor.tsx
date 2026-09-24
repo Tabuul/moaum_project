@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Programme } from "@/lib/caps";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -51,7 +51,7 @@ export function ProgrammeEditor({ programme, departments, onClose }: { programme
         router.refresh();
         onClose();
       } else {
-        setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: response.status, title: response.statusText });
+        setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: response.status, title: response.statusText }); notifyProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: response.status, title: response.statusText });
       }
     } finally {
       setBusy(false);

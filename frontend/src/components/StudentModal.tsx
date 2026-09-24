@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * A student's whole record in a pop-up, opened from any list that names them — the Students desk, the
  * Search desk, the Student register. The photograph, the register line, the figures the student
@@ -43,7 +44,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
         fetch(`/api/bff/api/v1/student/students/${id}/portal`, { cache: "no-store" }),
       ]);
       if (!live) return;
-      if (!r.ok) { const j = await r.json().catch(() => null); setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { const j = await r.json().catch(() => null); setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setRecord((await r.json()) as StudentRecord);
       if (p.ok) setPortal((await p.json()) as Portal);
     })();

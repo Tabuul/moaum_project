@@ -10,7 +10,7 @@
  * the modal.
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BiodataChange, ChangeQueue } from "@/lib/student";
@@ -64,7 +64,9 @@ export function BiodataChanges({
         json && typeof json === "object" && "status" in json
           ? (json as Problem)
           : { status: response.status, title: response.statusText },
-      );
+      ); notifyProblem(json && typeof json === "object" && "status" in json
+          ? (json as Problem)
+          : { status: response.status, title: response.statusText },);
     } finally {
       setBusy(null);
     }

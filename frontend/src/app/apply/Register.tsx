@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * Post-UTME registration — proto/part13.html applicantRegister, as drawn.
  * The registration number is the first field and, until it is verified
@@ -97,7 +98,7 @@ export function Register({ session }: { session: string }) {
     try {
       const r = await fetch("/api/auth/applicant/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session, jambKey: key, email: email.trim(), phone: phoneRead(phone).digits, password: pw }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       router.push("/applicant");
       router.refresh();
     } finally {

@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * One candidate's O'Level results as JAMB sent them, sitting by sitting —
  * WAEC, NECO and NABTEB shown apart — and, for the Academic Office only,
@@ -40,7 +41,7 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
       const body = await r.json().catch(() => null);
       if (!live) return;
       if (r.ok) setData(body as Olevel);
-      else setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText });
+      else setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText }); notifyProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText });
     })();
     return () => { live = false; };
   }, [session, jambKey]);

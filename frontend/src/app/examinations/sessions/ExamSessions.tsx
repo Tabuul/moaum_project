@@ -11,7 +11,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto
 import { DTable } from "@/components/proto/DTable";
 import { Bar, day, Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 
 export function ExamSessions({ sessions, scope, list, monitor }: { sessions: string[]; scope: Scope; list: ExamSession[]; monitor: Monitor | null }) {
   const router = useRouter();
@@ -38,7 +38,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
         method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Examination session ${ed.session} edited`) }, body: JSON.stringify({ ...ed, semester: Number(ed.semester) }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setEdit(null);
       setSaid("The examination session dates were updated.");
       router.refresh();
@@ -58,7 +58,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
         return j;
       }
       if (!r.ok) {
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return null;
       }
       notify(reason);

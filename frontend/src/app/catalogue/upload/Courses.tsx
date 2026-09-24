@@ -13,7 +13,7 @@ import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { semesterText } from "@/lib/student-portal";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
@@ -38,12 +38,12 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   const [openMsg, setOpenMsg] = useState<string | null>(null);
 
   async function openRegistration() {
-    if (!/^\d{4}\/\d{4}$/.test(openSession.trim())) { setProblem({ status: 400, title: "Enter the session as YYYY/YYYY, e.g. 2024/2025." }); return; }
+    if (!/^\d{4}\/\d{4}$/.test(openSession.trim())) { setProblem({ status: 400, title: "Enter the session as YYYY/YYYY, e.g. 2024/2025." }); notifyProblem({ status: 400, title: "Enter the session as YYYY/YYYY, e.g. 2024/2025." }); return; }
     setBusy(true); setProblem(null); setOpenMsg(null);
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue/open-registration?session=${encodeURIComponent(openSession.trim())}&semester=${openSem}`, { method: "POST", headers: { "X-Reason": reasonHeader(`Open course registration for ${openSession.trim()} semester ${openSem}`) } });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setOpenMsg(`${Number(j?.opened ?? 0).toLocaleString()} course${Number(j?.opened ?? 0) === 1 ? "" : "s"} opened for ${openSession.trim()} · ${semesterText(Number(openSem))}. Students now see the real courses at registration.`);
       notify(`Registration opened · ${Number(j?.opened ?? 0).toLocaleString()} courses`);
     } finally { setBusy(false); }
@@ -56,7 +56,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue/offered?programme=${encodeURIComponent(prog)}`);
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setLoaded(j as Loaded[]);
     } finally {
       setListing(false);
@@ -135,10 +135,10 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     try {
       const buf = await file.arrayBuffer();
       const rows = file.name.toLowerCase().endsWith(".xlsx") ? await rowsFromXlsx(buf) : await rowsFromDocx(buf);
-      if (!rows.length) { setProblem({ status: 400, title: "No courses were found in that file.", detail: "Download the template, or upload the CCMAS .docx (its tables of Course Code, Title, Units, Status) or an .xlsx with those columns." }); return; }
+      if (!rows.length) { setProblem({ status: 400, title: "No courses were found in that file.", detail: "Download the template, or upload the CCMAS .docx (its tables of Course Code, Title, Units, Status) or an .xlsx with those columns." }); notifyProblem({ status: 400, title: "No courses were found in that file.", detail: "Download the template, or upload the CCMAS .docx (its tables of Course Code, Title, Units, Status) or an .xlsx with those columns." }); return; }
       setPreview(rows);
     } catch {
-      setProblem({ status: 400, title: "That file could not be read.", detail: "Upload the department's CCMAS .docx or an .xlsx." });
+      setProblem({ status: 400, title: "That file could not be read.", detail: "Upload the department's CCMAS .docx or an .xlsx." }); notifyProblem({ status: 400, title: "That file could not be read.", detail: "Upload the department's CCMAS .docx or an .xlsx." });
     } finally {
       setBusy(false);
     }
@@ -147,7 +147,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   async function upload() {
     if (!preview) return;
     const perRow = preview.some((r) => r.programmeCode);
-    if (!perRow && !programme) { setProblem({ status: 400, title: "Choose a programme, or upload a file with a programme_code column.", detail: "A file without a Programme Code column loads against the one programme chosen above." }); return; }
+    if (!perRow && !programme) { setProblem({ status: 400, title: "Choose a programme, or upload a file with a programme_code column.", detail: "A file without a Programme Code column loads against the one programme chosen above." }); notifyProblem({ status: 400, title: "Choose a programme, or upload a file with a programme_code column.", detail: "A file without a Programme Code column loads against the one programme chosen above." }); return; }
     setBusy(true);
     setProblem(null);
     setMsg(null);
@@ -222,7 +222,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
     try {
       const r = await fetch("/api/bff/api/v1/catalogue/catalogue-export");
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       return j as AllRow[];
     } finally { setExporting(false); }
   }

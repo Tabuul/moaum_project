@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -72,7 +72,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
     const isWorkbook = (head[0] === 0x50 && head[1] === 0x4b) || /\.xlsx$/i.test(f.name);
     let cells: string[][];
     try { cells = (isWorkbook ? await xlsxRows(buf) : csvRows(new TextDecoder("utf-8").decode(buf))).map((row) => row.map((c) => String(c ?? "").trim())); }
-    catch { setErr({ status: 400, title: `${f.name} could not be read`, detail: "Upload the template as downloaded, filled in, or a CSV with the same columns." } as Problem); return; }
+    catch { setErr({ status: 400, title: `${f.name} could not be read`, detail: "Upload the template as downloaded, filled in, or a CSV with the same columns." } as Problem); notifyProblem({ status: 400, title: `${f.name} could not be read`, detail: "Upload the template as downloaded, filled in, or a CSV with the same columns." } as Problem); return; }
     const cols = columns();
     const byNumber = Object.fromEntries(rows.map((r) => [r.number.toUpperCase(), r]));
     const out: Row[] = []; const unread: string[] = [];
@@ -100,7 +100,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
       if (marks.every((m) => m.ca === "" && m.exam === "")) flags.push("no marks on the row");
       out.push({ number, name: c ? `${c.surname}, ${c.other_names}` : (row[off + 1] ?? ""), line: i + 1, marks, flags });
     }
-    if (!started) { setErr({ status: 400, title: "No header row", detail: "The sheet has no row with a 'Matriculation number' heading; upload the template as downloaded." } as Problem); return; }
+    if (!started) { setErr({ status: 400, title: "No header row", detail: "The sheet has no row with a 'Matriculation number' heading; upload the template as downloaded." } as Problem); notifyProblem({ status: 400, title: "No header row", detail: "The sheet has no row with a 'Matriculation number' heading; upload the template as downloaded." } as Problem); return; }
     setPreview({ file: f.name, rows: out, unread });
   }
   async function save() {
@@ -114,7 +114,7 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
         body: JSON.stringify({ session, rows: good.map((x) => ({ number: x.number, marks: x.marks.filter((m) => m.ca !== "" || m.exam !== "").map((m) => ({ subjectId: m.subjectId, caScore: m.ca === "" ? null : Number(m.ca), examScore: m.exam === "" ? null : Number(m.exam), clinicalScore: m.clinical === "" ? null : Number(m.clinical), attendancePct: m.attendance === "" ? null : Number(m.attendance) })) })) }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr((j as Problem) ?? { status: r.status, title: r.statusText }); notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
       setDone(j); setPreview(null);
       notify(`${(j.saved as unknown[]).length} rows saved`);
       router.refresh();

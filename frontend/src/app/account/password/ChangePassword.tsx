@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,7 +20,7 @@ export function ChangePassword({ next }: { next: string }) {
     try {
       const r = await fetch("/api/auth/change-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ current: f.current, next: f.next }) });
       if (!r.ok) {
-        setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+        { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return;
       }
       router.push(next);

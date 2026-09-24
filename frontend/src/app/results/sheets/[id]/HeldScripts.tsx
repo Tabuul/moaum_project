@@ -7,7 +7,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { OUTCOMES, csv, download, type HeldScript } from "@/lib/results";
 import { csvRows, xlsxRows } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
@@ -45,7 +45,7 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
       const r = await fetch(`/api/bff/api/v1/results/sheets/${sheetId}/held${path}`, {
         method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: method === "DELETE" ? undefined : JSON.stringify(body),
       });
-      if (!r.ok) { setErr((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }); return false; }
+      if (!r.ok) { { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setErr(p); notifyProblem(p); } return false; }
       notify(reason);
       router.refresh();
       return true;
@@ -101,7 +101,7 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
         body: JSON.stringify({ rows: rows.map((x) => ({ line: String(x.line), number: x.number, ca: x.ca, exam: x.exam, outcome: x.outcome, note: x.note })) }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setFileNote({ kind: "ok", title: `${j.held} script${j.held === 1 ? "" : "s"} held from ${f.name}`, lines: ["Each waits on the candidate's registration; the register releases it into the sheet when that is approved."] });
       notify(`${j.held} held script${j.held === 1 ? "" : "s"} uploaded`);
       router.refresh();

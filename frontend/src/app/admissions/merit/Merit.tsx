@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -86,7 +86,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
     try {
       const r = await fetch("/api/bff/api/v1/admissions/merit/record", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Merit list recorded for ${programme}`) }, body: JSON.stringify({ session, programme }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setRecProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setRecProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setRecorded(j as { offered: number; waited: number; notOffered: number; skipped: number });
       notify(`Merit list recorded for ${programme}`);
       router.refresh();

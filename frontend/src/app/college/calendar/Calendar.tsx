@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -31,7 +31,7 @@ export function Calendar({ sessions, session, rows, mayEdit, problem }: { sessio
         body: JSON.stringify({ session, level: r.level, ordinal: r.ordinal, startsOn: v.starts || null, endsOn: v.ends || null, lengthWeeks: r.length_weeks }),
       });
       const j = (await res.json().catch(() => null)) as Problem | null;
-      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); return; }
+      if (!res.ok) { setErr(j ?? { status: res.status, title: res.statusText }); notifyProblem(j ?? { status: res.status, title: res.statusText }); return; }
       notify(v.starts || v.ends ? `${r.level} Level semester ${r.ordinal} dated` : `${r.level} Level semester ${r.ordinal} cleared`);
       router.refresh();
     } finally { setBusy(null); }

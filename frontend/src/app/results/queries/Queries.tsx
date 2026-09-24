@@ -14,7 +14,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 
 export interface QueryRow {
   id: string; ref: string; part: string; said: string; routed_dept: string; dept_name: string; raised_at: string; state: string; answer: string | null; answered_at: string | null;
@@ -40,7 +40,7 @@ export function Queries({ rows, state, dept, actingOffice }: { rows: QueryRow[];
     try {
       const r = await fetch(`/api/bff/api/v1/results/queries/${answering.id}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Query ${answering.ref} answered: ${verdict}`) }, body: JSON.stringify({ state: verdict, answer }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       notify(`Query ${answering.ref} answered`);
       setAnswering(null);
       setAnswer("");

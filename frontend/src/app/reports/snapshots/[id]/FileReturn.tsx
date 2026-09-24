@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /** The kept copy's own controls: back, Excel of the kept rows, print, and — until it is done —
  *  "Mark as filed": with whom the return went (NUC, JAMB, Council, the State treasury …). */
@@ -37,7 +38,7 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
         body: JSON.stringify({ to: list, message: message.trim() || null }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setMailErr((j && (j.detail || j.title)) || `Could not send (${r.status})`); return; }
+      if (!r.ok) { setMailErr((j && (j.detail || j.title)) || `Could not send (${r.status})`); notifyProblem((j && (j.detail || j.title)) || `Could not send (${r.status})`); return; }
       setSent(`Queued to ${list.length} recipient${list.length === 1 ? "" : "s"} with the PDF and Excel attached — the outbox sends it within the minute.`);
       setMail(false); setToList(""); setMessage(""); router.refresh();
     } finally { setSending(false); }
@@ -51,7 +52,7 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
         body: JSON.stringify({ filedTo: to.trim(), note: note.trim() || null }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr((j && (j.detail || j.title)) || `Could not record the filing (${r.status})`); return; }
+      if (!r.ok) { setErr((j && (j.detail || j.title)) || `Could not record the filing (${r.status})`); notifyProblem((j && (j.detail || j.title)) || `Could not record the filing (${r.status})`); return; }
       setOpen(false); router.refresh();
     } finally { setBusy(false); }
   }

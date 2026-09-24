@@ -12,7 +12,7 @@
  * sections are edited one entry per line, and saved as arrays.
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -121,7 +121,7 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
       setSaved(true);
@@ -162,7 +162,7 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
       });
       if (!r.ok) {
         const j = await r.json().catch(() => null);
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
       setPhoto(dataUrl);

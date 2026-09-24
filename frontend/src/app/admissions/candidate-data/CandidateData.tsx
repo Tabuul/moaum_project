@@ -2,7 +2,7 @@
 
 /** tCandidateData — proto/part54.html: three downloads, matched on the registration number, both ways. */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -102,7 +102,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
         const payload = items.map((p) => ({ sourceName: p.file, jambKey: p.num || null, readAs: p.num ? (p.how ? "EMBEDDED" : "EXACT") : "UNREADABLE", payload: p.url && p.size <= 65536 ? { dataUrl: p.url } : {}, bytes: p.size, widthPx: p.w || undefined, heightPx: p.h || undefined }));
         const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`PASSPORT download recorded for ${state.session} (streamed)`) }, body: JSON.stringify({ kind: "PASSPORT", items: payload }) });
         const j = await r.json().catch(() => null);
-        if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+        if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
         recorded += (j.recorded as number) ?? 0;
         for (const a of (j.attached as { kind: string; newly_attached: number }[] | undefined) ?? []) if (a.kind === "PASSPORT") attached += a.newly_attached;
         setStream({ read, recorded, attached, unreadable, total: list.length });
@@ -145,7 +145,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
         if (items.length > CHUNK) setSaid(`Recording ${Math.min(i + slice.length, items.length)} of ${items.length}…`);
         const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${kind} download recorded for ${state.session}`) }, body: JSON.stringify({ kind, items: slice }) });
         const j = await r.json().catch(() => null);
-        if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+        if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
         recorded += (j.recorded as number) ?? 0;
         for (const a of (j.attached as { kind: string; newly_attached: number }[] | undefined) ?? []) {
           tally[a.kind] = (tally[a.kind] ?? 0) + a.newly_attached;

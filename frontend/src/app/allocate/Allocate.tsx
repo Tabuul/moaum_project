@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -97,11 +97,12 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
       });
     } catch {
       setErr({ status: 0, title: ctl.signal.aborted ? "The portal did not answer within 30 seconds" : "The portal could not be reached",
+        detail: "Nothing was saved. Try again in a moment; if the portal has just been updated, sign in again first." } as Problem); notifyProblem({ status: 0, title: ctl.signal.aborted ? "The portal did not answer within 30 seconds" : "The portal could not be reached",
         detail: "Nothing was saved. Try again in a moment; if the portal has just been updated, sign in again first." } as Problem);
       return null;
     } finally { clearTimeout(timer); }
     const j = await r.json().catch(() => null);
-    if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
+    if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
     notify(reason);
     return (j ?? {}) as Record<string, unknown>;
   }

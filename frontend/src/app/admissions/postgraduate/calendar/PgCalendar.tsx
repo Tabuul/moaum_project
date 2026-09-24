@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * The Postgraduate School's own session and semester calendar (V224), apart from the University's
  * undergraduate one. The School lists its sessions, marks the one it is currently running, and sets the
@@ -43,14 +44,14 @@ export function PgCalendar({ initial }: { initial: CalData }) {
     const r = await fetch(`/api/bff/api/v1/pg/calendar?session=${encodeURIComponent(session)}`, { cache: "no-store" });
     const j = await r.json().catch(() => null);
     if (r.ok && j) setData(j as CalData);
-    else setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
+    else setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
   }
 
   async function send(url: string, method: string, body?: unknown): Promise<boolean> {
     setProblem(null);
     const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
     const j = await r.json().catch(() => null);
-    if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return false; }
+    if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return false; }
     if (j && typeof j === "object" && "sessions" in j) { const cd = j as CalData; setData(cd); if (cd.looking) setLooking(cd.looking); }
     return true;
   }

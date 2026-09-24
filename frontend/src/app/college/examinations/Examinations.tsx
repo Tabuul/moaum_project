@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -71,7 +71,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
     try {
       const r = await fetch(`/api/bff/api/v1/college${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
       const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
-      if (!r.ok) { setErr(j as unknown as Problem ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setErr(j as unknown as Problem ?? { status: r.status, title: r.statusText }); notifyProblem(j as unknown as Problem ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j;

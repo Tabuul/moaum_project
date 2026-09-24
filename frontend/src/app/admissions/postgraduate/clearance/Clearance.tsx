@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /**
  * The Secretary's thesis clearance desk (Policy 31–32), after the prototype's pgClear screen: the final
@@ -36,7 +37,7 @@ export function Clearance({ view, problem, mayClear }: { view: ClearView | null;
         body: JSON.stringify({ action: "CLEAR", note: "Cleared by the Secretary before binding" }),
       });
       const j = await res.json().catch(() => null);
-      if (!res.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); return; }
+      if (!res.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); return; }
       router.refresh();
     } finally { setBusy(null); }
   }

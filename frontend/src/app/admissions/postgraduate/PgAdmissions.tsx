@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
@@ -98,7 +98,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
         body: JSON.stringify(body ?? {}),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       notify(label);
       setD(j && (j as Detail).found ? (j as Detail) : d);
       onChanged();

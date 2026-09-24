@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -57,7 +57,7 @@ export function Siwes({ sessions, session, semester, offerings, offeringId, stud
         method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return false; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return false; }
       notify(reason);
       router.refresh();
       return true;

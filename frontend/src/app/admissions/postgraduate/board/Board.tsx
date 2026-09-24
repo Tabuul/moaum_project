@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /**
  * The School Board & awards desk (Policy 33–34), matching the prototype's pgBoard screen. Candidates the
@@ -37,7 +38,7 @@ export function Board({ mayEdit }: { mayEdit: boolean }) {
       const r = await fetch("/api/bff/api/v1/pg/research", { cache: "no-store" });
       setProblem(null);
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
       setRows(((j as { rows?: Row[] }).rows) ?? []);
     } finally { setLoading(false); }
   }, []);
@@ -51,7 +52,7 @@ export function Board({ mayEdit }: { mayEdit: boolean }) {
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify({ action }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       await load();
     } finally { setBusy(false); }
   }

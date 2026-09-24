@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * The postgraduate results desk (V211): the department / School sees the registrations for a session and
  * semester, endorses them (Head of Department), and records each course's continuous assessment and
@@ -44,7 +45,7 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
     const r = await fetch(`/api/bff/api/v1/pg/coursework/registrations?${q}`, { cache: "no-store" });
     setProblem(null);
     const j = await r.json().catch(() => null);
-    if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+    if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
     setRegs(Array.isArray(j) ? (j as Reg[]) : []);
   }, []);
 
@@ -54,7 +55,7 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
     const r = await fetch(`/api/bff/api/v1/pg/coursework/registrations/${id}`, { cache: "no-store" });
     setProblem(null);
     const j = await r.json().catch(() => null);
-    if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+    if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
     const d = j as Detail;
     setDetail(d);
     const init: Record<string, { ca: string; exam: string }> = {};
@@ -76,7 +77,7 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Endorsed ${detail.name}'s registration`) }, body: "{}",
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setDetail(j as Detail);
       await loadRegs(session, semester, programme);
     } finally { setBusy(false); }
@@ -92,7 +93,7 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
         body: JSON.stringify({ entryId, ca: s.ca === "" ? null : Number(s.ca), exam: s.exam === "" ? null : Number(s.exam) }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       if (detail) await loadDetail(detail.id);
     } finally { setBusy(false); }
   }

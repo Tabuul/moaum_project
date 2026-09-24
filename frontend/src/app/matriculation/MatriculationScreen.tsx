@@ -2,7 +2,7 @@
 
 /** tMatriculation — proto/part39.html: one run, one sequence, one transaction, over the confirmed lists. */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -27,7 +27,7 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
     setProblem(null);
     try {
       const r = await fetch(`/api/bff/api/v1/matriculation/sessions/${o.session}/run`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Matriculation run for ${o.session}`) }, body: "{}" });
-      if (!r.ok) setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+      if (!r.ok) { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
       else { notify(`Matriculation run for ${o.session}`); router.refresh(); }
     } finally {
       setBusy(false);

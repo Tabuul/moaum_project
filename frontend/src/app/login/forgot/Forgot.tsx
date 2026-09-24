@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /** The applicant's forgotten password, on the sign-in page's own card (proto/part3.html): the same answer whether or not the identifier names an account. */
 import { useState } from "react";
@@ -20,7 +21,7 @@ export function Forgot() {
       const r = await fetch("/api/auth/forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: identifier.trim() }) });
       if (!r.ok) {
         const j = await r.json().catch(() => null);
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
       setSent(true);

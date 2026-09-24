@@ -16,7 +16,6 @@ import { Ico } from "./ui";
 import { OFFICE_COOKIE, roleLabel, roleUnit } from "@/lib/offices";
 import { MENUS, type Menu, type MenuGroup } from "@/lib/menus";
 import { TITLES as PROTOTYPE_TITLES } from "@/lib/titles";
-import { ToastHost } from "./Toast";
 
 /* where the portal serves each screen; every other item is still the prototype's */
 export const ROUTES: Record<string, string> = {
@@ -361,7 +360,6 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
 
   return (
     <>
-      <ToastHost />
       <div className="scrim" onClick={() => document.body.classList.remove("nav-open")} />
       <div className="shell">
         <nav className="nav" aria-label="Main">

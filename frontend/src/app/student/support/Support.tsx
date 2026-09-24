@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -41,13 +41,13 @@ export function Support({ requests }: { requests: ServiceRequest[] }) {
   async function attachAll(requestId: string, ref: string): Promise<number> {
     let done = 0;
     for (const f of files) {
-      if (!DOC_TYPES.includes(f.type) || f.size > 2_097_152) { setProblem({ status: 422, title: `${f.name} was skipped`, detail: "A supporting document is a PDF, JPEG or PNG of at most 2 MB." }); continue; }
+      if (!DOC_TYPES.includes(f.type) || f.size > 2_097_152) { setProblem({ status: 422, title: `${f.name} was skipped`, detail: "A supporting document is a PDF, JPEG or PNG of at most 2 MB." }); notifyProblem({ status: 422, title: `${f.name} was skipped`, detail: "A supporting document is a PDF, JPEG or PNG of at most 2 MB." }); continue; }
       try {
         const b64 = await readBase64(f);
         const r = await fetch(`/api/bff/api/v1/me/requests/${requestId}/documents`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Document ${f.name} on ${ref}`) }, body: JSON.stringify({ filename: f.name, contentType: f.type, contentBase64: b64 }) });
         if (r.ok) done += 1;
-        else setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: `${f.name} was not attached` });
-      } catch { setProblem({ status: 500, title: `${f.name} could not be read` }); }
+        else { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: `${f.name} was not attached` }; setProblem(p); notifyProblem(p); }
+      } catch { setProblem({ status: 500, title: `${f.name} could not be read` }); notifyProblem({ status: 500, title: `${f.name} could not be read` }); }
     }
     return done;
   }

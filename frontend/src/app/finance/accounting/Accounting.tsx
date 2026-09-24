@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -71,11 +71,11 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       const r = await fetch(`/api/bff/api/v1/finance/accounting${path}`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reasonText) }, body: JSON.stringify(body ?? {}),
       });
-      if (!r.ok) { setProblem(await r.json().catch(() => ({ status: r.status, title: "The request was refused." }))); return false; }
+      if (!r.ok) { { const p = await r.json().catch(() => ({ status: r.status, title: "The request was refused." })); setProblem(p); notifyProblem(p); } return false; }
       notify(reasonText);
       router.refresh();
       return true;
-    } catch { setProblem({ status: 0, title: "The network dropped the request." }); return false; }
+    } catch { setProblem({ status: 0, title: "The network dropped the request." }); notifyProblem({ status: 0, title: "The network dropped the request." }); return false; }
     finally { setBusy(null); }
   }
 
@@ -87,9 +87,9 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       if (ledFrom) qs.set("from", ledFrom);
       if (ledTo) qs.set("to", ledTo);
       const r = await fetch(`/api/bff/api/v1/finance/accounting/ledger?${qs.toString()}`);
-      if (!r.ok) { setProblem(await r.json().catch(() => ({ status: r.status, title: "Could not load the ledger." }))); return; }
+      if (!r.ok) { { const p = await r.json().catch(() => ({ status: r.status, title: "Could not load the ledger." })); setProblem(p); notifyProblem(p); } return; }
       setLedger(await r.json());
-    } catch { setProblem({ status: 0, title: "The network dropped the request." }); }
+    } catch { setProblem({ status: 0, title: "The network dropped the request." }); notifyProblem({ status: 0, title: "The network dropped the request." }); }
     finally { setBusy(null); }
   }
 

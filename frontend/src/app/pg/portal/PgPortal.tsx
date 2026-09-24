@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * The postgraduate applicant's dashboard, laid out to match the prototype's pgApplicantDash: it sits in
  * the portal's own shell (the sidebar with the "My application" menu, the branded top bar and the account
@@ -81,7 +82,7 @@ export function PgPortal() {
       setProblem(null);
       if (r.status === 401) { setMe(null); setLoading(false); return; }
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
       const m = j as Me;
       setMe(m);
       // the fee to prepare for the current step: application, then checking (to see the decision), then acceptance
@@ -347,8 +348,8 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
 
   async function upload(kind: string, file: File) {
     setErr(null);
-    if (file.type !== "application/pdf") { setErr({ status: 400, title: "Each document is a single PDF file.", detail: "Scan the certificate to PDF and upload it." }); return; }
-    if (file.size > 8 * 1024 * 1024) { setErr({ status: 400, title: "The file is larger than 8 MB — reduce the scan resolution." }); return; }
+    if (file.type !== "application/pdf") { setErr({ status: 400, title: "Each document is a single PDF file.", detail: "Scan the certificate to PDF and upload it." }); notifyProblem({ status: 400, title: "Each document is a single PDF file.", detail: "Scan the certificate to PDF and upload it." }); return; }
+    if (file.size > 8 * 1024 * 1024) { setErr({ status: 400, title: "The file is larger than 8 MB — reduce the scan resolution." }); notifyProblem({ status: 400, title: "The file is larger than 8 MB — reduce the scan resolution." }); return; }
     setBusy(kind);
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -362,7 +363,7 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
         body: JSON.stringify({ kind, filename: file.name, contentType: file.type, base64 }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       await onDone();
     } finally { setBusy(null); }
   }
@@ -372,7 +373,7 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
     try {
       const r = await fetch(`/api/bff/api/v1/pg/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       await onDone();
     } finally { setBusy(null); }
   }
@@ -435,8 +436,8 @@ function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: 
 
   async function upload(file: File) {
     setErr(null); setOk(null);
-    if (file.type !== "image/jpeg" && file.type !== "image/png") { setErr({ status: 400, title: "The passport must be a JPEG or PNG photo." }); return; }
-    if (file.size > 4 * 1024 * 1024) { setErr({ status: 400, title: "The photo is larger than 4 MB — reduce its size." }); return; }
+    if (file.type !== "image/jpeg" && file.type !== "image/png") { setErr({ status: 400, title: "The passport must be a JPEG or PNG photo." }); notifyProblem({ status: 400, title: "The passport must be a JPEG or PNG photo." }); return; }
+    if (file.size > 4 * 1024 * 1024) { setErr({ status: 400, title: "The photo is larger than 4 MB — reduce its size." }); notifyProblem({ status: 400, title: "The photo is larger than 4 MB — reduce its size." }); return; }
     setBusy(true);
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -450,7 +451,7 @@ function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: 
         body: JSON.stringify({ filename: file.name, contentType: file.type, base64 }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setOk("Passport uploaded."); await onDone();
     } finally { setBusy(false); }
   }
@@ -565,7 +566,7 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
     try {
       const r = await fetch("/api/bff/api/v1/pg/first-degree", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fd) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setOk("First degree saved."); await onDone();
     } finally { setBusy(null); }
   }
@@ -574,7 +575,7 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
     try {
       const r = await fetch("/api/bff/api/v1/pg/qualifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(quals) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setOk("Other qualifications saved."); await onDone();
     } finally { setBusy(null); }
   }
@@ -651,7 +652,7 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
     try {
       const r = await fetch("/api/bff/api/v1/pg/referees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows.filter((x) => x.name.trim())) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setOk("Referees saved — a reference request was emailed to each referee with an email."); await onDone();
     } finally { setBusy(false); }
   }

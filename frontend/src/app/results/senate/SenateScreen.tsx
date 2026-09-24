@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import type { Senate } from "@/lib/results";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
@@ -37,7 +37,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
       const r = await fetch("/api/bff/api/v1/results/senate/minute", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Senate minute ${minute} recorded for ${senate.session} semester ${senate.semester}`) }, body: JSON.stringify({ session: senate.session, sem: senate.semester, fac: fac || null, minute }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
       setOutcome(j);

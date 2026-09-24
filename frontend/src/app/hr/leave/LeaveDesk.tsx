@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/components/proto/blocks";
@@ -40,7 +40,7 @@ export function LeaveDesk({ rows, actingOffice }: { rows: LeaveRow[]; actingOffi
     try {
       const r = await fetch(`/api/bff/api/v1/hr/leave/${id}/decide`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${approve ? "Approve" : "Decline"} leave for ${who}`) }, body: JSON.stringify({ approve, note }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`${who}'s leave ${approve ? "approved" : "declined"}`);
       notify(`${who}'s leave ${approve ? "approved" : "declined"}`);
       router.refresh();

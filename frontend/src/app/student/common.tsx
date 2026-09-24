@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note } from "@/components/proto/ui";
 
 export function useAct() {
@@ -87,7 +87,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
     try {
       const r = await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checked ${prn}`) }, body: JSON.stringify({ reference: prn }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       const outcome = String((j as { outcome?: string })?.outcome ?? "");
       if (outcome === "confirmed" || outcome === "already confirmed") { window.location.reload(); return; }
       setCheckMsg("Not confirmed yet. If you have just paid, it can take a few minutes to reach the University — wait a moment and check again.");
@@ -102,7 +102,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
       const r = await fetch("/api/bff/api/v1/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checkout opened for ${reference}`) }, body: JSON.stringify(gateway ? { reference, gateway } : { reference }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(asProblem(j, r));
+        setProblem(asProblem(j, r)); notifyProblem(asProblem(j, r));
         return;
       }
       if (j && (j as Paydirect).gateway === "paydirect") { setPd(j as Paydirect); setChoices(null); return; }

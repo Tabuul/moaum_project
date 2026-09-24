@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /** t/legacyfees — old students' school-fees history from the old portal (V087). Each row settles a past
  *  session (or semester) by the amount paid, or in full against the fee schedule when the amount is blank.
  *  Columns are matched by keyword, so a template or an old-portal export both read. Bursary only. */
@@ -50,17 +51,17 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       const at = (names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
       const ci = { matric: at(["matric", "reg"]), session: at(["session"]), sem: at(["semester", "sem"]), amount: at(["amount"]), paidOn: at(["paid on", "date"]), receipt: at(["receipt"]), note: at(["note"]) };
       if (ci.matric < 0 || ci.session < 0) {
-        setProblem({ status: 400, title: "That file has no matriculation-number and session columns.", detail: "Download the template, or upload the old-portal export with those columns." });
+        setProblem({ status: 400, title: "That file has no matriculation-number and session columns.", detail: "Download the template, or upload the old-portal export with those columns." }); notifyProblem({ status: 400, title: "That file has no matriculation-number and session columns.", detail: "Download the template, or upload the old-portal export with those columns." });
         return;
       }
       const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
       const rows = grid.slice(1)
         .filter((r) => g(r, ci.matric) && /^[0-9]{4}\/[0-9]{4}$/.test(g(r, ci.session)))
         .map((r) => ({ matric: g(r, ci.matric), session: g(r, ci.session), semester: g(r, ci.sem), amount: g(r, ci.amount), paidOn: g(r, ci.paidOn), receiptNo: g(r, ci.receipt), note: g(r, ci.note) }));
-      if (!rows.length) { setProblem({ status: 400, title: "No fee rows were found in that file.", detail: "Each row needs a matriculation number and a session (YYYY/YYYY)." }); return; }
+      if (!rows.length) { setProblem({ status: 400, title: "No fee rows were found in that file.", detail: "Each row needs a matriculation number and a session (YYYY/YYYY)." }); notifyProblem({ status: 400, title: "No fee rows were found in that file.", detail: "Each row needs a matriculation number and a session (YYYY/YYYY)." }); return; }
       setPreview(rows);
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Use the downloaded template (.xlsx)." });
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Use the downloaded template (.xlsx)." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Use the downloaded template (.xlsx)." });
     } finally {
       setBusy(false);
     }

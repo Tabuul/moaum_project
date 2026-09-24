@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
@@ -22,7 +22,7 @@ export function RegisterButton({ session, level, items, disabled, label }: { ses
         body: JSON.stringify({ session }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       notify(`${level} Level registered for ${session}`);
       router.refresh();
     } finally { setBusy(false); }

@@ -6,7 +6,7 @@
  *  initial password is the JAMB number. The applicant fee must be set for the session first. */
 import { useState } from "react";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
 import { Btn, LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
@@ -177,7 +177,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
         }
         if (!r || !r.ok) {
           stopped = true;
-          setErr((j && (j.detail || j.title)) || `A chunk kept failing (${r ? `${r.status} ${r.statusText}` : "network"}) after several retries. What imported so far is kept — wait a minute for the server, then run the file again and it skips them.`);
+          setErr((j && (j.detail || j.title)) || `A chunk kept failing (${r ? `${r.status} ${r.statusText}` : "network"}) after several retries. What imported so far is kept — wait a minute for the server, then run the file again and it skips them.`); notify(String((j && (j.detail || j.title)) || `A chunk kept failing (${r ? `${r.status} ${r.statusText}` : "network"}) after several retries. What imported so far is kept — wait a minute for the server, then run the file again and it skips them.`), "bad");
           return;
         }
         tally.imported += j?.imported ?? 0;

@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import type { Problem } from "@/lib/api";
@@ -32,7 +32,7 @@ export function MigratedPanel({ summary, reload }: { summary: MigratedSummary; r
         method: "POST", headers: { "X-Reason": reasonHeader("Migrated students cleared on arrival, carried over from the old portal") },
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setDone({ students: n(j.students), positions: n(j.positions) });
       notify(`${n(j.students).toLocaleString()} migrated students cleared`);
       if (reload) reload(); else router.refresh();

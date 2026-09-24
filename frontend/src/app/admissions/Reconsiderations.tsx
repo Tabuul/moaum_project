@@ -5,7 +5,7 @@
  *  that programme, and the choice is recorded. Nobody is suggested a programme they do not qualify for. */
 import { useEffect, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -37,11 +37,11 @@ export function Reconsiderations({ session, actingOffice }: { session: string; a
     try {
       const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/reconsiderations`, { cache: "no-store" });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); setCandidates([]); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); setCandidates([]); return; }
       setProblem(null);
       setCandidates((j.candidates as Candidate[]) ?? []);
     } catch {
-      setProblem({ status: 0, title: "Could not load the reconsiderations." });
+      setProblem({ status: 0, title: "Could not load the reconsiderations." }); notifyProblem({ status: 0, title: "Could not load the reconsiderations." });
       setCandidates([]);
     }
   }
@@ -67,7 +67,7 @@ export function Reconsiderations({ session, actingOffice }: { session: string; a
         body: JSON.stringify({ applicationId: c.applicationId, programme: code }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSent(`${programme?.name ?? code} suggested to ${c.name}${j.emailed ? " — emailed" : " — recorded (no email on file)"}.`);
       notify(`${programme?.name ?? code} suggested to ${c.name}`);
       await load();

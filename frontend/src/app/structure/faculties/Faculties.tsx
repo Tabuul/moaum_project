@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { brandedXlsx, brandedPrint, downloadBlob, docSerial } from "@/lib/exportbrand";
 import { Btn, IcoBtn, Note, Panel, PBody, RoleLine, Tiles } from "@/components/proto/ui";
@@ -40,7 +40,7 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j;
@@ -48,13 +48,13 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
   }
 
   async function remove(fac: Faculty) {
-    if (fac.programmes || fac.departments) { setProblem({ status: 400, title: `${fac.name} still has ${fac.programmes} programme(s) and ${fac.departments} department(s).`, detail: "Remove or move them first; a faculty is deleted only when it is empty." }); return; }
+    if (fac.programmes || fac.departments) { setProblem({ status: 400, title: `${fac.name} still has ${fac.programmes} programme(s) and ${fac.departments} department(s).`, detail: "Remove or move them first; a faculty is deleted only when it is empty." }); notifyProblem({ status: 400, title: `${fac.name} still has ${fac.programmes} programme(s) and ${fac.departments} department(s).`, detail: "Remove or move them first; a faculty is deleted only when it is empty." }); return; }
     if (!window.confirm(`Remove ${fac.name}? This cannot be undone.`)) return;
     setBusy(true); setProblem(null);
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue/faculties/${encodeURIComponent(fac.code)}`, { method: "DELETE", headers: { "X-Reason": reasonHeader(`Faculty ${fac.code} removed`) } });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setMsg(`Faculty ${fac.code} removed.`); notify(`Faculty ${fac.code} removed`); router.refresh();
     } finally { setBusy(false); }
   }
@@ -75,12 +75,12 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
       const at = (n: string[]) => header.findIndex((h) => n.some((x) => h.includes(x)));
       const ci = { code: at(["code"]), name: at(["name"]) };
-      if (ci.code < 0 || ci.name < 0) { setProblem({ status: 400, title: "That file needs Code and Name columns.", detail: "Download the template." }); return; }
+      if (ci.code < 0 || ci.name < 0) { setProblem({ status: 400, title: "That file needs Code and Name columns.", detail: "Download the template." }); notifyProblem({ status: 400, title: "That file needs Code and Name columns.", detail: "Download the template." }); return; }
       const rows = grid.slice(1).map((r) => ({ code: String(r[ci.code] ?? "").trim(), name: String(r[ci.name] ?? "").trim() })).filter((r) => r.code && !/^code$/i.test(r.code));
-      if (!rows.length) { setProblem({ status: 400, title: "No faculties found in the file." }); return; }
+      if (!rows.length) { setProblem({ status: 400, title: "No faculties found in the file." }); notifyProblem({ status: 400, title: "No faculties found in the file." }); return; }
       const j = await post("/faculties/import", { rows }, `${rows.length} faculties uploaded`);
       if (j) { setMsg(`${j.saved ?? 0} faculties saved${(j.bad ?? 0) ? ` · ${j.bad} rows had no name` : ""}.`); notify(`${j.saved ?? 0} faculties saved`); }
-    } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
+    } catch { setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); }
   }
 
   return (

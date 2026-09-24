@@ -2,7 +2,7 @@
 
 /** rGraduation — proto/part9.html: the degree audit, computed, and the list Senate approves. */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -30,7 +30,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
       const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
       if (j && "audited" in j) setSaid(`${j.audited} finalists audited: ${j.passed} passed, ${j.outstanding} with an unmet requirement.`);

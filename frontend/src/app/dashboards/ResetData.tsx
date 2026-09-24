@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -41,7 +41,7 @@ export function ResetData({ office }: { office: string | null }) {
         body: JSON.stringify({ confirm: courseConfirm.trim() }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as Record<string, number>;
       setDemoDone(`Removed ${c.demo_courses ?? 0} demo course(s) and ${c.demo_offerings ?? 0} demo course session(s) from the catalogue. No student, candidate or real course was touched.`);
       setCourseOpen(false); setCourseConfirm("");
@@ -62,7 +62,7 @@ export function ResetData({ office }: { office: string | null }) {
         body: JSON.stringify({ confirm: demoConfirm.trim() }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as Record<string, number>;
       setDemoDone(`Removed ${c.demo_students ?? 0} demo student(s), ${c.demo_courses ?? 0} demo course(s) and ${c.demo_candidates ?? 0} demo candidate(s). The demo staff logins and all real data are kept.`);
       setDemoOpen(false); setDemoConfirm("");
@@ -83,7 +83,7 @@ export function ResetData({ office }: { office: string | null }) {
         body: JSON.stringify({ confirm: confirm.trim(), reason: reason.trim() }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       const c = j as Record<string, number>;
       setDone(`Cleared: ${c.students ?? 0} students, ${c.candidates ?? 0} candidates, ${c.applications ?? 0} applications, ${c.results ?? 0} result marks, ${c.courses ?? 0} courses, ${c.fee_lines ?? 0} fee lines, ${c.payments ?? 0} payment references, ${c.wallet_entries ?? 0} wallet entries.`);
       setOpen(false); setConfirm(""); setReason("");

@@ -2,7 +2,7 @@
 
 /** staffChain — proto/part15.html: one sheet, every desk it passes, and the marks as they stand. */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -37,7 +37,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
     try {
       const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       if (!r.ok) {
-        setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+        { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return false;
       }
       notify(reason);

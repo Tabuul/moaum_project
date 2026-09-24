@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -49,7 +49,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
       const list = await p.json().catch(() => null);
       if (!live) return;
       if (r.ok) setGrading(body as Grading);
-      else setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText });
+      else setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText }); notifyProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText });
       if (p.ok && Array.isArray(list)) setProgrammes((list as ProgrammeLine[]).filter((x) => !x.archived));
     })();
     return () => { live = false; };
@@ -89,7 +89,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
         notify(`O’Level grading saved for ${session}`);
         router.refresh();
       } else {
-        setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: r.status, title: r.statusText });
+        setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: r.status, title: r.statusText }); notifyProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: r.status, title: r.statusText });
       }
     } finally {
       setBusy(false);

@@ -13,7 +13,7 @@ import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles, Two } from "@/comp
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 
 export interface TransferRow {
   id: string; student_id: string; name: string; matric_no: string | null;
@@ -57,7 +57,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
     try {
       const r = await fetch(`/api/bff/api/v1/transfers${path}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j as Record<string, unknown>;

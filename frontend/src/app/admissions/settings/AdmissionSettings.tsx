@@ -8,7 +8,7 @@
  * stands in the way and a minute is cited. Settings in force are not edited.
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -183,7 +183,7 @@ export function AdmissionSettings({
         return true;
       }
       const json = await response.json().catch(() => null);
-      setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText });
+      setProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText }); notifyProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText });
       return false;
     } finally {
       setBusy(null);

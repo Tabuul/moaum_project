@@ -9,7 +9,7 @@
  * and nationality are chosen from lists, not typed.
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import type { BiodataField, StudentRecord, Tier } from "@/lib/student";
 import { statusLabel } from "@/lib/student";
@@ -129,7 +129,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
       return b?.pending ? "asked" : "saved";
     }
     const j = await r.json().catch(() => null);
-    setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
+    setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
     return "error";
   }
 

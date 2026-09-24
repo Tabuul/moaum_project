@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * The public postgraduate application — open to the world, no JAMB number. A prospective postgraduate
  * chooses a programme, states the first degree the admission rests on, gives a research proposal for a
@@ -94,10 +95,10 @@ export function PgApply() {
   const STEPS = ["Programme", "Your details", "Account"];
   function next() {
     setProblem(null);
-    if (step === 1 && !f.programme) { setProblem({ status: 400, title: "Choose a programme to continue." }); return; }
+    if (step === 1 && !f.programme) { setProblem({ status: 400, title: "Choose a programme to continue." }); notifyProblem({ status: 400, title: "Choose a programme to continue." }); return; }
     if (step === 2) {
-      if (!f.surname?.trim() || !f.otherNames?.trim()) { setProblem({ status: 400, title: "Your surname and other names are required." }); return; }
-      if (!f.email?.trim()) { setProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); return; }
+      if (!f.surname?.trim() || !f.otherNames?.trim()) { setProblem({ status: 400, title: "Your surname and other names are required." }); notifyProblem({ status: 400, title: "Your surname and other names are required." }); return; }
+      if (!f.email?.trim()) { setProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); notifyProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); return; }
     }
     setStep((n) => Math.min(STEPS.length, n + 1));
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -107,10 +108,10 @@ export function PgApply() {
   async function submit() {
     setProblem(null);
     if (!f.surname?.trim() || !f.email?.trim() || !(f.password ?? "").trim() || !f.programme) {
-      setProblem({ status: 400, title: "Name, email, a password and a programme are required." }); return;
+      setProblem({ status: 400, title: "Name, email, a password and a programme are required." }); notifyProblem({ status: 400, title: "Name, email, a password and a programme are required." }); return;
     }
-    if ((f.password ?? "").length < 6) { setProblem({ status: 400, title: "Choose a password of at least six characters." }); return; }
-    if ((f.password ?? "") !== (f.password2 ?? "")) { setProblem({ status: 400, title: "The two passwords do not match." }); return; }
+    if ((f.password ?? "").length < 6) { setProblem({ status: 400, title: "Choose a password of at least six characters." }); notifyProblem({ status: 400, title: "Choose a password of at least six characters." }); return; }
+    if ((f.password ?? "") !== (f.password2 ?? "")) { setProblem({ status: 400, title: "The two passwords do not match." }); notifyProblem({ status: 400, title: "The two passwords do not match." }); return; }
     setBusy(true);
     try {
       // the academic record (first degree, other qualifications, referees) is supplied in the portal after payment
@@ -119,7 +120,7 @@ export function PgApply() {
       const body = { ...rest };
       const r = await fetch("/api/bff/api/v1/pg/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setApplied(j as Applied);
     } finally { setBusy(false); }
   }

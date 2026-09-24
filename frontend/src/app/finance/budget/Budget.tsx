@@ -5,7 +5,7 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -41,7 +41,7 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
     try {
       const r = await fetch("/api/bff/api/v1/expenditure/budget", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Budget for ${f.costCentre}`) }, body: JSON.stringify({ costCentre: f.costCentre, year: d.year, amount: Number(f.amount) }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setErr(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setSaid(`Budget set for ${f.costCentre}`); notify(`Budget set for ${f.costCentre}`); setAdd(false); setF({ costCentre: "", amount: "" }); router.refresh();
     } finally {
       setBusy(false);

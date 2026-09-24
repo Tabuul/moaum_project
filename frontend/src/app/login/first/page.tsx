@@ -1,4 +1,5 @@
 "use client";
+import { notifyProblem } from "@/components/proto/Toast";
 
 /** The first account, once: the same card as the sign-in page, with the secret the API already trusts. */
 import { useState } from "react";
@@ -20,7 +21,7 @@ export default function FirstAccountPage() {
       const r = await fetch("/api/auth/bootstrap", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
       router.push("/people");

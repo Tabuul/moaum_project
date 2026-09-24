@@ -6,7 +6,7 @@
  * with a start and an end, and the credential that signs each one in.
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
@@ -81,7 +81,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
     try {
       const r = await fetch(path, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       if (!r.ok) {
-        setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+        { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return false;
       }
       setModal(null);

@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * A member of staff's whole record in a pop-up, opened from any list that names them — the Staff
  * register, the Search desk, the establishment roll. The photograph HR holds, the person and their
@@ -57,7 +58,7 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
     (async () => {
       const r = await fetch(`/api/bff/api/v1/hr/staff/${id}`, { cache: "no-store" });
       if (!live) return;
-      if (!r.ok) { const j = await r.json().catch(() => null); setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { const j = await r.json().catch(() => null); setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setRec((await r.json()) as StaffRecord);
     })();
     return () => { live = false; };

@@ -4,7 +4,7 @@
  *  spreadsheet's own columns (matriculation number, course code, marks…) and matches on them; nothing is typed. */
 import { useState } from "react";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
 import { xlsxRowsAsync, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, Tabs, Tiles } from "@/components/proto/ui";
@@ -92,11 +92,12 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       setPResult({ ...totals, notFoundList: notFoundList.length ? notFoundList : problemFiles });
       if (failed) {
         setProblem({ status: 400, title: `${failed.toLocaleString()} photo${failed === 1 ? "" : "s"} could not be sent`,
+          detail: `The rest were processed — a photo is held back when the scan is larger than 8 MB, or a batch is refused. Reduce those scans and upload just them again (re-uploading is idempotent, so nothing duplicates).${notFoundList.length ? "" : " Download the list below to see which files."}` }); notifyProblem({ status: 400, title: `${failed.toLocaleString()} photo${failed === 1 ? "" : "s"} could not be sent`,
           detail: `The rest were processed — a photo is held back when the scan is larger than 8 MB, or a batch is refused. Reduce those scans and upload just them again (re-uploading is idempotent, so nothing duplicates).${notFoundList.length ? "" : " Download the list below to see which files."}` });
       }
       notify(`${(files.length - failed).toLocaleString()} of ${files.length.toLocaleString()} passport photo${files.length === 1 ? "" : "s"} processed`);
     } catch {
-      setProblem({ status: 400, title: "The photos could not be read.", detail: "Select image files (JPEG or PNG) named by the student's JAMB registration number." });
+      setProblem({ status: 400, title: "The photos could not be read.", detail: "Select image files (JPEG or PNG) named by the student's JAMB registration number." }); notifyProblem({ status: 400, title: "The photos could not be read.", detail: "Select image files (JPEG or PNG) named by the student's JAMB registration number." });
     } finally {
       setBusy(false); setProgress(null);
     }
@@ -123,7 +124,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const grid = await xlsxRowsAsync(await file.arrayBuffer(), (n) => setProgress({ label: "Reading the file", sent: n, of: 0 }));
       const header = (grid[0] ?? []).map((c) => String(c ?? "").trim());
       if (!header.some((h) => /matric|reg|mat\.?\s*no/i.test(h))) {
-        setProblem({ status: 400, title: "That file has no matriculation-number column.", detail: "The first row must name the columns; a matriculation (or registration) number is required." });
+        setProblem({ status: 400, title: "That file has no matriculation-number column.", detail: "The first row must name the columns; a matriculation (or registration) number is required." }); notifyProblem({ status: 400, title: "That file has no matriculation-number column.", detail: "The first row must name the columns; a matriculation (or registration) number is required." });
         return;
       }
       /* transform every row, yielding to the tab every few thousand so a large file stays responsive */
@@ -146,7 +147,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         if ((i & 8191) === 8191) { setProgress({ label: "Preparing the rows", sent: i + 1, of: dataRows.length }); await new Promise((res) => setTimeout(res)); }
       }
       setRejected(rej.length ? { rows: rej, kind } : null);
-      if (!rows.length) { setProblem({ status: 400, title: rej.length ? "No row had a valid matriculation number." : "The file had no rows to read.", detail: rej.length ? `${rej.length.toLocaleString()} rows were read but none has a valid matriculation number. Download them below, fix the numbers, and upload again.` : "Export the list from the old portal and upload it." }); return; }
+      if (!rows.length) { setProblem({ status: 400, title: rej.length ? "No row had a valid matriculation number." : "The file had no rows to read.", detail: rej.length ? `${rej.length.toLocaleString()} rows were read but none has a valid matriculation number. Download them below, fix the numbers, and upload again.` : "Export the list from the old portal and upload it." }); notifyProblem({ status: 400, title: rej.length ? "No row had a valid matriculation number." : "The file had no rows to read.", detail: rej.length ? `${rej.length.toLocaleString()} rows were read but none has a valid matriculation number. Download them below, fix the numbers, and upload again.` : "Export the list from the old portal and upload it." }); return; }
       const path = kind === "biodata" ? "/api/bff/api/v1/results/legacy/biodata"
         : kind === "pgstudents" ? "/api/bff/api/v1/results/legacy/pg-students"
         : kind === "students" ? "/api/bff/api/v1/results/legacy/students"
@@ -175,7 +176,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           g.rows.push(o);
         }
         groups = [...map.values()];
-        if (!groups.length) { setProblem({ status: 400, title: "No session and semester to load against.", detail: "Add Session (YYYY/YYYY) and Semester columns to the file, or choose them in the fields above." }); return; }
+        if (!groups.length) { setProblem({ status: 400, title: "No session and semester to load against.", detail: "Add Session (YYYY/YYYY) and Semester columns to the file, or choose them in the fields above." }); notifyProblem({ status: 400, title: "No session and semester to load against.", detail: "Add Session (YYYY/YYYY) and Semester columns to the file, or choose them in the fields above." }); return; }
       } else {
         groups = [{ session: "", semester: 0, rows }];
       }
@@ -222,7 +223,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         } catch { /* reconcile is best-effort */ }
       }
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
     } finally {
       setBusy(false);
       setProgress(null);

@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * The postgraduate student's own research & thesis view (V209). It reads their research record — created
  * on first view — and drives the student-side steps: stating the topic and submitting the proposal. The
@@ -60,7 +61,7 @@ export function Research() {
       const res = await fetch("/api/bff/api/v1/pg/research/me", { cache: "no-store" });
       setProblem(null);
       const j = await res.json().catch(() => null);
-      if (!res.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); setLoading(false); return; }
+      if (!res.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); setLoading(false); return; }
       const data = j as Research;
       setR(data);
       setTopic(data.topic ?? "");
@@ -76,7 +77,7 @@ export function Research() {
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body),
       });
       const j = await res.json().catch(() => null);
-      if (!res.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); return; }
+      if (!res.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: res.status, title: res.statusText }); return; }
       setR(j as Research);
       setTopic((j as Research).topic ?? "");
     } finally { setBusy(false); }

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -59,7 +59,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Screening scores released for ${session}`) }, body: "{}",
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setReleased(Number((j as { released: number }).released));
       notify(`${Number((j as { released: number }).released)} screening scores released`);
       router.refresh();
@@ -80,7 +80,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
         body: JSON.stringify({ programmeCode: clearProg || null, confirm: clearConfirm.trim() }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       setCleared(Number((j as { cleared: number }).cleared));
       notify(`${Number((j as { cleared: number }).cleared)} scores cleared`);
       setClearConfirm("");
@@ -139,10 +139,10 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
             break;
           }
           const transient = !r || r.status >= 500 || r.status === 429;
-          if (!transient) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r ? r.status : 0, title: r ? r.statusText : "network" }); return; }
+          if (!transient) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r ? r.status : 0, title: r ? r.statusText : "network" }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r ? r.status : 0, title: r ? r.statusText : "network" }); return; }
           if (attempt < 5) { await new Promise((res) => setTimeout(res, 1500 * attempt)); }
         }
-        if (!done) { setProblem({ status: 503, title: "The upload kept failing after retries. What uploaded so far is kept — wait a moment and upload again; scores already entered are simply re-entered." } as Problem); return; }
+        if (!done) { setProblem({ status: 503, title: "The upload kept failing after retries. What uploaded so far is kept — wait a moment and upload again; scores already entered are simply re-entered." } as Problem); notifyProblem({ status: 503, title: "The upload kept failing after retries. What uploaded so far is kept — wait a moment and upload again; scores already entered are simply re-entered." } as Problem); return; }
       }
       notify(`${total.applied} score${total.applied === 1 ? "" : "s"} applied`);
     } finally {
@@ -155,7 +155,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
   async function downloadAwaiting(code: string | null, label: string) {
     const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/screening-scores/awaiting${code ? `?programme=${encodeURIComponent(code)}` : ""}`, { cache: "no-store" });
     const j = await r.json().catch(() => null);
-    if (!r.ok || !Array.isArray(j)) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+    if (!r.ok || !Array.isArray(j)) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
     const rows = (j as { jamb_reg_no: string; name: string; programme: string }[]).map((x) => [x.jamb_reg_no, x.name, x.programme, ""]);
     const blob = buildXlsx(["JAMB Number", "Name", "Programme", "Score"], rows, "Awaiting scores");
     downloadBlob(blob, `awaiting-scores-${label.replace(/[^a-z0-9]+/gi, "-")}-${session.replace("/", "-")}.xlsx`);
@@ -170,7 +170,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Remaining unscored applicants scored zero for ${session}${code ? ` · ${label}` : ""}`) }, body: "{}",
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       router.refresh();
     } finally {
       setBusy(false);

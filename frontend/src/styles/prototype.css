@@ -1523,23 +1523,37 @@ body.has-cta .tst { bottom: 132px; }
   }
   @media (max-width: 400px) { .idc { width: 100%; height: auto; min-height: 54mm; } }
 
-/* ── the toast (Toast.tsx): one notification style, on the tokens ────────── */
-.toast-host { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 18px); left: 50%; transform: translateX(-50%);
-  z-index: 10000; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; width: min(92vw, 460px); }
-.toast { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 12px; width: 100%;
+/* ── the toast (Toast.tsx): one notification for the whole portal — top right on a desk, across the top on a phone ── */
+.toast-host { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 14px); right: 14px; z-index: 10000;
+  display: flex; flex-direction: column; gap: 10px; align-items: stretch; pointer-events: none; width: min(calc(100vw - 28px), 380px); }
+.toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; width: 100%;
   background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-left-width: 4px;
-  border-radius: var(--r-lg); padding: 13px 16px; box-shadow: var(--sh-3); animation: toastIn .18s ease-out; }
+  border-radius: var(--r-md); padding: 11px 10px 11px 12px; box-shadow: var(--sh-3); animation: toastIn .18s ease-out; }
+.toast.is-out { animation: toastOut .18s ease-in forwards; }
+.toast:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
 .toast--ok { border-left-color: var(--green); }
 .toast--bad { border-left-color: var(--red); }
-.toast--info { border-left-color: var(--chrome); }
-.toast__i { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%; color: #fff; display: inline-flex;
-  align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
+.toast--warn { border-left-color: var(--amber); }
+.toast--info { border-left-color: var(--sky); }
+.toast__i { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; color: #fff; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
 .toast--ok .toast__i { background: var(--green); }
 .toast--bad .toast__i { background: var(--red); }
-.toast--info .toast__i { background: var(--chrome); }
-.toast__m { font-size: var(--t-base); font-weight: 600; line-height: 1.35; }
-@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+.toast--warn .toast__i { background: var(--amber); }
+.toast--info .toast__i { background: var(--sky); }
+.toast__b { flex: 1 1 auto; min-width: 0; }
+.toast__t { font-size: var(--t-base); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.toast__d { font-size: var(--t-sm); color: var(--muted); line-height: 1.4; margin-top: 2px; overflow-wrap: anywhere; }
+.toast__x { flex: 0 0 auto; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r);
+  color: var(--faint); margin: -3px -3px 0 0; }
+.toast__x:hover { background: var(--bg); color: var(--ink); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(12px); } }
+@media (max-width: 760px) {
+  .toast-host { right: 0; left: 0; margin: 0 auto; width: min(calc(100vw - 20px), 520px); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-8px); } }
+}
+@media (prefers-reduced-motion: reduce) { .toast, .toast.is-out { animation: none; } }
 
 /* ── the harmonized kit (2 of 6): one hierarchy of buttons, one control, one tab strip, one page head,
    the same card, tile, notice, table and modal everywhere — on the tokens ──────────────────────── */

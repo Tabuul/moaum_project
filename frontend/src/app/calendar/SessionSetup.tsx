@@ -9,7 +9,7 @@
  * overlapping — so this screen lets them refuse and shows the refusal.
  */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -81,7 +81,7 @@ export function SessionSetup({
         return true;
       }
       const json = await response.json().catch(() => null);
-      setRefusal(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText });
+      setRefusal(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText }); notifyProblem(json && typeof json === "object" && "status" in json ? (json as Problem) : { status: response.status, title: response.statusText });
       return false;
     } finally {
       setBusy(false);
@@ -92,6 +92,11 @@ export function SessionSetup({
     const name = (row?.name ?? draft.n).trim();
     if (!/^\d{4}\/\d{4}$/.test(name)) {
       setRefusal({
+        status: 422,
+        title: "The session has to be named as the University names one",
+        detail: `“${name}” is not a session. A session is written 2027/2028 — four digits, an oblique, four digits.`,
+        remedy: { message: "Name it as the two calendar years it spans, e.g. 2027/2028.", office: "Academic Office" },
+      }); notifyProblem({
         status: 422,
         title: "The session has to be named as the University names one",
         detail: `“${name}” is not a session. A session is written 2027/2028 — four digits, an oblique, four digits.`,
@@ -148,7 +153,7 @@ export function SessionSetup({
         body: JSON.stringify({ confirm: "ROLLOVER", reason: `Register rolled into ${looking}` }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setRolled(`${j.promoted} continuing student${j.promoted === 1 ? "" : "s"} promoted into ${looking}${j.created_session ? " — the session was opened as planned" : ""}. Fresh, final-year and inactive students were left as they are.`);
       notify(`${j.promoted} student${j.promoted === 1 ? "" : "s"} promoted into ${looking}`);
       router.refresh();
@@ -167,7 +172,7 @@ export function SessionSetup({
         body: JSON.stringify({}),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setEnrolled(`${j.enrolled} student${j.enrolled === 1 ? "" : "s"} enrolled into ${looking}${j.already ? ` · ${j.already} already were` : ""} · ${j.eligible} currently studying.`);
       notify(`${j.enrolled} student${j.enrolled === 1 ? "" : "s"} enrolled into ${looking}`);
       router.refresh();

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { ServiceRequest } from "@/app/student/support/Support";
 import { Btn, Ico, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -48,7 +48,7 @@ export function SupportDesk({ requests }: { requests: ServiceRequest[] }) {
     try {
       const r = await fetch(`/api/bff/api/v1/support/requests/${open.id}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Request ${open.ref} answered`) }, body: JSON.stringify({ answer, resolved }) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setOpen(null);
       setAnswer("");
       notify(`Request ${open.ref} answered`);

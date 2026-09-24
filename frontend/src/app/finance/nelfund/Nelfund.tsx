@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { parseRows, type NelfundDesk, type FundingReport } from "@/lib/wallet";
 import { buildXlsx, xlsxRows } from "@/lib/xlsx";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tabs, Tiles, Two } from "@/components/proto/ui";
@@ -47,7 +47,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
     try {
       const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
       notify(reason);
       router.refresh();
       return j;
@@ -81,11 +81,11 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
         .filter((r, i) => !(i === 0 && /matric/i.test((r[0] ?? "").toString())))
         .filter((r) => !/delete this row/i.test((r[1] ?? "").toString()))
         .map((r) => [r[0] ?? "", r[1] ?? "", r[2] ?? ""].join("\t"));
-      if (!body.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill the template's Matriculation Number, Name and Amount columns, then upload it." }); return; }
+      if (!body.length) { setProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill the template's Matriculation Number, Name and Amount columns, then upload it." }); notifyProblem({ status: 400, title: "The file had no rows to read.", detail: "Fill the template's Matriculation Number, Name and Amount columns, then upload it." }); return; }
       setBatch((b) => ({ ...b, text: body.join("\n") }));
       setSaid(`${body.length} row${body.length === 1 ? "" : "s"} read from the file — review below, then Load and match.`);
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Use the downloaded template (.xlsx)." });
+      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Use the downloaded template (.xlsx)." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Use the downloaded template (.xlsx)." });
     }
   }
 
@@ -97,7 +97,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
     try {
       const r = await fetch(`/api/bff/api/v1/nelfund/student/statement?number=${encodeURIComponent(n)}&session=${encodeURIComponent(d.session)}`);
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); setLedger(null); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); setLedger(null); return; }
       setLedger(j as StudentLedger);
     } finally {
       setBusy(false);

@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -122,7 +122,7 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
 
   async function save() {
     const subs = parseSubjects();
-    if (!subs.length) { setProblem({ status: 400, title: "Enter at least one subject" }); return; }
+    if (!subs.length) { setProblem({ status: 400, title: "Enter at least one subject" }); notifyProblem({ status: 400, title: "Enter at least one subject" }); return; }
     setBusy(true);
     setProblem(null);
     try {
@@ -132,7 +132,7 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
         body: JSON.stringify({ session, jambKey: row.jamb_key, basis, awardedYear: year.trim() ? Number(year.trim()) : null, institution: institution.trim() || null, subjects: subs }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       notify(`Direct Entry subjects saved for ${row.surname}, ${row.other_names}`);
       onDone();
     } finally {
@@ -150,7 +150,7 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
         method: "DELETE",
         headers: { "X-Reason": reasonHeader(`Direct Entry ${basisLabel(basis)} record removed for ${row.jamb_reg_no}`) },
       });
-      if (!r.ok) { const j = await r.json().catch(() => null); setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { const j = await r.json().catch(() => null); setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
       notify(`Record removed for ${row.surname}, ${row.other_names}`);
       onDone();
     } finally {

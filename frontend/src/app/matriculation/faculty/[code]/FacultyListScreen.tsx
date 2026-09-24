@@ -2,7 +2,7 @@
 
 /** tMatList — proto/part39.html: the Faculty Officer's side of it. */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -34,7 +34,7 @@ export function FacultyListScreen({ list, actingOffice }: { list: FacultyList; a
     try {
       const r = await fetch(path, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reasonText) }, body: JSON.stringify(body ?? {}) });
       if (!r.ok) {
-        setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText });
+        { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); }
         return false;
       }
       notify(reasonText);

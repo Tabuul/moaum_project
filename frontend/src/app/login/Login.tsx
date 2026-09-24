@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyProblem } from "@/components/proto/Toast";
 /**
  * viewLogin — proto/part3.html, as drawn: the brand, the card, the number, the
  * password. One door: the number typed says whether a student, a member of staff
@@ -42,7 +43,7 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
       const r = await fetch("/api/auth/sign-in", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: uid, password: pw }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(j ?? { status: r.status, title: r.statusText });
+        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
       /* staff go where they were heading; a student or an applicant has one home */

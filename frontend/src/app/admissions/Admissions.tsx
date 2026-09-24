@@ -2,7 +2,7 @@
 
 /** rAdmissions — proto/part9.html: the cycle as the register shows it. */
 import { reasonHeader } from "@/lib/reason";
-import { notify } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -33,7 +33,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
         body: JSON.stringify({ session: cycle.session }),
       });
       const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       setRecorded(`${j.programmes} programme${j.programmes === 1 ? "" : "s"} recorded — ${j.offered} offered, ${j.waited} waiting, ${j.notOffered} not offered${j.skipped ? `, ${j.skipped} left untouched (already released)` : ""}. Release the decisions from the Applicants desk when the Board is ready.`);
       notify(`${j.programmes} programme${j.programmes === 1 ? "" : "s"} recorded`);
       router.refresh();
@@ -49,7 +49,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       const r = await fetch(`/api/bff/api/v1/student/intake/${cycle.session}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Admitted candidates of ${cycle.session} brought onto the register`) }, body: "{}" });
       const j = await r.json().catch(() => null);
       if (!r.ok) {
-        setProblem(r.status === 404 ? { status: 404, title: "The student register is not yet served", detail: "The intake endpoint has not arrived on the portal; the admission numbers are issued the moment it does." } : j ?? { status: r.status, title: r.statusText });
+        setProblem(r.status === 404 ? { status: 404, title: "The student register is not yet served", detail: "The intake endpoint has not arrived on the portal; the admission numbers are issued the moment it does." } : j ?? { status: r.status, title: r.statusText }); notifyProblem(r.status === 404 ? { status: 404, title: "The student register is not yet served", detail: "The intake endpoint has not arrived on the portal; the admission numbers are issued the moment it does." } : j ?? { status: r.status, title: r.statusText });
         return;
       }
       setSaid(`${j.broughtOnto} candidate${j.broughtOnto === 1 ? "" : "s"} brought onto the register, each with an admission number.`);

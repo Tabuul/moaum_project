@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
-import { notify } from "@/components/proto/Toast";
+import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
@@ -67,7 +67,7 @@ export function Postings({ structure, sessions, session, level, posting, student
       const r = await fetch(`/api/bff/api/v1/college${path}`, {
         method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: method === "DELETE" ? undefined : JSON.stringify(body),
       });
-      if (!r.ok) { setErr((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }); return false; }
+      if (!r.ok) { { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setErr(p); notifyProblem(p); } return false; }
       notify(reason);
       router.refresh();
       return true;
