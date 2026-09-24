@@ -165,7 +165,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       broad.push(top, sub, ...sec.rows.map((r, i) => bsRow(r, i)));
       if (!sec.rows.length) broad.push(["None"]);
     }
-    const book = xlsx([["Summary", summary], ["Broadsheet", broad, { headerRows, merges }]], { logo: logo ?? undefined });
+    // S/N, every course cell and the CURRENT and CUMULATIVE figures are centred; the number, the name and the remark stay left
+    const centre = [0, ...Array.from({ length: orderCols.length + nCur + nCum }, (_, i) => 3 + i)];
+    const book = xlsx([["Summary", summary], ["Broadsheet", broad, { headerRows, merges, centre }]], { logo: logo ?? undefined });
     const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
