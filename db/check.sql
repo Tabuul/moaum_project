@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 141
+\set EXPECTED 142
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2994,6 +2994,39 @@ BEGIN
     PERFORM pg_temp.assert('Senate''s rule: probation at 100 level second semester and every first semester from 200 under 1.0; advised to withdraw at the second semester still under 1.0; nothing for a Direct Entry first semester or at 1.0',
         a IS NULL AND b = 'PROBATION' AND c = 'PROBATION' AND d IS NULL AND e = 'ADVISED_TO_WITHDRAW' AND f = 'PROBATION' AND g = 'PROBATION' AND h = 'ADVISED_TO_WITHDRAW' AND i IS NULL,
         format('100/1=%s 100/2=%s 200/1=%s DE=%s 200/2=%s fresh=%s DE200/2=%s 300/2=%s at1=%s', a, b, c, d, e, f, g, h, i));
+END $$;
+
+-- ── 17f. four consecutive closed semesters without a registration make a voluntary withdrawal (V247) ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); n0 int; n1 int; n2 int; due0 boolean; due1 boolean; closed int; st_status text; changed int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
+    VALUES (gen_random_uuid(), '9990/9991', date '9990-10-01', date '9991-08-31'), (gen_random_uuid(), '9991/9992', date '9991-10-01', date '9992-08-31');
+    INSERT INTO policy.semester (id, session, number, state)
+    SELECT gen_random_uuid(), v.s, n, 'CLOSED' FROM (VALUES ('9990/9991'), ('9991/9992')) v(s) CROSS JOIN generate_series(1, 2) n;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/99/990904', 'MOAUM/CHK/99/0904', 'CHECKVOLUNTARY', 'Invented', 'C00023', 'UTME', '9990/9991', 100, 100, 'ACTIVE', now());
+    SELECT semesters INTO n0 FROM registration.semesters_unregistered(st);                         -- four closed since entry, none registered
+    due0 := EXISTS (SELECT 1 FROM registration.voluntary_withdrawals_due() d WHERE d.student_id = st);
+    -- an approved registration in the third semester: only one closed semester follows it
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (reg, st, '9991/9992', 1, 100, 'APPROVED', now());
+    SELECT semesters INTO n1 FROM registration.semesters_unregistered(st);
+    due1 := EXISTS (SELECT 1 FROM registration.voluntary_withdrawals_due() d WHERE d.student_id = st);
+    DELETE FROM registration.course_registration WHERE id = reg;
+    SELECT semesters INTO n2 FROM registration.semesters_unregistered(st);
+    -- the Registry closes the record due: the status changes on the regulation as its instrument, and the change is on the record
+    closed := registration.effect_voluntary_withdrawals('University regulation: four consecutive semesters without course registration', st);
+    SELECT status INTO st_status FROM people.student WHERE id = st;
+    SELECT count(*) INTO changed FROM people.status_change WHERE student_id = st AND to_status = 'VOLUNTARY_WITHDRAWAL';
+    DELETE FROM people.status_change WHERE student_id = st;
+    DELETE FROM people.student WHERE id = st;
+    DELETE FROM policy.semester WHERE session IN ('9990/9991', '9991/9992');
+    DELETE FROM policy.academic_session WHERE name IN ('9990/9991', '9991/9992');
+    PERFORM pg_temp.assert('Four consecutive closed semesters without an approved registration make a voluntary withdrawal: due at four, not after a registration in the third, closed by the Registry on the regulation, on the record',
+        n0 = 4 AND due0 AND n1 = 1 AND NOT due1 AND n2 = 4 AND closed = 1 AND st_status = 'VOLUNTARY_WITHDRAWAL' AND changed = 1,
+        format('missed=%s due=%s after_reg=%s due_after=%s again=%s closed=%s status=%s changes=%s', n0, due0, n1, due1, n2, closed, st_status, changed));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

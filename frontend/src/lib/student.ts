@@ -214,7 +214,7 @@ export function statusLabel(status: string): string {
 export function statusPill(status: string): "ok" | "bad" | "grey" | "info" {
   if (status === "ACTIVE" || status === "GRADUATED") return "ok";
   if (status === "ADMITTED") return "info";
-  if (status === "WITHDRAWN" || status === "TRANSFERRED_OUT" || status === "DORMANT" || status === "DEFERRED") return "grey";
+  if (status === "WITHDRAWN" || status === "VOLUNTARY_WITHDRAWAL" || status === "TRANSFERRED_OUT" || status === "DORMANT" || status === "DEFERRED") return "grey";
   return "bad";
 }
 

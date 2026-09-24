@@ -206,7 +206,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const half = Math.ceil(orderCols.length / 2);
     const courseTwoCol = `<div class="cols2"><table class="t"><tbody>${courseCells(orderCols.slice(0, half))}</tbody></table>`
       + `<table class="t"><tbody>${courseCells(orderCols.slice(half))}</tbody></table></div>`;
-    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2">MATRIC NO.${matricPrefix ? `<br><span style="font-weight:400;text-transform:none">${escd(matricPrefix)}</span>` : ""}</th><th rowspan="2">NAME OF CANDIDATE</th>${hideCarryover ? "" : `<th rowspan="2">CARRYOVER</th>`}`
+    const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2" style="width:1%"><span style="white-space:nowrap">MATRIC NO.</span>${matricPrefix ? `<br><span style="font-weight:400;text-transform:none;font-size:9px;word-break:break-all">${escd(matricPrefix)}</span>` : ""}</th><th rowspan="2" style="width:1%">NAME OF CANDIDATE</th>${hideCarryover ? "" : `<th rowspan="2">CARRYOVER</th>`}`
       + bands.map((b) => `<th colspan="${b[1].length}">${b[0]}</th>`).join("")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
@@ -223,7 +223,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       .t td.ch{font-weight:700;text-transform:uppercase;font-size:10px;color:#333;border-bottom:1px solid #999}
       table{border-collapse:collapse;width:100%}.t td{padding:2px 6px;font-size:11.5px;vertical-align:top}.t td.n,.t td.p{text-align:right;width:40px}.t td.ab{font-family:monospace;font-weight:700}
       .bs{border-collapse:collapse;width:100%;margin-top:8px}.bs th,.bs td{border:1px solid #bbb;padding:3px 5px;text-align:center;font-size:10.5px}.bs td.nm,.bs td.co{text-align:left}
-      .bs td.b{font-weight:700}.bs td.mt{white-space:nowrap;width:1%}.bs td.nm{white-space:nowrap;line-height:1.2}.bs td.co{min-width:150px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
+      .bs td.b{font-weight:700}.bs td.mt{white-space:nowrap;width:1%}.bs td.nm{white-space:nowrap;line-height:1.2;width:1%}.bs td.co{min-width:150px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
       @media print{.pb{page-break-before:always}}</style></head><body>
       <div class="head"><img src="${crest}" alt=""><div class="uni">${escd(UNI)}</div><div class="st">Examination Reporting Sheet</div><div style="font-size:10px;color:#555;margin-top:3px">Serial ${escd(serial)} · generated ${escd(new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }))}</div></div>
       <div class="meta"><div><span class="k">Faculty</span><b>${escd(cov.facName)}</b></div><div><span class="k">Level</span><b>${sheet.level}</b></div>
@@ -321,8 +321,8 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                   <thead>
                     <tr className="grp">
                       <th rowSpan={2} className="sn">S/N</th>
-                      <th rowSpan={2} className="l">MATRIC NO.{matricPrefix ? <div style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{matricPrefix}</div> : null}</th>
-                      <th rowSpan={2} className="l">NAME OF CANDIDATE</th>
+                      <th rowSpan={2} className="l mt"><span style={{ whiteSpace: "nowrap" }}>MATRIC NO.</span>{matricPrefix ? <div className="pfx">{matricPrefix}</div> : null}</th>
+                      <th rowSpan={2} className="l nm">NAME OF CANDIDATE</th>
                       {hideCarryover ? null : <th rowSpan={2}>CARRYOVER</th>}
                       {bands.map((b) => <th key={b[0]} colSpan={b[1].length} className="band">{b[0]}</th>)}
                       <th colSpan={4} className="band">CURRENT</th>
@@ -369,15 +369,18 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
             .bsheet thead th{background:var(--panel-2,var(--line-2));font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--chrome-dim)}
             .bsheet th.band{color:var(--chrome);font-weight:700}
             .bsheet th.l,.bsheet td.l{text-align:left;white-space:nowrap}
+            .bsheet th.nm,.bsheet td.nm{width:1%}
             .bsheet td.nm{white-space:nowrap;font-weight:600;line-height:1.2}
             .bsheet td.nm .nm2{font-weight:500}
+            .bsheet th.mt{width:1%;white-space:normal}
+            .bsheet th.mt .pfx{font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;word-break:break-all;line-height:1.15}
             .bsheet td.mt{width:1%;white-space:nowrap}
             .bsheet th.course .mono{display:block;font-family:ui-monospace,monospace;font-weight:700}
             .bsheet th.course .u{display:block;font-size:10px;color:var(--chrome-dim)}
             .bsheet td.mk{min-width:44px}
             .bsheet td.b{font-weight:700}
             .bsheet td.co{text-align:left;min-width:110px;max-width:200px;white-space:normal}
-            .bsheet td.rm{text-align:left;min-width:190px;max-width:340px;white-space:normal;font-size:11.5px}
+            .bsheet td.rm{text-align:left;min-width:190px;white-space:normal;font-size:11.5px}
             .bsheet tbody tr:nth-child(even) td{background:var(--line-2)}
             .ers{max-width:900px;margin:0 auto}
             .ers__title{text-align:center;margin-bottom:16px}

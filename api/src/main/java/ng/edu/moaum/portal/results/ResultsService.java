@@ -522,8 +522,10 @@ public class ResultsService {
                 cur += c.units();   // registered: the student has a cell for this course
                 boolean past = COUNTED.contains(c.stage());
                 boolean counted = past && "GRADED".equals(c.outcome()) && c.points() != null;
-                // no score at all, or absent, on a set past the Faculty Board: the candidate did not sit — an F, recorded ABS
-                boolean absent = past && !counted && (c.outcome() == null || "ABSENT".equals(c.outcome()));
+                // no score at all for a course registered — whatever the set's stage, or with no set yet — or marked absent on a
+                // set past the Faculty Board: the candidate did not sit — an F, recorded ABS, and the course is owed. A score
+                // still in the chain is not an absence; it is pending, shown as not yet counted.
+                boolean absent = !counted && (c.total() == null || (past && "ABSENT".equals(c.outcome())));
                 if (counted) {
                     units += c.units();
                     points = points.add(c.points().multiply(BigDecimal.valueOf(c.units())));

@@ -149,7 +149,7 @@ class RegistersController {
         o.put("sessions", jdbc.sql("SELECT DISTINCT entry_session AS name FROM people.student ORDER BY entry_session DESC").query().listOfRows());
         o.put("levels", List.of(100, 200, 300, 400, 500, 600, 700, 800, 900));
         o.put("statuses", List.of("ADMITTED", "ACTIVE", "PROBATION", "DEFERRED", "SUSPENDED", "RUSTICATED", "WITHDRAWN",
-                "EXPELLED", "TRANSFERRED_OUT", "GRADUATED", "DECEASED", "DORMANT"));
+                "EXPELLED", "TRANSFERRED_OUT", "GRADUATED", "DECEASED", "DORMANT", "VOLUNTARY_WITHDRAWAL"));
         o.put("entryModes", List.of("UTME", "DIRECT_ENTRY", "TRANSFER", "POSTGRADUATE", "JUPEB", "SANDWICH"));
         return o;
     }

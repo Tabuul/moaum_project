@@ -26,7 +26,7 @@ import { Biodata } from "./Biodata";
 const WRITERS = ["academic", "registrar", "dregistrar"];
 
 const STATUSES = ["ACTIVE", "PROBATION", "DEFERRED", "SUSPENDED", "RUSTICATED", "WITHDRAWN",
-  "EXPELLED", "TRANSFERRED_OUT", "GRADUATED", "DECEASED", "DORMANT"];
+  "EXPELLED", "TRANSFERRED_OUT", "GRADUATED", "DECEASED", "DORMANT", "VOLUNTARY_WITHDRAWAL"];
 
 /** clr(ok, label) — the round mark and its line */
 function Clr({ ok, label }: { ok: boolean; label: string }) {

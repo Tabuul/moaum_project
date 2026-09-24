@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const STATUS_PILL: Record<string, "ok" | "info" | "warn" | "bad" | "grey"> = {
   ACTIVE: "ok", ADMITTED: "info", PROBATION: "warn", GRADUATED: "grey", DORMANT: "grey", DEFERRED: "info",
-  SUSPENDED: "bad", RUSTICATED: "bad", EXPELLED: "bad", WITHDRAWN: "grey", TRANSFERRED_OUT: "grey", DECEASED: "grey",
+  SUSPENDED: "bad", RUSTICATED: "bad", EXPELLED: "bad", WITHDRAWN: "grey", VOLUNTARY_WITHDRAWAL: "grey", TRANSFERRED_OUT: "grey", DECEASED: "grey",
 };
 
 type Summary = { total: number; female: number; male: number; active: number; postgraduate: number };

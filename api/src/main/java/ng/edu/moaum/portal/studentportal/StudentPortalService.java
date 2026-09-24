@@ -79,6 +79,12 @@ public class StudentPortalService {
     @Transactional(readOnly = true)
     public Map<String, Object> me(UUID id) {
         StudentPortalRepository.Student s = student(id);
+        // a record closed by voluntary withdrawal (V247) is refused at the portal, with the reason
+        if ("VOLUNTARY_WITHDRAWAL".equals(s.status())) {
+            throw new DomainRuleViolation("STUDENT_RECORD_CLOSED",
+                    "Your record was closed as a voluntary withdrawal: four consecutive semesters passed without a course registration, and the University's regulation removes the record.",
+                    new DomainRuleViolation.Remedy("Write to the Registrar if you believe the record should be reopened.", "Registry"));
+        }
         String session = session();
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("id", s.id());

@@ -85,6 +85,42 @@ class StudentController {
         return out;
     }
 
+    /** Voluntary withdrawals (V247): the students four consecutive closed semesters without an approved registration have made due,
+     *  named by the record, and how many records stand closed so far. */
+    @GetMapping("/students/voluntary-withdrawals")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')")
+    java.util.Map<String, Object> voluntaryWithdrawals() {
+        java.util.List<java.util.Map<String, Object>> due = jdbc.sql("SELECT * FROM registration.voluntary_withdrawals_due()").query().listOfRows();
+        long closed = jdbc.sql("SELECT count(*) FROM people.student WHERE status = 'VOLUNTARY_WITHDRAWAL'").query(Long.class).single();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("due", due);
+        out.put("closed", closed);
+        return out;
+    }
+
+    public record CloseVoluntaryIn(java.util.List<UUID> studentIds, String instrument) {
+    }
+
+    /** The Registry's act: the students due (the ones named, or all) become VOLUNTARY_WITHDRAWAL on the regulation as the instrument. */
+    @PostMapping("/students/voluntary-withdrawals/close")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')")
+    @org.springframework.transaction.annotation.Transactional
+    java.util.Map<String, Object> closeVoluntary(@org.springframework.web.bind.annotation.RequestBody(required = false) CloseVoluntaryIn in) {
+        String instrument = in != null && in.instrument() != null && !in.instrument().isBlank() ? in.instrument().trim()
+                : "University regulation: four consecutive semesters without course registration";
+        int closed = 0;
+        if (in != null && in.studentIds() != null && !in.studentIds().isEmpty()) {
+            for (UUID id : in.studentIds()) {
+                closed += jdbc.sql("SELECT registration.effect_voluntary_withdrawals(:i, :s)").param("i", instrument).param("s", id).query(Integer.class).single();
+            }
+        } else {
+            closed = jdbc.sql("SELECT registration.effect_voluntary_withdrawals(:i, NULL)").param("i", instrument).query(Integer.class).single();
+        }
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(voluntaryWithdrawals());
+        out.put("closed", closed);
+        return out;
+    }
+
     /** One record entire. The session decides which registrations it shows. */
     @GetMapping("/students/{id}")
     @PreAuthorize(READERS)

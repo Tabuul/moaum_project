@@ -6,6 +6,7 @@ import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Students } from "./Students";
 import { MigratedPanel, type MigratedSummary } from "./MigratedPanel";
+import { VoluntaryPanel, type VoluntarySummary } from "./VoluntaryPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,11 @@ export default async function StudentsPage({
   const { scope, structure, sessions, ceiling } = await loadScope(params);
   const q = typeof params.q === "string" ? params.q : "";
 
-  const [me, register, migrated] = await Promise.all([
+  const [me, register, migrated, voluntary] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Register>(`/api/v1/student/students?${scopeQuery(scope)}&q=${encodeURIComponent(q)}`),
     api<MigratedSummary>("/api/v1/student/students/migrated?from=100&to=400"),
+    api<VoluntarySummary>("/api/v1/student/students/voluntary-withdrawals"),
   ]);
   const office = me.ok ? me.data.activeOffice : null;
   const mayClear = office === "registrar" || office === "dregistrar" || office === "academic" || office === "ict" || office === "super";
@@ -35,6 +37,7 @@ export default async function StudentsPage({
       ) : (
         <>
         {mayClear && migrated.ok ? <MigratedPanel summary={migrated.data} /> : null}
+        {mayClear && voluntary.ok ? <VoluntaryPanel summary={voluntary.data} /> : null}
         <Students
           scope={scope}
           q={q}
