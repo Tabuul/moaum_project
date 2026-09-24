@@ -108,6 +108,23 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
         ["Chosen", lb ? lb.allocation.posting : "—", null, lb ? `${lb.allocation.surname} · ${word(lb.allocation.state)}` : "Choose a student"],
       ]} />
 
+      {!lb && desk && rows.length ? (
+        <Panel title="Supervisors this session" right={`${new Set(rows.map((r) => r.supervisor).filter(Boolean)).size} named · ${rows.filter((r) => !r.supervisor).length} student${rows.filter((r) => !r.supervisor).length === 1 ? "" : "s"} without one`}>
+          <DTable cols={["Supervisor", "Postings", "Students|mid", "Logbooks complete|mid", "In progress|mid"]} rows={Array.from(new Set(rows.map((r) => r.supervisor ?? ""))).sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b))).map((sup) => {
+            const mine = rows.filter((r) => (r.supervisor ?? "") === sup);
+            const postings = Array.from(new Set(mine.map((r) => `${r.block_code} ${r.posting}`)));
+            return [
+              sup ? <strong key="s">{sup}</strong> : <span key="s" className="ink-red b600">Not yet assigned</span>,
+              <span className="sub2 tnum" key="p">{postings.join(", ")}</span>,
+              <span className="tnum" key="n">{mine.length}</span>,
+              <span className="tnum" key="c">{mine.filter((r) => r.requirements && r.requirements_met >= r.requirements).length}</span>,
+              <span className="tnum" key="i">{mine.filter((r) => r.state === "IN_PROGRESS").length}</span>,
+            ];
+          })} />
+          {rows.some((r) => !r.supervisor) ? <PBody><div className="sub2">A student without a supervisor has no one to verify the logbook; name one on the allocation at the <LinkBtn href={`/college/postings?session=${encodeURIComponent(session)}`}>postings desk</LinkBtn>.</div></PBody> : null}
+        </Panel>
+      ) : null}
+
       {!lb ? (
         rows.length ? (
           <Panel title={desk ? "Every student on a posting this session" : "The students you supervise"} right="Where each stands">
