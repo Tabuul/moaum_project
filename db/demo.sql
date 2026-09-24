@@ -128,7 +128,10 @@ BEGIN
             (600, 'MED', 'C00061', 'Aondona', '9906', '08030009906', 5),
             -- a College of Health Sciences student (MBBS, faculty BAMS · college CHS) at 200 level,
             -- so the College student login gate can be demonstrated
-            (200, 'MED', 'C00061', 'Terkimbi','9907', '08030009907', 1)
+            (200, 'MED', 'C00061', 'Terkimbi','9907', '08030009907', 1),
+            -- a second College student at 200 level, entering this session: the later cohort, so two
+            -- College years can stand at one level side by side (V249)
+            (200, 'MED', 'C00061', 'Sewuese', '9908', '08030009908', 0)
         ) AS t(level, dept, programme, given, n, phone, years_in)
     LOOP
         DECLARE v_entry_year int := (substr(v_session, 1, 4))::int - s.years_in;
