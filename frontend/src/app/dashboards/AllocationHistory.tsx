@@ -36,7 +36,7 @@ export function AllocationHistory({ rows, mode, session }: { rows: AllocationRow
             const head = [
               <span key="s" className={r.session === session ? "" : "sub2"}>{r.session}{r.session === session ? <span className="sub2"> · current</span> : ""}</span>,
               <span key="m" className="tnum">{r.semester}</span>,
-              <span key="c" className="tnum" style={{ fontWeight: 600 }}>{r.course_code}</span>,
+              <span key="c" className="tnum b600">{r.course_code}</span>,
               <span key="t">{r.title}<div className="sub2">{r.level} level · {r.units} unit{r.units === 1 ? "" : "s"}</div></span>,
             ];
             const tail = [

@@ -72,7 +72,7 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
             cols={["Student", "Programme", "Unmet requirement", "CGPA|mid", "Action|num"]}
             rows={view.exceptions.map((x) => [
               <Two key="s" a={`${x.surname}, ${x.otherNames}`} b={x.number} />, <span key="p">{x.programmeName}</span>,
-              <span key="u" style={{ color: "var(--red-ink)" }}>{x.unmet}</span>,
+              <span key="u" className="ink-red">{x.unmet}</span>,
               <span className="tnum" key="c">{x.cgpa == null ? "—" : Number(x.cgpa).toFixed(2)}</span>,
               <Link key="a" href={`/students/${x.studentId}`} className="btn btn--ghost btn--sm">Review</Link>,
             ])}
@@ -91,14 +91,14 @@ export function Graduation({ scope, structure, sessions, view, actingOffice }: {
           ])}
         />
       </Panel>
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+      <div className="row">
         <Btn kind="primary" disabled={busy || !office} onClick={() => void post(`/api/bff/api/v1/graduation/sessions/${scope.session}/audit`, {}, `Degree audit run for ${scope.session}`)}>{busy ? "Working…" : `Run the degree audit for ${scope.session}`}</Btn>
         <Btn kind="go" disabled={busy || !t.auditPassed || !["academic", "registrar", "dregistrar"].includes(actingOffice ?? "")} onClick={() => setMinute("")}>Send the list to Senate</Btn>
         <span className="sub2">{t.approved ? `${t.approved} award${t.approved === 1 ? "" : "s"} already approved by Senate` : "Nothing approved yet"}</span>
       </div>
       {minute !== null ? (
         <Modal title="Approve the graduation list" sub="On the Senate minute" onClose={() => setMinute(null)}
-          foot={<><Btn kind="ghost" onClick={() => setMinute(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="go" disabled={busy || !minute.trim()} onClick={() => void post(`/api/bff/api/v1/graduation/sessions/${scope.session}/approve`, { senateMinute: minute }, `Graduation list ${scope.session} approved under ${minute}`)}>Approve the awards</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setMinute(null)}>Cancel</Btn><span className="grow" /><Btn kind="go" disabled={busy || !minute.trim()} onClick={() => void post(`/api/bff/api/v1/graduation/sessions/${scope.session}/approve`, { senateMinute: minute }, `Graduation list ${scope.session} approved under ${minute}`)}>Approve the awards</Btn></>}>
           <Field id="g-minute" label="Senate minute" hint="Every graduand who passed the audit becomes GRADUATED on this minute; the exceptions stay where they are."><input id="g-minute" className="ctl" value={minute} onChange={(e) => setMinute(e.target.value)} placeholder="SEN/2027/…" autoComplete="off" /></Field>
         </Modal>
       ) : null}

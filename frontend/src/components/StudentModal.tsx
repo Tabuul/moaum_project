@@ -85,8 +85,8 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
         </div>
         <div style={{ flexGrow: 1, minWidth: 240 }}>
           <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{fullName(s)}</div>
-          <div className="sub2 tnum" style={{ marginTop: 2 }}>{s.matricNo ?? s.admissionNo ?? "—"}{s.jambRegNo ? ` · JAMB ${s.jambRegNo}` : ""}</div>
-          <div className="sub2" style={{ marginTop: 2 }}>{s.programmeName} · {s.deptName}</div>
+          <div className="sub2 tnum mt-1">{s.matricNo ?? s.admissionNo ?? "—"}{s.jambRegNo ? ` · JAMB ${s.jambRegNo}` : ""}</div>
+          <div className="sub2 mt-1">{s.programmeName} · {s.deptName}</div>
           <div className="sub2">{s.facultyName}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             <Pil kind={statusPill(s.status)}>{statusLabel(s.status)}</Pil>
@@ -127,7 +127,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
 
       {tab === "biodata" ? (
         sections.length ? sections.map((sec) => (
-          <div key={sec} style={{ marginBottom: 12 }}>
+          <div key={sec} className="mb-3">
             <div className="sub2" style={{ margin: "6px 0", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>{SECTION[sec] ?? words(sec)}</div>
             <KvGrid cls="grid--2" pairs={record.biodata.filter((b) => b.section === sec).sort((a, b) => a.ord - b.ord).map((b) => [b.label, b.value?.trim() ? b.value : <span className="sub2" key={b.field}>not recorded</span>])} />
           </div>
@@ -141,26 +141,26 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
             <DTable cols={["Session", "Semester|mid", "Units|num", "GPA|num", "CGPA|num", "Published|num"]}
               rows={portal.gpa.map((g) => [g.session, String(g.semester), <span key="u" className="tnum">{g.units}</span>, <span key="g" className="tnum">{g.gpa != null ? Number(g.gpa).toFixed(2) : "—"}</span>, <span key="c" className="tnum">{g.cgpa != null ? Number(g.cgpa).toFixed(2) : "—"}</span>, <span key="p" className="tnum">{g.published_count}/{g.registered_count}</span>])}
               texts={portal.gpa.map((g) => `${g.session} ${g.semester}`)} />
-          ) : <div className="sub2" style={{ marginBottom: 10 }}>No result has been published for this student yet.</div>}
+          ) : <div className="sub2 mb-3">No result has been published for this student yet.</div>}
           {portal?.carryovers?.length ? (
             <>
-              <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Carryovers outstanding</div>
+              <div className="sub2 eyebrow eyebrow--gap">Carryovers outstanding</div>
               <DTable cols={["Course", "Title", "Units|num", "Failed in"]} rows={portal.carryovers.map((c) => [<span key="c" className="tnum">{c.course_code}</span>, c.title, <span key="u" className="tnum">{c.units}</span>, c.failed_in])} texts={portal.carryovers.map((c) => c.course_code)} />
             </>
           ) : null}
-          <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Registrations</div>
+          <div className="sub2 eyebrow eyebrow--gap">Registrations</div>
           {record.registrations.length ? (
             <DTable cols={["Session", "Semester|mid", "Level|num", "Units|num", "Status|mid", "Submitted"]}
               rows={record.registrations.map((r) => [r.session, String(r.semester), <span key="l" className="tnum">{r.level}</span>, <span key="u" className="tnum">{r.units}</span>, <Pil key="s" kind={r.status === "APPROVED" || r.status === "LOCKED" ? "ok" : r.status === "RETURNED" ? "bad" : "info"}>{words(r.status)}</Pil>, <span key="d" className="sub2">{r.submittedAt ? day(r.submittedAt) : "—"}</span>])}
               texts={record.registrations.map((r) => `${r.session} ${r.semester}`)} />
           ) : <div className="sub2">No course registration on record.</div>}
-          <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Enrolments</div>
+          <div className="sub2 eyebrow eyebrow--gap">Enrolments</div>
           {record.enrolments.length ? (
             <DTable cols={["Session", "Level|num", "Mode", "Fee category", "Enrolled"]}
               rows={record.enrolments.map((e) => [e.session, <span key="l" className="tnum">{e.level}</span>, words(e.mode), e.feeCategory ?? "—", <span key="d" className="sub2">{day(e.enrolledAt)}</span>])}
               texts={record.enrolments.map((e) => e.session)} />
           ) : <div className="sub2">No enrolment on record.</div>}
-          {latestSem ? <div className="sub2" style={{ marginTop: 8 }}>Latest: {latestSem.session} semester {latestSem.semester} · GPA {latestSem.gpa != null ? Number(latestSem.gpa).toFixed(2) : "—"} · CGPA {latestSem.cgpa != null ? Number(latestSem.cgpa).toFixed(2) : "—"}.</div> : null}
+          {latestSem ? <div className="sub2 mt-2">Latest: {latestSem.session} semester {latestSem.semester} · GPA {latestSem.gpa != null ? Number(latestSem.gpa).toFixed(2) : "—"} · CGPA {latestSem.cgpa != null ? Number(latestSem.cgpa).toFixed(2) : "—"}.</div> : null}
         </>
       ) : null}
 
@@ -175,13 +175,13 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
             {f.charges.length ? (
               <DTable cols={["Item", "Amount|num"]} rows={f.charges.map((c) => [c.item, <span key="a" className="tnum">{money(c.amount)}</span>])} texts={f.charges.map((c) => c.item)} />
             ) : <div className="sub2">No charge stated for {f.session}.</div>}
-            <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Payment references</div>
+            <div className="sub2 eyebrow eyebrow--gap">Payment references</div>
             {f.references.length ? (
               <DTable cols={["Reference", "Purpose", "Amount|num", "Generated", "Confirmed", "Receipt"]}
                 rows={f.references.map((r) => [<span key="r" className="tnum">{r.reference}</span>, r.purpose, <span key="a" className="tnum">{money(r.amount)}</span>, <span key="g" className="sub2">{day(r.generated_at)}</span>, r.confirmed_at ? <Pil key="c" kind="ok">{day(r.confirmed_at)}{r.channel ? ` · ${r.channel}` : ""}</Pil> : <Pil key="c" kind="grey">unpaid</Pil>, <span key="n" className="tnum sub2">{r.receipt_no ?? "—"}</span>])}
                 texts={f.references.map((r) => `${r.reference} ${r.purpose}`)} />
             ) : <div className="sub2">No payment reference for {f.session}.</div>}
-            {f.sessions.length > 1 ? <div className="sub2" style={{ marginTop: 8 }}>Sessions with fees on record: {f.sessions.join(", ")}.</div> : null}
+            {f.sessions.length > 1 ? <div className="sub2 mt-2">Sessions with fees on record: {f.sessions.join(", ")}.</div> : null}
           </>
         ) : <div className="sub2">The Bursary&rsquo;s figures for this student could not be read.</div>
       ) : null}
@@ -204,19 +204,19 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
           ) : <div className="sub2">No change of status on record.</div>}
           {record.registrationClearance.length ? (
             <>
-              <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Registration clearance</div>
+              <div className="sub2 eyebrow eyebrow--gap">Registration clearance</div>
               <KvGrid cls="grid--2" pairs={record.registrationClearance.map((c) => [c.label, <span key={c.unit}><Pil kind={c.state === "CLEARED" ? "ok" : c.state === "HELD" ? "bad" : "grey"}>{words(c.state)}</Pil>{c.item ? ` · ${c.item}` : ""}</span>])} />
             </>
           ) : null}
           {record.convocationClearance.length ? (
             <>
-              <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Convocation clearance</div>
+              <div className="sub2 eyebrow eyebrow--gap">Convocation clearance</div>
               <KvGrid cls="grid--2" pairs={record.convocationClearance.map((c) => [c.label, <span key={c.unit}><Pil kind={c.state === "CLEARED" ? "ok" : c.state === "HELD" ? "bad" : "grey"}>{words(c.state)}</Pil>{c.item ? ` · ${c.item}` : ""}</span>])} />
             </>
           ) : null}
           {record.pendingChanges.length || record.decidedChanges.length ? (
             <>
-              <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Bio-data change requests</div>
+              <div className="sub2 eyebrow eyebrow--gap">Bio-data change requests</div>
               <DTable cols={["Field", "From", "To", "Requested", "State|mid"]}
                 rows={[...record.pendingChanges, ...record.decidedChanges].map((c) => [c.label, c.fromValue ?? "—", c.toValue, <span key="d" className="sub2">{day(c.requestedAt)}</span>, <Pil key="s" kind={c.state === "APPROVED" ? "ok" : c.state === "REFUSED" ? "bad" : "info"}>{words(c.state)}</Pil>])}
                 texts={[...record.pendingChanges, ...record.decidedChanges].map((c) => c.label)} />
@@ -229,7 +229,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
 
   return (
     <Modal wide title={s ? fullName(s) : "Student"} sub={s ? `${s.matricNo ?? s.admissionNo ?? ""} · ${s.programmeName}` : "Reading the record"} onClose={onClose}
-      foot={<><span className="sub2">Read from the register as it stands now.</span><span style={{ flexGrow: 1 }} />{s ? <a href={`/students/${s.id}`} className="btn btn--ghost btn--sm">Open full record</a> : null}<button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
+      foot={<><span className="sub2">Read from the register as it stands now.</span><span className="grow" />{s ? <a href={`/students/${s.id}`} className="btn btn--ghost btn--sm">Open full record</a> : null}<button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
       {body}
     </Modal>
   );

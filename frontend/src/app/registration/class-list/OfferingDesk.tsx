@@ -56,7 +56,7 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
       <Panel title={`Attendance · ${roll.courseCode}`} right={desk.attendance.days.length ? `${desk.attendance.days.length} lecture${desk.attendance.days.length === 1 ? "" : "s"} recorded` : "no lecture recorded yet"}>
         <PBody>
           <div className="sub2">The register is marked over the class list and nothing else: tick who is present, and everybody on the roll not ticked is recorded absent for the day. Marking the same day again replaces that day&rsquo;s register.</div>
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="row">
             <input className="ctl tnum" type="date" value={heldOn} onChange={(e) => setHeldOn(e.target.value)} aria-label="Lecture date" style={{ width: 170 }} disabled={!teaches} />
             <Btn kind="ghost" disabled={!teaches} onClick={() => setPresent(new Set(roll.rows.map((r) => r.studentId)))}>All present</Btn>
             <Btn kind="ghost" disabled={!teaches} onClick={() => setPresent(new Set())}>None</Btn>
@@ -69,7 +69,7 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
             <input key="p" type="checkbox" className="chk" checked={present.has(r.studentId)} disabled={!teaches} onChange={(e) => { const n = new Set(present); if (e.target.checked) n.add(r.studentId); else n.delete(r.studentId); setPresent(n); }} aria-label={`Present: ${r.surname}`} />,
             <span className="tnum" key="m">{r.number}</span>,
             <span key="n"><strong>{r.surname}</strong>, {r.otherNames}</span>,
-            st ? <span key="r" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span className="tnum">{st.attended}/{st.held}</span>{st.rate < 75 ? <Pil kind="bad">{st.rate}%</Pil> : <Pil kind="ok">{st.rate}%</Pil>}</span> : <span className="sub2" key="r">—</span>,
+            st ? <span key="r" className="row row--inline row--tight"><span className="tnum">{st.attended}/{st.held}</span>{st.rate < 75 ? <Pil kind="bad">{st.rate}%</Pil> : <Pil kind="ok">{st.rate}%</Pil>}</span> : <span className="sub2" key="r">—</span>,
           ];
         })} texts={roll.rows.map((r) => `${r.number} ${r.surname} ${r.otherNames}`)} />
       </Panel>

@@ -107,7 +107,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
 
   return (
     <>
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 160 }}><label htmlFor="nf-s">Session</label>
           <select id="nf-s" className="ctl" value={d.session} onChange={(e) => go(tab, e.target.value)}>{(sessions.includes(d.session) ? sessions : [d.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
         <div className="role-tabs" role="tablist" style={{ marginBottom: 2 }}>
@@ -135,7 +135,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
               <DTable cols={["Reference|mid", "Received|mid", "Amount|num", "Rows|num", "Matched|num", "Unmatched|num", "Reversed|num"]} rows={d.batches.map((b) => [
                 <span className="tnum" key="r">{b.ref}</span>, <span className="sub2" key="d">{day(b.received_on)}</span>, <span className="tnum" key="a">{money(Number(b.amount))}</span>,
                 <span className="tnum" key="n">{b.rows_read}</span>, <span className="tnum" key="m">{b.matched}</span>,
-                b.unmatched ? <b className="tnum" key="u" style={{ color: "var(--red-ink)" }}>{b.unmatched}</b> : <span className="sub2" key="u">—</span>,
+                b.unmatched ? <b className="tnum ink-red" key="u">{b.unmatched}</b> : <span className="sub2" key="u">—</span>,
                 b.reversed ? <span className="tnum" key="v">{b.reversed}</span> : <span className="sub2" key="v">—</span>,
               ])} />
             ) : <PBody><div className="sub2">No remittance loaded for {d.session}.</div></PBody>}
@@ -178,19 +178,19 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
                   <Field id="cw-why" label="Reason" hint="The student sees this on their wallet statement."><input id="cw-why" className="ctl" value={credit.reason} onChange={(e) => setCredit({ ...credit, reason: e.target.value })} placeholder="TETFund scholarship 2026/2027" /></Field>
                 </div>
                 <div><Btn kind="primary" disabled={busy || !credit.number.trim() || !Number(credit.amount) || !credit.reason.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/nelfund/credit", { number: credit.number.trim(), session: d.session, amount: Number(credit.amount), reason: credit.reason.trim(), source: credit.source || null }, `Wallet credited: ${credit.number.trim()}`); if (j) { setSaid(`${money(Number(credit.amount))} credited to ${credit.number.trim()} — wallet balance ${money(Number(j.balance))}`); setCredit({ number: "", amount: "", reason: "", source: "" }); } }}>Credit the wallet</Btn></div>
-                <div className="sub2" style={{ marginTop: 6 }}>This is an attributed credit against the named student&rsquo;s wallet. It counts toward what the wallet can apply to their charges, and the source and reason travel on the statement.</div>
+                <div className="sub2 mt-2">This is an attributed credit against the named student&rsquo;s wallet. It counts toward what the wallet can apply to their charges, and the source and reason travel on the statement.</div>
               </PBody>
             </Panel>
           ) : null}
           <Panel title="Look up a student's wallet" right="The whole transaction history — credits, top-ups, what was applied, reversals and refunds">
             <PBody>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div className="row row--end">
                 <Field id="lk-num" label="Matriculation or admission number"><input id="lk-num" className="ctl tnum" value={lookup} onChange={(e) => setLookup(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void lookUp(lookup); }} placeholder="MOAUM/CSC/26/0001" /></Field>
                 <Btn kind="primary" disabled={busy || !lookup.trim()} onClick={() => void lookUp(lookup)}>Show the history</Btn>
                 {ledger ? <Btn kind="ghost" onClick={() => { setLedger(null); setLookup(""); }}>Clear</Btn> : null}
               </div>
               {ledger ? (
-                <div style={{ marginTop: 12 }}>
+                <div className="mt-3">
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "baseline", marginBottom: 8 }}>
                     <b>{ledger.student.name}</b>
                     <span className="tnum sub2">{ledger.student.number}</span>
@@ -328,7 +328,7 @@ export function Nelfund({ d, report, tab, sessions, actingOffice }: { d: Nelfund
                   <Field id="fs-so" label="Sort order"><input id="fs-so" className="ctl tnum" value={src.sort} onChange={(e) => setSrc({ ...src, sort: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
                 </div>
                 <div><Btn kind="primary" disabled={busy || !src.code.trim() || !src.name.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/funding/sources", { code: src.code.trim(), name: src.name.trim(), nature: src.nature, sponsor: src.sponsor || null, account: src.account || null, active: true, note: src.note || null, sort: Number(src.sort) || 100 }, `Funding source ${src.code.trim()} stated`); if (j) { setSaid(`Source ${src.code.trim()} saved`); setSrc({ code: "", name: "", nature: "GRANT", sponsor: "", account: "", note: "", sort: "50" }); } }}>Save the source</Btn></div>
-                <div className="sub2" style={{ marginTop: 6 }}>NELFUND, Scholarship and Self top-up are seeded; add TETFund, a state scholarship, a sponsor or a bursary here.</div>
+                <div className="sub2 mt-2">NELFUND, Scholarship and Self top-up are seeded; add TETFund, a state scholarship, a sponsor or a bursary here.</div>
               </PBody>
             </Panel>
           ) : null}

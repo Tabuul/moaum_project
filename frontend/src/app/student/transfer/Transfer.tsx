@@ -89,10 +89,10 @@ export function Transfer({ d }: { d: MyTransfer }) {
                   Your application to move to {live.to_programme} is submitted. Pay the {naira(fee)} fee online now; once it is confirmed, your current department begins the approvals.
                 </Note>
                 {!paidRef ? (
-                  <div style={{ marginTop: 10 }}><Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fee", "POST", `/me/transfer/${live.id}/fee`, {}, "Transfer fee reference"); if (r) { setFeeRef(String(r.reference)); setSaid(`Reference ${r.reference} generated — pay it below.`); } }}>Pay the fee online</Btn></div>
+                  <div className="mt-3"><Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("fee", "POST", `/me/transfer/${live.id}/fee`, {}, "Transfer fee reference"); if (r) { setFeeRef(String(r.reference)); setSaid(`Reference ${r.reference} generated — pay it below.`); } }}>Pay the fee online</Btn></div>
                 ) : (
-                  <div style={{ marginTop: 10 }}>
-                    <div className="sub2" style={{ marginBottom: 6 }}>Reference <span className="tnum">{paidRef}</span> for {naira(fee)}. Pay it by card or USSD.</div>
+                  <div className="mt-3">
+                    <div className="sub2 mb-2">Reference <span className="tnum">{paidRef}</span> for {naira(fee)}. Pay it by card or USSD.</div>
                     <PayByCard reference={paidRef} amount={fee} />
                   </div>
                 )}
@@ -122,7 +122,7 @@ export function Transfer({ d }: { d: MyTransfer }) {
             <Field id="ap-reason" label="Reason for seeking transfer" hint="Each approving office reads this."><textarea id="ap-reason" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
             <Field id="ap-utme" label="Your UTME score" hint="Optional — helps the offices weigh the case."><input id="ap-utme" className="ctl tnum" inputMode="numeric" value={utme} onChange={(e) => setUtme(e.target.value.replace(/[^0-9]/g, ""))} /></Field>
             <div><Btn kind="primary" disabled={busy !== null || !prog || !reason.trim()} onClick={async () => { const r = await act("apply", "POST", "/me/transfer", { toProgramme: prog, reason: reason.trim(), utme: utme ? Number(utme) : null }, "Apply for departmental transfer"); if (r) { setSaid("Your application is with the office."); setProg(""); setReason(""); setUtme(""); } }}>Submit the application</Btn></div>
-            <div className="sub2" style={{ marginTop: 6 }}>After you apply, you pay the non-refundable {naira(fee ?? 0)} fee online; your current department and the offices after it then approve in turn. The University sells nothing at the gate.</div>
+            <div className="sub2 mt-2">After you apply, you pay the non-refundable {naira(fee ?? 0)} fee online; your current department and the offices after it then approve in turn. The University sells nothing at the gate.</div>
           </PBody>
         </Panel>
       ) : !live ? (

@@ -52,7 +52,7 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
       sub={`${jambKey}${data?.programme ? ` · ${data.programme}` : ""} · ${data ? `${data.sittings.length} sitting${data.sittings.length === 1 ? "" : "s"}` : "reading…"}`}
       wide
       onClose={onClose}
-      foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={onClose}>Close</Btn></>}
+      foot={<><span className="grow" /><Btn kind="ghost" onClick={onClose}>Close</Btn></>}
     >
       {problem ? <ProblemNotice problem={problem} /> : null}
       {data && !data.sittings.length ? (
@@ -61,7 +61,7 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
         </Note>
       ) : null}
       {data?.sittings.map((st, i) => (
-        <div key={i} style={{ marginBottom: 12 }}>
+        <div key={i} className="mb-3">
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <Pil kind="grey">{BODY[st.body] ?? st.body}</Pil>
             <b>{st.type ?? st.body}</b>

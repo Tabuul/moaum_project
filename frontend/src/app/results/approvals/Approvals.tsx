@@ -66,16 +66,16 @@ export function Approvals({
       {said ? (
         <div className="notice notice--info">
           <div>
-            <div className="notice__t" style={{ color: "var(--chrome)" }}>Nothing was sent</div>
+            <div className="notice__t ink-chrome">Nothing was sent</div>
             <p style={{ color: "#124A63" }}>{said}</p>
           </div>
         </div>
       ) : null}
       <div className="grid grid--4">
         <div className="tile"><span className="eyebrow">Expected sheets</span><span className="n tnum">{t.expected}</span><span className="c">In this scope</span></div>
-        <div className="tile"><span className="eyebrow">Senate approved</span><span className="n tnum" style={{ color: "var(--green-ink)" }}>{t.senateApproved}</span><span className="c">{t.expected ? `${Math.round((100 * t.senateApproved) / t.expected)}% complete` : "Nothing expected yet"}</span></div>
-        <div className="tile"><span className="eyebrow">In workflow</span><span className="n tnum" style={{ color: "var(--chrome)" }}>{t.inWorkflow}</span><span className="c">Moving through stages</span></div>
-        <div className="tile"><span className="eyebrow">Not submitted</span><span className="n tnum" style={{ color: "var(--red-ink)" }}>{t.notSubmitted}</span><span className="c">{t.notSubmitted ? "Waiting on lecturers" : "Nothing outstanding"}</span></div>
+        <div className="tile"><span className="eyebrow">Senate approved</span><span className="n tnum ink-green">{t.senateApproved}</span><span className="c">{t.expected ? `${Math.round((100 * t.senateApproved) / t.expected)}% complete` : "Nothing expected yet"}</span></div>
+        <div className="tile"><span className="eyebrow">In workflow</span><span className="n tnum ink-chrome">{t.inWorkflow}</span><span className="c">Moving through stages</span></div>
+        <div className="tile"><span className="eyebrow">Not submitted</span><span className="n tnum ink-red">{t.notSubmitted}</span><span className="c">{t.notSubmitted ? "Waiting on lecturers" : "Nothing outstanding"}</span></div>
       </div>
 
       <div className="card">
@@ -97,9 +97,9 @@ export function Approvals({
                     <td className="mid">{s.failRate === null ? <span style={{ color: "var(--faint)" }}>—</span> : high ? <span className="pill pill--bad tnum">{s.failRate}%</span> : <span className="tnum">{s.failRate}%</span>}</td>
                     <td>
                       {s.stage === "ENTRY" ? (
-                        <><strong style={{ color: "var(--red-ink)" }}>Not submitted</strong><div className="sub2">{s.lecturer ?? "No lecturer allocated"}{s.daysLate ? ` · ${s.daysLate} days overdue` : ""}</div></>
+                        <><strong className="ink-red">Not submitted</strong><div className="sub2">{s.lecturer ?? "No lecturer allocated"}{s.daysLate ? ` · ${s.daysLate} days overdue` : ""}</div></>
                       ) : (
-                        <>{stageText}{s.blockedForYou ? <div className="sub2">You approved the previous stage — another holder of the next desk must approve this one</div> : who ? <div className="sub2">With {who}</div> : null}{high ? <div className="sub2" style={{ color: "var(--red-ink)" }}>Fail rate above half the candidates — review before approving</div> : null}</>
+                        <>{stageText}{s.blockedForYou ? <div className="sub2">You approved the previous stage — another holder of the next desk must approve this one</div> : who ? <div className="sub2">With {who}</div> : null}{high ? <div className="sub2 ink-red">Fail rate above half the candidates — review before approving</div> : null}</>
                       )}
                     </td>
                     <td className="num">
@@ -127,7 +127,7 @@ export function Approvals({
 
       {returning ? (
         <Modal title="Return the sheet to the lecturer" sub="The reason goes on the record" onClose={() => setReturning(null)}
-          foot={<><button className="btn btn--ghost btn--sm" onClick={() => setReturning(null)}>Cancel</button><span style={{ flexGrow: 1 }} /><button className="btn btn--urgent btn--sm" disabled={!comment.trim() || busy !== null} onClick={async () => { if (await post(`/api/bff/api/v1/results/sheets/${returning}/return`, { comment }, "Sheet returned", returning)) setReturning(null); }}>Return it</button></>}>
+          foot={<><button className="btn btn--ghost btn--sm" onClick={() => setReturning(null)}>Cancel</button><span className="grow" /><button className="btn btn--urgent btn--sm" disabled={!comment.trim() || busy !== null} onClick={async () => { if (await post(`/api/bff/api/v1/results/sheets/${returning}/return`, { comment }, "Sheet returned", returning)) setReturning(null); }}>Return it</button></>}>
           <Field id="ret-why" label="Why it is returned" hint="The lecturer sees this, and so does the audit trail. It re-enters the chain at verification, not at the stage it left.">
             <input id="ret-why" className="ctl" value={comment} onChange={(e) => setComment(e.target.value)} autoComplete="off" />
           </Field>

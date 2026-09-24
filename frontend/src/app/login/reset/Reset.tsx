@@ -50,7 +50,7 @@ export function Reset({ token }: { token: string }) {
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (token && pw.length >= 8 && !mismatch) void reset(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>New password</div>
-            <div className="hint" style={{ marginTop: 4 }}>Eight characters at the very least. This one account carries you to graduation.</div>
+            <div className="hint mt-1">Eight characters at the very least. This one account carries you to graduation.</div>
           </div>
           {done ? (
             <Note kind="ok" title="Your password has been changed">Sign in with your new password. <Link href="/login">Go to sign in</Link>.</Note>

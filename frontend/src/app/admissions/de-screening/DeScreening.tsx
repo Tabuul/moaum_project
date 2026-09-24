@@ -181,10 +181,10 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
         </Field>
       </div>
       {mayEdit ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className="row">
           <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : onFile ? "Update the record" : "Save the record"}</Btn>
           {onFile ? <Btn kind="ghost" disabled={busy} onClick={() => void remove()}>Remove</Btn> : null}
-          <span style={{ flexGrow: 1 }} />
+          <span className="grow" />
           <span className="sub2">Recorded subjects are checked against the programme&rsquo;s DE requirement.</span>
         </div>
       ) : <div className="sub2">You can view what is on file; recording is the Admissions Office&rsquo;s.</div>}
@@ -210,7 +210,7 @@ export function DeScreening({ session, programme, programmes, view, problem, act
       </Note>
 
       <Panel title="Choose a programme" right={`${session}`}>
-        <div className="card__body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div className="card__body row row--end">
           <ProgrammePicker programmes={programmes} chosen={chosen} onPick={pick} />
           {chosen ? <Btn kind="ghost" onClick={() => pick("")}>Clear</Btn> : null}
         </div>

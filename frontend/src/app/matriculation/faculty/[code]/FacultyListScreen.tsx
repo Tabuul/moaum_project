@@ -78,13 +78,13 @@ export function FacultyListScreen({ list, actingOffice }: { list: FacultyList; a
         />
         {!list.rows.length ? <div className="card__body"><div className="sub2">No student of this faculty has an approved registration for {list.session} yet.</div></div> : null}
       </Panel>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div className="row">
         <button className="btn btn--primary" disabled={busy || conf || !may || !list.rows.length} onClick={() => void send("POST", `${base}/confirm`, {}, `${list.name} list confirmed for ${list.session}`)}>{conf ? `Confirmed ${day(list.confirmedAt, false)}` : `Confirm ${ready} students to the Academic Office`}</button>
         <Btn kind="ghost" onClick={() => download(`${list.code}-${list.session.replace("/", "-")}-list.csv`, csv([["Admission number", "Name", "Department", "Units", "State"], ...list.rows.map((r) => [r.admissionNo, `${r.surname}, ${r.otherNames}`, r.deptName, r.units, r.queryReason ? `Query: ${r.queryReason}` : "For matriculation"])]))}>Export the list</Btn>
       </div>
       {query ? (
         <Modal title="Put this name under query" sub="With the reason, and the office that clears it" onClose={() => setQuery(null)}
-          foot={<><Btn kind="ghost" onClick={() => setQuery(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="urgent" disabled={busy || !reason.trim()} onClick={async () => { if (await send("PUT", `${base}/queries/${query}`, { reason, office }, `Query: ${reason}`)) setQuery(null); }}>Query</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setQuery(null)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy || !reason.trim()} onClick={async () => { if (await send("PUT", `${base}/queries/${query}`, { reason, office }, `Query: ${reason}`)) setQuery(null); }}>Query</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="q-why" label="Reason" full><input id="q-why" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} autoComplete="off" /></Field>
             <Field id="q-office" label="Who clears it"><select id="q-office" className="ctl" value={office} onChange={(e) => setOffice(e.target.value)}><option>Faculty Officer</option><option>Bursary</option><option>Head of Department</option><option>Academic Office</option></select></Field>

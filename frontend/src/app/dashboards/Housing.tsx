@@ -47,7 +47,7 @@ export function HousingDashboard({ me, desk }: { me: Me | null; desk: HostelDesk
 
       <Panel title="Housing desks" right={me?.name ? `Signed in as ${me.name}` : "Housing & Welfare"}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <Link href="/hostel" className="btn btn--ghost btn--sm">Hostel &amp; allocation</Link>
             <Link href="/clearance" className="btn btn--ghost btn--sm">Student clearance</Link>
             <Link href="/support" className="btn btn--ghost btn--sm">Help &amp; requests</Link>

@@ -227,7 +227,7 @@ export function AdmissionSettings({
             <div className="eyebrow">Begin the {session} settings</div>
             {previous ? (
               <>
-                <div className="sub2" style={{ marginBottom: 10 }}>
+                <div className="sub2 mb-3">
                   Start from <b>{previousSession}</b> ({previous.inForce ? `in force under ${previous.instrument}` : "a draft"}): the
                   quota, weighting, criteria, every faculty&rsquo;s quota and cut-off and every programme&rsquo;s rule, as a new
                   draft to amend.
@@ -258,7 +258,7 @@ export function AdmissionSettings({
               </Btn>
             </div>
             {!may ? (
-              <div className="sub2" style={{ marginTop: 10 }}>
+              <div className="sub2 mt-3">
                 The settings are made by the Committee&rsquo;s secretariat &mdash; the Academic Office or the Registrar. You are acting as{" "}
                 <b>{officeLabel(actingOffice)}</b>.
               </div>
@@ -322,7 +322,7 @@ export function AdmissionSettings({
     <>
       <Panel title="The aggregate score" right="Paragraph 2.6 · NUC/JAMB approved weighting">
         <PBody>
-          <div className="sub2" style={{ marginBottom: 10 }}>
+          <div className="sub2 mb-3">
             UTME is marked out of 400 and the Post-UTME screening out of 100, so the UTME mark is <b>scaled to 100 before it is weighted</b>.
             Adding 247 to 68.5 is not an aggregate, and a system that does it ranks the whole University by UTME alone.
           </div>
@@ -378,9 +378,9 @@ export function AdmissionSettings({
       </Panel>
       <Panel title="Catchment local governments" right="For the Locality basis">
         <PBody>
-          <div className="sub2" style={{ marginBottom: 8 }}>The local governments in the University&rsquo;s immediate catchment. A candidate from one of these carries the <b>Locality</b> basis when the merit engine proposes offers. One per line, or comma-separated.</div>
+          <div className="sub2 mb-2">The local governments in the University&rsquo;s immediate catchment. A candidate from one of these carries the <b>Locality</b> basis when the merit engine proposes offers. One per line, or comma-separated.</div>
           <textarea id="catchment" className="ctl" rows={4} value={"catchment" in edits ? edits["catchment"] : (policy.catchmentLgas ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, catchment: e.target.value })} placeholder="Makurdi, Guma, Gwer East, Gwer West, Tarka" disabled={!may} />
-          <div style={{ marginTop: 8 }}>
+          <div className="mt-2">
             <Btn kind="primary" disabled={!may || busy !== null} onClick={() => void send("PUT", `${base}/catchment`, { lgas: ("catchment" in edits ? edits["catchment"] : (policy.catchmentLgas ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean) }, `Catchment local governments stated for ${session}`, "catch")}>{busy === "catch" ? "Saving…" : "Save the catchment"}</Btn>
           </div>
         </PBody>
@@ -408,7 +408,7 @@ export function AdmissionSettings({
           cols={["Faculty", "As the guidelines name it", "UTME:DE|num"]}
           rows={facultiesSorted.map((fc) => [
             <span key="n"><strong>{fc.facultyName}</strong><div className="sub2 tnum">{fc.facultyCode}</div></span>,
-            FAC_GUIDE[fc.facultyCode] ? <span className="sub2" style={{ color: "var(--red-ink)" }} key="g">{FAC_GUIDE[fc.facultyCode]}</span> : <span className="sub2" key="g">the same</span>,
+            FAC_GUIDE[fc.facultyCode] ? <span className="sub2 ink-red" key="g">{FAC_GUIDE[fc.facultyCode]}</span> : <span className="sub2" key="g">the same</span>,
             <span key="r">{field(`ru:${fc.facultyCode}`, fc.ratioUtme, 52, (v) => void send("PUT", `${base}/faculties/${fc.facultyCode}`, { quota: fc.quota, cutoff: fc.cutoff, ratioUtme: v, ratioDe: v == null ? null : 100 - v }, `${fc.facultyName} UTME:DE split changed`, "r"), String(policy.ratioUtme))}<span className="sub2">:{fc.ratioUtme == null ? `${policy.ratioDe} (default)` : (100 - fc.ratioUtme)}</span></span>,
           ])}
         />
@@ -435,7 +435,7 @@ export function AdmissionSettings({
           The Deans and Heads of Department below have to state one.
         </Note>
       ) : null}
-      <Panel title="Every programme the University runs" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${withRule.length} of ${policy.programmes.length} carry a requirement${closedThisSession.length ? ` · ${closedThisSession.length} closed this session` : ""}`}<Btn kind="primary" disabled={locked || !withoutRule.length} onClick={() => { setChoosing(true); setChosen(""); }}>New rule</Btn></span>}>
+      <Panel title="Every programme the University runs" right={<span className="row row--inline">{`${withRule.length} of ${policy.programmes.length} carry a requirement${closedThisSession.length ? ` · ${closedThisSession.length} closed this session` : ""}`}<Btn kind="primary" disabled={locked || !withoutRule.length} onClick={() => { setChoosing(true); setChosen(""); }}>New rule</Btn></span>}>
         <DTable
           cols={["Programme", "Faculty|mid", "Cut-off|num", "O’Level requirement", "UTME subjects", "Direct Entry", "Places|num", "|num"]}
           rows={progRows.map((p) => {
@@ -452,7 +452,7 @@ export function AdmissionSettings({
               p.stated && !p.closed
                 ? <span key="q">{field(`pq:${p.code}`, p.quota, 68, (v) => void send("PUT", `${base}/programmes/${p.code}/quota`, { quota: v }, `${p.name} quota changed`, `pq-${p.code}`), "—", true)}</span>
                 : <span className="sub2" key="q">—</span>,
-              <span key="e" style={{ display: "inline-flex", gap: 6 }}>
+              <span key="e" className="row row--inline row--tight">
                 {p.closed ? (
                   <Btn kind="ghost" disabled={locked || busy !== null} onClick={() => void send("POST", `${base}/programmes/${p.code}/reopen`, {}, `${p.name} reopened for ${session}`, `re-${p.code}`)}>{busy === `re-${p.code}` ? "Reopening…" : "Reopen"}</Btn>
                 ) : (
@@ -471,7 +471,7 @@ export function AdmissionSettings({
         />
         {choosing ? (
           <Modal title="A new rule" sub={`${withoutRule.length} programme${withoutRule.length === 1 ? "" : "s"} without one for ${session}`} onClose={() => setChoosing(false)}
-            foot={<><Btn kind="ghost" onClick={() => setChoosing(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!chosen} onClick={() => { setChoosing(false); setEditing(chosen); setEdits({}); }}>State the rule</Btn></>}>
+            foot={<><Btn kind="ghost" onClick={() => setChoosing(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={!chosen} onClick={() => { setChoosing(false); setEditing(chosen); setEdits({}); }}>State the rule</Btn></>}>
             <Field id="new-rule-programme" label="Programme" hint="Those with no rule this session and not closed">
               <select id="new-rule-programme" className="ctl" value={chosen} onChange={(e) => setChosen(e.target.value)}>
                 <option value="">Choose the programme…</option>
@@ -489,7 +489,7 @@ export function AdmissionSettings({
           onClose={() => { setEditing(null); setEdits({}); }}
           foot={<>
             <Btn kind="ghost" onClick={() => { setEditing(null); setEdits({}); }}>Cancel</Btn>
-            <span style={{ flexGrow: 1 }} />
+            <span className="grow" />
             {policy.inForce ? (
               // the policy is in force: the rule a candidate is ranked by is frozen, but the relevant
               // O'Level subjects (which subjects the score reads) may still be corrected

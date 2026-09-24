@@ -64,7 +64,7 @@ export function Notices({ d, actingOffice }: { d: Outbox; actingOffice: string |
             ["Email provider", d.emailProvider ? <Pil kind="ok" key="e">Wired</Pil> : <span className="sub2" key="e">None — MOAUM_NOTICES_EMAIL_URL is not set</span>],
             ["SMS provider", d.smsProvider ? <Pil kind="ok" key="s">Wired</Pil> : <span className="sub2" key="s">None — MOAUM_NOTICES_SMS_URL is not set</span>],
           ]} />
-          <div className="sub2" style={{ marginTop: 6 }}>A provider is an endpoint that takes a POST of the recipient, subject and body with a bearer token, one for email and one for SMS. Until one is named the outbox holds everything, on the record and shown to the student in the portal, and drops nothing.</div>
+          <div className="sub2 mt-2">A provider is an endpoint that takes a POST of the recipient, subject and body with a bearer token, one for email and one for SMS. Until one is named the outbox holds everything, on the record and shown to the student in the portal, and drops nothing.</div>
         </PBody>
       </Panel>
 

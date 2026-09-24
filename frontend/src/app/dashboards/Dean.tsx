@@ -87,7 +87,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
 
         <Panel title={`${Scope} desks`} right={`Scoped to your ${scopeNoun}`}>
           <PBody>
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+            <div className="grid--fill">
               <Link href="/results/broadsheet" className="btn btn--ghost btn--sm">Broadsheet</Link>
               <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
               <Link href="/results/approvals" className="btn btn--ghost btn--sm">Approvals</Link>
@@ -95,7 +95,7 @@ export function DeanDashboard({ me, home, role = "Dean", scopeNoun = "faculty" }
               <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>
               <Link href="/catalogue" className="btn btn--ghost btn--sm">Courses</Link>
             </div>
-            <div className="sub2" style={{ marginTop: 8 }}>You are acting as {role} of {home.facultyName}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
+            <div className="sub2 mt-2">You are acting as {role} of {home.facultyName}.{me?.name ? ` Signed in as ${me.name}.` : ""}</div>
           </PBody>
         </Panel>
       </div>

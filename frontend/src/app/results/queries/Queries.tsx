@@ -60,7 +60,7 @@ export function Queries({ rows, state, dept, actingOffice }: { rows: QueryRow[];
         ["Corrected", String(rows.filter((r) => r.state === "CORRECTED").length), "var(--chrome)", "Sent back through the chain"],
         ["Upheld", String(rows.filter((r) => r.state === "UPHELD").length), "var(--green-ink)", "The mark stood"],
       ]} />
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="row">
         {["open", "answered", "all"].map((s) => <Link key={s} href={`/results/queries?state=${s}${dept ? `&dept=${encodeURIComponent(dept)}` : ""}`} className={`btn btn--sm ${state === s ? "btn--primary" : "btn--ghost"}`}>{s === "open" ? "Open" : s === "answered" ? "Answered" : "All"}</Link>)}
       </div>
       <Note kind="info" title="A query is against one mark, and the answer says what was checked">
@@ -81,7 +81,7 @@ export function Queries({ rows, state, dept, actingOffice }: { rows: QueryRow[];
       </Panel>
       {answering ? (
         <Modal title={`Answer ${answering.ref}`} sub={`${answering.surname}, ${answering.other_names} · ${answering.course_code} · ${PART[answering.part] ?? answering.part}`} onClose={() => setAnswering(null)}
-          foot={<><Btn kind="ghost" onClick={() => setAnswering(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={!answer.trim() || busy} onClick={() => void send()}>{busy ? "Answering…" : "Answer on the record"}</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setAnswering(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={!answer.trim() || busy} onClick={() => void send()}>{busy ? "Answering…" : "Answer on the record"}</Btn></>}>
           <div className="sub2">They said: {answering.said}</div>
           <Field id="qv" label="Finding"><select id="qv" className="ctl" value={verdict} onChange={(e) => setVerdict(e.target.value)}><option value="UPHELD">Upheld — the mark stands</option><option value="CORRECTED">Corrected — the mark is amended through the chain</option><option value="CLOSED">Closed — not a query</option></select></Field>
           <Field id="qa" label="Answer" hint="What was checked and what was found. The student reads this."><textarea id="qa" className="ctl" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} /></Field>

@@ -71,7 +71,7 @@ export function Requisitions({ rows, actingOffice }: { rows: Req[]; actingOffice
             <b className="tnum" key="v">{money(Number(r.value))}</b>,
             <Pil kind="info" key="m">{METHOD[r.method] ?? r.method}</Pil>,
             <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.raised_by_name ? <div className="sub2">by {r.raised_by_me ? "you" : r.raised_by_name}</div> : null}{r.note ? <div className="sub2">{r.note}</div> : null}</span>,
-            <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span key="ac" className="row row--inline row--tight row--right">
               {mayApprove && r.state === "RAISED" && !r.raised_by_me ? <Btn kind="go" disabled={busy} onClick={() => void send(`/${r.id}/approve`, {}, `Approve ${r.reference}`).then((j) => { if (j) setSaid(`${r.reference} approved`); })}>Approve</Btn> : null}
               {mayApprove && r.state === "RAISED" && r.raised_by_me ? <Btn kind="ghost" disabled>Awaiting another approver</Btn> : null}
               {mayApprove && r.state === "RAISED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Why is it rejected?"); if (w && w.trim()) void send(`/${r.id}/reject`, { why: w.trim() }, `Reject ${r.reference}`); }}>Reject</Btn> : null}

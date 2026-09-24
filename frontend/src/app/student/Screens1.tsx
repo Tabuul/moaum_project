@@ -71,8 +71,8 @@ function StudentDetails({ s }: { s: Me }) {
           <Passport w={104} h={128} radius={6} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
           <div style={{ flexGrow: 1, minWidth: 240 }}>
             <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
-            <div className="sub2 tnum" style={{ marginTop: 2 }}>{s.matricNo ?? s.admissionNo}</div>
-            <div className="sub2" style={{ marginTop: 2 }}>{s.programme} &middot; {s.department}</div>
+            <div className="sub2 tnum mt-1">{s.matricNo ?? s.admissionNo}</div>
+            <div className="sub2 mt-1">{s.programme} &middot; {s.department}</div>
             <div className="sub2">{s.faculty}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
@@ -87,7 +87,7 @@ function StudentDetails({ s }: { s: Me }) {
           </div>
         </div>
 
-        {loading ? <div className="sub2" style={{ marginTop: 14 }}>Loading your details…</div> : null}
+        {loading ? <div className="sub2 mt-4">Loading your details…</div> : null}
         {/* one uniform column track for every section, so the columns line up down the whole card and a
             section with two fields reads as tidily as one with eight (auto-fill packs left, never stretches) */}
         {sections.map((sec, si) => (
@@ -103,7 +103,7 @@ function StudentDetails({ s }: { s: Me }) {
             </div>
           </div>
         ))}
-        <div className="sub2" style={{ marginTop: 14 }}>
+        <div className="sub2 mt-4">
           Names, programme and JAMB details are held by the Registry and JAMB. You can update your contact and other open
           details on the <Link href="/student/biodata">bio-data page</Link>.
         </div>
@@ -165,8 +165,8 @@ export function Dashboard({ s }: { s: Me }) {
         <div className="notice notice--ok">
           <Tick size={19} colour="var(--green-ink)" />
           <div>
-            <div className="notice__t" style={{ color: "var(--green-ink)" }}>You are cleared to register</div>
-            <p style={{ color: "var(--green-ink)" }}>{f.paidInFull ? `School fees settled in full for ${f.session}.` : `Your payment so far releases registration for ${f.session}; ${naira(f.balance)} remains.`}</p>
+            <div className="notice__t ink-green">You are cleared to register</div>
+            <p className="ink-green">{f.paidInFull ? `School fees settled in full for ${f.session}.` : `Your payment so far releases registration for ${f.session}; ${naira(f.balance)} remains.`}</p>
             <div style={{ marginTop: 11 }}><Link href="/student/register" className="btn btn--go btn--sm">Register courses</Link></div>
           </div>
         </div>
@@ -182,7 +182,7 @@ export function Dashboard({ s }: { s: Me }) {
               <div className="sub2">{s.programme} &middot; {s.level} Level</div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
             <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>CGPA {s.cgpa ?? "—"}</span>
             {s.curriculumVersion ? <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>Curriculum {s.curriculumVersion}</span> : null}
@@ -232,7 +232,7 @@ export function Dashboard({ s }: { s: Me }) {
   );
 }
 
-const pwToggle: CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: 0, color: "var(--chrome, #0e3f55)", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4 };
+const pwToggle: CSSProperties = { position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: 0, color: "var(--chrome, var(--chrome))", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4 };
 
 export function Profile({ s, change }: { s: Me; change: boolean }) {
   const { act, busy, problem } = useAct();
@@ -253,7 +253,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 9, flexGrow: 1, minWidth: 230 }}>
           <div><div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
             <div className="sub2 tnum">{s.matricNo ?? s.admissionNo} &middot; {s.programme} &middot; {s.level} Level</div></div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: "var(--green)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
             <Pil kind={s.hasPhoto ? "info" : "grey"}>{s.hasPhoto ? "Photograph on file" : "No photograph on file"}</Pil>
           </div>
@@ -268,8 +268,8 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
           <div className="field"><label htmlFor="ad">Contact address</label><input id="ad" value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="off" /></div>
           <Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("contact", "PUT", "/me/contact", { phone, email, address }, "Contact details changed by the student", "Contact details saved"); setErrFor(r ? null : "contact"); }}>{busy === "contact" ? "Saving…" : "Save changes"}</Btn>
           {problem && errFor === "contact" ? <ProblemNotice problem={problem} /> : null}
-          <div style={{ height: 1, background: "var(--line-2)" }} />
-          <div style={{ fontWeight: 600 }}>Password</div>
+          <div className="hr" />
+          <div className="b600">Password</div>
           <div className="field"><label htmlFor="pw0">Current password</label>
             <div style={{ position: "relative" }}>
               <input id="pw0" type={showCur ? "text" : "password"} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ paddingRight: 62 }} />
@@ -298,7 +298,7 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
             ["Curriculum version", <span className="tnum" key="c">{s.curriculumVersion ?? "—"}</span>],
             ["On the register since", onDay(s.entrySession ? undefined : null)],
           ]} />
-          <div className="sub2" style={{ marginTop: 4 }}>Your curriculum version was fixed when you were admitted, so you are always assessed against the rules that applied then. To change a name or programme, apply through Registry with supporting documents.</div>
+          <div className="sub2 mt-1">Your curriculum version was fixed when you were admitted, so you are always assessed against the rules that applied then. To change a name or programme, apply through Registry with supporting documents.</div>
         </div></div>
       </div>
     </>

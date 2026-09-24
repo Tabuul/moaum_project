@@ -23,7 +23,7 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
   const slots = data.offerings.reduce((n, o) => n + o.slots.length, 0);
   return (
     <>
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="tt-s">Session</label>
           <select id="tt-s" className="ctl" value={data.session} onChange={(e) => queryNav(`/me/teaching?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(data.session) ? sessions : [data.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
@@ -56,7 +56,7 @@ export function TeachingView({ data, sessions }: { data: Teaching; sessions: str
                 <span className="tnum" key="n">{o.roll}</span>,
                 <span className="sub2" key="tt">{o.slots.length
                   ? o.slots.map((s) => `${DAY[s.weekday]} ${hhmm(s.starts_at)}–${hhmm(s.ends_at)} · ${s.venue}${s.kind !== "LECTURE" ? ` (${s.kind.toLowerCase()})` : ""}`).join("  ·  ")
-                  : <span style={{ color: "var(--chrome)" }}>No class slot set</span>}</span>,
+                  : <span className="ink-chrome">No class slot set</span>}</span>,
               ])}
               texts={data.offerings.map((o) => `${o.code} ${o.title} ${o.role}`)}
             />

@@ -124,7 +124,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
           {may ? (
             <Panel title="Bind a course into the structure" right={`${data.programme.name} · ${data.programme.dept_name ?? ""}`}>
               <PBody>
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div className="row row--end">
                   <div className="field" style={{ flex: "2 1 280px", position: "relative" }}><label htmlFor="st-find">Course — any department, by code or title</label>
                     <input id="st-find" className="ctl" value={pick ? `${pick.code} — ${pick.title}` : q} onChange={(e) => search(e.target.value)} placeholder="e.g. GST 111, or Use of English" autoComplete="off" />
                     {found.length && !pick ? (
@@ -149,7 +149,7 @@ export function Structure({ programmes, prog, data, problem, may }: { programmes
                     </select></div>
                   <Btn kind="primary" disabled={busy || !pick} onClick={() => void bind()}>{busy ? "Binding…" : "Bind the course"}</Btn>
                 </div>
-                <div className="sub2" style={{ marginTop: 6 }}>Basis: <b>Core</b> the programme requires it; <b>Elective</b> the student chooses it and a failure is not carried; <b>Borrowed</b> another department owns it; <b>GST</b> a University requirement. A binding for a track is seen by that track&rsquo;s students only.</div>
+                <div className="sub2 mt-2">Basis: <b>Core</b> the programme requires it; <b>Elective</b> the student chooses it and a failure is not carried; <b>Borrowed</b> another department owns it; <b>GST</b> a University requirement. A binding for a track is seen by that track&rsquo;s students only.</div>
               </PBody>
             </Panel>
           ) : null}

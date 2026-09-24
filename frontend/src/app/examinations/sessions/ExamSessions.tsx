@@ -113,7 +113,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
           <Note kind="info" title="Opening a session generates every score sheet at once">
             One sheet per course offered, over the approved register at the moment of opening, in the name of the lecturer the department allocated. A course with no allocated lecturer generates no sheet — and is counted the moment the session opens, which is where an unallocated course is found before December rather than in it.
           </Note>
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <div className="row">
             <button className="btn btn--primary btn--sm" disabled={busy !== null || !f.examsFrom || !f.examsTo || !f.sheetsDue} onClick={() => void create(true)}>Open the session</button>
             <Btn kind="ghost" disabled={busy !== null || !f.examsFrom || !f.examsTo || !f.sheetsDue} onClick={() => void create(false)}>Save as a draft</Btn>
           </div>
@@ -142,7 +142,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
 
       {edit ? (
         <Modal title="Edit the examination session" sub={`${edit.session} · ${edit.semester === 1 ? "First" : edit.semester === 2 ? "Second" : "Third"} semester · ${edit.kind === "MAIN" ? "Main" : edit.kind === "RESIT" ? "Re-sit" : "Special"}`} onClose={() => setEdit(null)}
-          foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy !== null || !ed.examsFrom || !ed.examsTo || !ed.sheetsDue} onClick={() => void saveDates()}>{busy === "edit" ? "Saving…" : "Save the dates"}</Btn></>}>
           <Note kind={edit.sheets > 0 ? "info" : "info"} title={edit.sheets > 0 ? "Only the dates can change" : "Session, semester, type and dates can all change"}>
             {edit.sheets > 0
@@ -182,7 +182,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
             rows={outstanding.map((o) => [
               <b className="tnum" key="c">{o.courseCode}</b>, <span className="sub2" key="d">{o.deptName}</span>, <span key="l">{o.lecturer ?? "—"}</span>,
               <span className="tnum" key="n">{o.candidates}</span>,
-              <span className="tnum" key="x" style={{ color: "var(--red-ink)", fontWeight: 700 }}>{o.daysLate ?? "—"}</span>,
+              <span className="tnum ink-red b700" key="x">{o.daysLate ?? "—"}</span>,
               <span className="sub2" key="e">{o.escalatedTo}</span>,
               <span key="a"><Btn kind="ghost" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${o.id}/remind`, {}, `Reminder for ${o.courseCode}`, o.id)}>Remind</Btn> <Btn kind="urgent" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/sheets/${o.id}/remind`, {}, `Escalation for ${o.courseCode}`, o.id)}>Escalate</Btn></span>,
             ])}

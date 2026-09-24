@@ -109,7 +109,7 @@ export function Wallet({ w }: { w: StudentWallet }) {
             <div><Btn kind="ghost" disabled={busy !== null || !Number(topup)} onClick={async () => { const amt = Number(topup); const r = await act("topup", "POST", "/me/wallet/topup-reference", { session: w.session, amount: amt }, "Wallet top-up reference"); if (r) { setTopupRef({ reference: String(r.reference), amount: amt }); setSaid(`Reference ${r.reference} generated — pay it by card below, or on the Fees page.`); } }}>Generate the reference</Btn> <Link href="/student/fees" className="btn btn--ghost btn--sm">Fees &amp; payments</Link></div>
             {topupRef ? (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line-2)" }}>
-                <div className="sub2" style={{ marginBottom: 6 }}>Reference <span className="tnum">{topupRef.reference}</span> for {naira(topupRef.amount)}. Pay it by card or USSD; the moment the gateway confirms, your wallet is credited.</div>
+                <div className="sub2 mb-2">Reference <span className="tnum">{topupRef.reference}</span> for {naira(topupRef.amount)}. Pay it by card or USSD; the moment the gateway confirms, your wallet is credited.</div>
                 <PayByCard reference={topupRef.reference} amount={topupRef.amount} />
               </div>
             ) : null}
@@ -124,7 +124,7 @@ export function Wallet({ w }: { w: StudentWallet }) {
             ) : null}
             {elig.eligible ? (
               <>
-                <div className="sub2" style={{ marginBottom: 8 }}>Your {w.session} fees are cleared and {naira(elig.balance)} is left in the wallet. Enter <b>your own</b> bank account to withdraw it.</div>
+                <div className="sub2 mb-2">Your {w.session} fees are cleared and {naira(elig.balance)} is left in the wallet. Enter <b>your own</b> bank account to withdraw it.</div>
                 <Field id="wd-amt" label="Amount" hint={`Up to ${naira(elig.balance)}`}><input id="wd-amt" className="ctl tnum" value={wd.amount} placeholder={String(elig.balance)} onChange={(e) => setWd({ ...wd, amount: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
                 <Field id="wd-bank" label="Bank"><input id="wd-bank" className="ctl" value={wd.bank} onChange={(e) => setWd({ ...wd, bank: e.target.value })} autoComplete="off" /></Field>
                 <div className="grid grid--2">

@@ -38,7 +38,7 @@ function RegPanel({ r }: { r: Reg }) {
   return (
     <Panel
       title={`${r.session} · ${SEM(r.semester)} semester`}
-      right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+      right={<span className="row row--inline">
         <span className="sub2">{r.level} Level · {r.units} units</span>
         <Pil kind={REG_PILL[r.status] ?? "grey"}>{r.status}</Pil>
       </span>}>

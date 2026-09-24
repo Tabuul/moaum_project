@@ -131,7 +131,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
       <>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
           <Btn kind="ghost" onClick={() => { setOpen(null); setDetail(null); }}>← All courses</Btn>
-          <span style={{ flexGrow: 1 }} />
+          <span className="grow" />
           <Btn kind="ghost" disabled={!detail?.length} onClick={() => void exportDetailExcel()}>Export Excel</Btn>
           <Btn kind="ghost" disabled={!detail?.length} onClick={() => detail && brandedPrint(
             `${open.name} — screened applicants`,
@@ -141,7 +141,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
         <Panel title={open.name}
                right={<span className="sub2">{open.faculty_name} · {open.code}{cutoff != null ? ` · cut-off ${cutoff}` : ""}</span>}>
           <PBody>
-            <div className="sub2" style={{ marginBottom: 10 }}>
+            <div className="sub2 mb-3">
               Every screened candidate for this programme — those on the committed CAPS list who carry a UTME aggregate —
               with the criteria known at screening: the UTME aggregate {belowNote ? "against the cut-off" : ""}, origin, and
               whether an O&rsquo;Level result has been uploaded. The full O&rsquo;Level, Post-UTME and decision criteria appear
@@ -196,7 +196,7 @@ export function Screened({ session, summary }: { session: string; summary: Scree
             options={faculties.map((f) => ({ value: f.code, label: f.name }))}
             onChange={(v) => setFaculty(v)} />
         </div>
-        <span style={{ flexGrow: 1 }} />
+        <span className="grow" />
         <Btn kind="ghost" disabled={!shown.length} onClick={() => void exportOverviewExcel()}>Export summary (Excel)</Btn>
         <Btn kind="ghost" disabled={!shown.length} onClick={() => brandedPrint(
           `Screened applicants — summary`, `${session}${faculty ? ` · ${faculties.find((f) => f.code === faculty)?.name}` : ""} · ${totalScreened.toLocaleString()} screened`,

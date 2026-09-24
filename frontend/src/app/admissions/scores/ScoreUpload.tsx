@@ -183,7 +183,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
       </Note>
 
       {postUtme ? (
-        <Panel title="Programmes whose Post-UTME scores must be uploaded" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+        <Panel title="Programmes whose Post-UTME scores must be uploaded" right={<span className="row row--inline">
           <span className="sub2">{postUtme.counts.awaitingScores ? `${postUtme.counts.awaitingScores} still awaiting` : "All scored"}</span>
           {postUtme.programmes.some((r) => Number(r.awaiting) > 0) ? <>
             <Btn kind="ghost" disabled={busy} onClick={() => void downloadAwaiting(null, "all")}>Download all awaiting</Btn>
@@ -217,7 +217,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
         </select>
       }>
         <PBody>
-          <div className="sub2" style={{ marginBottom: 8 }}>One candidate per line: the JAMB number or application number, then the score (0&ndash;100), separated by a comma, tab or spaces. A header line is ignored. Paste from a spreadsheet, or load a CSV.</div>
+          <div className="sub2 mb-2">One candidate per line: the JAMB number or application number, then the score (0&ndash;100), separated by a comma, tab or spaces. A header line is ignored. Paste from a spreadsheet, or load a CSV.</div>
           <textarea className="ctl" rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"20261234AB, 68.5\n20265678CD, 72\nAPP/26/000002, 55"} style={{ fontFamily: "var(--mono, monospace)", width: "100%" }} />
           <input ref={file} type="file" accept=".csv,text/csv,text/plain" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void loadFile(f); e.target.value = ""; }} />
           {problem ? <ProblemNotice problem={problem} /> : null}
@@ -253,10 +253,10 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
 
       <Panel title="Release the scores" right="Held until released; the Board decides on released scores">
         <PBody>
-          <div className="sub2" style={{ marginBottom: 8 }}>An uploaded score is entered but <b>held</b> until it is released — a candidate&rsquo;s aggregate and the Board&rsquo;s decision both wait on it. Releasing publishes every entered score for {session} (seated or uploaded) and notifies each applicant.</div>
+          <div className="sub2 mb-2">An uploaded score is entered but <b>held</b> until it is released — a candidate&rsquo;s aggregate and the Board&rsquo;s decision both wait on it. Releasing publishes every entered score for {session} (seated or uploaded) and notifies each applicant.</div>
           {released !== null ? <Note kind="ok" title={`${released} score${released === 1 ? "" : "s"} released for ${session}`}>They are no longer held; the Board can now decide, and each applicant has been notified.</Note> : null}
           <Btn kind="primary" disabled={!mayRelease || busy} onClick={() => void release()}>{busy ? "Releasing…" : "Release scores"}</Btn>
-          {!mayRelease ? <div className="sub2" style={{ marginTop: 6 }}>Releasing is the Academic Office&rsquo;s act; ask them to release, or release from the Applicants desk.</div> : null}
+          {!mayRelease ? <div className="sub2 mt-2">Releasing is the Academic Office&rsquo;s act; ask them to release, or release from the Applicants desk.</div> : null}
         </PBody>
       </Panel>
 
@@ -268,7 +268,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
             O&rsquo;Level + UTME computation. It <b>cannot be undone</b>; re-upload the correct scores if needed.
           </Note>
           {cleared !== null ? <Note kind="ok" title={`${cleared} score${cleared === 1 ? "" : "s"} cleared`}>Those candidates no longer carry a Post-UTME score for {session}.</Note> : null}
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div className="row row--end">
             <div className="field" style={{ minWidth: 260, margin: 0 }}><label htmlFor="cs-prog">Programme</label>
               <select id="cs-prog" className="ctl" value={clearProg} onChange={(e) => { setClearProg(e.target.value); setCleared(null); }}>
                 <option value="">All programmes ({session})</option>
@@ -280,7 +280,7 @@ export function ScoreUpload({ session, sessions, actingOffice, postUtme }: { ses
             </div>
             <Btn kind="urgent" disabled={!mayRelease || busy || clearConfirm.trim().toUpperCase() !== "CLEAR SCORES"} onClick={() => void clearScores()}>{busy ? "Clearing…" : "Clear scores"}</Btn>
           </div>
-          {!mayRelease ? <div className="sub2" style={{ marginTop: 6 }}>Only the Academic Office or Registry may clear scores.</div> : null}
+          {!mayRelease ? <div className="sub2 mt-2">Only the Academic Office or Registry may clear scores.</div> : null}
         </PBody>
       </Panel>
     </>

@@ -64,7 +64,7 @@ export function ExamsDashboard({ me, listing, openQueries, session, history = []
 
       <Panel title="Examinations desks" right={me?.name ? `Signed in as ${me.name}` : "Examinations"}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <Link href="/examinations/sessions" className="btn btn--ghost btn--sm">Examination sessions</Link>
             <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
             <Link href="/results/approvals" className="btn btn--ghost btn--sm">Approvals</Link>

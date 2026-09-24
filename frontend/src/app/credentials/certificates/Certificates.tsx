@@ -76,7 +76,7 @@ export function Certificates({ register, actingOffice }: { register: Certificate
           texts={register.certificates.map((c) => `${c.number} ${c.surname} ${c.otherNames} ${c.matricNo ?? ""} ${c.award}`)}
         />
         <PBody>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="row">
             <Btn kind="primary" disabled={!register.awaitingPrint.length} onClick={() => { setF({ ...f, studentId: register.awaitingPrint[0]?.studentId ?? "", batchId: register.batches[0]?.id ?? "" }); setModal("print"); }}>Print a certificate</Btn>
             <span className="sub2">{register.awaitingPrint.length ? `${register.awaitingPrint.length} approved graduand${register.awaitingPrint.length === 1 ? "" : "s"} not yet printed` : "Every approved graduand has a certificate; the next ones arrive when Senate approves a list"}</span>
           </div>
@@ -103,7 +103,7 @@ export function Certificates({ register, actingOffice }: { register: Certificate
 
       {modal === "batch" ? (
         <Modal title="New stationery batch" sub="Serial numbers are tracked from issue to collection" onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.batch || !f.serialFrom || !f.serialTo || !f.receivedOn} onClick={() => void post("/api/bff/api/v1/credentials/stationery", { batch: f.batch, serialFrom: Number(f.serialFrom), serialTo: Number(f.serialTo), receivedOn: f.receivedOn }, `Stationery batch ${f.batch} received`)}>Record the batch</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.batch || !f.serialFrom || !f.serialTo || !f.receivedOn} onClick={() => void post("/api/bff/api/v1/credentials/stationery", { batch: f.batch, serialFrom: Number(f.serialFrom), serialTo: Number(f.serialTo), receivedOn: f.receivedOn }, `Stationery batch ${f.batch} received`)}>Record the batch</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="b-batch" label="Batch"><input id="b-batch" className="ctl tnum" value={f.batch} placeholder={`B-${year}-01`} onChange={(e) => setF({ ...f, batch: e.target.value })} autoComplete="off" /></Field>
             <Field id="b-on" label="Received on"><input id="b-on" className="ctl" type="date" value={f.receivedOn} onChange={(e) => setF({ ...f, receivedOn: e.target.value })} /></Field>
@@ -114,7 +114,7 @@ export function Certificates({ register, actingOffice }: { register: Certificate
       ) : null}
       {modal === "print" ? (
         <Modal title="Print a certificate" sub="Only against a Senate-approved, cleared graduand" onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.studentId} onClick={() => void post("/api/bff/api/v1/credentials/certificates", { studentId: f.studentId, batchId: f.batchId || null, convocation: `Convocation ${year}` }, "Certificate printed")}>Print</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.studentId} onClick={() => void post("/api/bff/api/v1/credentials/certificates", { studentId: f.studentId, batchId: f.batchId || null, convocation: `Convocation ${year}` }, "Certificate printed")}>Print</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="p-who" label="Graduand"><select id="p-who" className="ctl" value={f.studentId} onChange={(e) => setF({ ...f, studentId: e.target.value })}>{register.awaitingPrint.map((g) => <option key={g.studentId} value={g.studentId}>{g.surname}, {g.otherNames} — {g.award}</option>)}</select></Field>
             <Field id="p-batch" label="Stationery batch" hint="The next unused serial is taken from it"><select id="p-batch" className="ctl" value={f.batchId} onChange={(e) => setF({ ...f, batchId: e.target.value })}><option value="">No serial recorded</option>{register.batches.map((b) => <option key={b.id} value={b.id}>{b.batch}</option>)}</select></Field>
@@ -123,7 +123,7 @@ export function Certificates({ register, actingOffice }: { register: Certificate
       ) : null}
       {modal === "hold" || modal === "reissue" ? (
         <Modal title={modal === "hold" ? "Hold this certificate" : "Reissue as a duplicate"} sub={modal === "hold" ? "Name the clearance outstanding" : "Affidavit and police report reference"} onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind={modal === "hold" ? "urgent" : "primary"} disabled={busy || !f.reason.trim()} onClick={() => void post(`/api/bff/api/v1/credentials/certificates/${target}/${modal}`, { reason: f.reason, batchId: f.batchId || null }, modal === "hold" ? `Certificate held: ${f.reason}` : `Certificate reissued: ${f.reason}`)}>{modal === "hold" ? "Hold" : "Reissue"}</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind={modal === "hold" ? "urgent" : "primary"} disabled={busy || !f.reason.trim()} onClick={() => void post(`/api/bff/api/v1/credentials/certificates/${target}/${modal}`, { reason: f.reason, batchId: f.batchId || null }, modal === "hold" ? `Certificate held: ${f.reason}` : `Certificate reissued: ${f.reason}`)}>{modal === "hold" ? "Hold" : "Reissue"}</Btn></>}>
           <Field id="c-reason" label={modal === "hold" ? "Reason" : "Evidence"}><input id="c-reason" className="ctl" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} autoComplete="off" /></Field>
         </Modal>
       ) : null}

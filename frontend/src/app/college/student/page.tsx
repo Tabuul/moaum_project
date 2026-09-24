@@ -148,20 +148,20 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
                   {steps.map((x, i) => (
                     <div key={x.label} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                       <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, boxSizing: "border-box", ...(x.done ? { background: "var(--green-ink)", color: "#fff" } : i === stageIdx && active ? { border: "2px solid var(--green-ink)", color: "var(--green-ink)" } : { border: "1px solid var(--line)", color: "var(--chrome-dim)" }) }}>{x.done ? "✓" : i + 1}</div>
-                      <div><div style={{ fontWeight: 600 }}>{x.label}</div><div className="sub2">{x.sub}</div></div>
+                      <div><div className="b600">{x.label}</div><div className="sub2">{x.sub}</div></div>
                     </div>
                   ))}
                 </div>
-                {active && next && !next.cleared ? <div style={{ marginTop: 12 }}><Link href="/student/fees" className="btn btn--primary btn--sm">Pay {next.name} fees · {next.session}</Link></div> : null}
-                {active && r.canRegister ? <div style={{ marginTop: 12 }}><RegisterButton session={yearSession} level={level} items={items} label={registerLabel} /></div> : null}
+                {active && next && !next.cleared ? <div className="mt-3"><Link href="/student/fees" className="btn btn--primary btn--sm">Pay {next.name} fees · {next.session}</Link></div> : null}
+                {active && r.canRegister ? <div className="mt-3"><RegisterButton session={yearSession} level={level} items={items} label={registerLabel} /></div> : null}
               </PBody>
             </Panel>
           ) : (
             <Panel title="100 Level · Pre-Medical, on the University's form" right={r.level100.outcome ? (OUTCOME[r.level100.outcome]?.[0] ?? word(r.level100.outcome)) : "No results yet"}>
               <PBody>
                 <div>You register by semester on the University&rsquo;s form and your results stand on the University&rsquo;s GPA sheet. Promotion to 200 Level follows the College&rsquo;s rule: every C-group course (Mathematics, Physics, Chemistry, Biology) passed at 50 or more, with no resit; a GST course failed is carried over.</div>
-                <div style={{ marginTop: 8 }}>{r.level100.published} of {r.level100.registered} courses published{r.level100.failed ? <> · <b style={{ color: "var(--red-ink)" }}>below 50: {r.level100.failed}</b></> : null}{r.level100.carried ? <> · GST carried: {r.level100.carried}</> : null}</div>
-                <div style={{ marginTop: 10 }}><Link href="/student/results" className="btn btn--ghost btn--sm">Your University results</Link></div>
+                <div className="mt-2">{r.level100.published} of {r.level100.registered} courses published{r.level100.failed ? <> · <b className="ink-red">below 50: {r.level100.failed}</b></> : null}{r.level100.carried ? <> · GST carried: {r.level100.carried}</> : null}</div>
+                <div className="mt-3"><Link href="/student/results" className="btn btn--ghost btn--sm">Your University results</Link></div>
               </PBody>
             </Panel>
           )}
@@ -209,7 +209,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
               <Pil key="f" kind={e.first_cleared ? "ok" : "bad"}>{e.first_cleared ? "Paid" : "Due"}</Pil>, <Pil key="g" kind={e.second_cleared ? "ok" : "warn"}>{e.second_cleared ? "Paid" : "Due"}</Pil>,
             ])} />
             <PBody><div className="sub2">The level&rsquo;s fees are set by the Bursary and paid on the University&rsquo;s Fees &amp; payments page; the position here updates the moment a payment is confirmed. The whole session may be paid at once, or by semester as on the main portal.</div>
-              <div style={{ marginTop: 8 }}><Link href="/student/fees" className="btn btn--primary btn--sm">Fees &amp; payments</Link></div></PBody>
+              <div className="mt-2"><Link href="/student/fees" className="btn btn--primary btn--sm">Fees &amp; payments</Link></div></PBody>
           </Panel>
         </>
       ) : null}
@@ -221,7 +221,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
               <PBody>
                 <div>The curriculum is fixed by the prospectus: there is nothing to choose. {sems.length ? "Each semester's courses are registered in turn, on that semester's fees; the whole session paid at once clears every semester. Nothing is graded at a semester's end: the one examination sits at the end of the year." : "Every posting at the level is registered together, on the first semester's fees."} {r.carryOvers.filter((c) => !c.cleared_on).length ? `Carried over and registered again: ${r.carryOvers.filter((c) => !c.cleared_on).map((c) => c.code).join(", ")}.` : ""}</div>
                 {sems.length ? (
-                  <div style={{ marginTop: 10 }}>
+                  <div className="mt-3">
                     <DTable cols={["Semester", "Weeks|mid", "Courses", "Runs|mid", "Fees|mid", "Registered|mid"]} rows={sems.map((x) => [
                       <strong key="n">{x.name}</strong>, <span className="tnum" key="w">{x.length_weeks ?? "—"}</span>, <span className="sub2 tnum" key="s">{x.subjects ?? "—"}</span>,
                       <span className="sub2" key="r">{x.starts_on ? `${dayOf(x.starts_on)} to ${dayOf(x.ends_on)}` : "Not yet dated"}</span>,
@@ -230,10 +230,10 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
                     ])} />
                   </div>
                 ) : null}
-                {!active ? <div className="sub2" style={{ marginTop: 8 }}>Registration is closed: {word(status)}.</div>
-                  : next && !next.cleared ? <div style={{ marginTop: 10 }}><span className="sub2">{next.name} opens after its fees are paid for {next.session}. </span><Link href="/student/fees" className="btn btn--primary btn--sm">Pay fees</Link></div>
-                  : next ? <div style={{ marginTop: 10 }}><RegisterButton session={yearSession} level={level} items={items} disabled={!r.canRegister} label={registerLabel} /></div>
-                  : registered ? <div className="sub2" style={{ marginTop: 8 }}>{cur?.registered_items ?? 0} items registered. {cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}.` : ""}</div>
+                {!active ? <div className="sub2 mt-2">Registration is closed: {word(status)}.</div>
+                  : next && !next.cleared ? <div className="mt-3"><span className="sub2">{next.name} opens after its fees are paid for {next.session}. </span><Link href="/student/fees" className="btn btn--primary btn--sm">Pay fees</Link></div>
+                  : next ? <div className="mt-3"><RegisterButton session={yearSession} level={level} items={items} disabled={!r.canRegister} label={registerLabel} /></div>
+                  : registered ? <div className="sub2 mt-2">{cur?.registered_items ?? 0} items registered. {cur?.state === "RESIT" ? `Resit pending: ${cur.resit_names ?? ""}.` : ""}</div>
                   : null}
               </PBody>
             </Panel>

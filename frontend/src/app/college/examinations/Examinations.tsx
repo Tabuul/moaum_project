@@ -183,8 +183,8 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
           {rc.decisions.provisional > 0 ? (
             <Panel title="The College Academic Board confirms" right={`${rc.decisions.provisional} provisional decision${rc.decisions.provisional === 1 ? "" : "s"}`}>
               <PBody>
-                <div className="sub2" style={{ marginBottom: 8 }}>The rule has applied a provisional decision to every candidate whose subjects are all resulted. The Board confirms them in one act on its minute; each student is then moved — to the next level, to the resit, to the repeat year, to withdrawal on the minute as the instrument, or to graduation. A candidate the Board decides differently is changed below before confirming.</div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="sub2 mb-2">The rule has applied a provisional decision to every candidate whose subjects are all resulted. The Board confirms them in one act on its minute; each student is then moved — to the next level, to the resit, to the repeat year, to withdrawal on the minute as the instrument, or to graduation. A candidate the Board decides differently is changed below before confirming.</div>
+                <div className="row row--end">
                   <div className="field" style={{ width: 220 }}><label htmlFor="ex-board">Board minute</label><input id="ex-board" className="ctl" value={boardMinute} onChange={(e) => setBoardMinute(e.target.value)} placeholder="CAB/2026/…" autoComplete="off" /></div>
                   <Btn kind="go" disabled={busy || !boardMinute.trim()} onClick={() => void confirmBoard()}>{busy ? "Confirming…" : `Confirm ${rc.decisions.provisional} decision${rc.decisions.provisional === 1 ? "" : "s"}`}</Btn>
                 </div>
@@ -202,7 +202,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
       <Panel title={`Candidates for ${exam?.code ?? ""} · the ${session} cohort`} right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><span className="sub2">{rows.length} enrolled at {exam?.level ?? ""} Level</span><Btn kind="ghost" onClick={() => setEnrol({ ...enrol, open: !enrol.open })}>{enrol.open ? "Close" : "Enrol a student"}</Btn></span>}>
         {enrol.open ? (
           <PBody>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div className="row row--end">
               <div className="field" style={{ width: 240 }}><label htmlFor="ex-enrol">Matriculation number</label><input id="ex-enrol" className="ctl" value={enrol.number} onChange={(e) => setEnrol({ ...enrol, number: e.target.value })} placeholder="MOAUM/MED/24/…" autoComplete="off" /></div>
               <Btn kind="primary" disabled={busy || !enrol.number.trim()} onClick={() => void enrolStudent()}>Open the {exam.level} Level year for {session}</Btn>
               <span className="sub2">For a student who registered on paper or arrived by transfer; they must be at {exam.level} Level on the register. The year&rsquo;s semesters are then registered on their fees.</span>
@@ -233,7 +233,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
         if (!c) return null;
         const results = parse<Result[]>(c.results, []);
         return (
-          <Panel title={`${c.surname}, ${c.other_names} · ${c.number}`} right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><label htmlFor="ex-attempt" className="sub2">Attempt</label><select id="ex-attempt" className="ctl" value={attempt} onChange={(e) => { setAttempt(e.target.value); setMarks(marksAt(results, e.target.value)); }}>{ATTEMPTS.map((a) => <option key={a} value={a}>{word(a)}</option>)}</select></span>}>
+          <Panel title={`${c.surname}, ${c.other_names} · ${c.number}`} right={<span className="row row--inline"><label htmlFor="ex-attempt" className="sub2">Attempt</label><select id="ex-attempt" className="ctl" value={attempt} onChange={(e) => { setAttempt(e.target.value); setMarks(marksAt(results, e.target.value)); }}>{ATTEMPTS.map((a) => <option key={a} value={a}>{word(a)}</option>)}</select></span>}>
             <div className="tablewrap"><table>
               <thead><tr><th>Subject</th><th className="mid">CA</th><th className="mid">Examination</th><th className="mid">Clinical</th><th className="mid">Attendance %</th><th className="mid">Total</th><th className="mid">Standing</th><th>Earlier attempts</th></tr></thead>
               <tbody>
@@ -262,7 +262,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
               </tbody>
             </table></div>
             <PBody>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="row">
                 <Btn kind="primary" disabled={busy} onClick={() => void saveResults(c)}>{busy ? "Saving…" : `Save the ${word(attempt).toLowerCase()} results`}</Btn>
                 <span className="sub2">The pass is judged by the rule as the marks are saved: {subjects[0]?.pass_mark ?? 50} or more in the subject{subjects.some((s) => s.clinical_component_min) ? ", and in the clinical component where the subject has one" : ""}{exam.min_attendance_pct != null ? `, with attendance of at least ${exam.min_attendance_pct}% or the candidate is barred` : ""}. Once every subject is resulted the rule applies its decision provisionally. A resit or repeat is a new attempt; the earlier one is kept.</span>
               </div>
@@ -270,7 +270,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}><strong>CA kept during the year</strong><span className="sub2">Course tests and end-of-posting scores as they happen; graded never. The year&rsquo;s CA out of {subjects[0]?.ca_weight ?? 30} is composed from them and entered above at the end of the year.</span></div>
                 {ca ? (
                   <>
-                    {ca.scores.length ? <div className="sub2" style={{ marginTop: 6 }}>{ca.scores.map((x) => `${x.subject} · ${x.item}: ${x.score} of ${x.max_score}${x.attempt_no > 1 ? ` (attempt ${x.attempt_no})` : ""}`).join(" · ")}</div> : <div className="sub2" style={{ marginTop: 6 }}>Nothing recorded yet.</div>}
+                    {ca.scores.length ? <div className="sub2 mt-2">{ca.scores.map((x) => `${x.subject} · ${x.item}: ${x.score} of ${x.max_score}${x.attempt_no > 1 ? ` (attempt ${x.attempt_no})` : ""}`).join(" · ")}</div> : <div className="sub2 mt-2">Nothing recorded yet.</div>}
                     {ca.items.length ? (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
                         <div className="field" style={{ flex: "1 1 260px" }}><label htmlFor="ex-ca-item">Item</label>
@@ -278,9 +278,9 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                         <div className="field" style={{ width: 110 }}><label htmlFor="ex-ca-score">Score</label><input id="ex-ca-score" className="ctl tnum" inputMode="decimal" value={caNew.score} onChange={(e) => setCaNew({ ...caNew, score: e.target.value.replace(/[^0-9.]/g, "") })} /></div>
                         <Btn kind="ghost" disabled={busy || !caNew.itemId || caNew.score === ""} onClick={() => void addCa(c)}>Record</Btn>
                       </div>
-                    ) : <div className="sub2" style={{ marginTop: 6 }}>The prospectus names no CA items for this examination&rsquo;s subjects.</div>}
+                    ) : <div className="sub2 mt-2">The prospectus names no CA items for this examination&rsquo;s subjects.</div>}
                   </>
-                ) : <div className="sub2" style={{ marginTop: 6 }}>Loading…</div>}
+                ) : <div className="sub2 mt-2">Loading…</div>}
               </div>
               <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
@@ -288,7 +288,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                   {rec ? <span className="sub2">The rule says <b>{rec.recommend === "INCOMPLETE" ? "nothing yet — results incomplete" : OUTCOMES.find((o) => o[0] === rec.recommend)?.[1] ?? rec.recommend}</b> ({rec.failed} of {rec.of} failed{rec.failedNames ? `: ${rec.failedNames}` : ""}, at {word(rec.latestAttempt).toLowerCase()}). {rec.ruleRef ?? rec.onFailure}</span> : null}
                 </div>
                 {(() => { const d = parse<Decision | null>(c.decision, null); return d ? (
-                  <div style={{ marginTop: 6 }}>
+                  <div className="mt-2">
                     <Pil kind={d.state === "CONFIRMED" ? "ok" : "warn"}>{d.state === "CONFIRMED" ? "Confirmed by the Board" : "Provisional"}</Pil> <b>{OUTCOMES.find((o) => o[0] === d.outcome)?.[1] ?? d.outcome}</b>{d.resit_names ? <span className="sub2"> · resit: {d.resit_names}</span> : null}{d.minute ? <span className="sub2"> · minute {d.minute}</span> : null}
                     {d.state === "CONFIRMED" && d.outcome === "APPEAL" && exam.appeal_to_senate ? (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
@@ -308,7 +308,7 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
                   <div className="field" style={{ flex: "1 1 160px" }}><label htmlFor="ex-minute">Board minute</label><input id="ex-minute" className="ctl" value={decision.minute} onChange={(e) => setDecision({ ...decision, minute: e.target.value })} placeholder="CAB/2026/…" autoComplete="off" /></div>
                   <Btn kind="go" disabled={busy || !decision.outcome} onClick={() => void saveDecision(c)}>Change the provisional decision</Btn>
                 </div>
-                <div className="sub2" style={{ marginTop: 6 }}>The rule applies its decision provisionally; the Board changes a candidate&rsquo;s here where it decides differently, then confirms the set above on its minute. A confirmed decision is not changed here.</div>
+                <div className="sub2 mt-2">The rule applies its decision provisionally; the Board changes a candidate&rsquo;s here where it decides differently, then confirms the set above on its minute. A confirmed decision is not changed here.</div>
               </div>
             </PBody>
           </Panel>

@@ -61,7 +61,7 @@ export function HostelDesk({ d, sessions, actingOffice }: { d: HostelDeskData; s
     <>
       <RoleLine allowed={["services", "housing", "bursar"]} actingOffice={actingOffice} canAct={may}
         action="Allocating hostel places and rooms" />
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 160 }}><label htmlFor="hd-s">Session</label>
           <select id="hd-s" className="ctl" value={d.session} onChange={(e) => queryNav(`/hostel?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(d.session) ? sessions : [d.session, ...sessions]).map((s) => <option key={s} value={s}>{s}</option>)}
@@ -101,7 +101,7 @@ export function HostelDesk({ d, sessions, actingOffice }: { d: HostelDeskData; s
                 <div><Btn kind="primary" disabled={!may || busy || seed.trim().length < 6 || !d.setting} onClick={async () => { const j = await send(`/api/bff/api/v1/hostel/sessions/${sess}/draw`, "POST", { seed: seed.trim() }, `Hostel draw for ${d.session} from seed ${seed.trim()}`); if (j) setSaid(`Drawn: ${j.allocated} allocated (${j.priority} by priority), ${j.unsuccessful} reserves`); }}>Run the draw</Btn></div>
               </>
             )}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="ghost" disabled={!may || busy || !drawn} onClick={async () => { const j = await send(`/api/bff/api/v1/hostel/sessions/${sess}/lapse`, "POST", {}, `Hostel holds lapsed for ${d.session}`); if (j) setSaid(`${j.lapsed} hold${j.lapsed === 1 ? "" : "s"} lapsed and passed to the next name`); }}>Lapse expired holds now</Btn>
               <span className="sub2">The hold runs whether or not anybody is watching; this applies what has already expired.</span>
             </div>
@@ -129,7 +129,7 @@ export function HostelDesk({ d, sessions, actingOffice }: { d: HostelDeskData; s
       <div className="grid grid--2">
         <Panel title="Inventory" right="A record, not a spreadsheet">
           {d.halls.length ? (
-            <DTable cols={["Hall", "Beds|mid", "Rooms|mid", "Out|mid"]} rows={d.halls.map((h) => [<span key="h"><strong>{h.name}</strong><div className="sub2">{h.code}{h.sex ? ` · ${h.sex === "F" ? "female" : "male"}` : " · either"}</div></span>, <span className="tnum" key="b">{h.beds}</span>, <span className="tnum sub2" key="r">{h.rooms}</span>, h.out_of_service ? <b className="tnum" key="o" style={{ color: "var(--red-ink)" }}>{h.out_of_service}</b> : <span className="sub2" key="o">—</span>])} />
+            <DTable cols={["Hall", "Beds|mid", "Rooms|mid", "Out|mid"]} rows={d.halls.map((h) => [<span key="h"><strong>{h.name}</strong><div className="sub2">{h.code}{h.sex ? ` · ${h.sex === "F" ? "female" : "male"}` : " · either"}</div></span>, <span className="tnum" key="b">{h.beds}</span>, <span className="tnum sub2" key="r">{h.rooms}</span>, h.out_of_service ? <b className="tnum ink-red" key="o">{h.out_of_service}</b> : <span className="sub2" key="o">—</span>])} />
           ) : <PBody><div className="sub2">No hall on the register. Add one below; the draw allocates only what is recorded.</div></PBody>}
           {may ? (
             <PBody>

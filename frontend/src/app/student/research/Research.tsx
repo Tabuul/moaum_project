@@ -161,7 +161,7 @@ export function Research() {
               <span className="sub2">Proposal submitted {fmt(r.proposal_submitted_at)}{r.proposal_approved_at ? ` · approved ${fmt(r.proposal_approved_at)}` : " · awaiting the School"}.</span>
             )}
           </div>
-          {canEditTopic ? <div className="sub2" style={{ marginTop: 6 }}>A Master&rsquo;s proposal is due within 6 months, a PhD within 12 months, of first registration (Policy 21).</div> : null}
+          {canEditTopic ? <div className="sub2 mt-2">A Master&rsquo;s proposal is due within 6 months, a PhD within 12 months, of first registration (Policy 21).</div> : null}
         </PBody>
       </Panel>
 

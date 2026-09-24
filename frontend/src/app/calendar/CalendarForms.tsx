@@ -60,7 +60,7 @@ function Foot({ onClose, onEnd, endLabel, save, busy }: { onClose: () => void; o
           {endLabel}
         </button>
       ) : null}
-      <span style={{ flexGrow: 1 }} />
+      <span className="grow" />
       <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save the change"}
       </button>
@@ -111,7 +111,7 @@ export function SessionModal({
             <button className="btn btn--ghost btn--sm" onClick={() => setEnding(false)}>
               &larr; Back to the form
             </button>
-            <span style={{ flexGrow: 1 }} />
+            <span className="grow" />
             <button className="btn btn--urgent btn--sm" onClick={() => onEnd(reason)} disabled={busy}>
               {busy ? "Closing…" : "End it"}
             </button>

@@ -108,7 +108,7 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
 
       <Panel title="The payment-history file" right="School fees">
         <PBody>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row">
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
             <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
               {busy ? (progress ?? "Loading…") : "Choose the payment-history file (.xlsx)"}
@@ -116,7 +116,7 @@ export function PaymentsHistory({ actingOffice }: { actingOffice: string | null 
             </label>
             {busy && progress ? <span className="sub2">{progress}</span> : null}
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>
+          <div className="sub2 mt-2">
             <b>Amount</b> may carry a currency sign or commas — only the number is read. <b>Session</b> is like 2019/2020;
             a blank session is filed under <b>LEGACY</b>. <b>Payment Date</b> like 2019-11-05; a blank date defaults to
             today. A row with no <b>Reference</b> is given a stable one derived from the row, so re-uploading the same

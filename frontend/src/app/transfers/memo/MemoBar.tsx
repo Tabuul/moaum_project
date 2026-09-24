@@ -7,9 +7,9 @@ import { Btn } from "@/components/proto/ui";
 export function MemoBar() {
   const router = useRouter();
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="row">
       <Btn kind="ghost" onClick={() => router.push("/transfers")}>← Transfer queue</Btn>
-      <span style={{ flexGrow: 1 }} />
+      <span className="grow" />
       <Btn kind="primary" onClick={() => window.print()}>Print / Save as PDF</Btn>
     </div>
   );

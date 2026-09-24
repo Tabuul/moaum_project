@@ -48,7 +48,7 @@ export function AuditDashboard({ me, posture, feed }: { me: Me | null; posture: 
 
       <Panel title="Oversight desks" right={me?.name ? `Signed in as ${me.name}` : "Internal Audit"}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <Link href="/audit" className="btn btn--ghost btn--sm">Audit trail</Link>
             <Link href="/finance/exceptions" className="btn btn--ghost btn--sm">Finance exceptions</Link>
             <Link href="/finance/reconcile" className="btn btn--ghost btn--sm">Reconciliation</Link>

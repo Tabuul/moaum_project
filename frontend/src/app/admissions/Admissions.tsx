@@ -86,7 +86,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       )}
       {recorded ? <Note kind="ok" title="Merit lists recorded">{recorded}</Note> : null}
       <Panel title="Programmes — merit lists"
-             right={may ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+             right={may ? <span className="row row--inline">
                <span className="sub2">Quota is the NUC-approved carrying capacity</span>
                <Btn kind="primary" disabled={recording} onClick={() => void recordAll()}>{recording ? "Recording…" : "Record all programmes"}</Btn>
              </span> : "Quota is the NUC-approved carrying capacity"}>

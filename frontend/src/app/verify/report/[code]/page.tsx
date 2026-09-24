@@ -33,22 +33,22 @@ export default async function Page({ params }: { params: Promise<{ code: string 
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f6f3ea", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", color: "#16273a" }}>
-      <div style={{ width: "100%", maxWidth: 560, background: "#fff", border: "1px solid #e4ddcd", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(20,39,58,.08)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: "2px solid #0e3f55" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", fontFamily: "var(--sans)", color: "var(--ink)" }}>
+      <div style={{ width: "100%", maxWidth: 560, background: "#fff", border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(20,39,58,.08)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: "2px solid var(--chrome)" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 40, height: 42, objectFit: "contain" }} />
           <div>
-            <div style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "#b0842e", fontWeight: 700 }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#0e3f55" }}>Return verification</div>
+            <div style={{ fontSize: 11, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--amber)", fontWeight: 700 }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--chrome)" }}>Return verification</div>
           </div>
         </div>
         <div style={{ padding: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 10, marginBottom: 16,
-            background: ok ? "#e6f0e8" : "#f5e9ef", border: `1px solid ${ok ? "#c4ddca" : "#e2c6d3"}`, color: ok ? "#2f6b45" : "#7a3b52" }}>
+            background: ok ? "var(--green-bg)" : "var(--red-bg)", border: `1px solid ${ok ? "var(--green-line)" : "var(--red-line)"}`, color: ok ? "var(--green-ink)" : "var(--red-deep)" }}>
             <span style={{ fontSize: 22 }}>{ok ? "✓" : "✕"}</span>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{ok ? "Genuine — this return was kept by the portal" : "Not verified"}</div>
+              <div className="b700 t-md">{ok ? "Genuine — this return was kept by the portal" : "Not verified"}</div>
               <div style={{ fontSize: 12.5 }}>{ok
                 ? "Check that the return, the period, the row count and the totals below match the copy in hand."
                 : "No kept return carries this code. A return is genuine only if it appears here — check the code, or treat the copy as not verified."}</div>
@@ -56,14 +56,14 @@ export default async function Page({ params }: { params: Promise<{ code: string 
           </div>
           {ok ? (
             <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "8px 16px", margin: 0, fontSize: 14 }}>
-              <dt style={{ color: "#6b7785" }}>Return</dt><dd style={{ margin: 0, fontWeight: 600 }}>{v.title}</dd>
-              {v.subtitle ? <><dt style={{ color: "#6b7785" }}>Scope</dt><dd style={{ margin: 0 }}>{v.subtitle}</dd></> : null}
-              <dt style={{ color: "#6b7785" }}>Period</dt><dd style={{ margin: 0 }}>{v.period}</dd>
-              <dt style={{ color: "#6b7785" }}>Taken</dt><dd style={{ margin: 0 }}>{day(v.taken_at)}{v.taken_office ? ` · ${OFFICE[v.taken_office] ?? v.taken_office}` : ""}</dd>
-              <dt style={{ color: "#6b7785" }}>Rows</dt><dd style={{ margin: 0 }}>{Number(v.row_count).toLocaleString()}</dd>
-              {totals.length ? <><dt style={{ color: "#6b7785" }}>Totals</dt><dd style={{ margin: 0 }}>{totals.map(([k, val]) => <div key={k}><span style={{ color: "#6b7785" }}>{k}:</span> {val}</div>)}</dd></> : null}
-              <dt style={{ color: "#6b7785" }}>Filed</dt><dd style={{ margin: 0 }}>{v.filed_at ? `${v.filed_to} · ${day(v.filed_at)}` : "Not yet filed"}</dd>
-              <dt style={{ color: "#6b7785" }}>Code</dt><dd style={{ margin: 0, fontFamily: "ui-monospace, monospace" }}>{v.verification_code}</dd>
+              <dt style={{ color: "var(--muted)" }}>Return</dt><dd style={{ margin: 0, fontWeight: 600 }}>{v.title}</dd>
+              {v.subtitle ? <><dt style={{ color: "var(--muted)" }}>Scope</dt><dd style={{ margin: 0 }}>{v.subtitle}</dd></> : null}
+              <dt style={{ color: "var(--muted)" }}>Period</dt><dd style={{ margin: 0 }}>{v.period}</dd>
+              <dt style={{ color: "var(--muted)" }}>Taken</dt><dd style={{ margin: 0 }}>{day(v.taken_at)}{v.taken_office ? ` · ${OFFICE[v.taken_office] ?? v.taken_office}` : ""}</dd>
+              <dt style={{ color: "var(--muted)" }}>Rows</dt><dd style={{ margin: 0 }}>{Number(v.row_count).toLocaleString()}</dd>
+              {totals.length ? <><dt style={{ color: "var(--muted)" }}>Totals</dt><dd style={{ margin: 0 }}>{totals.map(([k, val]) => <div key={k}><span className="ink-muted">{k}:</span> {val}</div>)}</dd></> : null}
+              <dt style={{ color: "var(--muted)" }}>Filed</dt><dd style={{ margin: 0 }}>{v.filed_at ? `${v.filed_to} · ${day(v.filed_at)}` : "Not yet filed"}</dd>
+              <dt style={{ color: "var(--muted)" }}>Code</dt><dd style={{ margin: 0, fontFamily: "ui-monospace, monospace" }}>{v.verification_code}</dd>
             </dl>
           ) : null}
         </div>

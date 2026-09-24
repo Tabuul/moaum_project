@@ -24,7 +24,7 @@ export function ReadinessView({ data, sessions }: { data: Readiness; sessions: s
         {data.blocking ? "Each blocking item below stops part of launch — fix them, then this turns green." : data.warnings ? "The warnings are not blockers, but confirm each is intended before launch." : "Every launch gate for this session is set. Nothing here is blocking or unreviewed."}
       </Note>
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="rd-s">Session</label>
           <select id="rd-s" className="ctl" value={data.session} onChange={(e) => queryNav(`/readiness?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(data.session) ? sessions : [data.session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
@@ -46,7 +46,7 @@ export function ReadinessView({ data, sessions }: { data: Readiness; sessions: s
               <div key={c.key} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "10px 0", borderTop: "1px solid var(--line)" }}>
                 <Pil kind={PILL[c.status]}>{WORD[c.status]}</Pil>
                 <div style={{ flexGrow: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>{c.label}</div>
+                  <div className="b600">{c.label}</div>
                   <div className="sub2" style={{ lineHeight: 1.35 }}>{c.detail}</div>
                 </div>
                 {c.fix && c.status !== "ok" ? <Link href={c.fix} className="btn btn--ghost btn--sm">Fix</Link> : null}

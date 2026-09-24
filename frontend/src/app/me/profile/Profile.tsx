@@ -251,7 +251,7 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
         </PBody>
       </Panel>
 
-      <Panel title="" right={saved ? <span className="sub2" style={{ color: "var(--green-ink)" }}>Saved</span> : undefined}>
+      <Panel title="" right={saved ? <span className="sub2 ink-green">Saved</span> : undefined}>
         <PBody>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save profile"}</Btn>

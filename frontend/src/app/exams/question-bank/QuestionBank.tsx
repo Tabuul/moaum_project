@@ -67,7 +67,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
     <>
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}
-      <div style={{ marginBottom: 10 }}><a href="/exams/question-bank" className="btn btn--ghost btn--sm">← All courses</a></div>
+      <div className="mb-3"><a href="/exams/question-bank" className="btn btn--ghost btn--sm">← All courses</a></div>
       <Tiles items={[
         ["Course", course, null, courses.find((c) => c.code === course)?.title ?? ""],
         ["Active questions", String(active), null, `${questions.length - active} retired`],
@@ -109,7 +109,7 @@ export function QuestionBank({ courses, course, questions, blueprint, actingOffi
                 <input className="ctl" style={{ flexGrow: 1 }} placeholder={`Option ${String.fromCharCode(65 + i)}`} value={opt} onChange={(e) => { const options = [...q.options]; options[i] = e.target.value; setQ({ ...q, options }); }} />
               </div>
             ))}
-            <div className="sub2" style={{ marginBottom: 8 }}>Select the radio beside the correct option.</div>
+            <div className="sub2 mb-2">Select the radio beside the correct option.</div>
             <div className="grid grid--3">
               <Field id="q-topic" label="Topic" hint="Optional"><input id="q-topic" className="ctl" value={q.topic} onChange={(e) => setQ({ ...q, topic: e.target.value })} /></Field>
               <Field id="q-diff" label="Difficulty"><select id="q-diff" className="ctl" value={q.difficulty} onChange={(e) => setQ({ ...q, difficulty: e.target.value })}>{["EASY", "MEDIUM", "HARD"].map((d) => <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>)}</select></Field>

@@ -62,7 +62,7 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
           <select id="bg-year" className="ctl tnum" value={d.year} onChange={(e) => { router.push(`/finance/budget?year=${e.target.value}`); router.refresh(); }}>
             {[d.year + 1, d.year, d.year - 1, d.year - 2].map((y) => <option key={y} value={y}>{y}</option>)}
           </select></div>
-        <div style={{ flexGrow: 1 }} />
+        <div className="grow" />
         {may ? <button className="btn btn--primary" onClick={() => { setF({ costCentre: "", amount: "" }); setErr(null); setAdd(true); }}>+ Set a cost centre&rsquo;s budget</button> : null}
       </div></div>
 
@@ -117,7 +117,7 @@ export function Budget({ d, ie, actingOffice }: { d: BudgetView; ie?: Statement 
 
       {add ? (
         <Modal title="Set a cost centre's budget" sub={`Financial year ${d.year}`} onClose={() => setAdd(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.costCentre.trim() || !(Number(f.amount) >= 0)} onClick={() => void set()}>Set the budget</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.costCentre.trim() || !(Number(f.amount) >= 0)} onClick={() => void set()}>Set the budget</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <Field id="bg-cc" label="Cost centre" hint="The name vouchers use, e.g. Faculty of Science, ICT Directorate"><input id="bg-cc" className="ctl" value={f.costCentre} onChange={(e) => setF({ ...f, costCentre: e.target.value })} autoComplete="off" /></Field>
           <Field id="bg-amt" label="Budget (₦)"><input id="bg-amt" className="ctl tnum" value={f.amount} inputMode="decimal" onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>

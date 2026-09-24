@@ -113,7 +113,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
             <input type="checkbox" className="chk" key="x" checked={selected.has(c.id)} onChange={(e) => { const n = new Set(selected); if (e.target.checked) n.add(c.id); else n.delete(c.id); setSelected(n); }} aria-label={`Select ${c.surname}`} />,
             <a key="m" href={`/clearance?${new URLSearchParams({ student: c.id }).toString()}`} className="tnum">{c.number}</a>,
             <Two key="n" a={`${c.surname}, ${c.otherNames}`} b={c.programmeName} />,
-            ...c.states.map((s, i) => (s === "CLEARED" ? <span key={i} style={{ color: "var(--green-ink)", fontWeight: 700 }}>✓</span> : <span key={i} style={{ color: "var(--red-ink)", fontWeight: 700 }}>✗</span>)),
+            ...c.states.map((s, i) => (s === "CLEARED" ? <span key={i} className="ink-green b700">✓</span> : <span key={i} className="ink-red b700">✗</span>)),
             c.cleared ? <Pil kind="ok" key="s">Cleared</Pil> : <Pil kind="bad" key="s">Held</Pil>,
           ])}
           texts={listing.candidates.map((c) => `${c.number} ${c.surname} ${c.otherNames} ${c.programmeName}`)}
@@ -152,12 +152,12 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
               <Gate state={me?.cleared ? "done" : "todo"} title="Transcript to a third party" sub="Blocked while any unit holds the candidate." />
               <Gate state={me?.cleared ? "done" : "todo"} title="Convocation" sub="Gown and seat allocated on clearance." last />
             </Gates>
-            <div className="sub2" style={{ marginTop: 10 }}>Each of these checks clearance at the moment it is attempted, inside the transaction. None of them reads a report that a clerk ran last week.</div>
+            <div className="sub2 mt-3">Each of these checks clearance at the moment it is attempted, inside the transaction. None of them reads a report that a clerk ran last week.</div>
           </PBody>
         </Panel>
       </TwoCol>
 
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+      <div className="row">
         <Btn kind="primary" disabled={busy || !selected.size || !canSign} onClick={() => void clearSelected()}>Clear the selected candidates</Btn>
         <Btn kind="ghost" onClick={() => download(`held-${listing.purpose.toLowerCase()}.csv`, csv([["Matriculation number", "Name", "Programme", ...listing.units.map((u) => u.label)], ...listing.candidates.filter((c) => !c.cleared).map((c) => [c.number, `${c.surname}, ${c.otherNames}`, c.programmeName, ...c.states])]))}>Export the held list</Btn>
         <Btn kind="ghost" disabled={busy} onClick={() => void post("/api/bff/api/v1/clearance/notify-held", { students: listing.candidates.filter((c) => !c.cleared).map((c) => c.id) }, "Held candidates notified")}>Notify held candidates</Btn>
@@ -165,7 +165,7 @@ export function ClearanceScreen({ scope, structure, sessions, listing, chosen, p
 
       {hold ? (
         <Modal title="Hold this candidate" sub="Name the item outstanding" onClose={() => setHold(null)}
-          foot={<><Btn kind="ghost" onClick={() => setHold(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="urgent" disabled={!item.trim() || busy} onClick={async () => { setBusy(true); if (await post(`/api/bff/api/v1/clearance/students/${hold}/${unit}/hold`, { purpose: listing.purpose, item }, `${unit} hold: ${item}`)) { notify(`${unit} hold placed`); setHold(null); router.refresh(); } setBusy(false); }}>Hold</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setHold(null)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={!item.trim() || busy} onClick={async () => { setBusy(true); if (await post(`/api/bff/api/v1/clearance/students/${hold}/${unit}/hold`, { purpose: listing.purpose, item }, `${unit} hold: ${item}`)) { notify(`${unit} hold placed`); setHold(null); router.refresh(); } setBusy(false); }}>Hold</Btn></>}>
           <Field id="hold-item" label="What is outstanding" hint="The candidate sees this on their own portal, with the unit, the officer and the date.">
             <input id="hold-item" className="ctl" value={item} onChange={(e) => setItem(e.target.value)} autoComplete="off" />
           </Field>

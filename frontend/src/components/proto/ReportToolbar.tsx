@@ -75,12 +75,12 @@ export function ReportToolbar({ headers, rows, filename, title, keep }: {
   }
 
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="row">
       <Btn kind="ghost" onClick={() => router.push("/reports")}>← All returns</Btn>
       {kept ? (
         <span className="sub2">Copy kept · verification code <b className="tnum">{kept.verification_code}</b> · <a href={`/reports/snapshots/${kept.id}`}>open the kept copy</a></span>
-      ) : err ? <span className="sub2" style={{ color: "var(--red-ink)" }}>{err}</span> : null}
-      <span style={{ flexGrow: 1 }} />
+      ) : err ? <span className="sub2 ink-red">{err}</span> : null}
+      <span className="grow" />
       {keep && !kept ? <Btn kind="go" onClick={() => void keepCopy()} disabled={keeping || !rows.length}>{keeping ? "Keeping…" : "Keep a copy"}</Btn> : null}
       <Btn kind="ghost" onClick={download}>Download Excel</Btn>
       <Btn kind="primary" onClick={() => window.print()}>Print / Save as PDF</Btn>

@@ -57,7 +57,7 @@ export function SmsSettings({ config, actingOffice }: { config: SmsConfig; actin
 
       <Panel title="eBulkSMS account" right={config.api_key_set ? <Pil kind="ok">API key set</Pil> : <Pil kind="grey">No API key</Pil>}>
         <PBody>
-          {config.api_key_set ? <div className="sub2" style={{ marginBottom: 8 }}>An API key is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave the API key blank to keep it; type a new one to replace it.</div> : null}
+          {config.api_key_set ? <div className="sub2 mb-2">An API key is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave the API key blank to keep it; type a new one to replace it.</div> : null}
           <div className="grid grid--2">
             <Field id="username" label="Username" hint="Your eBulkSMS account username"><input id="username" className="ctl tnum" value={f.username} onChange={(e) => set("username", e.target.value)} disabled={!may} autoComplete="off" placeholder="ebulksms username" /></Field>
             <Field id="sender" label="Sender ID" hint="Shown on the handset; up to 11 characters"><input id="sender" className="ctl tnum" maxLength={11} value={f.sender} onChange={(e) => set("sender", e.target.value)} disabled={!may} autoComplete="off" placeholder="MOAUM" /></Field>

@@ -130,7 +130,7 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
               <button type="submit" className="btn btn--primary">Search</button>
               <Btn kind="ghost" onClick={clear}>Clear filters</Btn>
-              <span style={{ flexGrow: 1 }} />
+              <span className="grow" />
               <Btn kind="ghost" onClick={() => void exportAll()} disabled={exporting || !total}>{exporting ? "Preparing…" : `Download Excel (${total.toLocaleString()} rows)`}</Btn>
               <Btn kind="primary" onClick={() => window.open(`/reports/${kind}/view${query() ? `?${query()}` : ""}`, "_blank")} disabled={!total}>Print / Save as PDF</Btn>
             </div>
@@ -146,7 +146,7 @@ export function RegisterDesk({ kind, title, filters, options, initial, total, pa
             <DTable cols={cols} rows={rows} texts={texts} />
             {pages > 1 ? (
               <PBody>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div className="row">
                   <Btn kind="ghost" disabled={page <= 1} onClick={() => goPage(page - 1)}>← Previous</Btn>
                   <span className="sub2 tnum">Page {page} of {pages}</span>
                   <Btn kind="ghost" disabled={page >= pages} onClick={() => goPage(page + 1)}>Next →</Btn>

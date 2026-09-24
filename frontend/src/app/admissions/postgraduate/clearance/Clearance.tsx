@@ -60,7 +60,7 @@ export function Clearance({ view, problem, mayClear }: { view: ClearView | null;
         {awaiting.length ? (
           <DTable cols={["Candidate", "Programme", "Work", "Final submitted|mid", "Plagiarism|mid", "Viva|mid", "|num"]}
             rows={awaiting.map((r) => [
-              <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
+              <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
               <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}</div></span>,
               <span key="w"><span>{KIND[r.degree_kind] ?? r.degree_kind}</span><div className="sub2">{r.topic ?? "—"}</div></span>,
               <span key="d" className="tnum">{fmt(r.final_submitted_at)}</span>,
@@ -76,7 +76,7 @@ export function Clearance({ view, problem, mayClear }: { view: ClearView | null;
         {cleared.length ? (
           <DTable cols={["Candidate", "Programme", "Work", "Cleared|mid", "Now|mid"]}
             rows={cleared.map((r) => [
-              <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
+              <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
               <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}</div></span>,
               <span key="w"><span>{KIND[r.degree_kind] ?? r.degree_kind}</span><div className="sub2">{r.topic ?? "—"}</div></span>,
               <span key="d" className="tnum">{fmt(r.cleared_at)}</span>,

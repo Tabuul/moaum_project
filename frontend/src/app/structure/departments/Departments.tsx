@@ -115,7 +115,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
               <Field id="dp-name" label="Name"><input id="dp-name" className="ctl" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mathematics and Computer Science" /></Field>
               <Field id="dp-fac" label="Faculty" hint="Code or name"><input id="dp-fac" className="ctl" value={faculty} onChange={(e) => setFaculty(e.target.value)} placeholder="SC" /></Field>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="primary" disabled={busy || !code.trim() || !name.trim() || !faculty.trim()} onClick={async () => { const j = await post("/departments", { code: code.trim(), name: name.trim(), faculty: faculty.trim() }, `Department ${code.trim()} ${editing ? "edited" : "created"}`); if (j) { setMsg(`Department ${j.code} saved.`); setCode(""); setName(""); setFaculty(""); setEditing(false); } }}>{editing ? "Save changes" : "Save the department"}</Btn>
               {editing ? <Btn kind="ghost" onClick={() => { setCode(""); setName(""); setFaculty(""); setEditing(false); }}>Cancel</Btn> : null}
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
@@ -128,7 +128,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
         </Panel>
       ) : null}
 
-      <Panel title="Departments" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <Panel title="Departments" right={<span className="row">
         <span className="sub2">{departments.length} on the register</span>
         <Btn kind="ghost" disabled={!departments.length} onClick={() => void exportXlsx()}>Download Excel</Btn>
         <Btn kind="ghost" disabled={!departments.length} onClick={exportPdf}>Download PDF</Btn>

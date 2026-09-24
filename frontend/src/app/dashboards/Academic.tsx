@@ -80,7 +80,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
               <span key="n">{a.surname}, {a.other_names}</span>,
               <span className="tnum" key="j">{a.jamb_reg_no}</span>,
               <span className="sub2" key="p">{a.programme ?? "—"}</span>,
-              a.registered ? <span className="sub2" key="s" style={{ color: "var(--green-ink)" }}>Registered</span> : <span className="sub2" key="s">Not yet</span>,
+              a.registered ? <span className="sub2 ink-green" key="s">Registered</span> : <span className="sub2" key="s">Not yet</span>,
             ])} />
           ) : null}
         </Panel>

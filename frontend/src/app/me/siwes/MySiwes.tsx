@@ -68,7 +68,7 @@ export function MySiwes({ students }: { students: MySiwesStudent[] }) {
               </div>,
               <span className="tnum" key="p" style={{ color: s.practical_mark == null ? "var(--muted)" : undefined }}>{s.practical_mark ?? "—"}</span>,
               s.total != null ? <Pil kind="ok" key="t">{s.total}</Pil> : <span className="sub2 tnum" key="t">—</span>,
-              s.sheet_stage ? <span className="sub2" key="s">{s.sheet_stage === "ENTRY" ? "Entry open" : s.sheet_stage.toLowerCase().replace(/_/g, " ")}</span> : <span className="sub2" key="s" style={{ color: "var(--red-ink)" }}>Not open</span>,
+              s.sheet_stage ? <span className="sub2" key="s">{s.sheet_stage === "ENTRY" ? "Entry open" : s.sheet_stage.toLowerCase().replace(/_/g, " ")}</span> : <span className="sub2 ink-red" key="s">Not open</span>,
             ];
           })} texts={students.map((s) => `${s.number} ${s.surname} ${s.other_names} ${s.course_code}`)} />
         ) : <PBody><div className="sub2">No student is assigned to you for SIWES. The Head of Department or SIWES Coordinator assigns supervisors.</div></PBody>}

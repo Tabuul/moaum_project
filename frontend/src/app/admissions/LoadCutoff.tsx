@@ -43,10 +43,10 @@ export function LoadCutoff({ session, cutoff, may }: { session: string; cutoff: 
   return (
     <Panel title="General UTME cut-off for loading the JAMB lists" right={cutoff === null ? <Pil kind="bad">Not stated · nothing loads</Pil> : <Pil kind="ok">{cutoff} · in force for loading</Pil>}>
       <PBody>
-        <div className="sub2" style={{ marginBottom: 10 }}>
+        <div className="sub2 mb-3">
           Stated before the file is uploaded. A candidate on the JAMB list with a UTME score under it is read, held back on record beside the batch, and <b>not loaded</b> &mdash; whatever the faculty or programme. The faculty&rsquo;s and the programme&rsquo;s own cut-offs are not applied here: they are the screening&rsquo;s, and stay there.
         </div>
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="row">
           <input className="tnum ws__in" style={{ width: 96 }} value={value} inputMode="numeric" disabled={!may} aria-label="General UTME cut-off for loading" placeholder="150" onChange={(e) => setValue(e.target.value)} />
           <span className="sub2">of 400</span>
           <Btn kind="primary" disabled={!may || !dirty || busy} onClick={() => void state()}>{busy ? "Stating…" : cutoff === null ? "State the cut-off" : "Change the cut-off"}</Btn>

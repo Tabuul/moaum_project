@@ -69,7 +69,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
     <>
       <Panel title="You are signed in as" right="The chain is read from every desk; the action belongs to one">
         <PBody>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <button className="btn btn--primary btn--sm" style={{ flexDirection: "column", alignItems: "flex-start", gap: 1, textAlign: "left" }}>
               <span>{roleLabel(actingOffice)}</span>
               <span style={{ fontWeight: 400, opacity: 0.8, fontSize: 11 }}>{roleUnit(actingOffice) || "The University"}</span>
@@ -161,7 +161,7 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
 
       {ask ? (
         <Modal title={ask === "return" ? "Return the sheet to the lecturer" : "Approve for Senate"} sub={ask === "return" ? "The reason goes on the record" : "Cite the Senate minute"} onClose={() => setAsk(null)}
-          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind={ask === "return" ? "urgent" : "go"} disabled={!text.trim() || busy} onClick={async () => {
+          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><span className="grow" /><Btn kind={ask === "return" ? "urgent" : "go"} disabled={!text.trim() || busy} onClick={async () => {
             const ok = ask === "return"
               ? await post(`/api/bff/api/v1/results/sheets/${s.id}/return`, { comment: text }, `${s.courseCode} returned`)
               : await post(`/api/bff/api/v1/results/sheets/${s.id}/advance`, { minute: text }, `${s.courseCode} approved for Senate under ${text}`);

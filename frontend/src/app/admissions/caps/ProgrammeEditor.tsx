@@ -68,7 +68,7 @@ export function ProgrammeEditor({ programme, departments, onClose }: { programme
       onClose={onClose}
       foot={<>
         <Btn kind="ghost" onClick={onClose}>Cancel</Btn>
-        <span style={{ flexGrow: 1 }} />
+        <span className="grow" />
         <Btn kind="primary" disabled={!ready} onClick={() => void save()}>{busy ? "Saving…" : "Save the programme"}</Btn>
       </>}
     >
@@ -93,7 +93,7 @@ export function ProgrammeEditor({ programme, departments, onClose }: { programme
           </select>
         </Field>
         <Field id="pg-arch" label="Admissions" full>
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <label className="row">
             <input id="pg-arch" type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
             <span>Retired: keeps its code, no longer admits</span>
           </label>

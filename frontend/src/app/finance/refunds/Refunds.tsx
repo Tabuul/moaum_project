@@ -127,7 +127,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
             <span className="sub2" key="rs">{r.reason}</span>,
             <b className="tnum" key="a">{money(Number(r.amount))}</b>,
             <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.proposed_by_name ? <div className="sub2">Raised by {r.proposed_by_me ? "you" : r.proposed_by_name}</div> : null}{r.rejected_why ? <div className="sub2">{r.rejected_why}</div> : null}</span>,
-            <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+            <span key="ac" className="row row--inline row--tight">
               {may && r.state === "PROPOSED" && !r.proposed_by_me ? <Btn kind="go" disabled={busy} onClick={() => void send(`/${r.id}/approve`, {}, `Approve refund ${r.reference}`).then((j) => { if (j) setSaid(`${r.reference} approved`); })}>Approve</Btn> : null}
               {may && r.state === "PROPOSED" && r.proposed_by_me ? <Btn kind="ghost" disabled>Awaiting another approver</Btn> : null}
               {may && r.state === "PROPOSED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Why is this refund rejected? The reason is recorded."); if (w) void send(`/${r.id}/reject`, { why: w }, `Reject refund ${r.reference}`); }}>Reject</Btn> : null}
@@ -144,7 +144,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
 
       {add ? (
         <Modal title="Raise a refund" sub="It goes to a second officer to approve" onClose={() => setAdd(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !f.payer.trim() || !f.reason.trim() || !(Number(f.amount) > 0)} onClick={async () => { const j = await send("", { student, payer: f.payer, reason: f.reason, amount: Number(f.amount), bank: f.bank || null, accountName: f.accountName || null, accountLast4: f.accountLast4 || null, source: source.trim() || null }, `Raise refund for ${f.payer}`); if (j) { setSaid(`Refund ${j.reference} raised for ${f.payer}`); setAdd(false); } }}>Raise it</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <Field id="rf-src" label="From a payment reference" hint="Optional — name the transaction being refunded and the payer and amount are filled in and checked against it.">

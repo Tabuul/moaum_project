@@ -29,11 +29,11 @@ export function HallList({ data }: { data: HallListData }) {
       <div className="hall-mast">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/crest.png" alt="" />
-        <div style={{ fontWeight: 700, fontSize: 15 }}>Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
+        <div className="b700 t-md">Rev. Fr. Moses Orshio Adasu University, Makurdi</div>
         <div style={{ textTransform: "uppercase", letterSpacing: ".06em", fontSize: 11 }}>Post-UTME Screening — Hall List</div>
-        <div style={{ fontSize: 10, color: "#555" }}>Batch {b.label} · {day} · Serial {docSerial("HALL")}</div>
+        <div style={{ fontSize: 10, color: "var(--muted)" }}>Batch {b.label} · {day} · Serial {docSerial("HALL")}</div>
       </div>
-      <div className="no-print" style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="no-print row">
         <Link href={`/admissions?session=${encodeURIComponent(data.session)}`} className="btn btn--ghost btn--sm">Back to the Admissions desk</Link>
         <Btn kind="primary" onClick={() => printNode(sheet.current, `Hall list · batch ${b.label}`)}>Print the hall list</Btn>
       </div>

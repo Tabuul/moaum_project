@@ -43,7 +43,7 @@ export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Pos
           <DTable cols={["Account", "Failed attempts|mid", "Last attempt|num"]}
             rows={top.slice(0, 12).map((f) => [
               <span className="tnum" key="u">{f.username}</span>,
-              <b className="tnum" key="n" style={{ color: "var(--red-ink)" }}>{f.attempts}</b>,
+              <b className="tnum ink-red" key="n">{f.attempts}</b>,
               <span className="tnum sub2" key="l">{when(f.last_at)}</span>,
             ])} texts={top.map((f) => f.username)} />
         ) : <PBody><div className="sub2">No account is drawing failed sign-ins. A run of attempts on one account shows here to be watched.</div></PBody>}
@@ -51,7 +51,7 @@ export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Pos
 
       <Panel title="Security desks" right={me?.name ? `Signed in as ${me.name}` : "Security"}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <Link href="/security" className="btn btn--ghost btn--sm">Security posture</Link>
             <Link href="/audit" className="btn btn--ghost btn--sm">Audit trail</Link>
             <Link href="/people" className="btn btn--ghost btn--sm">Users &amp; roles</Link>

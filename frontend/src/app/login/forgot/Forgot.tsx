@@ -47,7 +47,7 @@ export function Forgot() {
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!sent) void ask(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Reset your password</div>
-            <div className="hint" style={{ marginTop: 4 }}>Staff, students and applicants.</div>
+            <div className="hint mt-1">Staff, students and applicants.</div>
           </div>
           {sent ? (
             <Note kind="ok" title="If that names an account, a reset link is on its way">

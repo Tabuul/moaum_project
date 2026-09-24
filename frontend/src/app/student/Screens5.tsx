@@ -182,7 +182,7 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
       <Panel title={`Attendance · ${t.session} · ${semesterName(t.semester)} semester`} right="Recorded by the lecturer at each lecture">
         <DTable cols={["Course", "Attended|mid", "Held|mid", "Rate", "Status|num"]} rows={t.attendance.map((a) => [
           <Two key="c" a={a.course_code} b={a.title} />, <span className="tnum" key="a">{a.attended}</span>, <span className="tnum" key="h">{a.held}</span>,
-          a.rate === null ? <span className="sub2" key="r">—</span> : <div key="r" style={{ display: "flex", alignItems: "center", gap: 9 }}><Bar pct={a.rate} colour={a.rate >= 75 ? "var(--green)" : "var(--red)"} /><span className="tnum" style={{ fontWeight: 600 }}>{a.rate}%</span></div>,
+          a.rate === null ? <span className="sub2" key="r">—</span> : <div key="r" style={{ display: "flex", alignItems: "center", gap: 9 }}><Bar pct={a.rate} colour={a.rate >= 75 ? "var(--green)" : "var(--red)"} /><span className="tnum b600">{a.rate}%</span></div>,
           a.rate === null ? <Pil kind="grey" key="s">Not yet held</Pil> : a.rate >= 75 ? <Pil kind="ok" key="s">Eligible</Pil> : <Pil kind="bad" key="s">At risk</Pil>,
         ])} />
       </Panel>
@@ -230,7 +230,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
         <Panel title="Your identity card" right={live ? "This is a picture of the card, not the card" : "Preview — not yet issued"}>
           <PBody>
             <IdCardPair c={card} big />
-            <div className="sub2" style={{ marginTop: 4 }}>The barcode on the back is your borrower number at the Library and the number the gate reads; it does not change when a card is replaced &mdash; the serial does. A field shown as &ldquo;&mdash;&rdquo; is one the University has not recorded against you.</div>
+            <div className="sub2 mt-1">The barcode on the back is your borrower number at the Library and the number the gate reads; it does not change when a card is replaced &mdash; the serial does. A field shown as &ldquo;&mdash;&rdquo; is one the University has not recorded against you.</div>
           </PBody>
         </Panel>
       ) : null}
@@ -243,7 +243,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
         </div>
       </div></div>
       {live ? (
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+        <div className="row">
           <a href="/student/idcard/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Open the printable copy</a>
           <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record; the Library issues a replacement."); if (!reason) return; void act("lost", "POST", "/me/id-card/lost", { reason }, `Identity card reported lost: ${reason}`); }}>{busy === "lost" ? "Reporting…" : "Report it lost"}</Btn>
           <Link href="/student/support" className="btn btn--ghost btn--sm">Request a replacement</Link>
@@ -295,7 +295,7 @@ export function Transcript({ t, s }: { t: Transcripts; s: Me }) {
           <Two key="f" a={x.destination === "SELF" ? "Myself" : x.destination_name ?? x.destination} b={`${x.mode === "SEALED" ? "Sealed" : "Digital"} · ${x.copies} cop${x.copies === 1 ? "y" : "ies"}`} />,
           <span className="sub2 tnum" key="w">{when(x.requested_at)}</span>,
           <Pil kind={kind as "ok" | "info" | "bad"} key="s">{label}</Pil>,
-          x.stage === "AWAITING_PAYMENT" && x.open_reference ? <span key="p" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}><span className="tnum sub2">{x.open_reference}</span><PayByCard reference={x.open_reference} amount={t.fee * x.copies} /></span> : <span key="p" />,
+          x.stage === "AWAITING_PAYMENT" && x.open_reference ? <span key="p" className="row row--inline row--tight"><span className="tnum sub2">{x.open_reference}</span><PayByCard reference={x.open_reference} amount={t.fee * x.copies} /></span> : <span key="p" />,
         ]; })} />
         {!t.requests.length ? <PBody><div className="sub2">No request yet.</div></PBody> : null}
       </Panel>

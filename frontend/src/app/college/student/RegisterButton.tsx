@@ -31,7 +31,7 @@ export function RegisterButton({ session, level, items, disabled, label }: { ses
   return (
     <div>
       <Btn kind="primary" disabled={busy || disabled} onClick={() => void register()}>{busy ? "Registering…" : label ?? `Register ${level} Level · ${items} item${items === 1 ? "" : "s"}`}</Btn>
-      {problem ? <div style={{ marginTop: 8 }}><ProblemNotice problem={problem} /></div> : null}
+      {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
     </div>
   );
 }

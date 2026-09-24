@@ -73,13 +73,13 @@ export function ClinicDashboard({ me, desk }: { me: Me | null; desk: ClinicDesk 
 
       <Panel title="Support Services desks" right="What this office works">
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <a href="/clinic" className="btn btn--ghost btn--sm">Clinic</a>
             <a href="/library/circulation" className="btn btn--ghost btn--sm">Library circulation</a>
             <a href="/stores" className="btn btn--ghost btn--sm">Stores &amp; assets</a>
             <a href="/clearance" className="btn btn--ghost btn--sm">Student clearance</a>
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>{me?.name ? `Signed in as ${me.name}.` : ""} Every act is on the record, in your name.</div>
+          <div className="sub2 mt-2">{me?.name ? `Signed in as ${me.name}.` : ""} Every act is on the record, in your name.</div>
         </PBody>
       </Panel>
     </>

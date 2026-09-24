@@ -142,7 +142,7 @@ export function Register({ session }: { session: string }) {
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (found.state === "found") void create(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Post UTME Registration</div>
-            <div className="hint" style={{ marginTop: 4 }}>Your JAMB registration number first. Everything else follows from it.</div>
+            <div className="hint mt-1">Your JAMB registration number first. Everything else follows from it.</div>
           </div>
           <div className="field">
             <label htmlFor="rj">JAMB registration number</label>

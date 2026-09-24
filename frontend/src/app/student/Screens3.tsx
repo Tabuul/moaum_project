@@ -78,7 +78,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third") + " semester";
   const missingEarlier = Array.from({ length: openSem }, (_, i) => i + 1).filter((n) => n < openSem && !done.has(n));
   const switcher = openSem > 1 ? (
-    <div className="card"><div className="card__body" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="card"><div className="card__body row">
       <span className="eyebrow">Register semester</span>
       {Array.from({ length: openSem }, (_, i) => i + 1).map((n) => (
         <Link key={n} href={`/student/register?session=${encodeURIComponent(v.session)}&semester=${n}`}
@@ -114,7 +114,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
                 <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 7 }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}><span className="sub2">School fees, {fees.session}</span><span className="tnum" style={{ fontWeight: 600, fontSize: 12.5 }}>{naira(fees.due)}</span></div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}><span className="sub2">Paid</span><span className="tnum" style={{ fontWeight: 600, fontSize: 12.5, color: "var(--green-ink)" }}>− {naira(fees.paid)}</span></div>
-                  <div style={{ height: 1, background: "var(--line-2)" }} />
+                  <div className="hr" />
                   <div style={{ display: "flex", justifyContent: "space-between" }}><strong>Outstanding</strong><strong className="tnum" style={{ fontSize: 15, color: "var(--red-ink)" }}>{naira(fees.balance)}</strong></div>
                 </div>
               ) : null}
@@ -133,7 +133,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : undefined}
       onClick={() => { if (fixed || locked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else n.add(m.offering_id); setChosen(n); }}>
       <div className="pick__box" style={on ? { background: red ? "var(--red)" : "var(--chrome)", borderColor: red ? "var(--red)" : "var(--chrome)" } : undefined}>{on ? <Tick size={12} colour="#fff" /> : null}</div>
-      <div style={{ flexGrow: 1 }}><div className="pick__t tnum">{m.course_code} — {m.title}</div>
+      <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
         <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
       <div className="tnum" style={{ fontWeight: 700, color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
@@ -170,21 +170,21 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
               {problem ? <ProblemNotice problem={problem} /> : null}
               <div className="sub2">You can still add a course or drop one (not a carryover, and not one you already have a mark in). The change is on the record at once; your total stays within {min}–{max} units.</div>
               {droppable.length ? (<>
-                <div className="eyebrow" style={{ marginTop: 8 }}>Registered — drop</div>
+                <div className="eyebrow mt-2">Registered — drop</div>
                 {droppable.map((e) => (
                   <div key={e.offeringId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                     <span className="tnum" style={{ fontWeight: 600, minWidth: 92 }}>{e.courseCode}</span>
-                    <span style={{ flexGrow: 1 }}>{e.title} <span className="sub2">· {e.units}u · {courseType(e)}</span></span>
+                    <span className="grow">{e.title} <span className="sub2">· {e.units}u · {courseType(e)}</span></span>
                     <Btn kind="ghost" disabled={busy !== null} onClick={() => void act(`drop-${e.offeringId}`, "POST", "/me/registration/drop", { session: v.session, semester: v.semester, offering: e.offeringId }, `Dropped ${e.courseCode}`)}>{busy === `drop-${e.offeringId}` ? "Dropping…" : "Drop"}</Btn>
                   </div>
                 ))}
               </>) : null}
               {addable.length ? (<>
-                <div className="eyebrow" style={{ marginTop: 12 }}>Offered — add</div>
+                <div className="eyebrow mt-3">Offered — add</div>
                 {addable.map((m) => (
                   <div key={m.offering_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                     <span className="tnum" style={{ fontWeight: 600, minWidth: 92 }}>{m.course_code}</span>
-                    <span style={{ flexGrow: 1 }}>{m.title} <span className="sub2">· {m.units}u · {m.lecturer ?? "no lecturer yet"}</span></span>
+                    <span className="grow">{m.title} <span className="sub2">· {m.units}u · {m.lecturer ?? "no lecturer yet"}</span></span>
                     <Btn kind="primary" disabled={busy !== null} onClick={() => void act(`add-${m.offering_id}`, "POST", "/me/registration/add", { session: v.session, semester: v.semester, offering: m.offering_id }, `Added ${m.course_code}`)}>{busy === `add-${m.offering_id}` ? "Adding…" : "Add"}</Btn>
                   </div>
                 ))}
@@ -198,8 +198,8 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <div className="meter">
           <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
             <span className="tnum" style={{ fontSize: 27, fontWeight: 700, letterSpacing: "-.6px", color: meter.col }}>{total}</span>
-            <span style={{ color: "var(--muted)" }}>of {min}–{max} credit units</span>
-            <span style={{ flexGrow: 1 }} />
+            <span className="ink-muted">of {min}–{max} credit units</span>
+            <span className="grow" />
             <span className="pill" style={{ background: meter.bg, color: meter.fg }}>{meter.lab}</span>
           </div>
           <div className="meter__bar"><div className="meter__fill" style={{ width: `${Math.min(100, Math.round((total / max) * 100))}%`, background: meter.col }} /></div>
@@ -207,7 +207,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         </div>
       </div></div>
       {carry.length ? (
-        <div className="card"><div className="card__head"><span className="card__title" style={{ color: "var(--red-ink)" }}>Outstanding carryovers</span><span className="sub2">added automatically, cannot be removed</span></div>
+        <div className="card"><div className="card__head"><span className="card__title ink-red">Outstanding carryovers</span><span className="sub2">added automatically, cannot be removed</span></div>
           <div className="card__body">{carry.map((m) => pick(m, true, true, true))}</div></div>
       ) : null}
       <div className="card"><div className="card__head"><span className="card__title">{v.level} Level Core Courses</span></div>
@@ -217,7 +217,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           <p className="sub2" style={{ margin: "2px 0 0" }}>A course owned by another department is on your form because your programme and level were made eligible for it when it was created &mdash; you do not request it and nobody grants it to you. Register one and you appear on that lecturer&rsquo;s score sheet like any other candidate.</p></div></div>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!locked ? (
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="row">
           <Btn kind="ghost" disabled={busy !== null} onClick={() => void act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student")}>{busy === "save" ? "Saving…" : "Save the draft"}</Btn>
           <Btn kind="primary" disabled={!ok || busy !== null} onClick={async () => { const saved = await act("save", "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...chosen] }, "Course registration saved by the student"); if (saved) await act("submit", "POST", "/me/registration/submit", { session: v.session, semester: v.semester }, "Course registration submitted by the student"); }}>{busy === "submit" ? "Submitting…" : "Submit for approval"}</Btn>
           <span className="sub2">Goes to your Head of Department for approval</span>
@@ -278,20 +278,20 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <tbody>
             {byOrder(reg.entries).map((e) => { const co = e.entryType === "CARRYOVER"; return (
               <tr key={e.offeringId}>
-                <td className="tnum" style={{ fontWeight: 600 }}>{e.courseCode}{co ? <span style={{ color: "var(--red-ink)", fontWeight: 700 }}> · C/O</span> : null}</td>
+                <td className="tnum b600">{e.courseCode}{co ? <span className="ink-red b700"> · C/O</span> : null}</td>
                 <td>{e.title}</td>
                 <td className="sub2">{e.lecturer ?? "—"}</td>
                 <td className="mid tnum">{e.units}</td>
                 <td className="num" style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)" }}>{courseType(e)}</td>
               </tr>); })}
-            <tr style={{ background: "var(--bg)" }}><td style={{ fontWeight: 700 }} colSpan={3}>TOTAL CREDIT UNITS</td><td className="mid tnum" style={{ fontWeight: 700, fontSize: 14 }}>{reg.units}</td><td /></tr>
+            <tr style={{ background: "var(--bg)" }}><td className="b700" colSpan={3}>TOTAL CREDIT UNITS</td><td className="mid tnum" style={{ fontWeight: 700, fontSize: 14 }}>{reg.units}</td><td /></tr>
           </tbody>
         </table></div>
         <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 18, flexWrap: "wrap" }}>
           <div className="kv"><span className="k">Verification</span><span className="v tnum" style={{ letterSpacing: ".5px" }}>{reg.id.slice(0, 8).toUpperCase()}</span></div>
         </div>
       </div>
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+      <div className="row">
         <a href={pdfUrl} target="_blank" rel="noopener" className="btn btn--primary">Download PDF</a>
         <Btn kind="ghost" onClick={() => printPdf(pdfUrl)}>Print</Btn>
       </div>

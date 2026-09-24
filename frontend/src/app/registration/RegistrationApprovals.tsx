@@ -61,7 +61,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
       {problem ? <div className="card__body"><ProblemNotice problem={problem} /></div> : null}
       <DTable cols={["Student", "Programme", "Level|mid", "Semester|mid", "Courses", "Units|mid", "Submitted|mid", "|num"]} rows={rows.map((r) => [
         <button key="s" onClick={() => setOpen(r)} title="View the full course registration" style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}>
-          <Two a={<span style={{ color: "var(--link, #0e3f55)", textDecoration: "underline" }}>{`${r.surname}, ${r.other_names}`}</span>} b={r.matric_no ?? r.admission_no ?? ""} />
+          <Two a={<span style={{ color: "var(--link, var(--chrome))", textDecoration: "underline" }}>{`${r.surname}, ${r.other_names}`}</span>} b={r.matric_no ?? r.admission_no ?? ""} />
         </button>,
         <span className="sub2" key="p">{r.programme}</span>,
         <span className="tnum" key="l">{r.level}</span>,
@@ -69,7 +69,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
         <span className="sub2" key="c">{r.courses ?? "—"}</span>,
         <span key="u"><b className="tnum">{r.units}</b><div className="sub2">of {r.range ?? "—"}</div></span>,
         <span className="sub2 tnum" key="w">{r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "—"}</span>,
-        <span key="a" style={{ display: "inline-flex", gap: 6 }}>
+        <span key="a" className="row row--inline row--tight">
           <Btn kind="go" disabled={!may || busy !== null} onClick={() => void act(`ok-${r.id}`, `${r.id}/approve`, {}, `Registration of ${r.matric_no ?? r.admission_no} approved`)}>{busy === `ok-${r.id}` ? "Approving…" : "Approve"}</Btn>
           <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${r.id}`, `${r.id}/return`, { comment }, `Registration of ${r.matric_no ?? r.admission_no} returned: ${comment}`); }}>Return</Btn>
         </span>,
@@ -83,7 +83,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
         onClose={() => setOpen(null)}
         foot={<>
           <Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn>
-          <span style={{ flexGrow: 1 }} />
+          <span className="grow" />
           <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${open.id}`, `${open.id}/return`, { comment }, `Registration of ${open.matric_no ?? open.admission_no} returned: ${comment}`).then(() => setOpen(null)); }}>Return</Btn>
           <Btn kind="go" disabled={!may || busy !== null} onClick={() => void act(`ok-${open.id}`, `${open.id}/approve`, {}, `Registration of ${open.matric_no ?? open.admission_no} approved`).then(() => setOpen(null))}>{busy === `ok-${open.id}` ? "Approving…" : "Approve"}</Btn>
         </>}>
@@ -98,7 +98,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice }:
           <span><b className="tnum">{open.entries?.length ?? 0}</b> course{(open.entries?.length ?? 0) === 1 ? "" : "s"}</span>
           <span>Total <b className="tnum">{open.units}</b> units of {open.range ?? "—"} · submitted {open.submitted_at ? new Date(open.submitted_at).toLocaleDateString("en-GB") : "—"}</span>
         </div>
-        {problem ? <div style={{ marginTop: 8 }}><ProblemNotice problem={problem} /></div> : null}
+        {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
       </Modal>
     ) : null}
     </>

@@ -61,7 +61,7 @@ export function Recruitment({ rows, applicants, actingOffice }: { rows: Vacancy[
       <>
         {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
         {err ? <ProblemNotice problem={err} /> : null}
-        <div style={{ marginBottom: 10 }}><Link href="/hr/recruitment" className="btn btn--ghost btn--sm">← All vacancies</Link></div>
+        <div className="mb-3"><Link href="/hr/recruitment" className="btn btn--ghost btn--sm">← All vacancies</Link></div>
         <Panel title={a.vacancy.title} right={`${a.vacancy.department} · ${a.vacancy.grade ?? ""}`}>
           <PBody><div className="sub2"><b>Advertised criteria:</b> {a.vacancy.requirements}</div></PBody>
           {a.rows.length ? (
@@ -72,7 +72,7 @@ export function Recruitment({ rows, applicants, actingOffice }: { rows: Vacancy[
               <span className="tnum sub2" key="t">{r.teaching_years ?? "—"}</span>,
               <b className="tnum" key="sc">{r.score ?? "—"}</b>,
               <span key="st"><Pil kind={ASTATE[r.state]?.[0] ?? "grey"}>{ASTATE[r.state]?.[1] ?? r.state}</Pil>{r.recommendation ? <div className="sub2">{r.recommendation}</div> : null}</span>,
-              <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <span key="ac" className="row row--inline row--tight row--right">
                 {may ? <Btn kind="ghost" disabled={busy} onClick={() => { const s = window.prompt("Score (0–100)", r.score != null ? String(r.score) : ""); if (s === null) return; const rec = window.prompt("Recommendation (e.g. Invite, Reserve)") ?? ""; void send(`/applicants/${r.id}/assess`, { score: s ? Number(s) : null, recommendation: rec || null }, `Score ${r.name}`).then((j) => { if (j) setSaid(`${r.name} scored`); }); }}>Score</Btn> : null}
                 {may ? <Btn kind="go" disabled={busy} onClick={() => void send(`/applicants/${r.id}/assess`, { state: "SHORTLISTED" }, `Shortlist ${r.name}`).then((j) => { if (j) setSaid(`${r.name} shortlisted`); })}>Shortlist</Btn> : null}
               </span>,
@@ -120,7 +120,7 @@ export function Recruitment({ rows, applicants, actingOffice }: { rows: Vacancy[
             <span className="sub2" key="d">{r.department}</span>,
             <span className="tnum" key="a">{r.applications}<span className="sub2"> · {r.shortlisted} shortlisted</span></span>,
             <span key="s"><Pil kind={VSTATE[r.state]?.[0] ?? "grey"}>{VSTATE[r.state]?.[1] ?? r.state}</Pil>{r.closes_on ? <div className="sub2 tnum">closes {day(r.closes_on)}</div> : null}</span>,
-            <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span key="ac" className="row row--inline row--tight row--right">
               <Link href={`/hr/recruitment?vacancy=${r.id}`} className="btn btn--primary btn--sm">Open</Link>
               {may && r.state !== "CLOSED" && r.state !== "CANCELLED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const s = window.prompt("Set state: OPEN, SHORTLISTING, INTERVIEW, OFFER, CLOSED, CANCELLED", r.state); if (s && s.trim()) void send(`/vacancies/${r.id}/state`, { state: s.trim() }, `Set ${r.title} to ${s.trim()}`); }}>State</Btn> : null}
             </span>,

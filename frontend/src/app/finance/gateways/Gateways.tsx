@@ -90,7 +90,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
             <div className="grid grid--2">
               {config.map((c) => (
                 <div className="card" key={c.gateway}><div className="card__body">
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div className="row">
                     <b style={{ textTransform: "capitalize" }}>{c.gateway}</b>
                     {c.configured ? <Pil kind={c.mode === "LIVE" ? "ok" : "info"}>{c.mode === "LIVE" ? "Live key set" : "Test key set"}</Pil> : <Pil kind="grey">No dashboard key</Pil>}
                     {c.configured ? <span className="sub2 tnum">ends {c.last4}</span> : null}
@@ -103,8 +103,8 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
                       <Field id="qt-cs" label="Client secret" hint="Pasted once; it is never displayed after this."><input id="qt-cs" className="ctl tnum" type="password" autoComplete="off" value={qt.clientSecret} onChange={(e) => setQt({ ...qt, clientSecret: e.target.value })} /></Field>
                       <Field id="qt-mc" label="Merchant code" hint="Your Quickteller merchant code."><input id="qt-mc" className="ctl tnum" autoComplete="off" value={qt.merchantCode} onChange={(e) => setQt({ ...qt, merchantCode: e.target.value })} placeholder="MX\u2026" /></Field>
                       <Field id="qt-pi" label="Pay item ID" hint="The payable/pay-item configured on the merchant profile."><input id="qt-pi" className="ctl tnum" autoComplete="off" value={qt.payItemId} onChange={(e) => setQt({ ...qt, payItemId: e.target.value })} placeholder="Default_Payable_MX\u2026" /></Field>
-                      <label className="sub2" style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={qt.sandbox} onChange={(e) => setQt({ ...qt, sandbox: e.target.checked })} /> Sandbox (test) &mdash; uncheck for the live Interswitch endpoints</label>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <label className="sub2 row"><input type="checkbox" checked={qt.sandbox} onChange={(e) => setQt({ ...qt, sandbox: e.target.checked })} /> Sandbox (test) &mdash; uncheck for the live Interswitch endpoints</label>
+                      <div className="row">
                         <Btn kind="primary" disabled={busy || !qt.clientId.trim() || !qt.clientSecret.trim() || !qt.merchantCode.trim() || !qt.payItemId.trim()} onClick={async () => { const j = await send("/gateways/quickteller/key", { secret: JSON.stringify({ clientId: qt.clientId.trim(), clientSecret: qt.clientSecret.trim(), merchantCode: qt.merchantCode.trim(), payItemId: qt.payItemId.trim(), sandbox: qt.sandbox }), hash: null }, "Quickteller configuration set from the dashboard", "PUT"); if (j) { setSaid("Quickteller configured \u2014 " + j.mode + " \u00b7 merchant ending " + j.last4); setQt({ clientId: "", clientSecret: "", merchantCode: "", payItemId: "", sandbox: true }); } }}>{c.configured ? "Replace the configuration" : "Set the configuration"}</Btn>
                         {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the Quickteller configuration? The gateway turns off unless a service variable is set.") && await send("/gateways/quickteller/clear-key", {}, "Quickteller configuration cleared", "POST")) setSaid("Quickteller configuration cleared"); }}>Clear</Btn> : null}
                       </div>
@@ -114,8 +114,8 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
                       <div className="sub2">Quickteller PayDirect query API (optional): the client id and secret Interswitch issues for the Transaction Query API. The collections import needs none of this — set it only to poll payments automatically.</div>
                       <Field id="pd-cid" label="Client ID"><input id="pd-cid" className="ctl tnum" autoComplete="off" value={pdKey.clientId} onChange={(e) => setPdKey({ ...pdKey, clientId: e.target.value })} /></Field>
                       <Field id="pd-cs" label="Client secret" hint="Pasted once; never displayed after this."><input id="pd-cs" className="ctl tnum" type="password" autoComplete="off" value={pdKey.clientSecret} onChange={(e) => setPdKey({ ...pdKey, clientSecret: e.target.value })} /></Field>
-                      <label className="sub2" style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={pdKey.sandbox} onChange={(e) => setPdKey({ ...pdKey, sandbox: e.target.checked })} /> Sandbox (test)</label>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <label className="sub2 row"><input type="checkbox" checked={pdKey.sandbox} onChange={(e) => setPdKey({ ...pdKey, sandbox: e.target.checked })} /> Sandbox (test)</label>
+                      <div className="row">
                         <Btn kind="primary" disabled={busy || !pdKey.clientId.trim() || !pdKey.clientSecret.trim()} onClick={async () => { const j = await send("/gateways/paydirect/key", { secret: JSON.stringify({ clientId: pdKey.clientId.trim(), clientSecret: pdKey.clientSecret.trim(), sandbox: pdKey.sandbox }), hash: null }, "PayDirect query credentials set from the dashboard", "PUT"); if (j) { setSaid("PayDirect query API configured — " + j.mode); setPdKey({ clientId: "", clientSecret: "", sandbox: true }); } }}>{c.configured ? "Replace the credentials" : "Set the credentials"}</Btn>
                         {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the PayDirect query credentials? The report import still works.") && await send("/gateways/paydirect/clear-key", {}, "PayDirect query credentials cleared", "POST")) setSaid("PayDirect query credentials cleared"); }}>Clear</Btn> : null}
                       </div>
@@ -130,7 +130,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
                       <input id="k-flw-hash" className="ctl tnum" type="password" autoComplete="off" value={keys.flutterwave?.hash ?? ""} onChange={(e) => setKeys({ ...keys, flutterwave: { secret: keys.flutterwave?.secret ?? "", hash: e.target.value } })} />
                     </Field>
                   ) : null}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div className="row">
                     <Btn kind="primary" disabled={busy || !keys[c.gateway]?.secret.trim()} onClick={async () => { const j = await send("/gateways/" + c.gateway + "/key", { secret: keys[c.gateway].secret, hash: keys[c.gateway]?.hash || null }, c.gateway + " key set from the dashboard", "PUT"); if (j) { setSaid(c.gateway + " key set \u2014 " + j.mode + " key ending " + j.last4); setKeys({ ...keys, [c.gateway]: { secret: "", hash: "" } }); } }}>{c.configured ? "Replace the key" : "Set the key"}</Btn>
                     {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the " + c.gateway + " key? The gateway turns off unless a service variable is set.") && await send("/gateways/" + c.gateway + "/clear-key", {}, c.gateway + " key cleared", "POST")) setSaid(c.gateway + " key cleared"); }}>Clear</Btn> : null}
                   </div>
@@ -155,7 +155,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
               b.pay_link ? <a className="sub2" href={b.pay_link} target="_blank" rel="noreferrer" key="l">{b.pay_link}</a> : <span className="sub2" key="l">—</span>,
               b.active ? <Pil kind="ok" key="a">Active</Pil> : <Pil kind="grey" key="a">Off</Pil>,
             ])} />
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-3">
               {paydirect.billers.map((b) => {
                 const ed = pdEdit[b.scope] ?? { code: b.biller_code, name: b.name, link: b.pay_link ?? "" };
                 const set = (k: "code" | "name" | "link", v: string) => setPdEdit({ ...pdEdit, [b.scope]: { ...ed, [k]: v } });
@@ -175,7 +175,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
             </Field>
             <div><Btn kind="primary" disabled={busy || !pdText.trim()} onClick={async () => { const rows = parseRows(pdText, ["prn", "amount", "rrn", "paidat", "channel", "payer"]).map((r) => ({ prn: r.prn, amount: r.amount, rrn: r.rrn, paidAt: r.paidat, channel: r.channel, payer: r.payer })); const j = await send("/paydirect/import", { rows }, "PayDirect collections report imported"); if (j) { setSaid(`Imported ${j.imported}: ${j.matched} matched, ${j.unmatched} unmatched, ${j.duplicate} already seen`); setPdText(""); } }}>Import and match</Btn></div>
             {paydirect.collections.length ? (
-              <div style={{ marginTop: 10 }}>
+              <div className="mt-3">
                 <DTable cols={["Imported|mid", "PRN", "Amount|num", "Channel", "State|mid", "Note"]} rows={paydirect.collections.slice(0, 50).map((c2) => [
                   <span className="sub2 tnum" key="i">{c2.imported_at ? day(c2.imported_at) : ""}</span>,
                   <span className="tnum" key="p">{c2.prn}{c2.rrn ? <div className="sub2">{c2.rrn}</div> : null}</span>,
@@ -197,7 +197,7 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
               <Field id="tg-amt" label="Amount" hint="₦100 is enough."><input id="tg-amt" className="ctl tnum" value={test.amount} onChange={(e) => setTest({ ...test, amount: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
               <Field id="tg-gw" label="Gateway"><select id="tg-gw" className="ctl" value={test.gateway} onChange={(e) => setTest({ ...test, gateway: e.target.value })}>{d.gateways.map((g) => <option key={g.gateway} value={g.gateway} disabled={!g.on}>{g.gateway}{g.on ? ` (${g.mode.toLowerCase()})` : " — not wired"}</option>)}</select></Field>
             </div>
-            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="row">
               <Btn kind="primary" disabled={busy || !on.length || !test.number.trim()} onClick={async () => { const j = await send("/test-checkout", { number: test.number, amount: Number(test.amount) || 100, gateway: test.gateway }, `Gateway test checkout for ${test.number}`); if (j?.url) window.location.href = String(j.url); }}>Open a test checkout</Btn>
               <span className="sub2">Pay with the gateway&rsquo;s test card; the webhook lands in the log below, and the reference shows as settled. The purpose is &ldquo;Gateway test&rdquo;, which counts for nothing against the student&rsquo;s fees.</span>
             </div>

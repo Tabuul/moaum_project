@@ -157,10 +157,10 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
       {toEnd.length ? (
         <Panel title="Duplicate courses" right={`${toEnd.length} to end · the same course under more than one code`}>
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept; ending the others removes them from future registration (they stay on any transcript that already carries them).</div>
+            <div className="sub2 mb-2">The same course was uploaded under more than one code, so it shows more than once on registration. The cleanest code is kept; ending the others removes them from future registration (they stay on any transcript that already carries them).</div>
             {dupGroups.map((g, i) => (
               <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
-                <div style={{ fontWeight: 600 }}>{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
+                <div className="b600">{g.title} <span className="sub2">· {g.level} Level · {g.semester === 1 ? "First" : g.semester === 2 ? "Second" : "Third"} semester</span></div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                   {g.codes.map((c) => (
                     <span key={c.code} className="tnum" style={{ fontSize: 12.5 }}>
@@ -170,7 +170,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
                 </div>
               </div>
             ))}
-            <div style={{ marginTop: 12 }}>
+            <div className="mt-3">
               <Btn kind="urgent" disabled={busy} onClick={() => { if (window.confirm(`End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}? The cleanest code in each group is kept. This can be undone by the Board/Senate if needed.`)) void send(`/duplicates/end?dept=${encodeURIComponent(dept)}`, {}, `Ended ${toEnd.length} duplicate courses in ${dept}`).then((j) => { if (j) setSaid(`${String(j.ended ?? toEnd.length)} duplicate course(s) ended`); }); }}>{busy ? "Ending…" : `End ${toEnd.length} duplicate course${toEnd.length === 1 ? "" : "s"}`}</Btn>
             </div>
           </PBody>
@@ -179,7 +179,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
 
       <Panel title="The department's catalogue" right={filtered ? `${shown.length} of ${courses.length} · filtered` : "Every course this department owns"}>
         <PBody>
-          <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="sub2 row">
             <span>Curriculum decides which cohort sees a course at registration (CCMAS or BMAS; leave a shared course, e.g. GST, blank). Tag {fLevel ? `${fLevel} Level` : "the department's"} courses:</span>
             {(["CCMAS", "BMAS"] as const).map((cur) => (
               <Btn key={cur} kind="ghost" disabled={busy} onClick={() => {
@@ -217,7 +217,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
               {SPLITS.some(([m]) => m === (c.ca_max ?? 40)) ? null : <option value={String(c.ca_max ?? 40)}>{splitLabel(c.ca_max ?? 40)}</option>}
               {SPLITS.map(([m, label]) => <option key={m} value={String(m)}>{label}</option>)}
             </select>,
-            c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2" key="lec" style={{ color: "var(--red-ink)" }}>Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
+            c.lecturer ? <span className="sub2" key="lec">{c.lecturer}</span> : c.state === "LIVE" && c.offered ? <span className="sub2 ink-red" key="lec">Not allocated</span> : <span className="sub2" key="lec">&mdash;</span>,
             <Pil kind={STATE[c.state]?.[0] ?? "grey"} key="st">{STATE[c.state]?.[1] ?? c.state}</Pil>,
             <div key="a" style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
               {c.state === "ENDED" ? (
@@ -237,7 +237,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
 
       {add ? (
         <Modal title="New course" sub={`For ${depts.find((d) => d.code === dept)?.name ?? dept}`} onClose={() => setAdd(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !f.code.trim() || !f.title.trim()} onClick={async () => { const j = await send("/courses", { code: f.code.toUpperCase(), title: f.title, units: Number(f.units), semester: Number(f.semester), level: Number(f.level), dept, kind: f.kind }, `New course ${f.code}`); if (j) { setSaid(`${j.code} created — at the Faculty Board`); setAdd(false); } }}>Create</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="grid grid--2">

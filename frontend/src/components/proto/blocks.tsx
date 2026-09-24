@@ -103,15 +103,15 @@ export function TwoCol({ children }: { children: ReactNode }) {
 /** passport(w, h, radius) — the neutral placeholder portrait, or the photograph itself */
 export function Passport({ w, h, radius = 4, src, alt }: { w: number; h: number; radius?: number; src?: string | null; alt?: string }) {
   return (
-    <div style={{ width: w, height: h, borderRadius: radius, overflow: "hidden", border: "1px solid var(--line)", flexShrink: 0, background: "#DCE6EC" }}>
+    <div style={{ width: w, height: h, borderRadius: radius, overflow: "hidden", border: "1px solid var(--line)", flexShrink: 0, background: "var(--line)" }}>
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={alt ?? "Passport photograph"} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
         <svg viewBox="0 0 100 124" width="100%" height="100%" role="img" aria-label="Student passport photograph">
-          <rect width="100" height="124" fill="#DCE6EC" />
-          <circle cx="50" cy="46" r="22" fill="#94A9B6" />
-          <path d="M14 124c0-22 16-35 36-35s36 13 36 35Z" fill="#94A9B6" />
+          <rect width="100" height="124" fill="var(--line)" />
+          <circle cx="50" cy="46" r="22" fill="var(--chrome-dim)" />
+          <path d="M14 124c0-22 16-35 36-35s36 13 36 35Z" fill="var(--chrome-dim)" />
         </svg>
       )}
     </div>

@@ -82,7 +82,7 @@ export function Vouchers({ vouchers, actingOffice }: { vouchers: Voucher[]; acti
             <Two key="w" a={v.title} b={`${v.kind.charAt(0)}${v.kind.slice(1).toLowerCase()} · ${v.source} · ${v.payee}`} />,
             <b className="tnum" key="a">{money(Number(v.amount))}</b>,
             <span key="s"><Pil kind={v.query_open ? "bad" : STAGE[v.stage]?.[0] ?? "grey"}>{v.query_open ? "Query open" : STAGE[v.stage]?.[1] ?? v.stage}</Pil>{v.rejected_why ? <div className="sub2">{v.rejected_why}</div> : null}{v.open_query_finding ? <div className="sub2">{v.open_query_finding} → {v.open_query_to}</div> : null}</span>,
-            <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+            <span key="ac" className="row row--inline row--tight">
               {v.query_open && v.open_query_id ? <Btn kind="primary" disabled={busy} onClick={() => { const a = window.prompt("Answer the query. It is recorded and lets the voucher move again."); if (a) void send(`/queries/${v.open_query_id}/answer`, { answer: a }, `Answer query on ${v.reference}`).then((j) => { if (j) setSaid(`Query on ${v.reference} answered`); }); }}>Answer query</Btn> : null}
               {isAudit && !v.query_open && AUDIT_STAGES.includes(v.stage) && !v.i_acted && !v.raised_by_me ? <Btn kind="go" disabled={busy} onClick={() => { const n = window.prompt("A note on this signature (optional). Leave blank to just sign.") ?? ""; void send(`/${v.id}/advance`, { note: n }, `Advance ${v.reference}`).then((j) => { if (j) setSaid(`${v.reference} advanced`); }); }}>Sign &amp; advance</Btn> : null}
               {isAudit && !v.query_open && AUDIT_STAGES.includes(v.stage) ? <Btn kind="ghost" disabled={busy} onClick={() => { const fnd = window.prompt("The finding (what is wrong or missing):"); if (!fnd) return; const to = window.prompt("Sent to which office? e.g. Bursary, Works"); if (!to) return; void send(`/${v.id}/query`, { finding: fnd, sentTo: to }, `Query on ${v.reference}`).then((j) => { if (j) setSaid(`Query raised on ${v.reference}`); }); }}>Query</Btn> : null}
@@ -96,7 +96,7 @@ export function Vouchers({ vouchers, actingOffice }: { vouchers: Voucher[]; acti
 
       {add ? (
         <Modal title="Raise a voucher" sub="It goes to Internal Audit before it can be paid" onClose={() => setAdd(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !f.title.trim() || !f.payee.trim() || !(Number(f.amount) > 0)} onClick={async () => { const j = await send("", { title: f.title, kind: f.kind, source: f.source, costCentre: f.costCentre || null, payee: f.payee, amount: Number(f.amount) }, `Raise voucher for ${f.payee}`); if (j) { setSaid(`Voucher ${j.reference} raised — with the Director of Audit`); setAdd(false); } }}>Raise it</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <Field id="pv-title" label="What it is for"><input id="pv-title" className="ctl" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="TetFund laboratory block — first certificate" autoComplete="off" /></Field>

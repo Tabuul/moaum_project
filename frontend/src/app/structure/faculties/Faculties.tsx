@@ -103,7 +103,7 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
               <Field id="fc-code" label="Code" hint={editing ? "The code cannot change" : "Short, e.g. SCI"}><input id="fc-code" className="ctl tnum" value={code} disabled={editing} onChange={(e) => setCode(e.target.value.toUpperCase())} /></Field>
               <Field id="fc-name" label="Name"><input id="fc-name" className="ctl" value={name} onChange={(e) => setName(e.target.value)} placeholder="Faculty of Science" /></Field>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="primary" disabled={busy || !code.trim() || !name.trim()} onClick={async () => { const j = await post("/faculties", { code: code.trim(), name: name.trim() }, `Faculty ${code.trim()} ${editing ? "edited" : "created"}`); if (j) { setMsg(`Faculty ${j.code} saved.`); setCode(""); setName(""); setEditing(false); } }}>{editing ? "Save changes" : "Save the faculty"}</Btn>
               {editing ? <Btn kind="ghost" onClick={() => { setCode(""); setName(""); setEditing(false); }}>Cancel</Btn> : null}
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
@@ -116,7 +116,7 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
         </Panel>
       ) : null}
 
-      <Panel title="Faculties" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <Panel title="Faculties" right={<span className="row">
         <span className="sub2">{faculties.length} on the register</span>
         <Btn kind="ghost" disabled={!faculties.length} onClick={() => void exportXlsx()}>Download Excel</Btn>
         <Btn kind="ghost" disabled={!faculties.length} onClick={exportPdf}>Download PDF</Btn>

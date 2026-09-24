@@ -35,12 +35,12 @@ export function Examinations({ session, semester, sessions, view, problem }: { s
 
       <Panel title="Session & semester" right={<span className="sub2">The desk reads the sitting you choose</span>}>
         <PBody>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <label htmlFor="ex-session" className="sub2" style={{ fontWeight: 600 }}>Session</label>
+          <div className="row">
+            <label htmlFor="ex-session" className="sub2 b600">Session</label>
             <select id="ex-session" className="ctl" style={{ maxWidth: 220 }} value={session} onChange={(e) => go(e.target.value, semester)}>
               {options.map((s) => <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : ""}</option>)}
             </select>
-            <label htmlFor="ex-sem" className="sub2" style={{ fontWeight: 600 }}>Semester</label>
+            <label htmlFor="ex-sem" className="sub2 b600">Semester</label>
             <select id="ex-sem" className="ctl" style={{ maxWidth: 200 }} value={semester} onChange={(e) => go(session, Number(e.target.value))}>
               <option value={1}>First</option><option value={2}>Second</option><option value={3}>Summer</option>
             </select>
@@ -66,7 +66,7 @@ export function Examinations({ session, semester, sessions, view, problem }: { s
                   const done = r.candidates > 0 && r.scored >= r.candidates;
                   const part = r.scored > 0 && !done;
                   return [
-                    <span key="c" className="tnum" style={{ fontWeight: 600 }}>{r.code}</span>,
+                    <span key="c" className="tnum b600">{r.code}</span>,
                     <span key="t"><span>{r.title}</span><div className="sub2">{r.programme_name}</div></span>,
                     <span key="d">{r.department_name}</span>,
                     <span key="k" className="sub2">{KIND[r.kind] ?? r.kind}</span>,

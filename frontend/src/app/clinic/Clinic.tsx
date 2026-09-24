@@ -67,7 +67,7 @@ export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
               <Field id="cl-pres" label="Presenting complaint"><input id="cl-pres" className="ctl" value={presenting} onChange={(e) => setPresenting(e.target.value)} autoComplete="off" /></Field>
               <Field id="cl-tri" label="Triage"><select id="cl-tri" className="ctl" value={triage} onChange={(e) => setTriage(e.target.value)}><option value="URGENT">Urgent</option><option value="STANDARD">Standard</option><option value="ROUTINE">Routine</option></select></Field>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="primary" disabled={busy || !who.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/health/visits", "POST", { number: who, presenting, triage }, `Patient ${who} arrived at the clinic`); if (j) { setSaid("On the waiting list"); setPresenting(""); router.refresh(); } }}>Add to the waiting list</Btn>
               <Btn kind="ghost" disabled={busy} onClick={() => queryNav(`/clinic?number=${encodeURIComponent(who)}`)}>Look the patient up</Btn>
             </div>
@@ -100,7 +100,7 @@ export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
 
       {open ? (
         <Modal title={`${open.patient} · ${open.number}`} sub={`${open.programme}${open.sex ? ` · ${open.sex === "F" ? "female" : "male"}` : ""}${open.date_of_birth ? ` · born ${day(open.date_of_birth)}` : ""} · opened in your name, on the log`} onClose={() => setOpen(null)}
-          foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Leave open</Btn><span style={{ flexGrow: 1 }} /><Btn kind="go" disabled={busy || !outcome.outcome.trim()} onClick={async () => { const j = await send(`/api/bff/api/v1/health/visits/${open.id}/conclude`, "POST", { outcome: outcome.outcome, referredTo: outcome.referredTo || null, note: outcome.note || null, fitness: outcome.fitness || null }, `Visit of ${open.number} concluded`); if (j) { setOpen(null); setSaid("Concluded"); router.refresh(); } }}>Conclude the visit</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setOpen(null)}>Leave open</Btn><span className="grow" /><Btn kind="go" disabled={busy || !outcome.outcome.trim()} onClick={async () => { const j = await send(`/api/bff/api/v1/health/visits/${open.id}/conclude`, "POST", { outcome: outcome.outcome, referredTo: outcome.referredTo || null, note: outcome.note || null, fitness: outcome.fitness || null }, `Visit of ${open.number} concluded`); if (j) { setOpen(null); setSaid("Concluded"); router.refresh(); } }}>Conclude the visit</Btn></>}>
           <KvGrid cls="grid--3" pairs={[
             ["Presenting", open.presenting], ["Triage", open.triage], ["Arrived", when(open.arrived_at)],
             ["Blood group", open.profile?.consented_at && !open.profile.restricted_at ? open.profile.blood_group ?? "—" : "Not consented"],
@@ -108,7 +108,7 @@ export function Clinic({ d, number }: { d: ClinicDesk; number: string }) {
             ["Allergies", open.profile?.consented_at && !open.profile.restricted_at ? open.profile.allergies ?? "None recorded" : "Not consented"],
           ]} />
           {open.history.length ? (
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-3">
               <div className="eyebrow">Earlier visits</div>
               {open.history.map((x) => <div key={x.id} style={{ padding: "8px 0", borderTop: "1px solid var(--line-2)" }}><b>{day(x.arrived_at)}</b> · {x.presenting} → {x.outcome}{x.referred_to ? ` (referred to ${x.referred_to})` : ""}{x.notes ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{x.notes}</div> : null}</div>)}
             </div>

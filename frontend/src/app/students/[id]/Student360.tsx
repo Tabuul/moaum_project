@@ -150,7 +150,7 @@ export function Student360({
               {s.entrySession} {s.entryMode.replace("_", " ")}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <Pil kind={statusPill(s.status)}>{statusLabel(s.status)}</Pil>
             <Btn kind="ghost" disabled={!may} onClick={() => setChanging(true)}>
               Change status
@@ -181,14 +181,14 @@ export function Student360({
         <div className="card">
           <div className="card__head">
             <span className="card__title">Finance</span>
-            <span className="pill pill--grey" style={{ marginLeft: "auto" }}>
+            <span className="pill pill--grey ml-auto">
               NOT YET SERVED
             </span>
           </div>
           <div className="card__body">
             <Row k="Session charge" v="—" />
             <Row k="Paid" v="—" />
-            <div style={{ height: 1, background: "var(--line-2)" }} />
+            <div className="hr" />
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <strong>Outstanding</strong>
               <strong className="tnum" style={{ color: "var(--faint)" }}>
@@ -204,7 +204,7 @@ export function Student360({
         <div className="card">
           <div className="card__head">
             <span className="card__title">Academic standing</span>
-            <span className="pill pill--grey" style={{ marginLeft: "auto" }}>
+            <span className="pill pill--grey ml-auto">
               NO RESULT PUBLISHED
             </span>
           </div>
@@ -232,7 +232,7 @@ export function Student360({
         <div className="card">
           <div className="card__head">
             <span className="card__title">Clearances</span>
-            <span className="sub2" style={{ marginLeft: "auto" }}>
+            <span className="sub2 ml-auto">
               {cleared} of {record.convocationClearance.length} · convocation
             </span>
           </div>
@@ -247,7 +247,7 @@ export function Student360({
       <div className="card">
         <div className="card__head">
           <span className="card__title">Registration</span>
-          <span className="sub2" style={{ marginLeft: "auto" }}>
+          <span className="sub2 ml-auto">
             {session}
           </span>
         </div>
@@ -271,7 +271,7 @@ export function Student360({
       <div className="card">
         <div className="card__head">
           <span className="card__title">Record history</span>
-          <span className="sub2" style={{ marginLeft: "auto" }}>
+          <span className="sub2 ml-auto">
             Append-only · every entry attributable
           </span>
         </div>

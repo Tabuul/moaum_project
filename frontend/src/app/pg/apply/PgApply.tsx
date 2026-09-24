@@ -50,17 +50,17 @@ function ProgrammePicker({ progs, value, onPick }: { progs: Prog[]; value: strin
         onBlur={() => window.setTimeout(() => setOpen(false), 150)}
       />
       {open ? (
-        <div id="programme-list" role="listbox" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30, maxHeight: 300, overflowY: "auto", background: "var(--bg, #fff)", border: "1px solid var(--line-2, #d9d9d9)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
+        <div id="programme-list" role="listbox" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30, maxHeight: 300, overflowY: "auto", background: "var(--bg, #fff)", border: "1px solid var(--line-2, var(--line))", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
           {groups.length ? groups.map(([fac, list]) => (
             <div key={fac}>
-              <div style={{ padding: "7px 12px 4px", fontSize: 11, letterSpacing: ".4px", textTransform: "uppercase", color: "var(--chrome, #888)", position: "sticky", top: 0, background: "var(--bg, #fff)" }}>{fac}</div>
+              <div style={{ padding: "7px 12px 4px", fontSize: 11, letterSpacing: ".4px", textTransform: "uppercase", color: "var(--chrome, var(--faint))", position: "sticky", top: 0, background: "var(--bg, #fff)" }}>{fac}</div>
               {list.map((p) => (
                 <button
                   key={p.code} type="button" role="option" aria-selected={p.code === value}
                   onMouseDown={(e) => { e.preventDefault(); onPick(p.code); setOpen(false); setQ(""); }}
                   style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 12px", border: "none", background: p.code === value ? "var(--tint, #eef3fb)" : "transparent", cursor: "pointer", fontSize: 13.5 }}
                 >
-                  <span style={{ fontWeight: 600 }}>{p.name}</span>{p.pg_award ? <span className="sub2"> ({p.pg_award})</span> : null}
+                  <span className="b600">{p.name}</span>{p.pg_award ? <span className="sub2"> ({p.pg_award})</span> : null}
                   <div className="sub2">{p.department_name}</div>
                 </button>
               ))}
@@ -208,7 +208,7 @@ export function PgApply() {
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4 }}>
           {step > 1 ? <button type="button" className="btn btn--ghost btn--sm" onClick={back}>Back</button> : <Link href="/login" className="btn btn--ghost btn--sm">Cancel</Link>}
-          <span style={{ flexGrow: 1 }} />
+          <span className="grow" />
           <span className="sub2">Step {step} of {STEPS.length}</span>
           {last
             ? <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Create account & continue"}</button>
@@ -232,8 +232,8 @@ function Stepper({ steps, current, onGo }: { steps: string[]; current: number; o
         return (
           <button key={t} type="button" onClick={() => (done ? onGo(n) : undefined)} disabled={!done}
             style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: done ? "pointer" : "default" }}>
-            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, #2b6cb0)" : "var(--line-2, #d9d9d9)" }} />
-            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, #888)" }}>{n}. {t}</div>
+            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, var(--sky-ink))" : "var(--line-2, var(--line))" }} />
+            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, var(--faint))" }}>{n}. {t}</div>
           </button>
         );
       })}
@@ -255,7 +255,7 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
   }
 
   return (
-    <div className="card" style={{ marginTop: 14 }}><div className="card__body" style={{ display: "grid", gap: 10 }}>
+    <div className="card mt-4"><div className="card__body" style={{ display: "grid", gap: 10 }}>
       <Section title="Check your application" />
       <div className="grid grid--2">
         <Field id="st-no" label="Application number"><input id="st-no" className="ctl" value={no} onChange={(e) => setNo(e.target.value)} placeholder="PG/25/000001" /></Field>
@@ -267,7 +267,7 @@ function StatusCheck({ initialNo }: { initialNo?: string }) {
         <Note kind={st.state === "OFFERED" || st.state === "ACCEPTED" || st.state === "ADMITTED" ? "ok" : st.state === "NOT_OFFERED" || st.state === "DEPT_DECLINED" ? "bad" : "info"} title={STATE_LABEL[st.state] ?? st.state}>
           {st.surname}, {st.other_names} · {st.programme_name}{st.pg_award ? ` (${st.pg_award})` : ""}. {st.spgs_note ? `Note: ${st.spgs_note}. ` : ""}{st.fee_confirmed_at ? "Application fee confirmed." : "Application fee not yet confirmed."}
           {st.state === "DECISION_LOCKED" || st.state === "OFFERED" || !st.fee_confirmed_at ? (
-            <div style={{ marginTop: 8 }}><a href="/login?next=/pg/portal" className="btn btn--primary btn--sm">{st.state === "DECISION_LOCKED" ? "Sign in to pay the checking fee and see the decision" : st.state === "OFFERED" ? "Sign in to pay the acceptance fee and accept" : "Sign in to pay the application fee"}</a></div>
+            <div className="mt-2"><a href="/login?next=/pg/portal" className="btn btn--primary btn--sm">{st.state === "DECISION_LOCKED" ? "Sign in to pay the checking fee and see the decision" : st.state === "OFFERED" ? "Sign in to pay the acceptance fee and accept" : "Sign in to pay the application fee"}</a></div>
           ) : null}
         </Note>
       ) : null}
@@ -317,5 +317,5 @@ function Field({ id, label, hint, children }: { id: string; label: string; hint?
   );
 }
 function Row({ k, v }: { k: string; v: string }) {
-  return <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}><span className="sub2">{k}</span><span className="tnum" style={{ fontWeight: 700 }}>{v}</span></div>;
+  return <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}><span className="sub2">{k}</span><span className="tnum b700">{v}</span></div>;
 }

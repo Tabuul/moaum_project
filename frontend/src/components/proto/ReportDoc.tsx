@@ -88,7 +88,7 @@ export function ReportDoc({
         <footer className="rpt__foot">
           {note ? <div className="rpt__note">{note}</div> : null}
           {kept ? (
-            <div className="rpt__issued" style={{ fontWeight: 600 }}>
+            <div className="rpt__issued b600">
               Kept copy · taken {day(kept.takenAt)}{kept.by ? ` by ${kept.by}` : ""}{kept.office ? ` (${kept.office})` : ""}
               {kept.filedAt ? ` · filed with ${kept.filedTo} on ${day(kept.filedAt)}` : " · not yet filed"}.
               Verification code <span className="tnum">{kept.code}</span> — check it at /verify/report/{kept.code}.

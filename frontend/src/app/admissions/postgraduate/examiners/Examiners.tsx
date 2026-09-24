@@ -80,7 +80,7 @@ export function Examiners({ mayEdit }: { mayEdit: boolean }) {
               <div className="field"><label htmlFor="e-tf">Tenure from</label><input id="e-tf" className="ctl" type="date" value={f.tenureFrom} onChange={(e) => setF({ ...f, tenureFrom: e.target.value })} /></div>
               <div className="field"><label htmlFor="e-tt">Tenure to</label><input id="e-tt" className="ctl" type="date" value={f.tenureTo} onChange={(e) => setF({ ...f, tenureTo: e.target.value })} /></div>
             </div>
-            <div style={{ marginTop: 10 }}><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void add()}>{busy ? "Saving…" : "Appoint examiner"}</button></div>
+            <div className="mt-3"><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void add()}>{busy ? "Saving…" : "Appoint examiner"}</button></div>
           </PBody>
         </Panel>
       ) : null}

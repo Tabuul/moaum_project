@@ -58,7 +58,7 @@ function Tabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
   );
 }
 
-const H = ({ children }: { children: ReactNode }) => <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>{children}</div>;
+const H = ({ children }: { children: ReactNode }) => <div className="sub2 eyebrow eyebrow--gap">{children}</div>;
 
 export function StaffModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [rec, setRec] = useState<StaffRecord | null>(null);
@@ -96,8 +96,8 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
         </div>
         <div style={{ flexGrow: 1, minWidth: 240 }}>
           <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.3px" }}>{p.surname}, {p.given_names}</div>
-          <div className="sub2 tnum" style={{ marginTop: 2 }}>{p.staff_number ?? "—"}{p.pno ? ` · PNO ${p.pno}` : ""}</div>
-          <div className="sub2" style={{ marginTop: 2 }}>{rankCase(p.rank)}{p.department ? ` · ${p.department}` : ""}</div>
+          <div className="sub2 tnum mt-1">{p.staff_number ?? "—"}{p.pno ? ` · PNO ${p.pno}` : ""}</div>
+          <div className="sub2 mt-1">{rankCase(p.rank)}{p.department ? ` · ${p.department}` : ""}</div>
           <div className="sub2">{p.faculty ?? ""}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             <Pil kind={p.status === "ACTIVE" ? "ok" : p.status === "SUSPENDED" ? "warn" : "grey"}>{words(p.status)}</Pil>
@@ -140,7 +140,7 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
               ["ORCID", pf.orcid ?? "—"], ["Google Scholar", pf.scholar_url ? <a key="s" href={pf.scholar_url} target="_blank" rel="noopener">{pf.scholar_url}</a> : "—"],
             ]} />
             {LISTS.map(([k, label]) => { const items = list(pf[k] as string); return items.length ? (<div key={k}><H>{label} ({items.length})</H><ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.5 }}>{items.map((x, i) => <li key={i}>{x}</li>)}</ol></div>) : null; })}
-            <div className="sub2" style={{ marginTop: 10 }}>Profile kept by the member of staff · last updated {day(pf.updated_at)}.</div>
+            <div className="sub2 mt-3">Profile kept by the member of staff · last updated {day(pf.updated_at)}.</div>
           </>
         ) : <div className="sub2">This member of staff has not filled their academic profile.</div>
       ) : null}
@@ -165,7 +165,7 @@ export function StaffModal({ id, onClose }: { id: string; onClose: () => void })
 
   return (
     <Modal wide title={p ? `${p.surname}, ${p.given_names}` : "Member of staff"} sub={p ? `${p.staff_number ?? ""}${p.rank ? ` · ${rankCase(p.rank)}` : ""}` : "Reading the record"} onClose={onClose}
-      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span style={{ flexGrow: 1 }} />{p ? <a href={`/staff/idcard/pdf?id=${p.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">ID card (PDF)</a> : null}<button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
+      foot={<><span className="sub2">Read from the staff record as it stands now.</span><span className="grow" />{p ? <a href={`/staff/idcard/pdf?id=${p.id}`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">ID card (PDF)</a> : null}<button type="button" className="btn btn--primary btn--sm" onClick={onClose}>Close</button></>}>
       {body}
     </Modal>
   );

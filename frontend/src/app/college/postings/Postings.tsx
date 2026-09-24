@@ -121,7 +121,7 @@ export function Postings({ structure, sessions, session, level, posting, student
         <>
           <Panel title={`${chosenBlock?.name ?? ""} · ${chosen.code} — ${chosen.name}`} right={`${TIER[chosen.tier] ?? chosen.tier}${chosen.duration_weeks ? ` · ${chosen.duration_weeks} weeks` : ""}${chosen.level_note ? ` · ${chosen.level_note}` : ""}`}>
             <PBody>
-              {chosen.courses ? <div className="sub2 tnum" style={{ marginBottom: 6 }}>{chosen.courses}</div> : null}
+              {chosen.courses ? <div className="sub2 tnum mb-2">{chosen.courses}</div> : null}
               <div className="sub2">{chosen.min_cases ? `${chosen.min_cases} cases to clerk · ` : ""}{chosen.procedures ? `${chosen.procedures} procedure requirements · ` : ""}{chosen.slots ? `${chosen.slots} timetable slots` : "no timetable in the prospectus"}{chosen.note ? ` · ${chosen.note}` : ""}</div>
             </PBody>
           </Panel>
@@ -166,7 +166,7 @@ export function Postings({ structure, sessions, session, level, posting, student
                   <div className="field"><label htmlFor="po-sup">Supervisor</label>
                     <SearchSelect id="po-sup" value={supervisor} allLabel="Not yet assigned" placeholder="Search the College's staff…"
                       options={supervisors.map((s) => ({ value: s.id, label: `${s.surname}, ${s.given_names} · ${s.dept_name}` }))} onChange={setSupervisor} /></div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div className="row">
                     <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-from">Starts</label><input id="po-from" className="ctl" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
                     <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="po-to">Ends</label><input id="po-to" className="ctl" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
                   </div>

@@ -88,7 +88,7 @@ export function Tenders({ tenders, selected, bids, actingOffice }: { tenders: Te
       {tender ? (
         <Panel title={`${tender.reference} — ${tender.subject}`} right={`${METHOD[tender.method] ?? tender.method} · estimate ${money(Number(tender.estimate))} · threshold ${tender.technical_threshold}%`}>
           <PBody>
-            {tender.stage === "ADVERTISED" && may ? <div style={{ marginBottom: 8 }}><Btn kind="ghost" onClick={() => { setB({ bidder: "", price: "" }); setErr(null); setAddBid(true); }}>+ Record a bid</Btn></div> : null}
+            {tender.stage === "ADVERTISED" && may ? <div className="mb-2"><Btn kind="ghost" onClick={() => { setB({ bidder: "", price: "" }); setErr(null); setAddBid(true); }}>+ Record a bid</Btn></div> : null}
             {bids.length ? (
               <DTable cols={["Bidder", "Technical|mid", "Bid price|num", "Responsive|mid", "Rank|mid", "Action|num"]} rows={bids.map((bd) => [
                 <strong key="b">{bd.bidder}</strong>,
@@ -96,21 +96,21 @@ export function Tenders({ tenders, selected, bids, actingOffice }: { tenders: Te
                 <span className="tnum" key="p">{money(Number(bd.price))}</span>,
                 bd.responsive === true ? <Pil kind="ok" key="r">Yes</Pil> : bd.responsive === false ? <Pil kind="bad" key="r">No{bd.reason ? ` — ${bd.reason}` : ""}</Pil> : <span className="sub2" key="r">Not scored</span>,
                 <span className="tnum" key="rk">{bd.rank ? <strong>{bd.rank}</strong> : "—"}</span>,
-                <span key="a" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                <span key="a" className="row row--inline row--tight">
                   {may && (tender.stage === "ADVERTISED" || tender.stage === "EVALUATED") ? <Btn kind="ghost" disabled={busy} onClick={() => { const ts = window.prompt("Technical score out of 100 (blank = not evaluated):", bd.technical_score?.toString() ?? ""); if (ts === null) return; const t = ts.trim() === "" ? null : Number(ts); const resp = t !== null && t >= tender.technical_threshold; let reason: string | null = null; if (!resp) { reason = window.prompt("Why is it not responsive? (e.g. below threshold, tax clearance expired)"); if (!reason) return; } void send(`/bids/${bd.id}/score`, { technical: t, responsive: resp, reason }, `Score bid on ${tender.reference}`).then((j) => { if (j) setSaid("Bid scored"); }); }}>Score</Btn> : null}
                   {may && tender.stage === "EVALUATED" && bd.responsive === true ? <Btn kind="go" disabled={busy} onClick={() => { const lower = bids.some((o) => o.responsive === true && Number(o.price) < Number(bd.price)); let why: string | null = ""; if (lower) { why = window.prompt("A lower responsive bid exists. Why is this one awarded?"); if (!why) return; } if (window.confirm(`Award ${tender.reference} to ${bd.bidder} at ${money(Number(bd.price))}?`)) void send(`/${tender.id}/award`, { bid: bd.id, why }, `Award ${tender.reference}`).then((j) => { if (j) setSaid(`${tender.reference} awarded to ${bd.bidder}`); }); }}>Award</Btn> : null}
                 </span>,
               ])} texts={bids.map((bd) => bd.bidder)} />
             ) : <div className="sub2">No bid recorded yet.</div>}
             {tender.awarded_why ? <Note kind="info" title="Why this award, and not the lowest bid">{tender.awarded_why}</Note> : null}
-            {may && tender.stage !== "AWARDED" && tender.stage !== "CANCELLED" ? <div style={{ marginTop: 8 }}><Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Cancel this tender. The reason is recorded."); if (w) void send(`/${tender.id}/cancel`, { why: w }, `Cancel ${tender.reference}`); }}>Cancel the tender</Btn></div> : null}
+            {may && tender.stage !== "AWARDED" && tender.stage !== "CANCELLED" ? <div className="mt-2"><Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Cancel this tender. The reason is recorded."); if (w) void send(`/${tender.id}/cancel`, { why: w }, `Cancel ${tender.reference}`); }}>Cancel the tender</Btn></div> : null}
           </PBody>
         </Panel>
       ) : null}
 
       {add ? (
         <Modal title="Open a tender" sub="Its method is set from the estimate" onClose={() => setAdd(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.subject.trim() || !(Number(f.estimate) > 0)} onClick={async () => { const j = await send("", { subject: f.subject, costCentre: f.costCentre || null, estimate: Number(f.estimate), threshold: Number(f.threshold) || 70 }, `Open tender: ${f.subject}`); if (j) { setSaid(`Tender ${j.reference} opened`); setAdd(false); } }}>Open it</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.subject.trim() || !(Number(f.estimate) > 0)} onClick={async () => { const j = await send("", { subject: f.subject, costCentre: f.costCentre || null, estimate: Number(f.estimate), threshold: Number(f.threshold) || 70 }, `Open tender: ${f.subject}`); if (j) { setSaid(`Tender ${j.reference} opened`); setAdd(false); } }}>Open it</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <Field id="tn-subject" label="What is being procured"><input id="tn-subject" className="ctl" value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} placeholder="40 desktop computers" autoComplete="off" /></Field>
           <div className="grid grid--3">
@@ -124,7 +124,7 @@ export function Tenders({ tenders, selected, bids, actingOffice }: { tenders: Te
 
       {addBid && tender ? (
         <Modal title={`Record a bid on ${tender.reference}`} sub="Sealed until opening; recorded here after" onClose={() => setAddBid(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAddBid(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !b.bidder.trim() || !(Number(b.price) > 0)} onClick={async () => { const j = await send(`/${tender.id}/bids`, { bidder: b.bidder, price: Number(b.price) }, `Bid on ${tender.reference}`); if (j) { setSaid("Bid recorded"); setAddBid(false); } }}>Record it</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setAddBid(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !b.bidder.trim() || !(Number(b.price) > 0)} onClick={async () => { const j = await send(`/${tender.id}/bids`, { bidder: b.bidder, price: Number(b.price) }, `Bid on ${tender.reference}`); if (j) { setSaid("Bid recorded"); setAddBid(false); } }}>Record it</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="grid grid--2">
             <Field id="bd-bidder" label="Bidder"><input id="bd-bidder" className="ctl" value={b.bidder} onChange={(e) => setB({ ...b, bidder: e.target.value })} autoComplete="off" /></Field>

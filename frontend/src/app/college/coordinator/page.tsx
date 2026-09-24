@@ -44,7 +44,7 @@ export default async function CoordinatorPage() {
       ]} />
       <Panel title="Your doors">
         <PBody>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <Link href="/college/scoresheets" className="btn btn--primary btn--sm">Score sheet</Link>
             <Link href={`/college/examinations${ex.code ? `?exam=${encodeURIComponent(ex.code)}` : ""}`} className="btn btn--ghost btn--sm">Professional examination</Link>
             <Link href={`/college/postings?level=${s.level}`} className="btn btn--ghost btn--sm">Postings</Link>
@@ -62,7 +62,7 @@ export default async function CoordinatorPage() {
             <span key="y">{c.open + c.resit > 0 ? <Pil kind={c.year_reached_final ? "warn" : "ok"}>{c.year_reached_final ? "At its end" : "Running"}</Pil> : <Pil kind="grey">Closed</Pil>}</span>,
             <span className="sub2" key="d">{c.year_starts_on ? `${dayOf(c.year_starts_on)} to ${dayOf(c.year_ends_on)}` : "Not dated"}</span>,
             <span className="tnum" key="w">{c.with_results}</span>,
-            <span key="dc"><span className="tnum">{c.confirmed}</span> confirmed{c.provisional ? <> · <b style={{ color: "var(--red-ink)" }}>{c.provisional}</b> provisional</> : null}</span>,
+            <span key="dc"><span className="tnum">{c.confirmed}</span> confirmed{c.provisional ? <> · <b className="ink-red">{c.provisional}</b> provisional</> : null}</span>,
             <span key="wt">{waiting(c)}</span>,
           ])} />
         )}

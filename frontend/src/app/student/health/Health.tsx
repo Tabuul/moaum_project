@@ -60,7 +60,7 @@ export function Health({ h }: { h: StudentHealth }) {
               <Field id="hp-geno" label="Genotype"><select id="hp-geno" className="ctl" value={geno} onChange={(e) => setGeno(e.target.value)}><option value="">—</option>{["AA", "AS", "SS", "AC", "SC"].map((g) => <option key={g}>{g}</option>)}</select></Field>
               <Field id="hp-all" label="Allergies"><input id="hp-all" className="ctl" value={allergies} onChange={(e) => setAllergies(e.target.value)} autoComplete="off" /></Field>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="ghost" disabled={busy !== null} onClick={async () => { if (await act("consent", "PUT", "/me/health/consent", { bloodGroup: blood || null, genotype: geno || null, allergies: allergies || null }, "Health record consented by the student")) setSaid("Recorded with your consent"); }}>{consented ? "Update with my consent" : "Record with my consent"}</Btn>
               {consented ? <Btn kind="ghost" disabled={busy !== null} onClick={async () => { if (await act("restrict", "POST", "/me/health/restrict", {}, "Health record restricted by the student")) setSaid("Restricted — not deleted"); }}>Withdraw consent</Btn> : null}
             </div>

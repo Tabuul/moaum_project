@@ -93,7 +93,7 @@ export function Movements({ rows, grades, actingOffice }: { rows: MovementRow[];
             <span className="sub2" key="w">{r.what_changes}{r.reason ? <div className="sub2">{r.reason}</div> : null}{r.instrument ? <div className="sub2 tnum">Instrument {r.instrument}</div> : null}{r.decision_note ? <div className="sub2">{r.decision_note}</div> : null}</span>,
             <span className="sub2 tnum" key="e">{day(r.effective_date)}</span>,
             <Pil kind={STATE[r.state]?.[0] ?? "grey"} key="st">{STATE[r.state]?.[1] ?? r.state}</Pil>,
-            <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span key="ac" className="row row--inline row--tight row--right">
               {mayApprove && r.state === "REQUESTED" ? <Btn kind="go" disabled={busy} onClick={() => void send(`/${r.id}/approve`, {}, `Approve movement for ${r.name}`).then((j) => { if (j) setSaid(`${r.name}'s movement approved — issue the instrument to make it real`); })}>Approve</Btn> : null}
               {mayApprove && r.state === "REQUESTED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Why is it declined? The reason is recorded."); if (w && w.trim()) void send(`/${r.id}/decline`, { why: w.trim() }, `Decline movement for ${r.name}`); }}>Decline</Btn> : null}
               {mayOfficer && r.state === "APPROVED" ? <Btn kind="primary" disabled={busy} onClick={() => { if (window.confirm(`Issue the instrument for ${r.name}? This changes the record from ${day(r.effective_date)}.`)) void send(`/${r.id}/issue`, {}, `Issue instrument for ${r.name}`).then((j) => { if (j) setSaid(`Instrument ${j.instrument} issued — the record is changed`); }); }}>Issue instrument</Btn> : null}

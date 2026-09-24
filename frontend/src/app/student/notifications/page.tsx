@@ -25,7 +25,7 @@ export default async function Page() {
                 {s.notices.map((n, i) => (
                   <div key={n.id} style={{ padding: "14px 16px", display: "flex", gap: 11, borderBottom: i < s.notices.length - 1 ? "1px solid var(--line-2)" : undefined }}>
                     <span className="dot" style={{ background: n.state === "FAILED" ? "var(--red)" : n.state === "SENT" ? "var(--green)" : "var(--sky)", marginTop: 7 }} />
-                    <div style={{ flexGrow: 1 }}><div style={{ fontWeight: 600 }}>{n.subject}</div><div className="sub2" style={{ lineHeight: 1.5 }}>{n.body}</div></div>
+                    <div className="grow"><div className="b600">{n.subject}</div><div className="sub2" style={{ lineHeight: 1.5 }}>{n.body}</div></div>
                     <span className="sub2" style={{ whiteSpace: "nowrap" }}>{when(n.created_at)}</span>
                   </div>
                 ))}

@@ -44,11 +44,11 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   const cell = (m: ReturnType<typeof markOf>) =>
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
       : m.counted ? (m.total == null
-          ? <span style={{ color: "var(--red-ink)", fontWeight: 700 }}><span className="tnum">ABS</span><div>F0</div></span>
+          ? <span className="ink-red b700"><span className="tnum">ABS</span><div>F0</div></span>
           : <span><span className="tnum">{m.total}</span><div style={{ color: COLOUR(m.points), fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>)
-      : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div style={{ fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>
+      : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div className="b700">{gw(m.grade, m.points)}</div></span>
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
-      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} style={{ color: "var(--red-ink)", fontWeight: 700 }}><span className="tnum">ABS</span><div>F0</div></span>;
+      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} className="ink-red b700"><span className="tnum">ABS</span><div>F0</div></span>;
   const orderCols = bands.flatMap((b) => b[1]);
   /* the sheet is in lists as Senate reads it, at every level from 200 and in every programme. The class first;
      then the DIRECT ENTRY STUDENTS, listed apart at every level from 200 in both semesters; then, at a first
@@ -299,7 +299,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                       </tbody></table>
                     </div>
                   </div>
-                  <div className="ers__h" style={{ marginTop: 14 }}>Courses</div>
+                  <div className="ers__h mt-4">Courses</div>
                   <table className="ers__t ers__courses"><tbody>
                     {orderCols.map((c) => <tr key={c.courseCode}><td className="tnum ab">{c.courseCode}</td><td>{c.title}</td><td className="tnum">{c.units} units</td></tr>)}
                   </tbody></table>

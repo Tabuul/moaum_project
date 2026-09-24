@@ -151,13 +151,13 @@ export function LecturerDashboard({ me, sheets, session, history = [] }: { me: M
               {first ? <Link href={`/results/sheets/${first.id}`} className="btn btn--ghost">Blank score sheet — {first.courseCode}</Link> : null}
               <Link href="/student/exams" className="btn btn--ghost" style={{ display: "none" }}>—</Link>
             </div>
-            <div className="sub2" style={{ marginTop: 8 }}>Each is generated when you ask, so it is never out of date. The class list is the roll of account: a student who is not on it is not registered, whatever they tell you.</div>
+            <div className="sub2 mt-2">Each is generated when you ask, so it is never out of date. The class list is the roll of account: a student who is not on it is not registered, whatever they tell you.</div>
           </PBody>
         </Panel>
         <Panel title="This week" right="From the slots the department gave your courses">
           <PBody>
             <div className="sub2">The teaching timetable is drawn on the class list screen from the slots recorded against each offering. Nothing is shown here that the department has not recorded.</div>
-            <div style={{ marginTop: 8 }}><Link href="/registration/class-list" className="btn btn--ghost btn--sm">Open the class list</Link></div>
+            <div className="mt-2"><Link href="/registration/class-list" className="btn btn--ghost btn--sm">Open the class list</Link></div>
           </PBody>
         </Panel>
       </div>

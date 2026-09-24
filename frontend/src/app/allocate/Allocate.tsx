@@ -214,7 +214,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                   </div>
                 ) : null}
               </span>
-            ) : <span key="l" style={{ color: "var(--red-ink)", fontWeight: 700 }}>Unassigned</span>,
+            ) : <span key="l" className="ink-red b700">Unassigned</span>,
             o.second_examiner ? <Pil kind="ok" key="s">{o.second_examiner}</Pil> : o.lecturer_id ? <Pil kind="bad" key="s">Not set</Pil> : <span className="sub2" key="s">&mdash;</span>,
             <Btn key="a" kind={o.lecturer_id ? "ghost" : "urgent"} onClick={() => openAssign(o)}>{o.lecturer_id ? "Manage" : "Assign"}</Btn>,
           ])} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.lecturer ?? ""} ${cos(o).map((c) => c.name).join(" ")}`)} />
@@ -236,7 +236,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
               : <Btn kind="go" disabled={busy || !lecturer} onClick={() => void assign(false)}>{busy ? "Saving…" : "Save the lead & second examiner"}</Btn>}</>}>
           {err ? <ProblemNotice problem={err} /> : null}
 
-          <div className="eyebrow" style={{ marginTop: 2 }}>Lead lecturer</div>
+          <div className="eyebrow mt-1">Lead lecturer</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0 8px" }}>
             <div className="sub2">The lead owns the score sheet and submits it up the chain. Ordered by remaining capacity against the {MAX_UNITS}-unit maximum; a full lecturer can still be assigned as an overload.</div>
             <label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer", whiteSpace: "nowrap" }}>
@@ -272,7 +272,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
           </Field>
 
           {/* co-teaching: additional lecturers who teach the course and enter scores on the same sheet */}
-          <div className="eyebrow" style={{ marginTop: 14 }}>Co-lecturers</div>
+          <div className="eyebrow mt-4">Co-lecturers</div>
           <div className="sub2" style={{ margin: "2px 0 8px" }}>A course can be taught by more than one lecturer. A co-lecturer sees the course on their dashboard and enters scores on the shared sheet; the lead still submits it.</div>
           {co.length ? (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -283,8 +283,8 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
                 </span>
               ))}
             </div>
-          ) : <div className="sub2" style={{ marginBottom: 8 }}>No co-lecturer yet — this course is taught by the lead alone.</div>}
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          ) : <div className="sub2 mb-2">No co-lecturer yet — this course is taught by the lead alone.</div>}
+          <div className="row row--end">
             <div className="field" style={{ flex: "1 1 240px" }}><label htmlFor="al-co">Add a co-lecturer</label>
               <SearchSelect id="al-co" value={addCoId} placeholder="Search a lecturer…"
                 options={coCandidates.map((l) => ({ value: l.id, label: pool !== null && l.department ? `${l.name} · ${l.department}` : l.name }))} onChange={setAddCoId} /></div>

@@ -80,7 +80,7 @@ export function Reconsiderations({ session, actingOffice }: { session: string; a
     <Panel title="Reconsiderations — candidates who could be moved"
            right={<span className="sub2">{candidates == null ? "…" : `${candidates.length} candidate${candidates.length === 1 ? "" : "s"}`}</span>}>
       <PBody>
-        <div className="sub2" style={{ marginBottom: 8 }}>
+        <div className="sub2 mb-2">
           Not offered their own programme, but hold O&rsquo;Level credits in English, Mathematics and three other subjects, and
           qualify for an open programme (its cut-off met, its compulsory subjects credited, a seat free). Choose a programme
           from each candidate&rsquo;s qualified options and suggest it; the candidate is emailed that programme.

@@ -103,7 +103,7 @@ export function ReconcileLedger({ canCheck }: { canCheck: boolean }) {
                 {r.checked_by_name ? <div className="sub2">{r.result === "MATCHED" ? "Reconciled" : "Flagged"} by {r.checked_by_name}</div> : null}
               </span>,
               ...(canCheck ? [
-                <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <span key="ac" className="row row--inline row--tight row--right">
                   <Btn kind="go" disabled={busy} onClick={() => { const b = window.prompt(`Bank reference for ${r.reference}? (optional — the credit or narration on the statement)`) ?? ""; void check(r.reference, "MATCHED", b.trim() || null, null); }}>{r.result === "MATCHED" ? "Re-confirm" : "Matched"}</Btn>
                   <Btn kind="ghost" disabled={busy} onClick={() => { const n = window.prompt(`What does not agree for ${r.reference}? The note is recorded.`); if (n && n.trim()) { const b = window.prompt("Bank reference, if any (optional)") ?? ""; void check(r.reference, "DISCREPANCY", b.trim() || null, n.trim()); } }}>Flag</Btn>
                 </span>,

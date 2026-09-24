@@ -121,7 +121,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "12px 0" }}>
         {TABS.map(([t, label]) => <Btn key={t} kind={tab === t ? "primary" : "ghost"} onClick={() => setTab(t)}>{label}</Btn>)}
-        <span style={{ flexGrow: 1 }} />
+        <span className="grow" />
         {may ? <Btn kind="go" disabled={busy !== null} onClick={() => { setJDate(today()); setJMemo(""); setJLines([emptyLine(), emptyLine()]); setPosting(true); }}>New journal</Btn> : null}
         {may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void call("sync", "/sync", {}, "Ledger sync from the accounting screen")}>{busy === "sync" ? "Syncing…" : "Sync"}</Btn> : null}
       </div>
@@ -182,7 +182,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
             if (!j) return null;
             return (
               <PBody>
-                <div className="sub2" style={{ marginBottom: 6 }}>Journal #{j.journal_no} — {j.memo}</div>
+                <div className="sub2 mb-2">Journal #{j.journal_no} — {j.memo}</div>
                 <DTable cols={["Account", "Debit|num", "Credit|num"]} rows={j.lines.map((l) => [
                   <span key="a">{l.name} <span className="sub2">{l.account}</span>{l.narration ? <span className="sub2"> · {l.narration}</span> : null}</span>,
                   <span key="d" className="tnum">{l.debit ? naira(l.debit) : ""}</span>,
@@ -198,7 +198,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       {tab === "ledger" ? (
         <Panel title="Account ledger">
           <PBody>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="row row--end">
               <div className="field" style={{ minWidth: 240, margin: 0 }}><label htmlFor="led-a">Account</label>
                 <select id="led-a" className="ctl" value={ledAccount} onChange={(e) => setLedAccount(e.target.value)}>
                   <option value="">Choose an account…</option>
@@ -226,7 +226,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
 
       {posting ? (
         <Modal title="Post a journal" sub="A balanced entry — opening balances, an adjustment, a correction" onClose={() => setPosting(false)}
-          foot={<><Btn kind="ghost" onClick={() => setPosting(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setPosting(false)}>Cancel</Btn><span className="grow" />
             <span className="sub2 tnum" style={{ alignSelf: "center", color: balanced ? "var(--green-ink)" : "var(--red-ink)" }}>Dr {naira(jDr)} · Cr {naira(jCr)}</span>
             <Btn kind="go" disabled={!balanced || !jMemo.trim() || busy !== null} onClick={async () => {
               const ok = await call("journal", "/journals", {
@@ -261,7 +261,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
 
       {reversing ? (
         <Modal title={`Reverse journal #${reversing.journal_no}`} sub={reversing.memo} onClose={() => setReversing(null)}
-          foot={<><Btn kind="ghost" onClick={() => setReversing(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setReversing(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="urgent" disabled={!reason.trim() || busy !== null} onClick={async () => {
               const ok = await call("reverse", `/journals/${reversing.id}/reverse`, { reason: reason.trim() }, `Journal #${reversing.journal_no} reversed`);
               if (ok) setReversing(null);

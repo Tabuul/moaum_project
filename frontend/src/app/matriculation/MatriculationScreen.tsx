@@ -89,7 +89,7 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
           </PBody>
         </Panel>
       </TwoCol>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="row">
         <button className="btn btn--primary" disabled={busy || !may || t.pending > 0 || t.confirmed === 0} onClick={() => void run()}>{busy ? "Running…" : `Run matriculation for ${t.confirmed.toLocaleString()} students`}</button>
         <span className="sub2">{t.pending ? `Disabled while ${outstanding.map((f) => f.name).join(", ")} ${outstanding.length === 1 ? "is" : "are"} outstanding` : t.confirmed === 0 ? (done ? `Run ${last.ref} · ${day(last.runAt)} · nobody is waiting for the next run` : "Nobody is on a confirmed list yet") : "This cannot be undone. A matriculation number is permanent."}</span>
       </div>

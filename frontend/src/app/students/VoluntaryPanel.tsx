@@ -71,7 +71,7 @@ export function VoluntaryPanel({ summary }: { summary: VoluntarySummary }) {
                 <strong key="nm">{d.surname}, {d.other_names}</strong>,
                 <span className="sub2" key="p">{d.programme ?? d.programme_code}</span>,
                 <span className="tnum" key="l">{d.current_level}</span>,
-                <strong className="tnum" style={{ color: "var(--red-ink)" }} key="s">{d.semesters}</strong>,
+                <strong className="tnum ink-red" key="s">{d.semesters}</strong>,
                 <span className="sub2" key="f">{d.first_missed ?? "—"}</span>,
                 <span className="sub2" key="lr">{d.last_registered ?? "Never"}</span>,
                 <Btn kind="ghost" key="b" onClick={() => close([d.student_id])} disabled={busy !== null}>{busy === d.student_id ? "Closing…" : "Close"}</Btn>,

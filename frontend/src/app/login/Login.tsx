@@ -79,7 +79,7 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); void signIn(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Sign in</div>
-            <div className="hint" style={{ marginTop: 4 }}>One door for students, staff and applicants. The portal opens on your own side once it knows who you are.</div>
+            <div className="hint mt-1">One door for students, staff and applicants. The portal opens on your own side once it knows who you are.</div>
           </div>
           <div className="field">
             <label htmlFor="uid">Your number or email address</label>
@@ -124,7 +124,7 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
             <Link href="/verify" className="btn btn--ghost btn--sm" style={{ width: "100%" }}>Verify a payment or receipt</Link>
             <div className="hint" style={{ marginTop: 6, textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>
           </div>
-          <div className="notice notice--info" style={{ marginTop: 6 }}>
+          <div className="notice notice--info mt-2">
             <Ico name="alert" size={17} stroke="var(--chrome)" w={2} />
             <p>Five failed attempts lock an account for fifteen minutes. {sso?.enabled ? "Staff sign in through the University's single sign-on, which asks for a second step." : "Staff and privileged accounts will also complete a second step when single sign-on is connected."}</p>
           </div>

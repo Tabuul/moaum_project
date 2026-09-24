@@ -245,20 +245,20 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
 
       <Panel title="Re-run the migration from scratch" right="Clears only the migrated applicants">
         <PBody>
-          <div className="sub2" style={{ marginBottom: 8 }}>
+          <div className="sub2 mb-2">
             If applicants were migrated before the CAPS list was uploaded, clear the migration and import the file again so
             every applicant is rebuilt from CAPS. This removes only the migrated <b>candidate / account / application</b>
             records — the CAPS list, O&rsquo;Level results and passports are kept (passports re-link by JAMB number).
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row">
             <Btn kind="urgent" disabled={resetting || !may} onClick={() => void resetMigrated()}>{resetting ? "Clearing…" : "Reset migrated applicants"}</Btn>
             {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may run this.</span> : null}
-            {resetInfo ? <span className="sub2" style={{ color: "var(--green-ink)" }}>Cleared {resetInfo.candidates.toLocaleString()} candidate{resetInfo.candidates === 1 ? "" : "s"}, {resetInfo.applications.toLocaleString()} application{resetInfo.applications === 1 ? "" : "s"}; {resetInfo.passports_kept.toLocaleString()} passport{resetInfo.passports_kept === 1 ? "" : "s"} kept for re-linking.</span> : null}
+            {resetInfo ? <span className="sub2 ink-green">Cleared {resetInfo.candidates.toLocaleString()} candidate{resetInfo.candidates === 1 ? "" : "s"}, {resetInfo.applications.toLocaleString()} application{resetInfo.applications === 1 ? "" : "s"}; {resetInfo.passports_kept.toLocaleString()} passport{resetInfo.passports_kept === 1 ? "" : "s"} kept for re-linking.</span> : null}
           </div>
         </PBody>
       </Panel>
 
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row">
         <label className="btn btn--ghost" htmlFor="mig-file" style={{ cursor: "pointer" }}>Choose the applicants file (.xlsx or .csv)…
           <input type="file" id="mig-file" accept=".xlsx,.csv" hidden onChange={(e) => void read(e.target.files?.[0])} />
         </label>
@@ -277,7 +277,7 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
             ["Receipt amount", fee.stated ? money(amount) : "fallback", fee.stated ? null : "var(--red-ink)", "Per imported applicant"],
           ]} />
           {rows.some((r) => r.name != null) ? (
-            <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="card"><div className="card__body row row--end">
               <div className="field" style={{ minWidth: 240, margin: 0 }}><label htmlFor="mig-order">Name order in the single Name column</label>
                 <select id="mig-order" className="ctl" value={nameOrder} onChange={(e) => setNameOrder(e.target.value as NameOrder)}>
                   <option value="first">Surname first — e.g. AHUMBE Aondofa Kingsley</option>
@@ -288,17 +288,17 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
             </div></div>
           ) : null}
           <Panel title="First rows, as read" right={`${rows.length} to verify & confirm`}>
-            <PBody><div className="sub2" style={{ marginBottom: 6 }}>Each JAMB number is verified against the CAPS list; the name, programme, sex, state, LGA and UTME come from CAPS. Email and phone (if the file carries them) are used for the login and contact, otherwise a placeholder stands in.</div></PBody>
+            <PBody><div className="sub2 mb-2">Each JAMB number is verified against the CAPS list; the name, programme, sex, state, LGA and UTME come from CAPS. Email and phone (if the file carries them) are used for the login and contact, otherwise a placeholder stands in.</div></PBody>
             <DTable
               cols={["JAMB no|mid", "Email", "Phone|mid"]}
               rows={rows.slice(0, 8).map((r) => [
                 <span className="tnum sub2" key="j">{r.jambKey}</span>,
-                <span className="sub2" key="e">{r.email || <span style={{ color: "var(--chrome)" }}>placeholder</span>}</span>,
-                <span className="tnum sub2" key="h">{r.phone || <span style={{ color: "var(--chrome)" }}>placeholder</span>}</span>,
+                <span className="sub2" key="e">{r.email || <span className="ink-chrome">placeholder</span>}</span>,
+                <span className="tnum sub2" key="h">{r.phone || <span className="ink-chrome">placeholder</span>}</span>,
               ])}
             />
             <PBody>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="row">
                 <Btn kind="primary" disabled={busy || !may} onClick={() => void run()}>{busy ? "Importing…" : `Import ${rows.length} applicant${rows.length === 1 ? "" : "s"}`}</Btn>
                 <div className="field" style={{ minWidth: 150, margin: 0 }}><label htmlFor="mig-par">Parallel uploads</label>
                   <select id="mig-par" className="ctl" value={parallel} disabled={busy} onChange={(e) => setParallel(Number(e.target.value))}>
@@ -307,13 +307,13 @@ export function MigrateApplicants({ session, fee, actingOffice }: { session: str
                 </div>
                 {!may ? <span className="sub2">Only the Academic Office, Registry or ICT may import.</span> : null}
               </div>
-              <div className="sub2" style={{ marginTop: 8 }}>
+              <div className="sub2 mt-2">
                 The initial password is not hashed at import — the JAMB number is the initial password, and the applicant&rsquo;s
                 real password is hashed when they set it on first sign-in — so the import is fast. <b>Parallel uploads</b> can
                 be raised to finish sooner; lower it only if you see timeouts. It is safe to leave running, and safe to re-run:
                 rows already imported are skipped.
               </div>
-              {progress ? <div className="sub2" style={{ marginTop: 6 }}>Imported {Math.min(progress.done, progress.of).toLocaleString()} of {progress.of.toLocaleString()}…</div> : null}
+              {progress ? <div className="sub2 mt-2">Imported {Math.min(progress.done, progress.of).toLocaleString()} of {progress.of.toLocaleString()}…</div> : null}
             </PBody>
           </Panel>
         </>

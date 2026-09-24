@@ -79,7 +79,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
         score</b> to record the O&rsquo;Level figure (scaled to 100) as their screening score, then release the scores — so
         these applicants enter the merit list. A real Post-UTME score is never overwritten.
       </Note>
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 160, margin: 0 }}><label htmlFor="pu-s">Session</label>
           <select id="pu-s" className="ctl" value={session} onChange={(e) => queryNav(`/admissions/computed-screening?session=${encodeURIComponent(e.target.value)}`)}>
             {(sessions.includes(session) ? sessions : [session, ...sessions]).map((x) => <option key={x} value={x}>{x}</option>)}
@@ -98,7 +98,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
           {entered.noOlevel ? <> {entered.noOlevel.toLocaleString()} still have no O&rsquo;Level on record, so nothing could be computed for them — upload their O&rsquo;Level, or score them zero.</> : null}
         </Note>
       ) : null}
-      <Panel title="Computed Post-UTME" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+      <Panel title="Computed Post-UTME" right={<span className="row row--inline">
         <span className="sub2">{rows.length} candidate{rows.length === 1 ? "" : "s"}</span>
         {mayEnter ? <Btn kind="primary" disabled={!rows.length || entering} onClick={() => void enterAsScores()}>{entering ? "Entering…" : "Enter O'Level as Post-UTME score"}</Btn> : null}
         <Btn kind="ghost" disabled={!rows.length} onClick={toExcel}>Download Excel</Btn>
@@ -125,7 +125,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
       {audit.length ? (
         <Panel title="Why a programme appears here — or does not" right={`${audit.length} programme${audit.length === 1 ? "" : "s"} with applications`}>
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>
+            <div className="sub2 mb-2">
               A programme is on the computed list above when it is <b>not</b> exam-screened (non-index) <b>and</b> has applicants who applied and paid.
               An <b>index</b> programme is screened by the Post-UTME examination — its scores are uploaded, not computed (remove it from the exam list in Admission settings to make it non-index).
               A non-index programme with <b>0 applied &amp; paid</b> has no completed applications to compute yet.
@@ -135,7 +135,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
               rows={audit.map((a) => {
                 const onList = !a.index_programme && a.applied_paid > 0;
                 return [
-                  <span key="p">{a.programme}{a.programme_code ? <span className="sub2"> · {a.programme_code}</span> : <span className="sub2" style={{ color: "var(--red-ink)" }}> · no programme code matched</span>}</span>,
+                  <span key="p">{a.programme}{a.programme_code ? <span className="sub2"> · {a.programme_code}</span> : <span className="sub2 ink-red"> · no programme code matched</span>}</span>,
                   <Pil kind={a.index_programme ? "warn" : "ok"} key="s">{a.index_programme ? "Index (exam)" : "Non-index"}</Pil>,
                   <span className="tnum" key="a">{a.applications}</span>,
                   <span className="tnum" key="su">{a.submitted}</span>,

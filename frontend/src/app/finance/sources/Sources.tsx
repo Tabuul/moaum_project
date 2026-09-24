@@ -93,7 +93,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
               <Field id="fs-so" label="Sort order"><input id="fs-so" className="ctl tnum" value={src.sort} onChange={(e) => setSrc({ ...src, sort: e.target.value.replace(/[^0-9]/g, "") })} /></Field>
             </div>
             <Field id="fs-note" label="Note" hint="Shown under the name on the list"><input id="fs-note" className="ctl" value={src.note} onChange={(e) => setSrc({ ...src, note: e.target.value })} /></Field>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="primary" disabled={busy || !src.code.trim() || !src.name.trim()} onClick={async () => {
                 const code = src.code.trim();
                 if (await save({ code, name: src.name.trim(), nature: src.nature, sponsor: src.sponsor || null, account: src.account || null, active: true, note: src.note || null, sort: Number(src.sort) || 100 }, `Funding source ${code} ${editing ? "edited" : "added"}`)) {
@@ -104,7 +104,7 @@ export function Sources({ sources, actingOffice }: { sources: FundingSource[]; a
               {editing ? <Btn kind="ghost" onClick={() => { setSrc({ ...BLANK }); setEditing(null); }}>Cancel</Btn> : null}
               <Link href="/finance/nelfund?tab=report" className="btn btn--ghost btn--sm">Funding report</Link>
             </div>
-            <div className="sub2" style={{ marginTop: 6 }}>NELFUND, Scholarship and Self top-up are seeded; add TETFund, a state scholarship, a sponsor or a bursary here. Add as many as you need.</div>
+            <div className="sub2 mt-2">NELFUND, Scholarship and Self top-up are seeded; add TETFund, a state scholarship, a sponsor or a bursary here. Add as many as you need.</div>
           </PBody>
         </Panel>
       ) : (

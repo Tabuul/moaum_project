@@ -120,7 +120,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
         )
       ) : (
         <>
-          <Panel title={`${who} · ${lb.allocation.posting}`} right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><Pil kind={STATE[lb.allocation.state]?.[0] ?? "grey"}>{STATE[lb.allocation.state]?.[1] ?? lb.allocation.state}</Pil><Btn kind="ghost" onClick={() => nav({ allocation: "" })}>Back to the list</Btn></span>}>
+          <Panel title={`${who} · ${lb.allocation.posting}`} right={<span className="row row--inline"><Pil kind={STATE[lb.allocation.state]?.[0] ?? "grey"}>{STATE[lb.allocation.state]?.[1] ?? lb.allocation.state}</Pil><Btn kind="ghost" onClick={() => nav({ allocation: "" })}>Back to the list</Btn></span>}>
             <PBody><div className="sub2">Everything recorded here is on the audit spine against you. A procedure you record is verified at once unless you untick it; one the student logged waits for your verification. The logbook standing the student sees is what is verified.</div></PBody>
           </Panel>
 
@@ -147,7 +147,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
                         <select id="pr-mode" className="ctl" value={proc.mode} onChange={(e) => setProc({ ...proc, mode: e.target.value })}><option value="PERFORM">Performed</option><option value="OBSERVE">Observed</option></select></div>
                       <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="pr-ref">Patient reference</label><input id="pr-ref" className="ctl" value={proc.patientRef} onChange={(e) => setProc({ ...proc, patientRef: e.target.value })} placeholder="Hospital number, never a name" autoComplete="off" /></div>
                     </div>
-                    <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={proc.verified} onChange={(e) => setProc({ ...proc, verified: e.target.checked })} /> Verified by me now</label>
+                    <label className="row row--inline row--tight"><input type="checkbox" checked={proc.verified} onChange={(e) => setProc({ ...proc, verified: e.target.checked })} /> Verified by me now</label>
                     <Btn kind="primary" disabled={busy || !proc.requirementId || !proc.doneOn} onClick={() => void call("POST", `/allocations/${lb.allocation.id}/procedures`, proc, `${lb.allocation.number}: ${lb.requirements.find((r) => r.id === proc.requirementId)?.name ?? "procedure"} ${proc.mode === "PERFORM" ? "performed" : "observed"}`).then((ok) => { if (ok) setProc({ ...proc, doneOn: "", patientRef: "" }); })}>Record the procedure</Btn>
                   </div>
                 </PBody>
@@ -156,7 +156,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
                 <DTable cols={["Date|mid", "Procedure", "Mode|mid", "Patient|mid", "Verified", ...(lb.procedures.some((p) => !p.verified_at) ? ["|num"] : [])]} rows={lb.procedures.map((p) => [
                   <span className="tnum" key="d">{day(p.done_on)}</span>, <span key="n">{p.name}</span>, <span className="sub2" key="m">{p.mode === "PERFORM" ? "Performed" : "Observed"}</span>,
                   <span className="tnum sub2" key="r">{p.patient_ref ?? "—"}</span>,
-                  <span className="sub2" key="v">{p.verified_at ? `${p.verified_by ?? "—"} · ${day(p.verified_at)}` : <span style={{ color: "var(--red-ink)" }}>Not yet</span>}</span>,
+                  <span className="sub2" key="v">{p.verified_at ? `${p.verified_by ?? "—"} · ${day(p.verified_at)}` : <span className="ink-red">Not yet</span>}</span>,
                   ...(lb.procedures.some((x) => !x.verified_at) ? [!p.verified_at ? <Btn key="vb" kind="go" disabled={busy} onClick={() => void call("PUT", `/allocations/${lb.allocation.id}/procedures/${p.id}/verify`, {}, `${lb.allocation.number}: ${p.name} verified`)}>Verify</Btn> : <span key="vb" />] : []),
                 ])} />
               ) : null}
@@ -193,7 +193,7 @@ export function Supervision({ sessions, session, rows, allocation, logbook, prob
                     <select id="at-pres" className="ctl" value={att.present ? "1" : "0"} onChange={(e) => setAtt({ ...att, present: e.target.value === "1" })}><option value="1">Present</option><option value="0">Absent</option></select></div>
                   <Btn kind="primary" disabled={busy || !att.heldOn} onClick={() => void call("POST", `/allocations/${lb.allocation.id}/attendance`, { ...att, slotId: att.slotId || null }, `${lb.allocation.number}: ${att.present ? "present" : "absent"} at ${word(att.activityType)} on ${att.heldOn}`).then((ok) => { if (ok) setAtt({ ...att, heldOn: "" }); })}>Record</Btn>
                 </div>
-                <div className="sub2" style={{ marginTop: 6 }}>The prospectus requires 75% attendance pre-clinical, 70% clinical and 80% in Surgery to sit the examination; the record here is what that is judged on.</div>
+                <div className="sub2 mt-2">The prospectus requires 75% attendance pre-clinical, 70% clinical and 80% in Surgery to sit the examination; the record here is what that is judged on.</div>
               </PBody>
               {lb.attendance.length ? <DTable cols={["Date|mid", "Activity", "Slot", "Present|mid"]} rows={lb.attendance.map((a) => [<span className="tnum" key="d">{day(a.held_on)}</span>, <span key="t">{word(a.activity_type)}</span>, <span className="sub2" key="s">{a.starts_at ? `${String(a.starts_at).slice(0, 5)}–${String(a.ends_at).slice(0, 5)} · ${word(a.slot_type ?? "")}${a.topic ? ` · ${a.topic}` : ""}` : "—"}</span>, <span key="p" style={{ color: a.present ? "var(--green-ink)" : "var(--red-ink)", fontWeight: 600 }}>{a.present ? "Present" : "Absent"}</span>])} /> : null}
             </Panel>

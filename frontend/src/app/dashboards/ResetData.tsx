@@ -127,7 +127,7 @@ export function ResetData({ office }: { office: string | null }) {
       </PBody>
       {open ? (
         <Modal title="Reset all uploaded data" sub="This cannot be undone" onClose={() => setOpen(false)}
-          foot={<><Btn kind="ghost" onClick={() => setOpen(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setOpen(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="urgent" disabled={busy || confirm.trim().toUpperCase() !== "RESET" || !reason.trim()} onClick={() => void run()}>{busy ? "Clearing…" : "Clear everything"}</Btn></>}>
           <Note kind="bad" title="Read this before you continue">
             Every student, applicant, result, uploaded course, fee schedule, payment and wallet will be permanently
@@ -139,7 +139,7 @@ export function ResetData({ office }: { office: string | null }) {
       ) : null}
       {courseOpen ? (
         <Modal title="Remove demo courses only" sub="Keeps every student, candidate and real course" onClose={() => setCourseOpen(false)}
-          foot={<><Btn kind="ghost" onClick={() => setCourseOpen(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setCourseOpen(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={courseBusy || courseConfirm.trim().toUpperCase() !== "REMOVE DEMO"} onClick={() => void removeDemoCourses()}>{courseBusy ? "Removing…" : "Remove demo courses"}</Btn></>}>
           <Note kind="info" title="What this removes">
             Only the demo courses in the catalogue — those coded &ldquo;DMO&rdquo; or &ldquo;DMC&rdquo;, or titled
@@ -151,7 +151,7 @@ export function ResetData({ office }: { office: string | null }) {
       ) : null}
       {demoOpen ? (
         <Modal title="Remove demo data only" sub="Keeps demo logins and all real data" onClose={() => setDemoOpen(false)}
-          foot={<><Btn kind="ghost" onClick={() => setDemoOpen(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setDemoOpen(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={demoBusy || demoConfirm.trim().toUpperCase() !== "REMOVE DEMO"} onClick={() => void removeDemo()}>{demoBusy ? "Removing…" : "Remove demo data"}</Btn></>}>
           <Note kind="info" title="What this removes">
             Only the db/demo.sql seed: the demo students (surname DEMO), the &ldquo;DMO&rdquo; courses and their

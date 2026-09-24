@@ -30,7 +30,7 @@ export function Dashboard({ a }: { a: Application }) {
           <div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div>
           <div className="sub2">{a.programme ?? "—"}{a.faculty ? ` · Faculty of ${a.faculty}` : ""}</div>
           <div className="sub2 tnum">JAMB {a.jambKey} · {a.applicationNo}</div>
-          {!photoSrc ? <div className="sub2" style={{ color: "var(--chrome)" }}>Your passport is not on record yet — it appears here once JAMB’s photograph is uploaded or you add one.</div> : null}
+          {!photoSrc ? <div className="sub2 ink-chrome">Your passport is not on record yet — it appears here once JAMB’s photograph is uploaded or you add one.</div> : null}
         </div>
       </div></div>
       <Tiles items={[
@@ -123,7 +123,7 @@ export function Apply({ a }: { a: Application }) {
             <Pil kind={a.olevel.length ? "ok" : "info"}>2 O&rsquo;Level</Pil>
             <span className="pill" style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}>3 Review</span>
           </div>
-          <div style={{ marginTop: 6 }}>
+          <div className="mt-2">
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-.3px" }}>{a.programme ?? "Programme as JAMB recorded it"}</div>
             <div className="sub2">{a.faculty ? `Faculty of ${a.faculty} · ` : ""}{a.session} session. Your programme choice comes from JAMB and cannot be changed here.</div>
           </div>
@@ -140,7 +140,7 @@ export function Apply({ a }: { a: Application }) {
             ["JAMB registration number", <span className="tnum" key="j">{a.jambKey}</span>],
             [a.entryMode === "UTME" ? "UTME score" : "Entry mode", <span className="tnum" key="u">{a.entryMode === "UTME" ? a.biodata.utme ?? "—" : "Direct Entry"}</span>],
           ]} />
-          <div className="field" style={{ marginTop: 4 }}>
+          <div className="field mt-1">
             <label htmlFor="nok">Next of kin &mdash; name and phone</label>
             <input id="nok" value={nok} onChange={(e) => setNok(e.target.value)} autoComplete="off" placeholder="SURNAME, Other names · 0806 552 1180"
               onBlur={() => { if (nok.trim() && nok.trim() !== (a.biodata.nextOfKin ?? "")) void act("nok", "PUT", "/me/next-of-kin", { nextOfKin: nok.trim() }, "Next of kin given by the applicant"); }} />
@@ -240,7 +240,7 @@ export function Fee({ a }: { a: Application }) {
               <div style={{ minWidth: 200 }}>
                 <div className="eyebrow">Reference</div>
                 <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
-                <div className="sub2" style={{ marginTop: 6 }}>Quote this reference and nothing else. It is tied to your application number and expires {when(open.expiresAt)}. You do not need a new one &mdash; pay this one now.</div>
+                <div className="sub2 mt-2">Quote this reference and nothing else. It is tied to your application number and expires {when(open.expiresAt)}. You do not need a new one &mdash; pay this one now.</div>
               </div>
             </div>
           ) : (

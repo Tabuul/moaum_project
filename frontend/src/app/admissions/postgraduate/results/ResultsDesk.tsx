@@ -115,7 +115,7 @@ export function ResultsDesk({ initialSession, mayEdit }: { initialSession: strin
         {regs.length ? (
           <DTable cols={["Student", "Programme", "Mode|mid", "Courses|num", "GPA|num", "Status|mid", "|mid"]}
             rows={regs.map((r) => [
-              <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
+              <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
               <span key="p" className="sub2">{r.programme_name}</span>,
               <span key="m" className="sub2">{r.mode === "PART_TIME" ? "Part-time" : "Full-time"}</span>,
               <span key="c" className="tnum">{r.courses}</span>,

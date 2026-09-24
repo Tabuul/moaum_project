@@ -66,12 +66,12 @@ export function CourseSpaceDesk({ d, upload }: { d: Desk; upload: boolean }) {
           <Ico name="box" size={26} stroke="var(--faint)" w={1.7} />
           <div style={{ fontWeight: 600, marginTop: 8 }}>{file ? file.name : "Choose a file"}</div>
           <div className="sub2">PDF, slides, documents, images, audio or video · up to 5 MB here; larger material is linked by address below</div>
-          <div style={{ marginTop: 12 }}><input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
-          {file ? <div className="sub2 tnum" style={{ marginTop: 6 }}>{file.name} · {size(file.size)}</div> : null}
+          <div className="mt-3"><input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
+          {file ? <div className="sub2 tnum mt-2">{file.name} · {size(file.size)}</div> : null}
         </div>
         <Field id="um-link" label="Or an address" hint="A video or a large file published elsewhere."><input id="um-link" className="ctl" value={m.link} onChange={(e) => setM({ ...m, link: e.target.value })} placeholder="https://…" autoComplete="off" /></Field>
         <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, color: "var(--muted)" }}><input type="checkbox" className="chk" checked={m.publish} onChange={(e) => setM({ ...m, publish: e.target.checked })} /><span>Publish to the {d.enrolled} registered students now; unticked, it is saved as a draft.</span></label>
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}><Btn kind="primary" disabled={busy || !m.title.trim() || (!file && !m.link.trim())} onClick={() => void publishMaterial()}>{m.publish ? "Publish to the course space" : "Save as a draft"}</Btn></div>
+        <div className="row"><Btn kind="primary" disabled={busy || !m.title.trim() || (!file && !m.link.trim())} onClick={() => void publishMaterial()}>{m.publish ? "Publish to the course space" : "Save as a draft"}</Btn></div>
       </PBody>
     </Panel>
   );

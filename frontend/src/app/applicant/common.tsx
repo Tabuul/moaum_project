@@ -139,7 +139,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
   return (
     <>
       {pd ? (
-        <div className="notice notice--info" style={{ marginTop: 6 }}>
+        <div className="notice notice--info mt-2">
           <p><b>Pay &#8358;{amount.toLocaleString()} to {pd.billerName} on Quickteller.</b></p>
           <p>Your Payment Reference Number (PRN) is <b className="tnum">{pd.prn}</b>. Enter it on any of these:</p>
           <ul style={{ margin: "6px 0 0 18px" }}>
@@ -147,15 +147,15 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
             <li>USSD: <b className="tnum">{pd.ussd}</b></li>
             <li>Any bank branch or ATM: quote biller code <b className="tnum">{pd.billerCode}</b> and the PRN.</li>
           </ul>
-          <p className="sub2" style={{ marginTop: 6 }}>Keep the PRN. After you pay, use &ldquo;I&rsquo;ve paid&rdquo; below, or it is confirmed automatically once the collection reaches the University.</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <p className="sub2 mt-2">Keep the PRN. After you pay, use &ldquo;I&rsquo;ve paid&rdquo; below, or it is confirmed automatically once the collection reaches the University.</p>
+          <div className="row">
             <button type="button" className="btn btn--go btn--sm" disabled={busy} onClick={() => void check(pd.prn)}>{busy ? "Checking…" : "I've paid — check now"}</button>
             <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={() => setPd(null)}>Choose another way to pay</button>
           </div>
-          {checkMsg ? <p className="sub2" style={{ marginTop: 6 }}>{checkMsg}</p> : null}
+          {checkMsg ? <p className="sub2 mt-2">{checkMsg}</p> : null}
         </div>
       ) : choices ? (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="row">
           <span className="sub2">Pay &#8358;{amount.toLocaleString()} with</span>
           {choices.map((g) => <button key={g} type="button" className="btn btn--go" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</button>)}
           <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setChoices(null)}>Cancel</button>
@@ -170,7 +170,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
 
 function ProblemNoticeInline({ problem }: { problem: Problem }) {
   return (
-    <div className="notice notice--info" style={{ marginTop: 6 }}>
+    <div className="notice notice--info mt-2">
       <p><b>{problem.title ?? "Not now"}.</b> {problem.detail ?? ""} {problem.remedy ? <span className="sub2">{problem.remedy.message}</span> : null}</p>
     </div>
   );

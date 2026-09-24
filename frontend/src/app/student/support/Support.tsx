@@ -70,7 +70,7 @@ export function Support({ requests }: { requests: ServiceRequest[] }) {
       <Panel title="Raise a new request">
         <PBody>
           <div className="field"><label>Which office?</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="row">
               {OFFICES.map(([c, l]) => <button type="button" key={c} className={`pill ${office === c ? "pill--info" : ""}`} style={office === c ? { cursor: "pointer" } : { background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)", cursor: "pointer" }} onClick={() => setOffice(c)}>{l}</button>)}
             </div></div>
           <Field id="hl-problem" label="What is the problem?"><input id="hl-problem" className="ctl" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Describe it in one line" autoComplete="off" /></Field>

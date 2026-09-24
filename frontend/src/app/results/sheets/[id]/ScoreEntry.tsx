@@ -239,10 +239,10 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
         </Note>
       ) : null}
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="row">
         <Pil kind={ready ? "ok" : atEntry ? "bad" : "info"}>{!atEntry ? RS_STAGES[stageIdx]?.[0] ?? s.stage : ready ? "Complete — not yet submitted" : blank ? `Draft — ${blank} candidate${blank === 1 ? "" : "s"} without a mark` : "Draft — unsaved changes"}</Pil>
         {saved ? <span className="sk__saved">✓ {saved}</span> : dirty.length ? <span className="sub2">{dirty.length} unsaved</span> : null}
-        <span style={{ flexGrow: 1 }} />
+        <span className="grow" />
         <button className="btn btn--ghost btn--sm" onClick={template}>Download the template</button>
         {entered > 0 ? <>
           {/* the marked sheet as it stands — total, grade and point computed by the register, a performance summary at the end */}
@@ -258,10 +258,10 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       {fileNote ? <Note kind={fileNote.kind} title={fileNote.title}>{fileNote.lines.map((l, i) => <div key={i}>{l}</div>)}</Note> : null}
       {offRoll.length ? (
         <Note kind="info" title={`${offRoll.length} candidate${offRoll.length === 1 ? "" : "s"} on the upload ${offRoll.length === 1 ? "is" : "are"} not on this roll`}
-          action={atEntry && own ? <span style={{ display: "inline-flex", gap: 6 }}><Btn kind="primary" disabled={holding} onClick={() => void holdOffRoll()}>{holding ? "Holding…" : `Hold ${offRoll.length === 1 ? "this script" : `these ${offRoll.length} scripts`}`}</Btn><Btn kind="ghost" disabled={holding} onClick={() => setOffRoll([])}>Leave them</Btn></span> : undefined}>
+          action={atEntry && own ? <span className="row row--inline row--tight"><Btn kind="primary" disabled={holding} onClick={() => void holdOffRoll()}>{holding ? "Holding…" : `Hold ${offRoll.length === 1 ? "this script" : `these ${offRoll.length} scripts`}`}</Btn><Btn kind="ghost" disabled={holding} onClick={() => setOffRoll([])}>Leave them</Btn></span> : undefined}>
           {offRoll.slice(0, 12).map((x) => <div key={x.line} className="tnum">Line {x.line}: {x.number}{x.outcome === "GRADED" ? ` · CA ${x.ca || "—"} · Exam ${x.exam || "—"}` : ` · ${x.outcome}`}</div>)}
           {offRoll.length > 12 ? <div className="sub2">… and {offRoll.length - 12} more</div> : null}
-          <div className="sub2" style={{ marginTop: 4 }}>A candidate not on the roll did not register the course. If they sat the paper, hold the scripts: each waits on the candidate&rsquo;s registration and the register releases it into this sheet when that is approved. A number the register does not know is refused by name and nothing is held.</div>
+          <div className="sub2 mt-1">A candidate not on the roll did not register the course. If they sat the paper, hold the scripts: each waits on the candidate&rsquo;s registration and the register releases it into this sheet when that is approved. A number the register does not know is refused by name and nothing is held.</div>
         </Note>
       ) : null}
       {atEntry && own && lockedCount > 0 ? (
@@ -357,7 +357,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
       {ask === "submit" ? (
         <Modal title="Submit and attest" sub={`${s.courseCode} · ${roll.length} candidates`} onClose={() => setAsk(null)}
-          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not yet</Btn><span style={{ flexGrow: 1 }} /><Btn kind="go" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "I attest these marks"}</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Not yet</Btn><span className="grow" /><Btn kind="go" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "I attest these marks"}</Btn></>}>
           <p style={{ margin: 0, lineHeight: 1.6 }}>Every candidate on the roll carries a mark or an outcome. Attesting signs the sheet in your name and sends it to verification; it will not accept a further mark from you unless a desk returns it with a reason.</p>
         </Modal>
       ) : null}

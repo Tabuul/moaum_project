@@ -118,13 +118,13 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
         <thead><tr><th>Course</th><th className="mid">Unit</th><th className="mid">Score</th><th className="mid">Grade</th></tr></thead>
         <tbody>
           {rows.map((x) => <tr key={x.course_code}><td><strong className="tnum">{x.course_code}</strong><div className="sub2">{x.title}</div></td><td className="mid tnum">{x.units}</td><td className="mid tnum">{x.outcome === "GRADED" ? x.total : x.outcome}</td><td className="mid" style={{ fontWeight: 700, color: GRADE_COLOUR[x.grade ?? ""] ?? "var(--ink)" }}>{x.grade ?? "—"}</td></tr>)}
-          <tr><td style={{ fontWeight: 700 }}>Units registered {registered} · passed {passed}</td><td colSpan={3} className="num" style={{ fontWeight: 700, color: "var(--muted)" }}>GP {gp.toFixed(1)}</td></tr>
+          <tr><td className="b700">Units registered {registered} · passed {passed}</td><td colSpan={3} className="num" style={{ fontWeight: 700, color: "var(--muted)" }}>GP {gp.toFixed(1)}</td></tr>
         </tbody>
       </table></div></div>
       {failed.length ? (
         <Note kind="bad" title={`${failed.length} carryover${failed.length === 1 ? "" : "s"}`}>{failed.map((x) => x.course_code).join(", ")} will be added to your next registration automatically. You do not need to request {failed.length === 1 ? "it" : "them"}.</Note>
       ) : null}
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+      <div className="row">
         <a href={`/student/results/${encodeURIComponent(session)}/${semester}/pdf`} target="_blank" rel="noopener" className="btn btn--primary">Download result slip</a>
         <Link href="/student/results" className="btn btn--ghost">All results</Link>
       </div>
@@ -161,7 +161,7 @@ export function Broadsheet({ r }: { r: Results }) {
               <tbody>
                 {g.rows.map((c) => (
                   <tr key={c.course_code}>
-                    <td className="tnum" style={{ fontWeight: 600 }}>{c.course_code}</td>
+                    <td className="tnum b600">{c.course_code}</td>
                     <td>{c.title}</td>
                     <td className="mid tnum">{c.units}</td>
                     <td className="mid tnum">{c.outcome === "GRADED" ? (c.ca ?? "—") : "—"}</td>
@@ -187,7 +187,7 @@ export function Broadsheet({ r }: { r: Results }) {
       }) : <Panel title="No published results yet"><div className="card__body"><div className="sub2">A semester appears here once Senate approves its results. Nothing is shown before the minute exists.</div></div></Panel>}
       <p className="sub2" style={{ maxWidth: "80ch" }}>CUR credit units registered · CUE credit units earned · WGP weighted grade points · GPA the semester average · TCR/TCE/TWGP the running totals · LCGPA the previous semester&rsquo;s CGPA · CGPA the cumulative average. This is a view of the published record.</p>
       {groups.length ? (
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+        <div className="row">
           <a href="/student/broadsheet/pdf" target="_blank" rel="noopener" className="btn btn--primary">Print broadsheet</a>
         </div>
       ) : null}

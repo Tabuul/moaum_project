@@ -113,14 +113,14 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
 
       <Panel title="Old-portal fees export" right="Matriculation number · session · amount (or blank for cleared)">
         <PBody>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row">
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
             <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
               {busy ? "Reading…" : "Choose the fees file (.xlsx)"}
               <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={!may || busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
             </label>
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>Columns read: Matriculation Number, Session (YYYY/YYYY), Semester (1/2, optional), Amount Paid (blank = cleared in full), Paid On and Receipt No (optional). Columns are matched by name, so an old-portal export with those columns can be uploaded as-is.</div>
+          <div className="sub2 mt-2">Columns read: Matriculation Number, Session (YYYY/YYYY), Semester (1/2, optional), Amount Paid (blank = cleared in full), Paid On and Receipt No (optional). Columns are matched by name, so an old-portal export with those columns can be uploaded as-is.</div>
         </PBody>
       </Panel>
 

@@ -88,7 +88,7 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
               <Field id="pr-note" label="Note" hint="Optional"><input id="pr-note" className="ctl" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Regular monthly salary" /></Field>
             </div>
             <div><Btn kind="primary" disabled={busy || !period} onClick={async () => { const j = await send("/runs", { period, note: note || null }, `Build payroll for ${period}`); if (j) { setSaid(`${j.staff_count} payslips built — gross ${money(Number(j.gross_total))}, net ${money(Number(j.net_total))}`); setPeriod(""); setNote(""); } }}>Build the run</Btn></div>
-            <div className="sub2" style={{ marginTop: 6 }}>A month is run once. If the establishment changes after a run is built, cancel it and build again.</div>
+            <div className="sub2 mt-2">A month is run once. If the establishment changes after a run is built, cancel it and build again.</div>
           </PBody>
         </Panel>
       ) : null}
@@ -102,7 +102,7 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
             <span className="tnum sub2" key="d">{money(Number(r.deduction_total))}</span>,
             <b className="tnum" key="n">{money(Number(r.net_total))}</b>,
             <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.built_by_name ? <div className="sub2">Built by {r.built_by_me ? "you" : r.built_by_name}</div> : null}{r.cancelled_why ? <div className="sub2">{r.cancelled_why}</div> : null}</span>,
-            <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span key="ac" className="row row--inline row--tight row--right">
               <Link href={`/payroll?run=${r.id}`} className="btn btn--ghost btn--sm" title={`View ${monthLabel(r.period)} pay run`} aria-label={`View ${monthLabel(r.period)} pay run`} style={{ padding: "8px 10px", minWidth: 38 }}><Ico name="eye" size={16} /></Link>
               {may && r.state === "DRAFT" && !r.built_by_me ? <Btn kind="go" disabled={busy} onClick={() => void send(`/runs/${r.id}/approve`, {}, `Approve payroll ${monthLabel(r.period)}`).then((j) => { if (j) setSaid(`${monthLabel(r.period)} approved`); })}>Approve</Btn> : null}
               {may && r.state === "DRAFT" && r.built_by_me ? <Btn kind="ghost" disabled>Awaiting another approver</Btn> : null}

@@ -52,7 +52,7 @@ export function SiwesDashboard({ me, offerings, semester }: { me: Me | null; off
 
       <Panel title="SIWES desks" right={me?.name ? `Signed in as ${me.name}` : "SIWES"}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <Link href="/siwes" className="btn btn--ghost btn--sm">SIWES supervision</Link>
             <Link href="/results/desk" className="btn btn--ghost btn--sm">Result desk</Link>
             <Link href="/students" className="btn btn--ghost btn--sm">Students</Link>

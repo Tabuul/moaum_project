@@ -78,7 +78,7 @@ export function Self({
       <TwoCol>
         <Panel title="My record" right={<span style={{ display: "flex", gap: 6 }}><a href="/staff/idcard/pdf" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">My ID card (PDF)</a><Link href="/me/profile" className="btn btn--primary btn--sm">Edit my profile</Link></span>}>
           <PBody>
-            <div className="sub2" style={{ marginBottom: 10 }}>{who}</div>
+            <div className="sub2 mb-3">{who}</div>
             <KvGrid
               cls="grid--2"
               pairs={[

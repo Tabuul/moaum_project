@@ -121,7 +121,7 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
   return (
     <Panel title="Scripts from candidates not on the roll" right={held ? `${held} held · released when the candidate registers` : "None held"}>
       <PBody>
-        <div className="sub2" style={{ marginBottom: 8 }}>
+        <div className="sub2 mb-2">
           A candidate who sat the paper without registering the course is not on the roll, so the sheet has no row for them. Hold the script here by matriculation number: the mark waits, not graded and not on the broadsheet, and the register releases it into this sheet the moment the candidate pays, registers the course and the registration is approved.
           {closesOn ? <> Late registration for this semester closes on <b>{day(closesOn)}</b>; a script not released by then lapses and never grades.</> : <> The Registry has not set a late-registration closing date for this semester on the calendar; until it does, held scripts do not lapse.</>}
         </div>

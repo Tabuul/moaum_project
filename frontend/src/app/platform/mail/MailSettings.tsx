@@ -80,7 +80,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
 
       <Panel title="The account" right={config.password_set ? <Pil kind="ok">Password set</Pil> : <Pil kind="grey">No password</Pil>}>
         <PBody>
-          {config.password_set ? <div className="sub2" style={{ marginBottom: 8 }}>A password is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave the password blank to keep it; type a new one to replace it.</div> : null}
+          {config.password_set ? <div className="sub2 mb-2">A password is set{config.set_at ? ` — ${when(config.set_at)}` : ""}{config.set_by_name ? ` by ${config.set_by_name}` : ""}. Leave the password blank to keep it; type a new one to replace it.</div> : null}
           <div className="grid grid--2">
             <Field id="username" label="Username" hint="The full email address"><input id="username" className="ctl tnum" value={f.username} onChange={(e) => set("username", e.target.value)} disabled={!may} autoComplete="off" placeholder="portal@moaum.edu.ng" /></Field>
             <Field id="fromAddress" label="From address" hint="What recipients see; blank uses the username"><input id="fromAddress" className="ctl tnum" value={f.fromAddress} onChange={(e) => set("fromAddress", e.target.value)} disabled={!may} autoComplete="off" placeholder="MOAUM Portal <portal@moaum.edu.ng>" /></Field>
@@ -88,7 +88,7 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
           <Field id="password" label="Password or app password" hint="Pasted once; it is never displayed after this. Microsoft 365 often needs an app password.">
             <input id="password" className="ctl tnum" type="password" value={f.password} onChange={(e) => set("password", e.target.value)} disabled={!may} autoComplete="off" placeholder={config.password_set ? "•••••••• (leave blank to keep)" : ""} />
           </Field>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <Btn kind="primary" disabled={!may || busy} onClick={async () => {
               const j = await send("/mail", {
                 smtpHost: f.smtpHost, smtpPort: Number(f.smtpPort) || null, smtpEncryption: f.smtpEncryption,

@@ -85,8 +85,8 @@ export function SupportDesk({ requests }: { requests: ServiceRequest[] }) {
         (() => { const done = open.state === "RESOLVED" || open.state === "CLOSED"; return (
         <Modal title={`${open.ref} — ${open.subject}`} sub={`${open.student} · ${open.number} · raised ${day(open.raised_at)}`} onClose={() => setOpen(null)}
           foot={done
-            ? <><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn></>
-            : <><Btn kind="ghost" onClick={() => setOpen(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="go" disabled={busy || !answer.trim()} onClick={() => void send()}>{resolved ? "Answer and resolve" : "Answer, keep open"}</Btn></>}>
+            ? <><span className="grow" /><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn></>
+            : <><Btn kind="ghost" onClick={() => setOpen(null)}>Cancel</Btn><span className="grow" /><Btn kind="go" disabled={busy || !answer.trim()} onClick={() => void send()}>{resolved ? "Answer and resolve" : "Answer, keep open"}</Btn></>}>
           {open.detail ? <p style={{ margin: "0 0 10px", lineHeight: 1.6 }}>{open.detail}</p> : null}
           {open.documents ? (
             <div style={{ margin: "0 0 12px" }}>

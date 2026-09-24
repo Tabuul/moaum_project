@@ -55,7 +55,7 @@ export default function FirstAccountPage() {
         <form className="login-card" onSubmit={(e) => { e.preventDefault(); void create(); }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.4px" }}>Create the first account</div>
-            <div className="hint" style={{ marginTop: 4 }}>Refused once any account exists.</div>
+            <div className="hint mt-1">Refused once any account exists.</div>
           </div>
           {field("secret", "Bootstrap secret", "password", "The value of MOAUM_AUTH_HMAC_SECRET on the API service. It is checked, never stored here.")}
           {field("surname", "Surname")}

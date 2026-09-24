@@ -17,8 +17,8 @@ interface SemesterRow { number: number; registration_opens: string | null; regis
 interface CalData { sessions: SessionRow[]; current: string | null; looking: string | null; semesters: SemesterRow[] }
 
 const SEM_NAME: Record<number, string> = { 1: "First semester", 2: "Second semester", 3: "Summer semester" };
-const STATE_PILL: Record<string, string> = { PLANNED: "var(--chrome)", CURRENT: "var(--green-ink)", CLOSED: "var(--ink-3, #888)" };
-const SEM_STATE: Record<string, string> = { NOT_YET_OPEN: "var(--chrome)", OPEN: "var(--green-ink)", CLOSED: "var(--ink-3, #888)" };
+const STATE_PILL: Record<string, string> = { PLANNED: "var(--chrome)", CURRENT: "var(--green-ink)", CLOSED: "var(--ink-3, var(--faint))" };
+const SEM_STATE: Record<string, string> = { NOT_YET_OPEN: "var(--chrome)", OPEN: "var(--green-ink)", CLOSED: "var(--ink-3, var(--faint))" };
 
 const day = (v: string | null) => {
   if (!v) return "—";
@@ -114,7 +114,7 @@ export function PgCalendar({ initial }: { initial: CalData }) {
                 return (
                   <div key={n} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", padding: "10px 0", borderBottom: "1px solid var(--line-2)" }}>
                     <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-                      <div style={{ fontWeight: 600 }}>{SEM_NAME[n]} {row ? <span style={{ color: SEM_STATE[row.state] ?? "inherit", fontWeight: 600, fontSize: 12.5 }}>· {row.state.replace(/_/g, " ").toLowerCase()}</span> : <span className="sub2" style={{ fontWeight: 400 }}>· not set</span>}</div>
+                      <div className="b600">{SEM_NAME[n]} {row ? <span style={{ color: SEM_STATE[row.state] ?? "inherit", fontWeight: 600, fontSize: 12.5 }}>· {row.state.replace(/_/g, " ").toLowerCase()}</span> : <span className="sub2" style={{ fontWeight: 400 }}>· not set</span>}</div>
                       <div className="sub2">{row ? <>Registration {day(row.registration_opens)} – {day(row.registration_closes)} · Exams {day(row.exams_from)} – {day(row.exams_to)}</> : "No windows set yet"}</div>
                     </div>
                     <button type="button" className="btn btn--primary btn--sm" onClick={() => setSemesterModal(row ?? n)}>{row ? "Edit windows" : "Set windows"}</button>
@@ -170,7 +170,7 @@ function SessionForm({ row, onClose, onSaved, send }: { row: SessionRow | null; 
 
   return (
     <Modal title={row ? `Edit ${row.name}` : "Setup new session"} onClose={onClose}
-      foot={<><button className="btn btn--ghost btn--sm" onClick={onClose}>Cancel</button><span style={{ flexGrow: 1 }} /><button className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save session"}</button></>}>
+      foot={<><button className="btn btn--ghost btn--sm" onClick={onClose}>Cancel</button><span className="grow" /><button className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save session"}</button></>}>
       <div className="rf">
         <Field id="rf_name" label="Session" hint="Two academic years, as 2026/2027.">
           <input id="rf_name" className="ctl tnum" value={d.name} readOnly={!!row} placeholder="2026/2027" onChange={(e) => set("name", e.target.value)} />
@@ -221,7 +221,7 @@ function SemesterForm({ session, row, number, onClose, onSaved, send }: { sessio
 
   return (
     <Modal title={`${SEM_NAME[number]} — ${session}`} onClose={onClose}
-      foot={<><button className="btn btn--ghost btn--sm" onClick={onClose}>Cancel</button><span style={{ flexGrow: 1 }} /><button className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save windows"}</button></>}>
+      foot={<><button className="btn btn--ghost btn--sm" onClick={onClose}>Cancel</button><span className="grow" /><button className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save windows"}</button></>}>
       <div className="rf">
         {dayField("registrationOpens", "Registration opens")}
         {dayField("registrationCloses", "Registration closes")}

@@ -35,7 +35,7 @@ export function TransferLetter({ student, app }: { student: { name: string; matr
           <p style={{ textAlign: "right" }}>{today}</p>
           <p><strong>{student.name}</strong><br />{student.matric_no ?? ""}</p>
           <p>Dear Student,</p>
-          <p style={{ fontWeight: 700 }}>APPROVAL OF INTER-DEPARTMENTAL TRANSFER</p>
+          <p className="b700">APPROVAL OF INTER-DEPARTMENTAL TRANSFER</p>
           <p>
             I am directed to inform you that the Senate, on the recommendation of the Special Admissions and Admission
             Irregularities Committee, has approved your transfer from <strong>{app.from_programme}</strong> to{" "}

@@ -71,7 +71,7 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
 
       <Panel title="HR desks" right={`Appraisal cycle ${home.cycle} · ${home.appraisals} recorded`}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <Link href="/hr/leave" className="btn btn--ghost btn--sm">Leave</Link>
             <Link href="/hr/movements" className="btn btn--ghost btn--sm">Movements &amp; instruments</Link>
             <Link href="/hr/appraisal" className="btn btn--ghost btn--sm">Appraisal &amp; promotion</Link>
@@ -79,7 +79,7 @@ export function HrDashboard({ me, home }: { me: Me | null; home: HrHome | null }
             <Link href="/payroll" className="btn btn--ghost btn--sm">Payroll{home.payDraft ? ` (${home.payDraft} draft)` : ""}</Link>
             <Link href="/people/lecturers" className="btn btn--ghost btn--sm">Staff records</Link>
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>
+          <div className="sub2 mt-2">
             {home.latestRun ? `Latest pay run ${home.latestRun.period} — ${home.latestRun.state.toLowerCase()}, ${home.latestRun.staff_count} staff, ${money(Number(home.latestRun.net_total))} net.` : "No pay run recorded yet."}
             {me?.name ? ` Signed in as ${me.name}.` : ""}
           </div>

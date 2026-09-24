@@ -104,7 +104,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
       </Note>
 
       <Panel title="Choose a programme" right={`${session}`}>
-        <div className="card__body" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div className="card__body row row--end">
           <ProgrammePicker programmes={programmes} chosen={chosen} onPick={pick} />
           {chosen ? <Btn kind="ghost" onClick={() => pick("")}>Clear</Btn> : null}
         </div>
@@ -122,7 +122,7 @@ export function Merit({ session, programme, programmes, view, problem, actingOff
           ]} />
           {recProblem ? <ProblemNotice problem={recProblem} /> : null}
           {recorded ? <Note kind="ok" title="The merit list has been recorded">{recorded.offered} offer{recorded.offered === 1 ? "" : "s"} entered, {recorded.waited} on the waiting list, {recorded.notOffered} not offered (ineligible), {recorded.skipped} left untouched (already released). Every candidate now carries a decision, so the JAMB template reconciles. Release the decisions from the Applicants desk when the Board is ready.</Note> : null}
-          <Panel title="The merit list" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><span className="sub2">{view.counts.pool} in the pool</span>{mayRecord && view.counts.proposed > 0 ? <Btn kind="primary" disabled={busy} onClick={() => void record()}>{busy ? "Recording…" : `Record ${view.counts.proposed} offer${view.counts.proposed === 1 ? "" : "s"}`}</Btn> : null}</span>}>
+          <Panel title="The merit list" right={<span className="row row--inline"><span className="sub2">{view.counts.pool} in the pool</span>{mayRecord && view.counts.proposed > 0 ? <Btn kind="primary" disabled={busy} onClick={() => void record()}>{busy ? "Recording…" : `Record ${view.counts.proposed} offer${view.counts.proposed === 1 ? "" : "s"}`}</Btn> : null}</span>}>
             {view.rows.length ? (
               <DTable
                 cols={["#|mid", "Candidate", "JAMB|mid", "Entry|mid", "UTME|mid", "Post-UTME|mid", "Aggregate|mid", "Basis|mid", "Eligible|mid", "Proposed|num"]}

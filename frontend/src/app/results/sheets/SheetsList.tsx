@@ -38,7 +38,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
           </select>
         </div>
       </div></div>
-      <Panel title={all ? "Score sheets in the session" : "Score sheets assigned to you"} right={<>{session}{sem ? ` · ${sem === "1" ? "First" : "Second"} semester` : ""} · {open.length ? <b style={{ color: "var(--red-ink)" }}>{open.length} still open</b> : "all submitted"}</>}>
+      <Panel title={all ? "Score sheets in the session" : "Score sheets assigned to you"} right={<>{session}{sem ? ` · ${sem === "1" ? "First" : "Second"} semester` : ""} · {open.length ? <b className="ink-red">{open.length} still open</b> : "all submitted"}</>}>
         {sheets.length === 0 ? (
           <div className="card__body sub2">{all ? "No score sheet exists for this session yet. Sheets are generated when the Academic Office opens the examination session over the allocated offerings." : "No sheet is assigned to you in this session. A sheet appears here when the department allocates you a course and the examination session is opened."}</div>
         ) : (
@@ -50,8 +50,8 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
               return [
                 <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle} · {s.units} units{s.session !== session ? ` · ${s.session}` : ""} · {semesterText(s.semester)}</div></span>,
                 <span className="tnum" key="n">{s.candidates}</span>,
-                <span key="e"><span className="tnum" style={short ? { color: "var(--red-ink)", fontWeight: 600 } : undefined}>{s.entered}</span><span className="sub2 tnum"> of {s.candidates}</span>{s.heldScripts ? <div className="sub2" style={{ color: "var(--chrome)" }}>{s.heldScripts} script{s.heldScripts === 1 ? "" : "s"} held</div> : null}</span>,
-                <span key="s"><Pil kind={st.pill}>{st.text}</Pil>{s.daysLate ? <div className="sub2" style={{ color: "var(--red-ink)" }}>{s.daysLate} days overdue</div> : null}{s.returnedTimes ? <div className="sub2">Returned {s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}</div> : null}</span>,
+                <span key="e"><span className="tnum" style={short ? { color: "var(--red-ink)", fontWeight: 600 } : undefined}>{s.entered}</span><span className="sub2 tnum"> of {s.candidates}</span>{s.heldScripts ? <div className="sub2 ink-chrome">{s.heldScripts} script{s.heldScripts === 1 ? "" : "s"} held</div> : null}</span>,
+                <span key="s"><Pil kind={st.pill}>{st.text}</Pil>{s.daysLate ? <div className="sub2 ink-red">{s.daysLate} days overdue</div> : null}{s.returnedTimes ? <div className="sub2">Returned {s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}</div> : null}</span>,
                 <span className="sub2" key="x">{s.secondExaminer ?? "Not yet set"}</span>,
                 <Link key="a" href={`/results/sheets/${s.id}`} className={`btn btn--sm btn--${st.kind}`}>{s.mine || all ? st.act : "View"}</Link>,
               ];

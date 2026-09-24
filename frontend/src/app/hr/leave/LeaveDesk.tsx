@@ -75,7 +75,7 @@ export function LeaveDesk({ rows, actingOffice }: { rows: LeaveRow[]; actingOffi
             <span className="tnum" key="d">{r.days}</span>,
             <span className="sub2" key="c">{r.cover ?? "—"}</span>,
             <span key="st"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.decision_note ? <div className="sub2">{r.decision_note}</div> : null}</span>,
-            <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span key="ac" className="row row--inline row--tight row--right">
               {may && r.state === "REQUESTED" ? <Btn kind="go" disabled={busy} onClick={() => void decide(r.id, true, null, r.name)}>Approve</Btn> : null}
               {may && r.state === "REQUESTED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Why is it declined? The reason is recorded."); if (w && w.trim()) void decide(r.id, false, w.trim(), r.name); }}>Decline</Btn> : null}
             </span>,

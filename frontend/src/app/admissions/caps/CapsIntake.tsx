@@ -367,7 +367,7 @@ export function CapsIntake({
       <div className="card">
         <div className="card__body">
           <div className="eyebrow">Upload the list downloaded from JAMB</div>
-          <div className="grid grid--2" style={{ marginTop: 8 }}>
+          <div className="grid grid--2 mt-2">
             {KINDS.map((kk) => {
               const c = LISTS[kk];
               const ff = file[kk];
@@ -409,7 +409,7 @@ export function CapsIntake({
                         }}
                       />
                     </label>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <div className="row">
                       <Btn kind="ghost" onClick={() => demo(kk)}>
                         Use the sample instead
                       </Btn>
@@ -535,7 +535,7 @@ export function CapsIntake({
                   rows={bad.slice(0, 12).map((x) => [
                     <span className="tnum" key="l">{x.line}</span>,
                     <span className="tnum" key="n">{x.regNo}</span>,
-                    <span style={{ color: "var(--red-ink)" }} key="m">{x.message}</span>,
+                    <span className="ink-red" key="m">{x.message}</span>,
                   ])}
                 />
               </Panel>
@@ -619,7 +619,7 @@ export function CapsIntake({
                   <span className="tnum" key="l">{r.line}</span>,
                   <span className="tnum" key="n">{r.jambRegNo}</span>,
                   <strong key="c">{r.name}</strong>,
-                  <b className="tnum" style={{ color: "var(--red-ink)" }} key="a">{r.aggregate}</b>,
+                  <b className="tnum ink-red" key="a">{r.aggregate}</b>,
                   <span className="tnum" key="k">{r.belowCutoff}</span>,
                   <span className="sub2" key="p">{r.programme?.name ?? ""}</span>,
                 ])}
@@ -642,7 +642,7 @@ export function CapsIntake({
                 r.aggregate ? (
                   <span key="a">
                     <b className="tnum" style={r.belowCutoff !== null ? { color: "var(--red-ink)" } : undefined}>{r.aggregate}</b>
-                    {r.belowCutoff !== null ? <div className="sub2" style={{ color: "var(--red-ink)" }}>under the cut-off of {r.belowCutoff}</div> : null}
+                    {r.belowCutoff !== null ? <div className="sub2 ink-red">under the cut-off of {r.belowCutoff}</div> : null}
                     <div className="sub2">
                       {r.subjects.filter((s) => s[0]).map((s) => `${s[0]} ${s[1] ?? ""}`).join(" · ")}
                       {r.eng ? ` · Eng ${r.eng}` : ""}
@@ -685,7 +685,7 @@ export function CapsIntake({
             actually needs.
           </Note>
 
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="row">
             <Btn
               kind="ghost"
               onClick={() => {
@@ -741,7 +741,7 @@ export function CapsIntake({
               b.withdrawnAt || withdrawn[b.id] || b.committedAt || committed[b.id] ? (
                 <span key="c" />
               ) : (
-                <span key="c" style={{ display: "inline-flex", gap: 6 }}>
+                <span key="c" className="row row--inline row--tight">
                   <Btn kind="go" onClick={() => void commit(b.id, false)} disabled={committing !== null || !mayLoad} title={!mayLoad ? "The list is committed by the Academic Office or the Registrar" : undefined}>
                     {committing === b.id ? "Committing…" : "Commit"}
                   </Btn>
@@ -793,7 +793,7 @@ export function CapsIntake({
           onClose={() => setWithdrawing(null)}
           foot={<>
             <Btn kind="ghost" onClick={() => setWithdrawing(null)}>Cancel</Btn>
-            <span style={{ flexGrow: 1 }} />
+            <span className="grow" />
             <Btn kind="urgent" disabled={!why.trim() || committing !== null} onClick={() => void withdraw(withdrawing)}>
               {committing === withdrawing.id ? "Withdrawing…" : "Withdraw the list"}
             </Btn>
@@ -834,7 +834,7 @@ export function CapsIntake({
               student already on the register (each is detached from the deleted candidate). Use it when a re-upload is
               refused because the previous list is still loaded.
             </Note>
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-3">
               <Btn kind="urgent" disabled={resetting} onClick={() => void resetIntake()}>
                 {resetting ? "Resetting…" : `Delete the ${session} list, applications and O'Level`}
               </Btn>

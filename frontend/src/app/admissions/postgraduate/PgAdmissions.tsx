@@ -129,7 +129,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
         )}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{a.surname}, {a.other_names}</div>
-          <div className="sub2" style={{ marginTop: 2 }}>{a.application_no} · {a.programme_name}{a.pg_award ? ` (${a.pg_award})` : ""}</div>
+          <div className="sub2 mt-1">{a.application_no} · {a.programme_name}{a.pg_award ? ` (${a.pg_award})` : ""}</div>
           <div className="sub2">{a.email}{a.phone ? ` · ${a.phone}` : ""}</div>
         </div>
       </div>
@@ -152,7 +152,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
               <div style={{ fontWeight: 600, fontSize: 13.5 }}>
                 {QUAL_LABEL[q.kind] ?? q.kind}{q.award ? ` — ${q.award}` : ""}{q.field ? ` (${q.field})` : ""}
               </div>
-              <div className="sub2" style={{ marginTop: 2 }}>
+              <div className="sub2 mt-1">
                 {[q.institution, q.class_of_degree, q.cgpa != null ? `CGPA ${q.cgpa}` : null, q.year != null ? String(q.year) : null].filter(Boolean).join(" · ") || "—"}
               </div>
             </div>
@@ -162,7 +162,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
 
       {a.pg_research ? (
         <Section title="Research proposal">
-          <div style={{ fontWeight: 600 }}>{a.proposal_title || "—"}</div>
+          <div className="b600">{a.proposal_title || "—"}</div>
           {a.proposal_text ? <div className="sub2" style={{ marginTop: 4, lineHeight: 1.5 }}>{a.proposal_text}</div> : null}
         </Section>
       ) : null}
@@ -181,7 +181,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
                 {r.attestation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Attestation:</b> {r.attestation}</div> : null}
                 {r.recommendation ? <div className="sub2" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}><b>Recommendation:</b> {r.recommendation}</div> : null}
               </div>
-            ) : <div className="sub2" style={{ color: "var(--chrome)" }}>Reference not yet submitted{r.email ? " — a request was emailed" : " (no email on record)"}.</div>}
+            ) : <div className="sub2 ink-chrome">Reference not yet submitted{r.email ? " — a request was emailed" : " (no email on record)"}.</div>}
           </div>
         )) : <div className="sub2">None named.</div>}
       </Section>
@@ -194,13 +194,13 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
               <a href={`/api/bff/api/v1/pg/applications/${id}/documents.pdf`} download className="btn btn--ghost btn--sm">Download</a>
             </div>
             {passport ? (
-              <div className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="sub2 row">
                 <span>passport — {passport.filename}</span>
                 <Btn kind="ghost" onClick={() => setViewing({ url: docUrl(passport.id), title: `Passport — ${passport.filename}`, image: true })}>View</Btn>
               </div>
             ) : null}
             {otherDocs.map((x) => (
-              <div key={x.id} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div key={x.id} className="sub2 row">
                 <span>{x.kind.replace(/_/g, " ").toLowerCase()} — {x.filename}</span>
                 <Btn kind="ghost" onClick={() => setViewing({ url: docUrl(x.id), title: `${x.kind.replace(/_/g, " ").toLowerCase()} — ${x.filename}`, image: false })}>View PDF</Btn>
               </div>
@@ -211,7 +211,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
 
       {viewing ? (
         <Modal title={viewing.title} sub="Opens here; close to return to the application" wide onClose={() => setViewing(null)}
-          foot={<><a href={viewing.url} download className="btn btn--ghost btn--sm">Download</a><span style={{ flexGrow: 1 }} /><button type="button" className="btn btn--primary btn--sm" onClick={() => setViewing(null)}>Close</button></>}>
+          foot={<><a href={viewing.url} download className="btn btn--ghost btn--sm">Download</a><span className="grow" /><button type="button" className="btn btn--primary btn--sm" onClick={() => setViewing(null)}>Close</button></>}>
           {viewing.image ? (
             <div style={{ display: "flex", justifyContent: "center" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -233,7 +233,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
         </div>
       ) : null}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="row">
         {isDept(office) && st === "SUBMITTED" ? (
           <>
             <Btn kind="primary" disabled={busy !== null} onClick={() => void act("dept-decision", `Department recommended ${a.surname}, ${a.other_names} for ${a.programme_name}`, { recommend: true, note })}>Department: recommend</Btn>
@@ -284,8 +284,8 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
 
       <Panel title="Session" right={<span className="sub2">Applications are shown for the session you choose</span>}>
         <PBody>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <label htmlFor="pg-session" className="sub2" style={{ fontWeight: 600 }}>Admissions session</label>
+          <div className="row">
+            <label htmlFor="pg-session" className="sub2 b600">Admissions session</label>
             <select id="pg-session" className="ctl" style={{ maxWidth: 260 }} value={session}
               onChange={(e) => queryNav(`/admissions/postgraduate?session=${encodeURIComponent(e.target.value)}`)}>
               {sessionOptions.map((s) => (

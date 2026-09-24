@@ -127,7 +127,7 @@ export function CollegeSeam({ college, problem }: { college: CollegeData | null;
         ])} />
         <PBody>
           <div><strong>Paediatrics minimum procedures</strong> <span className="sub2">{LOGBOOKS.paediatrics}</span></div>
-          <div style={{ marginTop: 6 }}><strong>Family Medicine skills checklist</strong> <span className="sub2">{LOGBOOKS.familyMedicine}</span></div>
+          <div className="mt-2"><strong>Family Medicine skills checklist</strong> <span className="sub2">{LOGBOOKS.familyMedicine}</span></div>
         </PBody>
       </Panel>
 

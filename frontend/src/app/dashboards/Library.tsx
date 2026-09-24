@@ -42,7 +42,7 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
               <Two key="p" a={x.patron} b={x.number ?? x.staff_number ?? ""} />,
               <span key="i">{x.title}</span>,
               <span className="tnum sub2" key="d">{d0(x.due_on)}</span>,
-              <b className="tnum" key="n" style={{ color: "var(--red-ink)" }}>{x.days_overdue}</b>,
+              <b className="tnum ink-red" key="n">{x.days_overdue}</b>,
               <span className="tnum" key="f">{money(x.days_overdue * perDay)}</span>,
             ])} texts={overdue.map((x) => `${x.patron} ${x.number ?? ""} ${x.title}`)} />
         ) : <PBody><div className="sub2">Nothing is overdue. An item shows here the day after its due date, and its fine grows until it is returned.</div></PBody>}
@@ -55,14 +55,14 @@ export function LibraryDashboard({ me, desk }: { me: Me | null; desk: LibraryDes
               <Two key="p" a={x.patron} b={x.number ?? x.staff_number ?? ""} />,
               <span key="i">{x.title}</span>,
               <span className="tnum sub2" key="r">{d0(x.returned_at)}</span>,
-              <b className="tnum" key="f" style={{ color: "var(--red-ink)" }}>{money(Number(x.fine ?? 0))}</b>,
+              <b className="tnum ink-red" key="f">{money(Number(x.fine ?? 0))}</b>,
             ])} texts={fines.map((x) => `${x.patron} ${x.number ?? ""} ${x.title}`)} />
         ) : <PBody><div className="sub2">No fine is waiting. A fine is settled against the student&rsquo;s payment reference, or waived by you with the reason on the record.</div></PBody>}
       </Panel>
 
       <Panel title="Library desks" right={me?.name ? `Signed in as ${me.name}` : "University Library"}>
         <PBody>
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+          <div className="grid--fill">
             <Link href="/library/circulation" className="btn btn--ghost btn--sm">Circulation</Link>
             <Link href="/clearance" className="btn btn--ghost btn--sm">Student clearance</Link>
             <Link href="/support" className="btn btn--ghost btn--sm">Help &amp; requests</Link>

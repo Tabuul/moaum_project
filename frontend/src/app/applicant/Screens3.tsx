@@ -76,7 +76,7 @@ export function Accept({ a }: { a: Application }) {
         It holds your place. Admission is complete only after the Registry has seen your original documents at clearance and Senate has approved the list.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+      <div className="row">
         {!a.undertakingAt ? (
           <Btn kind="urgent" disabled={!agreed || busy !== null} onClick={() => void act("sign", "POST", "/me/accept", { undertaking: true }, "Undertaking signed by the applicant")}>{busy === "sign" ? "Signing…" : "Sign the undertaking"}</Btn>
         ) : null}
@@ -90,7 +90,7 @@ export function Accept({ a }: { a: Application }) {
           <PBody>
             <div className="eyebrow">Reference</div>
             <div className="tnum" style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".5px" }}>{open.reference}</div>
-            <div className="sub2" style={{ marginTop: 6 }}>Quote this reference and nothing else. You do not need a new one &mdash; pay this one now: on the gateway it confirms at once and your place is held (the undertaking signed), or pay it at a bank and the Bursary confirms it against the reference.</div>
+            <div className="sub2 mt-2">Quote this reference and nothing else. You do not need a new one &mdash; pay this one now: on the gateway it confirms at once and your place is held (the undertaking signed), or pay it at a bank and the Bursary confirms it against the reference.</div>
             <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8 }}><PayByCard reference={open.reference} amount={fee} /></div>
           </PBody>
         </Panel>
@@ -155,7 +155,7 @@ export function Matric({ a }: { a: Application }) {
               ) : (
                 <div className="sub2"><b>Not issued yet.</b> The Academic Office issues it when it brings the accepted candidates onto the register.</div>
               )}
-              <p className="sub2" style={{ margin: 0 }}>Issued when the Academic Office brings you onto the register after you accept. It identifies you for your fees and for your course registration. Quote it at any counter until you are matriculated. It is kept on your record afterwards &mdash; it is retired, not deleted.</p>
+              <p className="sub2 m-0">Issued when the Academic Office brings you onto the register after you accept. It identifies you for your fees and for your course registration. Quote it at any counter until you are matriculated. It is kept on your record afterwards &mdash; it is retired, not deleted.</p>
             </PBody>
           </Panel>
           <Panel title="What you will be issued" right="Your matriculation number">
@@ -166,7 +166,7 @@ export function Matric({ a }: { a: Application }) {
                 [<span className="tnum" key="p">{a.session.slice(2, 4)}</span>, `The session you were admitted in — ${a.session}`],
                 [<span className="tnum" key="p">NNNN</span>, "Your serial within that department and session"],
               ]} />
-              <p className="sub2" style={{ margin: 0 }}>It never changes, and it is never given to anybody else.</p>
+              <p className="sub2 m-0">It never changes, and it is never given to anybody else.</p>
             </PBody>
           </Panel>
         </div>
@@ -191,11 +191,11 @@ export function Matric({ a }: { a: Application }) {
         <PBody>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <div style={{ width: 26, height: 26, borderRadius: 13, background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center" }}><Tick size={14} colour="#fff" /></div>
-            <span className="eyebrow" style={{ color: "var(--green-ink)" }}>Matriculation number issued</span>
+            <span className="eyebrow ink-green">Matriculation number issued</span>
           </div>
           <div className="tnum" style={{ fontFamily: "var(--serif)", fontSize: "clamp(24px,5vw,34px)", fontWeight: 700, letterSpacing: "1px" }}>{a.matricNo}</div>
           <div className="sub2">{a.name} &middot; {a.programme} &middot; {a.entryLevel} Level</div>
-          <div style={{ height: 1, background: "var(--line-2)" }} />
+          <div className="hr" />
           <div className="sub2">This number identifies you for the rest of your studies and beyond &mdash; on every course registration, every score sheet, every result slip, your certificate and your transcript. Quote it in all correspondence. It never changes.</div>
         </PBody>
       </div>

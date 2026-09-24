@@ -34,8 +34,8 @@ export function Registration({ session, sessions, view, problem }: { session: st
 
       <Panel title="Session" right={<span className="sub2">The desk reads the session you choose</span>}>
         <PBody>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <label htmlFor="reg-session" className="sub2" style={{ fontWeight: 600 }}>Session</label>
+          <div className="row">
+            <label htmlFor="reg-session" className="sub2 b600">Session</label>
             <select id="reg-session" className="ctl" style={{ maxWidth: 260 }} value={session}
               onChange={(e) => queryNav(`/admissions/postgraduate/registration?session=${encodeURIComponent(e.target.value)}`)}>
               {options.map((s) => <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : ""}</option>)}
@@ -59,7 +59,7 @@ export function Registration({ session, sessions, view, problem }: { session: st
             {view.fresh.length ? (
               <DTable cols={["Student", "Programme", "Mode|mid", "Acceptance fee|mid", "Registered|mid", "Matriculation|mid"]}
                 rows={view.fresh.map((s) => [
-                  <span key="n"><span style={{ fontWeight: 600 }}>{s.surname}, {s.other_names}</span><div className="sub2 tnum">{s.matric_no ?? s.admission_no ?? "—"}</div></span>,
+                  <span key="n"><span className="b600">{s.surname}, {s.other_names}</span><div className="sub2 tnum">{s.matric_no ?? s.admission_no ?? "—"}</div></span>,
                   <span key="p"><span>{s.programme_name}</span><div className="sub2">{s.pg_award ?? ""}{s.department_name ? ` · ${s.department_name}` : ""}</div></span>,
                   <span key="m">{s.mode ? (s.mode === "PART_TIME" ? "Part-time" : "Full-time") : <span className="sub2">—</span>}</span>,
                   s.acceptance_paid ? <Pil key="f" kind="ok">Paid</Pil> : <span key="f" className="sub2">Owing</span>,
@@ -74,7 +74,7 @@ export function Registration({ session, sessions, view, problem }: { session: st
             {view.renewals.length ? (
               <DTable cols={["Student", "Programme", "Semester|mid", "Mode|mid", "Courses|num", "Status|mid"]}
                 rows={view.renewals.map((r) => [
-                  <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
+                  <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
                   <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}</div></span>,
                   <span key="s" className="tnum">{SEM[r.semester] ?? r.semester}</span>,
                   <span key="m">{r.mode === "PART_TIME" ? "Part-time" : "Full-time"}</span>,

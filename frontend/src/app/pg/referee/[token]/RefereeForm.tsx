@@ -96,7 +96,7 @@ export function RefereeForm({ token }: { token: string }) {
                 {VERDICTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div className="row">
               <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit reference"}</button>
               <span className="sub2">Once submitted, a reference cannot be changed.</span>
             </div>

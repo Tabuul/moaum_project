@@ -21,11 +21,11 @@ export function Courses({ session, spaces }: { session: string; spaces: SpaceRow
           return (
             <div className="card" key={s.offering_id}><div className="card__body">
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                <div><div style={{ fontWeight: 700, fontSize: 15 }} className="tnum">{s.course_code}</div><div className="sub2">{s.title}</div><div className="sub2">{s.lecturer ?? "No lecturer allocated yet"}</div></div>
+                <div><div className="tnum b700 t-md">{s.course_code}</div><div className="sub2">{s.title}</div><div className="sub2">{s.lecturer ?? "No lecturer allocated yet"}</div></div>
                 {s.due ? <Pil kind="bad">{s.due} due</Pil> : <Pil kind="ok">Up to date</Pil>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Bar pct={pct} /><span className="sub2 tnum">{s.materials ? `${pct}% of material read` : "Nothing published yet"}</span></div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="row">
                 <Link href={`/student/courses/${s.offering_id}`} className="btn btn--ghost btn--sm">Materials{s.weeks ? ` (${s.weeks} week${s.weeks === 1 ? "" : "s"})` : ""}</Link>
                 {s.due ? <Link href={`/student/courses/${s.offering_id}#assignments`} className="btn btn--primary btn--sm">Open assignment</Link> : null}
               </div>

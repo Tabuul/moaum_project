@@ -178,7 +178,7 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
             cols={["Candidate", "Programme", "Kind|mid", "Stage|mid", "Supervisors", "Updated|num"]}
             rows={rows.map((r) => [
               <button key="n" className="linklike" onClick={() => setSelected(r.id)} style={{ textAlign: "left" }}>
-                <span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span>
+                <span className="b600">{r.surname}, {r.other_names}</span>
                 <div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div>
               </button>,
               <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.department_name}</div></span>,

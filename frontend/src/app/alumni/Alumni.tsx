@@ -35,7 +35,7 @@ export function Alumni({ d }: { d: AlumniData }) {
       ]} />
       <Panel title="Alumni" right="A name appears once Senate approves the award">
         <PBody>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="row row--end">
             <div className="field" style={{ minWidth: 220 }}><label htmlFor="al-q">Search</label><input id="al-q" className="ctl" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name or matriculation number" /></div>
             <div className="field" style={{ minWidth: 180 }}><label htmlFor="al-f">Faculty</label><select id="al-f" className="ctl" value={faculty} onChange={(e) => setFaculty(e.target.value)}><option value="">All faculties</option>{faculties.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
             <div className="field" style={{ minWidth: 140 }}><label htmlFor="al-s">Session</label><select id="al-s" className="ctl" value={session} onChange={(e) => setSession(e.target.value)}><option value="">All sessions</option>{d.sessions.map((s) => <option key={s.session} value={s.session}>{s.session}</option>)}</select></div>

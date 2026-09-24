@@ -106,7 +106,7 @@ export function Stores({ items, assets, actingOffice }: { items: StoreItem[]; as
                 <span className="tnum sub2" key="c">{a.cost == null ? "—" : money(Number(a.cost))}</span>,
                 <Pil kind={COND[a.condition]?.[0] ?? "grey"} key="cond">{COND[a.condition]?.[1] ?? a.condition}</Pil>,
                 <span className="tnum sub2" key="v">{a.last_verified_on ? day(a.last_verified_on) : "Never"}</span>,
-                <span key="ac" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <span key="ac" className="row row--inline row--tight row--right">
                   {may || ["audit", "deputyaudit"].includes(actingOffice ?? "") ? <Btn kind="go" disabled={busy} onClick={() => void send(`/stores/assets/${a.id}/verify`, {}, `Verify ${a.tag}`).then((j) => { if (j) setSaid(`${a.tag} verified today`); })}>Verify</Btn> : null}
                   {may ? <Btn kind="ghost" disabled={busy} onClick={() => { const c = window.prompt("Condition: GOOD, FAIR, POOR, DISPOSED", a.condition); if (c && c.trim()) void send(`/stores/assets/${a.id}/condition`, { condition: c.trim() }, `Set ${a.tag} condition`); }}>Condition</Btn> : null}
                 </span>,

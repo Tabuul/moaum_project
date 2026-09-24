@@ -68,10 +68,10 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
   }
 
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="row">
       <Btn kind="ghost" onClick={() => router.push("/reports")}>← All returns</Btn>
       <span className="sub2">{filedTo ? `Filed with ${filedTo}` : "Kept, not yet filed"}{sent ? ` · ${sent}` : ""}</span>
-      <span style={{ flexGrow: 1 }} />
+      <span className="grow" />
       {!filedTo ? <Btn kind="go" onClick={() => { setErr(null); setOpen(true); }}>Mark as filed</Btn> : null}
       <Btn kind="ghost" onClick={() => { setMailErr(null); setMail(true); }}>Email this return</Btn>
       <Btn kind="ghost" onClick={download}>Download Excel</Btn>
@@ -80,14 +80,14 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
         <div className="sub2" style={{ width: "100%", display: "grid", gap: 2 }}>
           {dispatches.slice(0, 8).map((d) => (
             <div key={d.id}>
-              Sent to <b>{d.recipient}</b> · {dmy(d.created_at)} · {d.state === "SENT" ? <span style={{ color: "var(--green-ink)" }}>delivered to the mail server {dmy(d.sent_at)}</span> : d.state === "FAILED" ? <span style={{ color: "var(--red-ink)" }}>failed{d.last_error ? ` — ${d.last_error}` : ""}</span> : "queued"}{d.files ? ` · ${d.files}` : ""}
+              Sent to <b>{d.recipient}</b> · {dmy(d.created_at)} · {d.state === "SENT" ? <span className="ink-green">delivered to the mail server {dmy(d.sent_at)}</span> : d.state === "FAILED" ? <span className="ink-red">failed{d.last_error ? ` — ${d.last_error}` : ""}</span> : "queued"}{d.files ? ` · ${d.files}` : ""}
             </div>
           ))}
         </div>
       ) : null}
       {mail ? (
         <Modal title="Email this return" sub={`${title} — the PDF and the Excel workbook go attached, with the verification code`} onClose={() => setMail(false)}
-          foot={<><Btn kind="ghost" onClick={() => setMail(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={sending || !rcpt.trim()} onClick={() => void send()}>{sending ? "Preparing the files…" : "Send"}</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setMail(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={sending || !rcpt.trim()} onClick={() => void send()}>{sending ? "Preparing the files…" : "Send"}</Btn></>}>
           {mailErr ? <div className="sub2" style={{ color: "var(--red-ink)", marginBottom: 8 }}>{mailErr}</div> : null}
           <Field id="em-to" label="To" hint="One or more email addresses, separated by commas">
             <input id="em-to" className="ctl" value={rcpt} onChange={(e) => setToList(e.target.value)} autoComplete="off" placeholder="registrar@…, nuc-liaison@…" />
@@ -99,7 +99,7 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
       ) : null}
       {open ? (
         <Modal title="Record the filing" sub={title} onClose={() => setOpen(false)}
-          foot={<><Btn kind="ghost" onClick={() => setOpen(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !to.trim()} onClick={() => void file()}>{busy ? "Recording…" : "Filed"}</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setOpen(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !to.trim()} onClick={() => void file()}>{busy ? "Recording…" : "Filed"}</Btn></>}>
           {err ? <div className="sub2" style={{ color: "var(--red-ink)", marginBottom: 8 }}>{err}</div> : null}
           <Field id="fr-to" label="Filed with" hint="The body the return went to — NUC, JAMB, Council, the State treasury, Senate, management">
             <input id="fr-to" className="ctl" value={to} onChange={(e) => setTo(e.target.value)} autoComplete="off" list="fr-to-list" />

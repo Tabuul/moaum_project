@@ -507,13 +507,13 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       {tab === "passports" ? (
         <Panel title="Passport photos exported from the old portal" right="Matched by JAMB reg no in the file name">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>
+            <div className="sub2 mb-2">
               Select the passport image files. Each file must be named by the student&rsquo;s <b>JAMB registration number</b>
               (for example <span className="tnum">202412345AB.jpg</span>); the number is read from the file name and matched
               to the student. A photo whose number matches no student on the portal is <b>skipped</b> and listed, not
               guessed at. JPEG or PNG; the photo then shows on the student&rsquo;s dashboard, course form and receipts.
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row">
               <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
                 {busy
                   ? (progress ? `${progress.label} — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}…` : "Uploading…")
@@ -536,7 +536,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               <div />
             </div>
           ) : null}
-          <div className="sub2" style={{ marginBottom: 8 }}>
+          <div className="sub2 mb-2">
             {tab === "pgstudents" ? "Columns read: matno (the MOAU/… postgraduate matric), appno, name, sex, dob, programme (the old-portal code, e.g. C14569 — created as a POST GRADUATE programme in the shared table from the faculty, department and the award in the matric when it is not there yet), level (kept as 700/800/900), phone, email/login_email, address, nationality, state, LGA, guardian, sponsor, next-of-kin, extracurricular. Entry mode is set to POSTGRADUATE and the school to S002 (→ BMAS curriculum), so each lands on their own postgraduate dashboard. A matric sign-in account is created — the student signs in first with their matric number and is asked to set a password."
               : tab === "biodata" ? "Columns read: matriculation number, JAMB registration number, name, programme, sex, date of birth, level, entry mode/session, phone, email, address, nationality, state, LGA, guardian, sponsor, next-of-kin and school id (S001/S003 undergraduate → CCMAS from 2023/2024, S002 postgraduate → BMAS). The matric number is kept exactly as the old portal issued it; a date in any common form and a phone with a lost leading zero are normalised; a matric sign-in account is created (no password is taken from the file — the student sets one through the reset, sent to the phone or email here)."
               : tab === "students" ? "Columns read: matriculation number, name (or surname + other names), programme (code or name), sex, date of birth, entry mode, level. The session is read from the matric number when not given."
@@ -547,7 +547,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "pgresearch" ? "Columns read: matriculation number, topic, stage, supervisor(s), viva score/grade/outcome, plagiarism %, and the milestone dates (proposal approved, seminar, title registered, viva held, final submitted, cleared, award). The student must be a postgraduate on the register. The research record is created if absent (its degree kind — Project/Dissertation/Thesis — derived from the programme) and set from the row; the stage is taken as stated, else inferred from the furthest milestone present (an award date ⇒ AWARDED). Supervisors named on the row replace the record's current ones, so a re-upload updates rather than duplicates."
               : "Columns read: matriculation number, course code, level, session, semester, and the mark. The unit is taken from the course record, not the file — any “Units” column in the export (a 1/2/3 status code) is ignored. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Session and semester are read per row; outcome is read when present. A row whose student is not on the register yet is HELD, not lost — it posts automatically once that student is uploaded (in either order)."}
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row">
             <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
             <label className={`btn btn--primary${!may || (needScope && !scopeReady) || busy ? " btn--disabled" : ""}`} style={{ cursor: may && scopeReady && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may || (needScope && !scopeReady) ? 0.6 : 1 }}>
               {busy
@@ -563,7 +563,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             </label>
             {needScope && !scopeReady ? <span className="sub2">Enter the session (YYYY/YYYY) and semester first.</span> : null}
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>Download the template, fill it from the old-portal export (delete the example row), and upload it. Column names are matched flexibly, so an export that already has these columns can be uploaded as-is.</div>
+          <div className="sub2 mt-2">Download the template, fill it from the old-portal export (delete the example row), and upload it. Column names are matched flexibly, so an export that already has these columns can be uploaded as-is.</div>
         </PBody>
       </Panel>
       )}

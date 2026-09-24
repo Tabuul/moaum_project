@@ -94,7 +94,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
               <span className="tnum" key="s">{f.sets}</span>,
               <span className="tnum" key="c">{f.candidates}</span>,
               <span className="tnum" key="a">{f.atSenate}</span>,
-              <span className="tnum" key="p" style={{ color: "var(--green-ink)" }}>{f.published}</span>,
+              <span className="tnum ink-green" key="p">{f.published}</span>,
               <span className="tnum" key="o" style={f.outstanding ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{f.outstanding}</span>,
               f.atSenate === 0 ? <Pil kind="grey" key="r">{f.published === f.sets ? "All published" : "Nothing at Senate"}</Pil> : f.outstanding ? <Pil kind="ok" key="r">Approve, outstanding named</Pil> : <Pil kind="ok" key="r">Approve</Pil>,
             ])} />
@@ -128,14 +128,14 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
                   </select>
                 </Field>
               </div>
-              <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+              <div className="row">
                 <button className="btn btn--primary" disabled={busy || !minute.trim() || senate.atSenate === 0} onClick={() => void record()}>{busy ? "Recording…" : publish ? "Release to candidates on the minute" : "Record the minute and release"}</button>
                 {senate.atSenate === 0 ? <span className="sub2">Nothing is waiting at Senate in this scope.</span> : null}
                 <Link href={publish ? "/results/senate" : "/results/publish"} className="btn btn--ghost">{publish ? "Go to Senate" : "Open publication"}</Link>
               </div>
             </>
           ) : (
-            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="row">
               <button className="btn btn--primary" disabled>{publish ? "Release to candidates" : "Record the minute"}</button>
               <span className="sub2">The Registrar records the minute; this office reads the schedule.</span>
             </div>

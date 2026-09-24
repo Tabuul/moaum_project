@@ -149,7 +149,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
             <span className="sub2" key="b">{g.scopeId ? `${BOUND[g.scopeKind] ?? g.scopeKind} ${g.scopeId}` : BOUND[g.scopeKind] ?? g.scopeKind}</span>,
             <span className="sub2" key="g">{g.grantedByName ?? g.instrument}</span>,
             <span className="tnum" key="f">{day(g.validFrom)}</span>,
-            g.validTo ? <span className="tnum" key="t" style={{ color: "var(--red-ink)" }}>{day(g.validTo)}</span> : <span className="sub2" key="t">—</span>,
+            g.validTo ? <span className="tnum ink-red" key="t">{day(g.validTo)}</span> : <span className="sub2" key="t">—</span>,
             <Btn kind="ghost" key="a" disabled={!canGrant} onClick={() => { setTarget(g); setF({ ...f, reason: "", on: "" }); setModal("end"); }}>End</Btn>,
           ])}
           texts={grants.map((g) => `${g.surname} ${g.givenNames} ${g.label} ${g.instrument}`)}
@@ -162,7 +162,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       {modal === "person" ? (
         <Modal title="New person" sub="Created once, however many offices they hold" onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.surname || !f.givenNames} onClick={() => void send("POST", "/api/bff/api/v1/iam/persons", { staffNumber: f.staffNumber || null, surname: f.surname, givenNames: f.givenNames, email: f.email || null, phone: f.phone || null }, "Person created")}>Create</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.surname || !f.givenNames} onClick={() => void send("POST", "/api/bff/api/v1/iam/persons", { staffNumber: f.staffNumber || null, surname: f.surname, givenNames: f.givenNames, email: f.email || null, phone: f.phone || null }, "Person created")}>Create</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="np-s" label="Surname"><input id="np-s" className="ctl" value={f.surname} onChange={(e) => setF({ ...f, surname: e.target.value })} autoComplete="off" /></Field>
             <Field id="np-g" label="Given names"><input id="np-g" className="ctl" value={f.givenNames} onChange={(e) => setF({ ...f, givenNames: e.target.value })} autoComplete="off" /></Field>
@@ -175,7 +175,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       {modal === "contact" && person ? (
         <Modal title={`Contact for ${person.surname}, ${person.givenNames}`} sub="Where a password reset and notices are sent" onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy} onClick={() => void send("PUT", `/api/bff/api/v1/iam/persons/${person.id}/contact`, { email: f.email || null, phone: f.phone || null }, "Staff contact set")}>Save</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy} onClick={() => void send("PUT", `/api/bff/api/v1/iam/persons/${person.id}/contact`, { email: f.email || null, phone: f.phone || null }, "Staff contact set")}>Save</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="ct-e" label="Email" hint="Where a password reset and notices are sent"><input id="ct-e" className="ctl tnum" value={f.email} placeholder="name@moaum.edu.ng" onChange={(e) => setF({ ...f, email: e.target.value })} autoComplete="off" /></Field>
             <Field id="ct-p" label="Phone" hint="Optional; for SMS notices"><input id="ct-p" className="ctl tnum" value={f.phone} placeholder="0803…" onChange={(e) => setF({ ...f, phone: e.target.value })} autoComplete="off" /></Field>
@@ -185,7 +185,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       {modal === "grant" && person ? (
         <Modal title={`Grant an office to ${person.surname}, ${person.givenNames}`} sub="Bounded, dated, on an instrument" wide onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.office || !f.instrument.trim()} onClick={() => void send("POST", `/api/bff/api/v1/iam/persons/${person.id}/office-assignments`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null }, `${f.office} granted under ${f.instrument}`)}>Grant</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.office || !f.instrument.trim()} onClick={() => void send("POST", `/api/bff/api/v1/iam/persons/${person.id}/office-assignments`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null }, `${f.office} granted under ${f.instrument}`)}>Grant</Btn></>}>
           <Note kind="bad" title="A role is granted by the Registrar, recorded here, and reviewed">Every grant carries the authority that made it, a start date and an end date, because acting appointments are the normal case and an acting appointment that never ends is how a person keeps a power they no longer hold.</Note>
           <div className="grid grid--3 rfgrid">
             <Field id="gr-o" label="Office"><select id="gr-o" className="ctl" value={f.office} onChange={(e) => { const o = offices.find((x) => x.code === e.target.value); setF({ ...f, office: e.target.value, scopeKind: o?.scope_kind ?? f.scopeKind }); }}>{offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}</select></Field>
@@ -201,7 +201,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       {modal === "credential" && person ? (
         <Modal title={`${person.username ? "Reset the password of" : "Create the account of"} ${person.surname}, ${person.givenNames}`} sub="They change it at their first sign-in" onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || f.username.length < 3 || f.password.length < 10} onClick={() => void send("PUT", `/api/bff/api/v1/iam/persons/${person.id}/credential`, { username: f.username, password: f.password }, person.username ? "Password reset by the Registry" : "Account created by the Registry")}>{person.username ? "Reset" : "Create"}</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || f.username.length < 3 || f.password.length < 10} onClick={() => void send("PUT", `/api/bff/api/v1/iam/persons/${person.id}/credential`, { username: f.username, password: f.password }, person.username ? "Password reset by the Registry" : "Account created by the Registry")}>{person.username ? "Reset" : "Create"}</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="cr-u" label="Username" hint="The staff number or an email address"><input id="cr-u" className="ctl" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoComplete="off" /></Field>
             <Field id="cr-p" label="First password" hint="At least ten characters; told to the person, never written down here"><input id="cr-p" className="ctl" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" /></Field>
@@ -211,7 +211,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       {modal === "end" && grant ? (
         <Modal title={`End ${grant.label} for ${grant.surname}, ${grant.givenNames}`} sub="It stays on the record" onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="urgent" disabled={busy || !f.reason.trim()} onClick={() => void send("POST", `/api/bff/api/v1/iam/persons/${grant.personId}/office-assignments/${grant.id}/end`, { on: f.on || null, reason: f.reason }, `Office ended: ${f.reason}`)}>End it</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy || !f.reason.trim()} onClick={() => void send("POST", `/api/bff/api/v1/iam/persons/${grant.personId}/office-assignments/${grant.id}/end`, { on: f.on || null, reason: f.reason }, `Office ended: ${f.reason}`)}>End it</Btn></>}>
           <Note kind="bad" title="Ending is not deleting, and the difference is the whole point">Revoking an office takes the permissions away from the date you give and leaves the grant on the record, with who made it and who ended it. Everything the holder approved while they held it stands, because it was validly approved at the time.</Note>
           <div className="grid grid--2 rfgrid">
             <Field id="en-on" label="Ended with effect from" hint="Today, when blank"><input id="en-on" className="ctl" type="date" value={f.on} onChange={(e) => setF({ ...f, on: e.target.value })} /></Field>

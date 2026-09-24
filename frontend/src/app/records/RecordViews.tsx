@@ -162,7 +162,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
               str(r, "stage") ? (
                 statusLabel(str(r, "stage").replace(/_/g, " "))
               ) : (
-                <span style={{ color: "var(--red-ink)", fontWeight: 700 }} key="s">
+                <span className="ink-red b700" key="s">
                   No sheet opened
                 </span>
               ),
@@ -236,7 +236,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
               str(r, "lecturer") ? (
                 <strong key="l">{str(r, "lecturer")}</strong>
               ) : (
-                <span style={{ color: "var(--red-ink)", fontWeight: 700 }} key="l">
+                <span className="ink-red b700" key="l">
                   Unassigned
                 </span>
               ),
@@ -245,7 +245,7 @@ export function RecordBody({ view, result, scope }: { view: string; result: Reco
                   {str(r, "secondExaminer")}
                 </span>
               ) : (
-                <span className="sub2" style={{ color: "var(--red-ink)" }} key="s">
+                <span className="sub2 ink-red" key="s">
                   Blocked
                 </span>
               ),

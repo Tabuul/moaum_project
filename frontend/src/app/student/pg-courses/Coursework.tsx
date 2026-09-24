@@ -113,7 +113,7 @@ export function Coursework({ initialSession }: { initialSession: string }) {
               ["Units passed", `${unitsPassed} of ${unitsSat}`],
               ["Standing", cgpa >= 2.5 ? <Pil kind="ok">Good standing</Pil> : <Pil kind="bad">Probation</Pil>],
             ]} />
-            <div className="sub2" style={{ marginTop: 8 }}>Grading (Policy 16): A 70+ · B 60–69 · C 50–59 · F 0–49. Pass mark 50; there is no resit. A CGPA below 2.50 places you on probation for a semester.</div>
+            <div className="sub2 mt-2">Grading (Policy 16): A 70+ · B 60–69 · C 50–59 · F 0–49. Pass mark 50; there is no resit. A CGPA below 2.50 places you on probation for a semester.</div>
           </PBody>
         </Panel>
       ) : null}
@@ -132,7 +132,7 @@ export function Coursework({ initialSession }: { initialSession: string }) {
                     <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-2)", opacity: locked ? 0.7 : 1 }}>
                       <input type="checkbox" className="pchk" checked={on} disabled={locked || busy} onChange={() => toggle(c.id)} />
                       <span className="tnum" style={{ width: 72 }}>{c.code}</span>
-                      <span style={{ flexGrow: 1 }}>{c.title}</span>
+                      <span className="grow">{c.title}</span>
                       <Pil kind={KIND_PILL[c.kind] ?? "grey"}>{KIND[c.kind] ?? c.kind}</Pil>
                       <span className="tnum sub2" style={{ width: 56, textAlign: "right" }}>{c.units} u</span>
                     </label>

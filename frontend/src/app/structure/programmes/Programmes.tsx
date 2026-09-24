@@ -135,7 +135,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
               <Field id="pg-ms" label="Minimum score" hint="UTME cut-off floor, optional"><input id="pg-ms" className="ctl tnum" value={f.minScore} onChange={(e) => setF({ ...f, minScore: e.target.value.replace(/[^0-9]/g, "") })} placeholder="180" /></Field>
               <div /><div />
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="primary" disabled={busy || !/^C[0-9]{5}$/.test(f.code.trim()) || !f.name.trim() || !f.faculty} onClick={async () => {
                 const j = await post("/programmes", { code: f.code.trim(), name: f.name.trim(), faculty: f.faculty, departmentCode: f.deptCode || null, department: f.department || null, category: f.category, minScore: f.minScore ? Number(f.minScore) : null }, `Programme ${f.code.trim()} created`);
                 if (j) { setMsg(`Programme ${j.code} saved.`); setF({ code: "", name: "", faculty: "", deptCode: "", department: "", category: "UNDER GRADUATE", minScore: "" }); setEditing(false); }
@@ -152,7 +152,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
         </Panel>
       ) : null}
 
-      <Panel title="Programmes" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <Panel title="Programmes" right={<span className="row">
         <span className="sub2">{programmes.length} on the register</span>
         <Btn kind="ghost" disabled={!programmes.length} onClick={() => void exportXlsx()}>Download Excel</Btn>
         <Btn kind="ghost" disabled={!programmes.length} onClick={exportPdf}>Download PDF</Btn>

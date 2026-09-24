@@ -46,7 +46,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
 
   const statusKeys: LegendKey[] = [
     { l: "Approved", c: VZ.good, i: <Tick size={12} colour={VZ.good} /> },
-    { l: "Pending in the chain", c: VZ.warn, i: <Ico name="clock" size={12} stroke="#8a6300" w={2.2} /> },
+    { l: "Pending in the chain", c: VZ.warn, i: <Ico name="clock" size={12} stroke="var(--amber-ink)" w={2.2} /> },
     { l: "Never submitted", c: VZ.crit, i: <WarnIcon size={12} /> },
   ];
 
@@ -90,7 +90,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
               <>
                 <Donut capLabel="approved" capValue={`${pastPct}%`} items={[
                   { l: "Approved by Senate", v: appr, c: VZ.good, i: <Tick size={13} colour="#0a7a3b" /> },
-                  { l: "Pending in the chain", v: pend, c: VZ.warn, i: <Ico name="clock" size={13} stroke="#8a6300" w={2.2} /> },
+                  { l: "Pending in the chain", v: pend, c: VZ.warn, i: <Ico name="clock" size={13} stroke="var(--amber-ink)" w={2.2} /> },
                   { l: "Never submitted", v: miss, c: VZ.crit, i: <WarnIcon size={13} /> },
                 ]} />
               </>
@@ -134,7 +134,7 @@ export function Overview({ d, semester, session, sessions, due }: { d: OverviewD
               <strong key="f">{f.name}</strong>,
               <span className="tnum" key="e">{f.expected}</span>,
               <span className="tnum" key="s">{f.submitted}</span>,
-              <span className="tnum" key="a" style={{ color: "var(--green-ink)", fontWeight: 700 }}>{f.approved}</span>,
+              <span className="tnum ink-green b700" key="a">{f.approved}</span>,
               <span className="tnum" key="p">{f.pending}</span>,
               <span className="tnum" key="n" style={f.never > 30 ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{f.never}</span>,
               <b className="tnum" key="r" style={pct < 55 ? { color: "var(--red-ink)" } : undefined}>{pct}%</b>,

@@ -151,17 +151,17 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
       {mayEdit ? (
         <Panel title="Upload the course catalogue" right="Every programme, from one spreadsheet">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>
+            <div className="sub2 mb-2">
               Bulk-load courses for any postgraduate programme. Columns: <b>Programme</b> (its name or old-portal code), <b>Course Code</b>, <b>Title</b>, <b>Units</b> (0&ndash;12), <b>Kind</b> (Core / Elective / Deficiency / Research) and <b>Semester</b> (First / Second). Column names are matched flexibly. It upserts on programme + code, so re-uploading updates rather than duplicates.
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
               <label className={`btn btn--primary btn--sm${busyUp ? " btn--disabled" : ""}`} style={{ cursor: busyUp ? "not-allowed" : "pointer", margin: 0 }}>
                 {busyUp ? "Uploading…" : "Upload courses (.xlsx / .csv)"}
                 <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busyUp} onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadCourses(file); e.target.value = ""; }} />
               </label>
             </div>
-            {upResult ? <div style={{ marginTop: 10 }}><Note kind="ok" title="Course catalogue uploaded">{upResult}</Note></div> : null}
+            {upResult ? <div className="mt-3"><Note kind="ok" title="Course catalogue uploaded">{upResult}</Note></div> : null}
           </PBody>
         </Panel>
       ) : null}
@@ -206,7 +206,7 @@ export function CoursesDesk({ mayEdit }: { mayEdit: boolean }) {
               <div className="field"><label htmlFor="c-kind">Type</label><select id="c-kind" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="CORE">Core</option><option value="ELECTIVE">Elective</option><option value="RESEARCH">Research</option><option value="DEFICIENCY">Deficiency</option></select></div>
               <div className="field"><label htmlFor="c-sem">Semester</label><select id="c-sem" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option></select></div>
             </div>
-            <div style={{ marginTop: 10 }}><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void addCourse()}>{busy ? "Saving…" : "Add course"}</button></div>
+            <div className="mt-3"><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void addCourse()}>{busy ? "Saving…" : "Add course"}</button></div>
             <Note kind="info" title="Course units (Policy 11)">A course unit is one lecture/tutorial hour per week, or three laboratory hours, through a semester. Deficiency courses (max 9 units) earn no credit.</Note>
           </PBody>
         </Panel>

@@ -70,13 +70,13 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
       <PeriodPicker base="/admin" sessions={sessions} session={session} semester={semester} />
       <Panel title="Scope" right={subtitle}>
         <PBody>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <button className={`btn btn--sm ${scope === "institution" ? "btn--primary" : "btn--ghost"}`} onClick={() => setScope("institution")}>The University</button>
             {facs.map((f) => (
               <button key={f.code} className={`btn btn--sm ${scope === f.code ? "btn--primary" : "btn--ghost"}`} onClick={() => setScope(f.code)}>{f.name}</button>
             ))}
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>Every figure below is the same measure at a different level. An administrator who can only see the institution cannot tell a Dean why her faculty is behind.</div>
+          <div className="sub2 mt-2">Every figure below is the same measure at a different level. An administrator who can only see the institution cannot tell a Dean why her faculty is behind.</div>
         </PBody>
       </Panel>
 
@@ -98,7 +98,7 @@ export function Institution({ d, semester, session, sessions }: { d: OverviewDat
               <>
                 <Donut capLabel="past Senate" capValue={`${pubPct}%`} items={[
                   { l: "Approved by Senate", v: agg.approved, c: VZ.good, i: <Tick size={13} colour="#0a7a3b" /> },
-                  { l: "Pending in the chain", v: aPending, c: VZ.warn, i: <Ico name="clock" size={13} stroke="#8a6300" w={2.2} /> },
+                  { l: "Pending in the chain", v: aPending, c: VZ.warn, i: <Ico name="clock" size={13} stroke="var(--amber-ink)" w={2.2} /> },
                   { l: "Never submitted", v: aNever, c: VZ.crit, i: <WarnIcon size={13} /> },
                 ]} />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>

@@ -96,7 +96,7 @@ export function BiodataChanges({
         </Pil>
       ),
       open ? (
-        <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }} key="a">
+        <span className="row row--inline row--tight" key="a">
           <Btn kind="go" disabled={!may || busy !== null} onClick={() => { setDecision(""); setDeciding({ row: r, act: "approve" }); }}>
             Approve with evidence
           </Btn>
@@ -196,11 +196,11 @@ export function BiodataChanges({
             </>
           }
         >
-          <div className="kv" style={{ marginBottom: 12 }}>
+          <div className="kv mb-3">
             <span className="k">From</span>
             <span className="v">{deciding.row.fromValue ?? "— nothing on the record"}</span>
           </div>
-          <div className="kv" style={{ marginBottom: 12 }}>
+          <div className="kv mb-3">
             <span className="k">To</span>
             <span className="v">{deciding.row.toValue}</span>
           </div>

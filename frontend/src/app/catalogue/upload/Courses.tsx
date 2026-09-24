@@ -263,7 +263,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
               <option value="CCMAS">CCMAS — any cohort (shared rows)</option>
             </select>
           </Field>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row">
             <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
             <Btn kind="ghost" disabled={!programme || listing} onClick={() => void viewLoaded()}>{listing ? "Loading…" : "View loaded courses"}</Btn>
             <label className={`btn btn--primary${!may || busy ? " btn--disabled" : ""}`} style={{ cursor: may && !busy ? "pointer" : "not-allowed", margin: 0, opacity: !may ? 0.6 : 1 }}>
@@ -272,7 +272,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
             </label>
             {!programme ? <span className="sub2">Choose a programme above, or upload a file that has a <b>programme_code</b> column to load every department at once.</span> : null}
           </div>
-          <div className="sub2" style={{ marginTop: 8 }}>The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
+          <div className="sub2 mt-2">The course structure applies to <b>all sessions</b> — there is no session to enter. The template carries a <b>Semester</b> column alongside Level, so each course says which semester it runs — no reliance on the document&rsquo;s headings. Status: C core, R required, E elective, GST. Fill it, or upload the CCMAS .docx as before.</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
             <span className="sub2"><b>Download every uploaded course</b> across all programmes:</span>
             <Btn kind="ghost" disabled={exporting} onClick={() => void exportAllXlsx()}>{exporting ? "Preparing…" : "All courses — Excel"}</Btn>
@@ -286,8 +286,8 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       <Panel title="Open course registration for a session" right="After the structure is uploaded">
         <PBody>
-          <div className="sub2" style={{ marginBottom: 8 }}>Registration shows a course only once it is <b>offered</b> for the session. Open the session here to offer every uploaded course of that semester — then students see their real programme and level courses instead of demo data. Safe to run again; already-offered courses are skipped.</div>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div className="sub2 mb-2">Registration shows a course only once it is <b>offered</b> for the session. Open the session here to offer every uploaded course of that semester — then students see their real programme and level courses instead of demo data. Safe to run again; already-offered courses are skipped.</div>
+          <div className="row row--end">
             <Field id="or-ses" label="Session"><input id="or-ses" className="ctl tnum" style={{ maxWidth: 160 }} value={openSession} placeholder="2024/2025" onChange={(e) => setOpenSession(e.target.value)} /></Field>
             <Field id="or-sem" label="Semester"><select id="or-sem" className="ctl" value={openSem} onChange={(e) => setOpenSem(e.target.value)}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
             <Btn kind="primary" disabled={busy || !may} onClick={() => void openRegistration()}>{busy ? "Working…" : "Open course registration"}</Btn>
@@ -298,20 +298,20 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
 
       {unregistered.length ? (
         <Note kind="bad" title={`${unregistered.length} programme${unregistered.length === 1 ? "" : "s"} not on the register — their courses were held back`}>
-          <div className="sub2" style={{ marginBottom: 6 }}>These programme codes are in the file but not yet registered (mostly postgraduate). Register them first, then upload again — the import is idempotent, so the courses already loaded stay put.</div>
+          <div className="sub2 mb-2">These programme codes are in the file but not yet registered (mostly postgraduate). Register them first, then upload again — the import is idempotent, so the courses already loaded stay put.</div>
           <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 8, padding: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
             {unregistered.map((u) => (
               <span key={u.programme} className="tnum" style={{ fontSize: 12, background: "var(--chip, #eef2f7)", borderRadius: 6, padding: "2px 6px" }}>{u.programme} · {u.rows}</span>
             ))}
           </div>
-          <div className="sub2" style={{ marginTop: 6 }}>
+          <div className="sub2 mt-2">
             <Btn kind="ghost" onClick={() => { const blob = buildXlsx(["Programme Code", "Rows held back"], unregistered.map((u) => [u.programme, String(u.rows)]), "Unregistered programmes"); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Unregistered programmes.xlsx"; a.click(); URL.revokeObjectURL(a.href); }}>Download the list</Btn>
           </div>
         </Note>
       ) : null}
 
       {loaded ? (
-        <Panel title="Courses offered to this programme" right={<span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Panel title="Courses offered to this programme" right={<span className="row">
           <span className="sub2">{loaded.length} course{loaded.length === 1 ? "" : "s"} · {loaded.reduce((n, c) => n + Number(c.units || 0), 0)} units</span>
           <Btn kind="ghost" disabled={!loaded.length} onClick={() => void exportLoadedXlsx()}>Download Excel</Btn>
           <Btn kind="ghost" disabled={!loaded.length} onClick={exportLoadedPdf}>Download PDF</Btn>

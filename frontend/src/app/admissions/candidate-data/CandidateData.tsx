@@ -232,7 +232,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
             </div>
           ) : <div className="sub2">No candidate on record matches your search.</div>}
           {shown.length > gshow ? (
-            <div style={{ marginTop: 12 }}><Btn kind="ghost" onClick={() => setGshow(gshow + 120)}>Show more — {shown.length - gshow} more</Btn></div>
+            <div className="mt-3"><Btn kind="ghost" onClick={() => setGshow(gshow + 120)}>Show more — {shown.length - gshow} more</Btn></div>
           ) : null}
         </PBody>
       </Panel>
@@ -261,7 +261,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
           <div className="sub2">Nothing leaves this browser until you record what was read; a photograph over 64 KB is recorded by name, size and dimensions only.</div>
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
             <div className="eyebrow">Thousands of photographs? Stream the folder</div>
-            <div className="sub2" style={{ marginBottom: 8 }}>
+            <div className="sub2 mb-2">
               For a large folder (a whole intake), choosing it above reads every image into the browser at once and can crash the tab.
               This reads and records the folder <b>a batch at a time</b>, so any size goes through. It records as it reads — no separate
               &ldquo;Record&rdquo; step — and it is safe to run again; already-recorded files are skipped.
@@ -271,7 +271,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
               <input type="file" id="cd-pas-stream" accept="image/*" multiple hidden disabled={streaming || !may} onChange={(e) => void streamUpload(e.target.files)} />
             </label>
             {stream ? (
-              <div style={{ marginTop: 10 }}>
+              <div className="mt-3">
                 <div className="sub2 tnum">Read {stream.read.toLocaleString()} of {stream.total.toLocaleString()} · recorded {stream.recorded.toLocaleString()} · attached to a candidate {stream.attached.toLocaleString()} · no number in the name {stream.unreadable.toLocaleString()}</div>
                 {!streaming ? <div className="sub2" style={{ color: "var(--green-ink)", marginTop: 4 }}>Done. {stream.recorded.toLocaleString()} newly recorded; the rest were already on record.</div> : null}
                 {streamSample.length ? (
@@ -326,13 +326,13 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
                   {m.matched.slice(0, 24).map((p) => (
                     <div key={p.file} style={{ width: 104 }}>
                       {p.url ? <img src={p.url} alt="" style={{ width: 104, height: 119, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 6 }} /> : <div style={{ width: 104, height: 119, border: "1px solid var(--red-line)", borderRadius: 6, background: "var(--red-bg)" }} />}
-                      <div className="sub2 tnum" style={{ marginTop: 4 }}>{p.num}</div>
+                      <div className="sub2 tnum mt-1">{p.num}</div>
                       <div className="sub2" style={{ lineHeight: 1.3 }}>{(m.byNum[p.num]?.name ?? "").split(",")[0]}</div>
                       <div className="sub2">{p.w}×{p.h}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{ marginTop: 12 }}>
+                <div className="mt-3">
                   <Btn kind="primary" disabled={busy || !may} onClick={() => void record("PASSPORT", all.map((p) => ({ sourceName: p.file, jambKey: p.num || null, readAs: p.num ? (p.how ? "EMBEDDED" : "EXACT") : "UNREADABLE", payload: p.url && p.size <= 65536 ? { dataUrl: p.url } : {}, bytes: p.size, widthPx: p.w || undefined, heightPx: p.h || undefined })))}>Record what was read</Btn>
                 </div>
               </PBody>

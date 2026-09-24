@@ -35,8 +35,8 @@ export function Senate({ session, sessions, view, problem }: { session: string; 
 
       <Panel title="Session" right={<span className="sub2">Awards are read for the session you choose</span>}>
         <PBody>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <label htmlFor="sen-session" className="sub2" style={{ fontWeight: 600 }}>Session</label>
+          <div className="row">
+            <label htmlFor="sen-session" className="sub2 b600">Session</label>
             <select id="sen-session" className="ctl" style={{ maxWidth: 260 }} value={session}
               onChange={(e) => queryNav(`/admissions/postgraduate/senate?session=${encodeURIComponent(e.target.value)}`)}>
               {options.map((s) => <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : ""}</option>)}
@@ -60,7 +60,7 @@ export function Senate({ session, sessions, view, problem }: { session: string; 
             {view.toSenate.length ? (
               <DTable cols={["Candidate", "Programme", "Coursework CGPA|num", "Viva|mid", "Outcome|mid", "Status|mid"]}
                 rows={view.toSenate.map((r) => [
-                  <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
+                  <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
                   <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}{r.topic ? ` · ${r.topic}` : ""}</div></span>,
                   <span key="g" className="tnum">{r.cgpa == null ? "—" : Number(r.cgpa).toFixed(2)}</span>,
                   r.viva_grade ? <Pil key="v" kind="ok">{r.viva_grade}{r.viva_outcome === "PASS_MINOR" ? " · minor" : r.viva_outcome === "PASS_MAJOR" ? " · major" : ""}</Pil> : <span key="v" className="sub2">—</span>,
@@ -75,7 +75,7 @@ export function Senate({ session, sessions, view, problem }: { session: string; 
             {view.awarded.length ? (
               <DTable cols={["Candidate", "Programme", "Award|mid", "Senate date|num"]}
                 rows={view.awarded.map((r) => [
-                  <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
+                  <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? "—"}</div></span>,
                   <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}</div></span>,
                   <Pil key="a" kind="ok">Awarded</Pil>,
                   <span key="d" className="tnum">{fmt(r.awarded_at)}</span>,

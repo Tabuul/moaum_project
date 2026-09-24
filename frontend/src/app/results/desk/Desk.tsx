@@ -114,7 +114,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
       ) : null}
       <Panel title={`Send on to ${d.next}`}>
         <PBody>
-          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="row">
             {d.stage === "SENATE" ? (
               <Link href="/results/senate" className="btn btn--primary">Record the Senate minute</Link>
             ) : (

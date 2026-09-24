@@ -246,7 +246,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
             {may && EDITABLE.includes(section) ? (
               <div className="card__body" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", borderTop: "1px solid var(--line-2)" }}>
                 <span className="sub2">{sectionChanged ? "Unsaved changes on this section" : "No unsaved changes"}</span>
-                <span style={{ flexGrow: 1 }} />
+                <span className="grow" />
                 <Btn kind="ghost" disabled={busy || !sectionChanged} onClick={() => void saveSection(false)}>{busy ? "Saving…" : "Save"}</Btn>
                 <Btn kind="primary" disabled={busy} onClick={() => void saveSection(true)}>{busy ? "Saving…" : "Save and continue →"}</Btn>
               </div>

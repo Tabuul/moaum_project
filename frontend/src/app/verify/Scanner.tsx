@@ -92,14 +92,14 @@ export function Scanner({ onResult }: { onResult: (path: string) => void }) {
     return stop;
   }, [open, onResult]);
 
-  const line = "#d8cfbc";
+  const line = "var(--line)";
 
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => { setError(null); setOpen(true); }}
-        style={{ width: "100%", marginTop: 12, padding: "11px 14px", fontSize: 14, fontWeight: 600, color: "#0e3f55", background: "#fff", border: `1px solid ${line}`, borderRadius: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+        style={{ width: "100%", marginTop: 12, padding: "11px 14px", fontSize: 14, fontWeight: 600, color: "var(--chrome)", background: "#fff", border: `1px solid ${line}`, borderRadius: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
       >
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="6" height="6" rx="1" /><rect x="15" y="3" width="6" height="6" rx="1" /><rect x="3" y="15" width="6" height="6" rx="1" />
@@ -121,9 +121,9 @@ export function Scanner({ onResult }: { onResult: (path: string) => void }) {
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 22, textAlign: "center", color: "#eaf0f4", fontSize: 13.5, lineHeight: 1.5 }}>{error}</div>
         ) : null}
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", background: "#0e3f55", color: "#dbe7ec" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 14px", background: "var(--chrome)", color: "#dbe7ec" }}>
         <span style={{ fontSize: 12.5 }}>{error ? "Camera unavailable" : "Point the receipt's QR at the camera"}</span>
-        <button type="button" onClick={() => { stop(); setOpen(false); }} style={{ padding: "6px 12px", fontSize: 13, fontWeight: 600, color: "#0e3f55", background: "#fff", border: "none", borderRadius: 7, cursor: "pointer" }}>Close</button>
+        <button type="button" onClick={() => { stop(); setOpen(false); }} style={{ padding: "6px 12px", fontSize: 13, fontWeight: 600, color: "var(--chrome)", background: "#fff", border: "none", borderRadius: 7, cursor: "pointer" }}>Close</button>
       </div>
     </div>
   );

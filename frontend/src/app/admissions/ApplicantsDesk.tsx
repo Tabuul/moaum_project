@@ -287,14 +287,14 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         </Note>
       ) : null}
 
-      <Panel title="Screening batches" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${desk.batches.length} batch${desk.batches.length === 1 ? "" : "es"}`}<Btn kind="ghost" disabled={!office} onClick={() => { setNewBatch(true); setEdits({}); }}>New batch</Btn><Btn kind="primary" disabled={!office || busy !== null} onClick={() => void send("release-scores", "POST", "/screening-scores/release", {}, `Screening results released for ${desk.session}`)}>{busy === "release-scores" ? "Releasing…" : "Release results"}</Btn></span>}>
+      <Panel title="Screening batches" right={<span className="row row--inline">{`${desk.batches.length} batch${desk.batches.length === 1 ? "" : "es"}`}<Btn kind="ghost" disabled={!office} onClick={() => { setNewBatch(true); setEdits({}); }}>New batch</Btn><Btn kind="primary" disabled={!office || busy !== null} onClick={() => void send("release-scores", "POST", "/screening-scores/release", {}, `Screening results released for ${desk.session}`)}>{busy === "release-scores" ? "Releasing…" : "Release results"}</Btn></span>}>
         {desk.batches.length ? (
           <DTable cols={["Batch", "When", "Venue", "Seated|mid", "|num"]} rows={desk.batches.map((b) => [
             <b key="l">{b.label}</b>,
             <span key="w">{new Date(b.held_on).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} · {String(b.starts_at).slice(0, 5)}–{String(b.ends_at).slice(0, 5)}</span>,
             <span className="sub2" key="v">{b.venue}</span>,
             <span className="tnum" key="s">{b.seated} / {b.capacity}</span>,
-            <span key="a" style={{ display: "inline-flex", gap: 6 }}>
+            <span key="a" className="row row--inline row--tight">
               <Link href={`/admissions/screening/${b.id}?session=${encodeURIComponent(desk.session)}`} className="btn btn--ghost btn--sm">Hall list</Link>
               <Btn kind="ghost" disabled={!office || busy !== null || Number(b.seated) >= b.capacity} onClick={() => void send(`seat-${b.id}`, "POST", `/screening-batches/${b.id}/assign`, {}, `Seats assigned in batch ${b.label}`)}>{busy === `seat-${b.id}` ? "Seating…" : "Seat the submitted"}</Btn>
             </span>,
@@ -302,7 +302,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         ) : <div className="card__body"><div className="sub2">No batch yet. Make one, then seat the submitted applications over it; the slip appears on each applicant&rsquo;s screen the moment they are seated.</div></div>}
       </Panel>
 
-      <Panel title="Applicants" right={<span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => { if (feeUnset && !window.confirm(`The acceptance fee is not set for ${desk.session}. Applicants can accept their offer but cannot pay the acceptance fee. Release decisions anyway?`)) return; void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`); }}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
+      <Panel title="Applicants" right={<span className="row row--inline">{`${rows.length} · ${desk.session}`}<Btn kind="primary" disabled={!office || busy !== null} onClick={() => { if (feeUnset && !window.confirm(`The acceptance fee is not set for ${desk.session}. Applicants can accept their offer but cannot pay the acceptance fee. Release decisions anyway?`)) return; void send("release-decisions", "POST", "/decisions/release", {}, `Admission decisions released for ${desk.session}`); }}>{busy === "release-decisions" ? "Releasing…" : "Release decisions"}</Btn></span>}>
         {rows.length ? (
           <DTable cols={["Applicant", "Programme", "Stage", "Seat|mid", "Score|mid", "Decision|mid", "|num"]} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no ?? ""} ${r.jamb_key} ${r.programme}`)}
             rows={rows.map((r) => [
@@ -364,7 +364,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
             </div>
             {jambMsg ? <Note kind="ok" title="Uploaded and matched">{jambMsg}</Note> : null}
             {jambList ? (
-              <div style={{ marginTop: 10 }}>
+              <div className="mt-3">
                 <Tiles items={[
                   ["Loaded", String(jambList.tiles.loaded ?? 0), null, "Rows on the JAMB list"],
                   ["Matched", String(jambList.tiles.matched ?? 0), null, "On the register here"],
@@ -397,7 +397,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
 
       {newBatch ? (
         <Modal title="A screening batch" sub={desk.session} onClose={() => setNewBatch(false)}
-          foot={<><Btn kind="ghost" onClick={() => setNewBatch(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setNewBatch(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy !== null || !val("label") || !val("heldOn") || !val("venue")} onClick={async () => { const ok = await send("batch", "POST", "/screening-batches", { label: val("label"), heldOn: val("heldOn"), startsAt: val("starts", "09:00"), endsAt: val("ends", "10:00"), venue: val("venue"), capacity: Number(val("capacity", "120")) }, `Screening batch ${val("label")} made`); if (ok) setNewBatch(false); }}>{busy === "batch" ? "Making…" : "Make the batch"}</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="b-label" label="Batch"><input id="b-label" className="ctl" value={val("label")} onChange={(e) => setEdits({ ...edits, label: e.target.value })} placeholder="C" /></Field>
@@ -412,7 +412,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
 
       {open ? (
         <Modal title={`${open.name} · ${open.applicationNo}`} sub={`${open.programme ?? ""} · stage ${open.stage + 1} of 10 · ${stageOf(open.stage)}`} wide onClose={() => setOpen(null)}
-          foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn></>}>
+          foot={<><span className="grow" /><Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn></>}>
           {problem ? <ProblemNotice problem={problem} /> : null}
           <Panel title="Applicant — read from JAMB" right={open.jambKey}>
             <PBody>
@@ -467,7 +467,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                 <Btn kind="primary" disabled={!office || busy !== null || !!open.scoreReleasedAt || !open.screeningSlip || !val("score")} onClick={async () => { await send("score", "PUT", `/applications/${open.id}/screening-score`, { score: Number(val("score")) }, `CBT score entered for ${open.applicationNo}`); await refreshOpen(open.id); }}>{busy === "score" ? "Saving…" : "Enter the score"}</Btn>
               </div>
               {open.result ? (
-                <div className="sub2" style={{ marginTop: 8 }}>
+                <div className="sub2 mt-2">
                   UTME {open.result.utme ?? "—"} scaled {open.result.utmeScaled ?? "—"} · screening {open.result.screening ?? "—"} ({open.result.screeningSource === "OLEVEL" ? "O’Level" : open.result.screeningSource}) · aggregate <b className="tnum">{open.result.aggregate ?? "—"}</b> · cut-off {open.result.cutoff ?? "not stated"} · position {open.result.meritPosition ?? "—"} of {open.result.applied ?? "—"}{open.scoreReleasedAt ? " · released" : " · not yet released"}
                 </div>
               ) : null}
@@ -489,23 +489,23 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                 </Field>
                 <Field id="dnote" label="Note" hint="Anything the Board minuted beyond the basis"><input id="dnote" className="ctl" value={val("dnote", open.decisionNote ?? "")} disabled={!office || !!open.decisionReleasedAt} onChange={(e) => setEdits({ ...edits, dnote: e.target.value })} /></Field>
               </div>
-              <div style={{ marginTop: 4 }}>
+              <div className="mt-1">
                 <Btn kind="primary" disabled={!office || busy !== null || !!open.decisionReleasedAt || !val("decision", open.decision ?? "") || (val("decision", open.decision ?? "") === "OFFERED" && !val("dbasis", open.decisionBasis ?? ""))} onClick={async () => { await send("decide", "PUT", `/applications/${open.id}/decision`, { decision: val("decision", open.decision ?? ""), note: val("dnote", open.decisionNote ?? "") || undefined, basis: val("dbasis", open.decisionBasis ?? "") || undefined }, `Board decision entered for ${open.applicationNo}`); await refreshOpen(open.id); }}>{busy === "decide" ? "Saving…" : "Enter the decision"}</Btn>
               </div>
-              <div className="sub2" style={{ marginTop: 6 }}>Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
+              <div className="sub2 mt-2">Decisions are released together, from the Applicants panel. An offer, released, makes the candidate ADMITTED on the strength of the CAPS row; accepted, ACCEPTED — the same candidate the register is built from.</div>
             </PBody>
           </Panel>
         </Modal>
       ) : null}
       {candLoading || candErr ? (
         <Modal title="Applicant details" onClose={() => { setCandLoading(false); setCandErr(null); }}
-          foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => { setCandLoading(false); setCandErr(null); }}>Close</Btn></>}>
+          foot={<><span className="grow" /><Btn kind="ghost" onClick={() => { setCandLoading(false); setCandErr(null); }}>Close</Btn></>}>
           {candLoading ? <PBody><div className="sub2">Loading the candidate…</div></PBody> : <ProblemNotice problem={candErr!} />}
         </Modal>
       ) : null}
       {openCand ? (
         <Modal title={`${openCand.biodata.surname}, ${openCand.biodata.other_names}`} sub={`${openCand.biodata.jamb_reg_no} · admitted, not yet registered`} wide onClose={() => setOpenCand(null)}
-          foot={<><span style={{ flexGrow: 1 }} /><Btn kind="ghost" onClick={() => setOpenCand(null)}>Close</Btn></>}>
+          foot={<><span className="grow" /><Btn kind="ghost" onClick={() => setOpenCand(null)}>Close</Btn></>}>
           <Panel title="Candidate — from the CAPS admission list">
             <PBody>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -555,13 +555,13 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
               {(() => {
                 let counted: { subject: string; grade: string; points: number }[] = [];
                 try { counted = JSON.parse(openCand.olevel?.counted ?? "[]") as { subject: string; grade: string; points: number }[]; } catch { counted = []; }
-                return counted.length ? <div className="sub2" style={{ marginTop: 6 }}>Subjects counted in the score: {counted.map((c) => `${c.subject} ${c.grade} (${c.points})`).join(" · ")}.</div> : null;
+                return counted.length ? <div className="sub2 mt-2">Subjects counted in the score: {counted.map((c) => `${c.subject} ${c.grade} (${c.points})`).join(" · ")}.</div> : null;
               })()}
               {openCand.olevel?.total ? (() => {
                 const ceil = openCand.olevel.ceiling ?? 0;
                 const scaled = ceil ? Math.round((openCand.olevel.total! / ceil) * 10000) / 100 : null;
                 return (
-                  <div className="sub2" style={{ marginTop: 4 }}>
+                  <div className="sub2 mt-1">
                     Under this session&rsquo;s grading: {openCand.olevel.sittings} sitting{openCand.olevel.sittings === 1 ? "" : "s"}, {openCand.olevel.points} points + {openCand.olevel.bonus} bonus = <b>{openCand.olevel.total}</b> of a possible {ceil}.
                     {scaled != null ? <> Scaled to a screening mark of <b>{scaled}%</b> (total &divide; {ceil} &times; 100).</> : null}
                     {openCand.olevel.by_exam ? <> This programme is screened by examination, so the screening mark will be the CBT score, not this.</> : null}

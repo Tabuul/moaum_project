@@ -69,7 +69,7 @@ export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData
               <Field id="ci-acc" label="Accession number"><input id="ci-acc" className="ctl tnum" value={accession} onChange={(e) => setAccession(e.target.value)} placeholder="CSC/004182" autoComplete="off" /></Field>
               <Field id="ci-who" label="Patron" hint="Matriculation, admission or staff number"><input id="ci-who" className="ctl tnum" value={who} onChange={(e) => setWho(e.target.value)} autoComplete="off" /></Field>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="row">
               <Btn kind="primary" disabled={!may || busy || !accession.trim() || !who.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/library/loans", "POST", { accession, patron: who }, `Issued ${accession} to ${who}`); if (j) { setSaid(`${accession.toUpperCase()} issued to ${j.patron}`); setAccession(""); } }}>Issue</Btn>
               <Btn kind="go" disabled={!may || busy || !accession.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/library/returns", "POST", { accession }, `Returned ${accession}`); if (j) { setSaid(Number(j.fine) > 0 ? `Returned ${j.days_overdue} days late — fine ${money(Number(j.fine))} posted` : "Returned on time"); setAccession(""); } }}>Return</Btn>
               <Btn kind="ghost" disabled={busy} onClick={go}>Look the patron up</Btn>
@@ -101,7 +101,7 @@ export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData
 
       <Panel title="Overdue" right={`${d.overdue.length} · fines posted automatically on return`}>
         {d.overdue.length ? (
-          <DTable cols={["Patron", "Item", "Due", "Days|mid", "Fine so far|num"]} rows={d.overdue.map((x) => [...loanRow(x), <b className="tnum" key="n" style={{ color: "var(--red-ink)" }}>{x.days_overdue}</b>, <span className="tnum" key="f">{money(x.days_overdue * Number(d.setting.fine_per_day))}</span>])} texts={d.overdue.map((x) => `${x.patron} ${x.number} ${x.title}`)} />
+          <DTable cols={["Patron", "Item", "Due", "Days|mid", "Fine so far|num"]} rows={d.overdue.map((x) => [...loanRow(x), <b className="tnum ink-red" key="n">{x.days_overdue}</b>, <span className="tnum" key="f">{money(x.days_overdue * Number(d.setting.fine_per_day))}</span>])} texts={d.overdue.map((x) => `${x.patron} ${x.number} ${x.title}`)} />
         ) : <PBody><div className="sub2">Nothing overdue.</div></PBody>}
       </Panel>
 

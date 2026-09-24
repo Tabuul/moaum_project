@@ -29,12 +29,12 @@ export default async function CollegeDashboardPage() {
 
       <Panel title="College of Health Sciences">
         <PBody>
-          <div className="sub2" style={{ marginBottom: 10 }}>
+          <div className="sub2 mb-3">
             This is the College module&rsquo;s dashboard area. The academic structure (Basic Medical Sciences,
             Basic Clinical Sciences and Clinical Sciences) sits under the College tier, and its officers — the
             Provost, the College Secretary and the Finance Controller — work here.
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <Link href="/college/postings" className="btn btn--primary btn--sm">Postings desk</Link>
             <Link href="/college/supervision" className="btn btn--ghost btn--sm">Logbooks</Link>
             <Link href="/college/examinations" className="btn btn--ghost btn--sm">Professional examinations</Link>

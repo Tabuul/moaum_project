@@ -139,7 +139,7 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
         {shown.length ? (
           <DTable cols={["Student", "Programme", "Level|mid", "Sex|mid", "Status|mid", "CGPA|num", "Standing|mid", "Research|mid", ...(mayEdit ? ["|mid"] : [])]}
             rows={shown.map((r) => [
-              <span key="n"><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
+              <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
               <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.department_name}</div></span>,
               <span key="l" className="sub2">{LEVEL[r.entry_level] ?? r.entry_level}</span>,
               <span key="g" className="sub2">{r.sex === "F" ? "Female" : r.sex === "M" ? "Male" : "—"}</span>,

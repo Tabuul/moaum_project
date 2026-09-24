@@ -171,24 +171,24 @@ export function ScoreSheets({ sessions, session, level, exams, data, problem, co
           ]} />
           <Panel title={`${exam.code} — ${exam.name} · ${level} Level · ${session}`} right="Download, fill, upload">
             <PBody>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="row">
                 <Btn kind="primary" disabled={!rows.length} onClick={() => void downloadTemplate()}>Download the score sheet</Btn>
                 <label className="btn btn--ghost" style={{ cursor: "pointer" }}>Upload the filled sheet<input type="file" accept=".xlsx,.csv" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = ""; }} /></label>
                 <Btn kind="ghost" disabled={!withResults} onClick={() => void downloadMarked()}>Download the marked sheet</Btn>
               </div>
-              <div className="sub2" style={{ marginTop: 8 }}>The sheet is a workbook with the cohort as it stands: a row per candidate, and per subject the CA out of {subjects[0]?.ca_weight ?? 30}, the examination out of {subjects[0]?.exam_weight ?? 70}{subjects.some((s) => s.clinical_component_min != null) ? ", the clinical mark out of 100" : ""} and the attendance percentage{exam.min_attendance_pct != null ? ` (minimum ${exam.min_attendance_pct}%, or the candidate is barred)` : ""}. Fill it and upload it; the preview names every problem before anything is saved. Each mark is judged by the rule as it goes in, and once a candidate&rsquo;s subjects are all resulted the rule&rsquo;s decision is applied provisionally for the Board to confirm.</div>
+              <div className="sub2 mt-2">The sheet is a workbook with the cohort as it stands: a row per candidate, and per subject the CA out of {subjects[0]?.ca_weight ?? 30}, the examination out of {subjects[0]?.exam_weight ?? 70}{subjects.some((s) => s.clinical_component_min != null) ? ", the clinical mark out of 100" : ""} and the attendance percentage{exam.min_attendance_pct != null ? ` (minimum ${exam.min_attendance_pct}%, or the candidate is barred)` : ""}. Fill it and upload it; the preview names every problem before anything is saved. Each mark is judged by the rule as it goes in, and once a candidate&rsquo;s subjects are all resulted the rule&rsquo;s decision is applied provisionally for the Board to confirm.</div>
             </PBody>
           </Panel>
           {preview ? (
             <Panel title={`Preview: ${preview.file}`} right={`${preview.rows.length} rows · ${preview.rows.filter((r) => r.flags.length).length} flagged`}>
-              {preview.unread.length ? <PBody><div style={{ color: "var(--red-ink)" }}>{preview.unread.join(" · ")}</div></PBody> : null}
+              {preview.unread.length ? <PBody><div className="ink-red">{preview.unread.join(" · ")}</div></PBody> : null}
               <DTable cols={["Line|mid", "Matriculation number", "Name", ...subjects.map((s) => `${s.name}|mid`), "Flags"]} rows={preview.rows.map((r) => [
                 <span className="tnum" key="l">{r.line}</span>, <span className="tnum" key="n">{r.number}</span>, <span key="nm">{r.name}</span>,
                 ...r.marks.map((m) => <span className="tnum" key={m.subjectId}>{m.ca === "" && m.exam === "" ? "—" : `${m.ca || "?"} + ${m.exam || "?"}${m.clinical ? ` · cl ${m.clinical}` : ""}${m.attendance ? ` · ${m.attendance}%` : ""}`}</span>),
                 <span key="f" style={{ color: r.flags.length ? "var(--red-ink)" : undefined }}>{r.flags.length ? r.flags.join("; ") : "OK"}</span>,
               ])} />
               <PBody>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <div className="row">
                   <Btn kind="go" disabled={busy || !preview.rows.some((r) => !r.flags.some((f) => /not in the|not a number|is over|missing|no marks/.test(f)))} onClick={() => void save()}>{busy ? "Saving…" : `Save ${preview.rows.filter((r) => !r.flags.some((f) => /not in the|not a number|is over|missing|no marks/.test(f))).length} rows`}</Btn>
                   <Btn kind="ghost" onClick={() => setPreview(null)}>Discard</Btn>
                   <span className="sub2">Rows flagged as not in the cohort, over range, missing a required mark or empty are left out; a barred or unregistered candidate is saved and shown as such.</span>

@@ -228,7 +228,7 @@ export function RoleLine({
       <span className="sub2">
         <strong style={{ color: "var(--ink)" }}>{action ?? "These actions"}</strong> {allowed.length === 1 ? "is worked by the " : "are worked by the "}{names}.
       </span>
-      <span style={{ flexGrow: 1 }} />
+      <span className="grow" />
       <Pil kind={can ? "ok" : "grey"}>
         {can ? `You may act — ${roleLabel(actingOffice)}` : `Signed in as ${roleLabel(actingOffice)} · view only`}
       </Pil>
@@ -287,7 +287,7 @@ export function Panel({ title, right, children }: { title: ReactNode; right?: Re
       <div className="card__head">
         <span className="card__title">{title}</span>
         {right ? (
-          <span className="sub2" style={{ marginLeft: "auto" }}>
+          <span className="sub2 ml-auto">
             {right}
           </span>
         ) : null}

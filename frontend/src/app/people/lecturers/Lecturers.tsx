@@ -263,7 +263,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
 
       <Panel title="Teaching staff on record" right={`${staff.length} lecturer${staff.length === 1 ? "" : "s"}`}>
         <PBody>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row">
             <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id or department" style={{ maxWidth: 300 }} />
             {may ? <Btn kind="primary" onClick={openAdd}>Add staff</Btn> : null}
             {may && sel.size ? <Btn kind="urgent" disabled={busy} onClick={() => void del()}>{busy ? "Removing…" : `Delete selected (${sel.size})`}</Btn> : null}
@@ -275,7 +275,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         {shown.length ? (
           <DTable cols={[...(may ? ["|mid"] : []), "Staff id", "Name", "Department", "Rank", "Sign-in", ...(may ? ["|num"] : [])]} rows={shown.slice(0, 500).map((s) => [
             ...(may ? [<input type="checkbox" key="x" checked={sel.has(s.id)} onChange={() => toggle(s.id)} aria-label={`Select ${s.name}`} />] : []),
-            <span className="tnum" key="i" style={{ fontWeight: 700 }}>{s.staff_number ?? "—"}</span>,
+            <span className="tnum b700" key="i">{s.staff_number ?? "—"}</span>,
             <span key="n">{s.name}{s.sex ? <span className="sub2"> · {s.sex}</span> : null}</span>,
             <span key="d">{s.departments ?? s.home_department ?? "—"}</span>,
             <span key="r" className="sub2">{s.present_rank ?? "—"}{s.conuass_step ? ` · CONUASS ${s.conuass_step}` : ""}</span>,
@@ -295,10 +295,10 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
 
       {form ? (
         <Modal title={form.id ? `Edit ${form.pno || "staff"}` : "Add a staff member"} onClose={() => setForm(null)}
-          foot={<><Btn kind="ghost" onClick={() => setForm(null)}>Cancel</Btn><span style={{ flexGrow: 1 }} />
+          foot={<><Btn kind="ghost" onClick={() => setForm(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !form.surname.trim() || !form.given.trim() || !form.department.trim() || (!form.id && !form.pno.trim())} onClick={() => void saveStaff()}>{busy ? "Saving…" : form.id ? "Save changes" : "Add staff"}</Btn></>}>
           {problem ? <ProblemNotice problem={problem} /> : null}
-          <div className="sub2" style={{ marginBottom: 10 }}>
+          <div className="sub2 mb-3">
             {form.id ? "The staff id and sign-in are not changed here. Changing the department moves the lecturer office to the new one." : "The staff id becomes P<number>, and is the username and first password (must be changed on first sign-in). The department must already exist."}
           </div>
           <div className="grid grid--2">

@@ -107,7 +107,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
       right={grading ? (grading.stated ? <Pil kind="ok">Stated for {session}</Pil> : <Pil kind="info">Defaults · not yet stated for {session}</Pil>) : "reading…"}
     >
       <PBody>
-        <div className="sub2" style={{ marginBottom: 10 }}>
+        <div className="sub2 mb-3">
           JAMB uploads each candidate&rsquo;s O&rsquo;Level results, one or two sittings of WAEC, NECO or NABTEB. The screening prices each grade,
           counts the subjects most relevant to the programme &mdash; the better grade in a subject sat twice &mdash; and adds a bonus for how many
           sittings it took. <b>These numbers are the Academic Office&rsquo;s to state</b>, per session, and are recorded against it. The score is
@@ -137,7 +137,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
               {dirty ? <Btn kind="ghost" disabled={busy} onClick={() => { setEdits({}); setExam(null); }}>Discard</Btn> : null}
               {!may ? <span className="sub2">The grading is stated by the Academic Office or the Registrar.</span> : null}
             </div>
-            <div style={{ marginTop: 14 }}>
+            <div className="mt-4">
               <div className="eyebrow">Programmes screened by the post-UTME examination</div>
               <div className="sub2" style={{ margin: "4px 0 8px" }}>
                 The departments named here sit the examination. Their candidates are scored on the examination alone, and the O&rsquo;Level grading above is not applied to them. Every other programme is screened on its O&rsquo;Level results.
@@ -150,8 +150,8 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
                   <IcoBtn key="x" icon="trash" label={`Remove ${p ? p.name : code} from examination screening`} danger disabled={!may} onClick={() => setExam(examCodes.filter((c) => c !== code))} />,
                 ];
               })} />
-              {!examCodes.length ? <div className="sub2" style={{ marginBottom: 8 }}>No programme is screened by examination this session; every programme is screened on its O&rsquo;Level results.</div> : null}
-              <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+              {!examCodes.length ? <div className="sub2 mb-2">No programme is screened by examination this session; every programme is screened on its O&rsquo;Level results.</div> : null}
+              <div className="row">
                 <select className="ws__select" style={{ maxWidth: 460 }} value={pick} disabled={!may} onChange={(e) => setPick(e.target.value)} aria-label="Programme to add">
                   <option value="">Add a programme that sits the examination…</option>
                   {programmes.filter((p) => !examCodes.includes(p.code)).map((p) => <option key={p.code} value={p.code}>{p.code} · {p.name}{p.facultyName ? ` · ${p.facultyName}` : ""}</option>)}

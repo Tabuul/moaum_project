@@ -1646,3 +1646,29 @@ body.nav-slim .nav__item[aria-current="page"]::before { left: 0; }
 @media (max-width: 1180px) { .topbar__who { display: none; } .topbar__me { padding: 4px; border: 0; background: none; } }
 @media (max-width: 900px) { .topbar { position: static; padding: 12px 16px; } .topbar__me { display: none; } .crumb { display: none; } }
 @media (prefers-reduced-motion: reduce) { .nav__item, .nav__out, .topsrch { transition: none; } }
+
+/* ── utilities (5 of 6): the few layouts and inks every screen repeats, on the tokens ──────────── */
+.row { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
+.row--tight { gap: 6px; }
+.row--top { align-items: flex-start; }
+.row--end { align-items: flex-end; }
+.row--base { align-items: baseline; }
+.row--right { justify-content: flex-end; }
+.row--between { justify-content: space-between; }
+.row--inline { display: inline-flex; }
+.stack { display: flex; flex-direction: column; gap: var(--s-2); }
+.grow { flex-grow: 1; min-width: 0; }
+.ml-auto { margin-left: auto; }
+.m-0 { margin: 0; }
+.mt-1 { margin-top: var(--s-1); } .mt-2 { margin-top: var(--s-2); } .mt-3 { margin-top: var(--s-3); } .mt-4 { margin-top: var(--s-4); }
+.mb-1 { margin-bottom: var(--s-1); } .mb-2 { margin-bottom: var(--s-2); } .mb-3 { margin-bottom: var(--s-3); }
+.ink-red { color: var(--red-ink); } .ink-green { color: var(--green-ink); } .ink-chrome { color: var(--chrome); } .ink-muted { color: var(--muted); } .ink-faint { color: var(--faint); }
+.b600 { font-weight: 600; } .b700 { font-weight: 700; }
+.t-xs { font-size: var(--t-xs); } .t-sm { font-size: var(--t-sm); } .t-md { font-size: var(--t-md); } .t-lg { font-size: var(--t-lg); }
+.hr { height: 1px; background: var(--line-2); }
+.eyebrow--gap { margin: 12px 0 6px; }
+.grid--fill { display: grid; gap: var(--s-2); grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+/* the login's role tabs and the desks' segmented tabs are one strip */
+.role-tabs { border-radius: var(--r-md); }
+.role-tabs button { border-radius: var(--r); transition: background .14s ease, color .14s ease; }
+.role-tabs button[aria-selected="true"] { box-shadow: var(--sh-1); }

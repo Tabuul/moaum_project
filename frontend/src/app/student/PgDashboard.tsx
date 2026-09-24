@@ -73,8 +73,8 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
             <Passport w={96} h={118} radius={6} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
             <div style={{ flexGrow: 1, minWidth: 240 }}>
               <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.3px" }}>{s.name}</div>
-              <div className="sub2 tnum" style={{ marginTop: 2 }}>{s.matricNo ?? s.admissionNo}</div>
-              <div className="sub2" style={{ marginTop: 2 }}>{s.programme} &middot; {s.department}</div>
+              <div className="sub2 tnum mt-1">{s.matricNo ?? s.admissionNo}</div>
+              <div className="sub2 mt-1">{s.programme} &middot; {s.department}</div>
               <div className="sub2">{s.faculty}</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
@@ -121,7 +121,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
             ["School fees", feeLine.replace(/\.$/, "")],
             ["Standing", pg?.standing === "PROBATION" ? "Probation" : cgpaShown ? "Good standing" : "No results yet"],
           ]} />
-          {research?.topic ? <div className="sub2" style={{ marginTop: 10 }}>Topic: {research.topic}</div> : null}
+          {research?.topic ? <div className="sub2 mt-3">Topic: {research.topic}</div> : null}
         </PBody>
       </Panel>
     </>

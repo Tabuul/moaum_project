@@ -83,7 +83,7 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
               <span key="n"><span>{a.surname}, {a.other_names}</span><div className="sub2">{a.application_no} · {a.email}</div></span>,
               <span key="p"><span>{a.programme_name}</span><div className="sub2">{a.pg_award ?? ""}</div></span>,
               <span key="s" className="tnum">{a.session}</span>,
-              <span key="f">{a.fee_confirmed_at ? <span style={{ color: "var(--green-ink)" }}>Paid</span> : <span className="sub2">Unpaid</span>}</span>,
+              <span key="f">{a.fee_confirmed_at ? <span className="ink-green">Paid</span> : <span className="sub2">Unpaid</span>}</span>,
               <span key="st">{STATE_LABEL[a.state] ?? a.state}</span>,
               <span key="d" className="tnum">{shortDate(a.submitted_at)}</span>,
             ])}
@@ -149,9 +149,9 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
         <PBody style={{ display: "grid", gap: 14 }}>
           <section>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-              <div style={{ fontWeight: 600 }}>Registrations to endorse</div>
+              <div className="b600">Registrations to endorse</div>
               <span className="sub2">{c.toEndorse} submitted</span>
-              <span style={{ flexGrow: 1 }} />
+              <span className="grow" />
               <Link href={registrations} className="btn btn--ghost btn--sm">Endorse on the registrations desk</Link>
             </div>
             {home.toEndorse.length ? (
@@ -169,9 +169,9 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
 
           <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: 12 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-              <div style={{ fontWeight: 600 }}>Fees to confirm</div>
+              <div className="b600">Fees to confirm</div>
               <span className="sub2">{c.feesToConfirm} live reference{Number(c.feesToConfirm) === 1 ? "" : "s"}</span>
-              <span style={{ flexGrow: 1 }} />
+              <span className="grow" />
               <Link href={admissions} className="btn btn--ghost btn--sm">Admissions desk</Link>
             </div>
             {home.feesToConfirm.length ? (
@@ -189,9 +189,9 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
 
           <section style={{ borderTop: "1px solid var(--line-2)", paddingTop: 12 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-              <div style={{ fontWeight: 600 }}>Theses awaiting clearance</div>
+              <div className="b600">Theses awaiting clearance</div>
               <span className="sub2">{c.clearances} finally submitted</span>
-              <span style={{ flexGrow: 1 }} />
+              <span className="grow" />
               <Link href={clearance} className="btn btn--ghost btn--sm">Thesis clearance</Link>
             </div>
             {home.clearances.length ? (

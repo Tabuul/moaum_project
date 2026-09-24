@@ -24,7 +24,7 @@ function fmt(v: string | null): string {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
-const name = (r: Row) => <span><span style={{ fontWeight: 600 }}>{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>;
+const name = (r: Row) => <span><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>;
 
 export function Board({ mayEdit }: { mayEdit: boolean }) {
   const [rows, setRows] = useState<Row[]>([]);

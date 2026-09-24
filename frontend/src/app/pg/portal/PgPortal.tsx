@@ -153,7 +153,7 @@ export function PgPortal() {
     return (
       <Bare>
         <Note kind="info" title="Sign in to see your application">Sign in with the email you applied with (or your PG application number) and the password you chose when you applied.</Note>
-        <div style={{ marginTop: 12 }}><Link href="/login?next=/pg/portal" className="btn btn--primary btn--sm">Sign in</Link></div>
+        <div className="mt-3"><Link href="/login?next=/pg/portal" className="btn btn--primary btn--sm">Sign in</Link></div>
       </Bare>
     );
   }
@@ -208,7 +208,7 @@ export function PgPortal() {
       {paid && me.state === "DECISION_LOCKED" ? (
         <Panel title="Your admission decision is ready">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>
+            <div className="sub2 mb-2">
               The School of Postgraduate Studies has taken a decision on your application. Pay the checking fee of <b>{naira(me.checkingFee)}</b> to view your admission status. If you are offered a place, you will then pay the acceptance fee to accept the offer and print your admission letter.
             </div>
             {reference ? (
@@ -231,7 +231,7 @@ export function PgPortal() {
               You have been offered provisional admission for the {me.session} session. Pay the acceptance fee of <b>{naira(me.acceptanceFee)}</b> to accept the offer, then print your offer of admission.
             </Note>
             {reference ? (
-              <div style={{ marginTop: 10 }}>
+              <div className="mt-3">
                 <PayByCard reference={reference} amount={Number(me.acceptanceFee ?? 0)} />
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
                   <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
@@ -247,7 +247,7 @@ export function PgPortal() {
         <Panel title="Offer of admission">
           <PBody>
             <Note kind="ok" title="Your offer is accepted">You accepted your offer of admission on {fmtDate(me.acceptanceConfirmedAt)} (acceptance fee paid). Download and print your offer of admission below; bring the originals of all uploaded documents for screening.</Note>
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-3">
               <a href="/pg/offer/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print offer of admission (PDF)</a>
             </div>
           </PBody>
@@ -258,7 +258,7 @@ export function PgPortal() {
         <Panel title="Admission decision">
           <PBody>
             <Note kind="bad" title="Not offered a place">We regret that you were not offered admission for the {me.session} session.{me.spgsNote ? "" : " You may wish to apply again in a future session."}</Note>
-            {me.spgsNote ? <div className="sub2" style={{ marginTop: 8 }}>{me.spgsNote}</div> : null}
+            {me.spgsNote ? <div className="sub2 mt-2">{me.spgsNote}</div> : null}
           </PBody>
         </Panel>
       ) : null}
@@ -267,13 +267,13 @@ export function PgPortal() {
       {paid ? null : reference ? (
         <Panel title="Application fee">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 8 }}>Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University. <b>Upload your credentials and passport after payment.</b></div>
+            <div className="sub2 mb-2">Pay {naira(me.applicationFee)} by card, bank transfer or USSD. It is confirmed automatically once the payment reaches the University. <b>Upload your credentials and passport after payment.</b></div>
             <PayByCard reference={reference} amount={Number(me.applicationFee ?? 0)} />
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
               <button type="button" className="btn btn--go btn--sm" disabled={checking} onClick={() => void checkNow()}>{checking ? "Checking…" : "I’ve paid — check now"}</button>
               <span className="sub2">Already paid? This asks the gateway to confirm it.</span>
             </div>
-            <div className="sub2" style={{ marginTop: 8 }}>Reference: <b className="tnum">{reference}</b> · Acceptance later: {naira(me.acceptanceFee)} + checking {naira(me.checkingFee)}.</div>
+            <div className="sub2 mt-2">Reference: <b className="tnum">{reference}</b> · Acceptance later: {naira(me.acceptanceFee)} + checking {naira(me.checkingFee)}.</div>
           </PBody>
         </Panel>
       ) : <Note kind="bad" title="The application fee could not be prepared">Reload the page, or write to the School of Postgraduate Studies quoting your application number.</Note>}
@@ -286,7 +286,7 @@ export function PgPortal() {
               ["Award", me.award ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
               ["Faculty", me.faculty], ["Department", me.department], ["Date applied", fmtDate(me.submittedAt)],
             ]} />
-            <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Bio-data</div>
+            <div className="sub2 eyebrow eyebrow--gap">Bio-data</div>
             <KvGrid cls="grid--2" pairs={[
               ["Surname", me.surname], ["Other names", me.otherNames],
               ["Sex", me.biodata.sex === "F" ? "Female" : me.biodata.sex === "M" ? "Male" : "—"],
@@ -295,7 +295,7 @@ export function PgPortal() {
             ]} />
             {me.research || me.proposal.title ? (
               <>
-                <div className="sub2" style={{ margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: ".4px", fontSize: 11 }}>Research proposal</div>
+                <div className="sub2 eyebrow eyebrow--gap">Research proposal</div>
                 <KvGrid cls="grid--1" pairs={[["Title", val(me.proposal.title)]]} />
                 {me.proposal.text ? <div className="sub2" style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{me.proposal.text}</div> : null}
               </>
@@ -322,11 +322,11 @@ export function PgPortal() {
       {paid ? (
         <Panel title="Application summary">
           <PBody>
-            <div className="sub2" style={{ marginBottom: 10 }}>Print your completed application, or download it as a PDF. You can also have the summary emailed to you.</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="sub2 mb-3">Print your completed application, or download it as a PDF. You can also have the summary emailed to you.</div>
+            <div className="row">
               <a href="/pg/summary/pdf" target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download / print summary (PDF)</a>
               <button type="button" className="btn btn--ghost btn--sm" disabled={emailing} onClick={() => void emailSummary()}>{emailing ? "Sending…" : "Email me the summary"}</button>
-              {emailed ? <span className="sub2" style={{ color: "var(--green-ink)" }}>Sent to {emailed}.</span> : null}
+              {emailed ? <span className="sub2 ink-green">Sent to {emailed}.</span> : null}
             </div>
           </PBody>
         </Panel>
@@ -380,7 +380,7 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
   return (
     <Panel title="Documents">
       <PBody>
-        <div className="sub2" style={{ marginBottom: 10 }}>
+        <div className="sub2 mb-3">
           Upload each document as its own <b>PDF</b>. Bring the originals for screening. The School reads them together as one document.
         </div>
         {!paid ? (
@@ -409,7 +409,7 @@ function DocList({ documents, paid, onDone }: { documents: DocMeta[]; paid: bool
                     {t.multi && on.length ? (
                       <div style={{ display: "grid", gap: 3, marginTop: 6, paddingLeft: 4 }}>
                         {on.map((d) => (
-                          <div key={d.id} className="sub2" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <div key={d.id} className="sub2 row">
                             <span>• {d.filename} · uploaded {fmtDate(d.uploaded_at)}</span>
                             <button type="button" className="btn btn--ghost btn--sm" disabled={busy !== null} onClick={() => void remove(d.id)}>{busy === d.id ? "Removing…" : "Remove"}</button>
                           </div>
@@ -458,7 +458,7 @@ function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: 
   return (
     <Panel title="Passport photograph">
       <PBody>
-        <div className="sub2" style={{ marginBottom: 10 }}>
+        <div className="sub2 mb-3">
           Upload a clear, recent <b>passport photograph</b> (JPEG or PNG) on a plain background. It appears on your record and, once you are admitted, on your identity and examination cards.
         </div>
         {!paid ? (
@@ -468,8 +468,8 @@ function Passport({ passport, paid, onDone }: { passport: DocMeta | null; paid: 
             {err ? <ProblemNotice problem={err} /> : null}
             {ok ? <Note kind="ok" title={ok}>The School will see it with your application.</Note> : null}
             {passport ? (
-              <div className="sub2" style={{ marginBottom: 8 }}>On record: <b>{passport.filename}</b> — uploaded {fmtDate(passport.uploaded_at)}. Uploading again replaces it.</div>
-            ) : <div className="sub2" style={{ marginBottom: 8 }}>No passport uploaded yet.</div>}
+              <div className="sub2 mb-2">On record: <b>{passport.filename}</b> — uploaded {fmtDate(passport.uploaded_at)}. Uploading again replaces it.</div>
+            ) : <div className="sub2 mb-2">No passport uploaded yet.</div>}
             <input ref={inputRef} type="file" accept="image/jpeg,image/png" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
             <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? "Uploading…" : passport ? "Replace the photo" : "Upload the photo"}</button>
           </>
@@ -511,9 +511,9 @@ function CompleteSteps({ me, paid, passport, onDone }: { me: Me; paid: boolean; 
       <PBody style={{ display: "grid", gap: 14 }}>
         <PortalStepper steps={steps.map((s) => ({ label: s.label, done: s.done }))} current={cur} onGo={setStep} />
         {steps[cur - 1].node}
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div className="row">
           <button type="button" className="btn btn--ghost btn--sm" disabled={cur === 1} onClick={() => setStep(cur - 1)}>Back</button>
-          <span style={{ flexGrow: 1 }} />
+          <span className="grow" />
           <span className="sub2">Step {cur} of {steps.length}</span>
           <button type="button" className="btn btn--primary btn--sm" disabled={cur === steps.length} onClick={() => setStep(cur + 1)}>Next</button>
         </div>
@@ -532,8 +532,8 @@ function PortalStepper({ steps, current, onGo }: { steps: { label: string; done:
         return (
           <button key={s.label} type="button" onClick={() => onGo(n)}
             style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
-            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, #2b6cb0)" : "var(--line-2, #d9d9d9)" }} />
-            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, #888)" }}>
+            <div style={{ height: 5, borderRadius: 3, background: on ? "var(--chrome, var(--sky-ink))" : "var(--line-2, var(--line))" }} />
+            <div className="sub2" style={{ marginTop: 6, fontWeight: cur ? 700 : 500, color: on ? "var(--ink)" : "var(--chrome, var(--faint))" }}>
               {s.done ? "✓ " : `${n}. `}{s.label}
             </div>
           </button>
@@ -598,12 +598,12 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
                 <Fld id="fd-cgpa" label="CGPA (if known)" v={fd.cgpa} on={(v) => setFd({ ...fd, cgpa: v })} ph="3.80" num />
                 <Fld id="fd-year" label="Year awarded" v={fd.year} on={(v) => setFd({ ...fd, year: v })} ph="2018" num />
               </div>
-              <div style={{ marginTop: 8 }}><button type="button" className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void saveFirst()}>{busy === "first" ? "Saving…" : "Save first degree"}</button></div>
+              <div className="mt-2"><button type="button" className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void saveFirst()}>{busy === "first" ? "Saving…" : "Save first degree"}</button></div>
             </div>
 
             <div style={{ borderTop: "1px solid var(--line-2)", paddingTop: 14 }}>
               <div style={{ fontWeight: 600, marginBottom: 2 }}>Other qualifications</div>
-              <div className="sub2" style={{ marginBottom: 8 }}>Any qualification beyond the first degree that bears on this application — a prior Master’s, a Postgraduate Diploma, an HND / ND, or an NCE. A PhD applicant should give their Master’s here.</div>
+              <div className="sub2 mb-2">Any qualification beyond the first degree that bears on this application — a prior Master’s, a Postgraduate Diploma, an HND / ND, or an NCE. A PhD applicant should give their Master’s here.</div>
               <div style={{ display: "grid", gap: 10 }}>
                 {quals.map((q, i) => (
                   <div key={i} style={{ border: "1px solid var(--line-2)", borderRadius: 10, padding: 12 }}>
@@ -616,10 +616,10 @@ function AcademicRecord({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
                       <Fld id={`q-cgpa-${i}`} label="CGPA (if known)" v={q.cgpa} on={(v) => setQ(i, "cgpa", v)} num />
                       <Fld id={`q-year-${i}`} label="Year awarded" v={q.year} on={(v) => setQ(i, "year", v)} num />
                     </div>
-                    <div style={{ marginTop: 6 }}><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove</button></div>
+                    <div className="mt-2"><button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals(quals.filter((_, j) => j !== i))}>Remove</button></div>
                   </div>
                 ))}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="row">
                   <button type="button" className="btn btn--ghost btn--sm" onClick={() => setQuals([...quals, emptyQ()])}>+ Add a qualification</button>
                   <button type="button" className="btn btn--primary btn--sm" disabled={busy !== null} onClick={() => void saveQuals()}>{busy === "quals" ? "Saving…" : "Save other qualifications"}</button>
                 </div>
@@ -669,7 +669,7 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
             {submitted.length ? (
               <div style={{ display: "grid", gap: 4 }}>
                 {submitted.map((r, i) => (
-                  <div key={i} className="sub2" style={{ color: "var(--green-ink)" }}>✓ Reference received from <b>{r.name}</b>{r.email ? ` · ${r.email}` : ""}.</div>
+                  <div key={i} className="sub2 ink-green">✓ Reference received from <b>{r.name}</b>{r.email ? ` · ${r.email}` : ""}.</div>
                 ))}
               </div>
             ) : null}
@@ -682,7 +682,7 @@ function RefereesEditor({ me, paid, onDone }: { me: Me; paid: boolean; onDone: (
                 <Fld id={`rf-po-${i}`} label="Position" v={r.position} on={(v) => setR(i, "position", v)} />
               </div>
             ))}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="row">
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => setRows([...rows, { name: "", email: "", phone: "", institution: "", position: "" }])}>+ Add a referee</button>
               <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save referees & send requests"}</button>
             </div>

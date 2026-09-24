@@ -81,7 +81,7 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
           <Panel title="Due register" right={`As at ${dmy(due.asAt)} · a return is answered by a kept copy`}>
             <DTable cols={["Return", "Owner", "Frequency|mid", "Last due", "Next due", "State|mid", "|num"]}
               rows={due.rows.map((r) => [
-                <span key="t"><span style={{ fontWeight: 600 }}>{r.title}</span><div className="sub2">{r.purpose}{r.owner_office === activeOffice ? " · yours" : ""}</div></span>,
+                <span key="t"><span className="b600">{r.title}</span><div className="sub2">{r.purpose}{r.owner_office === activeOffice ? " · yours" : ""}</div></span>,
                 <span key="o">{r.owner_label}</span>,
                 <span key="f" className="sub2">{FREQ[r.frequency] ?? r.frequency}</span>,
                 <span key="l" className="sub2">{r.last_due ? <>{dmy(r.last_due)}<div>{r.last_period}{r.last_snapshot ? <> · <a href={`/reports/snapshots/${r.last_snapshot}`}>{r.last_filed_at ? "filed" : "kept"}</a></> : null}</div></> : "—"}</span>,
@@ -99,8 +99,8 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
 
       <Panel title="Session" right={sessions.find((s) => s.name === session)?.state ?? ""}>
         <PBody>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <label htmlFor="rp-session" className="sub2" style={{ fontWeight: 600 }}>Reporting session</label>
+          <div className="row">
+            <label htmlFor="rp-session" className="sub2 b600">Reporting session</label>
             <select id="rp-session" className="ctl" style={{ maxWidth: 260 }} value={session} onChange={(e) => pick(e.target.value)}>
               {sessions.length ? sessions.map((s) => <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : ""}</option>)
                 : <option value={session}>{session}</option>}
@@ -113,12 +113,12 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
       <Panel title="Registers — view all" right="Filter, search, print or take to Excel">
         <DTable cols={["Register", "Filter by", "|num"]} rows={[
           [
-            <span key="t"><span style={{ fontWeight: 600 }}>Student register</span><div className="sub2">Every student on the books, with a count of what matched</div></span>,
+            <span key="t"><span className="b600">Student register</span><div className="sub2">Every student on the books, with a count of what matched</div></span>,
             <span key="f" className="sub2">Faculty · department · programme · level · sex · status · entry mode · entry session · name or number</span>,
             <Btn kind="primary" key="o" onClick={() => router.push("/reports/students")}>Open</Btn>,
           ],
           [
-            <span key="t"><span style={{ fontWeight: 600 }}>Staff register</span><div className="sub2">Every member of staff, academic and non-teaching, with rank and offices held</div></span>,
+            <span key="t"><span className="b600">Staff register</span><div className="sub2">Every member of staff, academic and non-teaching, with rank and offices held</div></span>,
             <span key="f" className="sub2">Faculty · department · rank · category · status · office held · name, staff number or email</span>,
             <Btn kind="primary" key="o" onClick={() => router.push("/reports/staff")}>Open</Btn>,
           ],
@@ -129,7 +129,7 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
         <Panel title="Kept copies" right="Returns as they were when kept — each with a verification code">
           <DTable cols={["Return", "Period", "Rows|num", "Taken", "Code|mid", "Filed", "|num"]}
             rows={kept.map((k) => [
-              <span key="t" style={{ fontWeight: 600 }}>{k.title}</span>,
+              <span key="t" className="b600">{k.title}</span>,
               <span key="p">{k.period}</span>,
               <span key="r" className="tnum">{Number(k.row_count).toLocaleString()}</span>,
               <span key="tk" className="sub2">{dmy(k.taken_at)}{k.taken_by_name ? ` · ${k.taken_by_name}` : ""}</span>,
@@ -145,7 +145,7 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
         {mine.length ? (
           <DTable cols={["Report", "Owner", "Frequency|mid", "Last run|mid", "|num"]}
             rows={mine.map((r) => [
-              <span key="t"><span style={{ fontWeight: 600 }}>{r.title}</span><div className="sub2">{r.purpose}</div></span>,
+              <span key="t"><span className="b600">{r.title}</span><div className="sub2">{r.purpose}</div></span>,
               <span key="o">{r.owner}</span>,
               <span key="f" className="sub2">{r.frequency}</span>,
               <span key="l" className="sub2">Live · {session}</span>,
@@ -162,10 +162,10 @@ export function Reports({ session, sessions, activeOffice, byFaculty, due, kept,
           {byFaculty.length ? (
             <DTable cols={["Faculty", "Male|num", "Female|num", "Total|num", "Share|mid"]}
               rows={byFaculty.map((f) => [
-                <span key="f" style={{ fontWeight: 600 }}>{f.faculty}</span>,
+                <span key="f" className="b600">{f.faculty}</span>,
                 <span key="m" className="tnum">{f.male.toLocaleString()}</span>,
                 <span key="w" className="tnum">{f.female.toLocaleString()}</span>,
-                <span key="t" className="tnum" style={{ fontWeight: 600 }}>{f.total.toLocaleString()}</span>,
+                <span key="t" className="tnum b600">{f.total.toLocaleString()}</span>,
                 <span key="s" className="tnum">{grand ? `${((f.total / grand) * 100).toFixed(1)}%` : "—"}</span>,
               ])}
               texts={byFaculty.map((f) => f.faculty)} />

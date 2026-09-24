@@ -95,7 +95,7 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
             cols={["Faculty", "Programme", "Admitted|num", "Registered|num", "Yet to register|num"]}
             rows={d.breakdown.map((b) => [
               <span key="f">{b.faculty ?? "—"}</span>,
-              b.programme ? <span key="p">{b.programme}</span> : <span className="sub2" key="p" style={{ color: "var(--red-ink)" }}>{b.programme_code} — not a programme the University runs</span>,
+              b.programme ? <span key="p">{b.programme}</span> : <span className="sub2 ink-red" key="p">{b.programme_code} — not a programme the University runs</span>,
               <b className="tnum" key="a">{Number(b.admitted).toLocaleString()}</b>,
               <span className="tnum" key="r">{Number(b.registered).toLocaleString()}</span>,
               <span className="tnum" key="y">{(Number(b.admitted) - Number(b.registered)).toLocaleString()}</span>,
@@ -110,7 +110,7 @@ export function Applicants({ d, session, q, faculty, programme, entryMode, progr
           <DTable cols={["Applicant", "JAMB number|mid", "Programme (University offers)", "Entry|mid", "Aggregate|mid", "Post-UTME|num"]} rows={d.applicants.map((a) => [
             <Two key="n" a={`${a.surname}, ${a.other_names}`} b={[a.faculty, a.registered && a.offer_state ? a.offer_state.charAt(0) + a.offer_state.slice(1).toLowerCase() : ""].filter(Boolean).join(" · ")} />,
             <span className="tnum" key="j">{a.jamb_reg_no}</span>,
-            a.programme ? <span key="p">{a.programme}</span> : <span className="sub2" key="p" style={{ color: "var(--red-ink)" }}>{a.jamb_code} — not a programme the University runs</span>,
+            a.programme ? <span key="p">{a.programme}</span> : <span className="sub2 ink-red" key="p">{a.jamb_code} — not a programme the University runs</span>,
             <span className="sub2" key="e">{modeLabel(a.entry_mode)}</span>,
             <span className="tnum" key="ag">{a.aggregate ?? "—"}</span>,
             a.registered ? <Pil kind="ok" key="s">Registered</Pil> : <Pil kind="grey" key="s">Not yet</Pil>,

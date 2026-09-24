@@ -38,7 +38,7 @@ export function Variance({ runs, period, rows, problem }: { runs: PayRun[]; peri
       <Note kind="info" title="Every move in the total is explained by a move in the establishment">
         A month&rsquo;s net against the month before it: a staff member who joined, one who left, and one whose net changed — a promotion, a step, a suspension. A change in the payroll total that no row here explains is the thing to ask about.
       </Note>
-      <div className="card"><div className="card__body" style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div className="card"><div className="card__body row row--end">
         <div className="field" style={{ minWidth: 200 }}><label htmlFor="v-period">Month</label>
           <select id="v-period" className="ctl" value={period ?? ""} onChange={(e) => queryNav(`/payroll/variance?period=${e.target.value}`)}>
             {runs.length ? runs.map((r) => <option key={r.id} value={r.period.slice(0, 7)}>{monthLabel(r.period)}</option>) : <option value="">No runs yet</option>}

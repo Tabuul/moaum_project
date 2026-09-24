@@ -80,7 +80,7 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
               <span className="tnum sub2" key="k">••••{k.last4}</span>,
               <span className="tnum sub2" key="i">{day(k.issued_at)}</span>,
               <span className="tnum" key="e" style={k.due ? { color: "var(--red-ink)", fontWeight: 700 } : undefined}>{day(k.expires_at)}</span>,
-              k.revoked_at ? <Pil kind="grey" key="s">Revoked</Pil> : !k.live ? <Pil kind="bad" key="s">Expired</Pil> : k.due ? <span key="s" style={{ display: "inline-flex", gap: 6 }}><Pil kind="bad">Due to rotate</Pil><Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm("Revoke this key now? Do it after the consumer has switched to a new one.")) void send(`/keys/${k.id}/revoke`, {}, "Revoke API key"); }}>Revoke</Btn></span> : <span key="s" style={{ display: "inline-flex", gap: 6 }}><Pil kind="ok">Live</Pil><Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm("Revoke this key now?")) void send(`/keys/${k.id}/revoke`, {}, "Revoke API key"); }}>Revoke</Btn></span>,
+              k.revoked_at ? <Pil kind="grey" key="s">Revoked</Pil> : !k.live ? <Pil kind="bad" key="s">Expired</Pil> : k.due ? <span key="s" className="row row--inline row--tight"><Pil kind="bad">Due to rotate</Pil><Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm("Revoke this key now? Do it after the consumer has switched to a new one.")) void send(`/keys/${k.id}/revoke`, {}, "Revoke API key"); }}>Revoke</Btn></span> : <span key="s" className="row row--inline row--tight"><Pil kind="ok">Live</Pil><Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm("Revoke this key now?")) void send(`/keys/${k.id}/revoke`, {}, "Revoke API key"); }}>Revoke</Btn></span>,
             ])} />
           ) : <PBody><div className="sub2">No key issued yet.</div></PBody>}
         </Panel>
@@ -88,7 +88,7 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
 
       {add ? (
         <Modal title="Register a consumer" sub="A scope without a lawful basis is rejected at design review" onClose={() => setAdd(false)}
-          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span style={{ flexGrow: 1 }} /><Btn kind="primary" disabled={busy || !f.name.trim() || !f.owner.trim() || !f.scopes.trim()} onClick={async () => { const j = await send("/consumers", { name: f.name, owner: f.owner, scopes: f.scopes, quotaDay: f.quotaDay ? Number(f.quotaDay) : null }, `Register consumer ${f.name}`); if (j) { setSaid(`${f.name} registered`); setAdd(false); } }}>Register</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.name.trim() || !f.owner.trim() || !f.scopes.trim()} onClick={async () => { const j = await send("/consumers", { name: f.name, owner: f.owner, scopes: f.scopes, quotaDay: f.quotaDay ? Number(f.quotaDay) : null }, `Register consumer ${f.name}`); if (j) { setSaid(`${f.name} registered`); setAdd(false); } }}>Register</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="grid grid--2">
             <Field id="ac-name" label="Client name"><input id="ac-name" className="ctl" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Mobile app" autoComplete="off" /></Field>

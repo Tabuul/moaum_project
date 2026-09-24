@@ -130,7 +130,7 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
               <Link href="/clearance" className="btn btn--ghost btn--sm">Clearance</Link>
               {requestsOpen ? <Link href="/support" className="btn btn--ghost btn--sm">Student requests ({requestsOpen})</Link> : null}
             </div>
-            <div className="sub2" style={{ marginTop: 10 }}>You are acting as Head of {home.deptName}. Every screen above shows only your department.</div>
+            <div className="sub2 mt-3">You are acting as Head of {home.deptName}. Every screen above shows only your department.</div>
           </PBody>
         </Panel>
       </div>
