@@ -1672,3 +1672,50 @@ body.nav-slim .nav__item[aria-current="page"]::before { left: 0; }
 .role-tabs { border-radius: var(--r-md); }
 .role-tabs button { border-radius: var(--r); transition: background .14s ease, color .14s ease; }
 .role-tabs button[aria-selected="true"] { box-shadow: var(--sh-1); }
+
+/* ── responsive and polish (6 of 6): the phone and tablet frames, and the quiet interactions ─────── */
+@media (max-width: 1180px) {
+  .content { padding: 20px 20px 40px; }
+}
+@media (max-width: 900px) {
+  .content { gap: 14px; }
+  .phead { flex-direction: column; align-items: stretch; }
+  .phead__a { justify-content: flex-start; }
+}
+@media (max-width: 760px) {
+  .content { padding: 14px 12px 40px; }
+  .card__head { padding: var(--s-3); flex-wrap: wrap; }
+  .card__body { padding: var(--s-3); }
+  .grid--2, .grid--3 { grid-template-columns: 1fr; }
+  .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile { padding: 12px 13px; }
+  .tile .n { font-size: 24px; }
+  .notice { padding: 12px 13px; }
+  .row > .btn, .phead__a > .btn { flex: 1 1 auto; }
+  .mdl { padding: 10px 8px 24px; align-items: flex-start; }
+  .mdl__box, .mdl__box.is-wide { max-width: 100%; max-height: calc(100vh - 34px); border-radius: var(--r-md); }
+  .mdl__head, .mdl__body, .mdl__foot { padding-left: 14px; padding-right: 14px; }
+  .mdl__foot { border-radius: 0 0 var(--r-md) var(--r-md); }
+  .mdl__foot .btn { flex: 1 1 auto; }
+  .tabs { width: 100%; }
+  .tabs__t { flex: 1 1 auto; justify-content: center; }
+  .topbar h1 { font-size: var(--t-lg); }
+  .scope { flex-direction: column; }
+  .scope__f { width: 100%; }
+}
+@media (max-width: 400px) {
+  .grid--4 { grid-template-columns: 1fr; }
+}
+/* nothing scrolls the page sideways: a wide table or block scrolls inside its own container */
+.content, .main { max-width: 100%; }
+.tablewrap, .card__body > table { max-width: 100%; }
+/* the quiet interactions: a card lifts under the pointer only where it is a link; a link underlines on hover */
+a.card, a.tile { transition: border-color .14s ease, box-shadow .14s ease; }
+a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--sh-2); }
+.card__body a:not(.btn), .notice a:not(.btn), td a:not(.btn) { color: var(--link); text-decoration: none; }
+.card__body a:not(.btn):hover, .notice a:not(.btn):hover, td a:not(.btn):hover { text-decoration: underline; }
+/* a loading state any screen may put on a block while it fetches */
+.is-loading { position: relative; pointer-events: none; opacity: .6; }
+.skeleton { background: linear-gradient(90deg, var(--line-2) 25%, var(--bg) 37%, var(--line-2) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: var(--r); min-height: 14px; }
+@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } a.card, a.tile { transition: none; } }
