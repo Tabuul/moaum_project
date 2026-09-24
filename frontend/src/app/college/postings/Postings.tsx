@@ -31,6 +31,7 @@ const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> =
 };
 const TIER: Record<string, string> = { INTRO: "Introductory", JUNIOR: "Junior", INTERMEDIATE: "Intermediate", SENIOR: "Senior", REVISION: "Revision", LECTURES: "Lectures" };
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const briefs = (s: string): AllocationBrief[] => { try { return s ? (JSON.parse(s) as AllocationBrief[]) : []; } catch { return []; } };
 const parseAlloc = (s: string): AllocationBrief[] => { try { const j = JSON.parse(s); return Array.isArray(j) ? j : []; } catch { return []; } };
 
 export function Postings({ structure, sessions, session, level, posting, students, allocations, supervisors, problem }: {
@@ -115,9 +116,50 @@ export function Postings({ structure, sessions, session, level, posting, student
       ]} />
 
       {!chosen ? (
-        <Note kind="info" title="Choose a posting">
-          Postings are the College&rsquo;s way of enrolling a clinical student: not a course registered, but a Block&rsquo;s posting allocated for a stretch of weeks, with a supervisor and, where the department names them, a rotation group. Choose the session, the level and the posting; then tick the students and allocate.
-        </Note>
+        <>
+          <Note kind="info" title="The rotation this session">
+            Postings are the College&rsquo;s way of enrolling a clinical student: not a course registered, but a Block&rsquo;s posting allocated for a stretch of weeks, with a supervisor and, where the department names them, a rotation group. Below, every posting at {level} Level with who is on it in {session}, and every student with how far round the rotation they are. Pick a posting above, or from its row, to allocate.
+          </Note>
+          <Panel title={`Postings at ${level} Level · ${session}`} right={`${postingsAtLevel.length} postings in ${new Set(postingsAtLevel.map((p) => p.block_id)).size} block${new Set(postingsAtLevel.map((p) => p.block_id)).size === 1 ? "" : "s"}`}>
+            {postingsAtLevel.length === 0 ? <PBody><div className="sub2">The prospectus names no posting at {level} Level.</div></PBody> : (
+              <DTable cols={["Block", "Posting", "Tier", "Weeks|mid", "Allocated|mid", "In progress|mid", "Completed|mid", "Supervisors", ""]} rows={postingsAtLevel.map((p) => {
+                const on = students.flatMap((s) => briefs(s.allocations).filter((a) => a.posting_id === p.id));
+                const sups = Array.from(new Set(on.map((a) => a.supervisor).filter(Boolean))) as string[];
+                const b = structure.blocks.find((x) => x.id === p.block_id);
+                return [
+                  <span key="b"><strong>{b?.name ?? ""}</strong></span>,
+                  <span key="p"><strong className="tnum">{p.code}</strong> <span className="sub2">{p.name}</span></span>,
+                  <span className="sub2" key="t">{TIER[p.tier] ?? p.tier}</span>,
+                  <span className="tnum" key="w">{p.duration_weeks ?? "—"}</span>,
+                  <span className="tnum" key="a">{on.length}</span>,
+                  <span className="tnum" key="i">{on.filter((a) => a.state === "IN_PROGRESS").length}</span>,
+                  <span className="tnum" key="c">{on.filter((a) => a.state === "COMPLETED").length}</span>,
+                  <span className="sub2" key="s">{sups.length ? sups.join(", ") : on.length ? "Not yet assigned" : "—"}</span>,
+                  <Btn key="o" kind={on.length ? "ghost" : "primary"} onClick={() => nav({ posting: p.id })}>{on.length ? "Open" : "Allocate"}</Btn>,
+                ];
+              })} />
+            )}
+          </Panel>
+          <Panel title={`Students at ${level} Level · where each is on the rotation`} right={`${students.length} on the register`}>
+            {students.length === 0 ? <PBody><div className="sub2">No student of the College is at {level} Level. The register puts them there; a student promoted by the Board arrives here the day the decision is confirmed.</div></PBody> : (
+              <DTable cols={["Matriculation number", "Name", "Programme", "Allocated|mid", "Completed|mid", "Now on", "Not yet allocated"]} rows={students.map((s) => {
+                const mine = briefs(s.allocations);
+                const ids = new Set(mine.map((a) => a.posting_id));
+                const now = mine.filter((a) => a.state === "IN_PROGRESS");
+                const missing = postingsAtLevel.filter((p) => !ids.has(p.id));
+                return [
+                  <span className="tnum" key="n">{s.number}</span>,
+                  <strong key="nm">{s.surname}, {s.other_names}</strong>,
+                  <span className="sub2" key="pr">{s.programme}</span>,
+                  <span key="a"><span className="tnum">{mine.length}</span> <span className="sub2">of {postingsAtLevel.length}</span></span>,
+                  <span className="tnum" key="c">{mine.filter((a) => a.state === "COMPLETED").length}</span>,
+                  <span key="now">{now.length ? now.map((a) => <Pil key={a.id} kind="warn">{a.posting}{a.ends_on ? ` · to ${day(a.ends_on)}` : ""}</Pil>) : <span className="sub2">—</span>}</span>,
+                  <span className="sub2 tnum" key="m" style={{ color: missing.length ? "var(--red-ink)" : undefined }}>{missing.length ? missing.map((p) => p.code).join(", ") : "Every posting allocated"}</span>,
+                ];
+              })} texts={students.map((s) => `${s.number} ${s.surname} ${s.other_names} ${s.programme}`)} />
+            )}
+          </Panel>
+        </>
       ) : (
         <>
           <Panel title={`${chosenBlock?.name ?? ""} · ${chosen.code} — ${chosen.name}`} right={`${TIER[chosen.tier] ?? chosen.tier}${chosen.duration_weeks ? ` · ${chosen.duration_weeks} weeks` : ""}${chosen.level_note ? ` · ${chosen.level_note}` : ""}`}>

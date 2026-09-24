@@ -17,7 +17,10 @@ export default async function PostingsPage({ searchParams }: { searchParams: Pro
   const sessionList = sessions.ok ? sessions.data : [];
   const current = sessionList.find((s) => s.state === "CURRENT")?.name ?? sessionList[0]?.name ?? "";
   const session = typeof p.session === "string" && p.session ? p.session : current;
-  const level = typeof p.level === "string" && p.level ? Number(p.level) : 400;
+  // the desk opens on the clinical level that has students, so a College with its first cohort at 400 or 500 lands on it
+  const overview = await api<{ levels: { level: number; students: number }[] }>("/api/v1/college/overview");
+  const firstWithStudents = overview.ok ? overview.data.levels.find((l) => l.level >= 300 && Number(l.students) > 0)?.level : undefined;
+  const level = typeof p.level === "string" && p.level ? Number(p.level) : (firstWithStudents ?? 400);
   const posting = typeof p.posting === "string" ? p.posting : "";
   const [students, allocations] = await Promise.all([
     session ? api<CollegeStudent[]>(`/api/v1/college/students?session=${encodeURIComponent(session)}&level=${level}`) : null,
