@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { Examinations, type Candidates, type ExamCatalogue, type Reconciliation } from "./Examinations";
+import { Examinations, type Candidates, type ExamCatalogue, type ExamSummary, type Reconciliation } from "./Examinations";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,10 @@ export default async function ExaminationsPage({ searchParams }: { searchParams:
   // the MBBS Coordinator's desk opens at the level they hold, and stays there
   const mine = me.ok && me.data.activeOffice === "mbbscoordinator" ? await api<{ level: number }>("/api/v1/college/coordinator") : null;
   const myCode = mine && mine.ok && catalogue.ok ? catalogue.data.exams.find((e) => e.level === mine.data.level)?.code : undefined;
-  const code = myCode ?? (typeof p.exam === "string" && p.exam ? p.exam : "PE1");
+  // the desk opens on the examination that has a cohort in the session, else the CPE
+  const summary = session ? await api<ExamSummary[]>(`/api/v1/college/exams/summary?session=${encodeURIComponent(session)}`) : null;
+  const firstWithCohort = summary && summary.ok ? summary.data.find((x) => Number(x.cohort) > 0)?.code : undefined;
+  const code = myCode ?? (typeof p.exam === "string" && p.exam ? p.exam : (firstWithCohort ?? "CPE"));
   const [candidates, reconciliation] = await Promise.all([
     session ? api<Candidates>(`/api/v1/college/exams/${encodeURIComponent(code)}/candidates?session=${encodeURIComponent(session)}`) : null,
     session ? api<Reconciliation>(`/api/v1/college/exams/${encodeURIComponent(code)}/reconciliation?session=${encodeURIComponent(session)}`) : null,
@@ -30,6 +33,7 @@ export default async function ExaminationsPage({ searchParams }: { searchParams:
       {!catalogue.ok ? <ProblemNotice problem={catalogue.problem} /> : (
         <Examinations catalogue={catalogue.data} sessions={sessionList.map((s) => s.name)} session={session} code={code}
           data={candidates && candidates.ok ? candidates.data : null} reconciliation={reconciliation && reconciliation.ok ? reconciliation.data : null}
+          summary={summary && summary.ok ? summary.data : []}
           problem={candidates && !candidates.ok ? candidates.problem : null} />
       )}
     </Shell>

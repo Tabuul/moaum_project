@@ -44,8 +44,10 @@ const num = (v: number | null | undefined) => (v == null ? "" : String(v));
 const word = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 const parse = <T,>(s: string | null, fallback: T): T => { try { return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; } };
 
-export function Examinations({ catalogue, sessions, session, code, data, reconciliation, problem }: {
-  catalogue: ExamCatalogue; sessions: string[]; session: string; code: string; data: Candidates | null; reconciliation: Reconciliation | null; problem: Problem | null;
+export interface ExamSummary { code: string; name: string; level: number; ordinal: number; cohort: number; registered: number; with_results: number; provisional: number; confirmed: number; year_reached: boolean; year_ends_on: string | null }
+
+export function Examinations({ catalogue, sessions, session, code, data, reconciliation, problem, summary = [] }: {
+  catalogue: ExamCatalogue; sessions: string[]; session: string; code: string; data: Candidates | null; reconciliation: Reconciliation | null; problem: Problem | null; summary?: ExamSummary[];
 }) {
   const router = useRouter();
   const go = useQueryNav();
@@ -160,6 +162,24 @@ export function Examinations({ catalogue, sessions, session, code, data, reconci
       {problem ? <ProblemNotice problem={problem} /> : null}
       {err ? <ProblemNotice problem={err} /> : null}
 
+      {summary.length ? (
+        <Panel title={`The examinations · ${session}`} right="Each cohort's standing; open one to work it">
+          <DTable cols={["Examination", "Level|mid", "Cohort|mid", "Registered|mid", "With results|mid", "Decisions|mid", "Year|mid", ""]} rows={summary.map((x) => {
+            const n = (v: number) => Number(v ?? 0);
+            const standing = n(x.cohort) === 0 ? "No year begun" : n(x.registered) < n(x.cohort) ? `${n(x.cohort) - n(x.registered)} not fully registered` : !x.year_reached ? `Runs${x.year_ends_on ? ` to ${new Date(x.year_ends_on).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}` : n(x.with_results) < n(x.cohort) ? `${n(x.cohort) - n(x.with_results)} without results` : n(x.provisional) > 0 ? `${n(x.provisional)} for the Board` : "Decided";
+            return [
+              <span key="e"><strong className="tnum">{x.code}</strong> <span className="sub2">{x.name}</span></span>,
+              <span className="tnum" key="l">{x.level}</span>,
+              <span className="tnum" key="c">{n(x.cohort)}</span>,
+              <span className="tnum" key="r">{n(x.registered)}</span>,
+              <span className="tnum" key="w">{n(x.with_results)}</span>,
+              <span key="d">{n(x.provisional) ? <Pil kind="warn">{n(x.provisional)} provisional</Pil> : null}{n(x.provisional) && n(x.confirmed) ? " " : null}{n(x.confirmed) ? <Pil kind="ok">{n(x.confirmed)} confirmed</Pil> : null}{!n(x.provisional) && !n(x.confirmed) ? <span className="sub2">—</span> : null}</span>,
+              <span key="y">{n(x.cohort) === 0 ? <span className="sub2">—</span> : <Pil kind={x.year_reached ? "warn" : "ok"}>{x.year_reached ? "At its end" : "Running"}</Pil>}<div className="sub2">{standing}</div></span>,
+              <Btn key="o" kind={x.code === exam?.code ? "ghost" : "primary"} onClick={() => nav({ exam: x.code })}>{x.code === exam?.code ? "Open" : "Open"}</Btn>,
+            ];
+          })} />
+        </Panel>
+      ) : null}
       {exam ? (
         <Note kind="info" title={`${exam.name}: ${exam.papers.map((p) => word(p)).join(", ")}${exam.external_examiners ? " · external examiners" : ""}`}>
           {subjects.map((s) => `${s.name} (CA ${s.ca_weight}, examination ${s.exam_weight}, pass ${s.pass_mark}${s.clinical_component_min ? `, clinical ${s.clinical_component_min}` : ""})`).join(" · ")}. Resit {exam.resit_allowed ? `within ${exam.resit_window_months} months${exam.no_resit_if_all_failed ? ", unless every subject is failed" : ""}` : "not allowed"}{exam.min_attendance_pct ? ` · attendance ${exam.min_attendance_pct}%` : ""}. On failure: {exam.on_failure}

@@ -1103,6 +1103,27 @@ class CollegeController {
         return Map.of("postings", postings, "attendance", attendance, "events", events);
     }
 
+    /** the five examinations in a session, each with its cohort's standing: enrolled, fully registered, with a result in every subject,
+     *  decided provisionally, confirmed, and whether the year has reached its end — the desk's landing */
+    @GetMapping("/exams/summary")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> examsSummary(@RequestParam String session) {
+        return jdbc.sql("""
+                SELECT x.code, x.name, x.level, x.ordinal,
+                       (SELECT count(*) FROM college.cohort(x.level, :s)) AS cohort,
+                       (SELECT count(*) FROM college.cohort(x.level, :s) c WHERE c.fully_registered) AS registered,
+                       (SELECT count(*) FROM college.cohort(x.level, :s) c
+                         WHERE NOT EXISTS (SELECT 1 FROM college.exam_subject sj WHERE sj.exam_id = x.id
+                                            AND NOT EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = sj.id AND r.session = :s AND r.passed IS NOT NULL))) AS with_results,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.from_level = x.level AND d.session = :s AND d.state = 'PROVISIONAL') AS provisional,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.from_level = x.level AND d.session = :s AND d.state = 'CONFIRMED') AS confirmed,
+                       college.year_reached_final(x.level, :s) AS year_reached,
+                       (SELECT max(cs.ends_on) FROM college.semester cs WHERE cs.level = x.level AND cs.session = :s) AS year_ends_on
+                  FROM college.professional_exam x ORDER BY x.ordinal
+                """).param("s", session).query().listOfRows();
+    }
+
     /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */
 
     @GetMapping("/my-record")
