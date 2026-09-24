@@ -17,6 +17,8 @@ const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;",
 export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null }) {
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
   const semester = (scope.sem || "1") === "1" ? "First" : "Second";
+  /** the downloaded file's name, the Excel's and the PDF's alike: "Result B.Sc. POLITICAL SCIENCE 200 Level First Semester 2024-2025" */
+  const fileName = (degree: string, level: number | string, session: string) => `Result ${degree} ${level} Level ${semester} Semester ${session.replace("/", "-")}`;
   /* the course columns in the Senate's order: carryover courses (a course from a lower level, re-written
      this semester), then the core courses with the GST courses leading them, then elective */
   const lvl = Number(sheet?.level ?? 0);
@@ -187,7 +189,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `Result ${cov.degree} ${sheet.level}L ${sheet.session.replace("/", "-")} ${semester}.xlsx`;
+    a.download = `${fileName(cov.degree, sheet.level, sheet.session)}.xlsx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
@@ -211,7 +213,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${nameLines(r.name).map(escd).join("<br>")}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
       + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS\nF0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escd(fileName(cov.degree, sheet.level, sheet.session))}</title><style>
       body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
       .head{text-align:center;margin-bottom:14px}.head img{height:56px}.uni{font-weight:700;font-size:16px}.st{text-transform:uppercase;letter-spacing:.06em;text-decoration:underline;font-size:12px;color:#444}
       .meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 30px;font-size:12px;margin:12px 0}.meta div{display:flex;gap:8px}.meta .k{min-width:110px;color:#555;text-transform:uppercase;font-size:10px}
