@@ -21,6 +21,7 @@ the number, signs the person in on their own side, and opens their dashboard.
 | 400   | `MOAUM/ECO/23/9904`    | B.Sc. Economics          | DEMO, Sesugh (400 Level)  |
 | 500   | `MOAUM/LAW/22/9905`    | LL.B (Law)               | DEMO, Doosuur (500 Level) |
 | 600   | `MOAUM/MED/21/9906`    | MBBS                     | DEMO, Aondona (600 Level) |
+| 200   | `MOAUM/MED/25/9907`    | MBBS — College of Health Sciences | DEMO, Terkimbi (200 Level) — the College student login gate routes them to the College dashboard |
 
 The year in the matriculation number is the entry year, counted back from the current
 session: for 2026/2027 the numbers are as shown; for another session they shift with it.
