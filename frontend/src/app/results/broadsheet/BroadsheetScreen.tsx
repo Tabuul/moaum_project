@@ -31,21 +31,22 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   /** the grade carries its weight: A5, B4, C3, D2, E1, F0 */
   const gw = (grade: string | null | undefined, points: number | null | undefined) =>
     grade == null ? "" : points == null ? grade : `${grade}${Number.isInteger(Number(points)) ? Number(points) : Number(points).toFixed(2)}`;
-  /** a mark as text: "75 A5"; ABS F0 for a candidate who did not sit; a score still in the chain marked as not yet counted */
+  /** a mark as text, the grade under the score — "75\nA5"; ABS over F0 for a candidate who did not sit; a score still in
+   *  the chain marked as not yet counted */
   const markText = (m: ReturnType<typeof markOf>): string =>
     !m || m.stage === "NOT_REGISTERED" ? ""
-      : m.counted ? (m.total == null ? "ABS F0" : `${m.total} ${gw(m.grade, m.points)}`)
-      : m.total != null ? `${m.total} ${gw(m.grade, m.points)} (not yet counted)`
+      : m.counted ? (m.total == null ? "ABS\nF0" : `${m.total}\n${gw(m.grade, m.points)}`)
+      : m.total != null ? `${m.total}\n${gw(m.grade, m.points)}\n(not yet counted)`
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? m.outcome.slice(0, 3)
-      : "ABS F0";
+      : "ABS\nF0";
   const cell = (m: ReturnType<typeof markOf>) =>
     !m || m.stage === "NOT_REGISTERED" ? <span className="sub2">—</span>
       : m.counted ? (m.total == null
-          ? <span style={{ whiteSpace: "nowrap", color: "var(--red-ink)", fontWeight: 700 }}>ABS F0</span>
-          : <span style={{ whiteSpace: "nowrap" }}><span className="tnum">{m.total}</span> <b style={{ color: COLOUR(m.points) }}>{gw(m.grade, m.points)}</b></span>)
-      : m.total != null ? <span className="sub2" style={{ whiteSpace: "nowrap" }} title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span> <b>{gw(m.grade, m.points)}</b></span>
+          ? <span style={{ color: "var(--red-ink)", fontWeight: 700 }}><span className="tnum">ABS</span><div>F0</div></span>
+          : <span><span className="tnum">{m.total}</span><div style={{ color: COLOUR(m.points), fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>)
+      : m.total != null ? <span className="sub2" title={`${STAGE_LABEL[m.stage]?.[0] ?? m.stage} — not yet counted`}><span className="tnum">{m.total}</span><div style={{ fontWeight: 700 }}>{gw(m.grade, m.points)}</div></span>
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
-      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} style={{ whiteSpace: "nowrap", color: "var(--red-ink)", fontWeight: 700 }}>ABS F0</span>;
+      : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} style={{ color: "var(--red-ink)", fontWeight: 700 }}><span className="tnum">ABS</span><div>F0</div></span>;
   const orderCols = bands.flatMap((b) => b[1]);
   /* from 200 level the sheet is in three lists: the class with no question of probation; at 200 level first
      semester the Direct Entry students, whose first semester this is (no standing to judge yet); and the
@@ -190,7 +191,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
     const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${escd(r.name)}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
-      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS F0" ? "<b>ABS F0</b>" : m!.counted ? `${m!.total} <b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total} ${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
+      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS\nF0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
       body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
