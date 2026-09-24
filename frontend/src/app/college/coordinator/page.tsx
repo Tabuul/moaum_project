@@ -13,7 +13,10 @@ interface Summary {
   level: number; department: string | null; nextSession: string;
   exam: { id?: string; code?: string; name?: string; level?: number; papers?: string[]; min_attendance_pct?: number | null; on_failure?: string; resit_allowed?: boolean; appeal_to_senate?: boolean };
   cohorts: { session: string; students: number; registered: number; open: number; resit: number; closed: number; with_results: number; provisional: number; confirmed: number; year_reached_final: boolean; year_starts_on: string | null; year_ends_on: string | null }[];
+  waiting: { kind: "board" | "results" | "registration" | "calendar"; level?: number; session?: string; exam?: string; count?: number; text: string; href: string }[];
+  subjects: { session: string; subject: string; ordinal: number; cohort: number; resulted: number; passed: number; barred: number }[];
 }
+const KIND: Record<string, [string, "ok" | "bad" | "info" | "warn" | "grey"]> = { board: ["The Board", "warn"], results: ["Results", "bad"], registration: ["Registration", "info"], calendar: ["Calendar", "grey"] };
 const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
 export default async function CoordinatorPage() {
@@ -52,6 +55,30 @@ export default async function CoordinatorPage() {
           </div>
         </PBody>
       </Panel>
+      <Panel title="What waits on you" right={s.waiting?.length ? `${s.waiting.length} item${s.waiting.length === 1 ? "" : "s"}` : "Nothing outstanding at your level"}>
+        {!s.waiting?.length ? <PBody><div className="sub2">Every cohort at {s.level} Level is registered, every candidate at the end of a year has a result in every subject, and every decision is with the Board or confirmed.</div></PBody> : (
+          <DTable cols={["", "What", ""]} rows={s.waiting.map((w, i) => [
+            <Pil key={"k" + i} kind={KIND[w.kind]?.[1] ?? "info"}>{KIND[w.kind]?.[0] ?? w.kind}</Pil>,
+            <span key={"t" + i}>{w.text}</span>,
+            <LinkBtn key={"o" + i} href={w.href}>Open</LinkBtn>,
+          ])} />
+        )}
+      </Panel>
+      {s.subjects?.length ? (
+        <Panel title={`Results by subject · ${ex.code ?? ""}`} right="Each open cohort: how many have a result, how many passed, how many were barred">
+          <DTable cols={["Cohort|mid", "Subject", "Resulted|mid", "Passed|mid", "Barred|mid", "Progress"]} rows={s.subjects.map((x, i) => {
+            const pct = x.cohort ? Math.round((100 * x.resulted) / x.cohort) : 0;
+            return [
+              <strong className="tnum" key={"s" + i}>{x.session}</strong>,
+              <span key={"n" + i}>{x.subject}</span>,
+              <span className="tnum" key={"r" + i}>{x.resulted} of {x.cohort}</span>,
+              <span className="tnum ink-green" key={"p" + i}>{x.passed}</span>,
+              <span className={`tnum${x.barred ? " ink-red" : ""}`} key={"b" + i}>{x.barred}</span>,
+              <span key={"g" + i} className="meter" title={`${pct}%`}><span className="meter__bar"><span className="meter__fill" style={{ width: `${pct}%` }} /></span></span>,
+            ];
+          })} />
+        </Panel>
+      ) : null}
       <Panel title={`Cohorts at ${s.level} Level`} right={`The next year opens in ${s.nextSession}`}>
         {s.cohorts.length === 0 ? <PBody><div className="sub2">No student has a {s.level} Level year yet. A year opens when the student registers from their dashboard, or when you open it for them on the examination desk.</div></PBody> : (
           <DTable cols={["Cohort|mid", "Students|mid", "Registered|mid", "Year|mid", "Runs", "With results|mid", "Decisions|mid", "Waiting on"]} rows={s.cohorts.map((c) => [

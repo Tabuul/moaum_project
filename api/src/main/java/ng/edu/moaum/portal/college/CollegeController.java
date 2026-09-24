@@ -938,6 +938,23 @@ class CollegeController {
         out.put("cohorts", cohorts);
         out.put("department", dept);
         out.put("nextSession", jdbc.sql("SELECT college.level_session(:l)").param("l", L).query(String.class).single());
+        // what waits at this level: the College's list, kept to the level, without the appointment itself
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> waitingAll = (List<Map<String, Object>>) dashboard().get("waiting");
+        out.put("waiting", waitingAll.stream().filter(w -> !"coordinator".equals(w.get("kind")) && !"appeal".equals(w.get("kind"))
+                && w.get("level") != null && ((Number) w.get("level")).intValue() == L).toList());
+        // each open cohort's results by subject: how many of the cohort have a result in it
+        out.put("subjects", e.isEmpty() ? List.of() : jdbc.sql("""
+                SELECT c.session, s.name AS subject, s.ordinal, count(*) AS cohort,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = c.session AND r.passed IS NOT NULL)) AS resulted,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = c.session AND r.passed)) AS passed,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = c.session AND r.barred)) AS barred
+                  FROM (SELECT DISTINCT e.session FROM college.enrolment e WHERE e.level = :l AND e.state IN ('OPEN','RESIT')) oc
+                  CROSS JOIN LATERAL college.cohort(:l, oc.session) c
+                  CROSS JOIN college.exam_subject s
+                 WHERE s.exam_id = :e
+                 GROUP BY c.session, s.name, s.ordinal ORDER BY c.session DESC, s.ordinal
+                """).param("l", L).param("e", e.get("id")).query().listOfRows());
         return out;
     }
 
