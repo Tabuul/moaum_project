@@ -940,6 +940,51 @@ class CollegeController {
         return out;
     }
 
+    /** the College overview: every level with its students, open years and cohorts, its examination and where its decisions stand;
+     *  the session's postings; the blocks — the live picture the College's officers open the module on */
+    @GetMapping("/overview")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> overview() {
+        String session = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional()
+                .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1").query(String.class).single());
+        List<Map<String, Object>> levels = jdbc.sql("""
+                SELECT l.level, l.phase, l.enrolment,
+                       (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                         WHERE f.college_code = 'CHS' AND st.current_level = l.level AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                       (SELECT count(*) FROM college.enrolment e WHERE e.level = l.level AND e.state IN ('OPEN','RESIT')) AS open_years,
+                       (SELECT string_agg(DISTINCT e.session, ', ' ORDER BY e.session) FROM college.enrolment e WHERE e.level = l.level AND e.state IN ('OPEN','RESIT')) AS cohorts,
+                       x.code AS exam_code, x.name AS exam_name,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.from_level = l.level AND d.state = 'PROVISIONAL') AS provisional,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.from_level = l.level AND d.session = :s AND d.state = 'CONFIRMED') AS confirmed,
+                       (SELECT count(*) FROM college.semester cs WHERE cs.level = l.level AND cs.session = :s AND cs.starts_on IS NOT NULL) AS dated
+                  FROM college.level l LEFT JOIN college.professional_exam x ON x.level = l.level
+                 ORDER BY l.level
+                """).param("s", session).query().listOfRows();
+        Map<String, Object> totals = jdbc.sql("""
+                SELECT (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                         WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                       (SELECT count(*) FROM college.enrolment e WHERE e.state IN ('OPEN','RESIT')) AS open_years,
+                       (SELECT count(*) FROM college.progression_decision d WHERE d.state = 'PROVISIONAL') AS provisional,
+                       (SELECT count(*) FROM college.posting_allocation a WHERE a.session = :s) AS allocations,
+                       (SELECT count(*) FROM college.block) AS blocks, (SELECT count(*) FROM college.posting) AS postings,
+                       (SELECT count(*) FROM iam.office_assignment a WHERE a.office_code = 'mbbscoordinator' AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)) AS coordinators
+                """).param("s", session).query().singleRow();
+        List<Map<String, Object>> blocks = jdbc.sql("""
+                SELECT b.code, b.name, b.total_weeks, b.ordinal, count(p.id) AS postings,
+                       string_agg(p.code, ', ' ORDER BY p.ordinal) AS posting_codes,
+                       (SELECT count(*) FROM college.posting_allocation a JOIN college.posting p2 ON p2.id = a.posting_id WHERE p2.block_id = b.id AND a.session = :s) AS allocated
+                  FROM college.block b LEFT JOIN college.posting p ON p.block_id = b.id
+                 GROUP BY b.id, b.code, b.name, b.total_weeks, b.ordinal ORDER BY b.ordinal
+                """).param("s", session).query().listOfRows();
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("levels", levels);
+        out.put("totals", totals);
+        out.put("blocks", blocks);
+        return out;
+    }
+
     /* ── the student's own record: the journey by level, the fees, the registration, the results, the decisions ── */
 
     @GetMapping("/my-record")
