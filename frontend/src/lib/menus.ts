@@ -25,8 +25,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "r/siwes", "icon": "swap", "label": "SIWES supervision" },
-          { "id": "r/mysiwes", "icon": "user", "label": "My SIWES students" }
+          { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
+          { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" }
         ]
       }
     ]
@@ -45,33 +45,33 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/eligibility", "icon": "swap", "label": "Who may register it" },
-          { "id": "t/lms", "icon": "book", "label": "Course spaces" },
-          { "id": "r/upload", "icon": "box", "label": "Upload material" },
-          { "id": "t/teaching", "icon": "cal", "label": "My teaching & timetable" },
-          { "id": "t/sheet", "icon": "doc", "label": "Score entry", "badge": "2" },
-          { "id": "t/bulk", "icon": "box", "label": "Upload results (bulk)" },
-          { "id": "t/scores", "icon": "doc", "label": "My score sheets" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
-          { "id": "t/chain", "icon": "check", "label": "Approval chain" },
-          { "id": "t/cbtbank", "icon": "flask", "label": "Question bank" },
-          { "id": "t/projects", "icon": "flask", "label": "My projects" },
-          { "id": "t/ethics", "icon": "scale", "label": "Ethics & repository" }
+          { "id": "t/eligibility", "icon": "swap", "label": "Who May Register It" },
+          { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
+          { "id": "r/upload", "icon": "box", "label": "Upload Material" },
+          { "id": "t/teaching", "icon": "cal", "label": "My Teaching & Timetable" },
+          { "id": "t/sheet", "icon": "doc", "label": "Score Entry", "badge": "2" },
+          { "id": "t/bulk", "icon": "box", "label": "Upload Results (bulk)" },
+          { "id": "t/scores", "icon": "doc", "label": "My Score Sheets" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
+          { "id": "t/chain", "icon": "check", "label": "Approval Chain" },
+          { "id": "t/cbtbank", "icon": "flask", "label": "Question Bank" },
+          { "id": "t/projects", "icon": "flask", "label": "My Projects" },
+          { "id": "t/ethics", "icon": "scale", "label": "Ethics & Repository" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
-          { "id": "t/supervision", "icon": "check", "label": "Postings I supervise" },
-          { "id": "r/classlist", "icon": "user", "label": "Registered students" },
-          { "id": "r/mysiwes", "icon": "user", "label": "My SIWES students" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/supervision", "icon": "check", "label": "Postings I Supervise" },
+          { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
+          { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -90,39 +90,39 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "r/allocate", "icon": "swap", "label": "Teaching allocation", "badge": "3" },
-          { "id": "t/deptcourses", "icon": "book", "label": "Department courses", "badge": "2" },
-          { "id": "t/structure", "icon": "book", "label": "Programme structure" },
-          { "id": "t/resultdesk", "icon": "check", "label": "Result desk", "badge": "4" },
-          { "id": "t/approvals", "icon": "check", "label": "Departmental approvals" },
-          { "id": "t/queries", "icon": "bell", "label": "Result queries" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
+          { "id": "r/allocate", "icon": "swap", "label": "Teaching Allocation", "badge": "3" },
+          { "id": "t/deptcourses", "icon": "book", "label": "Department Courses", "badge": "2" },
+          { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+          { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "4" },
+          { "id": "t/approvals", "icon": "check", "label": "Departmental Approvals" },
+          { "id": "t/queries", "icon": "bell", "label": "Result Queries" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" },
-          { "id": "t/scores", "icon": "doc", "label": "Score sheets" },
-          { "id": "t/sheet", "icon": "doc", "label": "Score entry", "badge": "2" },
-          { "id": "t/bulk", "icon": "box", "label": "Upload results (bulk)" },
-          { "id": "t/eligibility", "icon": "swap", "label": "Who may register it" },
-          { "id": "t/lms", "icon": "book", "label": "Course spaces" },
-          { "id": "r/upload", "icon": "box", "label": "Upload material" },
-          { "id": "t/teaching", "icon": "cal", "label": "My teaching & timetable" }
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
+          { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
+          { "id": "t/sheet", "icon": "doc", "label": "Score Entry", "badge": "2" },
+          { "id": "t/bulk", "icon": "box", "label": "Upload Results (bulk)" },
+          { "id": "t/eligibility", "icon": "swap", "label": "Who May Register It" },
+          { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
+          { "id": "r/upload", "icon": "box", "label": "Upload Material" },
+          { "id": "t/teaching", "icon": "cal", "label": "My Teaching & Timetable" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/clearance", "icon": "check", "label": "Department clearance" },
+          { "id": "t/clearance", "icon": "check", "label": "Department Clearance" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
-          { "id": "r/siwes", "icon": "swap", "label": "SIWES supervision" },
-          { "id": "r/classlist", "icon": "user", "label": "Registered students" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
+          { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/students", "icon": "cap", "label": "Students" }
         ]
       },
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/pgadmissions", "icon": "cap", "label": "PG admissions" }
+          { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" }
         ]
       },
       {
@@ -134,23 +134,23 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Staff",
         "items": [
-          { "id": "t/deptstaff", "icon": "user", "label": "Department staff" },
-          { "id": "t/leave", "icon": "cal", "label": "Leave requests", "badge": "2" },
+          { "id": "t/deptstaff", "icon": "user", "label": "Department Staff" },
+          { "id": "t/leave", "icon": "cal", "label": "Leave Requests", "badge": "2" },
           { "id": "t/appraisal", "icon": "chart", "label": "Appraisal" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -169,56 +169,56 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "r/allocate", "icon": "swap", "label": "Teaching allocation" },
-          { "id": "t/resultdesk", "icon": "check", "label": "Result desk", "badge": "7" },
+          { "id": "r/allocate", "icon": "swap", "label": "Teaching Allocation" },
+          { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "7" },
           { "id": "t/approvals", "icon": "check", "label": "Faculty Board" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
-          { "id": "t/sheet", "icon": "doc", "label": "Score entry" },
-          { "id": "t/bulk", "icon": "box", "label": "Upload results (bulk)" },
-          { "id": "t/scores", "icon": "doc", "label": "My score sheets" },
-          { "id": "t/eligibility", "icon": "swap", "label": "Who may register it" },
-          { "id": "t/lms", "icon": "book", "label": "Course spaces" },
-          { "id": "r/upload", "icon": "box", "label": "Upload material" },
-          { "id": "t/projects", "icon": "flask", "label": "Research in the faculty" }
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation List" },
+          { "id": "t/sheet", "icon": "doc", "label": "Score Entry" },
+          { "id": "t/bulk", "icon": "box", "label": "Upload Results (bulk)" },
+          { "id": "t/scores", "icon": "doc", "label": "My Score Sheets" },
+          { "id": "t/eligibility", "icon": "swap", "label": "Who May Register It" },
+          { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
+          { "id": "r/upload", "icon": "box", "label": "Upload Material" },
+          { "id": "t/projects", "icon": "flask", "label": "Research in the Faculty" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/clearance", "icon": "check", "label": "Faculty clearance" },
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
+          { "id": "t/clearance", "icon": "check", "label": "Faculty Clearance" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
-          { "id": "r/classlist", "icon": "user", "label": "Registered students" }
+          { "id": "r/classlist", "icon": "user", "label": "Registered Students" }
         ]
       },
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/pgadmissions", "icon": "cap", "label": "PG admissions" }
+          { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" }
         ]
       },
       {
         "name": "Finance",
         "items": [
-          { "id": "t/budget", "icon": "chart", "label": "Faculty budget" },
+          { "id": "t/budget", "icon": "chart", "label": "Faculty Budget" },
           { "id": "t/requisitions", "icon": "box", "label": "Requisitions" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -237,7 +237,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
@@ -249,25 +249,25 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Staff",
         "items": [
-          { "id": "t/movement", "icon": "doc", "label": "Open a movement" },
-          { "id": "t/staff", "icon": "user", "label": "Staff records" },
+          { "id": "t/movement", "icon": "doc", "label": "Open a Movement" },
+          { "id": "t/staff", "icon": "user", "label": "Staff Records" },
           { "id": "t/recruit", "icon": "user", "label": "Recruitment" },
-          { "id": "t/leave", "icon": "cal", "label": "Leave requests", "badge": "2" },
+          { "id": "t/leave", "icon": "cal", "label": "Leave Requests", "badge": "2" },
           { "id": "t/appraisal", "icon": "chart", "label": "Appraisal" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -279,32 +279,32 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/housing", "icon": "bed", "label": "Housing & welfare", "badge": "6" },
+          { "id": "t/housing", "icon": "bed", "label": "Housing & Welfare", "badge": "6" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Staff",
         "items": [
-          { "id": "t/staff", "icon": "user", "label": "Staff records" }
+          { "id": "t/staff", "icon": "user", "label": "Staff Records" }
         ]
       },
       {
         "name": "Services",
         "items": [
-          { "id": "t/hostel", "icon": "bed", "label": "Hostel allocation" }
+          { "id": "t/hostel", "icon": "bed", "label": "Hostel Allocation" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -316,45 +316,45 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/prepayment", "icon": "check", "label": "Payment vouchers", "badge": "7" },
+          { "id": "t/prepayment", "icon": "check", "label": "Payment Vouchers", "badge": "7" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Finance",
         "items": [
-          { "id": "t/pv", "icon": "doc", "label": "A voucher in full" },
-          { "id": "t/auditrevenue", "icon": "chart", "label": "Revenue & student income", "badge": "9" },
+          { "id": "t/pv", "icon": "doc", "label": "A Voucher in Full" },
+          { "id": "t/auditrevenue", "icon": "chart", "label": "Revenue & Student Income", "badge": "9" },
           { "id": "t/ledger", "icon": "card", "label": "Ledger" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
-          { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll variance", "badge": "6" },
-          { "id": "t/auditassets", "icon": "box", "label": "Assets register", "badge": "!" }
+          { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
+          { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
       },
       {
         "name": "Staff",
         "items": [
-          { "id": "t/auditstaff", "icon": "user", "label": "Staff movements" }
+          { "id": "t/auditstaff", "icon": "user", "label": "Staff Movements" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -373,25 +373,25 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/exams", "icon": "flask", "label": "CBT sessions", "badge": "!" },
-          { "id": "t/cbtbank", "icon": "flask", "label": "Question bank" },
-          { "id": "t/scores", "icon": "doc", "label": "Score sheets", "badge": "6" },
-          { "id": "t/chain", "icon": "check", "label": "Approval chain" },
-          { "id": "t/approvals", "icon": "check", "label": "Verification queue" },
-          { "id": "t/queries", "icon": "bell", "label": "Result queries" }
+          { "id": "t/exams", "icon": "flask", "label": "CBT Sessions", "badge": "!" },
+          { "id": "t/cbtbank", "icon": "flask", "label": "Question Bank" },
+          { "id": "t/scores", "icon": "doc", "label": "Score Sheets", "badge": "6" },
+          { "id": "t/chain", "icon": "check", "label": "Approval Chain" },
+          { "id": "t/approvals", "icon": "check", "label": "Verification Queue" },
+          { "id": "t/queries", "icon": "bell", "label": "Result Queries" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
-          { "id": "r/classlist", "icon": "user", "label": "Examination roll" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "r/classlist", "icon": "user", "label": "Examination Roll" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -410,26 +410,26 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/facultyupload", "icon": "cap", "label": "Faculty upload/create" },
-          { "id": "t/programmeupload", "icon": "book", "label": "Programme upload/create" },
-          { "id": "t/departmentupload", "icon": "cap", "label": "Department upload/create" },
-          { "id": "t/courseupload", "icon": "doc", "label": "Courses upload/create" },
+          { "id": "t/facultyupload", "icon": "cap", "label": "Upload or Create Faculties" },
+          { "id": "t/programmeupload", "icon": "book", "label": "Upload or Create Programmes" },
+          { "id": "t/departmentupload", "icon": "cap", "label": "Upload or Create Departments" },
+          { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
-          { "id": "t/session", "icon": "cal", "label": "Session & semester setup" },
-          { "id": "t/examsession", "icon": "cal", "label": "Examination sessions" },
+          { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
+          { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/approvals", "icon": "check", "label": "Results to Senate" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" }
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" }
         ]
       },
       {
         "name": "Students",
         "items": [
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation", "badge": "!" },
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
-          { "id": "t/students", "icon": "cap", "label": "Student records" },
-          { "id": "t/biochange", "icon": "user", "label": "Biodata changes", "badge": "4" },
-          { "id": "r/classlist", "icon": "user", "label": "Registered students" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
+          { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" },
@@ -439,16 +439,16 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/admissionsetup", "icon": "doc", "label": "Admission settings", "badge": "!" },
-          { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants/Candidates" },
+          { "id": "t/admissionsetup", "icon": "doc", "label": "Admission Settings", "badge": "!" },
+          { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants and Candidates" },
           { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
           { "id": "t/postutme", "icon": "chart", "label": "Compute PUTME Score" },
-          { "id": "t/screening", "icon": "chart", "label": "Screening register" },
+          { "id": "t/screening", "icon": "chart", "label": "Screening Register" },
           { "id": "t/putme", "icon": "doc", "label": "Upload PUTME Score" },
-          { "id": "t/merit", "icon": "chart", "label": "Merit list" },
-          { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry screening" },
-          { "id": "t/pgadmissions", "icon": "cap", "label": "Postgraduate admissions" },
+          { "id": "t/merit", "icon": "chart", "label": "Merit List" },
+          { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry Screening" },
+          { "id": "t/pgadmissions", "icon": "cap", "label": "Postgraduate Admissions" },
           { "id": "t/applicants", "icon": "user", "label": "Report on Post-UTME Registration" },
           { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" }
         ]
@@ -456,15 +456,15 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -483,48 +483,48 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "t/clearance", "icon": "check", "label": "Financial clearance" },
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/clearance", "icon": "check", "label": "Financial Clearance" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Finance",
         "items": [
-          { "id": "t/heldscripts", "icon": "alert", "label": "Held scripts" },
+          { "id": "t/heldscripts", "icon": "alert", "label": "Held Scripts" },
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" },
-          { "id": "t/legacyfees", "icon": "swap", "label": "Old fees history" },
-          { "id": "t/gateways", "icon": "card", "label": "Payment gateways", "badge": "!" },
-          { "id": "t/hanging", "icon": "alert", "label": "Hanging payments", "badge": "7" },
-          { "id": "t/exception", "icon": "alert", "label": "Payment investigation", "badge": "!" },
-          { "id": "t/payments", "icon": "card", "label": "Payments query" },
-          { "id": "t/paymenthistory", "icon": "upload", "label": "Payment history upload" },
-          { "id": "t/refunds", "icon": "swap", "label": "Refunds & credits" },
-          { "id": "t/fundsources", "icon": "card", "label": "Funding sources" },
-          { "id": "t/nelfund", "icon": "swap", "label": "Sources & wallets" },
-          { "id": "t/nelstatus", "icon": "user", "label": "NELFUND applicants" },
-          { "id": "t/nelmatch", "icon": "swap", "label": "Match a remittance" },
-          { "id": "t/pv", "icon": "doc", "label": "Payment vouchers", "badge": "1" },
+          { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
+          { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
+          { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments", "badge": "7" },
+          { "id": "t/exception", "icon": "alert", "label": "Payment Investigation", "badge": "!" },
+          { "id": "t/payments", "icon": "card", "label": "Payments Query" },
+          { "id": "t/paymenthistory", "icon": "upload", "label": "Payment History Upload" },
+          { "id": "t/refunds", "icon": "swap", "label": "Refunds & Credits" },
+          { "id": "t/fundsources", "icon": "card", "label": "Funding Sources" },
+          { "id": "t/nelfund", "icon": "swap", "label": "Sources & Wallets" },
+          { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Applicants" },
+          { "id": "t/nelmatch", "icon": "swap", "label": "Match a Remittance" },
+          { "id": "t/pv", "icon": "doc", "label": "Payment Vouchers", "badge": "1" },
           { "id": "t/payroll", "icon": "card", "label": "Payroll", "badge": "3" },
           { "id": "t/budget", "icon": "chart", "label": "Budget" },
           { "id": "t/tenders", "icon": "box", "label": "Tenders" },
-          { "id": "t/cashdesk", "icon": "card", "label": "Cash office & assets" },
-          { "id": "t/accounts", "icon": "chart", "label": "Accounting & books" },
-          { "id": "t/ledger", "icon": "swap", "label": "Transactions & accounts" },
+          { "id": "t/cashdesk", "icon": "card", "label": "Cash Office & Assets" },
+          { "id": "t/accounts", "icon": "chart", "label": "Accounting & Books" },
+          { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -536,28 +536,28 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/idcards", "icon": "user", "label": "Card printing", "badge": "4" },
+          { "id": "t/idcards", "icon": "user", "label": "Card Printing", "badge": "4" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
-          { "id": "t/clearance", "icon": "check", "label": "Library clearance", "badge": "7" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/clearance", "icon": "check", "label": "Library Clearance", "badge": "7" }
         ]
       },
       {
         "name": "Services",
         "items": [
           { "id": "t/circulation", "icon": "book", "label": "Circulation" },
-          { "id": "t/stores", "icon": "box", "label": "Stock & acquisitions" }
+          { "id": "t/stores", "icon": "box", "label": "Stock & Acquisitions" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -569,27 +569,27 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/idverify", "icon": "check", "label": "Verify a card" },
+          { "id": "t/idverify", "icon": "check", "label": "Verify a Card" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Services",
         "items": [
-          { "id": "t/idcards", "icon": "user", "label": "Card collection", "badge": "2" },
-          { "id": "t/idlost", "icon": "alert", "label": "Lost & replacement", "badge": "!" }
+          { "id": "t/idcards", "icon": "user", "label": "Card Collection", "badge": "2" },
+          { "id": "t/idlost", "icon": "alert", "label": "Lost & Replacement", "badge": "!" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -601,30 +601,30 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/resultdesk", "icon": "check", "label": "Scrutiny desk", "badge": "9" },
+          { "id": "t/resultdesk", "icon": "check", "label": "Scrutiny Desk", "badge": "9" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" },
-          { "id": "t/scores", "icon": "doc", "label": "Score sheets" },
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
+          { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
           { "id": "t/exams", "icon": "flask", "label": "Examinations" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -636,39 +636,39 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/resultdesk", "icon": "check", "label": "Result desk", "badge": "9" },
+          { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "9" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" },
-          { "id": "t/scores", "icon": "doc", "label": "Score sheets" }
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
+          { "id": "t/scores", "icon": "doc", "label": "Score Sheets" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
-          { "id": "t/matlist", "icon": "cap", "label": "Registered students", "badge": "!" }
+          { "id": "t/matlist", "icon": "cap", "label": "Registered Students", "badge": "!" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -687,16 +687,16 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/examsession", "icon": "cal", "label": "Examination sessions", "badge": "!" },
-          { "id": "t/resultdesk", "icon": "check", "label": "Validation desk", "badge": "12" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
+          { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions", "badge": "!" },
+          { "id": "t/resultdesk", "icon": "check", "label": "Validation Desk", "badge": "12" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
-          { "id": "t/legacy", "icon": "swap", "label": "Migrate from old portal" },
+          { "id": "t/legacy", "icon": "swap", "label": "Migrate from Old Portal" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
-          { "id": "t/senate", "icon": "scale", "label": "Senate schedule", "badge": "!" },
+          { "id": "t/senate", "icon": "scale", "label": "Senate Schedule", "badge": "!" },
           { "id": "t/publish", "icon": "bell", "label": "Publication" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation records" }
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation Records" }
         ]
       },
       {
@@ -704,21 +704,21 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -737,9 +737,9 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/senate", "icon": "scale", "label": "Senate schedule", "badge": "!" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" },
+          { "id": "t/senate", "icon": "scale", "label": "Senate Schedule", "badge": "!" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" }
         ]
       },
@@ -747,23 +747,23 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
-          { "id": "t/students", "icon": "cap", "label": "Student records" },
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
+          { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -776,15 +776,15 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/mgmt", "icon": "home", "label": "Dashboard" },
-          { "id": "t/overview", "icon": "chart", "label": "Institutional overview" },
+          { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" },
-          { "id": "t/senate", "icon": "scale", "label": "Senate schedule" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
+          { "id": "t/senate", "icon": "scale", "label": "Senate Schedule" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" }
         ]
@@ -792,21 +792,21 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "doc", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "doc", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -818,49 +818,49 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/setup", "icon": "server", "label": "Setup console" },
+          { "id": "t/setup", "icon": "server", "label": "Setup Console" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "t/session", "icon": "cal", "label": "Session & semester setup" },
+          { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result pipeline" }
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
       {
         "name": "Staff",
         "items": [
-          { "id": "t/lecturers", "icon": "user", "label": "Upload lecturers" }
+          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Administration",
         "items": [
-          { "id": "t/users", "icon": "user", "label": "Users & roles" },
-          { "id": "t/channels", "icon": "bell", "label": "Notification channels" },
-          { "id": "t/migration", "icon": "box", "label": "Data migration", "badge": "!" },
+          { "id": "t/users", "icon": "user", "label": "Users & Roles" },
+          { "id": "t/channels", "icon": "bell", "label": "Notification Channels" },
+          { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
           { "id": "t/api", "icon": "swap", "label": "Integrations" },
-          { "id": "t/audit", "icon": "shield", "label": "Audit log" },
+          { "id": "t/audit", "icon": "shield", "label": "Audit Log" },
           { "id": "t/security", "icon": "shield", "label": "Security" },
-          { "id": "t/dr", "icon": "box", "label": "Backups & recovery" },
+          { "id": "t/dr", "icon": "box", "label": "Backups & Recovery" },
           { "id": "t/governance", "icon": "scale", "label": "Governance" }
         ]
       }
@@ -874,7 +874,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/registrar", "icon": "home", "label": "Dashboard" },
-          { "id": "t/overview", "icon": "chart", "label": "Institutional overview" },
+          { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -882,16 +882,16 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
-          { "id": "t/approvals", "icon": "check", "label": "Senate business" }
+          { "id": "t/approvals", "icon": "check", "label": "Senate Business" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
-          { "id": "t/students", "icon": "cap", "label": "Student records" },
-          { "id": "t/biochange", "icon": "user", "label": "Biodata changes", "badge": "4" },
+          { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" }
@@ -901,35 +901,35 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
-          { "id": "t/applicants", "icon": "user", "label": "Admitted list" }
+          { "id": "t/applicants", "icon": "user", "label": "Admitted List" }
         ]
       },
       {
         "name": "Staff",
         "items": [
-          { "id": "t/staff", "icon": "user", "label": "Staff records" },
+          { "id": "t/staff", "icon": "user", "label": "Staff Records" },
           { "id": "t/recruit", "icon": "user", "label": "Recruitment" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Administration",
         "items": [
-          { "id": "t/governance", "icon": "scale", "label": "Data governance", "badge": "2" },
-          { "id": "t/audit", "icon": "shield", "label": "Audit trail" }
+          { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
+          { "id": "t/audit", "icon": "shield", "label": "Audit Trail" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -941,72 +941,72 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/platform", "icon": "server", "label": "Platform & integrations", "badge": "!" },
+          { "id": "t/platform", "icon": "server", "label": "Platform & Integrations", "badge": "!" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "t/facultyupload", "icon": "cap", "label": "Faculty upload/create" },
-          { "id": "t/programmeupload", "icon": "book", "label": "Programme upload/create" },
-          { "id": "t/departmentupload", "icon": "cap", "label": "Department upload/create" },
-          { "id": "t/courseupload", "icon": "doc", "label": "Courses upload/create" },
-          { "id": "t/legacy", "icon": "box", "label": "Migrate from old portal" }
+          { "id": "t/facultyupload", "icon": "cap", "label": "Upload or Create Faculties" },
+          { "id": "t/programmeupload", "icon": "book", "label": "Upload or Create Programmes" },
+          { "id": "t/departmentupload", "icon": "cap", "label": "Upload or Create Departments" },
+          { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
+          { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/students", "icon": "cap", "label": "Student records" }
+          { "id": "t/students", "icon": "cap", "label": "Student Records" }
         ]
       },
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/putme", "icon": "doc", "label": "Post-UTME scores" }
+          { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" }
         ]
       },
       {
         "name": "Finance",
         "items": [
-          { "id": "t/gateways", "icon": "card", "label": "Payment gateways", "badge": "!" }
+          { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" }
         ]
       },
       {
         "name": "Staff",
         "items": [
-          { "id": "t/lecturers", "icon": "user", "label": "Upload lecturers" }
+          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Administration",
         "items": [
-          { "id": "t/users", "icon": "user", "label": "Users & roles", "badge": "1" },
-          { "id": "t/mail", "icon": "server", "label": "Mail server" },
-          { "id": "t/sms", "icon": "server", "label": "SMS gateway" },
+          { "id": "t/users", "icon": "user", "label": "Users & Roles", "badge": "1" },
+          { "id": "t/mail", "icon": "server", "label": "Mail Server" },
+          { "id": "t/sms", "icon": "server", "label": "SMS Gateway" },
           { "id": "t/notify", "icon": "bell", "label": "Notifications", "badge": "!" },
-          { "id": "t/security", "icon": "shield", "label": "Security posture", "badge": "!" },
-          { "id": "t/api", "icon": "swap", "label": "API management", "badge": "2" },
-          { "id": "t/release", "icon": "box", "label": "Release pipeline" },
-          { "id": "t/dr", "icon": "life", "label": "Disaster recovery" },
-          { "id": "t/cloud", "icon": "chart", "label": "Cloud readiness" },
-          { "id": "t/audit", "icon": "shield", "label": "Audit trail" },
-          { "id": "t/governance", "icon": "scale", "label": "Data governance", "badge": "2" }
+          { "id": "t/security", "icon": "shield", "label": "Security Posture", "badge": "!" },
+          { "id": "t/api", "icon": "swap", "label": "API Management", "badge": "2" },
+          { "id": "t/release", "icon": "box", "label": "Release Pipeline" },
+          { "id": "t/dr", "icon": "life", "label": "Disaster Recovery" },
+          { "id": "t/cloud", "icon": "chart", "label": "Cloud Readiness" },
+          { "id": "t/audit", "icon": "shield", "label": "Audit Trail" },
+          { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -1025,7 +1025,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "t/clearance", "icon": "check", "label": "Student clearance" }
+          { "id": "t/clearance", "icon": "check", "label": "Student Clearance" }
         ]
       },
       {
@@ -1038,15 +1038,15 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Services",
         "items": [
-          { "id": "t/circulation", "icon": "book", "label": "Library circulation" },
-          { "id": "t/stores", "icon": "box", "label": "Stores & assets" },
-          { "id": "t/alumni", "icon": "cap", "label": "Alumni register" }
+          { "id": "t/circulation", "icon": "book", "label": "Library Circulation" },
+          { "id": "t/stores", "icon": "box", "label": "Stores & Assets" },
+          { "id": "t/alumni", "icon": "cap", "label": "Alumni Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -1058,69 +1058,69 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "r/admin", "icon": "home", "label": "Administrator dashboard" },
-          { "id": "t/readiness", "icon": "chart", "label": "Go-live readiness" },
-          { "id": "t/overview", "icon": "chart", "label": "Institutional overview" },
+          { "id": "r/admin", "icon": "home", "label": "Administrator Dashboard" },
+          { "id": "t/readiness", "icon": "chart", "label": "Go-Live Readiness" },
+          { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "r/allocate", "icon": "swap", "label": "Teaching allocation" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval chain" }
+          { "id": "r/allocate", "icon": "swap", "label": "Teaching Allocation" },
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & queries" },
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
-          { "id": "t/students", "icon": "cap", "label": "Student records" }
+          { "id": "t/students", "icon": "cap", "label": "Student Records" }
         ]
       },
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/putme", "icon": "doc", "label": "Post-UTME scores" },
+          { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" }
         ]
       },
       {
         "name": "Finance",
         "items": [
-          { "id": "t/gateways", "icon": "card", "label": "Payment gateways", "badge": "!" },
-          { "id": "t/accounts", "icon": "chart", "label": "Accounting & books" },
-          { "id": "t/ledger", "icon": "swap", "label": "Transactions & accounts" },
+          { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
+          { "id": "t/accounts", "icon": "chart", "label": "Accounting & Books" },
+          { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
-          { "id": "t/exception", "icon": "alert", "label": "Payment investigation" },
-          { "id": "t/feesched", "icon": "card", "label": "Fee schedules" }
+          { "id": "t/exception", "icon": "alert", "label": "Payment Investigation" },
+          { "id": "t/feesched", "icon": "card", "label": "Fee Schedules" }
         ]
       },
       {
         "name": "Staff",
         "items": [
-          { "id": "t/lecturers", "icon": "user", "label": "Upload lecturers" }
+          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" }
         ]
       },
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Administration",
         "items": [
-          { "id": "t/mail", "icon": "server", "label": "Mail server" },
-          { "id": "t/sms", "icon": "server", "label": "SMS gateway" },
-          { "id": "t/users", "icon": "user", "label": "Users & roles" },
-          { "id": "t/platform", "icon": "server", "label": "Platform & integrations" },
-          { "id": "t/security", "icon": "shield", "label": "Security posture", "badge": "!" },
-          { "id": "t/audit", "icon": "shield", "label": "Audit trail" },
-          { "id": "t/governance", "icon": "scale", "label": "Data governance", "badge": "2" }
+          { "id": "t/mail", "icon": "server", "label": "Mail Server" },
+          { "id": "t/sms", "icon": "server", "label": "SMS Gateway" },
+          { "id": "t/users", "icon": "user", "label": "Users & Roles" },
+          { "id": "t/platform", "icon": "server", "label": "Platform & Integrations" },
+          { "id": "t/security", "icon": "shield", "label": "Security Posture", "badge": "!" },
+          { "id": "t/audit", "icon": "shield", "label": "Audit Trail" },
+          { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" }
         ]
       }
     ]
@@ -1132,14 +1132,14 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Overview",
         "items": [
-          { "id": "t/overview", "icon": "home", "label": "Institutional overview" },
+          { "id": "t/overview", "icon": "home", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "t/approvals", "icon": "check", "label": "Senate business", "badge": "7" },
+          { "id": "t/approvals", "icon": "check", "label": "Senate Business", "badge": "7" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/projects", "icon": "flask", "label": "Research" }
         ]
@@ -1153,17 +1153,17 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Administration",
         "items": [
-          { "id": "t/audit", "icon": "shield", "label": "Audit trail" },
-          { "id": "t/governance", "icon": "scale", "label": "Data governance" },
-          { "id": "t/security", "icon": "shield", "label": "Security posture" }
+          { "id": "t/audit", "icon": "shield", "label": "Audit Trail" },
+          { "id": "t/governance", "icon": "scale", "label": "Data Governance" },
+          { "id": "t/security", "icon": "shield", "label": "Security Posture" }
         ]
       }
     ]
@@ -1176,17 +1176,17 @@ export const MENUS: Record<string, Menu> = {
         "name": "Start here",
         "items": [
           { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
-          { "id": "s/fees", "icon": "card", "label": "School fees — pay first" }
+          { "id": "s/fees", "icon": "card", "label": "School Fees — Pay First" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "s/register", "icon": "book", "label": "Course registration" },
-          { "id": "s/reghistory", "icon": "chart", "label": "Registration history" },
+          { "id": "s/register", "icon": "book", "label": "Course Registration" },
+          { "id": "s/reghistory", "icon": "chart", "label": "Registration History" },
           { "id": "s/results", "icon": "cap", "label": "Results" },
-          { "id": "s/broadsheet", "icon": "chart", "label": "Result broadsheet" },
-          { "id": "s/query", "icon": "alert", "label": "Result query" },
+          { "id": "s/broadsheet", "icon": "chart", "label": "Result Broadsheet" },
+          { "id": "s/query", "icon": "alert", "label": "Result Query" },
           { "id": "s/carryover", "icon": "swap", "label": "Carryover" },
           { "id": "s/transfer", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
@@ -1195,7 +1195,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Learning",
         "items": [
-          { "id": "s/courses", "icon": "book", "label": "My courses" },
+          { "id": "s/courses", "icon": "book", "label": "My Courses" },
           { "id": "s/timetable", "icon": "cal", "label": "Timetable" },
           { "id": "s/attendance", "icon": "check", "label": "Attendance" },
           { "id": "s/exams", "icon": "cap", "label": "Examinations" }
@@ -1204,12 +1204,12 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Services",
         "items": [
-          { "id": "s/wallet", "icon": "swap", "label": "Wallet & funding" },
+          { "id": "s/wallet", "icon": "swap", "label": "Wallet & Funding" },
           { "id": "s/hostel", "icon": "bed", "label": "Hostel" },
           { "id": "s/library", "icon": "book", "label": "Library" },
-          { "id": "s/idcard", "icon": "user", "label": "Identity card" },
+          { "id": "s/idcard", "icon": "user", "label": "Identity Card" },
           { "id": "s/health", "icon": "heart", "label": "Health" },
-          { "id": "s/support", "icon": "life", "label": "Help & requests" }
+          { "id": "s/support", "icon": "life", "label": "Help & Requests" }
         ]
       },
       {
@@ -1223,21 +1223,21 @@ export const MENUS: Record<string, Menu> = {
     ]
   },
   "pgstudent": {
-    "label": "Postgraduate student",
+    "label": "Postgraduate Student",
     "home": "s/dashboard",
     "groups": [
       {
         "name": "Start here",
         "items": [
           { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
-          { "id": "s/fees", "icon": "card", "label": "School fees" }
+          { "id": "s/fees", "icon": "card", "label": "School Fees" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "s/pgcourses", "icon": "book", "label": "Registration & results" },
-          { "id": "s/research", "icon": "flask", "label": "Research & thesis" },
+          { "id": "s/pgcourses", "icon": "book", "label": "Registration & Results" },
+          { "id": "s/research", "icon": "flask", "label": "Research & Thesis" },
           { "id": "s/exams", "icon": "cap", "label": "Examinations" },
           { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
         ]
@@ -1245,11 +1245,11 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Services",
         "items": [
-          { "id": "s/wallet", "icon": "swap", "label": "Wallet & funding" },
+          { "id": "s/wallet", "icon": "swap", "label": "Wallet & Funding" },
           { "id": "s/library", "icon": "book", "label": "Library" },
-          { "id": "s/idcard", "icon": "user", "label": "Identity card" },
+          { "id": "s/idcard", "icon": "user", "label": "Identity Card" },
           { "id": "s/health", "icon": "heart", "label": "Health" },
-          { "id": "s/support", "icon": "life", "label": "Help & requests" }
+          { "id": "s/support", "icon": "life", "label": "Help & Requests" }
         ]
       },
       {
@@ -1270,38 +1270,38 @@ export const MENUS: Record<string, Menu> = {
         "name": "My application",
         "items": [
           { "id": "a/dashboard", "icon": "home", "label": "Overview" },
-          { "id": "a/apply", "icon": "doc", "label": "Application form" },
-          { "id": "a/fee", "icon": "card", "label": "Application fee" }
+          { "id": "a/apply", "icon": "doc", "label": "Application Form" },
+          { "id": "a/fee", "icon": "card", "label": "Application Fee" }
         ]
       },
       {
         "name": "Screening",
         "items": [
-          { "id": "a/screening", "icon": "print", "label": "Screening slip" },
-          { "id": "a/score", "icon": "chart", "label": "Screening result" }
+          { "id": "a/screening", "icon": "print", "label": "Screening Slip" },
+          { "id": "a/score", "icon": "chart", "label": "Screening Result" }
         ]
       },
       {
         "name": "Admission",
         "items": [
-          { "id": "a/status", "icon": "cap", "label": "Admission status" },
-          { "id": "a/accept", "icon": "check", "label": "Accept your offer" },
-          { "id": "a/clearance", "icon": "shield", "label": "Document clearance" },
+          { "id": "a/status", "icon": "cap", "label": "Admission Status" },
+          { "id": "a/accept", "icon": "check", "label": "Accept Your Offer" },
+          { "id": "a/clearance", "icon": "shield", "label": "Document Clearance" },
           { "id": "a/matric", "icon": "user", "label": "Matriculation" }
         ]
       }
     ]
   },
   "pgapplicant": {
-    "label": "Postgraduate applicant",
+    "label": "Postgraduate Applicant",
     "home": "pg/home",
     "groups": [
       {
         "name": "My application",
         "items": [
           { "id": "pg/portal", "icon": "home", "label": "Dashboard" },
-          { "id": "pg/apply", "icon": "doc", "label": "Apply form" },
-          { "id": "pg/summary", "icon": "print", "label": "Application summary" }
+          { "id": "pg/apply", "icon": "doc", "label": "Apply Form" },
+          { "id": "pg/summary", "icon": "print", "label": "Application Summary" }
         ]
       }
     ]
@@ -1323,19 +1323,19 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
           { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
           { "id": "t/pgboard", "icon": "check", "label": "School Board" },
-          { "id": "t/pgscores", "icon": "doc", "label": "Course results" },
-          { "id": "t/pgexaminers", "icon": "shield", "label": "External examiners" },
-          { "id": "t/pgpanels", "icon": "doc", "label": "Examination panels" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation list" },
-          { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
-          { "id": "t/pgresearch", "icon": "flask", "label": "Research desk" },
-          { "id": "t/pgclearance", "icon": "check", "label": "Thesis clearance" }
+          { "id": "t/pgscores", "icon": "doc", "label": "Course Results" },
+          { "id": "t/pgexaminers", "icon": "shield", "label": "External Examiners" },
+          { "id": "t/pgpanels", "icon": "doc", "label": "Examination Panels" },
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation List" },
+          { "id": "t/broadsheet", "icon": "chart", "label": "Results Broadsheet" },
+          { "id": "t/pgresearch", "icon": "flask", "label": "Research Desk" },
+          { "id": "t/pgclearance", "icon": "check", "label": "Thesis Clearance" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/pgstudents", "icon": "user", "label": "PG students" }
+          { "id": "t/pgstudents", "icon": "user", "label": "PG Students" }
         ]
       },
       {
@@ -1347,15 +1347,15 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -1374,9 +1374,9 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/college", "icon": "flask", "label": "College overview" },
-          { "id": "t/collegeexams", "icon": "chart", "label": "Professional examinations" },
-          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" }
+          { "id": "t/college", "icon": "flask", "label": "College Overview" },
+          { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
         ]
       },
       {
@@ -1389,7 +1389,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -1408,9 +1408,9 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/college", "icon": "flask", "label": "College overview" },
-          { "id": "t/collegeexams", "icon": "chart", "label": "Professional examinations" },
-          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" }
+          { "id": "t/college", "icon": "flask", "label": "College Overview" },
+          { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
         ]
       },
       {
@@ -1423,7 +1423,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -1442,10 +1442,10 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/collegesheets", "icon": "chart", "label": "Score sheet" },
-          { "id": "t/collegeexams", "icon": "chart", "label": "Professional examination" },
-          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" },
-          { "id": "t/college", "icon": "flask", "label": "College overview" }
+          { "id": "t/collegesheets", "icon": "chart", "label": "Score Sheet" },
+          { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examination" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" },
+          { "id": "t/college", "icon": "flask", "label": "College Overview" }
         ]
       },
       {
@@ -1458,7 +1458,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -1477,9 +1477,9 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/college", "icon": "flask", "label": "College overview" },
-          { "id": "t/collegeexams", "icon": "chart", "label": "Professional examinations" },
-          { "id": "t/collegecalendar", "icon": "calendar", "label": "College calendar" }
+          { "id": "t/college", "icon": "flask", "label": "College Overview" },
+          { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
         ]
       },
       {
@@ -1492,7 +1492,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]
@@ -1514,21 +1514,21 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgcourses", "icon": "book", "label": "Courses" },
           { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
           { "id": "t/pgregistration", "icon": "book", "label": "Registration" },
-          { "id": "t/pgexams", "icon": "cap", "label": "Course examinations" },
-          { "id": "t/pgseminars", "icon": "book", "label": "Research seminars" },
-          { "id": "t/pgpanels", "icon": "doc", "label": "Panels & viva" },
-          { "id": "t/pgexaminers", "icon": "shield", "label": "External examiners" },
-          { "id": "t/pgclearance", "icon": "check", "label": "Thesis clearance" },
-          { "id": "t/pgscores", "icon": "doc", "label": "Course results" },
+          { "id": "t/pgexams", "icon": "cap", "label": "Course Examinations" },
+          { "id": "t/pgseminars", "icon": "book", "label": "Research Seminars" },
+          { "id": "t/pgpanels", "icon": "doc", "label": "Panels & Viva" },
+          { "id": "t/pgexaminers", "icon": "shield", "label": "External Examiners" },
+          { "id": "t/pgclearance", "icon": "check", "label": "Thesis Clearance" },
+          { "id": "t/pgscores", "icon": "doc", "label": "Course Results" },
           { "id": "t/pgsenate", "icon": "check", "label": "Results to Senate" },
-          { "id": "t/broadsheet", "icon": "chart", "label": "Results broadsheet" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation list" }
+          { "id": "t/broadsheet", "icon": "chart", "label": "Results Broadsheet" },
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation List" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/pgstudents", "icon": "user", "label": "PG students" },
+          { "id": "t/pgstudents", "icon": "user", "label": "PG Students" },
           { "id": "t/matriculation", "icon": "user", "label": "Matriculation" }
         ]
       },
@@ -1547,15 +1547,15 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Reports",
         "items": [
-          { "id": "t/reports", "icon": "chart", "label": "Reports & returns" },
-          { "id": "t/regstudents", "icon": "user", "label": "Student register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff register" }
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
         ]
       }
     ]

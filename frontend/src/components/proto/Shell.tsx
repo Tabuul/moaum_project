@@ -251,7 +251,7 @@ const FALLBACK: Menu = {
   home: "r/academic",
   groups: [
     { name: "Records", items: [{ id: "t/search", icon: "user", label: "Search" }, { id: "r/academic", icon: "home", label: "Dashboard" }] },
-    { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & payslip" }] },
+    { name: "Me", items: [{ id: "r/self", icon: "user", label: "Leave & Payslip" }] },
   ],
 };
 
