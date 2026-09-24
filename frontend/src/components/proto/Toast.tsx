@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Problem } from "@/lib/api";
+import { humanTitle } from "@/lib/problem-title";
 
 export type Kind = "ok" | "bad" | "info" | "warn";
 export interface Toast { id: number; kind: Kind; title: string; detail?: string; ttl: number; sticky?: boolean; out?: boolean }
@@ -61,7 +62,7 @@ function clean(s: string | undefined | null): string | undefined {
 /** An API refusal as the error toast: the refusal's own title and remedy where it has them, or plain words for the status. */
 export function notifyProblem(problem: Problem | null | undefined, fallbackTitle = "That did not go through") {
   const status = problem?.status ?? 0;
-  const title = clean(problem?.title);
+  const title = problem?.title ? clean(humanTitle(problem.title)) : undefined;
   const detail = clean(problem?.detail);
   const remedy = problem?.remedy?.message ? clean(problem.remedy.message) : undefined;
   const line = [detail, remedy].filter(Boolean).join(" ");

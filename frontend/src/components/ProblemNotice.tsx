@@ -1,5 +1,6 @@
 import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
+import { humanTitle } from "@/lib/problem-title";
 
 /**
  * Every refusal is shown with its remedy and the office responsible
@@ -8,7 +9,7 @@ import { Note } from "@/components/proto/ui";
  */
 export function ProblemNotice({ problem }: { problem: Problem }) {
   return (
-    <Note kind="bad" title={problem.title?.trim() || "The request was refused"}>
+    <Note kind="bad" title={humanTitle(problem.title)}>
       {problem.detail}
       {problem.remedy && (
         <>
