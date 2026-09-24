@@ -39,7 +39,9 @@ const OUTCOME: Record<string, [string, "ok" | "bad" | "info" | "warn" | "grey"]>
 };
 const word = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
-const VIEWS: [string, string][] = [["overview", "Dashboard"], ["fees", "Fees & payments"], ["registration", "Course registration"], ["results", "Results history"]];
+const VIEWS: [string, string][] = [["overview", "Dashboard"], ["fees", "Fees & payments"], ["registration", "Course registration"], ["postings", "Postings & logbook"], ["results", "Results history"]];
+interface LogRow { allocation_id: string; session: string; posting: string; posting_name: string; min_cases: number | null; state: string; requirement: string | null; min_count: number | null; mode: string | null; done: number | null; met: boolean | null; cases: number; sessions_recorded: number; sessions_present: number }
+interface CaRow { attempt_no: number; score: number; scored_on: string; item: string; item_type: string; max_score: number; subject: string; exam: string; level: number }
 
 export default async function CollegeStudentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
@@ -50,8 +52,10 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   }
   const s = loaded.student;
   const level = Number(s.level);
-  const [rec, mine] = await Promise.all([
+  const [rec, logs, cas, mine] = await Promise.all([
     api<MyRecord>("/api/v1/college/my-record"),
+    api<LogRow[]>("/api/v1/college/my-logbooks"),
+    api<CaRow[]>("/api/v1/college/my-assessments"),
     api<{ id: string; session: string; state: string; starts_on: string | null; ends_on: string | null; posting: string; posting_name: string; tier: string; duration_weeks: number | null; block_code: string; block: string; group_label: string | null; supervisor: string | null; requirements: number; requirements_met: number }[]>("/api/v1/college/my-postings"),
   ]);
   if (!rec.ok) {
@@ -59,6 +63,8 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   }
   const r = rec.data;
   const myPostings = mine.ok ? mine.data : [];
+  const logbooks = logs.ok ? logs.data : [];
+  const ca = cas.ok ? cas.data : [];
   const phase = PHASES.find((x) => x.phase === phaseOf(level));
   const step = PROGRESSION.find((x) => x.from === level);
   const examAt = r.exams.find((e) => e.level === level) ?? null;
@@ -194,6 +200,39 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
         </>
       ) : null}
 
+      {view === "postings" ? (
+        <>
+          {myPostings.length === 0 ? <Note kind="info" title="No posting yet">From 400 Level the College allocates you to a block&rsquo;s postings for a session, each with a supervisor, dates and a logbook. They appear here as the College allocates them.</Note> : null}
+          {myPostings.map((a) => {
+            const rows = logbooks.filter((l) => l.allocation_id === a.id && l.requirement);
+            const head = logbooks.find((l) => l.allocation_id === a.id);
+            const attPct = head && head.sessions_recorded ? Math.round((100 * head.sessions_present) / head.sessions_recorded) : null;
+            return (
+              <Panel key={a.id} title={`${a.block} · ${a.posting} — ${a.posting_name}`} right={`${a.session} · ${dayOf(a.starts_on)} to ${dayOf(a.ends_on)} · ${word(a.state)}`}>
+                <PBody>
+                  <div className="row">
+                    <span className="sub2">Supervisor: <b>{a.supervisor ?? "Not yet assigned"}</b></span>
+                    {a.group_label ? <span className="sub2">Group <b className="tnum">{a.group_label}</b></span> : null}
+                    <span className="sub2">Cases clerked: <b className="tnum">{head?.cases ?? 0}{a.duration_weeks && head?.min_cases ? ` of ${head.min_cases}` : ""}</b></span>
+                    <span className="sub2">Attendance: <b className="tnum">{attPct == null ? "Nothing recorded" : `${attPct}% of ${head?.sessions_recorded}`}</b></span>
+                    <span className="sub2">Logbook: <b className="tnum">{a.requirements ? `${a.requirements_met} of ${a.requirements} met` : "No procedure requirements"}</b></span>
+                  </div>
+                </PBody>
+                {rows.length ? (
+                  <DTable cols={["Procedure", "Required|mid", "Mode|mid", "Verified|mid", "Standing|mid"]} rows={rows.map((l, i) => [
+                    <strong key={"r" + i}>{l.requirement}</strong>,
+                    <span className="tnum" key={"m" + i}>{l.min_count}</span>,
+                    <span className="sub2" key={"o" + i}>{l.mode === "OBSERVE" ? "Observe" : l.mode === "PERFORM" ? "Perform" : "Observe or perform"}</span>,
+                    <span className="tnum" key={"d" + i}>{l.done}</span>,
+                    <Pil key={"s" + i} kind={l.met ? "ok" : "warn"}>{l.met ? "Met" : "Not yet"}</Pil>,
+                  ])} />
+                ) : null}
+              </Panel>
+            );
+          })}
+        </>
+      ) : null}
+
       {view === "fees" ? (
         <>
           <Tiles items={[
@@ -253,6 +292,17 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
 
       {view === "results" ? (
         <>
+          {ca.length ? (
+            <Panel title="CA recorded so far" right="Course tests and end-of-posting scores, as they happen; the year's CA is composed from them at the end">
+              <DTable cols={["Level|mid", "Subject", "Item", "Score|mid", "Recorded|mid"]} rows={ca.map((x, i) => [
+                <span className="tnum" key={"l" + i}>{x.level}</span>,
+                <strong key={"s" + i}>{x.subject}</strong>,
+                <span key={"i" + i}>{x.item}{x.attempt_no > 1 ? <span className="sub2"> · attempt {x.attempt_no}</span> : null}</span>,
+                <span className="tnum" key={"c" + i}>{x.score} <span className="sub2">of {x.max_score}</span></span>,
+                <span className="tnum" key={"d" + i}>{dayOf(x.scored_on)}</span>,
+              ])} />
+            </Panel>
+          ) : null}
           {history.length === 0 ? <Note kind="info" title="No College results yet">Your 100 Level results stand on the University&rsquo;s sheet. <Link href="/student/results">Your University results</Link>.</Note> : null}
           {history.map((h) => {
             const en = r.enrolments.find((e) => e.level === h.level && e.session === h.session) ?? null;

@@ -254,6 +254,38 @@ class CollegeController {
         return Map.of("id", id, "withdrawn", true);
     }
 
+    /** the signed-in student's own logbooks: for each posting allocated, what it asks and what stands verified */
+    @GetMapping("/my-logbooks")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> myLogbooks(Authentication auth) {
+        UUID me = UUID.fromString(auth.getName());
+        return jdbc.sql("""
+                SELECT a.id AS allocation_id, a.session, po.code AS posting, po.name AS posting_name, po.min_cases, a.state,
+                       l.requirement, l.min_count, l.mode, l.done, l.met,
+                       (SELECT count(*) FROM college.case_clerking c WHERE c.student_id = a.student_id AND c.posting_id = a.posting_id) AS cases,
+                       (SELECT count(*) FROM college.attendance_record r WHERE r.student_id = a.student_id AND r.posting_id = a.posting_id) AS sessions_recorded,
+                       (SELECT count(*) FROM college.attendance_record r WHERE r.student_id = a.student_id AND r.posting_id = a.posting_id AND r.present) AS sessions_present
+                  FROM college.posting_allocation a JOIN college.posting po ON po.id = a.posting_id
+                  LEFT JOIN LATERAL college.posting_logbook(a.student_id, a.posting_id) l ON true
+                 WHERE a.student_id = :me ORDER BY a.session DESC, po.ordinal, l.requirement
+                """).param("me", me).query().listOfRows();
+    }
+
+    /** the signed-in student's CA as recorded during the year — course tests, end-of-posting scores — graded never, kept as they happen */
+    @GetMapping("/my-assessments")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> myAssessments(Authentication auth) {
+        UUID me = UUID.fromString(auth.getName());
+        return jdbc.sql("""
+                SELECT sc.attempt_no, sc.score, sc.scored_on, i.name AS item, i.item_type, i.max_score, s.name AS subject, x.code AS exam, x.level
+                  FROM college.assessment_score sc JOIN college.assessment_item i ON i.id = sc.item_id
+                  JOIN college.exam_subject s ON s.id = i.subject_id JOIN college.professional_exam x ON x.id = s.exam_id
+                 WHERE sc.student_id = :me ORDER BY x.level, s.ordinal, i.name, sc.attempt_no
+                """).param("me", me).query().listOfRows();
+    }
+
     /** the signed-in student's own postings, every session, with the logbook standing of each */
     @GetMapping("/my-postings")
     @PreAuthorize("hasAuthority('OFFICE_student')")
