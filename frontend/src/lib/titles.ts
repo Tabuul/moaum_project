@@ -699,5 +699,105 @@ export const TITLES: Record<string, [string, string]> = {
   "a/matric": [
     "Matriculation",
     "2026/2027 session"
+  ],
+  "t/teaching": [
+    "My teaching & timetable",
+    "The courses you teach this semester, and when"
+  ],
+  "t/queries": [
+    "Result queries",
+    "Questions raised on published results, and their answers"
+  ],
+  "t/deptstaff": [
+    "Department staff",
+    "The lecturers and officers on the department's establishment"
+  ],
+  "t/regstudents": [
+    "Student register",
+    "Every student on the register, by faculty, department, programme and level"
+  ],
+  "t/regstaff": [
+    "Staff register",
+    "Every member of staff on the establishment"
+  ],
+  "t/migrate": [
+    "Migrate old-portal applicants",
+    "Applicants carried over from the old portal, matched to the intake"
+  ],
+  "t/putme": [
+    "Upload Post-UTME scores",
+    "The screening scores, loaded from the examination's file"
+  ],
+  "t/merit": [
+    "Merit list",
+    "Candidates ranked by the admission score, per programme"
+  ],
+  "t/applicants": [
+    "Post-UTME registration report",
+    "Who registered for the screening, and who sat"
+  ],
+  "t/mail": [
+    "Mail server",
+    "The account the portal sends its email from"
+  ],
+  "t/sms": [
+    "SMS gateway",
+    "The account the portal sends its text messages from"
+  ],
+  "t/readiness": [
+    "Go-live readiness",
+    "What stands ready for the University to go live, and what does not"
+  ],
+  "pg/portal": [
+    "Your postgraduate application",
+    "Where it stands, and what comes next"
+  ],
+  "pg/apply": [
+    "Apply",
+    "The postgraduate application form"
+  ],
+  "pg/summary": [
+    "Application summary",
+    "Your application as submitted, to print"
+  ],
+  "r/pgschool": [
+    "Postgraduate School",
+    "The School's students, courses, calendar, boards and research"
+  ],
+  "t/pgcalendar": [
+    "Postgraduate calendar",
+    "The School's own sessions and semesters"
+  ],
+  "t/pgpanels": [
+    "Examination panels",
+    "The panels constituted for oral examinations"
+  ],
+  "t/pgclearance": [
+    "Thesis clearance",
+    "Final versions cleared for binding"
+  ],
+  "r/college": [
+    "College of Health Sciences",
+    "The Provost, the Registry and the Finance of the College"
+  ],
+  "r/mbbscoordinator": [
+    "MBBS Coordinator",
+    "The level's cohorts, score sheet, results and years"
+  ],
+  "t/pgregistration": [
+    "Postgraduate registration",
+    "Courses registered for the semester, by student"
+  ],
+  "t/pgexams": [
+    "Postgraduate course examinations",
+    "The examinations of the semester's courses"
+  ],
+  "t/pgseminars": [
+    "Research seminars",
+    "Proposal and progress seminars, scheduled and held"
+  ],
+  "t/pgsenate": [
+    "Results to Senate",
+    "Computed results with Senate, and the awarded of the session"
   ]
 };
