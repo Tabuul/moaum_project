@@ -131,11 +131,18 @@ export function Dashboard({ s }: { s: Me }) {
   const reg = s.registration;
   const published = s.gpa.filter((g) => g.published_count > 0).length;
   const prob = s.probation && s.probation.standing === "PROBATION" ? s.probation : null;
+  const adv = s.probation && s.probation.standing === "ADVISED_TO_WITHDRAW" ? s.probation : null;
+  const semWord = (n: number | null) => (n === 2 ? "second" : "first");
   return (
     <>
+      {adv ? (
+        <Note kind="bad" title="The result sheet advises your withdrawal" action={<Link href="/student/results" className="btn btn--ghost btn--sm">Your results</Link>}>
+          Your CGPA stood at <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester at {adv.pronounced_level} level, still under 1.0 after the level&rsquo;s probation list. Senate&rsquo;s rule advises withdrawal from the programme. The decision is Senate&rsquo;s; your Head of Department will tell you of it. Until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
+        </Note>
+      ) : null}
       {prob ? (
         <Note kind="bad" title="You are on probation" action={<Link href="/student/results" className="btn btn--ghost btn--sm">Your results</Link>}>
-          Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} first semester at {prob.pronounced_level} level, under the 1.0 the University requires. {prob.probation_max_units != null ? <>Until the next first semester pronounces again, your course registration is held to <strong>{prob.probation_max_units} units</strong>; the courses you owe stay on the form, so choose fewer new ones.</> : <>The courses you owe stay on your registration form; see your Head of Department about the load you should carry.</>}
+          Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} {semWord(prob.pronounced_semester)} semester at {prob.pronounced_level} level, under the 1.0 the University requires. {prob.probation_max_units != null ? <>Until the next semester&rsquo;s results pronounce again, your course registration is held to <strong>{prob.probation_max_units} units</strong>; the courses you owe stay on the form, so choose fewer new ones.</> : <>The courses you owe stay on your registration form; see your Head of Department about the load you should carry.</>}
         </Note>
       ) : null}
       {noScheme ? (

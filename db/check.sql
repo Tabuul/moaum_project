@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 140
+\set EXPECTED 141
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2976,6 +2976,24 @@ BEGIN
         AND ok_pass AND ok_fail AND ok_clin AND ok_dist AND nxt1 = 'REPEAT' AND nxt2 = 'RESIT' AND nxt3 = 'REPEAT',
         format('blocks=%s postings=%s med_weeks=%s exams=%s subjects=%s slots=%s procs=%s rules=%s pass=%s fail=%s clin=%s dist=%s next=%s/%s/%s',
                n_blocks, n_postings, med_weeks, n_exams, n_subjects, n_slots, n_procs, n_rules, ok_pass, ok_fail, ok_clin, ok_dist, nxt1, nxt2, nxt3));
+END $$;
+
+-- ── 17e. Senate's rule on probation and withdrawal answers as worded (V246) ──
+DO $$
+DECLARE a text; b text; c text; d text; e text; f text; g text; h text; i text;
+BEGIN
+    a := assessment.standing_of(100, 1, 0.80, NULL, false);    -- 100 level first semester: nothing pronounced
+    b := assessment.standing_of(100, 2, 0.80, 0.90, false);    -- 100 level second semester under 1.0: to go on probation
+    c := assessment.standing_of(200, 1, 0.90, 0.80, false);    -- 200 level first semester still under: the probation list
+    d := assessment.standing_of(200, 1, 0.90, NULL, true);     -- a Direct Entry student's first semester: no standing
+    e := assessment.standing_of(200, 2, 0.95, 0.90, false);    -- 200 level second semester still under: advised to withdraw
+    f := assessment.standing_of(200, 2, 0.95, 1.20, false);    -- fell under only now: probation, not withdrawal
+    g := assessment.standing_of(200, 2, 0.95, 0.90, true);     -- Direct Entry at 200 level: probation, their first year
+    h := assessment.standing_of(300, 2, 0.95, 0.90, false);    -- the pattern repeats at every level
+    i := assessment.standing_of(200, 2, 1.00, 0.90, false);    -- at 1.0 nothing is pronounced
+    PERFORM pg_temp.assert('Senate''s rule: probation at 100 level second semester and every first semester from 200 under 1.0; advised to withdraw at the second semester still under 1.0; nothing for a Direct Entry first semester or at 1.0',
+        a IS NULL AND b = 'PROBATION' AND c = 'PROBATION' AND d IS NULL AND e = 'ADVISED_TO_WITHDRAW' AND f = 'PROBATION' AND g = 'PROBATION' AND h = 'ADVISED_TO_WITHDRAW' AND i IS NULL,
+        format('100/1=%s 100/2=%s 200/1=%s DE=%s 200/2=%s fresh=%s DE200/2=%s 300/2=%s at1=%s', a, b, c, d, e, f, g, h, i));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

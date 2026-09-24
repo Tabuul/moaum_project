@@ -579,18 +579,32 @@ public class ResultsService {
             List<String> parts = new ArrayList<>();
             if (!coreOwed.isEmpty()) parts.add("CO: " + String.join(", ", coreOwed));
             if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
-            // probation is judged from 200 level first semester on: a student whose CGPA is still under 1.0 by then is
-            // to go on probation — said after the courses owed; a 100 level class has no standing to judge yet
-            // a Direct Entry student's first semester (200 level first) has no standing to judge either
-            boolean deFirst = "DIRECT_ENTRY".equals(first.entryMode()) && level == 200 && sem == 1;
-            // probation is pronounced in the first semester of every level above 100
-            if (level >= 200 && sem == 1 && !deFirst && cum.cgpa() != null && cum.cgpa().compareTo(BigDecimal.ONE) < 0) parts.add("TO GO ON PROBATION");
+            /* Senate's rule (V246, assessment.standing_of), said after the courses owed: TO GO ON PROBATION at 100 level
+               second semester, or at a first semester from 200 level, with the CGPA under 1.0; ADVISED TO WITHDRAW at a
+               second semester from 200 level still under 1.0 after that level's first semester was. A Direct Entry
+               student's 200 level first semester has no standing to judge, so their second is probation, not withdrawal. */
+            boolean deAt200 = "DIRECT_ENTRY".equals(first.entryMode()) && level == 200;
+            String pronounced = cum.cgpa() == null ? null : repo.standingOf(level, sem, cum.cgpa(), cum.prevCgpa(), deAt200);
+            if ("PROBATION".equals(pronounced)) parts.add("TO GO ON PROBATION");
+            if ("ADVISED_TO_WITHDRAW".equals(pronounced)) parts.add("ADVISED TO WITHDRAW");
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)
                     : anyUnreleased ? "PENDING"
                     : "PASS";
             rows.add(new Sheets.BroadsheetRow(e.getKey(), first.number(), first.surname() + ", " + first.otherNames(), marks, units,
                     cur, cue, points, gpa, pending, standing, cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), carry, remarks, first.entryMode()));
         }
+        /* a student in the class with no approved registration for the semester is on the sheet with every course
+           empty, no current figures, and the remark DID NOT REGISTER FOR THIS SEMESTER; the summary counts them as
+           not registered, never as absent, and nothing is pronounced on them */
+        for (ResultsRepository.ClassMember m : repo.unregistered(prog, level, session, sem)) {
+            if (byStudent.containsKey(m.studentId())) continue;
+            List<Sheets.BroadsheetMark> marks = courses.keySet().stream()
+                    .map(code -> new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false)).toList();
+            Sheets.Cumulative cum = repo.cumulative(m.studentId(), session, sem);
+            rows.add(new Sheets.BroadsheetRow(m.studentId(), m.number(), m.surname() + ", " + m.otherNames(), marks, 0, 0, 0, BigDecimal.ZERO, null, 0,
+                    "Not registered", cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), List.of(), "DID NOT REGISTER FOR THIS SEMESTER", m.entryMode()));
+        }
+        rows.sort(java.util.Comparator.comparing(Sheets.BroadsheetRow::name, String.CASE_INSENSITIVE_ORDER));
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
         List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()), courseLevel.getOrDefault(x.getKey(), level))).toList();
         return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,

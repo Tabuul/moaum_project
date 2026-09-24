@@ -48,20 +48,30 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       : m.outcome && m.outcome !== "GRADED" && m.outcome !== "ABSENT" ? <span className="sub2" title={m.outcome.toLowerCase()}>{m.outcome.slice(0, 3)}</span>
       : <span title={STAGE_LABEL[m.stage]?.[0] ?? m.stage} style={{ color: "var(--red-ink)", fontWeight: 700 }}><span className="tnum">ABS</span><div>F0</div></span>;
   const orderCols = bands.flatMap((b) => b[1]);
-  /* from 200 level the sheet is in three lists: the class with no question of probation; at 200 level first
-     semester the Direct Entry students, whose first semester this is (no standing to judge yet); and the
-     PROBATION LIST — every student whose CGPA is under 1.0. Probation is pronounced in the first semester of every
-     level above 100; at 100 level, and in every second semester, there is one list. */
-  // probation is pronounced in the first semester of every level above 100: only then is the sheet in lists
-  const sectioned = !!sheet && Number(sheet.level) >= 200 && Number(sheet.semester) === 1;
-  const deSection = !!sheet && Number(sheet.level) === 200 && Number(sheet.semester) === 1;
+  /* the sheet is in lists as Senate reads it. At a first semester from 200 level: the class, the DIRECT ENTRY
+     STUDENTS (at 200 level, whose first semester has no standing to judge) and the PROBATION LIST. At a second
+     semester from 200 level: the class and the ADVISED TO WITHDRAW list — a student still under 1.0 after the
+     level's probation list. At 100 level one list; its second semester pronounces TO GO ON PROBATION in the remark.
+     The pronouncement is the record's (assessment.standing_of, V246) and arrives in the remark; a list is read from
+     the remark, never recomputed here. */
+  const shLevel = sheet ? Number(sheet.level) : 0;
+  const shSem = sheet ? Number(sheet.semester) : 0;
+  const deSection = shLevel === 200 && shSem === 1;
   const isDE = (r: Broadsheet["rows"][number]) => deSection && r.entryMode === "DIRECT_ENTRY";
-  const onProbation = (r: Broadsheet["rows"][number]) => sectioned && !isDE(r) && r.cgpa !== null && Number(r.cgpa) < 1.0;
-  const sections: { title: string; rows: Broadsheet["rows"] }[] = !sheet ? [] : !sectioned ? [{ title: "", rows: sheet.rows }] : [
-    { title: "", rows: sheet.rows.filter((r) => !isDE(r) && !onProbation(r)) },
-    ...(deSection ? [{ title: "DIRECT ENTRY STUDENTS", rows: sheet.rows.filter(isDE) }] : []),
-    { title: "PROBATION LIST", rows: sheet.rows.filter(onProbation) },
-  ];
+  const onProbation = (r: Broadsheet["rows"][number]) => /TO GO ON PROBATION/.test(r.remarks);
+  const advised = (r: Broadsheet["rows"][number]) => /ADVISED TO WITHDRAW/.test(r.remarks);
+  const notRegistered = (r: Broadsheet["rows"][number]) => /DID NOT REGISTER/.test(r.remarks);
+  const sections: { title: string; rows: Broadsheet["rows"] }[] = !sheet ? []
+    : shLevel >= 200 && shSem === 1 ? [
+      { title: "", rows: sheet.rows.filter((r) => !isDE(r) && !onProbation(r)) },
+      ...(deSection ? [{ title: "DIRECT ENTRY STUDENTS", rows: sheet.rows.filter(isDE) }] : []),
+      { title: "PROBATION LIST", rows: sheet.rows.filter(onProbation) },
+    ]
+    : shLevel >= 200 && shSem === 2 ? [
+      { title: "", rows: sheet.rows.filter((r) => !advised(r)) },
+      { title: "ADVISED TO WITHDRAW", rows: sheet.rows.filter(advised) },
+    ]
+    : [{ title: "", rows: sheet.rows }];
   /* the matriculation number's prefix (everything up to the last oblique) is the class's, shared by nearly every
      row: it sits under the MATRIC NO. heading once, and each cell carries the serial alone. A row whose number
      does not share the prefix — a transfer, an old-format number — shows in full. */
@@ -90,26 +100,27 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     const fac = structure.faculties.find((f) => f.departments.some((d) => d.programmes.some((p) => p.code === scope.prog)));
     const dept = fac?.departments.find((d) => d.programmes.some((p) => p.code === scope.prog));
     const roll = sheet.rows.length;
+    const unregistered = sheet.rows.filter(notRegistered).length;   // in the class, no approved registration for the semester
+    const registered = roll - unregistered;
     const sat = sheet.rows.filter((r) => r.gpa !== null).length;
-    const notSit = roll - sat;
-    // probation and withdrawal are judged on a cumulative standing, which a 100 level class does not yet have:
-    // at 100 level both rows read Nil with no percentage; from 200 level first semester they are counted
-    const standingApplies = Number(sheet.level) >= 200 && Number(sheet.semester) === 1;
-    const probation = standingApplies ? sheet.rows.filter(onProbation).length : 0;   // the PROBATION LIST
-    const withdraw = 0;   // no rule in force names a CGPA at which a candidate is advised to withdraw
+    const notSit = registered - sat;
+    // probation and withdrawal are what the remark pronounces (Senate's rule in the record): counted wherever they appear,
+    // so a 100 level first semester reads Nil of itself
+    const probation = sheet.rows.filter(onProbation).length;   // TO GO ON PROBATION
+    const withdraw = sheet.rows.filter(advised).length;        // ADVISED TO WITHDRAW
     const pc = (n: number) => (sat ? `${Math.round((100 * n) / sat)}%` : "");
     const n0 = (n: number) => (n === 0 ? "Nil" : String(n));
     const SUM: [string, string, string][] = [
       ["Total Number of Candidates on Roll", String(roll), ""],
-      ["Total Number of Candidates that Registered", String(roll), ""],
-      ["Total Number of Candidates that did not Register", "Nil", ""],
+      ["Total Number of Candidates that Registered", String(registered), ""],
+      ["Total Number of Candidates that did not Register", n0(unregistered), ""],
       ["Total Number of Candidates at Examination", String(sat), sat ? "100" : ""],
       ["Total Number of Candidates that did not sit for the Examination", n0(notSit), notSit ? pc(notSit) : ""],
       ["Total Number of Candidates with Pass", String(sheet.passed), pc(sheet.passed)],
       ["Total Number of Candidates that Deferred", "Nil", ""],
       ["Total Number of Candidates with Carryover/Fail", String(sheet.carrying), pc(sheet.carrying)],
-      ["Total Number of Candidates on Probation", n0(probation), standingApplies && probation ? pc(probation) : ""],
-      ["Total Number of Candidates Advised to Withdraw", n0(withdraw), standingApplies && withdraw ? pc(withdraw) : ""],
+      ["Total Number of Candidates on Probation", n0(probation), probation ? pc(probation) : ""],
+      ["Total Number of Candidates Advised to Withdraw", n0(withdraw), withdraw ? pc(withdraw) : ""],
       ["Total Number of Candidates Expelled", "Nil", ""],
     ];
     const KEY: [string, string][] = hideCum ? [
@@ -123,9 +134,15 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
 
-  /** "Abankwa, John Ebonyi" as its two lines: the surname, then the other names — the column keeps to the longer of the two */
-  const nameLines = (name: string): [string, string] => { const k = name.indexOf(","); return k < 0 ? [name, ""] : [name.slice(0, k + 1), name.slice(k + 1).trim()]; };
-  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, serialOf(r.number), nameLines(r.name).filter(Boolean).join("\n"),
+  /** "Abankwa, John Ebonyi" as a line per name: the surname (with its comma), then each other name on its own line —
+   *  the column keeps to the longest single name */
+  const nameLines = (name: string): string[] => {
+    const k = name.indexOf(",");
+    const surname = k < 0 ? name.trim() : name.slice(0, k + 1);
+    const others = k < 0 ? [] : name.slice(k + 1).trim().split(/\s+/).filter(Boolean);
+    return [surname, ...others];
+  };
+  const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, serialOf(r.number), nameLines(r.name).join("\n"),
     ...(hideCarryover ? [] : [r.carryovers.join(" ")]),
     ...orderCols.map((c) => markText(markOf(r, c.courseCode))),
     r.cur, r.cue, r.points, r.gpa ?? "", ...(hideCum ? [] : [r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? ""]), r.remarks];
@@ -194,7 +211,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       + bands.map((b) => `<th colspan="${b[1].length}">${b[0]}</th>`).join("")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
       + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
-    const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${nameLines(r.name).filter(Boolean).map(escd).join("<br>")}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
+    const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${nameLines(r.name).map(escd).join("<br>")}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
       + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS\nF0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Result ${escd(cov.degree)} ${escd(sheet.session)}</title><style>
@@ -230,7 +247,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
   return (
     <>
       <Note kind="info" title="The broadsheet is computed, not typed">
-        Every figure on this sheet comes from the score sheets and the grading scheme in force for the session. Nobody keys a GPA. A mark counts here once its set has passed the Faculty Board; a score still in the chain shows greyed as not yet counted, and the GPA is computed over what is approved so far. A candidate with no score on a counted set did not sit: ABS, graded F, and the course is owed. The remark reads CO: for a core course owed, Fail: for an elective failed, and TO GO ON PROBATION when the CGPA is under 1.0.
+        Every figure on this sheet comes from the score sheets and the grading scheme in force for the session. Nobody keys a GPA. A mark counts here once its set has passed the Faculty Board; a score still in the chain shows greyed as not yet counted, and the GPA is computed over what is approved so far. A candidate with no score on a counted set did not sit: ABS, graded F, and the course is owed. The remark reads CO: for a core course owed, Fail: for an elective failed, TO GO ON PROBATION when the CGPA is under 1.0 at 100 level second semester or at a first semester from 200 level, ADVISED TO WITHDRAW at a second semester from 200 level still under 1.0 after the level&rsquo;s probation list, and DID NOT REGISTER FOR THIS SEMESTER for a student in the class with no approved registration for it.
       </Note>
       <Note kind="info" title="A broadsheet is by programme and level. A score sheet is by course.">
         A score sheet carries every candidate registered for one course, from every programme the course was made available to. A broadsheet carries every candidate in one programme at one level, across all their courses, because a GPA belongs to a student in a programme.
@@ -324,7 +341,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                       <tr key={r.studentId}>
                         <td className="sn tnum">{i + 1}</td>
                         <td className="l tnum mt" title={r.number}>{serialOf(r.number)}</td>
-                        <td className="l nm">{nameLines(r.name)[0]}{nameLines(r.name)[1] ? <div className="nm2">{nameLines(r.name)[1]}</div> : null}</td>
+                        <td className="l nm">{nameLines(r.name).map((ln, k) => k === 0 ? <span key={k}>{ln}</span> : <div className="nm2" key={k}>{ln}</div>)}</td>
                         {hideCarryover ? null : <td className="co sub2">{r.carryovers.length ? r.carryovers.join(", ") : "—"}</td>}
                         {orderCols.map((c) => <td key={c.courseCode} className="mk">{cell(markOf(r, c.courseCode))}</td>)}
                         <td className="tnum">{r.cur}</td>
@@ -338,7 +355,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                           <td className="tnum">{fx(r.lcgpa)}</td>
                           <td className="tnum b">{fx(r.cgpa)}</td>
                         </>}
-                        <td className="rm" style={{ fontWeight: /PROBATION|CO:|Fail:/.test(r.remarks) ? 700 : 400, color: /PROBATION/.test(r.remarks) ? "var(--red-ink)" : undefined }}>{r.remarks}</td>
+                        <td className="rm" style={{ fontWeight: /PROBATION|WITHDRAW|CO:|Fail:/.test(r.remarks) ? 700 : 400, color: /PROBATION|WITHDRAW|DID NOT REGISTER/.test(r.remarks) ? "var(--red-ink)" : undefined }}>{r.remarks}</td>
                       </tr>
                     ))}
                   </tbody>

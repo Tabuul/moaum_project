@@ -70,11 +70,11 @@ export interface Me {
   hasPhoto?: boolean;
   fees: Fees; gpa: Semester[]; cgpa: number | null; standing: string | null; carryovers: Carryover[];
   registration: Registration | null; notices: Notice[]; graduation?: Graduation | null;
-  /** the standing the record pronounces (V244): probation after a first semester at 200 level or above under 1.0 */
+  /** the standing the record pronounces (V244, V246): probation, or advice to withdraw, by Senate's rule on the latest semester's CGPA */
   probation?: Probation | null;
 }
 export interface Probation {
-  standing: "PROBATION" | "GOOD" | string; cgpa: number | null; pronounced_session: string | null; pronounced_semester: number | null;
+  standing: "PROBATION" | "ADVISED_TO_WITHDRAW" | "GOOD" | string; cgpa: number | null; pronounced_session: string | null; pronounced_semester: number | null;
   pronounced_level: number | null; probation_max_units: number | null;
 }
 export interface ClearanceUnit { unit: string; label: string; state: string; item: string | null; decided_at: string | null; clears_against: string; holds_for: string; office_code: string | null }

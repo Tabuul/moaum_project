@@ -318,6 +318,34 @@ class ResultsRepository {
                 .query(Sheets.BroadsheetCell.class).list();
     }
 
+    /** a student in the class — registered at this level this session in another semester, or at this level now in the
+     *  session in progress — with no approved registration for the semester: on the sheet as DID NOT REGISTER */
+    record ClassMember(UUID studentId, String number, String surname, String otherNames, String entryMode) {
+    }
+
+    List<ClassMember> unregistered(String prog, int level, String session, int sem) {
+        return jdbc.sql("""
+                SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode
+                  FROM people.student st
+                 WHERE st.programme_code = :prog
+                   AND (EXISTS (SELECT 1 FROM registration.course_registration r
+                                 WHERE r.student_id = st.id AND r.session = :session AND r.level = :level AND r.status IN ('APPROVED','LOCKED'))
+                        OR (st.current_level = :level AND st.status IN ('ACTIVE','PROBATION')
+                            AND EXISTS (SELECT 1 FROM policy.academic_session s WHERE s.name = :session AND current_date BETWEEN s.starts_on AND s.ends_on)))
+                   AND NOT EXISTS (SELECT 1 FROM registration.course_registration r
+                                    WHERE r.student_id = st.id AND r.session = :session AND r.semester = :sem AND r.status IN ('APPROVED','LOCKED'))
+                 ORDER BY st.surname, st.other_names
+                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem)
+                .query(ClassMember.class).list();
+    }
+
+    /** Senate's rule on a semester's cumulative standing (V246, assessment.standing_of): PROBATION, ADVISED_TO_WITHDRAW, or null */
+    String standingOf(int level, int sem, java.math.BigDecimal cgpa, java.math.BigDecimal prevCgpa, boolean deAt200) {
+        return jdbc.sql("SELECT assessment.standing_of(:l, :s, :c::numeric, :p::numeric, :de)")
+                .param("l", level).param("s", sem).param("c", cgpa).param("p", prevCgpa).param("de", deAt200)
+                .query(String.class).optional().orElse(null);
+    }
+
     /** the candidate's cumulative figures to a point (TCR, TCE, TWGP, CGPA, previous CGPA) */
     Sheets.Cumulative cumulative(UUID student, String session, int sem) {
         return jdbc.sql("SELECT tcr, tce, twgp, cgpa, prev_cgpa AS prevCgpa FROM assessment.student_cumulative(:s, :ss, :sem)")
