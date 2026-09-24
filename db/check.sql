@@ -246,7 +246,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 139
+\set EXPECTED 140
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2947,6 +2947,35 @@ BEGIN
     PERFORM pg_temp.assert('A script from a candidate not on the roll is held (a mark over the split refused), stays off the sheet until the registration is approved, is then released as the mark, and lapses past the late-registration date',
         refused AND held_before AND rel_state = 'RELEASED' AND l.total = 65 AND l.version = 1 AND lapsed >= 1 AND lap_state = 'LAPSED',
         format('refused=%s held_before=%s released=%s total=%s version=%s lapsed=%s lapse_state=%s', refused, held_before, rel_state, l.total, l.version, lapsed, lap_state));
+END $$;
+
+-- ── 17d. the College of Health Sciences' tables hold the prospectus, and its rules answer as it says (V245) ──
+DO $$
+DECLARE n_blocks int; n_postings int; n_exams int; n_subjects int; n_slots int; n_procs int; n_rules int; med_weeks int;
+        pe3_paed uuid; pe1_anat uuid; ok_pass boolean; ok_clin boolean; ok_fail boolean; ok_dist boolean; nxt1 text; nxt2 text; nxt3 text;
+BEGIN
+    SELECT count(*) INTO n_blocks FROM college.block;
+    SELECT count(*) INTO n_postings FROM college.posting;
+    SELECT count(*) INTO n_exams FROM college.professional_exam;
+    SELECT count(*) INTO n_subjects FROM college.exam_subject;
+    SELECT count(*) INTO n_slots FROM college.timetable_slot t JOIN college.posting p ON p.id = t.posting_id WHERE p.code = 'PSY';
+    SELECT count(*) INTO n_procs FROM college.procedure_requirement;
+    SELECT count(*) INTO n_rules FROM college.attendance_rule;
+    SELECT sum(duration_weeks)::int INTO med_weeks FROM college.posting p JOIN college.block b ON b.id = p.block_id WHERE b.code = 'MED';
+    SELECT s.id INTO pe3_paed FROM college.exam_subject s JOIN college.professional_exam e ON e.id = s.exam_id WHERE e.code = 'PE3' AND s.name = 'Paediatrics';
+    SELECT s.id INTO pe1_anat FROM college.exam_subject s JOIN college.professional_exam e ON e.id = s.exam_id WHERE e.code = 'PE1' AND s.name = 'Anatomy';
+    ok_pass := college.passes(pe1_anat, 20, 30);                 -- 50: a pass
+    ok_fail := NOT college.passes(pe1_anat, 20, 29);             -- 49: not
+    ok_clin := NOT college.passes(pe3_paed, 25, 40, 45) AND college.passes(pe3_paed, 25, 40, 50);   -- the clinical component must be 50 too
+    ok_dist := college.distinction('C00061', 70) AND NOT college.distinction('C00061', 69);
+    nxt1 := college.next_attempt('PE1', 3, 3);                   -- all three failed: repeat, no resit
+    nxt2 := college.next_attempt('PE1', 1, 3);                   -- one failed: resit
+    nxt3 := college.next_attempt('CPE', 1, 3);                   -- the CPE has no resit
+    PERFORM pg_temp.assert('The College tables hold the prospectus — eight blocks, the postings, Internal Medicine 34 weeks, the CPE and four Professionals with 13 subjects, Psychiatry''s 200 slots, nine Paediatrics procedures, three attendance rules — and its rules answer as it says',
+        n_blocks = 8 AND n_postings = 24 AND med_weeks = 34 AND n_exams = 5 AND n_subjects = 13 AND n_slots = 200 AND n_procs = 9 AND n_rules = 3
+        AND ok_pass AND ok_fail AND ok_clin AND ok_dist AND nxt1 = 'REPEAT' AND nxt2 = 'RESIT' AND nxt3 = 'REPEAT',
+        format('blocks=%s postings=%s med_weeks=%s exams=%s subjects=%s slots=%s procs=%s rules=%s pass=%s fail=%s clin=%s dist=%s next=%s/%s/%s',
+               n_blocks, n_postings, med_weeks, n_exams, n_subjects, n_slots, n_procs, n_rules, ok_pass, ok_fail, ok_clin, ok_dist, nxt1, nxt2, nxt3));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
