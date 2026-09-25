@@ -7,7 +7,7 @@
  * and name is the record's, and where the record has none, the screen says so.
  */
 import { useState } from "react";
-import { at, confirmedReference, dob, openReference, BODY, NEXT, STAGES, type Application } from "@/lib/applicant";
+import { at, confirmedReference, dob, openReference, reportingTime, BODY, NEXT, STAGES, type Application } from "@/lib/applicant";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Gate, Gates, money, Passport } from "@/components/proto/blocks";
@@ -47,7 +47,7 @@ export function Dashboard({ a }: { a: Application }) {
         <Panel title="Dates that matter" right={a.session}>
           <DTable cols={["When|mid", "What"]} rows={[
             [<span className="tnum sub2" key="d">{open ? when(open.expiresAt) : "—"}</span>, <Two key="w" a="Your payment reference expires" b={open ? "A new one is generated free of charge" : "No reference is open"} />],
-            [<span className="tnum sub2" key="d">{a.screeningSlip ? when(a.screeningSlip.heldOn) : "—"}</span>, <Two key="w" a="Post-UTME screening" b={a.screeningSlip ? `Batch ${a.screeningSlip.batch} · ${a.screeningSlip.venue}` : "Published when the batches are made"} />],
+            [<span className="tnum sub2" key="d">{a.screeningSlip ? when(a.screeningSlip.heldOn) : "—"}</span>, <Two key="w" a="Post-UTME screening" b={a.screeningSlip ? `Batch ${a.screeningSlip.batch} · ${a.screeningSlip.centre ?? a.screeningSlip.venue}${a.screeningSlip.room ? ` · ${a.screeningSlip.room}` : ""} · report ${reportingTime(a.screeningSlip)}` : "Published when the schedule is made"} />],
             [<span className="tnum sub2" key="d">{a.decisionReleasedAt ? when(a.decisionReleasedAt) : "—"}</span>, <Two key="w" a="Admission decision" b={a.decisionReleasedAt ? "Released" : "When the Board has met"} />],
             [<span className="tnum sub2" key="d">{a.acceptedAt ? when(a.acceptedAt) : "—"}</span>, <Two key="w" a="Offer accepted" b={a.acceptedAt ? "Your place is held" : "After the offer"} />],
             [<span className="tnum sub2" key="d">{a.clearedAt ? when(a.clearedAt) : "—"}</span>, <Two key="w" a="Cleared at the Registry" b={a.clearedAt ? "Every document seen" : "Originals presented in person"} />],

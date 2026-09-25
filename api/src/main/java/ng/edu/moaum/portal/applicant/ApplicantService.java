@@ -273,6 +273,9 @@ public class ApplicantService {
         String session = String.valueOf(a.get("session"));
         String key = String.valueOf(a.get("jamb_reg_no")).trim().toUpperCase();
         int stage = ((Number) a.get("stage")).intValue();
+        // a seat in a batch the desk has not yet published (V260) is not yet the candidate's to see
+        boolean draftBatch = "DRAFT".equals(String.valueOf(a.get("batch_state")));
+        if (draftBatch && stage == 3) stage = 2;
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("id", a.get("id"));
         v.put("session", session);
@@ -321,7 +324,7 @@ public class ApplicantService {
         v.put("jambPassport", repo.jambPassport(session, key).orElse(null));
         v.put("submittedAt", a.get("submitted_at"));
 
-        if (a.get("screening_batch_id") != null) {
+        if (a.get("screening_batch_id") != null && !draftBatch) {
             Map<String, Object> slip = new LinkedHashMap<>();
             slip.put("batch", a.get("batch_label"));
             slip.put("heldOn", a.get("held_on"));
@@ -329,6 +332,23 @@ public class ApplicantService {
             slip.put("endsAt", a.get("ends_at"));
             slip.put("venue", a.get("venue"));
             slip.put("seat", a.get("seat"));
+            // the CBT placing (V260): the centre, the room, the workstation, the reporting time, the token the slip's QR carries
+            slip.put("published", !"DRAFT".equals(String.valueOf(a.get("batch_state"))));
+            slip.put("batchState", a.get("batch_state"));
+            slip.put("centre", a.get("centre_name"));
+            slip.put("centreLocation", a.get("centre_location"));
+            slip.put("centreAddress", a.get("centre_address"));
+            slip.put("room", a.get("room_name"));
+            slip.put("workstation", a.get("workstation"));
+            slip.put("examName", a.get("exam_name"));
+            slip.put("checkinMinutes", a.get("checkin_minutes"));
+            slip.put("instructions", a.get("exam_instructions"));
+            slip.put("venueInstructions", a.get("venue_instructions"));
+            slip.put("contact", a.get("exam_contact"));
+            slip.put("token", a.get("putme_token"));
+            slip.put("attendance", a.get("attendance"));
+            slip.put("examStatus", a.get("exam_status"));
+            slip.put("checkedInAt", a.get("checked_in_at"));
             v.put("screeningSlip", slip);
         } else {
             v.put("screeningSlip", null);

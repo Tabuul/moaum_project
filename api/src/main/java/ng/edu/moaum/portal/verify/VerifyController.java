@@ -315,4 +315,49 @@ class VerifyController {
                 .map(r -> { Map<String, Object> m = new java.util.LinkedHashMap<>(); m.put("genuine", true); m.putAll(r); return m; })
                 .orElse(Map.of("genuine", false));
     }
+
+    /**
+     * A Post-UTME examination slip, by the token its QR carries (V260): the candidate's name and PHOTO, the
+     * batch, the day, the time, the centre, the room and the seat, and whether the candidate has been checked
+     * in — so a cloned or altered slip is exposed at the door. Nothing is shown until the schedule is published.
+     */
+    @GetMapping("/putme/{token}")
+    @Transactional(readOnly = true)
+    Map<String, Object> putme(@PathVariable String token) {
+        String t = token == null ? "" : token.trim().toLowerCase().replaceAll("[^a-f0-9]", "");
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT a.id, a.application_no, c.surname || ', ' || c.other_names AS name, c.jamb_reg_no, c.programme, a.session,
+                       b.label AS batch, b.held_on, b.starts_at, b.ends_at, b.state AS batch_state, coalesce(cc.name, b.venue) AS centre, cc.location, cr.name AS room, a.seat,
+                       px.name AS exam, px.checkin_minutes, sa.attendance, sa.checked_in_at,
+                       (SELECT d.id FROM admissions.application_document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL ORDER BY d.id LIMIT 1) AS passport_id
+                  FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                  LEFT JOIN admissions.screening_batch b ON b.id = a.screening_batch_id
+                  LEFT JOIN admissions.cbt_centre cc ON cc.id = b.centre_id LEFT JOIN admissions.cbt_room cr ON cr.id = b.room_id
+                  LEFT JOIN admissions.putme_exam px ON px.id = b.exam_id
+                  LEFT JOIN admissions.screening_assignment sa ON sa.application_id = a.id AND sa.state = 'ACTIVE'
+                 WHERE a.putme_token = :t
+                """).param("t", t).query().listOfRows();
+        if (t.isEmpty() || rows.isEmpty() || rows.get(0).get("batch") == null || "DRAFT".equals(String.valueOf(rows.get(0).get("batch_state")))) {
+            out.put("genuine", false); return out;
+        }
+        Map<String, Object> r = rows.get(0);
+        out.put("genuine", true);
+        for (String k : List.of("application_no", "name", "jamb_reg_no", "programme", "session", "batch", "held_on", "starts_at", "ends_at", "batch_state", "centre", "location", "room", "seat", "exam", "checkin_minutes", "attendance", "checked_in_at")) out.put(k, r.get(k));
+        String photo = null;
+        Object pid = r.get("passport_id");
+        if (pid != null) {
+            List<Map<String, Object>> b = jdbc.sql("SELECT encode(content, 'base64') AS b64 FROM admissions.application_document_blob WHERE document_id = :d").param("d", pid).query().listOfRows();
+            if (!b.isEmpty() && b.get(0).get("b64") != null) photo = "data:image/jpeg;base64," + b.get(0).get("b64");
+        }
+        if (photo == null) {
+            List<Map<String, Object>> at = jdbc.sql("""
+                    SELECT at.payload->>'dataUrl' AS url FROM admissions.attachment at JOIN admissions.application a ON a.id = :a
+                     WHERE at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl') AND at.candidate_id = a.candidate_id ORDER BY at.arrived_at DESC LIMIT 1
+                    """).param("a", r.get("id")).query().listOfRows();
+            if (!at.isEmpty() && at.get(0).get("url") != null) photo = String.valueOf(at.get(0).get("url"));
+        }
+        out.put("photo", photo);
+        return out;
+    }
 }

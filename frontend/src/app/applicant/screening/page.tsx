@@ -1,7 +1,7 @@
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { loadApplication } from "../load";
-import { Screening } from "../Screens2";
+import { Screening } from "../ScreeningSlip";
 
 export const dynamic = "force-dynamic";
 

@@ -73,6 +73,7 @@ export const ROUTES: Record<string, string> = {
   "t/pgclearance": "/admissions/postgraduate/clearance",
   "t/postutme": "/admissions/computed-screening",
   "t/screening": "/admissions/screening",
+  "t/putme-cbt": "/admissions/putme",
   "t/putme": "/admissions/scores",
   "t/candidatedata": "/admissions/candidate-data",
   "t/migrate": "/admissions/migrate",

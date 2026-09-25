@@ -485,6 +485,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
           { "id": "t/postutme", "icon": "chart", "label": "Compute PUTME Score" },
           { "id": "t/screening", "icon": "chart", "label": "Screening Register" },
+          { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/putme", "icon": "doc", "label": "Upload PUTME Score" },
           { "id": "t/merit", "icon": "chart", "label": "Merit List" },
           { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry Screening" },
@@ -737,6 +738,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions", "badge": "!" },
+          { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/resultdesk", "icon": "check", "label": "Validation Desk", "badge": "12" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
@@ -790,6 +792,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/senate", "icon": "scale", "label": "Senate Schedule", "badge": "!" },
+          { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
@@ -893,6 +896,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
+          { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
@@ -990,6 +994,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
+          { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" }
         ]
@@ -1057,6 +1062,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
+          { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" }
         ]
       },
@@ -1187,6 +1193,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
+          { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" }
         ]

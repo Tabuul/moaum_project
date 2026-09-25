@@ -9,59 +9,10 @@
 import { at, type Application } from "@/lib/applicant";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Tick, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Bar, Passport } from "@/components/proto/blocks";
-import { Rail, clock, onDay, when } from "./common";
+import { Bar } from "@/components/proto/blocks";
+import { Rail, when } from "./common";
 
-/* ── 4. screening slip ── */
-
-export function Screening({ a }: { a: Application }) {
-  const slip = a.screeningSlip;
-  if (!at(a, 3) || !slip) {
-    return (
-      <>
-        <Note kind="info" title="Your screening batch has not been published yet">
-          Batches are published once applications close, so that every candidate is placed. You will be notified by email and SMS, and the slip will appear here.
-        </Note>
-        <Rail a={a} />
-      </>
-    );
-  }
-  const passport = a.documents.find((d) => d.kind === "PASSPORT");
-  return (
-    <>
-      <Note kind={at(a, 4) ? "ok" : "info"} title={at(a, 4) ? `You were screened on ${onDay(slip.heldOn)}` : "Bring this slip and a valid identification document"}
-        action={<span className="row row--inline row--tight">{at(a, 4) ? <LinkBtn kind="primary" href="/applicant/score">See your screening result</LinkBtn> : null}<a href="/applicant/screening/slip" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Download slip (PDF)</a></span>}>
-        {at(a, 4) ? "This slip is kept for your records. Your score is on the screening result page." : "You will not be admitted into the hall without both. Arrive thirty minutes before your session; the doors close when it begins."}
-      </Note>
-      <Panel title="Post-UTME screening slip" right={a.applicationNo}>
-        <PBody>
-          <div className="row row--top" style={{ gap: "var(--s-5)" }}>
-            <Passport w={84} h={104} src={passport ? `/api/bff/api/v1/applicant/me/documents/${passport.id}/content` : a.jambPassport ?? null} alt="Your passport photograph" />
-            <div style={{ flexGrow: 1, minWidth: 220 }}>
-              <div className="phead__t" style={{ fontFamily: "var(--serif)" }}>{a.name}</div>
-              <div className="sub2">{a.applicationNo} &middot; JAMB {a.jambKey}</div>
-              <div className="sub2">{a.programme ?? "—"}{a.faculty ? ` · Faculty of ${a.faculty}` : ""}</div>
-            </div>
-          </div>
-          <div className="hr" />
-          <KvGrid cls="grid--3" pairs={[
-            ["Batch", slip.batch], ["Date", onDay(slip.heldOn)],
-            ["Session", `${clock(slip.startsAt)} – ${clock(slip.endsAt)}`], ["Venue", slip.venue],
-            ["Seat", <span className="tnum" key="s">{slip.seat}</span>], ["Bring", "This slip and photo identification"],
-          ]} />
-        </PBody>
-      </Panel>
-      <Panel title="What to bring, and what you may not">
-        <DTable cols={["Bring", "Do not bring"]} rows={[
-          ["This slip, printed or on your phone", "Any phone, watch or electronic device into the hall"],
-          ["Your JAMB result slip", "Written material of any kind"],
-          ["A valid photo identification document", "Bags — there is no storage at the venue"],
-          ["A dark pen", "Anyone who is not sitting the screening"],
-        ]} />
-      </Panel>
-    </>
-  );
-}
+/* ── 4. screening slip: ScreeningSlip.tsx (V260) ── */
 
 /* ── 5. screening result ── */
 

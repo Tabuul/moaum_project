@@ -91,7 +91,10 @@ class ApplicantRepository {
                        (SELECT d.payload ->> 'dob' FROM admissions.attachment d WHERE d.candidate_id = c.id AND d.kind = 'DATE_OF_BIRTH' ORDER BY d.arrived_at DESC LIMIT 1) AS dob,
                        acc.email, acc.phone,
                        s.admission_no, s.matric_no, s.programme_code AS student_programme, s.id AS student_id,
-                       sb.label AS batch_label, sb.held_on, sb.starts_at, sb.ends_at, sb.venue
+                       sb.label AS batch_label, sb.held_on, sb.starts_at, sb.ends_at, sb.venue, sb.state AS batch_state,
+                       cc.name AS centre_name, cc.location AS centre_location, cc.address AS centre_address, cr.name AS room_name,
+                       px.name AS exam_name, px.checkin_minutes, px.instructions AS exam_instructions, px.venue_instructions, px.contact AS exam_contact,
+                       a.putme_token, sa.attendance, sa.exam_status, sa.checked_in_at, w.label AS workstation
                   FROM admissions.application a
                   JOIN admissions.applicant_account acc ON acc.id = a.account_id
                   JOIN admissions.candidate c ON c.id = a.candidate_id
@@ -99,6 +102,11 @@ class ApplicantRepository {
                   LEFT JOIN admissions.caps_batch b ON b.id = r.batch_id
                   LEFT JOIN people.student s ON s.candidate_id = c.id
                   LEFT JOIN admissions.screening_batch sb ON sb.id = a.screening_batch_id
+                  LEFT JOIN admissions.cbt_centre cc ON cc.id = sb.centre_id
+                  LEFT JOIN admissions.cbt_room cr ON cr.id = sb.room_id
+                  LEFT JOIN admissions.putme_exam px ON px.id = sb.exam_id
+                  LEFT JOIN admissions.screening_assignment sa ON sa.application_id = a.id AND sa.state = 'ACTIVE'
+                  LEFT JOIN admissions.cbt_workstation w ON w.id = sa.workstation_id
                  WHERE a.id = :id
                 """).param("id", applicationId).query().listOfRows().stream().findFirst();
     }

@@ -9,7 +9,23 @@ export interface OlGrade { subject: string; grade: string }
 export interface OlSitting { body: string; type: string | null; year: string | null; examNumber: string | null; subjects: OlGrade[] }
 export interface FeeReference { id: string; kind: "APPLICATION" | "ACCEPTANCE"; reference: string; amount: number; generatedAt: string; expiresAt: string; confirmedAt: string | null; channel: string | null }
 export interface ApplicationDocument { id: string; kind: string; filename: string; contentType: string; bytes: number; uploadedAt: string; status: "PENDING" | "ACCEPTED" | "REJECTED"; reviewedAt: string | null; reviewNote: string | null }
-export interface ScreeningSlip { batch: string; heldOn: string; startsAt: string; endsAt: string; venue: string; seat: string }
+export interface ScreeningSlip {
+  batch: string; heldOn: string; startsAt: string; endsAt: string; venue: string; seat: string;
+  /** the CBT placing (V260): published only once the desk publishes the schedule */
+  published: boolean; batchState: string | null; centre: string | null; centreLocation: string | null; centreAddress: string | null; room: string | null; workstation: string | null;
+  examName: string | null; checkinMinutes: number | null; instructions: string | null; venueInstructions: string | null; contact: string | null; token: string | null;
+  attendance: string | null; examStatus: string | null; checkedInAt: string | null;
+}
+/** the time the candidate reports at the door: the batch's start less the examination's check-in minutes, HH:MM */
+export function reportingTime(slip: ScreeningSlip): string {
+  const [h, m] = String(slip.startsAt).slice(0, 5).split(":").map(Number);
+  const t = Math.max(0, h * 60 + m - (slip.checkinMinutes ?? 30));
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+/** the public page the slip's QR opens */
+export function putmeVerifyPath(token: string): string {
+  return `/verify/putme/${encodeURIComponent(token)}`;
+}
 export interface ScreeningResult {
   utme: number | null;
   utmeScaled: number | null;
