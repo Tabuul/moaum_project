@@ -50,6 +50,17 @@ class CredentialsIT {
     @Test
     void aTranscriptIsProducedByOneOfficerAndSignedByAnother() {
         UUID student = it.student("ZZCTRANSCRIPT", "C00023", null, "MOAUM/MTC/95/9001", 400);
+        // a transcript is generated from the published record (V262): one published result stands on this student
+        it.db(() -> {
+            jdbc.sql("INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), :s, :sess, 400) ON CONFLICT (student_id, session) DO NOTHING").param("s", student).param("sess", SESSION).update();
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES ('ZZC 401', 'A course for the transcript test', 3, 1, 400, 'MTC', 'LIVE') ON CONFLICT (code) DO NOTHING").update();
+            UUID offering = jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZC 401', :sess, 1) ON CONFLICT (course_code, session, semester) DO UPDATE SET semester = EXCLUDED.semester RETURNING id").param("sess", SESSION).query(UUID.class).single();
+            UUID reg = jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (gen_random_uuid(), :s, :sess, 1, 400, 'APPROVED', now()) ON CONFLICT (student_id, session, semester) DO UPDATE SET status = 'APPROVED' RETURNING id").param("s", student).param("sess", SESSION).query(UUID.class).single();
+            jdbc.sql("INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (:r, :o, 3, 'APPROVED') ON CONFLICT (registration_id, offering_id) DO NOTHING").param("r", reg).param("o", offering).update();
+            UUID es = jdbc.sql("INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, state, opened_at) VALUES (gen_random_uuid(), :sess, 1, 'MAIN', DATE '2095-12-08', DATE '2095-12-19', DATE '2096-01-16', 'OPEN', now()) ON CONFLICT (session, semester, kind) DO UPDATE SET state = 'OPEN' RETURNING id").param("sess", SESSION).query(UUID.class).single();
+            UUID sheet = jdbc.sql("INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id, stage, senate_minute, published_at, submitted_at) VALUES (gen_random_uuid(), :o, :es, 'PUBLISHED', 'SEN/2095/01', now(), now()) ON CONFLICT (offering_id, exam_session_id) DO UPDATE SET stage = 'PUBLISHED' RETURNING id").param("o", offering).param("es", es).query(UUID.class).single();
+            return jdbc.sql("INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (:sh, :s, 30, 45) ON CONFLICT (sheet_id, student_id, version) DO NOTHING").param("sh", sheet).param("s", student).update();
+        });
 
         ResponseEntity<Map> req = it.call(academic, HttpMethod.POST, "/api/v1/credentials/transcript-requests",
                 Map.of("studentId", student.toString(), "destination", "EMPLOYER", "destinationName", "An invented employer", "mode", "DIGITAL", "copies", 1, "paid", false));

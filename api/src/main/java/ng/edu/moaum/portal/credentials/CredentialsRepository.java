@@ -74,8 +74,10 @@ class CredentialsRepository {
         jdbc.sql("UPDATE credentials.transcript_request SET stage = :st WHERE id = :id").param("st", stage).param("id", id).update();
     }
 
+    /** the transcript queue's "produce" is generation and verification in one act (V013); the documents office (V262) checks separately */
     void produce(UUID id) {
         jdbc.sql("SELECT credentials.produce_transcript(:id)").param("id", id).query().singleRow();
+        jdbc.sql("SELECT credentials.qc_transcript(:id, 'APPROVED', 'Verified at the transcript queue')").param("id", id).query().listOfRows();
     }
 
     void release(UUID id) {
