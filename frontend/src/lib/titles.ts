@@ -20,6 +20,8 @@ export const TITLES: Record<string, [string, string]> = {
   "t/myprofile": ["My Profile", "Your record"],
   "s/pgprogress": ["Academic Progress", "Coursework, research and graduation requirements"],
   "t/collegepayments": ["Student Payment Report", "The College's fees position"],
+  "t/deferments": ["Deferments", "Requests, decisions, returns"],
+  "s/deferment": ["Deferment", "Defer a semester or a session"],
   "t/studentstats": ["Student Statistics", "Paid, registered, paid not registered, not paid"],
   "t/staffupload": [
     "Non-Academic Staff",

@@ -74,6 +74,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
         ["Research", research ? (RESEARCH_WORD[research.stage] ?? research.stage) : "—", research && research.stage !== "WITHDRAWN" ? "var(--chrome)" : null, research ? (step ? step[0] : "") : "Not started", "/student/research"],
         ["Supervisor", supervisors[0]?.name ?? "—", null, supervisors.length > 1 ? `and ${supervisors.length - 1} more` : supervisors.length ? (supervisors[0].role === "FIRST" ? "Main supervisor" : supervisors[0].role.toLowerCase()) : "Not yet assigned", "/student/research"],
         ["Pending tasks", String(deadlines.filter((d) => d[2] !== "grey").length), deadlines.some((d) => d[2] === "bad") ? "var(--red-ink)" : deadlines.some((d) => d[2] === "warn") ? "var(--amber-ink)" : null, deadlines.length ? deadlines.filter((d) => d[2] !== "grey").map((d) => d[0]).join(" · ") || "Nothing overdue" : "Nothing due"],
+        ["Deferment", s.status === "DEFERRED" ? "Active" : "None", s.status === "DEFERRED" ? "var(--amber-ink)" : null, s.status === "DEFERRED" ? "See your expected return" : "Defer a semester or session", "/student/deferment"],
         ["Graduation", graduated ? "Graduated" : elig ? `${met} / ${elig.length}` : "—", graduated ? "var(--green-ink)" : elig && met === elig.length ? "var(--green-ink)" : null, graduated ? (pg?.graduand?.award ? `${pg.graduand.award} · ${pg.graduand.session}` : "Award recorded") : "Requirements met", "/student/pg-progress"],
       ]} />
 

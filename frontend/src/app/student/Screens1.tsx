@@ -195,6 +195,7 @@ export function Dashboard({ s }: { s: Me }) {
         ) : (
           <Quick icon="doc" title="Transcript" sub="Request an official copy" href="/student/transcript" />
         )}
+        <Quick icon="cal" title="Deferment" sub={s.status === "DEFERRED" ? "Deferment active — see your return" : "Defer a semester or session"} href="/student/deferment" />
         <Quick icon="book" title="Course form" sub={reg && (reg.status === "APPROVED" || reg.status === "LOCKED") ? "Ready to print" : "After approval"} href={reg && (reg.status === "APPROVED" || reg.status === "LOCKED") ? "/student/form" : null} />
       </div>
 
