@@ -1,169 +1,173 @@
-/** rLecturer — proto/part17.html: what the lecturer owes, two ways in, the courses this semester. */
+/** rLecturer — the lecturer's desk: the session and semester in progress, the figures counted from their
+ *  own score sheets, every course allocated to them with what each one needs next, the deadlines, the
+ *  latest notices and the doors to everything else. Every number is read from the register; nothing is typed
+ *  beside it, and a course that is not allocated to this lecturer is not on this page. */
 import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
-import { stageOf, type MySheet } from "@/lib/results";
-import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import type { MySheet } from "@/lib/results";
+import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
+import { semesterName } from "@/lib/student-portal";
+import { StandingPil, classListHref, dayOf, dueWords, standingOf, tally, whenAt, type StaffNotice } from "@/lib/lecturer";
+import type { AllocationRow } from "./AllocationHistory";
 
-export function LecturerDashboard({ me, sheets, session, history = [] }: { me: Me | null; sheets: MySheet[]; session: string; history?: AllocationRow[] }) {
-  const owed = sheets.filter((s) => s.stage === "ENTRY" && s.entered === 0);
-  const open = sheets.filter((s) => s.stage === "ENTRY");
-  const first = owed[0] ?? open[0] ?? sheets[0] ?? null;
-  const candidates = sheets.reduce((n, s) => n + s.candidates, 0);
-  const queries = sheets.reduce((n, s) => n + (s.openQueries ?? 0), 0);
-  const overdue = open.filter((s) => (s.daysLate ?? 0) > 0);
-  const dueSoon = open.filter((s) => s.daysToDue != null && s.daysToDue >= 0 && s.daysToDue <= 7);
-  const noBank = open.filter((s) => (s.bankQuestions ?? 0) === 0);
-  const dueLabel = (s: MySheet) => { const d = s.daysToDue; if (d == null) return "No date set"; if (d < 0) return `${-d} day${d === -1 ? "" : "s"} overdue`; return d === 0 ? "Due today" : `${d} day${d === 1 ? "" : "s"} to go`; };
+export function LecturerDashboard({ me, sheets, session, semester = null, history = [], notices = [] }: {
+  me: Me | null; sheets: MySheet[]; session: string; semester?: number | null; history?: AllocationRow[]; notices?: StaffNotice[];
+}) {
+  const t = tally(sheets);
+  const thisSemester = semester ? sheets.filter((s) => s.semester === semester) : sheets;
+  const first = t.notStarted[0] ?? t.inProgress[0] ?? sheets[0] ?? null;
+  const overdue = t.open.filter((s) => (s.daysLate ?? 0) > 0);
+  const dueSoon = t.open.filter((s) => s.daysToDue != null && s.daysToDue >= 0 && s.daysToDue <= 7);
+  const pastSessions = new Set(history.filter((h) => h.session !== session).map((h) => h.session)).size;
+  const semesterWord = semester ? `${semesterName(semester)} semester` : "No semester open yet";
+
+  /* what each course needs next, by its standing — the one button a lecturer looks for */
+  const nextAct = (s: MySheet): [string, "primary" | "urgent" | "go" | "ghost"] => {
+    switch (standingOf(s)) {
+      case "NOT_STARTED": return ["Enter Marks", "urgent"];
+      case "IN_PROGRESS": return [s.entered < s.candidates ? "Continue Entry" : "Submit Sheet", s.entered < s.candidates ? "primary" : "go"];
+      case "SUBMITTED": return ["Track Approval", "ghost"];
+      default: return ["View Result", "ghost"];
+    }
+  };
+
   return (
     <>
+      {/* the session and semester the desk is working in, and who is at it */}
+      <div className="card">
+        <div className="card__body">
+          <KvGrid cls="grid--4" pairs={[
+            ["Lecturer", <strong key="n">{me?.name ?? "Lecturer"}</strong>],
+            ["Staff number", <span key="s" className="tnum">{me?.staffNumber ?? "—"}</span>],
+            ["Current session", <strong key="se" className="tnum">{session}</strong>],
+            ["Semester in progress", <span key="sm"><Pil kind={semester ? "ok" : "grey"}>{semesterWord}</Pil></span>],
+          ]} />
+        </div>
+      </div>
+
       {sheets.length === 0 ? (
-        <Note kind="info" title="No score sheet is assigned to you this session">
-          A sheet appears here when the department allocates you a course and the Academic Office opens the examination session. Until then there is nothing to enter, and nothing is shown as if there were.
+        <Note kind="info" title={`No course is allocated to you in ${session}`}>
+          A course appears here when your Head of Department allocates it to you and the Academic Office opens the examination session. Until then there is nothing to enter, and nothing is shown as if there were.
+          {pastSessions ? <span className="blk">Your courses from earlier sessions are under <Link className="lnk" href="/me/courses">Course History</Link>.</span> : null}
         </Note>
-      ) : owed.length ? (
-        <Note kind="bad" title={owed.length === 1 ? "One score sheet is not entered" : `${owed.length} score sheets are not entered`} action={<>{first ? <LinkBtn kind="urgent" href={`/results/sheets/${first.id}`}>Enter {first.courseCode} marks</LinkBtn> : null} <LinkBtn kind="ghost" href="/results/sheets">All score sheets</LinkBtn></>}>
-          {owed.map((c) => <span key={c.id}><b className="tnum">{c.courseCode}</b> ({c.candidates} candidates)</span>).reduce<React.ReactNode[]>((acc, x, i) => (i ? [...acc, " and ", x] : [x]), [])} {owed.length === 1 ? "has" : "have"} no marks against {owed.length === 1 ? "it" : "them"}. A sheet that misses Senate waits for the next sitting, and those students carry an incomplete result into the next semester.
+      ) : t.notStarted.length ? (
+        <Note kind="bad" title={t.notStarted.length === 1 ? "One score sheet has no marks yet" : `${t.notStarted.length} score sheets have no marks yet`}
+          action={<>{first ? <LinkBtn kind="urgent" href={`/results/sheets/${first.id}`}>Enter {first.courseCode} Marks</LinkBtn> : null} <LinkBtn href="/results/sheets">All Score Sheets</LinkBtn></>}>
+          {t.notStarted.map((c) => `${c.courseCode} (${c.candidates} registered)`).join(", ")}. A sheet that misses Senate waits for the next sitting, and those students carry an incomplete result into the next semester.
         </Note>
-      ) : open.length ? (
-        <Note kind="info" title={`${open.length} sheet${open.length === 1 ? " is" : "s are"} still with you`} action={<LinkBtn kind="primary" href="/results/sheets">All score sheets</LinkBtn>}>
-          Marks are entered but not yet attested. A sheet leaves this desk when every candidate carries a mark or an outcome and you submit it.
+      ) : t.inProgress.length ? (
+        <Note kind="info" title={`${t.inProgress.length} sheet${t.inProgress.length === 1 ? " is" : "s are"} still with you`} action={<LinkBtn kind="primary" href="/results/sheets">All Score Sheets</LinkBtn>}>
+          Marks are entered but not yet submitted. A sheet leaves your desk when every registered candidate carries a mark or an outcome and you submit and attest it.
         </Note>
       ) : (
-        <Note kind="ok" title="Every sheet you owe is entered" action={<LinkBtn kind="ghost" href="/results/sheets">All score sheets</LinkBtn>}>
+        <Note kind="ok" title="Every sheet you owe has been submitted" action={<LinkBtn href="/results/sheets">All Score Sheets</LinkBtn>}>
           All {sheets.length} of your sheets carry a mark or an outcome against every registered candidate. Nothing is waiting on you for this Senate.
         </Note>
       )}
 
-      {queries ? (
-        <Note kind="info" title={`${queries} result quer${queries === 1 ? "y" : "ies"} raised on your courses`}>
-          A student has questioned a mark in a course you teach. Result queries are routed to and answered by your department on the record; a corrected mark flows back through the chain.
-        </Note>
-      ) : null}
-
-      {open.length ? (
-        <Panel title="Score-sheet deadlines" right={overdue.length ? `${overdue.length} overdue` : dueSoon.length ? `${dueSoon.length} due within a week` : "On track"}>
-          <DTable cols={["Course", "Registered|mid", "Entered|mid", "Due|mid", "Deadline|num"]}
-            rows={[...open].sort((a, b) => (a.daysToDue ?? 9999) - (b.daysToDue ?? 9999)).map((s) => {
-              const late = (s.daysLate ?? 0) > 0;
-              const soon = !late && dueSoon.includes(s);
-              return [
-                <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}</div></span>,
-                <span className="tnum" key="r">{s.candidates}</span>,
-                <span className={`tnum${s.entered < s.candidates ? " ink-red b700" : ""}`} key="e">{s.entered}</span>,
-                <span className="tnum sub2" key="d">{s.dueOn ? new Date(s.dueOn).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—"}</span>,
-                <Pil key="l" kind={late ? "bad" : soon ? "info" : "grey"}>{dueLabel(s)}</Pil>,
-              ];
-            })} texts={open.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
-          <PBody><div className="sub2">A sheet still at entry after its due date is overdue; a sheet that misses Senate waits for the next sitting, and its candidates carry an incomplete result.</div></PBody>
-        </Panel>
-      ) : null}
-
-      <Panel title="Submitting your marks" right={first ? `${first.courseCode} — other courses under All score sheets` : "Two ways in — they meet at the same score sheet"}>
-        <PBody>
-          <div className="ways">
-            <div className="way">
-              <div className="way__h"><span className="way__i"><Ico name="doc" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Download score sheet</span></div>
-              <div className="way__s">Get this course’s live register as a CSV — every registered candidate already on it. Fill the two columns, <b>CA</b> and <b>Exam</b>, and leave the total, grade and point to the system. Or open the sheet and type the marks straight in.</div>
-              <div className="way__b">{first ? <><a href={`/results/sheets/${first.id}/template`} className="btn btn--primary btn--sm">Download score sheet</a> <LinkBtn kind="ghost" href={`/results/sheets/${first.id}`}>Open the sheet</LinkBtn></> : <Btn kind="primary" disabled>No sheet yet</Btn>}</div>
-            </div>
-            <div className="way">
-              <div className="way__h"><span className="way__i"><Ico name="box" size={20} stroke="currentColor" w={1.9} /></span><span className="way__t">Upload computed score sheet</span></div>
-              <div className="way__s">Filled the sheet offline? Upload it on the score sheet — it is <b>checked before anything is written</b>, and accepted whole or not at all. The total, grade and point are computed from your CA and Exam by the scheme in force; nobody types a grade.</div>
-              <div className="way__b">{first ? <LinkBtn kind="primary" href={`/results/sheets/${first.id}`}>Upload computed score sheet</LinkBtn> : <Btn kind="primary" disabled>No sheet yet</Btn>}</div>
-            </div>
-          </div>
-        </PBody>
-      </Panel>
-
-      <Panel title="Your staff profile" right="Your CV as the University holds it">
-        <PBody>
-          <div className="row row--between" style={{ gap: "var(--s-3)" }}>
-            <div className="sub2" style={{ maxWidth: 620 }}>
-              Keep your own record current — a recent photograph, your department and responsibility, Google Scholar and research
-              interests, and the lists that grow over a career: publications, grants, the postgraduates you have graduated,
-              collaborations, conferences, assignments, innovations, patents, achievements and contributions to society.
-            </div>
-            <LinkBtn kind="primary" href="/me/profile">Upload &amp; edit my profile</LinkBtn>
-          </div>
-        </PBody>
-      </Panel>
-
       <Tiles items={[
-        ["Courses this session", String(sheets.length), null, `${sheets.filter((s) => s.mine).length} as lecturer, ${sheets.filter((s) => !s.mine).length} as second examiner`],
-        ["Candidates taught", String(candidates), null, "Across every roll"],
-        ["Sheets outstanding", String(open.length), open.length ? "var(--red-ink)" : "var(--green-ink)", "Not yet attested"],
-        ["Signed in as", me?.name ?? "Lecturer", null, me?.staffNumber ?? ""],
+        ["Assigned courses", String(t.courses), null, `${t.asLecturer} as lecturer · ${t.courses - t.asLecturer} as second examiner or co-lecturer`],
+        [semester ? `Courses this semester` : "Courses this session", String(thisSemester.length), null, semester ? `${semesterName(semester)} semester of ${session}` : session],
+        ["Registered students", String(t.students), null, "Across every roll, from approved registrations"],
+        ["Not started", String(t.notStarted.length), t.notStarted.length ? "var(--red-ink)" : "var(--green-ink)", "Sheets with no mark yet"],
+        ["In progress", String(t.inProgress.length), t.inProgress.length ? "var(--amber-ink)" : null, "Marks entered, not yet submitted"],
+        ["Awaiting approval", String(t.submitted.length), t.submitted.length ? "var(--chrome)" : null, "Submitted, on the way to Senate"],
+        ["Published", String(t.published.length), t.published.length ? "var(--green-ink)" : null, "Approved by Senate this session"],
+        ["Result queries", String(t.queries), t.queries ? "var(--amber-ink)" : null, t.queries ? "Raised by students on your courses" : "None open on your courses"],
       ]} />
 
-      <Panel title="Your teaching desks" right="Everything for your courses">
-        <PBody>
-          <div className="row">
-            <LinkBtn kind="ghost" href="/me/teaching">My teaching & timetable</LinkBtn>
-            <LinkBtn kind="ghost" href="/results/sheets">All score sheets{open.length ? ` (${open.length})` : ""}</LinkBtn>
-            <LinkBtn kind="ghost" href="/lms">Course spaces</LinkBtn>
-            <LinkBtn kind="ghost" href="/registration/class-list">Registered students</LinkBtn>
-            <LinkBtn kind="ghost" href="/exams/question-bank">CBT question bank</LinkBtn>
-            <LinkBtn kind="ghost" href="/me/profile">My staff profile</LinkBtn>
-          </div>
-        </PBody>
-      </Panel>
-
-      <Panel title="My courses this session" right={`${session} · every course can be typed or uploaded`}>
-        {sheets.length === 0 ? <div className="card__body sub2">Nothing allocated to you in {session}.</div> : (
-          <DTable cols={["Course", "Units|mid", "Registered|mid", "CA entered|mid", "Marks entered|mid", "Result stage", "Enter marks|num"]}
-            rows={sheets.map((s) => {
-              const st = stageOf(s);
+      <Panel title="My assigned courses" right={`${session} · ${semesterWord.toLowerCase()} · ${sheets.length} course${sheets.length === 1 ? "" : "s"}`}>
+        {sheets.length === 0 ? <PBody><div className="sub2">Nothing allocated to you in {session}.</div></PBody> : (
+          <DTable pageSize={0} cols={["Course", "Sem|mid", "Units|mid", "Registered|mid", "Entered|mid", "Status", "Due|mid", "|num"]}
+            rows={[...sheets].sort((a, b) => a.semester - b.semester || a.courseCode.localeCompare(b.courseCode)).map((s) => {
+              const [act, kind] = nextAct(s);
+              const late = (s.daysLate ?? 0) > 0;
               return [
-                <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}{s.mine ? "" : " · second examiner"}</div></span>,
-                <span className="tnum" key="u">{s.units}</span>,
-                <span className="tnum" key="n">{s.candidates}</span>,
-                <span className="tnum sub2" key="ca">{s.caEntered}/{s.candidates}</span>,
-                <span className={`tnum${s.entered < s.candidates ? " ink-red b700" : ""}`} key="e">{s.entered}</span>,
-                <Pil key="p" kind={st.pill}>{st.text}</Pil>,
-                <LinkBtn key="a" kind={st.kind} href={`/results/sheets/${s.id}`}>{st.act}</LinkBtn>,
+                <span key="c"><Link className="lnk b600 tnum" href={`/results/sheets/${s.id}`}>{s.courseCode}</Link><div className="sub2">{s.courseTitle}{s.mine ? "" : " · second examiner"}{s.heldScripts ? ` · ${s.heldScripts} held script${s.heldScripts === 1 ? "" : "s"}` : ""}</div></span>,
+                <span key="m" className="tnum">{s.semester}</span>,
+                <span key="u" className="tnum">{s.units}</span>,
+                <span key="r" className="tnum">{s.candidates}</span>,
+                <span key="e" className={`tnum${s.stage === "ENTRY" && s.entered < s.candidates ? " ink-red b700" : ""}`}>{s.entered}<span className="sub2"> / {s.candidates}</span></span>,
+                <StandingPil key="st" sheet={s} />,
+                <span key="d" className={`tnum sub2${late ? " ink-red b600" : ""}`}>{s.stage === "ENTRY" ? <>{dayOf(s.dueOn)}<div>{dueWords(s)}</div></> : "—"}</span>,
+                <span key="a" className="row row--inline row--tight" style={{ justifyContent: "flex-end" }}>
+                  <LinkBtn href={classListHref(s.courseCode, s.session, s.semester)} title="The registered students of this course">Students</LinkBtn>
+                  <a className="btn btn--ghost btn--sm" href={`/results/sheets/${s.id}/template`} title="The score sheet as an Excel workbook, every registered candidate on it">Score Sheet</a>
+                  <LinkBtn kind={kind} href={`/results/sheets/${s.id}`}>{act}</LinkBtn>
+                </span>,
               ];
             })}
-            texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
+            texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle} ${standingOf(s)}`)} />
         )}
       </Panel>
 
-      <AllocationHistory rows={history} mode="me" session={session} />
-
-      <Panel title="CBT question bank" right={noBank.length ? `${noBank.length} course${noBank.length === 1 ? "" : "s"} with no questions` : "Your current courses have questions"}>
-        {sheets.length ? (
-          <DTable cols={["Course", "Questions in bank|mid", "Readiness|num"]}
-            rows={sheets.map((s) => [
-              <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle}</div></span>,
-              <span className={`tnum${(s.bankQuestions ?? 0) === 0 ? " ink-red b700" : ""}`} key="q">{s.bankQuestions ?? 0}</span>,
-              (s.bankQuestions ?? 0) === 0 ? <Pil kind="bad" key="s">None yet</Pil> : (s.bankQuestions ?? 0) < 20 ? <Pil kind="info" key="s">Thin</Pil> : <Pil kind="ok" key="s">Ready</Pil>,
-            ])} texts={sheets.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
-        ) : <div className="card__body sub2">No course to check.</div>}
-        <PBody><div className="sub2">A computer-based test draws a fresh paper per candidate from the bank, so a course with too few questions cannot randomise. Add questions on the <Link href="/exams/question-bank">CBT question bank</Link>.</div></PBody>
-      </Panel>
+      {t.open.length ? (
+        <Panel title="Score sheet deadlines" right={overdue.length ? `${overdue.length} overdue` : dueSoon.length ? `${dueSoon.length} due within a week` : "On track"}>
+          <DTable pageSize={0} cols={["Course", "Registered|mid", "Entered|mid", "Due|mid", "Deadline|num"]}
+            rows={[...t.open].sort((a, b) => (a.daysToDue ?? 9999) - (b.daysToDue ?? 9999)).map((s) => {
+              const late = (s.daysLate ?? 0) > 0;
+              const soon = !late && dueSoon.includes(s);
+              return [
+                <span key="c"><Link className="lnk b600 tnum" href={`/results/sheets/${s.id}`}>{s.courseCode}</Link><div className="sub2">{s.courseTitle}</div></span>,
+                <span className="tnum" key="r">{s.candidates}</span>,
+                <span className={`tnum${s.entered < s.candidates ? " ink-red b700" : ""}`} key="e">{s.entered}</span>,
+                <span className="tnum sub2" key="d">{dayOf(s.dueOn)}</span>,
+                <Pil key="l" kind={late ? "bad" : soon ? "warn" : "grey"}>{dueWords(s)}</Pil>,
+              ];
+            })} texts={t.open.map((s) => `${s.courseCode} ${s.courseTitle}`)} />
+          <PBody><div className="sub2">A sheet still at entry after its due date is overdue. A sheet that misses Senate waits for the next sitting, and its candidates carry an incomplete result.</div></PBody>
+        </Panel>
+      ) : null}
 
       <div className="grid grid--2">
-        <Panel title="Downloads" right="Generated from the approved registrations at the moment you ask">
+        <Panel title="Quick actions" right="Everything for your courses">
           <PBody>
-            <div className="stack">
-              <LinkBtn kind="ghost" size="md" href="/registration/class-list">Class list and attendance register</LinkBtn>
-              {first ? <LinkBtn kind="ghost" size="md" href={`/results/sheets/${first.id}`}>Blank score sheet — {first.courseCode}</LinkBtn> : null}
-              <Link href="/student/exams" className="btn btn--ghost" style={{ display: "none" }}>—</Link>
+            <div className="row">
+              {first ? <a className="btn btn--primary btn--sm" href={`/results/sheets/${first.id}/template`}>Download Score Sheet · {first.courseCode}</a> : null}
+              {first && first.stage === "ENTRY" ? <LinkBtn kind="primary" href={`/results/sheets/${first.id}`}>Upload Completed Sheet</LinkBtn> : null}
+              <LinkBtn href="/results/sheets">Score Sheets</LinkBtn>
+              <LinkBtn href="/registration/class-list">Registered Students</LinkBtn>
+              <LinkBtn href="/me/teaching">My Timetable</LinkBtn>
+              <LinkBtn href="/lms">Course Spaces</LinkBtn>
+              <LinkBtn href="/results/sheets/history">Score Sheet History</LinkBtn>
+              <LinkBtn href="/me/courses">Course History</LinkBtn>
+              <LinkBtn href="/me/profile">My Profile</LinkBtn>
             </div>
-            <div className="sub2 mt-2">Each is generated when you ask, so it is never out of date. The class list is the roll of account: a student who is not on it is not registered, whatever they tell you.</div>
+            <div className="sub2 mt-2">The score sheet is a workbook with every registered candidate already on it, in alphabetical order. Fill CA and Exam, then upload it on the sheet: it is checked before anything is written and accepted whole or not at all.</div>
           </PBody>
         </Panel>
-        <Panel title="This week" right="From the slots the department gave your courses">
+        <Panel title="Notifications" right={notices.length ? <Link className="lnk" href="/me/notices">All notifications</Link> : "Nothing yet"}>
+          {notices.length ? (
+            <ul className="plain">
+              {notices.slice(0, 5).map((n) => (
+                <li key={n.id} className="row row--between" style={{ gap: "var(--s-3)", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                  <span style={{ minWidth: 0 }}><strong>{n.subject}</strong><div className="sub2">{whenAt(n.created_at)}</div></span>
+                  <Pil kind={n.state === "SENT" ? "ok" : n.state === "FAILED" ? "bad" : "grey"}>{n.channel === "SMS" ? "SMS" : "Email"}</Pil>
+                </li>
+              ))}
+            </ul>
+          ) : <PBody><div className="sub2">A notice is filed here when a sheet is returned to you, a deadline approaches, a result is published or the desk writes to you. It is the same notice your email carries.</div></PBody>}
+        </Panel>
+      </div>
+
+      <div className="grid grid--2">
+        <Panel title="Course history" right={history.length ? `${new Set(history.map((h) => h.session)).size} session${new Set(history.map((h) => h.session)).size === 1 ? "" : "s"} on record` : "Nothing before this session"}>
           <PBody>
-            <div className="sub2">The teaching timetable is drawn on the class list screen from the slots recorded against each offering. Nothing is shown here that the department has not recorded.</div>
-            <div className="mt-2"><LinkBtn kind="ghost" href="/registration/class-list">Open the class list</LinkBtn></div>
+            <div className="sub2">Every course allocated to you, this session and before: the class you taught, the second examiner and where each sheet reached. A past course opens its registered students as they stood that session.</div>
+            <div className="mt-2"><LinkBtn kind="ghost" href="/me/courses">Open Course History{pastSessions ? ` · ${history.length} courses` : ""}</LinkBtn></div>
+          </PBody>
+        </Panel>
+        <Panel title="Your staff profile" right="Your record as the University holds it">
+          <PBody>
+            <div className="sub2">Keep your own record current: a recent photograph, your phone and email, your qualifications, and the lists that grow over a career. Your name, staff number, department and rank are the establishment&rsquo;s to change.</div>
+            <div className="mt-2"><LinkBtn kind="ghost" href="/me/profile">View and Update Profile</LinkBtn></div>
           </PBody>
         </Panel>
       </div>
 
       <Note kind="info" title="You cannot see a student who is not registered for your course">
-        The class list, the score sheet and the attendance register are all built from approved registrations. It is the reason a mark can never be entered for a student who never registered — which is how ghost results enter a system that allows it.
+        The class list, the score sheet and the attendance register are all built from approved registrations, and only for the courses allocated to you. It is why a mark can never be entered for a student who never registered.
       </Note>
     </>
   );

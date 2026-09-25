@@ -281,6 +281,16 @@ class ResultsRepository {
                 .query(MineRow.class).list();
     }
 
+    /** true when the person carries the sheet's offering — as its lecturer, its second examiner or a co-lecturer */
+    boolean teaches(UUID sheetId, UUID person) {
+        return jdbc.sql("""
+                SELECT EXISTS (
+                  SELECT 1 FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
+                   WHERE s.id = :id AND (o.lecturer_id = :me OR o.second_examiner_id = :me
+                      OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :me)))
+                """).param("id", sheetId).param("me", person).query(Boolean.class).single();
+    }
+
     /** the roll the sheet is entered on: every approved registration, marked or not */
     List<Sheets.RollRow> roll(UUID sheetId) {
         return jdbc.sql("""

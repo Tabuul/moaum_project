@@ -12,6 +12,7 @@ import { HodDashboard, type HodHome } from "./dashboards/Hod";
 import { ClinicDashboard } from "./dashboards/Clinic";
 import { ExamsDashboard } from "./dashboards/Exams";
 import type { AllocationRow } from "./dashboards/AllocationHistory";
+import type { StaffNotice } from "@/lib/lecturer";
 import { HrDashboard, type HrHome } from "./dashboards/Hr";
 import { DeanDashboard, type DeanHome } from "./dashboards/Dean";
 import { SecurityDashboard } from "./dashboards/Security";
@@ -63,6 +64,10 @@ export default async function DashboardPage() {
   const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;
+  /* the semester in progress and the lecturer's latest notices, for the head of their desk */
+  const [teaching, myNotices] = office === "lecturer"
+    ? await Promise.all([api<{ openSemester: number | null }>(`/api/v1/me/teaching?session=${encodeURIComponent(session)}`), api<StaffNotice[]>("/api/v1/me/notices?limit=5")])
+    : [null, null];
   /* the requests students put to this office (V036), for the offices that answer them */
   const asks = office && ["registrar", "dregistrar", "bursar", "library", "services", "academic", "hod", "housing"].includes(office) ? await api<{ state: string }[]>("/api/v1/support/requests") : null;
   const requestsOpen = asks && asks.ok ? asks.data.filter((r) => r.state === "OPEN" || r.state === "WITH_OFFICE").length : null;
@@ -118,7 +123,7 @@ export default async function DashboardPage() {
       ) : office === "bursar" ? (
         <BursarDashboard session={session} />
       ) : office === "lecturer" ? (
-        <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
+        <LecturerDashboard me={me.ok ? me.data : null} sheets={mine && mine.ok ? mine.data : []} session={session} semester={teaching && teaching.ok ? teaching.data.openSemester ?? null : null} history={allocHistory && allocHistory.ok ? allocHistory.data : []} notices={myNotices && myNotices.ok ? myNotices.data : []} />
       ) : office === "hod" ? (
         <HodDashboard me={me.ok ? me.data : null} home={hodHome && hodHome.ok ? hodHome.data : null} requestsOpen={requestsOpen} history={allocHistory && allocHistory.ok ? allocHistory.data : []} />
       ) : office === "services" ? (

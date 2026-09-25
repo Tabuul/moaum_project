@@ -14,6 +14,10 @@ export const TITLES: Record<string, [string, string]> = {
   "t/extassignments": ["Project Assignments", "Projects and their examiners"],
   "t/extassessments": ["Assessments", "Read, locked, reopened"],
   "t/extreports": ["Examiner Reports", "Real figures"],
+  "t/sheethistory": ["Score Sheet History", "Every sheet you have carried"],
+  "t/coursehistory": ["Course History", "Every course allocated to you"],
+  "r/notices": ["Notifications", "What the portal has sent you"],
+  "t/myprofile": ["My Profile", "Your record"],
   "t/staffupload": [
     "Non-Academic Staff",
     "The nominal roll, placed in units"

@@ -51,6 +51,8 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
   const [saved, setSaved] = useState<string | null>(null);
   const [ask, setAsk] = useState<"submit" | null>(null);
   const [fileNote, setFileNote] = useState<{ kind: "ok" | "bad"; title: string; lines: string[] } | null>(null);
+  /** every line the last upload refused, for the validation report (the note shows the first twelve) */
+  const [refused, setRefused] = useState<{ file: string; lines: string[] } | null>(null);
   // lines of an upload whose candidate is not on the roll: offered as held scripts, never held on their own
   const [offRoll, setOffRoll] = useState<{ line: number; number: string; ca: string; exam: string; outcome: string; note: string }[]>([]);
   const [holding, setHolding] = useState(false);
@@ -123,6 +125,15 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
     }
   }
 
+  /** the validation report of the last refused upload: every line and why it was refused, as a CSV */
+  function validationReport() {
+    if (!refused) return;
+    const rows = refused.lines.map((l) => { const m = /^Line (\d+): (.*)$/.exec(l); return m ? [m[1], m[2]] : ["", l]; });
+    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    download(`${s.courseCode.replace(/[^A-Za-z0-9]+/g, "-")}-validation-report.csv`,
+      "\ufeff" + [["Line", "Refused because"], ...rows].map((r) => r.map(esc).join(",")).join("\r\n"));
+  }
+
   function template() {
     download(`${s.courseCode.replace(/[^A-Za-z0-9]+/g, "-")}-score-sheet.xlsx`, csv([
       ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
@@ -191,14 +202,16 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       matched++;
     }
     if (problems.length) {
-      setFileNote({ kind: "bad", title: `${f.name} was not accepted — ${problems.length} line${problems.length === 1 ? "" : "s"} refused, nothing written`, lines: problems.slice(0, 12) });
+      setRefused({ file: f.name, lines: problems });
+      setFileNote({ kind: "bad", title: `${f.name} was not accepted — ${problems.length} line${problems.length === 1 ? "" : "s"} refused, nothing written`, lines: [...problems.slice(0, 12), ...(problems.length > 12 ? [`… and ${problems.length - 12} more, all in the validation report`] : [])] });
       return;
     }
+    setRefused(null);
     setDrafts(next);
     setSaved(null);
     setOffRoll(aside);
     setFileNote({ kind: "ok", title: `${f.name} read: ${matched} row${matched === 1 ? "" : "s"} matched the roll${aside.length ? `; ${aside.length} candidate${aside.length === 1 ? " is" : "s are"} not on it` : ""}`,
-      lines: ["The marks are on the sheet below as a draft. Check them, then Save — nothing is written until you do.", ...(aside.length ? ["The candidates not on the roll are listed below; hold their scripts with one press if they sat the paper, or leave them."] : [])] });
+      lines: [`Preview: ${matched} row${matched === 1 ? " is" : "s are"} on the sheet below as a draft and nothing is written yet. Check them, press Save the draft to write them, then Submit and attest when every candidate carries a mark or an outcome.`, ...(aside.length ? ["The candidates not on the roll are listed below; hold their scripts with one press if they sat the paper, or leave them."] : [])] });
   }
 
   /** the lines set aside become held scripts — a deliberate second press, so a typo never becomes one on its own */
@@ -254,7 +267,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       </div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {fileNote ? <Note kind={fileNote.kind} title={fileNote.title}>{fileNote.lines.map((l, i) => <div key={i}>{l}</div>)}</Note> : null}
+      {fileNote ? <Note kind={fileNote.kind} title={fileNote.title} action={fileNote.kind === "bad" && refused ? <Btn kind="ghost" onClick={validationReport}>Download Validation Report</Btn> : undefined}>{fileNote.lines.map((l, i) => <span className="blk" key={i}>{l}</span>)}</Note> : null}
       {offRoll.length ? (
         <Note kind="info" title={`${offRoll.length} candidate${offRoll.length === 1 ? "" : "s"} on the upload ${offRoll.length === 1 ? "is" : "are"} not on this roll`}
           action={atEntry && own ? <span className="row row--inline row--tight"><Btn kind="primary" disabled={holding} onClick={() => void holdOffRoll()}>{holding ? "Holding…" : `Hold ${offRoll.length === 1 ? "this script" : `these ${offRoll.length} scripts`}`}</Btn><Btn kind="ghost" disabled={holding} onClick={() => setOffRoll([])}>Leave them</Btn></span> : undefined}>

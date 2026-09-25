@@ -23,6 +23,9 @@ import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
+
+import org.springframework.security.access.AccessDeniedException;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,8 +77,9 @@ public class ResultsService {
     private final TransactionTemplate eachInItsOwn;
     private final tools.jackson.databind.ObjectMapper json;
 
-    ResultsService(ResultsRepository repo, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json) {
+    ResultsService(ResultsRepository repo, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json, OfficeScope scope) {
         this.repo = repo;
+        this.scope = scope;
         this.json = json;
         this.eachInItsOwn = new TransactionTemplate(transactions);
         this.eachInItsOwn.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -265,6 +269,24 @@ public class ResultsService {
         }
     }
 
+    private final OfficeScope scope;
+
+    /** The sheet, for the acting office. A desk office reads any sheet in its scope; a request made in the
+     *  lecturer's office reaches only the sheets of courses allocated to that lecturer (as lecturer, second
+     *  examiner or co-lecturer). The check is here, on the record, not on the menu: a sheet id typed into the
+     *  address bar is refused the same way. */
+    private Sheets.Row own(UUID id) {
+        Sheets.Row r = repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        if (scope.actingLecturer()) {
+            UUID me = scope.actorId();
+            if (me == null || !repo.teaches(id, me)) {
+                throw new AccessDeniedException(r.courseCode() + " is not allocated to you in " + r.session()
+                        + "; a lecturer reaches only the score sheets of their own courses.");
+            }
+        }
+        return r;
+    }
+
     private Sheets.Listed listed(Sheets.Row r, AuditContext ctx) {
         Integer daysLate = null;
         if ("ENTRY".equals(r.stage()) && r.dueOn() != null && r.dueOn().isBefore(LocalDate.now())) {
@@ -322,7 +344,7 @@ public class ResultsService {
 
     @Transactional(readOnly = true)
     public Sheets.Detail sheet(UUID id) {
-        Sheets.Row r = repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        Sheets.Row r = own(id);
         ResultsRepository.Examiner x = repo.examiner(id);
         return new Sheets.Detail(listed(r, AuditContextHolder.current().orElse(null)), x.secondExaminer(), x.senateMinute(),
                 x.publishedAt(), x.engineVersion(), repo.chain(id), repo.marks(id));
@@ -331,7 +353,7 @@ public class ResultsService {
     /** A mark is never overwritten: a change appends a version with its reason. */
     @Transactional
     public Map<String, Object> scores(UUID id, ScoresIn in) {
-        Sheets.Row r = repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        Sheets.Row r = own(id);
         if (!"ENTRY".equals(r.stage())) {
             throw new DomainRuleViolation("RES_SHEET_NOT_AT_ENTRY", "The sheet is at " + r.stage().toLowerCase().replace('_', ' ')
                     + "; a mark changes by amendment with a reason, not by entry.",
@@ -373,14 +395,14 @@ public class ResultsService {
 
     @Transactional
     public Map<String, Object> advance(UUID id, String comment, String minute) {
-        repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        own(id);
         String next = repo.advance(id, comment, minute);
         return Map.of("id", id, "stage", next);
     }
 
     @Transactional
     public Map<String, Object> giveBack(UUID id, String comment) {
-        repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        own(id);
         if (comment == null || comment.isBlank()) {
             throw new DomainRuleViolation("RES_RETURN_SAYS_WHY", "A sheet is returned with the reason on the record.",
                     new DomainRuleViolation.Remedy("Say what the lecturer must correct.", "The desk returning it"));
@@ -473,7 +495,7 @@ public class ResultsService {
 
     @Transactional(readOnly = true)
     public List<Sheets.RollRow> roll(UUID id) {
-        repo.sheet(id).orElseThrow(() -> new NotFound("score sheet", id));
+        own(id);
         return repo.roll(id);
     }
 

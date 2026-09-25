@@ -160,6 +160,14 @@ class RegistrationRepository {
         }
     }
 
+    /** true when the person carries the offering — as its lecturer, its second examiner or a co-lecturer */
+    boolean teaches(UUID offeringId, UUID person) {
+        return jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.id = :id AND (o.lecturer_id = :me OR o.second_examiner_id = :me
+                    OR EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :me)))
+                """).param("id", offeringId).param("me", person).query(Boolean.class).single();
+    }
+
     List<ClassList.Row> roll(UUID offeringId) {
         return jdbc.sql("""
                 SELECT s.id AS student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names,

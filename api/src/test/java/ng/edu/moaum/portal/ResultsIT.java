@@ -99,8 +99,21 @@ class ResultsIT {
         assertThat(roll.getStatusCode().value()).isEqualTo(200);
         assertThat(roll.getBody().get("all")).isEqualTo(2);
 
+        // a lecturer reaches only the sheets of courses allocated to them: a stranger in the lecturer's office is
+        // refused the sheet, its roll, its class list and score entry alike, whatever the sheet id they typed
+        String stranger = ItSupport.token("lecturer");
+        assertThat(it.get(stranger, "/api/v1/results/sheets/" + sheet).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(stranger, "/api/v1/results/sheets/" + sheet + "/roll").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(stranger, "/api/v1/registration/class-list?course=ZZR 301&session=2094/2095&sem=1").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(stranger, HttpMethod.PUT, "/api/v1/results/sheets/" + sheet + "/scores",
+                Map.of("scores", List.of(Map.of("studentId", s1.toString(), "ca", 30, "exam", 45)))).getStatusCode().value()).isEqualTo(403);
+        // the lecturer the offering names reads and enters their own
+        String lect = TestTokens.token(lecturer, List.of("lecturer"));
+        assertThat(it.get(lect, "/api/v1/results/sheets/" + sheet).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(lect, "/api/v1/registration/class-list?course=ZZR 301&session=2094/2095&sem=1").getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(lect, "/api/v1/me/teaching?session=" + SESSION).getStatusCode().value()).isEqualTo(200);
+
         // one mark is not enough to leave the lecturer
-        String lect = ItSupport.token("lecturer");
         assertThat(it.call(lect, HttpMethod.PUT, "/api/v1/results/sheets/" + sheet + "/scores",
                 Map.of("scores", List.of(Map.of("studentId", s1.toString(), "ca", 30, "exam", 45)))).getStatusCode().value()).isEqualTo(200);
         assertThat(it.call(lect, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of()).getStatusCode().value()).isEqualTo(422);
@@ -126,7 +139,8 @@ class ResultsIT {
 
         // the whole chain, a fresh desk each time
         for (String office : List.of("lecturer", "exams", "hod", "facultyexams", "facultyofficer", "dean", "records")) {
-            ResponseEntity<Map> r = it.call(ItSupport.token(office), HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of());
+            String desk = office.equals("lecturer") ? lect : ItSupport.token(office);   // the lecturer's desk is the course's own lecturer
+            ResponseEntity<Map> r = it.call(desk, HttpMethod.POST, "/api/v1/results/sheets/" + sheet + "/advance", Map.of());
             assertThat(r.getStatusCode().value()).as(office + ": " + r.getBody()).isEqualTo(200);
         }
         String registrar = ItSupport.token("registrar");

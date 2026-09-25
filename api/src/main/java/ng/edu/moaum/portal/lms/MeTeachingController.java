@@ -69,6 +69,9 @@ class MeTeachingController {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
+        // the semester in progress for the session (the highest one open), or null before any opens
+        out.put("openSemester", jdbc.sql("SELECT max(number) FROM policy.semester WHERE session = :s AND state = 'OPEN'")
+                .param("s", s).query(Integer.class).optional().orElse(null));
         out.put("offerings", offerings);
         return out;
     }

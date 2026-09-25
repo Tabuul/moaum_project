@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { api } from "@/lib/api";
 import type { RollRow, SheetDetail } from "@/lib/results";
-import { buildXlsx, type XlsxLogo } from "@/lib/xlsx";
+import { buildXlsx } from "@/lib/xlsx";
+import { crestPng } from "@/lib/crest-server";
 import { MARKED_HEADERS, markedRows, markedSheetPdf, performance, performanceRows } from "@/lib/marked-sheet";
 import { semesterName } from "@/lib/student-portal";
 
@@ -11,17 +10,6 @@ export const dynamic = "force-dynamic";
 
 /** the API leaves a null field out of the JSON; the sheet's arithmetic tests against null */
 const normalise = (r: RollRow): RollRow => ({ ...r, ca: r.ca ?? null, exam: r.exam ?? null, total: r.total ?? null, grade: r.grade ?? null, points: r.points ?? null, outcome: r.outcome ?? null, version: r.version ?? null });
-
-function crestPng(): XlsxLogo | undefined {
-  try {
-    const buf = readFileSync(join(process.cwd(), "public", "crest.png"));
-    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    if (dv.getUint32(0) !== 0x89504e47) return undefined;
-    return { png: new Uint8Array(buf), w: dv.getUint32(16), h: dv.getUint32(20) };
-  } catch {
-    return undefined;
-  }
-}
 
 /** GET /results/sheets/[id]/marked?format=pdf|xlsx — the marked score sheet as the lecturer may take
  *  it away: the roll with the computed total, grade and point, and a summary of performance at the end.

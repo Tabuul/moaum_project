@@ -168,6 +168,14 @@ public class RegistrationService {
     public ClassList classList(String course, String session, int semester) {
         RegistrationRepository.OfferingRow o = repo.offering(course.trim().toUpperCase(), session, semester)
                 .orElseThrow(() -> new NotFound("offering of " + course + " in " + session + " semester", semester));
+        // a request made in the lecturer's office reads the roll of its own courses only — this session's or any past one
+        if (scope.actingLecturer()) {
+            UUID me = scope.actorId();
+            if (me == null || !repo.teaches(o.id(), me)) {
+                throw new org.springframework.security.access.AccessDeniedException(o.courseCode() + " is not allocated to you in " + session
+                        + "; a lecturer reads the class list of their own courses only.");
+            }
+        }
         List<ClassList.Row> rows = repo.roll(o.id());
         int own = 0;
         Set<String> from = new LinkedHashSet<>();

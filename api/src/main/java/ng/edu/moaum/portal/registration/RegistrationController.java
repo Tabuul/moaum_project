@@ -113,7 +113,9 @@ class RegistrationController {
     @GetMapping("/class-list")
     @PreAuthorize(READERS)
     ClassList classList(@RequestParam String course, @RequestParam String session, @RequestParam(defaultValue = "1") int sem) {
-        scope.assertCourseInScope(course);   // a course of another department is refused to a department office
+        // a course of another department is refused to a department office; a lecturer is bound by allocation instead —
+        // the service refuses any offering not allocated to them, in their own department or a course they teach for another
+        if (!scope.actingLecturer()) scope.assertCourseInScope(course);
         return service.classList(course, session, sem);
     }
 }

@@ -11,7 +11,7 @@ export default async function ProfilePage() {
   ]);
 
   return (
-    <Shell route="r/self" me={me.ok ? me.data : null}>
+    <Shell route="t/myprofile" me={me.ok ? me.data : null}>
       <Profile initial={profile.ok ? profile.data : null} me={me.ok ? me.data : null} />
     </Shell>
   );

@@ -45,32 +45,39 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/lecturer", "icon": "home", "label": "Dashboard" },
+          { "id": "r/notices", "icon": "alert", "label": "Notifications" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
       {
         "name": "Academic",
         "items": [
+          { "id": "t/teaching", "icon": "cal", "label": "My Courses & Timetable" },
+          { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
           { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
           { "id": "r/upload", "icon": "box", "label": "Upload Material" },
-          { "id": "t/teaching", "icon": "cal", "label": "My Teaching & Timetable" },
-          { "id": "t/sheet", "icon": "doc", "label": "Score Entry", "badge": "2" },
-          { "id": "t/bulk", "icon": "box", "label": "Upload Results (bulk)" },
-          { "id": "t/scores", "icon": "doc", "label": "My Score Sheets" },
           { "id": "t/projects", "icon": "flask", "label": "My Projects" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/supervision", "icon": "check", "label": "Postings I Supervise" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
+          { "id": "t/supervision", "icon": "check", "label": "Postings I Supervise" },
           { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" }
+        ]
+      },
+      {
+        "name": "History",
+        "items": [
+          { "id": "t/sheethistory", "icon": "doc", "label": "Score Sheet History" },
+          { "id": "t/coursehistory", "icon": "book", "label": "Course History" }
         ]
       },
       {
         "name": "Me",
         "items": [
+          { "id": "t/myprofile", "icon": "user", "label": "My Profile" },
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
