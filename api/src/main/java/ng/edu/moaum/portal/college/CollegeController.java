@@ -990,6 +990,108 @@ class CollegeController {
         return out;
     }
 
+    /* who reads the College's student payment report: the College's officers, the Bursary, the Registry, the Academic Office */
+    private static final String PAYMENT_READERS = "hasAnyAuthority('OFFICE_financecontroller','OFFICE_provost','OFFICE_collegesecretary','OFFICE_bursar',"
+            + "'OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_dvc','OFFICE_vc','OFFICE_super')";
+
+    /**
+     * The Student Payment Report (V256): every College student's position for a session, or for one semester of it —
+     * amount payable, amount paid, amount outstanding, payment status, the last payment — with the totals and the same
+     * figures by programme. Read from the fee schedule and the confirmed payment references; nothing is typed beside them.
+     * Names A–Z within programme; the filters and the search narrow the set, and the totals are of the set shown.
+     */
+    @GetMapping("/payments")
+    @PreAuthorize(PAYMENT_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> payments(@RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
+                                 @RequestParam(required = false) String programme, @RequestParam(required = false) String dept,
+                                 @RequestParam(required = false) Integer level, @RequestParam(required = false) String status,
+                                 @RequestParam(required = false) String q) {
+        String s = session == null || !session.matches("\\d{4}/\\d{4}") ? currentSession() : session;
+        Integer sem = semester == null || semester < 1 || semester > 3 ? null : semester;
+        String st = status == null || status.isBlank() ? null : status.trim().toUpperCase();
+        String needle = q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%";
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT st.id, st.surname, st.other_names, coalesce(st.matric_no, st.admission_no) AS number, st.current_level AS level,
+                       f.name AS faculty, d.name AS department, d.code AS dept_code, p.code AS programme_code, p.name AS programme, st.status AS student_status,
+                       pos.payable, pos.paid, pos.outstanding, pos.status, pos.last_paid_at, pos.last_reference, pos.last_channel, pos.payments
+                  FROM people.student st
+                  JOIN ref.programme p ON p.code = st.programme_code
+                  JOIN ref.faculty f ON f.code = p.faculty_code
+                  JOIN ref.department d ON d.code = p.dept_code
+                  CROSS JOIN LATERAL finance.payment_position(st.id, :s, :sem) pos
+                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')
+                   AND (:prog::text IS NULL OR p.code = :prog)
+                   AND (:dept::text IS NULL OR d.code = :dept)
+                   AND (:level::int IS NULL OR st.current_level = :level)
+                   AND (:status::text IS NULL OR pos.status = :status)
+                   AND (:q::text IS NULL OR lower(st.surname || ' ' || st.other_names) LIKE :q OR lower(coalesce(st.matric_no, '')) LIKE :q
+                        OR lower(coalesce(st.admission_no, '')) LIKE :q OR lower(coalesce(pos.last_reference, '')) LIKE :q
+                        OR EXISTS (SELECT 1 FROM finance.payment_reference r WHERE r.student_id = st.id AND r.session = :s AND r.confirmed_at IS NOT NULL AND lower(r.reference) LIKE :q))
+                 ORDER BY p.name, st.surname, st.other_names
+                """).param("s", s).param("sem", sem, java.sql.Types.INTEGER)
+                .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), java.sql.Types.VARCHAR)
+                .param("dept", dept == null || dept.isBlank() ? null : dept.trim(), java.sql.Types.VARCHAR)
+                .param("level", level, java.sql.Types.INTEGER).param("status", st, java.sql.Types.VARCHAR).param("q", needle, java.sql.Types.VARCHAR)
+                .query().listOfRows();
+        // the totals of the set shown, and the same by programme
+        java.util.function.Function<List<Map<String, Object>>, Map<String, Object>> tally = list -> {
+            java.math.BigDecimal payable = java.math.BigDecimal.ZERO, paid = java.math.BigDecimal.ZERO, outstanding = java.math.BigDecimal.ZERO;
+            long full = 0, part = 0, owing = 0, none = 0;
+            for (Map<String, Object> r : list) {
+                payable = payable.add((java.math.BigDecimal) r.get("payable"));
+                paid = paid.add((java.math.BigDecimal) r.get("paid"));
+                outstanding = outstanding.add((java.math.BigDecimal) r.get("outstanding"));
+                switch (String.valueOf(r.get("status"))) {
+                    case "FULLY_PAID" -> full++;
+                    case "PART_PAYMENT" -> part++;
+                    case "NOT_PAID" -> owing++;
+                    default -> none++;
+                }
+            }
+            Map<String, Object> t = new java.util.LinkedHashMap<>();
+            t.put("students", list.size()); t.put("payable", payable); t.put("paid", paid); t.put("outstanding", outstanding);
+            t.put("fullyPaid", full); t.put("partPayment", part); t.put("notPaid", owing); t.put("noCharge", none);
+            t.put("withBalance", part + owing);
+            return t;
+        };
+        List<Map<String, Object>> byProgramme = new java.util.ArrayList<>();
+        java.util.LinkedHashMap<String, List<Map<String, Object>>> groups = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> r : rows) groups.computeIfAbsent(String.valueOf(r.get("programme_code")), k -> new java.util.ArrayList<>()).add(r);
+        for (Map.Entry<String, List<Map<String, Object>>> g : groups.entrySet()) {
+            Map<String, Object> t = new java.util.LinkedHashMap<>();
+            t.put("programme_code", g.getKey());
+            t.put("programme", g.getValue().get(0).get("programme"));
+            t.put("department", g.getValue().get(0).get("department"));
+            t.putAll(tally.apply(g.getValue()));
+            byProgramme.add(t);
+        }
+        Map<String, Object> options = new java.util.LinkedHashMap<>();
+        options.put("programmes", jdbc.sql("""
+                SELECT DISTINCT p.code, p.name, d.code AS dept_code, d.name AS department FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                  JOIN ref.faculty f ON f.code = p.faculty_code JOIN ref.department d ON d.code = p.dept_code
+                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') ORDER BY p.name
+                """).query().listOfRows());
+        options.put("levels", jdbc.sql("""
+                SELECT DISTINCT st.current_level AS level FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') ORDER BY 1
+                """).query(Integer.class).list());
+        options.put("sessions", jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC").query(String.class).list());
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("semester", sem);
+        out.put("summary", tally.apply(rows));
+        out.put("byProgramme", byProgramme);
+        out.put("rows", rows);
+        out.put("options", options);
+        return out;
+    }
+
+    private String currentSession() {
+        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional()
+                .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1").query(String.class).single());
+    }
+
     /** the College overview: every level with its students, open years and cohorts, its examination and where its decisions stand;
      *  the session's postings; the blocks — the live picture the College's officers open the module on */
     @GetMapping("/overview")

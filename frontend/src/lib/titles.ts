@@ -19,6 +19,7 @@ export const TITLES: Record<string, [string, string]> = {
   "r/notices": ["Notifications", "What the portal has sent you"],
   "t/myprofile": ["My Profile", "Your record"],
   "s/pgprogress": ["Academic Progress", "Coursework, research and graduation requirements"],
+  "t/collegepayments": ["Student Payment Report", "The College's fees position"],
   "t/staffupload": [
     "Non-Academic Staff",
     "The nominal roll, placed in units"

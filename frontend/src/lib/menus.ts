@@ -527,6 +527,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Finance",
         "items": [
           { "id": "t/heldscripts", "icon": "alert", "label": "Held Scripts" },
+          { "id": "t/collegepayments", "icon": "card", "label": "College Payment Report" },
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
@@ -1507,6 +1508,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
+          { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
           { "id": "t/college", "icon": "flask", "label": "College Overview" },
           { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
           { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
@@ -1542,6 +1544,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
+          { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
           { "id": "t/college", "icon": "flask", "label": "College Overview" },
           { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
           { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
@@ -1608,6 +1611,13 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
           { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Finance",
+        "items": [
+          { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
+          { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" }
         ]
       },
       {
