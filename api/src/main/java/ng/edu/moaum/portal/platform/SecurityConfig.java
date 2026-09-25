@@ -53,7 +53,7 @@ class SecurityConfig {
                                 "/api/v1/student-auth/sign-in",
                                 "/api/v1/pg/apply", "/api/v1/pg/programmes", "/api/v1/pg/status",
                                 "/api/v1/pg/sign-in", "/api/v1/pg/referee/**",
-                                "/api/v1/verify/**").permitAll()
+                                "/api/v1/verify/**", "/api/v1/helpdesk/track").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
                 .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);

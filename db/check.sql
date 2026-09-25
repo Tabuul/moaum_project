@@ -56,6 +56,14 @@ BEGIN
     DELETE FROM platform.request_document_blob;
     DELETE FROM platform.request_document;
     DELETE FROM platform.service_request;
+    -- the ticket history is written once; the cleanup is the one maintenance act that removes it (V251)
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    DELETE FROM helpdesk.ticket_attachment_blob;
+    DELETE FROM helpdesk.ticket_attachment;
+    DELETE FROM helpdesk.ticket_event;
+    DELETE FROM helpdesk.ticket_comment;
+    DELETE FROM helpdesk.ticket;
+    PERFORM set_config('moaum.maintenance', '', true);
     -- health (V032) and the wallet (V033), before the students they name
     DELETE FROM health.note;
     DELETE FROM health.record_access;
@@ -246,7 +254,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 145
+\set EXPECTED 147
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3145,6 +3153,67 @@ BEGIN
     PERFORM pg_temp.assert('The MBBS Coordinator is held by level, 200 to 600, by a College lecturer only: an outsider is refused, a level outside the range is refused, and the level held is read back (trimmed)',
         refused_outsider AND refused_level AND lvl = 300 AND dept = 'ANT',
         format('outsider_refused=%s level_refused=%s level=%s dept=%s', refused_outsider, refused_level, lvl, dept));
+END $$;
+
+-- ── 17j. an ICT support ticket: a number of the right shape, the lifecycle held, the resolution required, the history written once (V251) ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid := gen_random_uuid(); st uuid := gen_random_uuid(); t uuid; num text;
+        refused_resolve boolean := false; refused_skip boolean := false; refused_edit boolean := false; refused_reopen boolean := false;
+        st_after text; n_events int; closed_reason text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (agent, 'MOAUM/CHK/0003', 'CHECKAGENT', 'Support');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), agent, 'ictagent', 'platform', NULL, 'check', who, current_date);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'CHK/HD/0001', 'MOAUM/MTC/20/9990', 'CHECKTICKET', 'Student', (SELECT code FROM ref.programme ORDER BY code LIMIT 1), 'UTME', '2020/2021', 100, 300, 'ACTIVE', now());
+
+    -- submitted with the category's required fields: a number of the right shape, the priority the category suggests
+    t := helpdesk.submit('STUDENT', st, 'CHECKTICKET, Student', 'MOAUM/MTC/20/9990', 'check@example.edu', '08012345678', NULL, NULL,
+                         'PAYMENT', 'A payment that did not register', 'I paid on Monday and the portal still says unpaid.',
+                         '{"payment_reference":"RRR-1","payment_date":"2026-09-01","payment_type":"School fees","amount":"45000"}'::jsonb);
+    SELECT number INTO num FROM helpdesk.ticket WHERE id = t;
+
+    -- an agent cannot resolve what is not in progress, nor skip from opened to closed without a reason
+    PERFORM helpdesk.open_ticket(t, agent);
+    BEGIN
+        PERFORM helpdesk.resolve(t, agent, 'Fixed', 'The payment was matched to the ledger and the receipt reissued.');
+    EXCEPTION WHEN check_violation THEN refused_resolve := true; END;
+    BEGIN
+        PERFORM helpdesk.transition(t, 'CLOSED', 'AGENT', agent, 'CHECKAGENT, Support', NULL);
+    EXCEPTION WHEN check_violation THEN refused_skip := true; END;
+    PERFORM helpdesk.transition(t, 'IN_PROGRESS', 'AGENT', agent, 'CHECKAGENT, Support', NULL);
+    PERFORM helpdesk.resolve(t, agent, 'Payment matched', 'The payment was matched to the ledger and the receipt reissued to the student.');
+    -- the requester is not satisfied: reopened on a reason, and only on a reason
+    BEGIN
+        PERFORM helpdesk.transition(t, 'REOPENED', 'REQUESTER', st, 'CHECKTICKET, Student', '');
+    EXCEPTION WHEN check_violation THEN refused_reopen := true; END;
+    PERFORM helpdesk.transition(t, 'REOPENED', 'REQUESTER', st, 'CHECKTICKET, Student', 'The receipt still shows the old amount');
+    PERFORM helpdesk.transition(t, 'IN_PROGRESS', 'AGENT', agent, 'CHECKAGENT, Support', NULL);
+    PERFORM helpdesk.resolve(t, agent, 'Receipt corrected', 'The receipt was regenerated with the amount as paid, and the student told.');
+    PERFORM helpdesk.transition(t, 'CLOSED', 'REQUESTER', st, 'CHECKTICKET, Student', NULL);
+    SELECT status, closure_reason INTO st_after, closed_reason FROM helpdesk.ticket WHERE id = t;
+    SELECT count(*) INTO n_events FROM helpdesk.ticket_event WHERE ticket_id = t;
+    -- the history is written once
+    BEGIN
+        UPDATE helpdesk.ticket_event SET detail = 'tampered' WHERE ticket_id = t;
+    EXCEPTION WHEN check_violation THEN refused_edit := true; END;
+
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    DELETE FROM helpdesk.ticket_event WHERE ticket_id = t;
+    DELETE FROM helpdesk.ticket_comment WHERE ticket_id = t;
+    DELETE FROM helpdesk.ticket WHERE id = t;
+    PERFORM set_config('moaum.maintenance', '', true);
+    DELETE FROM iam.office_assignment WHERE person_id = agent;
+    DELETE FROM iam.person WHERE id = agent;
+    DELETE FROM people.student WHERE id = st;
+
+    PERFORM pg_temp.assert('A ticket is numbered TICK-YYYY-NNNNN and walks submitted → opened → in progress → resolved → closed',
+        num ~ '^TICK-[0-9]{4}-[0-9]{5}$' AND refused_resolve AND refused_skip AND refused_reopen AND st_after = 'CLOSED' AND closed_reason = 'The requester confirmed the resolution',
+        format('number=%s refused_resolve=%s refused_skip=%s refused_reopen=%s status=%s reason=%s', num, refused_resolve, refused_skip, refused_reopen, st_after, closed_reason));
+    PERFORM pg_temp.assert('The ticket history holds every act and is written once',
+        n_events = 8 AND refused_edit, format('events=%s refused_edit=%s', n_events, refused_edit));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

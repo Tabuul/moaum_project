@@ -58,6 +58,7 @@ Sign in as the 300-level student to see the results path from the student's end.
 | Security                  | `demo.security`           | The University               |
 | Student Services          | `demo.services`           | The University               |
 | ICT Directorate           | `demo.ict`                | The platform                 |
+| ICT Support Agent         | `demo.ictagent`           | The ICT support desk (V251): the queue, the tickets, the notes |
 | University Administrator  | `demo.admin`              | The platform                 |
 | Super Administrator       | `demo.super`              | The platform                 |
 

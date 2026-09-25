@@ -28,6 +28,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
           { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" }
         ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
+        ]
       }
     ]
   },
@@ -71,7 +77,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -150,7 +157,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -218,7 +226,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -267,7 +276,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -304,7 +314,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -354,7 +365,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -391,7 +403,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -441,7 +454,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/admissionsetup", "icon": "doc", "label": "Admission Settings", "badge": "!" },
           { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants and Candidates" },
-          { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
+          { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O\u2019Level" },
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
           { "id": "t/postutme", "icon": "chart", "label": "Compute PUTME Score" },
           { "id": "t/screening", "icon": "chart", "label": "Screening Register" },
@@ -464,7 +477,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -524,7 +538,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -557,7 +572,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -589,7 +605,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -624,7 +641,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -668,7 +686,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -718,7 +737,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -763,7 +783,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -806,7 +827,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -861,7 +883,16 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/audit", "icon": "shield", "label": "Audit Log" },
           { "id": "t/security", "icon": "shield", "label": "Security" },
           { "id": "t/dr", "icon": "box", "label": "Backups & Recovery" },
-          { "id": "t/governance", "icon": "scale", "label": "Governance" }
+          { "id": "t/governance", "icon": "scale", "label": "Governance" },
+          { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+          { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
+          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -929,7 +960,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1000,13 +1032,17 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/dr", "icon": "life", "label": "Disaster Recovery" },
           { "id": "t/cloud", "icon": "chart", "label": "Cloud Readiness" },
           { "id": "t/audit", "icon": "shield", "label": "Audit Trail" },
-          { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" }
+          { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
+          { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+          { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
+          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" }
         ]
       },
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1046,7 +1082,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1120,7 +1157,16 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/platform", "icon": "server", "label": "Platform & Integrations" },
           { "id": "t/security", "icon": "shield", "label": "Security Posture", "badge": "!" },
           { "id": "t/audit", "icon": "shield", "label": "Audit Trail" },
-          { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" }
+          { "id": "t/governance", "icon": "scale", "label": "Data Governance", "badge": "2" },
+          { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+          { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
+          { "id": "t/helpdesksettings", "icon": "server", "label": "ICT Support Settings" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1165,6 +1211,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/governance", "icon": "scale", "label": "Data Governance" },
           { "id": "t/security", "icon": "shield", "label": "Security Posture" }
         ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
+        ]
       }
     ]
   },
@@ -1176,7 +1228,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Start here",
         "items": [
           { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
-          { "id": "s/fees", "icon": "card", "label": "School Fees — Pay First" }
+          { "id": "s/fees", "icon": "card", "label": "School Fees \u2014 Pay First" }
         ]
       },
       {
@@ -1209,7 +1261,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/library", "icon": "book", "label": "Library" },
           { "id": "s/idcard", "icon": "user", "label": "Identity Card" },
           { "id": "s/health", "icon": "heart", "label": "Health" },
-          { "id": "s/support", "icon": "life", "label": "Help & Requests" }
+          { "id": "s/support", "icon": "life", "label": "Help & Requests" },
+          { "id": "s/tickets", "icon": "life", "label": "ICT Support" }
         ]
       },
       {
@@ -1249,7 +1302,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/library", "icon": "book", "label": "Library" },
           { "id": "s/idcard", "icon": "user", "label": "Identity Card" },
           { "id": "s/health", "icon": "heart", "label": "Health" },
-          { "id": "s/support", "icon": "life", "label": "Help & Requests" }
+          { "id": "s/support", "icon": "life", "label": "Help & Requests" },
+          { "id": "s/tickets", "icon": "life", "label": "ICT Support" }
         ]
       },
       {
@@ -1355,7 +1409,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1389,7 +1444,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1423,7 +1479,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1458,7 +1515,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1492,7 +1550,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
@@ -1555,7 +1614,28 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Me",
         "items": [
-          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" }
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "ictagent": {
+    "label": "ICT Support Agent",
+    "home": "t/helpdesk",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "t/helpdesk", "icon": "life", "label": "ICT Support Desk" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "life", "label": "ICT Support Tickets" }
         ]
       }
     ]
