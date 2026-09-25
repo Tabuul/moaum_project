@@ -23,7 +23,7 @@ export function Reports({ stats, categories, agents, faculties, departments, fil
     go(`/helpdesk/reports${qs.toString() ? "?" + qs.toString() : ""}`);
   };
   const filtered = Object.values(filters).some(Boolean);
-  const scope = [filters.from || filters.to ? `${filters.from || "the start"} to ${filters.to || "today"}` : "All time", filters.category ? categories.find((c) => c.code === filters.category)?.name : null, filters.priority ? PRIORITY[filters.priority]?.[0] + " priority" : null, filters.agent ? agents.find((a) => a.id === filters.agent)?.name : null, filters.faculty ? faculties.find((f) => f.code === filters.faculty)?.name : null, filters.department ? departments.find((d) => d.code === filters.department)?.name : null].filter(Boolean).join(" · ");
+  const scope = [filters.from || filters.to ? `${filters.from || "the start"} to ${filters.to || "today"}` : "All time", filters.category ? categories.find((c) => c.code === filters.category)?.name : null, filters.priority ? (PRIORITY[filters.priority]?.[0] ?? filters.priority) + " priority" : null, filters.agent ? agents.find((a) => a.id === filters.agent)?.name : null, filters.faculty ? faculties.find((f) => f.code === filters.faculty)?.name : null, filters.department ? departments.find((d) => d.code === filters.department)?.name : null].filter(Boolean).join(" · ");
   const maxMonth = Math.max(1, ...stats.monthly.map((m) => Math.max(n(m.created), n(m.resolved))));
 
   function breakdown(title: string, rows: { key: string; n: number }[], extra?: (r: { key: string; n: number }) => string) {
@@ -32,7 +32,7 @@ export function Reports({ stats, categories, agents, faculties, departments, fil
     return (
       <Panel title={title} right={`${total} ticket${total === 1 ? "" : "s"}`}>
         {rows.length ? (
-          <DTable cols={["", "Tickets|mid", "Share|mid", ""]} rows={rows.map((r, i) => [
+          <DTable cols={[title.replace("Tickets by ", "").replace(/^\w/, (c) => c.toUpperCase()), "Tickets|mid", "Share|mid", "Of the most|mid"]} rows={rows.map((r, i) => [
             <span key={"k" + i}>{r.key}{extra ? <div className="sub2">{extra(r)}</div> : null}</span>,
             <span key={"n" + i} className="tnum">{n(r.n)}</span>,
             <span key={"s" + i} className="tnum sub2">{total ? Math.round((100 * n(r.n)) / total) : 0}%</span>,
@@ -63,14 +63,14 @@ export function Reports({ stats, categories, agents, faculties, departments, fil
         actions={<><Btn kind="primary" onClick={downloadAll}>Download the Report</Btn><LinkBtn href="/helpdesk">The Queue</LinkBtn></>} />
       <div className="filterbar">
         <div className="row">
-          <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="rp-from">Raised from</label><input id="rp-from" className="ctl" type="date" value={filters.from} onChange={(e) => nav({ from: e.target.value })} /></div>
-          <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="rp-to">To</label><input id="rp-to" className="ctl" type="date" value={filters.to} onChange={(e) => nav({ to: e.target.value })} /></div>
+          <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="rp-from">Raised from</label><input id="rp-from" className="ctl" type="date" defaultValue={filters.from} onBlur={(e) => { if (e.target.value !== filters.from) nav({ from: e.target.value }); }} /></div>
+          <div className="field" style={{ flex: "1 1 140px" }}><label htmlFor="rp-to">To</label><input id="rp-to" className="ctl" type="date" defaultValue={filters.to} onBlur={(e) => { if (e.target.value !== filters.to) nav({ to: e.target.value }); }} /></div>
           <div className="field" style={{ flex: "1 1 160px" }}><label htmlFor="rp-cat">Category</label><select id="rp-cat" className="ctl" value={filters.category} onChange={(e) => nav({ category: e.target.value })}><option value="">Any</option>{categories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</select></div>
           <div className="field" style={{ flex: "1 1 120px" }}><label htmlFor="rp-pri">Priority</label><select id="rp-pri" className="ctl" value={filters.priority} onChange={(e) => nav({ priority: e.target.value })}><option value="">Any</option>{Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}</select></div>
           <div className="field" style={{ flex: "1 1 160px" }}><label htmlFor="rp-agent">Agent</label><select id="rp-agent" className="ctl" value={filters.agent} onChange={(e) => nav({ agent: e.target.value })}><option value="">Any</option>{agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
           <div className="field" style={{ flex: "1 1 180px" }}><label htmlFor="rp-fac">Faculty</label><select id="rp-fac" className="ctl" value={filters.faculty} onChange={(e) => nav({ faculty: e.target.value, department: "" })}><option value="">Any</option>{faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select></div>
           <div className="field" style={{ flex: "1 1 180px" }}><label htmlFor="rp-dep">Department</label><select id="rp-dep" className="ctl" value={filters.department} onChange={(e) => nav({ department: e.target.value })}><option value="">Any</option>{departments.filter((d) => !filters.faculty || d.faculty_code === filters.faculty).map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}</select></div>
-          {filtered ? <div className="field"><label>&nbsp;</label><Btn kind="ghost" onClick={() => go("/helpdesk/reports")}>Clear</Btn></div> : null}
+          {filtered ? <div style={{ alignSelf: "flex-end" }}><Btn kind="ghost" onClick={() => go("/helpdesk/reports")}>Clear</Btn></div> : null}
         </div>
         <div className="sub2 mt-2">Scope: {scope}</div>
       </div>
@@ -84,19 +84,19 @@ export function Reports({ stats, categories, agents, faculties, departments, fil
 
       <Panel title="Monthly ticket volume" right="The last twelve months: raised against resolved">
         <PBody>
-          <div className="bars">
+          <div className="vbars">
             {stats.monthly.map((m) => (
-              <div key={m.key} className="bars__col" title={`${m.key}: ${n(m.created)} raised, ${n(m.resolved)} resolved, ${n(m.closed)} closed`}>
-                <div className="bars__stack">
-                  <span className="bars__bar bars__bar--a" style={{ height: `${Math.round((100 * n(m.created)) / maxMonth)}%` }} />
-                  <span className="bars__bar bars__bar--b" style={{ height: `${Math.round((100 * n(m.resolved)) / maxMonth)}%` }} />
+              <div key={m.key} className="vbars__col" title={`${m.key}: ${n(m.created)} raised, ${n(m.resolved)} resolved, ${n(m.closed)} closed`}>
+                <div className="vbars__stack">
+                  <span className="vbars__bar vbars__bar--a" style={{ height: `${Math.round((100 * n(m.created)) / maxMonth)}%` }} />
+                  <span className="vbars__bar vbars__bar--b" style={{ height: `${Math.round((100 * n(m.resolved)) / maxMonth)}%` }} />
                 </div>
-                <div className="bars__label tnum">{new Date(m.key + "-01").toLocaleDateString("en-GB", { month: "short" })}</div>
-                <div className="bars__n tnum">{n(m.created)}/{n(m.resolved)}</div>
+                <div className="vbars__label tnum">{new Date(Number(m.key.slice(0, 4)), Number(m.key.slice(5, 7)) - 1, 1).toLocaleDateString("en-GB", { month: "short" })}</div>
+                <div className="vbars__n tnum">{n(m.created)}/{n(m.resolved)}</div>
               </div>
             ))}
           </div>
-          <div className="row row--tight sub2 mt-2"><span className="bars__key bars__key--a" /> Raised <span className="bars__key bars__key--b" style={{ marginLeft: 12 }} /> Resolved</div>
+          <div className="row row--tight sub2 mt-2"><span className="vbars__key vbars__key--a" /> Raised <span className="vbars__key vbars__key--b" style={{ marginLeft: 12 }} /> Resolved</div>
         </PBody>
       </Panel>
 

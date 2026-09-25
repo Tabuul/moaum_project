@@ -65,14 +65,16 @@ export interface DTableProps {
   title?: string;
   /** a table that is a control, not a list to keep — inside a dialog, say — carries no Print button */
   noPrint?: boolean;
+  /** rows a page; 0 shows every row given, for a list the server has already paged */
+  pageSize?: number;
 }
 
-export function DTable({ cols, rows, texts, title, noPrint }: DTableProps) {
+export function DTable({ cols, rows, texts, title, noPrint, pageSize }: DTableProps) {
   const cls = cols.map((c) => c.split("|")[1] || "");
   const labels = cols.map((c) => c.split("|")[0]);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
-  const [size, setSize] = useState<number>(PAGE); // rows per page; 0 = all
+  const [size, setSize] = useState<number>(pageSize ?? PAGE); // rows per page; 0 = all
   const wrap = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLTableElement>(null);
 

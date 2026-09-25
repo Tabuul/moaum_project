@@ -8,15 +8,14 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, Timeline, readBase64, when, type Agent, type Ticket } from "@/lib/helpdesk";
 
 type Dialog = "assign" | "escalate" | "resolve" | "close" | "reopen" | null;
 
-export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string; director: boolean; agents: Agent[] }) {
-  void director;
+export function DeskTicket({ t, me, agents }: { t: Ticket; me: string; agents: Agent[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -26,6 +25,7 @@ export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string;
   const [internal, setInternal] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [fileInternal, setFileInternal] = useState(false);
+  const [fileKey, setFileKey] = useState(0);
   const [agent, setAgent] = useState(t.assigned_to ?? "");
   const [reason, setReason] = useState("");
   const [summary, setSummary] = useState(t.resolution_summary ?? "");
@@ -47,7 +47,7 @@ export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string;
     if (!file) return;
     if (!FILE_TYPES.includes(file.type) || file.size > MAX_FILE) { const p = { status: 422, title: "That file cannot be attached", detail: "A PDF, JPEG or PNG of at most 5 MB." }; setProblem(p); notifyProblem(p); return; }
     const b64 = await readBase64(file);
-    if (await call("/attachments", { filename: file.name, contentType: file.type, contentBase64: b64, internal: fileInternal }, `${file.name} attached to ${t.number}${fileInternal ? " (internal)" : ""}`)) setFile(null);
+    if (await call("/attachments", { filename: file.name, contentType: file.type, contentBase64: b64, internal: fileInternal }, `${file.name} attached to ${t.number}${fileInternal ? " (internal)" : ""}`)) { setFile(null); setFileInternal(false); setFileKey((k) => k + 1); }
   }
   const closeDialog = () => { setDialog(null); setReason(""); };
 
@@ -66,13 +66,13 @@ export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string;
         <Panel title="Act on the ticket" right={t.agent ? `With ${t.agent}${mine ? " (you)" : ""} since ${when(t.assigned_at)}` : "Not assigned"}>
           <PBody>
             <div className="row">
-              {!mine ? <Btn kind="primary" disabled={busy} onClick={() => void call("/assign", { agentId: me }, `${t.number}: taken by you`)}>{t.agent ? "Take it over" : "Accept the Ticket"}</Btn> : null}
-              <Btn kind="secondary" disabled={busy} onClick={() => setDialog("assign")}>{t.agent ? "Reassign" : "Assign to an Agent"}</Btn>
-              {t.status === "OPENED" || t.status === "REOPENED" ? <Btn kind="go" disabled={busy} onClick={() => void call("/status", { status: "IN_PROGRESS" }, `${t.number}: work started`)}>Start Work</Btn> : null}
+              {!mine ? <Btn kind="primary" disabled={busy} onClick={() => void call("/assign", { agentId: me }, `${t.number}: taken by you`)}>{t.agent ? "Take It Over" : "Accept the Ticket"}</Btn> : null}
+              <Btn kind="secondary" disabled={busy} onClick={() => { setAgent(t.assigned_to ?? ""); setDialog("assign"); }}>{t.agent ? "Reassign" : "Assign to an Agent"}</Btn>
+              {t.status === "OPENED" || t.status === "REOPENED" ? <Btn kind="primary" disabled={busy} onClick={() => void call("/status", { status: "IN_PROGRESS" }, `${t.number}: work started`)}>Start Work</Btn> : null}
               {t.status === "IN_PROGRESS" ? <Btn kind="go" disabled={busy} onClick={() => setDialog("resolve")}>Resolve</Btn> : null}
               {t.status === "RESOLVED" ? <Btn kind="go" disabled={busy} onClick={() => void call("/status", { status: "CLOSED", reason: "Closed by the desk after the resolution" }, `${t.number}: closed`)}>Close as Resolved</Btn> : null}
               {t.status === "RESOLVED" ? <Btn kind="ghost" disabled={busy} onClick={() => setDialog("reopen")}>Reopen</Btn> : null}
-              <Btn kind="ghost" disabled={busy} onClick={() => setDialog("escalate")}>Escalate</Btn>
+              <Btn kind="ghost" disabled={busy} onClick={() => { setAgent(""); setDialog("escalate"); }}>Escalate</Btn>
               <select className="ctl" value={t.priority} disabled={busy} onChange={(e) => void call("/priority", { priority: e.target.value }, `${t.number}: priority ${PRIORITY[e.target.value]?.[0] ?? e.target.value}`)} aria-label="Priority">
                 {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v[0]} priority</option>)}
               </select>
@@ -94,8 +94,8 @@ export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string;
 
       {t.resolution_summary ? (
         <Note kind={t.status === "RESOLVED" ? "ok" : "info"} title={`Resolution: ${t.resolution_summary}`}>
-          <div style={{ whiteSpace: "pre-wrap" }}>{t.resolution_details}</div>
-          <div className="sub2 mt-2">{t.resolved_by_name}, {when(t.resolved_at)}{t.status === "RESOLVED" ? " · awaiting the requester's confirmation" : ""}</div>
+          <span className="blk" style={{ whiteSpace: "pre-wrap" }}>{t.resolution_details}</span>
+          <span className="blk sub2 mt-2">{t.resolved_by_name}, {when(t.resolved_at)}{t.status === "RESOLVED" ? " · awaiting the requester’s confirmation" : ""}</span>
         </Note>
       ) : null}
 
@@ -103,13 +103,15 @@ export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string;
         <Panel title="Requester" right={t.requester_kind === "STUDENT" ? "Student" : "Member of staff"}>
           <PBody>
             <div className="stack">
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Name</span><strong>{t.requester_name}</strong></div>
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>{t.requester_kind === "STUDENT" ? "Matriculation no." : "Staff number"}</span><span className="tnum">{t.requester_number ?? "—"}</span></div>
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Email</span><span>{t.requester_email ? <a className="lnk" href={`mailto:${t.requester_email}`}>{t.requester_email}</a> : "—"}</span></div>
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Phone</span><span className="tnum">{t.requester_phone ?? "—"}</span></div>
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Department</span><span>{t.department ?? "—"}</span></div>
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Faculty</span><span>{t.faculty ?? "—"}</span></div>
-              {t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the student record</LinkBtn></div> : null}
+              <KvGrid cls="grid--2" pairs={[
+                ["Name", <strong key="n">{t.requester_name}</strong>],
+                [t.requester_kind === "STUDENT" ? "Matriculation number" : "Staff number", <span key="m" className="tnum">{t.requester_number ?? "—"}</span>],
+                ["Email", t.requester_email ? <a key="e" className="lnk" href={`mailto:${t.requester_email}`}>{t.requester_email}</a> : "—"],
+                ["Phone", <span key="p" className="tnum">{t.requester_phone ?? "—"}</span>],
+                ["Department", t.department ?? "—"],
+                ["Faculty", t.faculty ?? "—"],
+              ]} />
+              {t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div> : null}
             </div>
           </PBody>
         </Panel>
@@ -126,22 +128,23 @@ export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string;
         <PBody>
           <Attachments items={t.attachments} href={(a) => `/api/bff/api/v1/helpdesk/tickets/${t.id}/attachments/${a.id}/content`} />
           <div className="row row--base mt-3">
-            <input type="file" className="ctl" style={{ flex: "1 1 220px" }} accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Attach a file" />
-            <label className="row row--tight"><input type="checkbox" checked={fileInternal} onChange={(e) => setFileInternal(e.target.checked)} /> <span className="sub2">Internal (the requester does not see it)</span></label>
+            <input key={fileKey} type="file" className="ctl" style={{ flex: "1 1 220px" }} accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Attach a file" />
+            <label className="row row--tight"><input type="checkbox" className="chk" checked={fileInternal} onChange={(e) => setFileInternal(e.target.checked)} /> <span className="sub2">Internal (the requester does not see it)</span></label>
             <Btn kind="ghost" disabled={busy || !file} onClick={() => void attach()}>Attach File</Btn>
           </div>
         </PBody>
       </Panel>
 
-      <Panel title="Conversation and history" right={<Tabs items={[{ id: "conversation", label: "Conversation", count: t.comments.length }, { id: "history", label: "History", count: t.timeline.length }]} value={tab} onChange={setTab} />}>
+      <Panel title="Conversation and history" right={`${t.comments.length} message${t.comments.length === 1 ? "" : "s"} · ${t.timeline.length} event${t.timeline.length === 1 ? "" : "s"}`}>
         <PBody>
+          <div className="mb-3"><Tabs label="Conversation or history" items={[{ id: "conversation", label: "Conversation", count: t.comments.length }, { id: "history", label: "History", count: t.timeline.length }]} value={tab} onChange={setTab} /></div>
           {tab === "history" ? <Timeline events={t.timeline} /> : (
             <>
               {t.comments.length ? (
                 <div className="stack">
                   {t.comments.map((c) => (
                     <div key={c.id} className={`msg${c.internal ? " msg--internal" : c.author_kind === "REQUESTER" ? " msg--theirs" : ""}`}>
-                      <div className="row row--base row--tight"><strong>{c.author_name}</strong><span className="sub2 tnum">{when(c.created_at)}</span>{c.internal ? <Pil kind="grey">Internal note</Pil> : c.author_kind === "REQUESTER" ? <Pil kind="info">Requester</Pil> : <Pil kind="ok">Sent to the requester</Pil>}</div>
+                      <div className="row row--base row--tight"><strong>{c.author_name}</strong><span className="sub2 tnum">{when(c.created_at)}</span>{c.internal ? <Pil kind="grey">Internal note</Pil> : c.author_kind === "REQUESTER" ? <Pil kind="info">Requester</Pil> : c.author_kind === "SYSTEM" ? <Pil kind="grey">The portal</Pil> : <Pil kind="ok">Sent to the requester</Pil>}</div>
                       <div style={{ whiteSpace: "pre-wrap" }}>{c.body}</div>
                     </div>
                   ))}
@@ -149,11 +152,12 @@ export function DeskTicket({ t, me, director, agents }: { t: Ticket; me: string;
               ) : <div className="sub2">Nothing said yet.</div>}
               <div className="mt-3">
                 <div className="row row--base mb-2">
-                  <Btn kind={internal ? "primary" : "ghost"} size="sm" onClick={() => setInternal(true)}>Internal note</Btn>
-                  <Btn kind={!internal ? "primary" : "ghost"} size="sm" onClick={() => setInternal(false)}>Update to the requester</Btn>
+                  <Tabs label="Message type" items={[{ id: "internal", label: "Internal Note" }, { id: "update", label: "Update to the Requester" }]} value={internal ? "internal" : "update"} onChange={(id) => setInternal(id === "internal")} />
                   <span className="sub2">{internal ? "Seen by the ICT desk only." : "Sent to the requester by email and shown on their ticket."}</span>
                 </div>
-                <textarea className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={8000} aria-label={internal ? "Internal note" : "Update to the requester"} placeholder={internal ? "What was found, what was tried, what to check next…" : "What the requester should know…"} />
+                <Field id="hd-note" label={internal ? "Internal note" : "Update to the requester"}>
+                  <textarea id="hd-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={8000} placeholder={internal ? "What was found, what was tried, what to check next…" : "What the requester should know…"} />
+                </Field>
                 <div className="row row--base mt-2">
                   <Btn kind={internal ? "secondary" : "primary"} disabled={busy || note.trim().length < 2} onClick={async () => { if (await call("/comments", { body: note.trim(), internal }, `${t.number}: ${internal ? "internal note added" : "update sent to the requester"}`)) setNote(""); }}>{internal ? "Add Internal Note" : "Send Update"}</Btn>
                 </div>

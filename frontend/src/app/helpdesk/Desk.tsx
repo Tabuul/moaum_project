@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { PRIORITY, PriorityPil, STATUS, StatusPil, hours, when, type Agent, type Category, type TicketRow } from "@/lib/helpdesk";
 
 export interface Stats {
@@ -23,9 +24,12 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
 }) {
   const go = useQueryNav();
   const [q, setQ] = useState(filters.q);
+  const [from, setFrom] = useState(filters.from);
+  const [to, setTo] = useState(filters.to);
   const n = (v: number | null | undefined) => Number(v ?? 0);
   const t = stats?.totals;
-  const pages = Math.max(1, Math.ceil(queue.total / queue.size));
+  const size = queue.size || 20;
+  const pages = Math.max(1, Math.ceil(queue.total / size));
 
   function nav(patch: Partial<Filters & { page: string }>) {
     const next: Record<string, string> = { ...filters, page: "1", ...patch };
@@ -35,6 +39,7 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
   }
   const sortBy = (key: string) => nav({ sort: key, dir: filters.sort === key && filters.dir === "desc" ? "asc" : "desc" });
   const arrow = (key: string) => (filters.sort === key ? (filters.dir === "asc" ? " ↑" : " ↓") : "");
+  const filtered = !!(filters.q || filters.category || filters.priority || filters.agent || filters.from || filters.to || filters.status !== "open");
 
   return (
     <>
@@ -54,45 +59,67 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
           ]} />
           <Tiles items={[
             ["Unassigned", String(n(t.unassigned)), n(t.unassigned) ? "var(--amber-ink)" : null, "Open, with no agent", "/helpdesk?agent=none"],
-            ["High priority", String(n(t.high)), n(t.high) ? "var(--red-ink)" : null, "High or urgent, still open", "/helpdesk?priority=HIGH"],
+            ["High priority", String(n(t.high)), n(t.high) ? "var(--red-ink)" : null, "High or urgent, still open", "/helpdesk?sort=priority"],
             ["Overdue", String(n(t.overdue)), n(t.overdue) ? "var(--red-ink)" : null, `${n(t.response_overdue)} past first response · ${n(t.escalated)} escalated`],
             ["Average resolution", hours(t.avg_resolution_hours), null, `First response ${hours(t.avg_first_response_hours)} · ${n(t.ever_resolved) ? Math.round((100 * n(t.resolved_in_sla)) / n(t.ever_resolved)) + "% within SLA" : "no resolutions yet"}`],
           ]} />
-          {n(t.mine_open) ? <Note kind="info" title={`${n(t.mine_open)} open ticket${n(t.mine_open) === 1 ? " is" : "s are"} with you`} action={<Btn kind="primary" size="sm" onClick={() => nav({ agent: "me", status: "open" })}>Show mine</Btn>}>Tickets assigned to you that are not yet resolved.</Note> : null}
+          {n(t.mine_open) ? <Note kind="info" title={`${n(t.mine_open)} open ticket${n(t.mine_open) === 1 ? " is" : "s are"} with you`} action={<Btn kind="primary" size="sm" onClick={() => nav({ agent: "me", status: "open" })}>Show Mine</Btn>}>Tickets assigned to you that are not yet resolved.</Note> : null}
         </>
       ) : null}
 
-      <Panel title="The queue" right={`${queue.total} ticket${queue.total === 1 ? "" : "s"}${filters.status === "open" ? " open" : ""}`}>
-        <PBody>
-          <form className="row" onSubmit={(e) => { e.preventDefault(); nav({ q }); }}>
-            <input className="ctl" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ticket number, subject, name, matric or staff number, email, payment reference…" aria-label="Search tickets" style={{ flex: "2 1 280px" }} />
-            <select className="ctl" value={filters.status} onChange={(e) => nav({ status: e.target.value })} aria-label="Status" style={{ flex: "1 1 140px" }}>
+      <form className="filterbar" onSubmit={(e) => { e.preventDefault(); nav({ q, from, to }); }}>
+        <div className="row">
+          <Field id="hd-q" label="Search" style={{ flex: "2 1 260px" }}>
+            <input id="hd-q" className="ctl" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number, subject, name, matric or staff number, email, payment reference" />
+          </Field>
+          <Field id="hd-status" label="Status" style={{ flex: "1 1 150px" }}>
+            <select id="hd-status" className="ctl" value={filters.status} onChange={(e) => nav({ status: e.target.value })}>
               <option value="open">All open</option>
               {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
+              <option value="IN_PROGRESS,REOPENED">In progress or reopened</option>
               <option value="all">Everything</option>
             </select>
-            <select className="ctl" value={filters.category} onChange={(e) => nav({ category: e.target.value })} aria-label="Category" style={{ flex: "1 1 160px" }}>
-              <option value="">Any category</option>
+          </Field>
+          <Field id="hd-cat" label="Category" style={{ flex: "1 1 160px" }}>
+            <select id="hd-cat" className="ctl" value={filters.category} onChange={(e) => nav({ category: e.target.value })}>
+              <option value="">Any</option>
               {categories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
             </select>
-            <select className="ctl" value={filters.priority} onChange={(e) => nav({ priority: e.target.value })} aria-label="Priority" style={{ flex: "1 1 120px" }}>
-              <option value="">Any priority</option>
+          </Field>
+          <Field id="hd-pri" label="Priority" style={{ flex: "1 1 120px" }}>
+            <select id="hd-pri" className="ctl" value={filters.priority} onChange={(e) => nav({ priority: e.target.value })}>
+              <option value="">Any</option>
               {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
             </select>
-            <select className="ctl" value={filters.agent} onChange={(e) => nav({ agent: e.target.value })} aria-label="Assigned agent" style={{ flex: "1 1 160px" }}>
-              <option value="">Any agent</option>
+          </Field>
+          <Field id="hd-agent" label="Agent" style={{ flex: "1 1 160px" }}>
+            <select id="hd-agent" className="ctl" value={filters.agent} onChange={(e) => nav({ agent: e.target.value })}>
+              <option value="">Any</option>
               <option value="me">Assigned to me</option>
               <option value="none">Unassigned</option>
               {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
-            <input className="ctl" type="date" value={filters.from} onChange={(e) => nav({ from: e.target.value })} aria-label="Raised from" />
-            <input className="ctl" type="date" value={filters.to} onChange={(e) => nav({ to: e.target.value })} aria-label="Raised to" />
+          </Field>
+          <Field id="hd-from" label="Raised from" style={{ flex: "1 1 140px" }}><input id="hd-from" className="ctl" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+          <Field id="hd-to" label="To" style={{ flex: "1 1 140px" }}><input id="hd-to" className="ctl" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+          <div className="row row--tight" style={{ alignSelf: "flex-end" }}>
             <Btn kind="primary" type="submit">Search</Btn>
-            {filters.q || filters.category || filters.priority || filters.agent || filters.from || filters.to || filters.status !== "open" ? <Btn kind="ghost" onClick={() => { setQ(""); go("/helpdesk"); }}>Clear</Btn> : null}
-          </form>
+            {filtered ? <Btn kind="ghost" onClick={() => { setQ(""); setFrom(""); setTo(""); go("/helpdesk"); }}>Clear</Btn> : null}
+          </div>
+        </div>
+      </form>
+
+      <Panel title="The queue" right={`${queue.total} ticket${queue.total === 1 ? "" : "s"}${filters.status === "open" ? " open" : ""}`}>
+        <PBody>
+          <div className="row row--base">
+            <span className="sub2">Sort by</span>
+            {[["updated", "Updated"], ["created", "Raised"], ["priority", "Priority"], ["status", "Status"], ["due", "Due"], ["number", "Number"]].map(([k, l]) => (
+              <Btn key={k} kind={filters.sort === k ? "primary" : "ghost"} size="sm" onClick={() => sortBy(k)}>{l}{arrow(k)}</Btn>
+            ))}
+          </div>
         </PBody>
         {queue.rows.length ? (
-          <DTable cols={[`Ticket${arrow("number")}`, "Requester", "Category", "Subject", `Priority${arrow("priority")}|mid`, `Status${arrow("status")}|mid`, "Agent", `Raised${arrow("created")}|mid`, `Updated${arrow("updated")}|mid`, "|num"]} rows={queue.rows.map((r) => [
+          <DTable pageSize={0} cols={["Ticket", "Requester", "Category", "Subject", "Priority|mid", "Status|mid", "Agent", "Raised|mid", "Updated|mid", "|num"]} rows={queue.rows.map((r) => [
             <span key="n"><Link className="lnk tnum b600" href={`/helpdesk/tickets/${r.id}`}>{r.number}</Link>{r.overdue ? <div><Pil kind="bad">Overdue</Pil></div> : r.response_overdue ? <div><Pil kind="warn">No response yet</Pil></div> : null}</span>,
             <span key="r"><strong>{r.requester_name}</strong><div className="sub2 tnum">{r.requester_number ?? r.requester_email ?? ""} · {r.requester_kind === "STUDENT" ? "Student" : "Staff"}</div></span>,
             <span key="c" className="sub2">{r.category}</span>,
@@ -107,10 +134,6 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
         ) : <PBody><div className="sub2">No ticket matches. Widen the filters, or clear them.</div></PBody>}
         <PBody>
           <div className="row row--base">
-            <span className="sub2">Sort by</span>
-            {[["updated", "Updated"], ["created", "Raised"], ["priority", "Priority"], ["status", "Status"], ["due", "Due"], ["number", "Number"]].map(([k, l]) => (
-              <Btn key={k} kind={filters.sort === k ? "primary" : "ghost"} size="sm" onClick={() => sortBy(k)}>{l}{arrow(k)}</Btn>
-            ))}
             <span className="grow" />
             <span className="sub2 tnum">Page {queue.page} of {pages}</span>
             <Btn kind="ghost" size="sm" disabled={queue.page <= 1} onClick={() => nav({ page: String(queue.page - 1) })}>Previous</Btn>

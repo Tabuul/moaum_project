@@ -4,7 +4,7 @@ import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { LinkBtn, Note, PageHead, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { PriorityPil, StatusPil, when, type TicketRow } from "@/lib/helpdesk";
+import { PRIORITY, PriorityPil, StatusPil, statusWord, when, type TicketRow } from "@/lib/helpdesk";
 import { requester } from "./who";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export default async function MyTicketsPage() {
   const { me, route } = await requester();
   const r = await api<TicketRow[]>("/api/v1/helpdesk/my/tickets");
   const rows = r.ok ? r.data : [];
-  const open = rows.filter((t) => t.status !== "CLOSED");
+  const open = rows.filter((t) => t.status !== "CLOSED" && t.status !== "RESOLVED");
   const resolved = rows.filter((t) => t.status === "RESOLVED");
   return (
     <Shell route={route} me={me}>
@@ -29,7 +29,7 @@ export default async function MyTicketsPage() {
       ]} />
       {resolved.length ? (
         <Note kind="ok" title={`${resolved.length} ticket${resolved.length === 1 ? " has" : "s have"} been marked as resolved`}
-          action={<LinkBtn kind="go" href={`/tickets/${resolved[0].id}`}>Review {resolved[0].number}</LinkBtn>}>
+          action={<LinkBtn kind="primary" href={`/tickets/${resolved[0].id}`}>Review {resolved[0].number}</LinkBtn>}>
           Open the ticket to read the resolution. Confirm it if the problem is settled, which closes the ticket; reopen it if it is not, and say what is still wrong.
         </Note>
       ) : null}
@@ -43,9 +43,9 @@ export default async function MyTicketsPage() {
             <PriorityPil key="p" priority={t.priority} />,
             <span key="r" className="tnum sub2">{when(t.created_at)}</span>,
             <span key="u" className="tnum sub2">{when(t.updated_at)}</span>,
-            <LinkBtn key="o" href={`/tickets/${t.id}`} kind={t.status === "RESOLVED" ? "go" : "ghost"} size="sm">{t.status === "RESOLVED" ? "Review" : "Open"}</LinkBtn>,
-          ])} texts={rows.map((t) => `${t.number} ${t.subject} ${t.category} ${t.status}`)} />
-        ) : (
+            <LinkBtn key="o" href={`/tickets/${t.id}`} kind={t.status === "RESOLVED" ? "primary" : "ghost"} size="sm">{t.status === "RESOLVED" ? "Review" : "Open"}</LinkBtn>,
+          ])} texts={rows.map((t) => `${t.number} ${t.subject} ${t.category} ${statusWord(t.status)} ${PRIORITY[t.priority]?.[0] ?? ""}`)} />
+        ) : !r.ok ? <PBody><div className="sub2">Your tickets could not be read just now.</div></PBody> : (
           <PBody>
             <div className="sub2">You have not raised a ticket yet. Report a payment that did not register, a login that fails, a course that will not register, a result, the portal, your email, your account or the network; you receive a tracking number at once and are told at every turn.</div>
             <div className="mt-3"><LinkBtn kind="primary" href="/tickets/new">Submit a New Ticket</LinkBtn></div>

@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { FILE_TYPES, MAX_FILE, PRIORITY, human, parse, readBase64, type Category, type Field as F, type Profile } from "@/lib/helpdesk";
+import { EMAIL_OK, FILE_TYPES, MAX_FILE, PRIORITY, human, parse, readBase64, type Category, type Field as F, type Profile } from "@/lib/helpdesk";
 
 export function NewTicket({ profile, categories, sessions }: { profile: Profile; categories: Category[]; sessions: string[] }) {
   const router = useRouter();
@@ -27,7 +27,8 @@ export function NewTicket({ profile, categories, sessions }: { profile: Profile;
   const category = categories.find((c) => c.code === code) ?? null;
   const fields = category ? parse<F[]>(category.fields, []) : [];
   const missing = fields.filter((f) => f.required && !(details[f.key] ?? "").trim());
-  const ready = !!category && subject.trim().length > 2 && description.trim().length > 9 && email.trim().length > 4 && missing.length === 0;
+  const emailFixed = !!(profile.email && profile.email.trim());
+  const ready = !!category && subject.trim().length > 2 && description.trim().length > 9 && EMAIL_OK.test(email.trim()) && missing.length === 0;
 
   function pick(list: FileList | null) {
     const next = [...files];
@@ -35,7 +36,8 @@ export function NewTicket({ profile, categories, sessions }: { profile: Profile;
     setFiles(next);
   }
 
-  async function submit() {
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!ready || !category) return;
     setBusy(true); setProblem(null);
     try {
@@ -63,31 +65,33 @@ export function NewTicket({ profile, categories, sessions }: { profile: Profile;
   if (done) {
     return (
       <>
-        <Note kind="ok" title={`Your ticket number is ${done.number}`} action={<LinkBtn kind="primary" href={`/tickets/${done.id}`}>Open the ticket</LinkBtn>}>
+        <Note kind="ok" title={`Your ticket number is ${done.number}`} action={<LinkBtn kind="primary" href={`/tickets/${done.id}`}>Open the Ticket</LinkBtn>}>
           Keep the number: quote it in any follow-up and use it, with your email address, on the public tracking page. The desk has been told, and you will be told when it is opened, when work begins and when it is resolved. An email confirming this has been sent to {email.trim()}.
           {done.attached ? ` ${done.attached} file${done.attached === 1 ? "" : "s"} attached.` : ""}
           {done.skipped.length ? ` Not attached (a PDF, JPEG or PNG of at most 5 MB is accepted): ${done.skipped.join(", ")}.` : ""}
         </Note>
-        <div className="row"><LinkBtn href="/tickets">My Support Tickets</LinkBtn><Btn kind="ghost" onClick={() => { setDone(null); setCode(""); setSubject(""); setDescription(""); setDetails({}); setFiles([]); }}>Submit another</Btn></div>
+        <div className="row"><LinkBtn href="/tickets">My Support Tickets</LinkBtn><Btn kind="ghost" onClick={() => { setDone(null); setCode(""); setSubject(""); setDescription(""); setDetails({}); setFiles([]); }}>Submit Another</Btn></div>
       </>
     );
   }
 
   return (
-    <>
+    <form onSubmit={(e) => void submit(e)}>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <div className="grid grid--2">
         <Panel title="Who you are" right="From your account; nothing to type">
           <PBody>
             <div className="stack">
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Name</span><strong>{profile.name}</strong></div>
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>{profile.kind === "STUDENT" ? "Matriculation no." : "Staff number"}</span><span className="tnum">{profile.number ?? "—"}</span></div>
-              {profile.programme ? <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Programme</span><span>{profile.programme}</span></div> : null}
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Department</span><span>{profile.department ?? "—"}</span></div>
-              <div className="row row--base"><span className="sub2" style={{ width: 120 }}>Faculty</span><span>{profile.faculty ?? "—"}</span></div>
+              <KvGrid cls="grid--2" pairs={[
+                ["Name", <strong key="n">{profile.name}</strong>],
+                [profile.kind === "STUDENT" ? "Matriculation number" : "Staff number", <span key="m" className="tnum">{profile.number ?? "—"}</span>],
+                ...(profile.programme ? [["Programme", profile.programme] as [string, string]] : []),
+                ["Department", profile.department ?? "—"],
+                ["Faculty", profile.faculty ?? "—"],
+              ]} />
               <div className="row">
-                <Field id="tk-email" label="Email" required hint="Where the desk writes to you, and what the tracking page asks for" style={{ flex: "1 1 220px" }}>
-                  <input id="tk-email" className="ctl" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+                <Field id="tk-email" label="Email" required hint={emailFixed ? `The address on your account; the desk writes here and the tracking page asks for it. Change it under ${profile.kind === "STUDENT" ? "Profile" : "your staff record"}.` : "Where the desk writes to you, and what the tracking page asks for"} style={{ flex: "1 1 220px" }}>
+                  <input id="tk-email" className="ctl" type="email" value={email} readOnly={emailFixed} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
                 </Field>
                 <Field id="tk-phone" label="Phone" style={{ flex: "1 1 160px" }}>
                   <input id="tk-phone" className="ctl" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
@@ -124,7 +128,7 @@ export function NewTicket({ profile, categories, sessions }: { profile: Profile;
               <input id="tk-files" className="ctl" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
             </Field>
             {files.length ? (
-              <ul className="list">
+              <ul className="plain stack">
                 {files.map((f) => (
                   <li key={f.name + f.size} className="row row--base">
                     <span>{f.name}</span><span className="sub2">{human(f.size)}</span>
@@ -135,13 +139,13 @@ export function NewTicket({ profile, categories, sessions }: { profile: Profile;
               </ul>
             ) : null}
             <div className="row row--base">
-              <Btn kind="primary" disabled={busy || !ready} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit the Ticket"}</Btn>
-              {!ready ? <span className="sub2">{!category ? "Choose a category." : missing.length ? `Fill in: ${missing.map((m) => m.label).join(", ")}.` : subject.trim().length <= 2 ? "Give a subject." : description.trim().length <= 9 ? "Describe the problem." : "Give an email address."}</span> : <span className="sub2">You will receive a tracking number at once.</span>}
+              <Btn kind="primary" type="submit" disabled={busy || !ready}>{busy ? "Submitting…" : "Submit the Ticket"}</Btn>
+              {!ready ? <span className="sub2">{!category ? "Choose a category." : missing.length ? `Fill in: ${missing.map((m) => m.label).join(", ")}.` : subject.trim().length <= 2 ? "Give a subject." : description.trim().length <= 9 ? "Describe the problem." : "Give a valid email address."}</span> : <span className="sub2">You will receive a tracking number at once.</span>}
             </div>
           </div>
         </PBody>
       </Panel>
-    </>
+    </form>
   );
 }
 
@@ -153,9 +157,11 @@ function PriorityHint({ p }: { p: string }) {
 /** one of the category's fields, by its type */
 function DynamicField({ f, value, sessions, onChange }: { f: F; value: string; sessions: string[]; onChange: (v: string) => void }) {
   const id = `tk-f-${f.key}`;
-  const opts = f.type === "select" ? (f.options ?? []) : f.type === "session" ? sessions : f.type === "semester" ? ["First semester", "Second semester"] : f.type === "level" ? ["100", "200", "300", "400", "500", "600"] : null;
+  const listed = f.type === "select" ? (f.options ?? []) : f.type === "session" ? sessions : f.type === "semester" ? ["First semester", "Second semester"] : f.type === "level" ? ["100", "200", "300", "400", "500", "600"] : null;
+  // a choice with nothing to choose from (the sessions could not be read, say) falls back to typing
+  const opts = listed && listed.length ? listed : null;
   return (
-    <Field id={id} label={f.label} required={f.required} hint={f.hint}>
+    <Field id={id} label={f.label} required={f.required} hint={f.hint ?? (f.type === "session" && !opts ? "e.g. 2025/2026" : undefined)}>
       {opts ? (
         <select id={id} className="ctl" value={value} onChange={(e) => onChange(e.target.value)}>
           <option value="">Choose…</option>

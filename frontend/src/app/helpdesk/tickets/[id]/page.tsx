@@ -14,10 +14,9 @@ export default async function DeskTicketPage({ params }: { params: Promise<{ id:
     api<Ticket>(`/api/v1/helpdesk/tickets/${encodeURIComponent(id)}`, { reason: "ticket read by the ICT desk" }),
     api<Agent[]>("/api/v1/helpdesk/agents"),
   ]);
-  const office = me.ok ? me.data.activeOffice : null;
   return (
     <Shell route="t/helpdesk" me={me.ok ? me.data : null}>
-      {t.ok ? <DeskTicket t={t.data} me={me.ok ? me.data.actorId : ""} director={office === "ict" || office === "admin" || office === "super"} agents={agents.ok ? agents.data : []} /> : <ProblemNotice problem={t.problem} />}
+      {t.ok ? <DeskTicket t={t.data} me={me.ok ? me.data.actorId : ""} agents={agents.ok ? agents.data : []} /> : <ProblemNotice problem={t.problem} />}
     </Shell>
   );
 }

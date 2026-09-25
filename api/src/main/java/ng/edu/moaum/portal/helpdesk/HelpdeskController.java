@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -178,10 +179,14 @@ class HelpdeskController {
     @Transactional
     Map<String, Object> submit(Authentication auth, @Valid @RequestBody Submit body) {
         Who w = who(auth);
-        String email = body.email() == null || body.email().isBlank() ? w.email() : body.email().trim();
+        // the notices go to the address the account holds; a requester types one only where the account has none
+        String email = w.email() != null && !w.email().isBlank() ? w.email().trim() : body.email() == null ? null : body.email().trim();
         String phone = body.phone() == null || body.phone().isBlank() ? w.phone() : body.phone().trim();
         Map<String, String> details = new LinkedHashMap<>();
-        if (body.details() != null) body.details().forEach((k, v) -> { if (k != null && k.matches("[a-z][a-z0-9_]{0,30}") && v != null && !v.isBlank()) details.put(k, v.trim().substring(0, Math.min(v.trim().length(), 500))); });
+        Set<String> declared = declaredKeys(body.category());
+        if (body.details() != null) body.details().forEach((k, v) -> {
+            if (k != null && declared.contains(k) && v != null && !v.isBlank() && details.size() < 30) details.put(k, v.trim().substring(0, Math.min(v.trim().length(), 500)));
+        });
         UUID id = jdbc.sql("SELECT helpdesk.submit(:k, :id, :n, :num, :e, :ph, :d, :f, :c, :s, :desc, :j::jsonb)")
                 .param("k", w.kind()).param("id", w.id()).param("n", w.name()).param("num", w.number(), Types.VARCHAR)
                 .param("e", email, Types.VARCHAR).param("ph", phone, Types.VARCHAR).param("d", w.departmentCode(), Types.VARCHAR).param("f", w.facultyCode(), Types.VARCHAR)
@@ -216,7 +221,7 @@ class HelpdeskController {
         return Map.of("id", c);
     }
 
-    public record Upload(@NotBlank @Size(max = 200) String filename, @NotBlank String contentType, @NotBlank String contentBase64, Boolean internal) {
+    public record Upload(@NotBlank @Size(max = 200) String filename, @NotBlank String contentType, @NotBlank @Size(max = 7_100_000) String contentBase64, Boolean internal) {
     }
 
     @PostMapping("/my/tickets/{id}/attachments")
@@ -247,6 +252,11 @@ class HelpdeskController {
     Map<String, Object> confirm(Authentication auth, @PathVariable UUID id) {
         Who w = who(auth);
         requireMine(id, w);
+        String status = jdbc.sql("SELECT status FROM helpdesk.ticket WHERE id = :id").param("id", id).query(String.class).single();
+        if (!"RESOLVED".equals(status)) {
+            throw new DomainRuleViolation("HELPDESK_NOT_RESOLVED", "Only a resolved ticket is confirmed.",
+                    new DomainRuleViolation.Remedy("Wait for the desk's resolution, or close the ticket if you no longer need it.", "Directorate of ICT"));
+        }
         jdbc.sql("SELECT helpdesk.transition(:t, 'CLOSED', 'REQUESTER', :a, :n, NULL)").param("t", id).param("a", w.id()).param("n", w.name()).query().singleRow();
         notifier.closed(id);
         return Map.of("id", id, "status", "CLOSED");
@@ -261,7 +271,7 @@ class HelpdeskController {
         requireMine(id, w);
         jdbc.sql("SELECT helpdesk.transition(:t, 'REOPENED', 'REQUESTER', :a, :n, :r)").param("t", id).param("a", w.id()).param("n", w.name())
                 .param("r", body.reason(), Types.VARCHAR).query().singleRow();
-        notifier.reopened(id, body.reason() == null ? "" : body.reason().trim());
+        notifier.reopened(id, body.reason() == null ? "" : body.reason().trim(), false);
         return Map.of("id", id, "status", "REOPENED");
     }
 
@@ -269,7 +279,7 @@ class HelpdeskController {
     @PostMapping("/my/tickets/{id}/close")
     @PreAuthorize(REQUESTER)
     @Transactional
-    Map<String, Object> withdraw(Authentication auth, @PathVariable UUID id, @RequestBody(required = false) Reason body) {
+    Map<String, Object> withdraw(Authentication auth, @PathVariable UUID id, @Valid @RequestBody(required = false) Reason body) {
         Who w = who(auth);
         requireMine(id, w);
         jdbc.sql("SELECT helpdesk.transition(:t, 'CLOSED', 'REQUESTER', :a, :n, :r)").param("t", id).param("a", w.id()).param("n", w.name())
@@ -307,7 +317,7 @@ class HelpdeskController {
                 : List.of(status.toUpperCase().split(","));
         UUID agentId = null;
         boolean unassigned = "none".equalsIgnoreCase(agent);
-        if (agent != null && !agent.isBlank() && !unassigned) agentId = "me".equalsIgnoreCase(agent) ? me(auth) : UUID.fromString(agent);
+        if (agent != null && !agent.isBlank() && !unassigned) agentId = "me".equalsIgnoreCase(agent) ? me(auth) : uuid(agent, "agent");
         String like = q == null || q.isBlank() ? null : "%" + q.trim() + "%";
         List<Map<String, Object>> rows = jdbc.sql(ROW.replace("SELECT t.id,", "SELECT count(*) OVER() AS total, t.id,") + """
                  WHERE (:like::text IS NULL OR t.number ILIKE :like OR t.subject ILIKE :like OR t.requester_name ILIKE :like OR t.requester_number ILIKE :like
@@ -365,16 +375,17 @@ class HelpdeskController {
         String where = """
                  WHERE (:from::date IS NULL OR t.created_at >= :from) AND (:to::date IS NULL OR t.created_at < :to + 1)
                    AND (:cat::text IS NULL OR c.code = :cat) AND (:pri::text IS NULL OR t.priority = :pri)
-                   AND (:agent::uuid IS NULL OR t.assigned_to = :agent)
+                   AND (:agent::uuid IS NULL OR t.assigned_to = :agent) AND (NOT :none OR t.assigned_to IS NULL)
                    AND (:fac::text IS NULL OR t.faculty_code = :fac) AND (:dep::text IS NULL OR t.department_code = :dep)
                 """;
         String base = "FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id LEFT JOIN ref.faculty f ON f.code = t.faculty_code LEFT JOIN ref.department d ON d.code = t.department_code" + where;
-        UUID agentId = agent == null || agent.isBlank() ? null : "me".equalsIgnoreCase(agent) ? me(auth) : UUID.fromString(agent);
+        boolean unassignedOnly = "none".equalsIgnoreCase(agent);
+        UUID agentId = agent == null || agent.isBlank() || unassignedOnly ? null : "me".equalsIgnoreCase(agent) ? me(auth) : uuid(agent, "agent");
         java.util.function.Function<String, JdbcClient.StatementSpec> with = sql -> jdbc.sql(sql)
                 .param("from", from, Types.DATE).param("to", to, Types.DATE)
                 .param("cat", category == null || category.isBlank() ? null : category.toUpperCase(), Types.VARCHAR)
                 .param("pri", priority == null || priority.isBlank() ? null : priority.toUpperCase(), Types.VARCHAR)
-                .param("agent", agentId, Types.OTHER)
+                .param("agent", agentId, Types.OTHER).param("none", unassignedOnly)
                 .param("fac", faculty == null || faculty.isBlank() ? null : faculty, Types.VARCHAR)
                 .param("dep", department == null || department.isBlank() ? null : department, Types.VARCHAR);
         Map<String, Object> out = new LinkedHashMap<>();
@@ -482,7 +493,7 @@ class HelpdeskController {
                 .param("r", body.reason(), Types.VARCHAR).query().singleRow();
         switch (to) {
             case "CLOSED" -> notifier.closed(id);
-            case "REOPENED" -> notifier.reopened(id, body.reason() == null ? "" : body.reason().trim());
+            case "REOPENED" -> { notifier.reopened(id, body.reason() == null ? "" : body.reason().trim(), true); notifier.statusChanged(id); }
             default -> notifier.statusChanged(id);
         }
         return Map.of("id", id, "status", to);
@@ -612,12 +623,14 @@ class HelpdeskController {
     /** the field definitions, checked: a key, a label, a known type, options for a choice */
     private static String fieldsJson(List<Map<String, Object>> fields) {
         List<Map<String, Object>> out = new ArrayList<>();
+        Set<String> seen = new java.util.HashSet<>();
         if (fields != null) {
             for (Map<String, Object> f : fields) {
-                String key = String.valueOf(f.getOrDefault("key", "")).trim().toLowerCase();
-                String label = String.valueOf(f.getOrDefault("label", "")).trim();
-                String type = String.valueOf(f.getOrDefault("type", "text")).trim().toLowerCase();
-                if (!key.matches("[a-z][a-z0-9_]{0,30}") || label.isBlank() || !FIELD_TYPES.contains(type)) {
+                if (f == null) continue;
+                String key = f.get("key") == null ? "" : String.valueOf(f.get("key")).trim().toLowerCase();
+                String label = f.get("label") == null ? "" : String.valueOf(f.get("label")).trim();
+                String type = f.get("type") == null ? "text" : String.valueOf(f.get("type")).trim().toLowerCase();
+                if (!key.matches("[a-z][a-z0-9_]{0,30}") || label.isBlank() || !FIELD_TYPES.contains(type) || !seen.add(key)) {
                     throw new DomainRuleViolation("HELPDESK_FIELD", "A field has a key (letters, digits, underscores), a label and a type: text, date, number, select, session, semester or level.",
                             new DomainRuleViolation.Remedy("Correct the field and save again.", "Directorate of ICT"));
                 }
@@ -678,14 +691,32 @@ class HelpdeskController {
     public record Track(@NotBlank @Size(max = 20) String number, @NotBlank @Size(max = 200) String email) {
     }
 
-    /** a ticket number and the email it was raised with; nothing internal, no attachments, no names but the requester's own */
+    /** the public page is answered at most this many times a quarter-hour for one address or one email, so the number space cannot be walked */
+    private static final int TRACK_LIMIT = 12;
+    private final ConcurrentHashMap<String, long[]> trackAttempts = new ConcurrentHashMap<>();
+
+    private void throttle(String key) {
+        long now = System.currentTimeMillis();
+        long[] slot = trackAttempts.compute(key, (k, v) -> v == null || now - v[0] > 15 * 60_000L ? new long[] {now, 1} : new long[] {v[0], v[1] + 1});
+        if (trackAttempts.size() > 50_000) trackAttempts.clear();
+        if (slot[1] > TRACK_LIMIT) {
+            throw new DomainRuleViolation("HELPDESK_TRACK_SLOW_DOWN", "Too many lookups in a short time.",
+                    new DomainRuleViolation.Remedy("Wait a quarter of an hour and try again, or sign in to the portal to see your tickets.", "Directorate of ICT"));
+        }
+    }
+
+    /** a ticket number and the email it was raised with; nothing internal, no attachments, no names at all */
     @PostMapping("/track")
     @Transactional(readOnly = true)
-    Map<String, Object> track(@Valid @RequestBody Track body) {
+    Map<String, Object> track(@Valid @RequestBody Track body, jakarta.servlet.http.HttpServletRequest request) {
         String number = body.number().trim().toUpperCase();
+        String ip = request.getHeader("X-Forwarded-For");
+        ip = ip == null || ip.isBlank() ? request.getRemoteAddr() : ip.split(",")[0].trim();
+        throttle("ip:" + ip);
+        throttle("email:" + body.email().trim().toLowerCase());
         Map<String, Object> t = jdbc.sql("""
                 SELECT t.id, t.number, t.subject, c.name AS category, t.status, t.priority, t.created_at, t.updated_at, t.resolved_at, t.closed_at,
-                       t.resolution_summary, t.requester_name, t.reopen_count
+                       t.resolution_summary, t.reopen_count
                   FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id
                  WHERE t.number = :n AND lower(t.requester_email) = lower(:e)
                 """).param("n", number).param("e", body.email().trim()).query().listOfRows().stream().findFirst()
@@ -704,6 +735,26 @@ class HelpdeskController {
     }
 
     /* ── helpers ── */
+
+    /** the keys a category asks for, so a ticket carries nothing the form did not show */
+    private Set<String> declaredKeys(String category) {
+        String fields = jdbc.sql("SELECT fields::text FROM helpdesk.category WHERE code = upper(btrim(:c))").param("c", category).query(String.class).optional().orElse("[]");
+        Set<String> keys = new java.util.HashSet<>();
+        try {
+            for (var node : JSON.readTree(fields)) if (node.get("key") != null) keys.add(node.get("key").asText());
+        } catch (RuntimeException unreadable) {
+            // an unreadable definition asks for nothing beyond the subject and description
+        }
+        return keys;
+    }
+
+    private static UUID uuid(String s, String what) {
+        try {
+            return UUID.fromString(s.trim());
+        } catch (IllegalArgumentException bad) {
+            throw new DomainRuleViolation("HELPDESK_BAD_ID", "That is not a valid " + what + " id.", new DomainRuleViolation.Remedy("Choose the " + what + " from the list.", "Directorate of ICT"));
+        }
+    }
 
     private void requireMine(UUID ticket, Who w) {
         Boolean ok = jdbc.sql("SELECT true FROM helpdesk.ticket WHERE id = :id AND requester_kind = :k AND requester_id = :r")
@@ -724,10 +775,12 @@ class HelpdeskController {
                        t.escalated_to, helpdesk.person_name(t.escalated_to) AS escalated_to_name, helpdesk.person_name(t.escalated_by) AS escalated_by_name, t.escalated_at, t.escalation_reason,
                        t.opened_at, helpdesk.person_name(t.opened_by) AS opened_by_name, t.first_response_at, t.in_progress_at,
                        helpdesk.person_name(t.resolved_by) AS resolved_by_name, t.resolution_summary, t.resolution_details,
-                       t.closed_by_kind, CASE WHEN t.closed_by_kind = 'AGENT' THEN helpdesk.person_name(t.closed_by) WHEN t.closed_by_kind = 'REQUESTER' THEN t.requester_name ELSE 'The portal' END AS closed_by_name, t.closure_reason,
+                       t.closed_by_kind, CASE WHEN t.closed_by_kind = 'AGENT' THEN helpdesk.person_name(t.closed_by) WHEN t.closed_by_kind = 'REQUESTER' THEN t.requester_name WHEN t.closed_by_kind = 'SYSTEM' THEN 'The portal' END AS closed_by_name, t.closure_reason,
                        helpdesk.response_due_at(t.created_at, t.priority) AS response_due_at, t.id,""") + " WHERE t.id = :id").param("id", id).query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>(t);
-        if (!desk) { out.remove("requester_id"); out.remove("assigned_by"); out.remove("escalated_to"); }
+        if (!desk) {
+            for (String k : List.of("requester_id", "assigned_by", "assigned_by_name", "escalated_to", "escalated_to_name", "escalated_by_name", "escalated_at", "escalation_reason", "escalated")) out.remove(k);
+        }
         out.put("comments", jdbc.sql("""
                 SELECT id, author_kind, author_name, internal, body, created_at FROM helpdesk.ticket_comment WHERE ticket_id = :t AND (:desk OR NOT internal) ORDER BY created_at
                 """).param("t", id).param("desk", desk).query().listOfRows());
@@ -736,8 +789,11 @@ class HelpdeskController {
                   FROM helpdesk.ticket_attachment WHERE ticket_id = :t AND (:desk OR NOT internal) ORDER BY uploaded_at
                 """).param("t", id).param("desk", desk).query().listOfRows());
         out.put("timeline", jdbc.sql("""
-                SELECT id, at, actor_kind, actor_name, action, from_value, to_value, detail, internal
-                  FROM helpdesk.ticket_event WHERE ticket_id = :t AND (:desk OR NOT internal) ORDER BY at
+                SELECT id, at, actor_kind, actor_name, action, from_value, to_value,
+                       CASE WHEN :desk OR action NOT IN ('ASSIGNED','REASSIGNED') THEN detail END AS detail, internal
+                  FROM helpdesk.ticket_event
+                 WHERE ticket_id = :t AND (:desk OR (NOT internal AND action NOT IN ('INTERNAL_NOTE','ESCALATED','PRIORITY_CHANGED')))
+                 ORDER BY at
                 """).param("t", id).param("desk", desk).query().listOfRows());
         return out;
     }
@@ -786,8 +842,9 @@ class HelpdeskController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType((String) r.get("content_type")))
                 .cacheControl(CacheControl.noStore())
-                .header("Content-Disposition", ContentDisposition.inline().filename(String.valueOf(r.get("filename"))).build().toString())
+                .header("Content-Disposition", ContentDisposition.inline().filename(String.valueOf(r.get("filename")), java.nio.charset.StandardCharsets.UTF_8).build().toString())
                 .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "sandbox")
                 .body((byte[]) r.get("content"));
     }
 }

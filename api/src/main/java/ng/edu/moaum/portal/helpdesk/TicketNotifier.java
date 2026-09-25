@@ -72,6 +72,20 @@ class TicketNotifier {
                 """).query().listOfRows();
     }
 
+    /** the assigned agent when one is named and reachable; otherwise everyone at the desk */
+    private void toAgentOrDesk(T t, String subject, String body) {
+        boolean reachable = t.assignedTo() != null && jdbc.sql("""
+                SELECT EXISTS (SELECT 1 FROM iam.person p WHERE p.id = :id AND p.ended_on IS NULL AND p.email IS NOT NULL AND btrim(p.email) <> '' AND helpdesk.is_agent(p.id))
+                """).param("id", t.assignedTo()).query(Boolean.class).single();
+        if (reachable) {
+            toPerson(t.assignedTo(), subject, body);
+            return;
+        }
+        for (Map<String, Object> p : desk()) {
+            notices.queueEmail((String) p.get("email"), subject, body, "person", (UUID) p.get("id"), List.of());
+        }
+    }
+
     private String deskLink(T t) {
         return portalUrl + "/helpdesk/tickets/" + t.id();
     }
@@ -135,16 +149,11 @@ class TicketNotifier {
                         + "Thank you. If the problem returns, raise a new ticket and quote this number.\n\nDirectorate of ICT");
     }
 
-    void reopened(UUID id, String reason) {
+    void reopened(UUID id, String reason, boolean byDesk) {
         T t = load(id);
-        String body = t.number() + " from " + t.requesterName() + " (" + t.category() + ") has been reopened: " + reason + "\n\nOpen it: " + deskLink(t) + "\n";
-        if (t.assignedTo() != null) {
-            toPerson(t.assignedTo(), "Ticket reopened — " + t.number(), body);
-        } else {
-            for (Map<String, Object> p : desk()) {
-                notices.queueEmail((String) p.get("email"), "Ticket reopened — " + t.number(), body, "person", (UUID) p.get("id"), List.of());
-            }
-        }
+        String body = t.number() + " from " + t.requesterName() + " (" + t.category() + ") has been reopened" + (byDesk ? " by the desk" : " by the requester") + ": " + reason
+                + "\n\nOpen it: " + deskLink(t) + "\n";
+        toAgentOrDesk(t, "Ticket reopened — " + t.number(), body);
     }
 
     void agentUpdate(UUID id, String excerpt) {
@@ -156,8 +165,6 @@ class TicketNotifier {
     void requesterUpdate(UUID id, String excerpt) {
         T t = load(id);
         String body = t.requesterName() + " added to " + t.number() + " (" + t.subject() + "):\n\n" + excerpt + "\n\nOpen it: " + deskLink(t) + "\n";
-        if (t.assignedTo() != null) {
-            toPerson(t.assignedTo(), "Update from the requester — " + t.number(), body);
-        }
+        toAgentOrDesk(t, "Update from the requester — " + t.number(), body);
     }
 }

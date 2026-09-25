@@ -42,6 +42,7 @@ export const when = (iso: string | null | undefined) => (iso ? new Date(iso).toL
 export const dayOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 export const human = (bytes: number) => (bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`);
 export const parse = <T,>(s: string | null | undefined, fallback: T): T => { try { return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; } };
+export const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 export const hours = (h: number | null | undefined) => (h == null ? "—" : Number(h) < 48 ? `${Number(h).toFixed(1)} h` : `${(Number(h) / 24).toFixed(1)} d`);
 
 /** read a file as base64 without the data-URI prefix, for the JSON upload the API takes */
@@ -66,8 +67,12 @@ export function PriorityPil({ priority }: { priority: string }) {
 }
 
 /** the ticket's history as a timeline: a mark, what happened, who, when */
+const DESK_ONLY = new Set(["INTERNAL_NOTE", "ESCALATED", "PRIORITY_CHANGED"]);
+const DESK_DETAIL = new Set(["ASSIGNED", "REASSIGNED"]);
+
 export function Timeline({ events, showInternal = true }: { events: Event[]; showInternal?: boolean }) {
-  const rows = events.filter((e) => showInternal || !e.internal);
+  // the requester's and the public view never carry the desk's own business, whatever the data holds
+  const rows = (events ?? []).filter((e) => showInternal || (!e.internal && !DESK_ONLY.has(e.action))).map((e) => (showInternal || !DESK_DETAIL.has(e.action) ? e : { ...e, detail: null }));
   if (!rows.length) return <div className="sub2">Nothing recorded yet.</div>;
   return (
     <ol className="hist">
@@ -77,7 +82,7 @@ export function Timeline({ events, showInternal = true }: { events: Event[]; sho
         const change = e.action === "STATUS_CHANGED" || e.action === "OPENED" || e.action === "REOPENED" || e.action === "CLOSED" || e.action === "RESOLUTION"
           ? [e.from_value, e.to_value].filter(Boolean).map((v) => statusWord(v!)).join(" → ")
           : e.action === "ASSIGNED" || e.action === "REASSIGNED" || e.action === "ESCALATED" ? [e.from_value, e.to_value].filter(Boolean).join(" → ")
-          : e.action === "PRIORITY_CHANGED" ? `${PRIORITY[e.from_value ?? ""]?.[0] ?? e.from_value} → ${PRIORITY[e.to_value ?? ""]?.[0] ?? e.to_value}` : "";
+          : e.action === "PRIORITY_CHANGED" ? [e.from_value, e.to_value].filter(Boolean).map((v) => PRIORITY[v!]?.[0] ?? v).join(" → ") : "";
         return (
           <li key={e.id ?? i} className={`hist__it hist__it--${kind}`}>
             <span className="hist__mark" aria-hidden="true" />
@@ -97,7 +102,7 @@ export function Timeline({ events, showInternal = true }: { events: Event[]; sho
 export function Attachments({ items, href }: { items: Attachment[]; href: (a: Attachment) => string }) {
   if (!items.length) return <div className="sub2">No files attached.</div>;
   return (
-    <ul className="list">
+    <ul className="plain stack">
       {items.map((a) => (
         <li key={a.id} className="row row--base">
           <a className="lnk" href={href(a)} target="_blank" rel="noreferrer">{a.filename}</a>
