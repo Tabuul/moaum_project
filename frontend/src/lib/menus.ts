@@ -262,7 +262,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/staff", "icon": "user", "label": "Staff Records" },
           { "id": "t/recruit", "icon": "user", "label": "Recruitment" },
           { "id": "t/leave", "icon": "cal", "label": "Leave Requests", "badge": "2" },
-          { "id": "t/appraisal", "icon": "chart", "label": "Appraisal" }
+          { "id": "t/appraisal", "icon": "chart", "label": "Appraisal" },
+          { "id": "t/staffupload", "icon": "user", "label": "Upload Non-Academic Staff" }
         ]
       },
       {
@@ -454,7 +455,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/admissionsetup", "icon": "doc", "label": "Admission Settings", "badge": "!" },
           { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants and Candidates" },
-          { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O\u2019Level" },
+          { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
           { "id": "t/postutme", "icon": "chart", "label": "Compute PUTME Score" },
           { "id": "t/screening", "icon": "chart", "label": "Screening Register" },
@@ -781,6 +782,12 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Staff",
+        "items": [
+          { "id": "t/staffupload", "icon": "user", "label": "Upload Non-Academic Staff" }
+        ]
+      },
+      {
         "name": "Me",
         "items": [
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
@@ -861,7 +868,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Staff",
         "items": [
-          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" }
+          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" },
+          { "id": "t/staffupload", "icon": "user", "label": "Upload Non-Academic Staff" }
         ]
       },
       {
@@ -939,7 +947,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Staff",
         "items": [
           { "id": "t/staff", "icon": "user", "label": "Staff Records" },
-          { "id": "t/recruit", "icon": "user", "label": "Recruitment" }
+          { "id": "t/recruit", "icon": "user", "label": "Recruitment" },
+          { "id": "t/staffupload", "icon": "user", "label": "Upload Non-Academic Staff" }
         ]
       },
       {
@@ -1008,7 +1017,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Staff",
         "items": [
-          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" }
+          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" },
+          { "id": "t/staffupload", "icon": "user", "label": "Upload Non-Academic Staff" }
         ]
       },
       {
@@ -1137,7 +1147,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Staff",
         "items": [
-          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" }
+          { "id": "t/lecturers", "icon": "user", "label": "Upload Lecturers" },
+          { "id": "t/staffupload", "icon": "user", "label": "Upload Non-Academic Staff" }
         ]
       },
       {
@@ -1228,7 +1239,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Start here",
         "items": [
           { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
-          { "id": "s/fees", "icon": "card", "label": "School Fees \u2014 Pay First" }
+          { "id": "s/fees", "icon": "card", "label": "School Fees — Pay First" }
         ]
       },
       {

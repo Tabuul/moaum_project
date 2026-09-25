@@ -4,6 +4,10 @@
  * override its subtitle where the prototype's named an invented figure.
  */
 export const TITLES: Record<string, [string, string]> = {
+  "t/staffupload": [
+    "Non-Academic Staff",
+    "The nominal roll, placed in units"
+  ],
   "s/tickets": [
     "ICT Support",
     "Your tickets with the Directorate of ICT"

@@ -254,7 +254,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 147
+\set EXPECTED 148
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3214,6 +3214,33 @@ BEGIN
         format('number=%s refused_resolve=%s refused_skip=%s refused_reopen=%s status=%s reason=%s', num, refused_resolve, refused_skip, refused_reopen, st_after, closed_reason));
     PERFORM pg_temp.assert('The ticket history holds every act and is written once',
         n_events = 8 AND refused_edit, format('events=%s refused_edit=%s', n_events, refused_edit));
+END $$;
+
+-- ── 17k. the nominal roll of non-academic staff is placed in its units; a dry run writes nothing; no sign-in is issued (V253) ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); dry record; wet record; placed_unit text; placed_dept text; given text; has_login boolean; n_before int; n_after int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    SELECT count(*) INTO n_before FROM iam.person WHERE staff_number IN ('P990001','P990002','P990003');
+    SELECT * INTO dry FROM iam.import_staff('[
+        {"pno":"990001","full_names":"CHECK TERFA ROLLONE","sex":"M","date_first_appointment":"04/01/2001","department":"BUR-DIRECTORATE OF FAT-[CASH OFFICE]","present_rank":"ACCOUNTANT","phone":"08000000001","contiss":"12"},
+        {"pno":"990002","full_names":"CHECK ADI ROLLTWO","sex":"F","date_first_appointment":"29/04/1993","department":"CHS-DEPT. OF ANATOMY","present_rank":"SECRETARY","phone":"08000000002","contiss":"CONSOLIDATED"},
+        {"pno":"990003","full_names":"CHECK NOBODY ROLLTHREE","sex":"M","date_first_appointment":"","department":"UNIT THAT DOES NOT EXIST","present_rank":"CLERK","phone":"","contiss":"7"}]'::jsonb, true);
+    SELECT count(*) INTO n_after FROM iam.person WHERE staff_number IN ('P990001','P990002','P990003');
+    SELECT * INTO wet FROM iam.import_staff('[
+        {"pno":"990001","full_names":"CHECK TERFA ROLLONE","sex":"M","date_first_appointment":"04/01/2001","department":"BUR-DIRECTORATE OF FAT-[CASH OFFICE]","present_rank":"ACCOUNTANT","phone":"08000000001","contiss":"12"},
+        {"pno":"990002","full_names":"CHECK ADI ROLLTWO","sex":"F","date_first_appointment":"29/04/1993","department":"CHS-DEPT. OF ANATOMY","present_rank":"SECRETARY","phone":"08000000002","contiss":"CONSOLIDATED"},
+        {"pno":"990003","full_names":"CHECK NOBODY ROLLTHREE","sex":"M","date_first_appointment":"","department":"UNIT THAT DOES NOT EXIST","present_rank":"CLERK","phone":"","contiss":"7"}]'::jsonb, false);
+    SELECT sr.home_unit, sr.unit_as_given INTO placed_unit, given FROM hrm.staff_record sr JOIN iam.person p ON p.id = sr.person_id WHERE p.staff_number = 'P990001';
+    SELECT sr.home_department INTO placed_dept FROM hrm.staff_record sr JOIN iam.person p ON p.id = sr.person_id WHERE p.staff_number = 'P990002';
+    SELECT EXISTS (SELECT 1 FROM iam.credential c JOIN iam.person p ON p.id = c.person_id WHERE p.staff_number IN ('P990001','P990002')) INTO has_login;
+    DELETE FROM hrm.staff_record WHERE person_id IN (SELECT id FROM iam.person WHERE staff_number IN ('P990001','P990002'));
+    DELETE FROM iam.person WHERE staff_number IN ('P990001','P990002');
+    PERFORM pg_temp.assert('The nominal roll of non-academic staff is placed in its units, a dry run writes nothing, and no sign-in is issued',
+        n_before = 0 AND n_after = 0 AND dry.rows = 3 AND dry.unplaced = 1 AND dry.unplaced_units = 'UNIT THAT DOES NOT EXIST'
+        AND wet.created = 2 AND wet.unplaced = 1 AND placed_unit = 'BUR_FAT_CASH_OFFICE' AND placed_dept = 'ANT' AND given = 'BUR-DIRECTORATE OF FAT-[CASH OFFICE]' AND NOT has_login,
+        format('dry=%s/%s/%s wet=%s/%s unit=%s dept=%s login=%s after_dry=%s', dry.rows, dry.unplaced, dry.unplaced_units, wet.created, wet.unplaced, placed_unit, placed_dept, has_login, n_after));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

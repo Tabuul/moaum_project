@@ -102,6 +102,7 @@ export const ROUTES: Record<string, string> = {
   "r/self": "/me",
   "t/users": "/people",
   "t/lecturers": "/people/lecturers",
+  "t/staffupload": "/people/staff",
   "a/password": "/account/password",
   /* the student's side (proto/part3, part4, part29) */
   "s/dashboard": "/student",
@@ -231,6 +232,7 @@ const OVERRIDES: Record<string, [string, string]> = {
   "a/password": ["Your password", "Chosen by you, known to nobody else"],
   "s/graduation": ["Graduation", "The audit, Senate's word, clearance and the certificate"],
   "t/support": ["Help & requests", "What students have put to this office, the oldest open first"],
+  "t/staffupload": ["Non-Academic Staff", "The nominal roll loaded into the unit register; no sign-ins issued"],
   "s/tickets": ["My Support Tickets", "Your tickets with the Directorate of ICT, and a new one"],
   "r/tickets": ["My Support Tickets", "Your tickets with the Directorate of ICT, and a new one"],
   "t/helpdesk": ["ICT Support Desk", "The queue, the figures, and each ticket's every act on the record"],

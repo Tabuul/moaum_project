@@ -77,6 +77,62 @@ class AccountsController {
     public record Ids(@jakarta.validation.constraints.NotEmpty List<UUID> ids) {
     }
 
+    private static final String STAFF_LOADERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+
+    public record StaffRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows, Boolean dryRun) {
+    }
+
+    /**
+     * Bulk-load non-academic staff from the nominal roll (V253): the same sheet as the teaching staff with
+     * CONTISS in place of CONUASS and the unit as written. Each row becomes a person and an establishment
+     * record placed in its unit, department or faculty — no sign-in and no office, since a non-academic
+     * member of staff has no desk on the portal yet. A dry run resolves every row and writes nothing.
+     */
+    @PostMapping("/staff/import")
+    @PreAuthorize(STAFF_LOADERS)
+    @Transactional
+    Map<String, Object> importStaff(@Valid @RequestBody StaffRows body) {
+        return jdbc.sql("SELECT * FROM iam.import_staff(:j::jsonb, :d)")
+                .param("j", json.writeValueAsString(body.rows())).param("d", Boolean.TRUE.equals(body.dryRun())).query().singleRow();
+    }
+
+    /** the non-academic staff on record, with where each is placed */
+    @GetMapping("/staff")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> staff(@RequestParam(required = false) String q) {
+        return jdbc.sql("""
+                SELECT p.id, p.staff_number, trim(p.surname || ', ' || p.given_names) AS name, p.surname, p.given_names, p.email, p.phone,
+                       sr.present_rank, sr.sex, sr.salary_scale, sr.contiss_step, sr.date_first_appointment, sr.unit_as_given,
+                       coalesce(u.name, d.name, f.name) AS placed_in,
+                       CASE WHEN u.code IS NOT NULL THEN 'UNIT' WHEN d.code IS NOT NULL THEN 'DEPARTMENT' WHEN f.code IS NOT NULL THEN 'FACULTY' END AS placed_kind,
+                       coalesce(u.college_code, 'MAIN') AS campus, pu.name AS parent_unit,
+                       (c.person_id IS NOT NULL) AS has_signin
+                  FROM iam.person p JOIN hrm.staff_record sr ON sr.person_id = p.id
+                  LEFT JOIN ref.unit u ON u.code = sr.home_unit LEFT JOIN ref.unit pu ON pu.code = u.parent_code
+                  LEFT JOIN ref.department d ON d.code = sr.home_department LEFT JOIN ref.faculty f ON f.code = sr.home_faculty
+                  LEFT JOIN iam.credential c ON c.person_id = p.id
+                 WHERE p.ended_on IS NULL AND sr.category = 'NON_ACADEMIC'
+                   AND (:q::text IS NULL OR p.surname ILIKE '%' || :q || '%' OR p.given_names ILIKE '%' || :q || '%' OR p.staff_number ILIKE '%' || :q || '%'
+                        OR coalesce(u.name, d.name, f.name) ILIKE '%' || :q || '%')
+                 ORDER BY p.surname, p.given_names
+                """).param("q", q == null || q.isBlank() ? null : q.trim()).query().listOfRows();
+    }
+
+    /** the unit register, with how many staff each holds */
+    @GetMapping("/units")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> units() {
+        return jdbc.sql("""
+                SELECT u.code, u.name, u.kind, u.parent_code, pu.name AS parent, u.college_code, u.ended_on,
+                       (SELECT count(*) FROM hrm.staff_record sr JOIN iam.person p ON p.id = sr.person_id WHERE sr.home_unit = u.code AND p.ended_on IS NULL) AS staff,
+                       (SELECT count(*) FROM ref.unit_alias a WHERE a.unit_code = u.code) AS spellings
+                  FROM ref.unit u LEFT JOIN ref.unit pu ON pu.code = u.parent_code
+                 ORDER BY coalesce(u.college_code, ''), coalesce(pu.name, u.name), (u.parent_code IS NOT NULL), u.name
+                """).query().listOfRows();
+    }
+
     /** remove selected lecturers (person + sign-in + lecturer grants + establishment) when they carry
      *  no teaching history; one that already teaches an offering is kept. See iam.delete_lecturers (V138). */
     @PostMapping("/lecturers/delete")
