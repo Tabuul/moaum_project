@@ -1,18 +1,45 @@
+"use client";
+
+/** The statistics on a dashboard (V257): the five figures as doors, the two donuts and the door to the full
+ *  analytics. The block asks the engine after the page has painted, so a dashboard is never held back by the
+ *  count; while the count runs it says so, and if the engine does not answer it says that instead. */
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
 import { LinkBtn, Note, Panel, PBody } from "@/components/proto/ui";
 import { EMPTY_FILTERS, SEMESTER_WORD, detailHref, type StatSummary } from "@/lib/stats";
 import { StatTiles } from "./StudentStats";
 import { StatsDonuts } from "./StatsDonuts";
 
-/** The statistics on a dashboard (V257): the five figures as doors, the two donuts and the door to the full
- *  analytics — read on the server from the same engine, scoped to the office that opened the dashboard. */
-export async function StatsPanel({ session, title = "Student statistics" }: { session?: string; title?: string }) {
-  const r = await api<StatSummary>(`/api/v1/stats/students/summary${session ? `?session=${encodeURIComponent(session)}` : ""}`);
-  if (!r.ok) {
-    return <Note kind="bad" title="Unable to load student statistics">The figures could not be read just now. Please try again.</Note>;
+export function StatsPanel({ session, title = "Student statistics" }: { session?: string; title?: string }) {
+  const [d, setD] = useState<StatSummary | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 90_000);
+    (async () => {
+      try {
+        const r = await fetch(`/api/bff/api/v1/stats/students/summary${session ? `?session=${encodeURIComponent(session)}` : ""}`, { cache: "no-store", signal: ctl.signal });
+        if (!live) return;
+        if (!r.ok) { setFailed(true); return; }
+        setD((await r.json()) as StatSummary);
+      } catch { if (live) setFailed(true); }
+      finally { clearTimeout(timer); }
+    })();
+    return () => { live = false; ctl.abort(); };
+  }, [session]);
+
+  if (failed) {
+    return <Note kind="bad" title="Unable to load student statistics" action={<LinkBtn href="/stats">Open Student Statistics</LinkBtn>}>The figures could not be read just now. Please try again.</Note>;
   }
-  const d = r.data;
+  if (!d) {
+    return (
+      <Panel title={title} right={<span className="sub2">Counting from the register…</span>}>
+        <PBody><div className="sub2">Students in study, paid, registered, paid not registered and not paid are being counted for the current session.</div></PBody>
+      </Panel>
+    );
+  }
   const f = { ...EMPTY_FILTERS, session: d.session, semester: d.semester == null ? "" : String(d.semester) };
   const t = d.totals;
   return (

@@ -44,6 +44,13 @@ class StudentStatsController {
     private final JdbcClient jdbc;
     private final OfficeScope scope;
 
+    /** a summary counted once is kept for a short while for the same office scope and filters: a dashboard opened twice
+     *  in a minute does not count the whole register twice; a payment or a registration is on the figures within it */
+    private record Cached(long at, Map<String, Object> value) {
+    }
+    private static final long SUMMARY_TTL_MS = 60_000L;
+    private final java.util.concurrent.ConcurrentHashMap<String, Cached> summaries = new java.util.concurrent.ConcurrentHashMap<>();
+
     StudentStatsController(JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
         this.scope = scope;
@@ -126,6 +133,16 @@ class StudentStatsController {
                                 @RequestParam(required = false) String q) {
         Bound b = bound();
         Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q);
+        String key = b + "|" + f;
+        Cached hit = summaries.get(key);
+        if (hit != null && System.currentTimeMillis() - hit.at() < SUMMARY_TTL_MS) return hit.value();
+        if (summaries.size() > 500) summaries.clear();
+        Map<String, Object> fresh = count(b, f);
+        summaries.put(key, new Cached(System.currentTimeMillis(), fresh));
+        return fresh;
+    }
+
+    private Map<String, Object> count(Bound b, Filters f) {
         List<Map<String, Object>> groups = bind(jdbc.sql("""
                 WITH r AS (""" + ROWS + """
                 )
