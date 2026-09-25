@@ -120,6 +120,24 @@ class StudentStatsIT {
         Map<String, Object> pgTot = totals(pgschool, "session=" + SESSION + "&q=" + tag + "F");
         assertThat(((Number) pgTot.get("total")).intValue()).isGreaterThanOrEqualTo(1);
 
+        // a Head of Department is held to their own department, whatever the request names; the Vice-Chancellor reads the University
+        UUID head = it.person("ZZST-HOD", "ZZSTHEAD");
+        it.db(() -> jdbc.sql("""
+                INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                SELECT gen_random_uuid(), :p, 'hod', 'department', 'MTC', 'integration test', :p, current_date
+                 WHERE NOT EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = :p AND a.office_code = 'hod' AND a.valid_to IS NULL)
+                """).param("p", head).update());
+        String hod = TestTokens.token(head, List.of("hod"));
+        ResponseEntity<Map> dept = it.get(hod, "/api/v1/stats/students/summary?session=" + SESSION + "&q=" + tag);
+        assertThat(dept.getStatusCode().value()).as(String.valueOf(dept.getBody())).isEqualTo(200);
+        assertThat(((Map<String, Object>) dept.getBody().get("scope")).get("kind")).isEqualTo("DEPARTMENT");
+        assertThat(((Map<String, Object>) dept.getBody().get("totals")).get("total")).isEqualTo(5);   // the four mathematics undergraduates and the postgraduate of the department, not the College student
+        assertThat(ids(hod, "session=" + SESSION + "&q=" + tag + "E")).isEmpty();
+        assertThat(ids(hod, "session=" + SESSION + "&prog=C00061&q=" + tag)).isEmpty();
+        ResponseEntity<Map> vc = it.get(ItSupport.token("vc"), "/api/v1/stats/students/summary?session=" + SESSION + "&q=" + tag);
+        assertThat(((Map<String, Object>) vc.getBody().get("scope")).get("kind")).isEqualTo("UNIVERSITY");
+        assertThat(((Map<String, Object>) vc.getBody().get("totals")).get("total")).isEqualTo(6);
+
         // an office outside the readers is refused
         assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/stats/students/summary").getStatusCode().value()).isEqualTo(403);
     }

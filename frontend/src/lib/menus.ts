@@ -92,6 +92,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/hod", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1239,6 +1240,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/overview", "icon": "home", "label": "Institutional Overview" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },

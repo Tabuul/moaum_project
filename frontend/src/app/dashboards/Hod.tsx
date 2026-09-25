@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Me } from "@/components/proto/Shell";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { StatsPanel } from "@/components/stats/StatsPanel";
 import { DTable } from "@/components/proto/DTable";
 import { FeeCount } from "./HodFeeDownloads";
 import { AllocationHistory, type AllocationRow } from "./AllocationHistory";
@@ -55,6 +56,7 @@ export function HodDashboard({ me, home, requestsOpen, history = [] }: { me: Me 
   const carryovers = home.carryoverStudents ?? 0;
   return (
     <>
+      <StatsPanel session={home.session} title={`Student statistics · ${home.deptName}`} />
       {approvals ? (
         <Note kind="bad" title={`${approvals} course registration${approvals === 1 ? "" : "s"} waiting for your approval`}
           action={<LinkBtn kind="urgent" href="/results/approvals">Open approvals</LinkBtn>}>
