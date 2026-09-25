@@ -7,7 +7,7 @@
  * classes, same inline styles, same structure — the stylesheet is the
  * prototype's, so the markup has to be too.
  */
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Tick } from "./ui";
 
 /** step(state, title, sub) — one step of a ladder */
@@ -102,11 +102,14 @@ export function TwoCol({ children }: { children: ReactNode }) {
 
 /** passport(w, h, radius) — the neutral placeholder portrait, or the photograph itself */
 export function Passport({ w, h, radius = 4, src, alt }: { w: number; h: number; radius?: number; src?: string | null; alt?: string }) {
+  // a source that answers 404 (no photograph on file) falls back to the silhouette instead of a broken image
+  const [broken, setBroken] = useState<string | null>(null);
+  const shown = src && broken !== src ? src : null;
   return (
     <div style={{ width: w, height: h, borderRadius: radius, overflow: "hidden", border: "1px solid var(--line)", flexShrink: 0, background: "var(--line)" }}>
-      {src ? (
+      {shown ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={alt ?? "Passport photograph"} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={shown} alt={alt ?? "Passport photograph"} loading="lazy" onError={() => setBroken(shown)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       ) : (
         <svg viewBox="0 0 100 124" width="100%" height="100%" role="img" aria-label="Student passport photograph">
           <rect width="100" height="124" fill="var(--line)" />

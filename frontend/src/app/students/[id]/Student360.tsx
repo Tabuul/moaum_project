@@ -144,7 +144,7 @@ export function Student360({
 
       <div className="card">
         <div className="card__body row" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
-          <Passport w={76} h={94} />
+          <Passport w={76} h={94} src={`/api/bff/api/v1/student/students/${s.id}/passport`} alt={`${fullName(s)} — passport photograph`} />
           <div className="grow" style={{ minWidth: 200 }}>
             <div className="t-lg b700" style={{ letterSpacing: "-.3px" }}>{fullName(s)}</div>
             <div className="sub2 tnum">

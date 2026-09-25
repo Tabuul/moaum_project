@@ -12,7 +12,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import { useState } from "react";
 import type { BiodataField, StudentRecord, Tier } from "@/lib/student";
-import { statusLabel } from "@/lib/student";
+import { fullName, statusLabel } from "@/lib/student";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import type { Problem } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -258,7 +258,7 @@ export function Biodata({ record, may, base }: { record: StudentRecord; may: boo
           <Panel title="Photograph" right="The one that identifies them everywhere">
             <PBody>
               <div className="row row--top" style={{ gap: "var(--s-5)" }}>
-                <Passport w={104} h={128} />
+                <Passport w={104} h={128} src={`/api/bff/api/v1/student/students/${s.id}/passport`} alt={`${fullName(s)} — passport photograph`} />
                 <div className="grow" style={{ minWidth: 220 }}>
                   <div className="sub2" style={{ lineHeight: 1.65 }}>This photograph is checked at the door of every examination hall, printed on the identity card, and the image on the certificate. Replacing it is a Registry decision, not a self-service change.</div>
                 </div>

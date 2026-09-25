@@ -10,7 +10,7 @@ import { at, putmeVerifyPath, reportingTime, type Application } from "@/lib/appl
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Passport } from "@/components/proto/blocks";
-import { qrDataUrl } from "@/lib/qr";
+import QRCode from "qrcode";
 import { Rail, clock, onDay } from "./common";
 
 const ATTEND: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
@@ -23,7 +23,7 @@ export function Screening({ a }: { a: Application }) {
   useEffect(() => {
     if (!slip?.token) return;
     let live = true;
-    qrDataUrl(`${window.location.origin}${putmeVerifyPath(slip.token)}`).then((u) => { if (live) setQr(u); }).catch(() => undefined);
+    QRCode.toDataURL(`${window.location.origin}${putmeVerifyPath(slip.token)}`, { errorCorrectionLevel: "M", margin: 1, width: 220 }).then((u) => { if (live) setQr(u); }).catch(() => undefined);
     return () => { live = false; };
   }, [slip?.token]);
 
