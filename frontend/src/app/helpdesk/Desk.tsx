@@ -3,11 +3,14 @@
  *  paging are query parameters, so a view can be bookmarked and the server does the work. */
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
-import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { reasonHeader } from "@/lib/reason";
+import { notify, notifyProblem } from "@/components/proto/Toast";
+import { Btn, LinkBtn, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
-import { PRIORITY, PriorityPil, STATUS, StatusPil, hours, when, type Agent, type Category, type TicketRow } from "@/lib/helpdesk";
+import { ACTION, PRIORITY, PriorityPil, STATUS, StatusPil, dueWords, hours, statusWord, when, type Activity, type Agent, type Category, type TicketRow } from "@/lib/helpdesk";
 
 export interface Stats {
   totals: { total: number; submitted: number; opened: number; in_progress: number; reopened: number; resolved: number; closed: number; open: number; unassigned: number; high: number; overdue: number; response_overdue: number; escalated: number; avg_first_response_hours: number | null; avg_resolution_hours: number | null; avg_closure_hours: number | null; resolved_in_sla: number; ever_resolved: number; mine_open: number };
@@ -19,10 +22,13 @@ export interface Stats {
 }
 interface Filters { q: string; status: string; category: string; priority: string; agent: string; from: string; to: string; sort: string; dir: string; size: string }
 
-export function Desk({ me, director, queue, stats, categories, agents, filters }: {
+export function Desk({ me, director, queue, stats, categories, agents, filters, mine, activity }: {
   me: string; director: boolean; queue: { rows: TicketRow[]; total: number; page: number; size: number }; stats: Stats | null; categories: Category[]; agents: Agent[]; filters: Filters;
+  mine: { rows: TicketRow[]; total: number }; activity: Activity[];
 }) {
   const go = useQueryNav();
+  const router = useRouter();
+  const [busy, setBusy] = useState<string | null>(null);
   const [q, setQ] = useState(filters.q);
   const [from, setFrom] = useState(filters.from);
   const [to, setTo] = useState(filters.to);
@@ -40,6 +46,18 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
   const sortBy = (key: string) => nav({ sort: key, dir: filters.sort === key && filters.dir === "desc" ? "asc" : "desc" });
   const arrow = (key: string) => (filters.sort === key ? (filters.dir === "asc" ? " ↑" : " ↓") : "");
   const filtered = !!(filters.q || filters.category || filters.priority || filters.agent || filters.from || filters.to || filters.status !== "open");
+  const settled = (r: TicketRow) => r.status === "RESOLVED" || r.status === "CLOSED";
+
+  /** take a ticket straight from the queue: assigned to you, opened if it was only submitted */
+  async function take(r: TicketRow) {
+    setBusy(r.id);
+    try {
+      const res = await fetch(`/api/bff/api/v1/helpdesk/tickets/${r.id}/assign`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${r.number}: taken from the queue`) }, body: JSON.stringify({ agentId: me }) });
+      if (!res.ok) { notifyProblem((await res.json().catch(() => null)) ?? { status: res.status, title: res.statusText }); return; }
+      notify(`${r.number} is with you`);
+      router.refresh();
+    } finally { setBusy(null); }
+  }
 
   return (
     <>
@@ -63,8 +81,21 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
             ["Overdue", String(n(t.overdue)), n(t.overdue) ? "var(--red-ink)" : null, `${n(t.response_overdue)} past first response · ${n(t.escalated)} escalated`],
             ["Average resolution", hours(t.avg_resolution_hours), null, `First response ${hours(t.avg_first_response_hours)} · ${n(t.ever_resolved) ? Math.round((100 * n(t.resolved_in_sla)) / n(t.ever_resolved)) + "% within SLA" : "no resolutions yet"}`],
           ]} />
-          {n(t.mine_open) ? <Note kind="info" title={`${n(t.mine_open)} open ticket${n(t.mine_open) === 1 ? " is" : "s are"} with you`} action={<Btn kind="primary" size="sm" onClick={() => nav({ agent: "me", status: "open" })}>Show Mine</Btn>}>Tickets assigned to you that are not yet resolved.</Note> : null}
         </>
+      ) : null}
+
+      {mine.rows.length ? (
+        <Panel title="With you" right={<span className="row row--inline"><span className="sub2">{mine.total} open ticket{mine.total === 1 ? "" : "s"} assigned to you, the soonest due first</span>{mine.total > mine.rows.length ? <Btn kind="ghost" size="sm" onClick={() => nav({ agent: "me", status: "open", sort: "due", dir: "asc" })}>Show All {mine.total}</Btn> : null}</span>}>
+          <DTable pageSize={0} cols={["Ticket", "Subject", "Requester", "Priority|mid", "Status|mid", "Due|mid", "|num"]} rows={mine.rows.map((r) => [
+            <Link key="n" className="lnk tnum b600" href={`/helpdesk/tickets/${r.id}`}>{r.number}</Link>,
+            <span key="s">{r.subject}<div className="sub2">{r.category}</div></span>,
+            <span key="r">{r.requester_name}</span>,
+            <PriorityPil key="p" priority={r.priority} />,
+            <StatusPil key="st" status={r.status} />,
+            <span key="d" className={`tnum${r.overdue ? " ink-red b600" : ""}`}>{dueWords(r.due_at, settled(r))}</span>,
+            <LinkBtn key="o" href={`/helpdesk/tickets/${r.id}`} kind={r.overdue ? "primary" : "ghost"} size="sm">Open</LinkBtn>,
+          ])} />
+        </Panel>
       ) : null}
 
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); nav({ q, from, to }); }}>
@@ -119,7 +150,7 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
           </div>
         </PBody>
         {queue.rows.length ? (
-          <DTable pageSize={0} cols={["Ticket", "Requester", "Category", "Subject", "Priority|mid", "Status|mid", "Agent", "Raised|mid", "Updated|mid", "|num"]} rows={queue.rows.map((r) => [
+          <DTable pageSize={0} cols={["Ticket", "Requester", "Category", "Subject", "Priority|mid", "Status|mid", "Agent", "Due|mid", "Raised|mid", "|num"]} rows={queue.rows.map((r) => [
             <span key="n"><Link className="lnk tnum b600" href={`/helpdesk/tickets/${r.id}`}>{r.number}</Link>{r.overdue ? <div><Pil kind="bad">Overdue</Pil></div> : r.response_overdue ? <div><Pil kind="warn">No response yet</Pil></div> : null}</span>,
             <span key="r"><strong>{r.requester_name}</strong><div className="sub2 tnum">{r.requester_number ?? r.requester_email ?? ""} · {r.requester_kind === "STUDENT" ? "Student" : "Staff"}</div></span>,
             <span key="c" className="sub2">{r.category}</span>,
@@ -127,9 +158,12 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
             <PriorityPil key="p" priority={r.priority} />,
             <StatusPil key="st" status={r.status} />,
             <span key="a" className={r.agent ? "" : "sub2"}>{r.agent ?? "Unassigned"}{r.assigned_to === me ? <div><Pil kind="info">You</Pil></div> : null}</span>,
-            <span key="cr" className="tnum sub2">{when(r.created_at)}</span>,
-            <span key="up" className="tnum sub2">{when(r.updated_at)}</span>,
-            <LinkBtn key="o" href={`/helpdesk/tickets/${r.id}`} kind={r.status === "SUBMITTED" ? "primary" : "ghost"} size="sm">Open</LinkBtn>,
+            <span key="due" className={`tnum${r.overdue ? " ink-red b600" : settled(r) ? " sub2" : ""}`}>{dueWords(r.due_at, settled(r))}</span>,
+            <span key="cr" className="tnum sub2">{when(r.created_at)}<div>updated {when(r.updated_at)}</div></span>,
+            <span key="o" className="row row--inline row--tight row--right">
+              {!r.assigned_to && !settled(r) ? <Btn kind="secondary" size="sm" disabled={busy === r.id} onClick={() => void take(r)}>{busy === r.id ? "Taking…" : "Take"}</Btn> : null}
+              <LinkBtn href={`/helpdesk/tickets/${r.id}`} kind={r.status === "SUBMITTED" ? "primary" : "ghost"} size="sm">Open</LinkBtn>
+            </span>,
           ])} />
         ) : <PBody><div className="sub2">No ticket matches. Widen the filters, or clear them.</div></PBody>}
         <PBody>
@@ -143,6 +177,22 @@ export function Desk({ me, director, queue, stats, categories, agents, filters }
             </select>
           </div>
         </PBody>
+      </Panel>
+
+      <Panel title="Lately on the desk" right={activity.length ? "The last acts on every ticket, newest first" : "Nothing yet"}>
+        {activity.length ? (
+          <DTable pageSize={0} cols={["When|mid", "Ticket", "What", "By"]} rows={activity.map((a) => {
+            const change = ["STATUS_CHANGED", "OPENED", "REOPENED", "CLOSED", "RESOLUTION"].includes(a.action) ? [a.from_value, a.to_value].filter(Boolean).map((v) => statusWord(v!)).join(" → ")
+              : ["ASSIGNED", "REASSIGNED", "ESCALATED"].includes(a.action) ? [a.from_value, a.to_value].filter(Boolean).join(" → ")
+              : a.action === "PRIORITY_CHANGED" ? [a.from_value, a.to_value].filter(Boolean).map((v) => PRIORITY[v!]?.[0] ?? v).join(" → ") : "";
+            return [
+              <span key="w" className="tnum sub2">{when(a.at)}</span>,
+              <span key="t"><Link className="lnk tnum b600" href={`/helpdesk/tickets/${a.ticket_id}`}>{a.number}</Link><div className="sub2">{a.subject}</div></span>,
+              <span key="a"><strong>{ACTION[a.action] ?? a.action}</strong>{change ? <span className="sub2"> · {change}</span> : null}{a.internal ? <> <Pil kind="grey">Internal</Pil></> : null}{a.detail && !["ASSIGNED", "REASSIGNED"].includes(a.action) ? <div className="sub2">{a.detail.length > 120 ? a.detail.slice(0, 120) + "…" : a.detail}</div> : null}</span>,
+              <span key="b" className="sub2">{a.actor_name}{a.actor_kind === "REQUESTER" ? " (requester)" : ""}</span>,
+            ];
+          })} />
+        ) : <PBody><div className="sub2">Every act on every ticket lands here as it happens: submissions, openings, assignments, notes, resolutions, closures.</div></PBody>}
       </Panel>
 
       {stats && director ? (

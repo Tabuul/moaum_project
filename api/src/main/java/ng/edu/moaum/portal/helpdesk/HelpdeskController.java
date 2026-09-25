@@ -434,6 +434,19 @@ class HelpdeskController {
         return out;
     }
 
+    /** what happened on the desk lately, across every ticket: the last acts, newest first */
+    @GetMapping("/activity")
+    @PreAuthorize(AGENTS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> activity(@RequestParam(defaultValue = "25") int limit) {
+        return jdbc.sql("""
+                SELECT e.id, e.at, e.actor_kind, e.actor_name, e.action, e.from_value, e.to_value, e.detail, e.internal,
+                       t.id AS ticket_id, t.number, t.subject, t.status, t.priority
+                  FROM helpdesk.ticket_event e JOIN helpdesk.ticket t ON t.id = e.ticket_id
+                 ORDER BY e.at DESC LIMIT :n
+                """).param("n", Math.max(1, Math.min(limit, 100))).query().listOfRows();
+    }
+
     /** the people the desk can give a ticket to: agents and the Director, with their open load */
     @GetMapping("/agents")
     @PreAuthorize(AGENTS)

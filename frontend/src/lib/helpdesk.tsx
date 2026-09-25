@@ -42,6 +42,15 @@ export const when = (iso: string | null | undefined) => (iso ? new Date(iso).toL
 export const dayOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 export const human = (bytes: number) => (bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`);
 export const parse = <T,>(s: string | null | undefined, fallback: T): T => { try { return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; } };
+/** a due time in words: "due in 3 h", "overdue by 2 d", "due today" */
+export function dueWords(iso: string | null | undefined, settled: boolean): string {
+  if (!iso || settled) return "—";
+  const ms = new Date(iso).getTime() - Date.now();
+  const abs = Math.abs(ms);
+  const span = abs < 3600e3 ? `${Math.max(1, Math.round(abs / 60e3))} min` : abs < 48 * 3600e3 ? `${Math.round(abs / 3600e3)} h` : `${Math.round(abs / 86400e3)} d`;
+  return ms < 0 ? `Overdue by ${span}` : `Due in ${span}`;
+}
+export interface Activity { id: string; at: string; actor_kind: string; actor_name: string; action: string; from_value: string | null; to_value: string | null; detail: string | null; internal: boolean; ticket_id: string; number: string; subject: string; status: string; priority: string }
 export const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 export const hours = (h: number | null | undefined) => (h == null ? "—" : Number(h) < 48 ? `${Number(h).toFixed(1)} h` : `${(Number(h) / 24).toFixed(1)} d`);
 
