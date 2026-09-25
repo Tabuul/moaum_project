@@ -32,6 +32,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -198,11 +199,20 @@ class PgPortalController {
             throw new DomainRuleViolation("PG_FEE_KIND", "Unknown fee.", new DomainRuleViolation.Remedy("Reload the page.", "You"));
         }
         Map<String, Object> app = firstOrNull(jdbc.sql("""
-                SELECT id, fee_confirmed_at, checking_confirmed_at, acceptance_confirmed_at FROM admissions.pg_application
+                SELECT id, state, fee_confirmed_at, checking_confirmed_at, acceptance_confirmed_at, spgs_decided_at FROM admissions.pg_application
                  WHERE applicant_id = :me
                 """).param("me", me).query().listOfRows());
         if (app == null) {
             throw new NotFound("postgraduate application", me);
+        }
+        // each fee comes in its turn: checking once the School has decided, acceptance once a place is offered and the decision read
+        if ("CHECKING".equals(k) && app.get("spgs_decided_at") == null) {
+            throw new DomainRuleViolation("PG_FEE_NOT_YET", "The checking fee is paid once the School has decided on the application.",
+                    new DomainRuleViolation.Remedy("Track the application here; you are told by email when a decision is ready.", "School of Postgraduate Studies"));
+        }
+        if ("ACCEPTANCE".equals(k) && !(("OFFERED".equals(app.get("state")) || "ACCEPTED".equals(app.get("state")) || "ADMITTED".equals(app.get("state"))) && app.get("checking_confirmed_at") != null)) {
+            throw new DomainRuleViolation("PG_FEE_NOT_YET", "The acceptance fee is paid once a place is offered and the decision has been read.",
+                    new DomainRuleViolation.Remedy("Pay the checking fee to read the decision; the acceptance fee follows an offer.", "School of Postgraduate Studies"));
         }
         String paidCol = switch (k) { case "CHECKING" -> "checking_confirmed_at"; case "ACCEPTANCE" -> "acceptance_confirmed_at"; default -> "fee_confirmed_at"; };
         if (app.get(paidCol) != null) {
@@ -230,7 +240,7 @@ class PgPortalController {
         Map<String, Object> a = firstOrNull(jdbc.sql("""
                 SELECT a.id AS application_id, a.application_no, a.state, a.entry_level, a.submitted_at, a.fee_confirmed_at,
                        a.checking_confirmed_at, a.acceptance_confirmed_at,
-                       a.dept_note, a.dept_decided_at, a.spgs_note, a.spgs_decided_at, a.accepted_at, a.admitted_at, a.created_at,
+                       a.dept_note, a.dept_decided_at, a.fac_note, a.fac_decided_at, a.spgs_note, a.spgs_decided_at, a.accepted_at, a.admitted_at, a.created_at, a.student_id,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
                        a.proposal_title, a.proposal_text,
                        p.surname, p.other_names, p.email, p.phone, p.sex, p.date_of_birth, p.state_of_origin, p.lga,
@@ -294,8 +304,12 @@ class PgPortalController {
         out.put("acceptanceFee", feeRule.get("acceptance_fee"));
         out.put("checkingFee", feeRule.get("checking_fee"));
         out.put("liveReference", live == null ? null : live.get("reference"));
-        out.put("deptNote", a.get("dept_note"));
+        // the department's and the faculty's words are part of the decision: sealed until the checking fee opens it
+        boolean sealed = a.get("checking_confirmed_at") == null;
+        out.put("deptNote", sealed ? null : a.get("dept_note"));
         out.put("deptDecidedAt", a.get("dept_decided_at"));
+        out.put("facNote", sealed ? null : a.get("fac_note"));
+        out.put("facDecidedAt", a.get("fac_decided_at"));
         out.put("spgsNote", decisionLocked ? null : a.get("spgs_note"));
         out.put("spgsDecidedAt", a.get("spgs_decided_at"));
         out.put("acceptedAt", a.get("accepted_at"));
@@ -320,7 +334,39 @@ class PgPortalController {
         out.put("referees", referees);
         out.put("priorDegrees", priorDegrees);
         out.put("documents", documents);
+        // the application's own history, as the trail keeps it — the decisions' words stay sealed until the checking fee
+        out.put("history", jdbc.sql("""
+                SELECT e.kind, e.at,
+                       CASE WHEN :sealed AND e.kind IN ('DEPT_RECOMMENDED','DEPT_DECLINED','FAC_RECOMMENDED','FAC_DECLINED','OFFERED','NOT_OFFERED')
+                            THEN NULL ELSE e.note END AS note
+                  FROM admissions.pg_application_event e WHERE e.application_id = :app ORDER BY e.at, e.kind
+                """).param("sealed", sealed).param("app", a.get("application_id")).query().listOfRows());
+        // once admitted, the student record the applicant has become: the number that opens the student portal
+        if (a.get("student_id") != null) {
+            out.put("student", firstOrNull(jdbc.sql("""
+                    SELECT admission_no, matric_no, status FROM people.student WHERE id = :s
+                    """).param("s", a.get("student_id")).query().listOfRows()));
+        }
         return out;
+    }
+
+    /** one of the applicant's own documents, streamed back to them; scoped to their application */
+    @GetMapping("/documents/{docId}/content")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    org.springframework.http.ResponseEntity<byte[]> myDocument(Authentication authentication, @PathVariable UUID docId) {
+        UUID me = UUID.fromString(authentication.getName());
+        Map<String, Object> d = firstOrNull(jdbc.sql("""
+                SELECT d.filename, d.content_type, d.bytes FROM admissions.pg_document d
+                  JOIN admissions.pg_application a ON a.id = d.application_id
+                 WHERE d.id = :d AND a.applicant_id = :me
+                """).param("d", docId).param("me", me).query().listOfRows());
+        if (d == null) throw new NotFound("document", docId);
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(String.valueOf(d.get("content_type"))))
+                .cacheControl(org.springframework.http.CacheControl.noStore())
+                .header("Content-Disposition", org.springframework.http.ContentDisposition.inline().filename(String.valueOf(d.get("filename")), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox")
+                .body((byte[]) d.get("bytes"));
     }
 
     /* ── the credentials document (one combined PDF: O'Level, A'Level, birth certificate) ── */

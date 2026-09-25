@@ -62,7 +62,7 @@ class PaymentsRepository {
 
     Optional<Reference> pgReference(String reference) {
         return jdbc.sql("""
-                SELECT fr.id, fr.application_id, p.id AS account_id, 'PG_APPLICATION' AS kind, fr.reference, fr.amount,
+                SELECT fr.id, fr.application_id, p.id AS account_id, 'PG_' || fr.kind AS kind, fr.reference, fr.amount,
                        fr.expires_at, fr.confirmed_at, p.email, a.application_no
                   FROM admissions.pg_fee_reference fr
                   JOIN admissions.pg_application a ON a.id = fr.application_id

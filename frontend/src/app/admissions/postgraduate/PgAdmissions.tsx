@@ -13,10 +13,12 @@ import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components
 import { Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 
 export interface PgRow {
   id: string; application_no: string; state: string; entry_level: number; programme_code: string;
   programme_name: string; pg_award: string | null; pg_research: boolean;
+  department_name?: string | null; faculty_name?: string | null; documents?: number; references_in?: number;
   surname: string; other_names: string; email: string; phone: string | null; state_of_origin: string | null;
   prior_institution: string | null; prior_award: string | null; prior_class: string | null; prior_cgpa: number | null;
   fee_confirmed_at: string | null; submitted_at: string | null; dept_decided_at: string | null;
@@ -27,7 +29,26 @@ interface Referee { id: string; name: string; email: string | null; phone: strin
 const VERDICT_LABEL: Record<string, string> = { RECOMMEND: "Recommended", RECOMMEND_WITH_RESERVATION: "Recommended with reservation", DO_NOT_RECOMMEND: "Not recommended" };
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface PriorQual { kind: string; institution: string | null; award: string | null; field: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
-interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[] }
+interface HistoryRow { kind: string; note: string | null; at: string; actor: string | null; actor_office: string | null }
+interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[] }
+const EVENT_LABEL: Record<string, string> = {
+  CREATED: "Application opened", SUBMITTED: "Submitted", APPLICATION_FEE_CONFIRMED: "Application fee confirmed", REFERENCE_RECEIVED: "Reference received",
+  DEPT_RECOMMENDED: "Department recommended", DEPT_DECLINED: "Department declined", FAC_RECOMMENDED: "Faculty recommended", FAC_DECLINED: "Faculty declined",
+  OFFERED: "School offered", NOT_OFFERED: "School did not offer", CHECKING_FEE_CONFIRMED: "Checking fee confirmed", ACCEPTANCE_FEE_CONFIRMED: "Acceptance fee confirmed",
+  ACCEPTED: "Offer accepted", ADMITTED: "Admitted to the register",
+};
+const fmtWhen = (v: string) => new Date(v).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+/** the applications on the desk as a branded workbook: S/N first, names A–Z as the desk lists them */
+async function exportRows(rows: PgRow[], session: string) {
+  const headers = ["S/N", "Application number", "Applicant", "Programme", "Award", "Department", "Faculty", "Level", "Session", "Application fee", "Application status", "Submitted"];
+  const body = rows.map((r, i) => [
+    i + 1, r.application_no, `${r.surname}, ${r.other_names}`, r.programme_name, r.pg_award ?? "", r.department_name ?? "", r.faculty_name ?? "",
+    r.entry_level, session, r.fee_confirmed_at ? "Paid" : "Unpaid", STATE[r.state]?.label ?? r.state, r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "",
+  ]);
+  const blob = await brandedXlsx("Postgraduate applications", headers, body, { sheetName: "Applications", serial: docSerial("PGAPP"), sub: session });
+  downloadBlob(blob, `postgraduate-applications-${session.replace("/", "-")}.xlsx`);
+}
 const QUAL_LABEL: Record<string, string> = {
   FIRST: "First degree", MASTERS: "Master’s degree", PGD: "Postgraduate Diploma", HND: "Higher National Diploma",
   ND: "National Diploma", NCE: "Nigeria Certificate in Education", PHD: "Doctorate (PhD)", OTHER: "Other qualification",
@@ -261,6 +282,21 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
         {st === "ADMITTED" ? <span className="sub2 ink-green" style={{ alignSelf: "center" }}>Admitted &mdash; on the register, awaiting matriculation on fees and registration.</span> : null}
         {busy ? <span className="sub2" style={{ alignSelf: "center" }}>Working…</span> : null}
       </div>
+
+      {d.history && d.history.length ? (
+        <Section title="History">
+          <ol className="plain" style={{ display: "grid", gap: 6 }}>
+            {d.history.map((h, i) => (
+              <li key={i} className="row row--base" style={{ gap: "var(--s-3)", flexWrap: "wrap" }}>
+                <span className="tnum sub2" style={{ minWidth: 150 }}>{fmtWhen(h.at)}</span>
+                <span className="b600">{EVENT_LABEL[h.kind] ?? h.kind.toLowerCase().replace(/_/g, " ")}</span>
+                {h.note ? <span className="sub2">{h.note}</span> : null}
+                {h.actor ? <span className="sub2">· {h.actor}{h.actor_office ? ` (${h.actor_office})` : ""}</span> : null}
+              </li>
+            ))}
+          </ol>
+        </Section>
+      ) : null}
     </PBody>
   );
 }
@@ -309,13 +345,17 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
             ["Admitted", String(c?.admitted ?? 0), Number(c?.admitted) ? "var(--green-ink)" : null, "On the register"],
           ]} cls="grid--3" />
 
-          <Panel title="Postgraduate applications" right={`${view.rows.length} application${view.rows.length === 1 ? "" : "s"}`}>
+          <Panel title="Postgraduate applications" right={<span className="row row--inline row--tight">
+            <span className="sub2">{view.rows.length} application{view.rows.length === 1 ? "" : "s"} · name A–Z</span>
+            {view.rows.length ? <Btn kind="ghost" onClick={() => void exportRows(view.rows, session)}>Download Excel</Btn> : null}
+          </span>}>
             {view.rows.length ? (
               <DTable
-                cols={["Applicant", "Programme", "Level|mid", "First degree", "Stage|mid", "|num"]}
-                rows={view.rows.map((r) => {
+                cols={["S/N|num", "Applicant", "Programme", "Level|mid", "First degree", "Stage|mid", "|num"]}
+                rows={view.rows.map((r, i) => {
                   const st = STATE[r.state] ?? { kind: "grey" as const, label: r.state };
                   return [
+                    <span key="sn" className="tnum sub2">{i + 1}</span>,
                     <Two key="n" a={`${r.surname}, ${r.other_names}`} b={r.application_no} />,
                     <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}{r.pg_research ? " · research" : ""}</div></span>,
                     <span className="tnum" key="l">{r.entry_level}</span>,

@@ -289,7 +289,7 @@ public class PaymentsService {
     private String flutterwaveInitialize(PaymentsRepository.Reference r, String back) {
         String body = mapper.writeValueAsString(Map.of("tx_ref", r.reference(), "amount", r.amount().toPlainString(), "currency", "NGN",
                 "redirect_url", back, "customer", Map.of("email", r.email()),
-                "customizations", Map.of("title", "MOAUM " + ("ACCEPTANCE".equals(r.kind()) ? "acceptance fee" : "application fee"))));
+                "customizations", Map.of("title", "MOAUM " + feeName(r.kind()))));
         Map<String, Object> answer = post("https://api.flutterwave.com/v3/payments", body, "Bearer " + flutterwaveSecret());
         Object data = answer.get("data");
         if (!(data instanceof Map<?, ?> d) || d.get("link") == null) {
@@ -362,12 +362,23 @@ public class PaymentsService {
                 : "https://webpay.interswitchng.com/collections/api/v1/gettransaction.json";
     }
 
+    /** the fee named as the gateway shows it to the payer, by the reference's kind */
+    static String feeName(String kind) {
+        return switch (kind == null ? "" : kind) {
+            case "FEES" -> "school fees";
+            case "ACCEPTANCE", "PG_ACCEPTANCE" -> "acceptance fee";
+            case "PG_CHECKING" -> "postgraduate checking fee";
+            case "PG_APPLICATION" -> "postgraduate application fee";
+            default -> "application fee";
+        };
+    }
+
     /** where the gateway returns the payer after this kind of fee: the page that shows it paid */
     private static String backPath(String kind) {
         return switch (kind) {
             case "FEES" -> "/student/fees";
             case "ACCEPTANCE" -> "/applicant/accept";
-            case "PG_APPLICATION" -> "/pg/portal";
+            case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> "/pg/portal";
             default -> "/applicant/fee";
         };
     }
@@ -400,7 +411,7 @@ public class PaymentsService {
                 .append("<form id=\"qt\" method=\"POST\" action=\"").append(esc(action)).append("\">");
         field(f, "merchant_code", q.merchantCode());
         field(f, "pay_item_id", q.payItemId());
-        field(f, "pay_item_name", "MOAUM " + ("ACCEPTANCE".equals(r.kind()) ? "acceptance fee" : "FEES".equals(r.kind()) ? "school fees" : "application fee"));
+        field(f, "pay_item_name", "MOAUM " + feeName(r.kind()));
         field(f, "txn_ref", r.reference());
         field(f, "site_redirect_url", back);
         field(f, "amount", Long.toString(kobo));
@@ -554,7 +565,7 @@ public class PaymentsService {
             String settled = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " " + providerRef, null, null),
                     () -> tx.execute(st -> switch (r.kind()) {
                         case "FEES" -> repo.confirmStudent(reference, channel, note);
-                        case "PG_APPLICATION" -> repo.confirmPg(reference, channel);
+                        case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> repo.confirmPg(reference, channel);
                         default -> repo.confirm(reference, channel, note);
                     }));
             outcome = "already confirmed".equals(settled) ? "ALREADY_SETTLED" : "SETTLED";

@@ -26,8 +26,12 @@ interface Me {
   state: string; entryLevel: number; programme: string; programmeCode: string; award: string | null; research: boolean;
   faculty: string; department: string; submittedAt: string | null; createdAt: string | null; feeConfirmedAt: string | null;
   applicationFee: number | null; acceptanceFee: number | null; checkingFee: number | null; liveReference: string | null;
-  deptNote: string | null; deptDecidedAt: string | null; spgsNote: string | null; spgsDecidedAt: string | null;
+  deptNote: string | null; deptDecidedAt: string | null; facNote?: string | null; facDecidedAt?: string | null; spgsNote: string | null; spgsDecidedAt: string | null;
   acceptedAt: string | null; admittedAt: string | null;
+  /** the application's own history (V255) — each turn it took, the decisions' words sealed until the checking fee */
+  history?: { kind: string; note: string | null; at: string }[];
+  /** once admitted: the student record the applicant has become */
+  student?: { admission_no: string; matric_no: string | null; status: string } | null;
   decisionLocked?: boolean; checkingConfirmedAt: string | null; acceptanceConfirmedAt: string | null;
   biodata: { sex: string | null; dateOfBirth: string | null; stateOfOrigin: string | null; lga: string | null };
   prior: { institution: string | null; award: string | null; classOfDegree: string | null; cgpa: number | null; year: number | null };
@@ -38,15 +42,24 @@ interface Me {
 const naira = (n: number | null) => (n == null ? "—" : "₦" + Number(n).toLocaleString());
 const LEVEL: Record<number, string> = { 700: "Postgraduate Diploma", 800: "Master’s", 900: "MPhil / PhD" };
 const STATE_LABEL: Record<string, string> = {
-  DRAFT: "Draft", SUBMITTED: "Submitted — with the department", DEPT_RECOMMENDED: "Recommended — with the School",
-  DEPT_DECLINED: "Not recommended by the department", OFFERED: "Offered a place", NOT_OFFERED: "Not offered",
+  DRAFT: "Draft", SUBMITTED: "Submitted — with the department", DEPT_RECOMMENDED: "Recommended by the department — with the faculty",
+  DEPT_DECLINED: "Not recommended by the department", FAC_RECOMMENDED: "Recommended by the faculty — with the School",
+  FAC_DECLINED: "Not recommended by the faculty", OFFERED: "Offered a place", NOT_OFFERED: "Not offered",
   ACCEPTED: "Offer accepted", ADMITTED: "Admitted — on the register",
   DECISION_LOCKED: "A decision has been made — pay the checking fee to view it",
 };
 const STATE_SHORT: Record<string, string> = {
-  DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Recommended", DEPT_DECLINED: "Declined",
+  DRAFT: "Draft", SUBMITTED: "Submitted", DEPT_RECOMMENDED: "Dept recommended", DEPT_DECLINED: "Declined",
+  FAC_RECOMMENDED: "Faculty recommended", FAC_DECLINED: "Declined",
   OFFERED: "Offered", NOT_OFFERED: "Not offered", ACCEPTED: "Accepted", ADMITTED: "Admitted",
   DECISION_LOCKED: "Decision ready",
+};
+/** the words for each turn on the application's history (V255) */
+const EVENT_LABEL: Record<string, string> = {
+  CREATED: "Application opened", SUBMITTED: "Application submitted", APPLICATION_FEE_CONFIRMED: "Application fee confirmed",
+  REFERENCE_RECEIVED: "Reference received", DEPT_RECOMMENDED: "Considered by the department", DEPT_DECLINED: "Considered by the department",
+  FAC_RECOMMENDED: "Considered by the faculty", FAC_DECLINED: "Considered by the faculty", OFFERED: "Decided by the School", NOT_OFFERED: "Decided by the School",
+  CHECKING_FEE_CONFIRMED: "Checking fee confirmed", ACCEPTANCE_FEE_CONFIRMED: "Acceptance fee confirmed", ACCEPTED: "Offer accepted", ADMITTED: "Admitted to the register",
 };
 function fmtDate(v: string | null): string {
   if (!v) return "—";
@@ -173,6 +186,7 @@ export function PgPortal() {
     ["Application submitted", !!me.submittedAt, me.submittedAt],
     ["Application fee paid", paid, me.feeConfirmedAt],
     ["Department decision", !!me.deptDecidedAt, me.deptDecidedAt],
+    ["Faculty decision", !!me.facDecidedAt, me.facDecidedAt ?? null],
     ["School decision", !!me.spgsDecidedAt, me.spgsDecidedAt],
     ["Offer accepted", !!me.acceptedAt, me.acceptedAt],
     ["Admitted to the register", !!me.admittedAt, me.admittedAt],
@@ -334,6 +348,30 @@ export function PgPortal() {
       ) : null}
 
       {me.spgsNote && me.state !== "NOT_OFFERED" ? <Note kind="info" title="A note from the School">{me.spgsNote}</Note> : null}
+
+      {me.state === "ADMITTED" && me.student ? (
+        <Note kind="ok" title="You are now a student of the University" action={<LinkBtn kind="primary" href="/login">Go to the Student Sign-in</LinkBtn>}>
+          Your admission number is <b className="tnum">{me.student.admission_no}</b>{me.student.matric_no ? <>, and your matriculation number <b className="tnum">{me.student.matric_no}</b></> : null}.
+          Sign in to the student portal with the admission number and the password you chose here; there you pay your school fees, register your courses and follow your research. Your application, documents and payments stay on this record.
+        </Note>
+      ) : null}
+
+      {me.history && me.history.length ? (
+        <Panel title="History of this application" right={`${me.history.length} turn${me.history.length === 1 ? "" : "s"}`}>
+          <PBody>
+            <ol className="plain" style={{ display: "grid", gap: 6 }}>
+              {me.history.map((h, i) => (
+                <li key={i} className="row row--base" style={{ gap: "var(--s-3)", flexWrap: "wrap" }}>
+                  <span className="tnum sub2" style={{ minWidth: 150 }}>{new Date(h.at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="b600">{EVENT_LABEL[h.kind] ?? h.kind.toLowerCase().replace(/_/g, " ")}</span>
+                  {h.note ? <span className="sub2">{h.note}</span> : null}
+                </li>
+              ))}
+            </ol>
+            <div className="sub2 mt-2">What each desk decided is shown once the checking fee is confirmed.</div>
+          </PBody>
+        </Panel>
+      ) : null}
 
       <div className="row mt-2">
         <Btn kind="ghost" onClick={() => void load()}>Refresh</Btn>

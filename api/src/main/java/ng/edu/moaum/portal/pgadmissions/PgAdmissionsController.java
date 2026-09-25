@@ -23,6 +23,9 @@ import jakarta.validation.constraints.Size;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
+
+import org.springframework.security.access.AccessDeniedException;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -62,12 +65,15 @@ class PgAdmissionsController {
     private static final String CONFIRMERS = "hasAnyAuthority('OFFICE_pgsecretary','OFFICE_bursar','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final OfficeScope scope;
 
     private final String portalUrl;
 
     PgAdmissionsController(JdbcClient jdbc,
-                          @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
+                          @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
+                          OfficeScope scope) {
         this.jdbc = jdbc;
+        this.scope = scope;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
@@ -121,35 +127,49 @@ class PgAdmissionsController {
                                      @RequestParam(required = false) String state) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.id, a.application_no, a.session, a.state, a.entry_level, a.programme_code,
-                       g.name AS programme_name, g.pg_award, g.pg_research,
+                       g.name AS programme_name, g.pg_award, g.pg_research, g.dept_code, g.faculty_code,
+                       d.name AS department_name, f.name AS faculty_name,
                        p.surname, p.other_names, p.email, p.phone, p.state_of_origin,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa,
-                       a.fee_confirmed_at, a.submitted_at, a.dept_decided_at, a.fac_decided_at, a.spgs_decided_at,
-                       a.accepted_at, a.admitted_at, a.student_id
+                       a.fee_confirmed_at, a.checking_confirmed_at, a.acceptance_confirmed_at,
+                       a.submitted_at, a.dept_decided_at, a.fac_decided_at, a.spgs_decided_at,
+                       a.accepted_at, a.admitted_at, a.student_id,
+                       (SELECT count(*) FROM admissions.pg_document x WHERE x.application_id = a.id AND x.kind <> 'PASSPORT') AS documents,
+                       (SELECT count(*) FROM admissions.pg_referee x WHERE x.application_id = a.id AND x.submitted_at IS NOT NULL) AS references_in
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
+                  JOIN ref.department d ON d.code = g.dept_code
+                  JOIN ref.faculty f ON f.code = g.faculty_code
                  WHERE a.session = :s
                    AND (:prog::text IS NULL OR a.programme_code = :prog)
                    AND (:state::text IS NULL OR a.state = :state)
-                 ORDER BY a.submitted_at DESC NULLS LAST, p.surname, p.other_names
+                   AND (:dept::text IS NULL OR g.dept_code = :dept)
+                   AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                 ORDER BY p.surname, p.other_names, a.application_no
                 """)
                 .param("s", session)
                 .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), Types.VARCHAR)
                 .param("state", state == null || state.isBlank() ? null : state.trim().toUpperCase(), Types.VARCHAR)
+                .param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR)
                 .query().listOfRows();
         Map<String, Object> counts = jdbc.sql("""
                 SELECT count(*) AS total,
-                       count(*) FILTER (WHERE state = 'SUBMITTED') AS submitted,
-                       count(*) FILTER (WHERE state = 'DEPT_RECOMMENDED') AS recommended,
-                       count(*) FILTER (WHERE state = 'FAC_RECOMMENDED') AS faculty,
-                       count(*) FILTER (WHERE state = 'OFFERED') AS offered,
-                       count(*) FILTER (WHERE state = 'ACCEPTED') AS accepted,
-                       count(*) FILTER (WHERE state = 'ADMITTED') AS admitted
-                  FROM admissions.pg_application WHERE session = :s
-                """).param("s", session).query().singleRow();
+                       count(*) FILTER (WHERE a.state = 'SUBMITTED') AS submitted,
+                       count(*) FILTER (WHERE a.state = 'DEPT_RECOMMENDED') AS recommended,
+                       count(*) FILTER (WHERE a.state = 'FAC_RECOMMENDED') AS faculty,
+                       count(*) FILTER (WHERE a.state = 'OFFERED') AS offered,
+                       count(*) FILTER (WHERE a.state = 'ACCEPTED') AS accepted,
+                       count(*) FILTER (WHERE a.state = 'ADMITTED') AS admitted,
+                       count(*) FILTER (WHERE a.state IN ('DEPT_DECLINED','FAC_DECLINED','NOT_OFFERED')) AS declined
+                  FROM admissions.pg_application a JOIN ref.programme g ON g.code = a.programme_code
+                 WHERE a.session = :s
+                   AND (:dept::text IS NULL OR g.dept_code = :dept)
+                   AND (:fac::text IS NULL OR g.faculty_code = :fac)
+                """).param("s", session).param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR).query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
+        out.put("bound", Map.of("department", String.valueOf(boundDept()), "faculty", String.valueOf(boundFaculty())));
         out.put("counts", counts);
         out.put("rows", rows);
         return out;
@@ -172,10 +192,23 @@ class PgAdmissionsController {
                 """).param("s", session).query().singleRow();
         long students = jdbc.sql("SELECT count(*) FROM people.student WHERE entry_mode = 'POSTGRADUATE'")
                 .query(Long.class).single();
+        // the register's end of the lifecycle: who is active, on research, before the examiners, cleared, graduated
+        Map<String, Object> pipeline = jdbc.sql("""
+                SELECT count(*) FILTER (WHERE s.status IN ('ACTIVE','ADMITTED','PROBATION')) AS active,
+                       count(*) FILTER (WHERE s.status = 'ADMITTED' AND s.entry_session = :s) AS newly_admitted,
+                       count(*) FILTER (WHERE r.stage IN ('SUPERVISED','PROPOSAL_SUBMITTED','PROPOSAL_APPROVED','SEMINAR_HELD','TITLE_REGISTERED')) AS on_research,
+                       count(*) FILTER (WHERE r.stage IN ('PANEL_CONSTITUTED','DRAFT_SUBMITTED')) AS awaiting_defence,
+                       count(*) FILTER (WHERE r.stage IN ('VIVA_HELD','CORRECTIONS','FINAL_SUBMITTED')) AS finishing,
+                       count(*) FILTER (WHERE r.stage IN ('CLEARED','AWARD_RECOMMENDED')) AS graduation_eligible,
+                       count(*) FILTER (WHERE s.status = 'GRADUATED') AS graduated,
+                       count(*) FILTER (WHERE s.status IN ('DEFERRED','WITHDRAWN','VOLUNTARY_WITHDRAWAL','SUSPENDED')) AS not_in_study
+                  FROM people.student s LEFT JOIN admissions.pg_research r ON r.student_id = s.id
+                 WHERE s.entry_mode = 'POSTGRADUATE'
+                """).param("s", session).query().singleRow();
         List<Map<String, Object>> byProgramme = jdbc.sql("""
                 SELECT g.name AS programme_name, g.pg_award,
                        count(*) AS applications,
-                       count(*) FILTER (WHERE a.state IN ('SUBMITTED','DEPT_RECOMMENDED')) AS in_progress,
+                       count(*) FILTER (WHERE a.state IN ('SUBMITTED','DEPT_RECOMMENDED','FAC_RECOMMENDED')) AS in_progress,
                        count(*) FILTER (WHERE a.state = 'OFFERED') AS offered,
                        count(*) FILTER (WHERE a.state IN ('ACCEPTED','ADMITTED')) AS taken
                   FROM admissions.pg_application a
@@ -200,6 +233,7 @@ class PgAdmissionsController {
         out.put("session", session);
         out.put("counts", counts);
         out.put("pgStudents", students);
+        out.put("pipeline", pipeline);
         out.put("byProgramme", byProgramme);
         out.put("recent", recent);
         return out;
@@ -231,7 +265,7 @@ class PgAdmissionsController {
                  ORDER BY r.updated_at DESC LIMIT 50
                 """).param("s", session).query().listOfRows();
         List<Map<String, Object>> feesToConfirm = jdbc.sql("""
-                SELECT f.reference, f.kind, f.amount, f.expires_at, a.application_no, p.surname, p.other_names
+                SELECT f.reference, f.kind, f.amount, f.expires_at, a.id AS application_id, a.application_no, p.surname, p.other_names
                   FROM admissions.pg_fee_reference f
                   JOIN admissions.pg_application a ON a.id = f.application_id
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
@@ -396,6 +430,13 @@ class PgAdmissionsController {
             return Map.of("found", false);
         }
         Map<String, Object> app = found.get(0);
+        inBound(id);
+        List<Map<String, Object>> history = jdbc.sql("""
+                SELECT e.kind, e.note, e.at, e.actor_office,
+                       CASE WHEN x.id IS NULL THEN NULL ELSE x.surname || ', ' || x.given_names END AS actor
+                  FROM admissions.pg_application_event e LEFT JOIN iam.person x ON x.id = e.actor_id
+                 WHERE e.application_id = :id ORDER BY e.at, e.kind
+                """).param("id", id).query().listOfRows();
         List<Map<String, Object>> referees = jdbc.sql("""
                 SELECT id, name, email, phone, institution, position, reference_text, submitted_at,
                        relationship, known_duration, attestation, recommendation, verdict
@@ -416,7 +457,35 @@ class PgAdmissionsController {
         out.put("referees", referees);
         out.put("priorDegrees", priorDegrees);
         out.put("documents", documents);
+        out.put("history", history);
         return out;
+    }
+
+    /* ── the office's bound: a Head of Department reads and decides their own department's applications, a Dean
+          their faculty's; the School, the Academic Office and the Registry read them all. The check is on the
+          record, so an application id typed into the address bar is refused the same way. ── */
+
+    private String boundDept() {
+        return scope.actingHod() ? String.valueOf(scope.actingDept()) : null;
+    }
+
+    private String boundFaculty() {
+        return scope.actingFacultyOffice() ? String.valueOf(scope.actingFaculty()) : null;
+    }
+
+    private void inBound(UUID applicationId) {
+        String dept = boundDept(), fac = boundFaculty();
+        if (dept == null && fac == null) return;
+        Map<String, Object> g = jdbc.sql("""
+                SELECT g.dept_code, g.faculty_code FROM admissions.pg_application a JOIN ref.programme g ON g.code = a.programme_code WHERE a.id = :id
+                """).param("id", applicationId).query().listOfRows().stream().findFirst().orElse(null);
+        if (g == null) return;
+        if (dept != null && !dept.equalsIgnoreCase(String.valueOf(g.get("dept_code")))) {
+            throw new AccessDeniedException("This application is for another department's programme; the Head of Department reads and decides their own department's applications only.");
+        }
+        if (fac != null && !fac.equalsIgnoreCase(String.valueOf(g.get("faculty_code")))) {
+            throw new AccessDeniedException("This application is for another faculty's programme; the Dean reads and decides their own faculty's applications only.");
+        }
     }
 
     /** the credentials document an applicant uploaded, streamed for the desk to read inline (the O'/A'Level
@@ -425,6 +494,7 @@ class PgAdmissionsController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> document(@PathVariable UUID id, @PathVariable UUID docId) {
+        inBound(id);
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT filename, content_type, bytes
                   FROM admissions.pg_document WHERE id = :d AND application_id = :a
@@ -448,6 +518,7 @@ class PgAdmissionsController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> mergedDocuments(@PathVariable UUID id) {
+        inBound(id);
         List<Map<String, Object>> docs = jdbc.sql("""
                 SELECT kind, content_type, bytes FROM admissions.pg_document
                  WHERE application_id = :id
@@ -504,6 +575,7 @@ class PgAdmissionsController {
     @PreAuthorize(DEPT)
     @Transactional
     Map<String, Object> deptDecision(@PathVariable UUID id, @Valid @RequestBody DeptDecision body) {
+        inBound(id);
         UUID actor = AuditContextHolder.required().actorId();
         jdbc.sql("SELECT admissions.pg_dept_decide(:id, :rec, :note, :actor)")
                 .param("id", id).param("rec", body.recommend())
@@ -519,6 +591,7 @@ class PgAdmissionsController {
     @PreAuthorize(FACULTY)
     @Transactional
     Map<String, Object> facultyDecision(@PathVariable UUID id, @Valid @RequestBody FacultyDecision body) {
+        inBound(id);
         UUID actor = AuditContextHolder.required().actorId();
         jdbc.sql("SELECT admissions.pg_faculty_decide(:id, :rec, :note, :actor)")
                 .param("id", id).param("rec", body.recommend())
@@ -586,8 +659,15 @@ class PgAdmissionsController {
     @PreAuthorize(CONFIRMERS)
     @Transactional
     Map<String, Object> confirmFee(@PathVariable UUID id, @Valid @RequestBody FeeConfirm body) {
+        String ref = body.reference() == null ? "" : body.reference().trim();
+        long owned = jdbc.sql("SELECT count(*) FROM admissions.pg_fee_reference WHERE upper(reference) = upper(:r) AND application_id = :id")
+                .param("r", ref).param("id", id).query(Long.class).single();
+        if (owned == 0) {
+            throw new DomainRuleViolation("PG_FEE_REF_MISMATCH", "That reference does not belong to this application.",
+                    new DomainRuleViolation.Remedy("Confirm the reference against the application it was generated for; the Secretary's dashboard lists each with its application.", "Secretary, Postgraduate School"));
+        }
         jdbc.sql("SELECT admissions.pg_confirm_fee(:ref, :ch)")
-                .param("ref", body.reference() == null ? "" : body.reference().trim())
+                .param("ref", ref)
                 .param("ch", body.channel() == null || body.channel().isBlank() ? "bank" : body.channel().trim(), Types.VARCHAR)
                 .query().listOfRows();
         return application(id);

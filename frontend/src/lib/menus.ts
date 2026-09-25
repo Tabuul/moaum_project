@@ -1332,38 +1332,59 @@ export const MENUS: Record<string, Menu> = {
     "home": "s/dashboard",
     "groups": [
       {
-        "name": "Start here",
+        "name": "Overview",
         "items": [
-          { "id": "s/dashboard", "icon": "home", "label": "Dashboard" },
-          { "id": "s/fees", "icon": "card", "label": "School Fees" }
+          { "id": "s/dashboard", "icon": "home", "label": "Dashboard" }
         ]
       },
       {
         "name": "Academic",
         "items": [
-          { "id": "s/pgcourses", "icon": "book", "label": "Registration & Results" },
-          { "id": "s/research", "icon": "flask", "label": "Research & Thesis" },
-          { "id": "s/exams", "icon": "cap", "label": "Examinations" },
+          { "id": "s/pgcourses", "icon": "book", "label": "Course Registration & Results" },
+          { "id": "s/pgprogress", "icon": "chart", "label": "Academic Progress" },
           { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
         ]
       },
       {
-        "name": "Services",
+        "name": "Finance",
         "items": [
-          { "id": "s/wallet", "icon": "swap", "label": "Wallet & Funding" },
-          { "id": "s/library", "icon": "book", "label": "Library" },
+          { "id": "s/fees", "icon": "card", "label": "School Fees & Payments" },
+          { "id": "s/wallet", "icon": "swap", "label": "Wallet & Funding" }
+        ]
+      },
+      {
+        "name": "Research",
+        "items": [
+          { "id": "s/research", "icon": "flask", "label": "Research & Thesis" }
+        ]
+      },
+      {
+        "name": "Documents",
+        "items": [
           { "id": "s/idcard", "icon": "user", "label": "Identity Card" },
-          { "id": "s/health", "icon": "heart", "label": "Health" },
+          { "id": "s/library", "icon": "book", "label": "Library" }
+        ]
+      },
+      {
+        "name": "Communication",
+        "items": [
+          { "id": "s/notifications", "icon": "bell", "label": "Notifications" },
           { "id": "s/support", "icon": "life", "label": "Help & Requests" },
           { "id": "s/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
       },
       {
-        "name": "Account",
+        "name": "Graduation",
         "items": [
-          { "id": "s/profile", "icon": "user", "label": "Profile" },
+          { "id": "s/graduation", "icon": "cap", "label": "Graduation & Clearance" }
+        ]
+      },
+      {
+        "name": "Profile",
+        "items": [
+          { "id": "s/profile", "icon": "user", "label": "My Profile" },
           { "id": "s/biodata", "icon": "doc", "label": "Biodata" },
-          { "id": "s/notifications", "icon": "bell", "label": "Notifications" }
+          { "id": "s/health", "icon": "heart", "label": "Health" }
         ]
       }
     ]

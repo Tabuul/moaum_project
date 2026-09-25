@@ -14,8 +14,9 @@ export default async function Page() {
   if (loaded.student.entryMode !== "POSTGRADUATE") {
     return <Shell route="s/pgcourses" me={loaded.me}><Note kind="info" title="Postgraduate coursework">This page is for postgraduate students.</Note></Shell>;
   }
-  const sessions = await api<{ name: string; state: string }[]>("/api/v1/ref/sessions");
-  const current = sessions.ok ? (sessions.data.find((s) => s.state === "CURRENT")?.name ?? loaded.student.entrySession) : loaded.student.entrySession;
+  // the School of Postgraduate Studies keeps its own calendar (V224): the coursework opens on its session in progress
+  const pg = await api<{ session?: string }>("/api/v1/pg/coursework/summary");
+  const current = pg.ok && pg.data.session ? pg.data.session : loaded.student.entrySession;
   return (
     <Shell route="s/pgcourses" me={loaded.me}>
       <Coursework initialSession={current} />

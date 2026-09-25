@@ -1,11 +1,14 @@
 import type { Me } from "@/components/proto/Shell";
 import { LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { ConfirmFee } from "./ConfirmFee";
 
 export interface PgHome {
   session: string;
   counts: { total: number; submitted: number; recommended: number; faculty?: number; offered: number; accepted: number; admitted: number };
   pgStudents: number;
+  /** the register's end of the lifecycle (V255) */
+  pipeline?: { active: number; newly_admitted: number; on_research: number; awaiting_defence: number; finishing: number; graduation_eligible: number; graduated: number; not_in_study: number };
   byProgramme: { programme_name: string; pg_award: string | null; applications: number; in_progress: number; offered: number; taken: number }[];
   recent?: {
     application_no: string; session: string; state: string; entry_level: number;
@@ -19,7 +22,7 @@ export interface PgSecHome {
   session: string;
   counts: { toRegister: number; toEndorse: number; feesToConfirm: number; examsPending: number; clearances: number };
   toEndorse: { id: string; semester: number; mode: string; updated_at: string; surname: string; other_names: string; matric_no: string | null; programme_name: string; pg_award: string | null; courses: number }[];
-  feesToConfirm: { reference: string; kind: string; amount: number; expires_at: string; application_no: string; surname: string; other_names: string }[];
+  feesToConfirm: { reference: string; kind: string; amount: number; expires_at: string; application_id?: string; application_no: string; surname: string; other_names: string }[];
   clearances: { id: string; degree_kind: string; topic: string | null; final_submitted_at: string | null; updated_at: string; surname: string; other_names: string; matric_no: string | null; programme_name: string; pg_award: string | null }[];
 }
 
@@ -74,6 +77,17 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
         ["To admit", String(toAdmit), toAdmit ? "var(--chrome)" : null, "Accepted, not yet on the register", desk],
         ["PG students", String(home.pgStudents), null, "On the register", "/admissions/postgraduate/students"],
       ]} />
+
+      {home.pipeline ? (
+        <Tiles items={[
+          ["Active students", String(home.pipeline.active), null, `${home.pipeline.newly_admitted} newly admitted in ${home.session}`, "/admissions/postgraduate/students"],
+          ["On research", String(home.pipeline.on_research), Number(home.pipeline.on_research) ? "var(--chrome)" : null, "Supervised to title registered", "/admissions/postgraduate/research"],
+          ["Awaiting defence", String(home.pipeline.awaiting_defence), Number(home.pipeline.awaiting_defence) ? "var(--amber-ink)" : null, "Panel constituted, draft with examiners", "/admissions/postgraduate/research?stage=DRAFT_SUBMITTED"],
+          ["Finishing", String(home.pipeline.finishing), null, "Viva held, corrections, final submitted", "/admissions/postgraduate/clearance"],
+          ["Graduation eligible", String(home.pipeline.graduation_eligible), Number(home.pipeline.graduation_eligible) ? "var(--green-ink)" : null, "Cleared or recommended to Senate", "/admissions/postgraduate/board"],
+          ["Graduated", String(home.pipeline.graduated), null, "Awards recorded on the register", "/graduation"],
+        ]} cls="grid--3" />
+      ) : null}
 
       <Panel title="Latest applications" right={<LinkBtn kind="ghost" href={desk}>Open admissions desk</LinkBtn>}>
         {recent.length ? (
@@ -174,13 +188,14 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
               <LinkBtn kind="ghost" href={admissions}>Admissions desk</LinkBtn>
             </div>
             {home.feesToConfirm.length ? (
-              <DTable cols={["Applicant", "Fee", "Amount|num", "Reference", "Expires|num"]}
+              <DTable cols={["Applicant", "Fee", "Amount|num", "Reference", "Expires|num", "|num"]}
                 rows={home.feesToConfirm.map((f) => [
                   <span key="n"><span>{f.surname}, {f.other_names}</span><div className="sub2 tnum">{f.application_no}</div></span>,
                   <span key="k">{FEE_KIND[f.kind] ?? f.kind}</span>,
                   <span key="a" className="tnum">{naira(f.amount)}</span>,
                   <span key="r" className="tnum">{f.reference}</span>,
                   <span key="e" className="tnum">{shortDate(f.expires_at)}</span>,
+                  f.application_id ? <ConfirmFee key="c" applicationId={f.application_id} reference={f.reference} who={`${f.surname}, ${f.other_names}`} /> : <span key="c" />,
                 ])}
                 texts={home.feesToConfirm.map((f) => `${f.surname} ${f.other_names} ${f.application_no} ${f.reference}`)} />
             ) : <div className="sub2">No fee reference is awaiting confirmation.</div>}

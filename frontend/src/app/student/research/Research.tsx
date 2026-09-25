@@ -24,9 +24,31 @@ interface Research {
   corrections_due: string | null; final_submitted_at: string | null; cleared_at: string | null;
   award_recommended_at: string | null; awarded_at: string | null;
   programme_name: string; department_name: string; faculty_name: string;
-  supervisors: Supervisor[]; panel: PanelMember[]; events: Event[];
+  supervisors: Supervisor[]; panel: PanelMember[]; events: Event[]; documents?: ResearchDoc[];
 }
 interface PanelMember { name: string; role: string; is_external: boolean }
+interface ResearchDoc { id: string; kind: string; version: number; filename: string; content_type: string; size_bytes: number; note: string | null; status: string; reviewer_note: string | null; reviewed_at: string | null; by_candidate: boolean; uploaded_at: string }
+const DOC_KIND: Record<string, string> = { PROPOSAL: "Research proposal", SEMINAR_PAPER: "Seminar paper", PLAGIARISM_REPORT: "Plagiarism report", DRAFT: "Draft for examination", CORRECTED: "Corrected copy", FINAL: "Final copy", OTHER: "Other document" };
+const DOC_STATUS: Record<string, ["grey" | "ok" | "bad", string]> = { SUBMITTED: ["grey", "Submitted"], ACCEPTED: ["ok", "Accepted"], RETURNED: ["bad", "Returned"] };
+/** which document the stage calls for next, so the right one is offered first */
+function docKindFor(stage: string): string {
+  if (["REGISTERED", "SUPERVISED", "PROPOSAL_SUBMITTED"].includes(stage)) return "PROPOSAL";
+  if (stage === "PROPOSAL_APPROVED") return "SEMINAR_PAPER";
+  if (stage === "SEMINAR_HELD") return "PLAGIARISM_REPORT";
+  if (["TITLE_REGISTERED", "PANEL_CONSTITUTED"].includes(stage)) return "DRAFT";
+  if (stage === "CORRECTIONS") return "CORRECTED";
+  if (stage === "VIVA_HELD") return "FINAL";
+  return "OTHER";
+}
+const DOC_MIME = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+function readBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
 const PANEL_ROLE: Record<string, string> = {
   CHAIR: "chair / HOD", EXTERNAL: "external examiner", SUPERVISOR: "supervisor", CO_SUPERVISOR: "co-supervisor",
   INTERNAL: "internal examiner", PGSR: "PGSR", COORDINATOR: "PG coordinator",
@@ -55,6 +77,22 @@ export function Research() {
   const [loading, setLoading] = useState(true);
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
+  const [docKind, setDocKind] = useState<string | null>(null);
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docNote, setDocNote] = useState("");
+  const [docKey, setDocKey] = useState(0);
+
+  async function submitDocument() {
+    if (!docFile || !r) return;
+    const kind = docKind ?? docKindFor(r.stage);
+    const mime = docFile.type || (docFile.name.toLowerCase().endsWith(".docx") ? DOC_MIME[1] : "application/pdf");
+    if (!DOC_MIME.includes(mime) || docFile.size > 25 * 1024 * 1024) {
+      const pr: Problem = { status: 422, title: "A research document is a PDF or a Word (.docx) file of at most 25 MB." }; setProblem(pr); notifyProblem(pr); return;
+    }
+    const b64 = await readBase64(docFile);
+    await act("/documents", { kind, filename: docFile.name, contentType: mime, contentBase64: b64, note: docNote.trim() || null }, `${DOC_KIND[kind] ?? kind} submitted`);
+    setDocFile(null); setDocNote(""); setDocKey((k) => k + 1);
+  }
 
   const load = useCallback(async () => {
     try {
@@ -156,6 +194,45 @@ export function Research() {
             )}
           </div>
           {canEditTopic ? <div className="sub2 mt-2">A Master&rsquo;s proposal is due within 6 months, a PhD within 12 months, of first registration (Policy 21).</div> : null}
+        </PBody>
+      </Panel>
+
+      <Panel title="Documents" right={r.documents?.length ? `${r.documents.length} on record · every version kept` : "Nothing submitted yet"}>
+        <PBody>
+          {r.documents && r.documents.length ? (
+            <div className="stack" style={{ gap: "var(--s-1)" }}>
+              {r.documents.map((d) => {
+                const [kind, word] = DOC_STATUS[d.status] ?? ["grey", d.status];
+                return (
+                  <div key={d.id} className="row row--between" style={{ gap: "var(--s-3)", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                    <span style={{ minWidth: 0 }}>
+                      <a className="lnk b600" href={`/api/bff/api/v1/pg/research/me/documents/${d.id}/content`} target="_blank" rel="noopener">{DOC_KIND[d.kind] ?? d.kind} · version {d.version}</a>
+                      <div className="sub2">{d.filename} · {fmt(d.uploaded_at)}{d.note ? ` · ${d.note}` : ""}</div>
+                      {d.reviewer_note ? <div className="sub2">The School: {d.reviewer_note}</div> : null}
+                    </span>
+                    <span className={`pill pill--${kind}`}>{word}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {!["AWARDED", "WITHDRAWN"].includes(r.stage) ? (
+            <div className="row row--end mt-3">
+              <Field id="rd-kind" label="Document" style={{ flex: "1 1 200px" }}>
+                <select id="rd-kind" className="ctl" value={docKind ?? docKindFor(r.stage)} onChange={(e) => setDocKind(e.target.value)}>
+                  {Object.entries(DOC_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </Field>
+              <Field id="rd-file" label="File" hint="PDF or Word (.docx), at most 25 MB" style={{ flex: "2 1 240px" }}>
+                <input key={docKey} id="rd-file" type="file" className="ctl" accept=".pdf,.docx" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
+              </Field>
+              <Field id="rd-note" label="Note" style={{ flex: "2 1 200px" }}>
+                <input id="rd-note" className="ctl" value={docNote} onChange={(e) => setDocNote(e.target.value)} placeholder="Optional — what changed in this version" />
+              </Field>
+              <Btn kind="primary" disabled={busy || !docFile} onClick={() => void submitDocument()}>Submit Document</Btn>
+            </div>
+          ) : null}
+          <div className="sub2 mt-2">A new version never replaces an earlier one. A draft submitted once your title is registered moves your record to draft submitted; a final copy after the oral examination moves it to final submitted.</div>
         </PBody>
       </Panel>
 

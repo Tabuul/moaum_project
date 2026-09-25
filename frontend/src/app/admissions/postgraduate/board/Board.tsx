@@ -45,11 +45,15 @@ export function Board({ mayEdit }: { mayEdit: boolean }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  /* the Senate minute an award is recorded on (V255): cited once, used for each award recorded in this sitting */
+  const [minute, setMinute] = useState("");
+
   async function act(id: string, action: string, reason: string) {
     setBusy(true); setProblem(null);
     try {
       const r = await fetch(`/api/bff/api/v1/pg/research/${id}/action`, {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify({ action }),
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) },
+        body: JSON.stringify(action === "AWARD" ? { action, senateMinute: minute.trim() } : { action }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
@@ -90,12 +94,23 @@ export function Board({ mayEdit }: { mayEdit: boolean }) {
         ) : <PBody><div className="sub2">No cleared candidate awaiting the Board.</div></PBody>}
       </Panel>
 
-      <Panel title="Recommended — record the Senate award">
+      <Panel title="Recommended — record the Senate award" right={recommended.length && mayEdit ? "Cite the Senate minute, then record each award" : undefined}>
+        {recommended.length && mayEdit ? (
+          <PBody>
+            <div className="row row--end">
+              <div className="field" style={{ minWidth: 260 }}>
+                <label htmlFor="bd-minute">Senate minute</label>
+                <input id="bd-minute" className="ctl" value={minute} onChange={(e) => setMinute(e.target.value)} placeholder="e.g. SEN/2026/07/12" />
+              </div>
+              <span className="sub2">An award recorded on the minute writes the graduand, marks the student graduated and tells them.</span>
+            </div>
+          </PBody>
+        ) : null}
         {recommended.length ? (
           <DTable cols={["Candidate", "Programme", "Kind|mid", "|mid"]}
             rows={recommended.map((r) => [
               name(r), <span key="p">{r.programme_name}</span>, <span key="k" className="sub2">{KIND[r.degree_kind] ?? r.degree_kind}</span>,
-              mayEdit ? <button key="a" className="btn btn--go btn--sm" disabled={busy} onClick={() => void act(r.id, "AWARD", `Recorded Senate award for ${r.surname}`)}>Record award</button> : null,
+              mayEdit ? <button key="a" className="btn btn--go btn--sm" disabled={busy || !minute.trim()} title={minute.trim() ? undefined : "Cite the Senate minute first"} onClick={() => void act(r.id, "AWARD", `Recorded Senate award for ${r.surname}`)}>Record Award</button> : null,
             ])} texts={recommended.map((r) => `${r.surname} ${r.other_names} ${r.programme_name}`)} />
         ) : <PBody><div className="sub2">Nothing with Senate at the moment.</div></PBody>}
       </Panel>

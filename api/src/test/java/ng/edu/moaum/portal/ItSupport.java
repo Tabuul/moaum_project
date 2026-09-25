@@ -37,6 +37,13 @@ final class ItSupport {
         return TestTokens.token(UUID.randomUUID(), List.of(office));
     }
 
+    /** a call with no token at all: the public doors (apply, sign-in, status) */
+    @SuppressWarnings("rawtypes")
+    ResponseEntity<Map> anon(HttpMethod method, String path, Object body) {
+        RestClient.RequestBodySpec spec = client.method(method).uri(path).contentType(MediaType.APPLICATION_JSON);
+        return (body == null ? spec : spec.body(body)).retrieve().toEntity(Map.class);
+    }
+
     @SuppressWarnings("rawtypes")
     ResponseEntity<Map> call(String token, HttpMethod method, String path, Object body) {
         RestClient.RequestBodySpec spec = client.method(method).uri(path)

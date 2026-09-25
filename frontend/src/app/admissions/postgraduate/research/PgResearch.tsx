@@ -33,8 +33,12 @@ const PANEL_ROLE: Record<string, string> = {
   CHAIR: "chair / HOD", EXTERNAL: "external examiner", SUPERVISOR: "supervisor", CO_SUPERVISOR: "co-supervisor",
   INTERNAL: "internal examiner", PGSR: "PGSR", COORDINATOR: "PG coordinator",
 };
+interface ResearchDoc { id: string; kind: string; version: number; filename: string; content_type: string; size_bytes: number; note: string | null; status: string; reviewer_note: string | null; reviewed_at: string | null; by_candidate: boolean; uploaded_at: string }
+const DOC_KIND: Record<string, string> = { PROPOSAL: "Proposal", SEMINAR_PAPER: "Seminar paper", PLAGIARISM_REPORT: "Plagiarism report", DRAFT: "Draft", CORRECTED: "Corrected copy", FINAL: "Final copy", OTHER: "Other" };
+const DOC_STATUS: Record<string, "grey" | "ok" | "bad"> = { SUBMITTED: "grey", ACCEPTED: "ok", RETURNED: "bad" };
 interface Detail extends Omit<ResearchRow, "supervisors"> {
   name: string; entry_session: string; entry_level: number;
+  documents?: ResearchDoc[];
   proposal_submitted_at: string | null; proposal_approved_at: string | null;
   seminar_held_at: string | null; pgsr: string | null; title_registered_at: string | null; plagiarism_pct: number | null;
   panel_constituted_at: string | null; draft_submitted_at: string | null;
@@ -280,6 +284,23 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
                     </div>
                   </div>
                 ) : null}
+
+                <div>
+                  <div className="b600 mb-2">Documents submitted by the candidate</div>
+                  {detail.documents && detail.documents.length ? (
+                    <DTable pageSize={0} cols={["Document", "Version|mid", "Submitted|mid", "Status|mid", "|num"]}
+                      rows={detail.documents.map((d) => [
+                        <span key="d"><a className="lnk b600" href={`/api/bff/api/v1/pg/research/${detail.id}/documents/${d.id}/content`} target="_blank" rel="noopener">{DOC_KIND[d.kind] ?? d.kind}</a><div className="sub2">{d.filename} · {(d.size_bytes / 1048576).toFixed(1)} MB{d.note ? ` · ${d.note}` : ""}</div>{d.reviewer_note ? <div className="sub2">Desk: {d.reviewer_note}</div> : null}</span>,
+                        <span key="v" className="tnum">v{d.version}</span>,
+                        <span key="w" className="tnum sub2">{fmt(d.uploaded_at)}</span>,
+                        <Pil key="s" kind={DOC_STATUS[d.status] ?? "grey"}>{d.status.charAt(0) + d.status.slice(1).toLowerCase()}</Pil>,
+                        may && d.status === "SUBMITTED" ? <span key="a" className="row row--inline row--tight" style={{ justifyContent: "flex-end" }}>
+                          <Btn kind="primary" size="sm" disabled={busy} onClick={() => void post(`/documents/${d.id}/review`, { status: "ACCEPTED" }, `${DOC_KIND[d.kind] ?? d.kind} v${d.version} accepted`)}>Accept</Btn>
+                          <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { const n = window.prompt("What must the candidate correct?"); if (n !== null) void post(`/documents/${d.id}/review`, { status: "RETURNED", note: n }, `${DOC_KIND[d.kind] ?? d.kind} v${d.version} returned`); }}>Return</Btn>
+                        </span> : <span key="a" />,
+                      ])} />
+                  ) : <div className="sub2">Nothing submitted yet. The candidate submits the proposal, seminar paper, plagiarism report, draft, corrected copy and final copy on their research desk; each is kept by version.</div>}
+                </div>
 
                 <div>
                   <div className="b600 mb-2">Milestones</div>

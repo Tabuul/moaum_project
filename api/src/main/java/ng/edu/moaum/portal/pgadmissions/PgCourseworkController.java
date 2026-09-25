@@ -136,6 +136,47 @@ class PgCourseworkController {
         out.put("standing", !scored ? "NEW" : cgpa.compareTo(new BigDecimal("2.50")) >= 0 ? "GOOD" : "PROBATION");
         out.put("registration", reg);
         out.put("research", research);
+        // the School's own calendar: the session in progress and its open semester, with the registration window
+        String pgSession = jdbc.sql("SELECT admissions.pg_current_session()").query(String.class).single();
+        out.put("session", pgSession);
+        out.put("semester", firstOrNull(jdbc.sql("""
+                SELECT number, registration_opens, registration_closes, lectures_from, lectures_to, exams_from, exams_to, results_due, state
+                  FROM admissions.pg_semester WHERE session = :s AND state = 'OPEN' ORDER BY number DESC LIMIT 1
+                """).param("s", pgSession).query().listOfRows()));
+        out.put("supervisors", jdbc.sql("""
+                SELECT s.name, s.role, s.is_external, s.assigned_at,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE d.name END AS department, p.email
+                  FROM admissions.pg_research r JOIN admissions.pg_research_supervisor s ON s.research_id = r.id AND s.ended_at IS NULL
+                  LEFT JOIN iam.person p ON p.id = s.person_id
+                  LEFT JOIN hrm.staff_record sr ON sr.person_id = p.id
+                  LEFT JOIN ref.department d ON d.code = sr.home_department
+                 WHERE r.student_id = :me ORDER BY CASE s.role WHEN 'FIRST' THEN 0 WHEN 'SECOND' THEN 1 ELSE 2 END, s.assigned_at
+                """).param("me", me).query().listOfRows());
+        out.put("researchDates", firstOrNull(jdbc.sql("""
+                SELECT r.corrections_due, r.viva_held_at, r.draft_submitted_at, r.final_submitted_at, r.cleared_at, r.awarded_at, r.viva_outcome
+                  FROM admissions.pg_research r WHERE r.student_id = :me
+                """).param("me", me).query().listOfRows()));
+        out.put("coursework", jdbc.sql("""
+                SELECT count(DISTINCT e.id) AS courses,
+                       count(DISTINCT e.id) FILTER (WHERE sc.entry_id IS NOT NULL) AS graded,
+                       count(DISTINCT e.id) FILTER (WHERE sc.grade IS NOT NULL AND sc.grade <> 'F') AS passed,
+                       count(DISTINCT e.id) FILTER (WHERE sc.grade = 'F') AS failed,
+                       coalesce(sum(c.units) FILTER (WHERE c.kind <> 'DEFICIENCY'), 0) AS units_registered,
+                       coalesce(sum(c.units) FILTER (WHERE c.kind <> 'DEFICIENCY' AND sc.grade IS NOT NULL AND sc.grade <> 'F'), 0) AS units_passed,
+                       count(DISTINCT r.id) AS registrations,
+                       count(DISTINCT r.id) FILTER (WHERE r.state = 'ENDORSED') AS endorsed
+                  FROM admissions.pg_registration r
+                  JOIN admissions.pg_registration_entry e ON e.registration_id = r.id
+                  JOIN admissions.pg_course c ON c.id = e.course_id
+                  LEFT JOIN admissions.pg_score sc ON sc.entry_id = e.id
+                 WHERE r.student_id = :me
+                """).param("me", me).query().singleRow());
+        out.put("graduand", firstOrNull(jdbc.sql("""
+                SELECT g.session, g.award, g.cgpa, g.senate_state, g.senate_minute FROM records.graduand g WHERE g.student_id = :me ORDER BY g.session DESC LIMIT 1
+                """).param("me", me).query().listOfRows()));
+        out.put("clearance", jdbc.sql("SELECT unit, label, state, decided_at FROM clearance.position(:me, 'CONVOCATION') ORDER BY ord")
+                .param("me", me).query().listOfRows());
+        out.put("status", jdbc.sql("SELECT status FROM people.student WHERE id = :me").param("me", me).query(String.class).single());
         return out;
     }
 

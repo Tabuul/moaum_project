@@ -1,9 +1,12 @@
 package ng.edu.moaum.portal.pgadmissions;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -11,7 +14,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.NotFound;
+
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -192,8 +201,29 @@ class PgResearchController {
 
     public record ActionIn(@NotBlank String action, @Size(max = 1000) String note, @Size(max = 200) String pgsr,
                            BigDecimal plagiarismPct, BigDecimal vivaScore, @Size(max = 20) String vivaOutcome,
-                           String correctionsDue) {
+                           String correctionsDue, @Size(max = 120) String senateMinute, @Size(max = 9) String session) {
     }
+
+    /** the stage each desk action follows from — the policy's order, held on the record rather than on the menu */
+    private static final Map<String, Set<String>> FROM = Map.ofEntries(
+            Map.entry("SUBMIT_PROPOSAL", Set.of("REGISTERED", "SUPERVISED")),
+            Map.entry("APPROVE_PROPOSAL", Set.of("PROPOSAL_SUBMITTED")),
+            Map.entry("SEMINAR", Set.of("PROPOSAL_APPROVED")),
+            Map.entry("REGISTER_TITLE", Set.of("SEMINAR_HELD")),
+            Map.entry("PANEL", Set.of("TITLE_REGISTERED")),
+            Map.entry("DRAFT", Set.of("TITLE_REGISTERED", "PANEL_CONSTITUTED")),
+            Map.entry("VIVA", Set.of("DRAFT_SUBMITTED", "CORRECTIONS")),
+            Map.entry("CORRECTIONS", Set.of("VIVA_HELD")),
+            Map.entry("FINAL", Set.of("VIVA_HELD", "CORRECTIONS")),
+            Map.entry("CLEAR", Set.of("FINAL_SUBMITTED")),
+            Map.entry("RECOMMEND", Set.of("CLEARED")),
+            Map.entry("AWARD", Set.of("AWARD_RECOMMENDED")));
+    private static final Map<String, String> STAGE_WORDS = Map.ofEntries(
+            Map.entry("REGISTERED", "registered"), Map.entry("SUPERVISED", "supervised"), Map.entry("PROPOSAL_SUBMITTED", "proposal submitted"),
+            Map.entry("PROPOSAL_APPROVED", "proposal approved"), Map.entry("SEMINAR_HELD", "seminar held"), Map.entry("TITLE_REGISTERED", "title registered"),
+            Map.entry("PANEL_CONSTITUTED", "panel constituted"), Map.entry("DRAFT_SUBMITTED", "draft submitted"), Map.entry("VIVA_HELD", "viva held"),
+            Map.entry("CORRECTIONS", "corrections"), Map.entry("FINAL_SUBMITTED", "final submitted"), Map.entry("CLEARED", "cleared"),
+            Map.entry("AWARD_RECOMMENDED", "recommended to Senate"), Map.entry("AWARDED", "awarded"), Map.entry("WITHDRAWN", "withdrawn"));
 
     /**
      * Advance a candidate through the pipeline. One endpoint, one action at a time, each setting its stage
@@ -203,9 +233,20 @@ class PgResearchController {
     @PreAuthorize(SCHOOL)
     @Transactional
     Map<String, Object> action(@PathVariable UUID id, @Valid @RequestBody ActionIn body) {
-        stageOrThrow(id);
+        String current = stageOrThrow(id);
         String a = body.action().trim().toUpperCase();
         String note = body.note() == null || body.note().isBlank() ? null : body.note().trim();
+        Set<String> from = FROM.get(a);
+        if (from != null && !from.contains(current)) {
+            String need = String.join(" or ", from.stream().map(x -> STAGE_WORDS.getOrDefault(x, x)).toList());
+            throw new DomainRuleViolation("PG_STAGE_ORDER", "This record is at '" + STAGE_WORDS.getOrDefault(current, current) + "'; "
+                    + a.toLowerCase().replace('_', ' ') + " follows '" + need + "'.",
+                    new DomainRuleViolation.Remedy("Record the earlier step first; the stages run in the policy's order.", "School of Postgraduate Studies"));
+        }
+        if ("AWARDED".equals(current) && !"AWARD".equals(a)) {
+            throw new DomainRuleViolation("PG_AWARDED", "The award is recorded; nothing further is done on this record.",
+                    new DomainRuleViolation.Remedy("A change after the award is a matter for Senate.", "School of Postgraduate Studies"));
+        }
         switch (a) {
             case "SUBMIT_PROPOSAL" -> set(id, "PROPOSAL_SUBMITTED", "proposal_submitted_at", "Proposal submitted", note);
             case "APPROVE_PROPOSAL" -> set(id, "PROPOSAL_APPROVED", "proposal_approved_at", "Proposal approved by the Board", note);
@@ -250,7 +291,16 @@ class PgResearchController {
             case "FINAL" -> set(id, "FINAL_SUBMITTED", "final_submitted_at", "Final bound copies submitted", note);
             case "CLEAR" -> set(id, "CLEARED", "cleared_at", "Cleared by the Secretary before binding", note);
             case "RECOMMEND" -> set(id, "AWARD_RECOMMENDED", "award_recommended_at", "Recommended by the School Board to Senate", note);
-            case "AWARD" -> set(id, "AWARDED", "awarded_at", "Award approved by Senate", note);
+            case "AWARD" -> {
+                if (body.senateMinute() == null || body.senateMinute().isBlank()) {
+                    throw new DomainRuleViolation("PG_AWARD_MINUTE", "An award is recorded on a Senate minute.",
+                            new DomainRuleViolation.Remedy("Cite the minute of the Senate that approved the award.", "School of Postgraduate Studies"));
+                }
+                // the award ends on the register: the graduand written, the student GRADUATED, the candidate told (V255)
+                jdbc.sql("SELECT admissions.pg_award(:id, :m, :s)").param("id", id).param("m", body.senateMinute().trim())
+                        .param("s", body.session() == null || body.session().isBlank() ? null : body.session().trim(), java.sql.Types.VARCHAR).query(UUID.class).single();
+                if (note != null) event(id, "AWARDED", "Note", note);
+            }
             case "WITHDRAW" -> {
                 jdbc.sql("UPDATE admissions.pg_research SET stage='WITHDRAWN', updated_at=now() WHERE id=:id").param("id", id).update();
                 event(id, "WITHDRAWN", "Withdrawn from the programme", note);
@@ -280,11 +330,155 @@ class PgResearchController {
                 .param("r", id).param("s", stage).param("n", full).update();
     }
 
-    private void stageOrThrow(UUID id) {
-        Long n = jdbc.sql("SELECT count(*) FROM admissions.pg_research WHERE id = :id").param("id", id).query(Long.class).single();
-        if (n == 0) {
-            throw new NotFound("research record", id);
+    private String stageOrThrow(UUID id) {
+        return jdbc.sql("SELECT stage FROM admissions.pg_research WHERE id = :id").param("id", id).query(String.class).optional()
+                .orElseThrow(() -> new NotFound("research record", id));
+    }
+
+    /* ── the candidate's documents: proposal, seminar paper, plagiarism report, draft, corrected draft, final copy —
+          each kept by version, never replaced (V255). The candidate submits their own; the desk reads, accepts or
+          returns each; a draft or final copy submitted moves the stage as the policy has it. ── */
+
+    static final Set<String> DOC_KINDS = Set.of("PROPOSAL", "SEMINAR_PAPER", "PLAGIARISM_REPORT", "DRAFT", "CORRECTED", "FINAL", "OTHER");
+    static final Set<String> DOC_TYPES = Set.of("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    static final long DOC_MAX = 25L * 1024 * 1024;
+
+    public record DocumentIn(@NotBlank @Size(max = 30) String kind, @NotBlank @Size(max = 200) String filename, @NotBlank String contentType,
+                             @NotBlank @Size(max = 36_000_000) String contentBase64, @Size(max = 600) String note) {
+    }
+
+    /** the candidate submits a document on their own research */
+    @PostMapping("/me/documents")
+    @PreAuthorize(STUDENT)
+    @Transactional
+    Map<String, Object> submitDocument(Authentication authentication, @Valid @RequestBody DocumentIn body) {
+        UUID student = UUID.fromString(authentication.getName());
+        UUID id = jdbc.sql("SELECT admissions.pg_research_ensure(:s)").param("s", student).query(UUID.class).single();
+        String stage = stageOrThrow(id);
+        String kind = body.kind().trim().toUpperCase();
+        if (!DOC_KINDS.contains(kind)) {
+            throw new DomainRuleViolation("PG_DOC_KIND", "'" + kind + "' is not a kind of research document.",
+                    new DomainRuleViolation.Remedy("Proposal, seminar paper, plagiarism report, draft, corrected draft, final copy or other.", "You"));
         }
+        if ("AWARDED".equals(stage) || "WITHDRAWN".equals(stage)) {
+            throw new DomainRuleViolation("PG_DOC_CLOSED", "The record is closed; no further document is taken on it.",
+                    new DomainRuleViolation.Remedy("Write to the School of Postgraduate Studies.", "School of Postgraduate Studies"));
+        }
+        if ("DRAFT".equals(kind) && !Set.of("TITLE_REGISTERED", "PANEL_CONSTITUTED").contains(stage)) {
+            throw new DomainRuleViolation("PG_DRAFT_EARLY", "The draft is submitted for examination once your title is registered.",
+                    new DomainRuleViolation.Remedy("Your research desk shows the step you are at.", "You"));
+        }
+        if ("FINAL".equals(kind) && !Set.of("VIVA_HELD", "CORRECTIONS").contains(stage)) {
+            throw new DomainRuleViolation("PG_FINAL_EARLY", "The final copy is submitted after the oral examination.",
+                    new DomainRuleViolation.Remedy("Your research desk shows the step you are at.", "You"));
+        }
+        if ("CORRECTED".equals(kind) && !"CORRECTIONS".equals(stage)) {
+            throw new DomainRuleViolation("PG_CORRECTED_EARLY", "A corrected copy is submitted when the panel has asked for corrections.",
+                    new DomainRuleViolation.Remedy("Your research desk shows the step you are at.", "You"));
+        }
+        UUID docId = storeDocument(id, kind, body, true, student);
+        switch (kind) {
+            case "DRAFT" -> set(id, "DRAFT_SUBMITTED", "draft_submitted_at", "Draft submitted for examination by the candidate", null);
+            case "FINAL" -> set(id, "FINAL_SUBMITTED", "final_submitted_at", "Final copy submitted by the candidate", null);
+            case "CORRECTED" -> event(id, "CORRECTIONS", "Corrected copy submitted by the candidate", null);
+            case "PROPOSAL" -> event(id, stage, "Proposal document submitted (version " + versionOf(docId) + ")", null);
+            default -> event(id, stage, kind.toLowerCase().replace('_', ' ') + " submitted (version " + versionOf(docId) + ")", null);
+        }
+        return detail(id);
+    }
+
+    /** the candidate reads one of their own documents back */
+    @GetMapping("/me/documents/{docId}/content")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> myDocument(Authentication authentication, @PathVariable UUID docId) {
+        UUID student = UUID.fromString(authentication.getName());
+        Map<String, Object> d = jdbc.sql("""
+                SELECT d.filename, d.content_type, b.bytes AS content FROM admissions.pg_research_document d
+                  JOIN admissions.pg_research_document_blob b ON b.document_id = d.id
+                  JOIN admissions.pg_research r ON r.id = d.research_id
+                 WHERE d.id = :d AND r.student_id = :s
+                """).param("d", docId).param("s", student).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("document", docId));
+        return serve(d);
+    }
+
+    /** the desk reads a candidate's document */
+    @GetMapping("/{id}/documents/{docId}/content")
+    @PreAuthorize(SCHOOL)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> deskDocument(@PathVariable UUID id, @PathVariable UUID docId) {
+        Map<String, Object> d = jdbc.sql("""
+                SELECT d.filename, d.content_type, b.bytes AS content FROM admissions.pg_research_document d
+                  JOIN admissions.pg_research_document_blob b ON b.document_id = d.id
+                 WHERE d.id = :d AND d.research_id = :r
+                """).param("d", docId).param("r", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("document", docId));
+        return serve(d);
+    }
+
+    public record ReviewIn(@NotBlank @Size(max = 12) String status, @Size(max = 1000) String note) {
+    }
+
+    /** the desk accepts or returns a document the candidate submitted; the version stays on the record either way */
+    @PostMapping("/{id}/documents/{docId}/review")
+    @PreAuthorize(SCHOOL)
+    @Transactional
+    Map<String, Object> review(@PathVariable UUID id, @PathVariable UUID docId, @Valid @RequestBody ReviewIn body) {
+        stageOrThrow(id);
+        String status = body.status().trim().toUpperCase();
+        if (!Set.of("ACCEPTED", "RETURNED").contains(status)) {
+            throw new DomainRuleViolation("PG_DOC_REVIEW", "A document is accepted or returned.", new DomainRuleViolation.Remedy("Choose one.", "School of Postgraduate Studies"));
+        }
+        int n = jdbc.sql("""
+                UPDATE admissions.pg_research_document SET status = :st, reviewer_note = :n, reviewed_by = :by, reviewed_at = now()
+                 WHERE id = :d AND research_id = :r
+                """).param("st", status).param("n", body.note() == null || body.note().isBlank() ? null : body.note().trim(), java.sql.Types.VARCHAR)
+                .param("by", AuditContextHolder.required().actorId()).param("d", docId).param("r", id).update();
+        if (n == 0) throw new NotFound("document", docId);
+        Map<String, Object> d = jdbc.sql("SELECT kind, version FROM admissions.pg_research_document WHERE id = :d").param("d", docId).query().singleRow();
+        event(id, stageOrThrow(id), String.valueOf(d.get("kind")).toLowerCase().replace('_', ' ') + " version " + d.get("version") + " " + status.toLowerCase(),
+                body.note() == null || body.note().isBlank() ? null : body.note().trim());
+        return detail(id);
+    }
+
+    private UUID storeDocument(UUID research, String kind, DocumentIn body, boolean byCandidate, UUID who) {
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(body.contentBase64());
+        } catch (IllegalArgumentException notBase64) {
+            throw new DomainRuleViolation("PG_DOC_BAD", "The file could not be read.", new DomainRuleViolation.Remedy("Attach it again.", "You"));
+        }
+        if (bytes.length == 0 || bytes.length > DOC_MAX) {
+            throw new DomainRuleViolation("PG_DOC_SIZE", "A research document is between 1 byte and 25 MB.", new DomainRuleViolation.Remedy("Attach a smaller file.", "You"));
+        }
+        String type = body.contentType().trim().toLowerCase();
+        boolean pdf = bytes.length >= 5 && bytes[0] == '%' && bytes[1] == 'P' && bytes[2] == 'D' && bytes[3] == 'F' && bytes[4] == '-';
+        boolean zip = bytes.length >= 4 && bytes[0] == 'P' && bytes[1] == 'K' && (bytes[2] == 3 || bytes[2] == 5 || bytes[2] == 7);
+        if (!DOC_TYPES.contains(type) || ("application/pdf".equals(type) ? !pdf : !zip)) {
+            throw new DomainRuleViolation("PG_DOC_TYPE", "A research document is a PDF or a Word (.docx) file, and its contents must be what its name says.",
+                    new DomainRuleViolation.Remedy("Attach the PDF or Word file.", "You"));
+        }
+        UUID id = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO admissions.pg_research_document (id, research_id, kind, version, filename, content_type, size_bytes, note, by_candidate, uploaded_by)
+                VALUES (:id, :r, :k, admissions.pg_research_next_version(:r, :k), :f, :t, :n, :note, :bc, :who)
+                """).param("id", id).param("r", research).param("k", kind).param("f", body.filename().trim().replaceAll("[\\\\/\\r\\n\\t]", "_"))
+                .param("t", type).param("n", bytes.length).param("note", body.note() == null || body.note().isBlank() ? null : body.note().trim(), java.sql.Types.VARCHAR)
+                .param("bc", byCandidate).param("who", who, java.sql.Types.OTHER).update();
+        jdbc.sql("INSERT INTO admissions.pg_research_document_blob (document_id, bytes) VALUES (:id, :b)").param("id", id).param("b", bytes).update();
+        return id;
+    }
+
+    private int versionOf(UUID docId) {
+        return jdbc.sql("SELECT version FROM admissions.pg_research_document WHERE id = :d").param("d", docId).query(Integer.class).single();
+    }
+
+    private static ResponseEntity<byte[]> serve(Map<String, Object> r) {
+        String type = String.valueOf(r.get("content_type"));
+        ContentDisposition cd = ("application/pdf".equals(type) ? ContentDisposition.inline() : ContentDisposition.attachment())
+                .filename(String.valueOf(r.get("filename")), StandardCharsets.UTF_8).build();
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(type)).cacheControl(CacheControl.noStore())
+                .header("Content-Disposition", cd.toString()).header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox")
+                .body((byte[]) r.get("content"));
     }
 
     private Map<String, Object> detail(UUID id) {
@@ -316,11 +510,17 @@ class PgResearchController {
                         WHEN 'SUPERVISOR' THEN 2 WHEN 'CO_SUPERVISOR' THEN 3 WHEN 'INTERNAL' THEN 4
                         WHEN 'PGSR' THEN 5 ELSE 6 END, name
                 """).param("id", id).query().listOfRows();
+        List<Map<String, Object>> documents = jdbc.sql("""
+                SELECT d.id, d.kind, d.version, d.filename, d.content_type, d.size_bytes, d.note, d.status, d.reviewer_note, d.reviewed_at,
+                       d.by_candidate, d.uploaded_at
+                  FROM admissions.pg_research_document d WHERE d.research_id = :id ORDER BY d.uploaded_at DESC
+                """).param("id", id).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>(r);
         out.put("name", r.get("surname") + ", " + r.get("other_names"));
         out.put("supervisors", supervisors);
         out.put("panel", panel);
         out.put("events", events);
+        out.put("documents", documents);
         return out;
     }
 }
