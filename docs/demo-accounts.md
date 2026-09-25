@@ -59,6 +59,7 @@ Sign in as the 300-level student to see the results path from the student's end.
 | Student Services          | `demo.services`           | The University               |
 | ICT Directorate           | `demo.ict`                | The platform                 |
 | ICT Support Agent         | `demo.ictagent`           | The ICT support desk (V251): the queue, the tickets, the notes |
+| External Examiner         | `demo.extexaminer`        | An examiner's workspace (V254): projects assigned by the Academic Office, the assessment form; appointed for Economics |
 | University Administrator  | `demo.admin`              | The platform                 |
 | Super Administrator       | `demo.super`              | The platform                 |
 

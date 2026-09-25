@@ -58,6 +58,18 @@ BEGIN
     DELETE FROM platform.service_request;
     -- the ticket history is written once; the cleanup is the one maintenance act that removes it (V251)
     PERFORM set_config('moaum.maintenance', 'on', true);
+    DELETE FROM extexam.event;
+    DELETE FROM extexam.assessment_score;
+    DELETE FROM extexam.assessment;
+    DELETE FROM extexam.assignment;
+    DELETE FROM extexam.project_document_blob;
+    DELETE FROM extexam.project_document;
+    DELETE FROM extexam.project;
+    DELETE FROM extexam.appointment;
+    DELETE FROM extexam.invitation;
+    DELETE FROM extexam.examiner_file_blob;
+    DELETE FROM extexam.examiner_file;
+    DELETE FROM extexam.examiner;
     DELETE FROM helpdesk.ticket_attachment_blob;
     DELETE FROM helpdesk.ticket_attachment;
     DELETE FROM helpdesk.ticket_event;
@@ -254,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 148
+\set EXPECTED 149
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3241,6 +3253,57 @@ BEGIN
         n_before = 0 AND n_after = 0 AND dry.rows = 3 AND dry.unplaced = 1 AND dry.unplaced_units = 'UNIT THAT DOES NOT EXIST'
         AND wet.created = 2 AND wet.unplaced = 1 AND placed_unit = 'BUR_FAT_CASH_OFFICE' AND placed_dept = 'ANT' AND given = 'BUR-DIRECTORATE OF FAT-[CASH OFFICE]' AND NOT has_login,
         format('dry=%s/%s/%s wet=%s/%s unit=%s dept=%s login=%s after_dry=%s', dry.rows, dry.unplaced, dry.unplaced_units, wet.created, wet.unplaced, placed_unit, placed_dept, has_login, n_after));
+END $$;
+
+-- ── 17l. an external examiner's assessment: scored within the maxima, the total computed, submitted once, reopened on a reason, the history written once (V254) ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); px uuid := gen_random_uuid(); ex uuid; st uuid := gen_random_uuid(); pr uuid; asg uuid; ass uuid; rub uuid; c1 uuid; c2 uuid;
+        refused_over boolean := false; refused_early boolean := false; refused_edit boolean := false; refused_reopen boolean := false; t_total numeric; t_pct numeric; t_grade text; st_after text; n_events int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO iam.person (id, surname, given_names, email) VALUES (px, 'CHECKEXAMINER', 'External', 'check.examiner@example.edu');
+    INSERT INTO extexam.examiner (person_id, email, institution, status, activated_at) VALUES (px, 'check.examiner@example.edu', 'Check University', 'ACTIVE', now()) RETURNING id INTO ex;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, NULL, 'MOAUM/MTC/20/9991', 'CHECKPROJECT', 'Student', (SELECT code FROM ref.programme ORDER BY code LIMIT 1), 'UTME', '2020/2021', 100, 400, 'ACTIVE', now());
+    INSERT INTO extexam.project (student_id, kind, session, title) VALUES (st, 'UNDERGRADUATE', '2090/2091', 'A check project') RETURNING id INTO pr;
+    SELECT id INTO rub FROM extexam.rubric WHERE code = 'UG_DEFAULT';
+    INSERT INTO extexam.assignment (project_id, examiner_id, rubric_id, deadline, assigned_by) VALUES (pr, ex, rub, current_date + 14, who) RETURNING id INTO asg;
+    PERFORM extexam.record('PROJECT_ASSIGNED', who, 'Check', ex, pr, asg, NULL, (current_date + 14)::text, NULL);
+    INSERT INTO extexam.assessment (assignment_id) VALUES (asg) RETURNING id INTO ass;
+    -- a score over the maximum is refused; submission before every line is scored is refused
+    SELECT id INTO c1 FROM extexam.criterion WHERE rubric_id = rub ORDER BY ordinal LIMIT 1;
+    BEGIN PERFORM extexam.score(ass, c1, 999, NULL); EXCEPTION WHEN check_violation THEN refused_over := true; END;
+    BEGIN PERFORM extexam.submit(ass, px, 'CHECKEXAMINER, External'); EXCEPTION WHEN check_violation THEN refused_early := true; END;
+    -- every line scored at its maximum: the total is the form's total, 100 per cent, the top grade in force
+    FOR c2 IN SELECT id FROM extexam.criterion WHERE rubric_id = rub AND active LOOP
+        PERFORM extexam.score(ass, c2, (SELECT max_score FROM extexam.criterion WHERE id = c2), 'fine');
+    END LOOP;
+    UPDATE extexam.assessment SET general_comments = 'A thorough, well-argued and well-built piece of work.', final_recommendation = 'PASS' WHERE id = ass;
+    PERFORM extexam.submit(ass, px, 'CHECKEXAMINER, External');
+    SELECT total, percentage, grade INTO t_total, t_pct, t_grade FROM extexam.assessment WHERE id = ass;
+    -- submitted means read-only; reopening needs a reason; reopened means scorable again
+    BEGIN PERFORM extexam.score(ass, c1, 1, NULL); EXCEPTION WHEN check_violation THEN refused_edit := true; END;
+    BEGIN PERFORM extexam.reopen(ass, who, 'Check', ''); EXCEPTION WHEN check_violation THEN refused_reopen := true; END;
+    PERFORM extexam.reopen(ass, who, 'Check', 'The defence marks want a second look');
+    SELECT status INTO st_after FROM extexam.assignment WHERE id = asg;
+    SELECT count(*) INTO n_events FROM extexam.event WHERE assignment_id = asg;
+
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    DELETE FROM extexam.event WHERE assignment_id = asg OR examiner_id = ex OR project_id = pr;
+    PERFORM set_config('moaum.maintenance', '', true);
+    DELETE FROM extexam.assessment_score WHERE assessment_id = ass;
+    DELETE FROM extexam.assessment WHERE id = ass;
+    DELETE FROM extexam.assignment WHERE id = asg;
+    DELETE FROM extexam.project WHERE id = pr;
+    DELETE FROM extexam.examiner WHERE id = ex;
+    DELETE FROM people.student WHERE id = st;
+    DELETE FROM iam.person WHERE id = px;
+
+    PERFORM pg_temp.assert('An external assessment is scored within its maxima, totalled by the form, submitted once and reopened only on a reason',
+        refused_over AND refused_early AND t_total = (SELECT sum(max_score) FROM extexam.criterion WHERE rubric_id = rub AND active) AND t_pct = 100 AND t_grade = 'A'
+        AND refused_edit AND refused_reopen AND st_after = 'REOPENED' AND n_events = 3,
+        format('over=%s early=%s total=%s pct=%s grade=%s edit=%s reopen=%s status=%s events=%s', refused_over, refused_early, t_total, t_pct, t_grade, refused_edit, refused_reopen, st_after, n_events));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

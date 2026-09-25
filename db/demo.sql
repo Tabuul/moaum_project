@@ -91,7 +91,8 @@ BEGIN
             ('pgschool',         '026', 'PG School Dean',           'institution', NULL),
             ('pgsecretary',      '027', 'PG School Secretary',      'institution', NULL),
             ('financecontroller','028', 'Finance Controller',       'college',     'CHS'),
-            ('ictagent',         '030', 'ICT Support Agent',        'platform',    NULL)
+            ('ictagent',         '030', 'ICT Support Agent',        'platform',    NULL),
+            ('extexaminer',      '031', 'External Examiner',        'institution', NULL)
         ) AS t(office, n, given, scope_kind, scope_id)
     LOOP
         SELECT id INTO v_person FROM iam.person WHERE staff_number = 'MOAUM/DEMO/' || o.n;
@@ -140,6 +141,22 @@ BEGIN
             VALUES (v_coord, 'demo.mbbscoordinator', crypt(v_pw, gen_salt('bf', 12)), false, v_actor);
             INSERT INTO iam.credential_event (id, person_id, kind, by_person, note)
             VALUES (gen_random_uuid(), v_coord, 'SET', v_actor, 'demo account (db/demo.sql)');
+        END IF;
+    END;
+
+    -- ── the demo External Examiner (V254): an examiner record on the demo person, active, appointed for Economics this session ──
+    DECLARE v_ex uuid; v_exid uuid;
+    BEGIN
+        SELECT id INTO v_ex FROM iam.person WHERE staff_number = 'MOAUM/DEMO/031';
+        UPDATE iam.person SET email = coalesce(email, 'demo.extexaminer@example.edu') WHERE id = v_ex;
+        SELECT id INTO v_exid FROM extexam.examiner WHERE person_id = v_ex;
+        IF v_exid IS NULL THEN
+            INSERT INTO extexam.examiner (person_id, title, email, institution, department, rank, specialization, qualification, experience_years, country, status, activated_at)
+            VALUES (v_ex, 'Prof.', 'demo.extexaminer@example.edu', 'University of Jos', 'Economics', 'Professor', 'Development Economics', 'Ph.D.', 22, 'Nigeria', 'ACTIVE', now())
+            RETURNING id INTO v_exid;
+            INSERT INTO extexam.appointment (examiner_id, session, faculty_code, dept_code, starts_on, ends_on, instrument, appointed_by)
+            VALUES (v_exid, v_session, 'SS', 'ECO', current_date - 30, current_date + 300, 'Demo appointment (db/demo.sql)', v_actor);
+            PERFORM extexam.record('EXAMINER_CREATED', v_actor, 'Demo (db/demo.sql)', v_exid, NULL, NULL, NULL, 'University of Jos', NULL);
         END IF;
     END;
 

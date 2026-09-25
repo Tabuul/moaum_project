@@ -112,7 +112,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/eligibility", "icon": "swap", "label": "Who May Register It" },
           { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
           { "id": "r/upload", "icon": "box", "label": "Upload Material" },
-          { "id": "t/teaching", "icon": "cal", "label": "My Teaching & Timetable" }
+          { "id": "t/teaching", "icon": "cal", "label": "My Teaching & Timetable" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -190,7 +195,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/eligibility", "icon": "swap", "label": "Who May Register It" },
           { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
           { "id": "r/upload", "icon": "box", "label": "Upload Material" },
-          { "id": "t/projects", "icon": "flask", "label": "Research in the Faculty" }
+          { "id": "t/projects", "icon": "flask", "label": "Research in the Faculty" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -391,7 +401,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets", "badge": "6" },
           { "id": "t/chain", "icon": "check", "label": "Approval Chain" },
           { "id": "t/approvals", "icon": "check", "label": "Verification Queue" },
-          { "id": "t/queries", "icon": "bell", "label": "Result Queries" }
+          { "id": "t/queries", "icon": "bell", "label": "Result Queries" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -433,7 +448,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/approvals", "icon": "check", "label": "Results to Senate" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" }
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -761,7 +781,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/senate", "icon": "scale", "label": "Senate Schedule", "badge": "!" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
-          { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" }
+          { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -856,7 +881,12 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" }
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -921,7 +951,12 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
-          { "id": "t/approvals", "icon": "check", "label": "Senate Business" }
+          { "id": "t/approvals", "icon": "check", "label": "Senate Business" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -1115,7 +1150,12 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "r/allocate", "icon": "swap", "label": "Teaching Allocation" },
-          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" }
+          { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -1394,7 +1434,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/graduation", "icon": "cap", "label": "Graduation List" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Results Broadsheet" },
           { "id": "t/pgresearch", "icon": "flask", "label": "Research Desk" },
-          { "id": "t/pgclearance", "icon": "check", "label": "Thesis Clearance" }
+          { "id": "t/pgclearance", "icon": "check", "label": "Thesis Clearance" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -1592,7 +1637,12 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgscores", "icon": "doc", "label": "Course Results" },
           { "id": "t/pgsenate", "icon": "check", "label": "Results to Senate" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Results Broadsheet" },
-          { "id": "t/graduation", "icon": "cap", "label": "Graduation List" }
+          { "id": "t/graduation", "icon": "cap", "label": "Graduation List" },
+          { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
+          { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
+          { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
+          { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
         ]
       },
       {
@@ -1647,6 +1697,22 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "extexaminer": {
+    "label": "External Examiner",
+    "home": "x/dashboard",
+    "groups": [
+      {
+        "name": "External Examiner",
+        "items": [
+          { "id": "x/dashboard", "icon": "home", "label": "Dashboard" },
+          { "id": "x/projects", "icon": "doc", "label": "My Projects" },
+          { "id": "x/pending", "icon": "clock", "label": "Pending Reviews" },
+          { "id": "x/submitted", "icon": "check", "label": "Submitted Reviews" },
+          { "id": "x/profile", "icon": "user", "label": "My Profile" }
         ]
       }
     ]

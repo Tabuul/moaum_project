@@ -4,6 +4,16 @@
  * override its subtitle where the prototype's named an invented figure.
  */
 export const TITLES: Record<string, [string, string]> = {
+  "x/dashboard": ["Examiner Workspace", "Your projects and deadlines"],
+  "x/projects": ["My Assigned Projects", "Every project sent to you"],
+  "x/pending": ["Pending Reviews", "Not yet submitted"],
+  "x/submitted": ["Submitted Reviews", "Read-only unless reopened"],
+  "x/profile": ["My Profile", "Your record"],
+  "t/extexaminers": ["External Examiners", "The register"],
+  "t/extappointments": ["Examiner Appointments", "By session and unit"],
+  "t/extassignments": ["Project Assignments", "Projects and their examiners"],
+  "t/extassessments": ["Assessments", "Read, locked, reopened"],
+  "t/extreports": ["Examiner Reports", "Real figures"],
   "t/staffupload": [
     "Non-Academic Staff",
     "The nominal roll, placed in units"

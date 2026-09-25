@@ -14,7 +14,9 @@ import { NextRequest, NextResponse } from "next/server";
  */
 const SESSION_COOKIE = "moaum_session";
 const OFFICE_COOKIE = "moaum_office";
-const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/applicant/lookup", "/verify", "/healthz", "/crest.png", "/favicon.ico"];
+const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/applicant/lookup", "/verify", "/healthz", "/crest.png", "/favicon.ico",
+  /* an external examiner's activation link (V254): the invitation read, the account activated, before any sign-in */
+  "/api/bff/api/v1/examiners/invitation/", "/api/bff/api/v1/examiners/activate"];
 /* the public postgraduate endpoints, matched exactly so the prefix does not also open the
    authenticated PG desks that share the /api/v1/pg base (e.g. /pg/applications) */
 const OPEN_EXACT = new Set([

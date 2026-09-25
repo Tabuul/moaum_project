@@ -58,6 +58,8 @@ export default async function DashboardPage() {
   if (office === "mbbscoordinator") redirect("/college/coordinator");
   /* the ICT Support Agent's home is the desk's queue (V251) */
   if (office === "ictagent") redirect("/helpdesk");
+  /* an external examiner's home is their own workspace (V254) */
+  if (office === "extexaminer") redirect("/examiner");
   const session = sessions.ok ? sessions.data.find((s) => s.state === "CURRENT")?.name ?? "2026/2027" : "2026/2027";
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;
