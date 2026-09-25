@@ -1884,3 +1884,8 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 .grid--5 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .ink-amber { color: var(--amber-ink); }
 .stat-tile { text-decoration: none; color: inherit; }
+
+/* a search in the scope bar: the input grows, its buttons stay on the same line */
+.scope__search { display: flex; gap: var(--s-2); flex-wrap: nowrap; align-items: stretch; }
+.scope__search .ctl { flex: 1 1 auto; min-width: 0; }
+.scope__search .btn { white-space: nowrap; align-self: center; }

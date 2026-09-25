@@ -10,6 +10,7 @@ import { useQueryNav } from "@/lib/query-nav";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { DEGREE_WORD, SEMESTER_WORD, WHICH_WORD, statQuery, type StatFilters, type StatPage, type StatRow, type Which } from "@/lib/stats";
 
@@ -78,20 +79,18 @@ export function Detail({ data, filters, which, q: initialQ }: { data: StatPage; 
         actions={<><Btn kind="primary" disabled={busy || !data.total} onClick={() => void exportAs("xlsx")}>{busy ? "Preparing…" : "Export Excel"}</Btn><Btn kind="secondary" disabled={busy || !data.total} onClick={() => void exportAs("pdf")}>Export PDF</Btn><LinkBtn href={`/stats?${statQuery(f)}`}>Back to Statistics</LinkBtn></>} />
 
       <div className="scope">
-        <div className="scope__f grow">
-          <label htmlFor="sd-q">Search</label>
-          <form onSubmit={(e) => { e.preventDefault(); go({ q: q.trim(), page: 0 }); }} className="row row--tight">
+        <div className="scope__f grow"><Field id="sd-q" label="Search">
+          <form onSubmit={(e) => { e.preventDefault(); go({ q: q.trim(), page: 0 }); }} className="scope__search">
             <input id="sd-q" className="ctl" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Student ID, name, programme, department, faculty or payment reference" />
-            <Btn kind="ghost" type="submit">Search</Btn>
+            <Btn kind="primary" type="submit">Search</Btn>
             {initialQ ? <Btn kind="ghost" onClick={() => { setQ(""); go({ q: "", page: 0 }); }}>Clear</Btn> : null}
           </form>
-        </div>
-        <div className="scope__f">
-          <label htmlFor="sd-which">Figure</label>
+        </Field></div>
+        <div className="scope__f"><Field id="sd-which" label="Figure">
           <select id="sd-which" className="ctl" value={which} onChange={(e) => queryNav(`/stats/students?${statQuery(f, { which: e.target.value, q: initialQ })}`)}>
             {(Object.keys(WHICH_WORD) as Which[]).map((w) => <option key={w} value={w}>{WHICH_WORD[w]}</option>)}
           </select>
-        </div>
+        </Field></div>
       </div>
 
       <Panel title="Students" right={data.total ? `Page ${data.page + 1} of ${pages} · ${data.total.toLocaleString()} in all` : "None"}>

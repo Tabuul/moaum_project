@@ -125,9 +125,9 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
           </select>
         </Field></div>
         <div className="scope__f grow"><Field id="pr-q" label="Search" hint="Name, matriculation number or payment reference">
-          <form onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() }); }} className="row row--tight">
+          <form onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() }); }} className="scope__search">
             <input id="pr-q" className="ctl" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. MOAUM/MED/24/9907 or a reference" />
-            <Btn kind="ghost" type="submit">Search</Btn>
+            <Btn kind="primary" type="submit">Search</Btn>
             {filters.q ? <Btn kind="ghost" onClick={() => { setQ(""); go({ q: "" }); }}>Clear</Btn> : null}
           </form>
         </Field></div>
