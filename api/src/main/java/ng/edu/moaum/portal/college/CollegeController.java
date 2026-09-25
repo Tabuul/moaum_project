@@ -982,7 +982,7 @@ class CollegeController {
                        count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = oc.session AND r.passed)) AS passed,
                        count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = oc.session AND r.barred)) AS barred
                   FROM (SELECT DISTINCT e.session FROM college.enrolment e WHERE e.level = :l AND e.state IN ('OPEN','RESIT')) oc
-                  CROSS JOIN LATERAL college.cohort(:l, ooc.session) c
+                  CROSS JOIN LATERAL college.cohort(:l, oc.session) c
                   CROSS JOIN college.exam_subject s
                  WHERE s.exam_id = :e
                  GROUP BY oc.session, s.name, s.ordinal ORDER BY oc.session DESC, s.ordinal
