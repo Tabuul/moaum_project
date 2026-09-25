@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class HostelController {
 
-    private static final String OFFICE = "hasAnyAuthority('OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
+    private static final String OFFICE = "hasAnyAuthority('OFFICE_services','OFFICE_housing','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     private static final String READERS = "hasAnyAuthority('OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_audit','OFFICE_vc','OFFICE_dvc')";
 
     public record Apply(String session, @Size(max = 8) String hall, @Size(max = 20) String category, @Size(max = 400) String note) {
@@ -41,7 +41,7 @@ class HostelController {
     public record Room(@NotBlank String hall, @NotBlank String block, @NotBlank String roomNo, Integer beds, Boolean outOfService, String note) {
     }
 
-    public record Seed(@NotBlank @Size(min = 6, max = 120) String seed) {
+    public record Seed(@Size(max = 120) String seed) {
     }
 
     public record Decision(@NotBlank String state, @Size(max = 400) String note) {

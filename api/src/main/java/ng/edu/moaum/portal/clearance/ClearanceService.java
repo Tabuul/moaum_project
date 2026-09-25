@@ -80,7 +80,9 @@ public class ClearanceService {
 
     private Clearance.Unit unitFor(String code, AuditContext ctx) {
         Clearance.Unit u = repo.unit(code.toUpperCase()).orElseThrow(() -> new NotFound("clearance unit", code));
-        if (!ANY_UNIT.contains(ctx.actorOffice()) && (u.officeCode() == null || !u.officeCode().equals(ctx.actorOffice()))) {
+        // the housing desk signs the hostel unit beside Student Services (V261)
+        boolean housingHostel = "housing".equals(ctx.actorOffice()) && "HOSTEL".equals(u.code());
+        if (!housingHostel && !ANY_UNIT.contains(ctx.actorOffice()) && (u.officeCode() == null || !u.officeCode().equals(ctx.actorOffice()))) {
             throw new AccessDeniedException("the " + u.label() + " clears against its own record; " + ctx.actorOffice() + " does not sign for it");
         }
         return u;

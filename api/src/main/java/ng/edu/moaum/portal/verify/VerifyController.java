@@ -360,4 +360,36 @@ class VerifyController {
         out.put("photo", photo);
         return out;
     }
+
+    /**
+     * A hostel allocation letter or clearance certificate, by the allocation reference its QR carries (V261): the student's
+     * name and PHOTO, the hall, block, room and bed, the state of the stay and its clearance — so a forged or altered letter
+     * is exposed at the porter's lodge. Nothing is shown for a hold that lapsed or an allocation that never was.
+     */
+    @GetMapping("/hostel/{ref}")
+    @Transactional(readOnly = true)
+    Map<String, Object> hostel(@PathVariable String ref) {
+        String r = ref == null ? "" : ref.trim().toUpperCase().replaceAll("[^A-Z0-9-]", "");
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT al.id, al.reference_no, al.state, al.session, st.id AS student_id, st.surname || ', ' || st.other_names AS student_name, coalesce(st.matric_no, st.admission_no) AS student_number, p.name AS programme,
+                       h.name AS hall_name, rm.block, rm.floor, rm.room_no, b.label AS bed_label, al.start_on, al.end_on, al.checked_in_at, al.checked_out_at, cl.reference AS clearance_ref, cl.state AS clearance_state
+                  FROM hostel.allocation al JOIN people.student st ON st.id = al.student_id LEFT JOIN ref.programme p ON p.code = st.programme_code
+                  JOIN hostel.room rm ON rm.id = al.room_id JOIN hostel.hall h ON h.code = rm.hall_code LEFT JOIN hostel.bed b ON b.id = al.bed_id LEFT JOIN hostel.clearance cl ON cl.allocation_id = al.id
+                 WHERE al.reference_no = :r AND al.state NOT IN ('HELD','LAPSED','DECLINED','CANCELLED')
+                """).param("r", r).query().listOfRows();
+        if (r.isEmpty() || rows.isEmpty()) { out.put("genuine", false); return out; }
+        Map<String, Object> row = rows.get(0);
+        out.put("genuine", true);
+        for (String k : List.of("reference_no", "state", "session", "student_name", "student_number", "programme", "hall_name", "block", "floor", "room_no", "bed_label", "start_on", "end_on", "checked_in_at", "checked_out_at", "clearance_ref", "clearance_state")) out.put(k, row.get(k));
+        String photo = null;
+        List<Map<String, Object>> b = jdbc.sql("""
+                SELECT encode(bl.content, 'base64') AS b64 FROM admissions.application_document d JOIN admissions.application_document_blob bl ON bl.document_id = d.id
+                  JOIN admissions.application a ON a.id = d.application_id JOIN people.student st ON st.candidate_id = a.candidate_id
+                 WHERE st.id = :s AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL ORDER BY d.id LIMIT 1
+                """).param("s", row.get("student_id")).query().listOfRows();
+        if (!b.isEmpty() && b.get(0).get("b64") != null) photo = "data:image/jpeg;base64," + b.get(0).get("b64");
+        out.put("photo", photo);
+        return out;
+    }
 }

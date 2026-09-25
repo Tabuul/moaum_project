@@ -321,9 +321,14 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
-        "name": "Services",
+        "name": "Accommodation",
         "items": [
-          { "id": "t/hostel", "icon": "bed", "label": "Hostel Allocation" }
+          { "id": "t/hostel", "icon": "bed", "label": "Hostel Dashboard" },
+          { "id": "t/hostel-window", "icon": "cal", "label": "Application Window & Rules" },
+          { "id": "t/hostel-inventory", "icon": "box", "label": "Hostel Inventory" },
+          { "id": "t/hostel-applications", "icon": "doc", "label": "Applications & Waitlist" },
+          { "id": "t/hostel-occupancy", "icon": "user", "label": "Occupancy & Check-in" },
+          { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout & Clearance" }
         ]
       },
       {
@@ -1129,7 +1134,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
-          { "id": "t/clearance", "icon": "check", "label": "Student Clearance" }
+          { "id": "t/clearance", "icon": "check", "label": "Student Clearance" },
+          { "id": "t/hostel", "icon": "bed", "label": "Hostel Accommodation" }
         ]
       },
       {

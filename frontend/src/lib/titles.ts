@@ -145,12 +145,17 @@ export const TITLES: Record<string, [string, string]> = {
   ],
   "s/hostel": [
     "Hostel",
-    "Akpehe Hall · 2026/2027"
+    "Your application, allocation, room, checkout and clearance"
   ],
   "t/hostel": [
-    "Hostel and accommodation",
-    "Priority by rule, the rest by a ballot anyone can re-run"
+    "Accommodation",
+    "Beds, applications, allocation, occupancy, checkout and clearance · Housing"
   ],
+  "t/hostel-window": ["Application window", "Fee, dates, method, eligibility and the hostel rules"],
+  "t/hostel-inventory": ["Hostel inventory", "Hostels, blocks, rooms, beds, facilities and assets"],
+  "t/hostel-applications": ["Hostel applications", "Reviewed, approved, waitlisted, seated by hand"],
+  "t/hostel-occupancy": ["Occupancy", "Every bed and who holds it; check-in at the lodge"],
+  "t/hostel-clearance": ["Checkout and clearance", "Inspection, damage, clearance, transfers, maintenance"],
   "t/pv": [
     "Payment voucher",
     "Expenditure and Control"

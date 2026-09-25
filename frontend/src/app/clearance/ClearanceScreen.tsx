@@ -20,7 +20,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
  *  clearance.unit.office_code in the database. */
 const MY_UNITS: Record<string, string[]> = {
   bursar: ["BURSARY"], hod: ["DEPARTMENT"], dean: ["FACULTY"], library: ["LIBRARY"],
-  services: ["HEALTH", "HOSTEL", "WORKS"],
+  services: ["HEALTH", "HOSTEL", "WORKS"], housing: ["HOSTEL"],
 };
 
 export function ClearanceScreen({ scope, structure, sessions, listing, chosen, position, actingOffice }: {

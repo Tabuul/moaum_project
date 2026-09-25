@@ -25,7 +25,7 @@ class ClearanceController {
             + "'OFFICE_library','OFFICE_services','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String SIGNERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dean','OFFICE_hod','OFFICE_bursar',"
-            + "'OFFICE_library','OFFICE_services')";
+            + "'OFFICE_library','OFFICE_services','OFFICE_housing')";
 
     private final ClearanceService service;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
