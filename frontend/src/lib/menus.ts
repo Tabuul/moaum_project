@@ -434,6 +434,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/academic", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -513,6 +514,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/bursar", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -774,6 +776,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/mgmt", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -875,6 +878,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/setup", "icon": "server", "label": "Setup Console" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -945,6 +949,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/registrar", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -1020,6 +1025,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/platform", "icon": "server", "label": "Platform & Integrations", "badge": "!" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1143,6 +1149,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/admin", "icon": "home", "label": "Administrator Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/readiness", "icon": "chart", "label": "Go-Live Readiness" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
@@ -1442,6 +1449,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/pgschool", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1502,6 +1510,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1538,6 +1547,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1610,6 +1620,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/college", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1652,6 +1663,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "r/pgschool", "icon": "home", "label": "Dashboard" },
+          { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },

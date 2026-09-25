@@ -6,6 +6,7 @@ import { DTable } from "@/components/proto/DTable";
 import type { ExamSummary } from "../examinations/Examinations";
 import { PaymentReport, type PayReport } from "../payments/PaymentReport";
 import { paymentFilters, paymentQuery } from "../payments/filters";
+import { StatsPanel } from "@/components/stats/StatsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,7 @@ export default async function CollegeDashboardPage({ searchParams }: { searchPar
           <LinkBtn href="/college">College Overview</LinkBtn>
         </>}
       />
+      <StatsPanel session={d.session} title="College student statistics" />
       <Tiles items={[
         ["Students", String(t.students), null, "On the register, Pre-Medical to 600 Level"],
         ["Years open", String(t.open_years), null, "College years running or at a resit"],

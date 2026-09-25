@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { StatsPanel } from "@/components/stats/StatsPanel";
 import { api } from "@/lib/api";
 import type { BursaryView, PaymentsDesk } from "@/lib/bursary";
 import { LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -28,6 +29,7 @@ export async function BursarDashboard({ session }: { session: string }) {
       ) : (
         <Note kind="ok" title="No settlement exception is open">Every gateway event posted or was resolved, and no bank credit waits to be attributed.</Note>
       )}
+      <StatsPanel session={session} />
       <Tiles items={[
         ["Collected this session", money(Number(t.fees_collected)), "var(--green-ink)", `School fees, ${v.data.session}`],
         ["Collected today", money(Number(t.today)), null, `${t.today_count} confirmation${Number(t.today_count) === 1 ? "" : "s"}`],

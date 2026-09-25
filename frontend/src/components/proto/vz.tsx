@@ -15,7 +15,7 @@ export const vzNum = (n: number) => Number(n || 0).toLocaleString();
 export interface DonutItem { l: string; v: number; c: string; i?: ReactNode }
 
 /* part of a whole, few slices, each directly labelled */
-export function Donut({ items, capLabel, capValue }: { items: DonutItem[]; capLabel: string; capValue: string }) {
+export function Donut({ items, capLabel, capValue, onPick }: { items: DonutItem[]; capLabel: string; capValue: string; onPick?: (item: DonutItem, index: number) => void }) {
   const total = items.reduce((a, i) => a + i.v, 0);
   const R = 62, W = 20, C = 2 * Math.PI * R;
   const fracs = items.map((i) => (total ? i.v / total : 0));
@@ -24,8 +24,10 @@ export function Donut({ items, capLabel, capValue }: { items: DonutItem[]; capLa
     const frac = fracs[k];
     const len = Math.max(0, frac * C - 2);
     return (
-      <circle key={k} className="vz__arc" cx={90} cy={90} r={R} fill="none" stroke={i.c} strokeWidth={W}
-        strokeDasharray={`${len.toFixed(2)} ${(C - len).toFixed(2)}`} strokeDashoffset={(-offsets[k]).toFixed(2)} transform="rotate(-90 90 90)">
+      <circle key={k} className={`vz__arc${onPick ? " vz__arc--pick" : ""}`} cx={90} cy={90} r={R} fill="none" stroke={i.c} strokeWidth={W}
+        strokeDasharray={`${len.toFixed(2)} ${(C - len).toFixed(2)}`} strokeDashoffset={(-offsets[k]).toFixed(2)} transform="rotate(-90 90 90)"
+        onClick={onPick ? () => onPick(i, k) : undefined} role={onPick ? "button" : undefined} tabIndex={onPick ? 0 : undefined}
+        onKeyDown={onPick ? (e) => { if (e.key === "Enter" || e.key === " ") onPick(i, k); } : undefined}>
         <title>{`${i.l}: ${vzNum(i.v)} (${Math.round(frac * 100)}%)`}</title>
       </circle>
     );
@@ -59,12 +61,13 @@ export function Donut({ items, capLabel, capValue }: { items: DonutItem[]; capLa
 export interface BarItem { l: string; v: number }
 
 /* horizontal bars, one series */
-export function HBars({ items, colour }: { items: BarItem[]; colour?: string }) {
+export function HBars({ items, colour, onPick }: { items: BarItem[]; colour?: string; onPick?: (item: BarItem, index: number) => void }) {
   const max = items.reduce((a, i) => Math.max(a, i.v), 0) || 1;
   return (
     <div className="vz__hb">
       {items.map((i, k) => (
-        <div className="vz__hr" key={k} title={`${i.l}: ${vzNum(i.v)}`}>
+        <div className={`vz__hr${onPick ? " vz__hr--pick" : ""}`} key={k} title={`${i.l}: ${vzNum(i.v)}`} onClick={onPick ? () => onPick(i, k) : undefined}
+          role={onPick ? "button" : undefined} tabIndex={onPick ? 0 : undefined} onKeyDown={onPick ? (e) => { if (e.key === "Enter" || e.key === " ") onPick(i, k); } : undefined}>
           <span className="vz__hl">{i.l}</span>
           <span className="vz__ht"><span className="vz__hf" style={{ width: `${((i.v / max) * 100).toFixed(1)}%`, background: colour || VZ.seq }} /></span>
           <b className="vz__hv tnum">{vzNum(i.v)}</b>
@@ -168,5 +171,34 @@ export function VBars({ items }: { items: VBarItem[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+export interface GroupRow { l: string; v: number[]; key?: string }
+
+/* grouped horizontal bars: one label, several series side by side (total, paid, registered…); the row is a door
+   to its rows when a pick handler is given, and the chart scrolls rather than crushing its labels */
+export function GroupBars({ rows, keys, onPick }: { rows: GroupRow[]; keys: LegendKey[]; onPick?: (row: GroupRow, index: number) => void }) {
+  const max = rows.reduce((a, r) => Math.max(a, ...r.v), 0) || 1;
+  return (
+    <>
+      <div className="vz__gb">
+        {rows.map((r, k) => (
+          <div className={`vz__gr${onPick ? " vz__hr--pick" : ""}`} key={r.key ?? k} onClick={onPick ? () => onPick(r, k) : undefined}
+            role={onPick ? "button" : undefined} tabIndex={onPick ? 0 : undefined} onKeyDown={onPick ? (e) => { if (e.key === "Enter" || e.key === " ") onPick(r, k); } : undefined}>
+            <span className="vz__hl" title={r.l}>{r.l}</span>
+            <span className="vz__gt">
+              {r.v.map((v, i) => (
+                <span className="vz__gl" key={i} title={`${keys[i]?.l ?? ""}: ${vzNum(v)}`}>
+                  <span className="vz__gf" style={{ width: `${((v / max) * 100).toFixed(1)}%`, background: keys[i]?.c ?? VZ.seq }} />
+                  <b className="vz__gv tnum">{vzNum(v)}</b>
+                </span>
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+      <Legend keys={keys} />
+    </>
   );
 }

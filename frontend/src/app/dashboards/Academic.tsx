@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { StatsPanel } from "@/components/stats/StatsPanel";
 import type { Register, RecordsResult, ChangeQueue } from "@/lib/student";
 import type { TranscriptQueue, CertificateRegister } from "@/lib/credentials";
 import type { SheetListing } from "@/lib/results";
@@ -63,6 +64,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
           Transcript requests and result sets arrive here as the session runs. The register fills when the admitted candidates are brought onto it.
         </Note>
       )}
+      <StatsPanel session={session} />
       <Tiles items={[
         ["Students on the register", total.toLocaleString(), null, "All levels", "/reports/students"],
         ["Registered this session", registeredCount.toLocaleString(), null, total ? `${Math.round((100 * registeredCount) / total)}% · ${session}` : session],

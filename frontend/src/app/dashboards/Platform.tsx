@@ -1,4 +1,5 @@
 import { api, API_URL } from "@/lib/api";
+import { StatsPanel } from "@/components/stats/StatsPanel";
 import type { Me } from "@/components/proto/Shell";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -59,6 +60,7 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
     <>
       {cov ? (
         <>
+          <StatsPanel />
           <Tiles items={[
             ["Programmes", String(cov.total), null, "on the register"],
             ["Course structure uploaded", String(cov.uploaded), cov.uploaded ? "var(--green-ink)" : null, cov.total ? `${Math.round((100 * cov.uploaded) / cov.total)}% of programmes` : "—"],

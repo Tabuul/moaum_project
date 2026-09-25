@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { StatsPanel } from "@/components/stats/StatsPanel";
 import type { Register } from "@/lib/student";
 import type { TranscriptQueue, CertificateRegister, GraduationView } from "@/lib/credentials";
 import type { SheetListing } from "@/lib/results";
@@ -35,6 +36,7 @@ export async function RegistrarDashboard({ session }: { session: string }) {
         action={<LinkBtn kind="urgent" href="/people">Open users &amp; roles</LinkBtn>}>
         The return is filed by the Data Protection Officer under your signature. The record of processing activities and the impact assessments arrive with the governance module; until then, the offices held under your grants are the part of it this portal can already show.
       </Note>
+      <StatsPanel session={session} />
       <Tiles items={[
         ["Students on the register", students.ok ? students.data.total.toLocaleString() : "—", null, "All levels and modes", "/reports/students"],
         ["Staff on the register", staff.length.toLocaleString(), null, `${staff.filter((p) => p.username).length} with an account`, "/reports/staff"],
