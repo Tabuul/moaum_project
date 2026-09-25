@@ -477,6 +477,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
+          { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" }
         ]
@@ -759,6 +760,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
@@ -815,6 +817,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" }
         ]
       },
@@ -993,6 +996,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
+          { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" }
         ]
       },
@@ -1325,7 +1329,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/query", "icon": "alert", "label": "Result Query" },
           { "id": "s/carryover", "icon": "swap", "label": "Carryover" },
           { "id": "s/transfer", "icon": "swap", "label": "Inter-Departmental Transfer" },
-          { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
+          { "id": "s/documents", "icon": "doc", "label": "My Documents" }
         ]
       },
       {
@@ -1375,7 +1379,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/deferment", "icon": "cal", "label": "Deferment" },
           { "id": "s/pgcourses", "icon": "book", "label": "Course Registration & Results" },
           { "id": "s/pgprogress", "icon": "chart", "label": "Academic Progress" },
-          { "id": "s/transcript", "icon": "doc", "label": "Transcript" }
+          { "id": "s/documents", "icon": "doc", "label": "My Documents" }
         ]
       },
       {

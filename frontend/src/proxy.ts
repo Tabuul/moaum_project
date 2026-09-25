@@ -18,7 +18,9 @@ const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/ap
   /* an external examiner's activation link (V254): the invitation read, the account activated, before any sign-in */
   "/api/bff/api/v1/examiners/invitation/", "/api/bff/api/v1/examiners/activate",
   /* a referee's form (V225): opened from the email link by someone who has no account here */
-  "/pg/referee/", "/api/bff/api/v1/pg/referee/"];
+  "/pg/referee/", "/api/bff/api/v1/pg/referee/",
+  /* a recipient's secure document link (V262): opened from the email by someone who has no account here */
+  "/documents/d/"];
 /* the public postgraduate endpoints, matched exactly so the prefix does not also open the
    authenticated PG desks that share the /api/v1/pg base (e.g. /pg/applications) */
 const OPEN_EXACT = new Set([

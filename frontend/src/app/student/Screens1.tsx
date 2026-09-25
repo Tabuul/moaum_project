@@ -193,7 +193,7 @@ export function Dashboard({ s }: { s: Me }) {
         {s.graduation && (s.graduation.finalist || s.graduation.audited) ? (
           <Quick icon="cap" title="Graduation" sub={s.graduation.senate_state === "APPROVED" ? `${s.graduation.class_of_degree ?? "Approved"} · ${s.graduation.certificate_no ? "certificate printed" : s.graduation.cleared ? "cleared for convocation" : `${s.graduation.units_holding} unit${s.graduation.units_holding === 1 ? "" : "s"} holding`}` : s.graduation.audited ? (s.graduation.unmet ? "A requirement is unmet" : "Awaiting Senate") : "Final year — the audit runs at the end"} href="/student/graduation" />
         ) : (
-          <Quick icon="doc" title="Transcript" sub="Request an official copy" href="/student/transcript" />
+          <Quick icon="doc" title="My documents" sub="Certificates, transcripts, requests" href="/student/documents" />
         )}
         <Quick icon="cal" title="Deferment" sub={s.status === "DEFERRED" ? "Deferment active — see your return" : "Defer a semester or session"} href="/student/deferment" />
         <Quick icon="bed" title="Hostel" sub="Apply, your allocation, checkout and clearance" href="/student/hostel" />

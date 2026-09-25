@@ -119,6 +119,11 @@ export const TITLES: Record<string, [string, string]> = {
     "Payment receipt",
     ""
   ],
+  "s/documents": ["My documents", "Certificates, transcripts, requests and verification"],
+  "t/documents": ["Documents office", "Certificates, transcripts, requests, delivery and verification · Registry"],
+  "t/documents-requests": ["Document requests", "Paid, validated, generated, checked, released, delivered"],
+  "t/documents-register": ["Issued documents", "Every certificate and transcript, its status, versions and verifications"],
+  "t/documents-settings": ["Document policies", "Fees, SLAs, self-service, public fields, templates"],
   "s/transcript": [
     "Transcript",
     "Request an official copy"
