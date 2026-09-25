@@ -977,15 +977,15 @@ class CollegeController {
                 && w.get("level") != null && ((Number) w.get("level")).intValue() == L).toList());
         // each open cohort's results by subject: how many of the cohort have a result in it
         out.put("subjects", e.isEmpty() ? List.of() : jdbc.sql("""
-                SELECT c.session, s.name AS subject, s.ordinal, count(*) AS cohort,
-                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = c.session AND r.passed IS NOT NULL)) AS resulted,
-                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = c.session AND r.passed)) AS passed,
-                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = c.session AND r.barred)) AS barred
+                SELECT oc.session, s.name AS subject, s.ordinal, count(*) AS cohort,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = oc.session AND r.passed IS NOT NULL)) AS resulted,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = oc.session AND r.passed)) AS passed,
+                       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.exam_result r WHERE r.student_id = c.student_id AND r.subject_id = s.id AND r.session = oc.session AND r.barred)) AS barred
                   FROM (SELECT DISTINCT e.session FROM college.enrolment e WHERE e.level = :l AND e.state IN ('OPEN','RESIT')) oc
-                  CROSS JOIN LATERAL college.cohort(:l, oc.session) c
+                  CROSS JOIN LATERAL college.cohort(:l, ooc.session) c
                   CROSS JOIN college.exam_subject s
                  WHERE s.exam_id = :e
-                 GROUP BY c.session, s.name, s.ordinal ORDER BY c.session DESC, s.ordinal
+                 GROUP BY oc.session, s.name, s.ordinal ORDER BY oc.session DESC, s.ordinal
                 """).param("l", L).param("e", e.get("id")).query().listOfRows());
         return out;
     }
