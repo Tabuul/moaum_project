@@ -51,24 +51,18 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/eligibility", "icon": "swap", "label": "Who May Register It" },
           { "id": "t/lms", "icon": "book", "label": "Course Spaces" },
           { "id": "r/upload", "icon": "box", "label": "Upload Material" },
           { "id": "t/teaching", "icon": "cal", "label": "My Teaching & Timetable" },
           { "id": "t/sheet", "icon": "doc", "label": "Score Entry", "badge": "2" },
           { "id": "t/bulk", "icon": "box", "label": "Upload Results (bulk)" },
           { "id": "t/scores", "icon": "doc", "label": "My Score Sheets" },
-          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
-          { "id": "t/chain", "icon": "check", "label": "Approval Chain" },
-          { "id": "t/cbtbank", "icon": "flask", "label": "Question Bank" },
-          { "id": "t/projects", "icon": "flask", "label": "My Projects" },
-          { "id": "t/ethics", "icon": "scale", "label": "Ethics & Repository" }
+          { "id": "t/projects", "icon": "flask", "label": "My Projects" }
         ]
       },
       {
         "name": "Students",
         "items": [
-          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/supervision", "icon": "check", "label": "Postings I Supervise" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" }
