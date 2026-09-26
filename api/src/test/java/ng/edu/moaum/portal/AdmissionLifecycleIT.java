@@ -170,6 +170,11 @@ class AdmissionLifecycleIT {
         Applicant a = offered(CS, 210, List.of("English Language", "Mathematics", "Physics", "Chemistry"), SCIENCE);                 // PATH A
         Applicant b = offered(CS, 210, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);           // PATH B: not a science candidate
 
+        // V272: a session with no fees of its own carries the last stated session's forward — the checking fee is never silently nought
+        Map<String, Object> carried = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule('1999/2000')").query().singleRow();
+        assertThat(carried.get("stated")).isEqualTo(false);
+        assertThat(carried.get("carried_from")).isNotNull();
+        assertThat(((java.math.BigDecimal) carried.get("checking_fee")).signum()).isPositive();
         // 3–6 · the decision is released; the admission checking fee, on its own, opens it (V271) — nothing of the decision shows before
         Map<String, Object> st = admission(a);
         assertThat(st.get("status")).isEqualTo("CHECKING_FEE_PENDING");

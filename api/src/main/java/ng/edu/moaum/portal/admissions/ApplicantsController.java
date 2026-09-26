@@ -141,9 +141,7 @@ class ApplicantsController {
                 """).param("s", s).query().listOfRows();
         Map<String, Object> fees = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", s).query().singleRow();
         return Map.of("session", s, "applications", rows, "batches", batches, "openReferences", references,
-                "fees", Map.of("stated", fees.get("stated"), "applicationFee", fees.get("application_fee"),
-                        "portalCharge", fees.get("portal_charge"), "acceptanceFee", fees.get("acceptance_fee"),
-                        "checkingFee", fees.get("checking_fee")));
+                "fees", feeMap(fees));
     }
 
     /** the Academic Office's computed Post-UTME for candidates who did not sit it (Direct Entry, non-exam programmes) */
@@ -420,9 +418,21 @@ class ApplicantsController {
     @PreAuthorize(FEESETTERS)
     Map<String, Object> applicantFees(@PathVariable String session, @PathVariable String year) {
         Map<String, Object> f = jdbc.sql("SELECT * FROM admissions.applicant_fee_rule(:s)").param("s", session + "/" + year).query().singleRow();
-        return Map.of("session", session + "/" + year, "stated", f.get("stated"),
-                "applicationFee", f.get("application_fee"), "portalCharge", f.get("portal_charge"),
-                "acceptanceFee", f.get("acceptance_fee"), "checkingFee", f.get("checking_fee"));
+        Map<String, Object> out = new java.util.LinkedHashMap<>(feeMap(f));
+        out.put("session", session + "/" + year);
+        return out;
+    }
+
+    /** the applicant fees as the screens read them: stated for the session, or carried forward from the last stated session (V272) */
+    private static Map<String, Object> feeMap(Map<String, Object> f) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("stated", f.get("stated"));
+        m.put("carriedFrom", f.get("carried_from"));
+        m.put("applicationFee", f.get("application_fee"));
+        m.put("portalCharge", f.get("portal_charge"));
+        m.put("acceptanceFee", f.get("acceptance_fee"));
+        m.put("checkingFee", f.get("checking_fee"));
+        return m;
     }
 
     @PutMapping("/applicant-fees")

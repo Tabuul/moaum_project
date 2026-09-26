@@ -32,7 +32,7 @@ export interface Schedule {
   position: { students_paying: number; confirmed: number; references_open: number };
 }
 export interface OpenReference { id: string; reference: string; session: string; purpose: string; amount: number; generated_at: string; expires_at: string; matric_no: string | null; admission_no: string | null; surname: string; other_names: string; programme: string; current_level: number }
-export interface ApplicantFees { session: string; stated: boolean; applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee: number }
+export interface ApplicantFees { session: string; stated: boolean; carriedFrom?: string | null; applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee: number }
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 const esc = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
@@ -554,7 +554,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <Note kind="bad" title={`Every fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Receipts and payments already made are untouched. Upload the approved fees for the right session afterwards.</Note>
         </Modal>
       ) : null}
-      <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : `Default (not yet stated for ${session})`}>
+      <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : applicantFees?.carriedFrom ? `Carried forward from ${applicantFees.carriedFrom} — not yet stated for ${session}` : `Built-in figures (nothing stated yet)`}>
         <PBody>
           <div className="sub2 mb-3">
             The charges an applicant pays before they are a student &mdash; the Post-UTME screening fee (with the portal and payment charge) and the acceptance fee an offer carries. They are a payment item of their own, under <b>Applicant</b>, kept apart from the student charges above because an applicant is not yet on the register.
