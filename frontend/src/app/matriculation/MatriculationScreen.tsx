@@ -49,6 +49,10 @@ export function MatriculationScreen({ overview: o, actingOffice }: { overview: M
           : "A faculty list is generated from approved course registrations. Students appear on it the moment their registration for the session is approved; nobody types a name."}
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
+      <Note kind="info" title="The number follows the configured rule">
+        <span className="blk">MOAU / faculty / programme / year of entry / sequence — the programme segment only where the programme is configured to carry one (Medicine and Surgery, Pharmacy and Law carry none), the sequence from the series the faculty belongs to, running on across years. A number once issued never changes.</span>
+        <span className="blk"><LinkBtn href="/matriculation/config" kind="secondary">Matriculation number format</LinkBtn></span>
+      </Note>
       <Tiles items={[
         ["Registered students", t.registered.toLocaleString(), null, "Approved registrations, all faculties"],
         ["Confirmed by Faculty Officers", t.confirmed.toLocaleString(), t.queried ? "var(--red-ink)" : null, t.queried ? `${t.queried} under query` : "Ready to matriculate"],

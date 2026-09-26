@@ -471,6 +471,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation", "badge": "!" },
+          { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
@@ -1726,7 +1727,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/pgstudents", "icon": "user", "label": "PG Students" },
-          { "id": "t/matriculation", "icon": "user", "label": "Matriculation" }
+          { "id": "t/matriculation", "icon": "user", "label": "Matriculation" },
+          { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" }
         ]
       },
       {

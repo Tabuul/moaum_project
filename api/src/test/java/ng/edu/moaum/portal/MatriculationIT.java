@@ -78,6 +78,8 @@ class MatriculationIT {
                     ON CONFLICT (course_code, session, semester) DO UPDATE SET semester = EXCLUDED.semester RETURNING id
                     """).param("sess", SESSION).query(UUID.class).single();
         });
+        // the year segment is the student's entry session (V263), which the invented student helper sets to 2020/2021
+        it.db(() -> jdbc.sql("UPDATE people.student SET entry_session = :sess WHERE id IN (:a, :b)").param("sess", SESSION).param("a", med).param("b", sci).update());
         registered(med, offering);
         registered(sci, offering);
 
@@ -110,7 +112,7 @@ class MatriculationIT {
         assertThat(String.valueOf(run.getBody().get("run"))).matches("MAT/2092/\\d{3}");
 
         assertThat(jdbc.sql("SELECT matric_no FROM people.student WHERE id = :id").param("id", med).query(String.class).single())
-                .matches("MOAUM/MED/92/\\d{4}");
+                .matches("MOAU/MBBS/92/\\d+");   // Medicine carries no programme code (V263)
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", sci).query(String.class).single())
                 .isEqualTo("ADMITTED");
 

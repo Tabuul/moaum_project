@@ -12,7 +12,7 @@ import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
  * The token goes into a cookie the browser cannot read; the office cookie says
  * which side of the portal opens.
  */
-const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
+const MATRIC = /^MOAUM?\/[A-Z0-9]{2,6}(\/[A-Z0-9]{2,6})?\/[0-9]{2}\/[0-9]{1,8}$/i;   // MOAU/FAC[/PROG]/YY/SEQ (V263), or MOAUM/DEPT/YY/NNNN (V064)
 /* the admission number an admitted candidate carries before matriculation: MOAUM/ADM/YY/NNNNNN.
    It opens the student door too, so they pay school fees and register courses under it. */
 const ADMISSION = /^MOAUM\/ADM\/[0-9]{2}\/[0-9]{6}$/i;

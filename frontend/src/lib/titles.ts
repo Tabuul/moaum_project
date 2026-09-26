@@ -373,6 +373,7 @@ export const TITLES: Record<string, [string, string]> = {
     "Who may register CSC 311",
     "The eligible set, assigned when the course was created"
   ],
+  "t/matriculation-config": ["Matriculation number format", "The rule, the series, each faculty's and programme's segments"],
   "t/matriculation": [
     "Matriculation",
     "2026/2027 · numbers issued over the confirmed register"
