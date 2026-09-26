@@ -923,7 +923,7 @@
   .vz__seg:last-child { border-radius: 0 4px 4px 0; }
   .vz__hb:hover .vz__hf, .vz__hb:hover .vz__seg { opacity: .5; }
   .vz__hr:hover .vz__hf, .vz__hr:hover .vz__seg { opacity: 1; }
-  .vz__hv { width: 56px; flex-shrink: 0; text-align: right; font-size: 12.7px; }
+  .vz__hv { width: auto; min-width: 56px; flex-shrink: 0; white-space: nowrap; text-align: right; font-size: 12.7px; }  /* sized to the figure: a thirteen-digit sum stays inside the panel and the track gives way */
 
   .vz__leg { display: flex; gap: 16px; flex-wrap: wrap; padding-top: 6px; }
   .vz__li { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
@@ -944,7 +944,7 @@
 
   @media (max-width: 620px) {
     .vz__hl { width: 42%; font-size: 11.5px; }
-    .vz__hv { width: 48px; font-size: 12px; }
+    .vz__hv { min-width: 48px; font-size: 12px; }
     .vz__donut { gap: 14px; }
   }
 
