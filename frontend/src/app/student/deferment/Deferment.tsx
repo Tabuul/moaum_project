@@ -32,6 +32,9 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
   const [opened, setOpened] = useState<DefermentFull | null>(null);
   const [viewing, setViewing] = useState<{ url: string; title: string; image: boolean } | null>(null);
   const reason: Reason | undefined = data.reasons.find((r) => r.code === form.reason);
+  // the rule the database applies at submission, met here first: a reason that needs words has at least twenty characters
+  const needsWords = !!reason && (reason.needs_words || reason.code === "OTHER");
+  const wordsShort = needsWords && form.explanation.trim().length < 20;
   const sessionRow = data.sessions.find((x) => x.name === form.session);
   const semesters = Array.from({ length: sessionRow?.semesters ?? 2 }, (_, i) => i + 1);
   const fee = data.fee;
@@ -187,10 +190,11 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
                     <select id="df-reason" className="ctl" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}><option value="">Choose…</option>{data.reasons.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}</select>
                   </Field>
                 </div>
-                <Field id="df-words" label="Additional explanation" required={!!reason && (reason.needs_words || reason.code === "OTHER")} hint={reason?.needs_document ? `A ${reason.label.toLowerCase()} deferment is supported by a document, uploaded at the next step.` : "A few sentences on your circumstances."}>
+                <Field id="df-words" label="Additional explanation" required={needsWords} hint={needsWords ? `A ${reason!.label.toLowerCase()} deferment is explained in a few sentences — at least twenty characters (${form.explanation.trim().length} so far).${reason!.needs_document ? " A supporting document is uploaded at the next step." : ""}` : reason?.needs_document ? `A ${reason.label.toLowerCase()} deferment is supported by a document, uploaded at the next step. A few words here are optional.` : "A few sentences on your circumstances (optional for this reason)."}>
                   <textarea id="df-words" className="ctl" rows={4} value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} />
                 </Field>
-                <div className="row row--end"><span className="grow" /><Btn kind="primary" disabled={busy || !form.session || !form.reason} onClick={() => void saveAndNext()}>Save and Continue</Btn></div>
+                {wordsShort && form.explanation.trim().length > 0 ? <div className="sub2 ink-red">Write at least twenty characters; the desks read this explanation.</div> : null}
+                <div className="row row--end"><span className="grow" /><Btn kind="primary" disabled={busy || !form.session || !form.reason || wordsShort} onClick={() => void saveAndNext()}>Save and Continue</Btn></div>
               </div>
             ) : step === 2 ? (
               <div className="stack">
@@ -212,12 +216,13 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
                   ["Deferment type", form.kind === "SESSION" ? "Academic session" : "Semester"], ["Academic session", form.session], ["Semester", form.kind === "SESSION" ? "Whole session" : SEM(Number(form.semester))],
                   ["Reason", reason?.label ?? "—"], ["Expected return", current ? returnOf(current) : "Named on submission"], ["Supporting documents", `${current?.documents.length ?? 0} uploaded`],
                   ["Application fee", current?.fee_receipt_no ? `${naira(current.fee_amount)} · receipt ${current.fee_receipt_no}` : feePaid && fee ? `${naira(fee.amount)} · receipt ${fee.receipt_no ?? fee.reference}` : "Waived"]]} />
-                {form.explanation ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{form.explanation}</div> : null}
+                {form.explanation.trim() ? <div><div className="eyebrow">Additional explanation</div><div style={{ whiteSpace: "pre-wrap" }}>{form.explanation}</div></div> : null}
+                {wordsShort ? <Note kind="bad" title="The explanation is too short to submit" action={<Btn kind="secondary" onClick={() => setStep(1)}>Back to step 1</Btn>}>A {reason!.label.toLowerCase()} deferment is explained in at least twenty characters; the desks read it.</Note> : null}
                 <label className="row" style={{ gap: "var(--s-2)", alignItems: "flex-start" }}>
                   <input type="checkbox" checked={form.declared} onChange={(e) => setForm({ ...form, declared: e.target.checked })} />
                   <span>I confirm that the information provided in this deferment application is accurate and understand that approval is subject to the University&rsquo;s academic regulations, that the application fee is not refunded, and that an approved deferment extends my expected completion by the period deferred.</span>
                 </label>
-                <div className="row row--between"><Btn kind="ghost" onClick={() => setStep(2)}>Back</Btn><Btn kind="go" disabled={busy || !form.declared} onClick={() => void submit()}>Submit Deferment Application</Btn></div>
+                <div className="row row--between"><Btn kind="ghost" onClick={() => setStep(2)}>Back</Btn><Btn kind="go" disabled={busy || !form.declared || wordsShort} onClick={() => void submit()}>Submit Deferment Application</Btn></div>
               </div>
             )}
           </PBody>
