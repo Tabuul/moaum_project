@@ -34,7 +34,7 @@ const PAGE_FIELDS: Record<StepId, string[]> = {
   A: ["nationality", "state_of_origin", "lga", "marital_status", "sponsor_address", "postal_address"],
   B: ["maiden_name", "date_of_birth", "home_address", "lga", "state_of_origin", "nationality", "religion", "marital_status", "working_experience", "sponsor_name", "sponsor_address"],
   C: [],
-  D: ["state_of_origin", "lga", "nationality", "date_of_birth", "place_of_birth", "primary_school", "primary_fees_per_term", "secondary_school", "secondary_fees_per_term", "parent_profession", "parent_income", "guardian_name", "guardian_address", "guardian_mobile", "guardian_email"],
+  D: ["state_of_origin", "lga", "nationality", "date_of_birth", "place_of_birth", "primary_school", "primary_fees_per_term", "secondary_school", "secondary_fees_per_term", "parent_profession", "parent_income", "guardian_name", "guardian_address", "guardian_mobile", "guardian_email", "kin_name", "kin_relationship", "kin_mobile", "kin_address"],
   E: ["preferred_name", "date_of_birth", "lga", "state_of_origin", "nationality", "marital_status", "blood_group", "children", "religion", "ethnic_group", "mobile", "alt_mobile", "personal_email", "bank_name", "bank_sort_code", "bank_account_no", "bank_location", "working_experience", "postal_address", "home_address", "sponsor_name", "sponsor_address", "extracurricular", "hobbies", "secondary_graduation_year", "secondary_school", "alevel_institution", "alevel_graduation_year"],
   F: [], G: [],
 };
@@ -42,15 +42,15 @@ const PAGE_FIELDS: Record<StepId, string[]> = {
 const PAGE_REQUIRED: Record<StepId, string[]> = {
   A: ["nationality", "state_of_origin", "lga", "marital_status", "sponsor_address"],
   B: ["home_address", "religion", "sponsor_name", "sponsor_address", "date_of_birth"],
-  C: [], D: ["guardian_name", "guardian_address", "guardian_mobile", "secondary_school"], E: ["mobile", "personal_email"], F: [], G: [],
+  C: [], D: ["guardian_name", "guardian_address", "guardian_mobile", "secondary_school", "kin_name", "kin_relationship", "kin_mobile"], E: ["mobile", "personal_email"], F: [], G: [],
 };
 const LABEL: Record<string, string> = {
   sponsor_address: "Address of sponsor (home)", home_address: "Address (permanent home)", preferred_name: "Nick / pet / alias names", ethnic_group: "Tribe", extracurricular: "Sports", bank_name: "Bankers",
   alt_mobile: "Back-up phone number", mobile: "Phone number", personal_email: "E-mail", guardian_name: "Parent or guardian — name", guardian_address: "Parent or guardian — address", guardian_mobile: "Parent or guardian — phone number", guardian_email: "Parent or guardian — email",
   place_of_birth: "Place of birth", children: "Number of children", date_of_birth: "Date of birth",
 };
-const TEXTAREA = new Set(["sponsor_address", "postal_address", "home_address", "working_experience", "guardian_address", "memberships", "hobbies"]);
-const NUMERIC = new Set(["mobile", "alt_mobile", "guardian_mobile", "bank_account_no", "bank_sort_code", "children", "primary_fees_per_term", "secondary_fees_per_term", "parent_income", "secondary_graduation_year", "alevel_graduation_year"]);
+const TEXTAREA = new Set(["sponsor_address", "postal_address", "home_address", "working_experience", "guardian_address", "kin_address", "memberships", "hobbies"]);
+const NUMERIC = new Set(["mobile", "alt_mobile", "guardian_mobile", "kin_mobile", "bank_account_no", "bank_sort_code", "children", "primary_fees_per_term", "secondary_fees_per_term", "parent_income", "secondary_graduation_year", "alevel_graduation_year"]);
 
 export function Screening({ fallback }: { fallback?: React.ReactNode }) {
   const router = useRouter();
@@ -297,6 +297,9 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
               <div className="grid grid--3 rfgrid mt-2">{F("state_of_origin", { hint: "3. State of origin" })}{F("lga", { hint: "4. Local government area" })}{F("nationality", { hint: "5. Nationality" })}{F("date_of_birth", { hint: "6. Date of birth" })}{F("place_of_birth", { hint: "6. Place of birth" })}
                 {F("primary_school", { hint: "11. Name of primary school attended" })}{F("primary_fees_per_term", { hint: "Fees paid per term, in naira" })}{F("secondary_school", { hint: "12. Name of secondary school attended" })}{F("secondary_fees_per_term", { hint: "Fees paid per term, in naira" })}
                 {F("parent_profession", { hint: "13." })}{F("parent_income", { hint: "14. Estimated annual income, in naira" })}{F("guardian_name", { hint: "15. Name" })}{F("guardian_address", { hint: "15. Address" })}{F("guardian_mobile", { hint: "15. Phone no" })}{F("guardian_email", { hint: "15. Email" })}</div>
+              <div className="eyebrow mt-3 mb-1">Next of kin</div>
+              <div className="sub2 mb-1">The person the University reaches in your stead{p.next_of_kin ? ` — on your application form you gave: ${p.next_of_kin}` : ""}.</div>
+              <div className="grid grid--3 rfgrid">{F("kin_name")}{F("kin_relationship")}{F("kin_mobile")}{F("kin_address")}</div>
               <div className="sub2 mt-2">Declaration: I hereby declare that the information given above is to the best of my knowledge correct, and that I am bound by the Regulations of the University, and that if at any time it is discovered that any of the information provided is false or incorrect, I shall be summarily expelled from the University.</div>
             </>
           ) : null}
@@ -325,6 +328,9 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
           {step === "G" ? (
             <>
               {v.missing.length && editable ? <Note kind="bad" title="Still required before submission">{v.missing.map((m) => m.label).join(" · ")}</Note> : editable ? <Note kind="ok" title="Every page is complete">Read it back, accept the declaration and submit.</Note> : null}
+              {(() => { const onPages = new Set(Object.values(PAGE_FIELDS).flat()); const extra = (v.policy?.required_fields ?? []).filter((k) => !onPages.has(k) && catalogue[k]); return extra.length ? (
+                <div className="mb-2"><div className="eyebrow mb-1">Other information the session requires</div><div className="sub2 mb-1">Asked by the University for this session beyond the paper forms; filled here.</div><div className="grid grid--3 rfgrid">{extra.map((k) => F(k))}</div></div>
+              ) : null; })()}
               {(["A", "B", "D", "E"] as StepId[]).map((id) => { const keys = [...new Set(PAGE_FIELDS[id])].filter((k) => (answers[k] ?? "").trim()); return keys.length ? <div key={id} className="mb-2"><div className="eyebrow mb-1">{STEPS.find((s) => s.id === id)?.title}</div><KvGrid cls="grid--3" pairs={keys.map((k) => [label(k), answers[k]] as [string, string])} /></div> : null; })}
               <div className="eyebrow mb-1">Institutions attended</div><div className="sub2 mb-2">{institutions.filter((i) => i.name.trim()).map((i) => `${i.name} (${i.from_year ?? "?"}–${i.to_year ?? "?"}, ${i.certificate || "—"} ${i.award_year ?? ""})`).join("; ") || "None"}</div>
               <div className="eyebrow mb-1">O&rsquo;Level results</div><div className="sub2 mb-2">{olevel.map((r) => `${r.subject} ${r.grade} (${r.exam_body}${r.exam_year ? ` ${r.exam_year}` : ""})`).join(", ") || "None"}</div>
