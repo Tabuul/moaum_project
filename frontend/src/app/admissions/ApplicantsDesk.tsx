@@ -14,7 +14,8 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, type Cell } from "@/lib/xlsx-write";
-import { loadCrest, xlsxRowsAsync } from "@/lib/xlsx";
+import { buildXlsx, loadCrest, xlsxRowsAsync } from "@/lib/xlsx";
+import { downloadBlob } from "@/lib/exportbrand";
 import { Btn, IcoBtn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
@@ -196,6 +197,16 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     }
   }
 
+  /** the JAMB admission-status list as JAMB lays it out (the fourteen columns the loader reads, the header in row 1), with two example rows */
+  function jambTemplate() {
+    const cols = ["RG_NUM", "RG_CANDNAME", "RG_SEX", "STATE_NAME", "RG_AGGREGATE", "CO_NAME", "PUTMESCORE", "AdmissionStatus", "LGA_NAME", "AdmissionCategoryName", "isAOApprove", "JAMB", "PostUTME", "Total"];
+    const blob = buildXlsx(cols, [
+      ["202699168863AH", "Example Candidate One", "F", "Benue", 203, "Computer Science", 50, "Accepted", "Gboko", "Merit", "FALSE", 35.525, 15, 50.525],
+      ["202699168864BC", "Example Candidate Two", "M", "Benue", 192, "Accounting", 57, "Not Admitted", "Makurdi", "Catchment", "FALSE", 33.6, 17.1, 50.7],
+    ], "Sheet1");
+    downloadBlob(blob, `jamb-admission-status-template-${desk.session.replace("/", "-")}.xlsx`);
+  }
+
   async function refreshJamb() {
     const r = await fetch(`${base}/jamb-admissions`, { cache: "no-store" });
     const j = await r.json().catch(() => null);
@@ -360,6 +371,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
                 <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={jambBusy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadJamb(f); e.target.value = ""; }} />
               </label>
               <Btn kind="ghost" disabled={jambBusy} onClick={() => void refreshJamb()}>Show what was uploaded</Btn>
+              <Btn kind="secondary" disabled={jambBusy} title="The fourteen JAMB columns, header in row 1, with two example rows — delete them before you upload" onClick={() => jambTemplate()}>Download template</Btn>
             </div>
             {jambMsg ? <Note kind="ok" title="Uploaded and matched">{jambMsg}</Note> : null}
             {jambList ? (
