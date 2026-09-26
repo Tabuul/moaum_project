@@ -82,7 +82,8 @@ SELECT audit.attach('admissions.screening_policy');
 COMMENT ON TABLE admissions.screening_policy IS
     'Whether and how a session screens its fresh students online (V269): on or off, from when, which documents and which fields the form requires. Nothing is hard-coded.';
 -- every session that has admission settings screens from now on; earlier acceptances are not held
-INSERT INTO admissions.screening_policy (session) SELECT DISTINCT p.session FROM admissions.session_policy p ON CONFLICT DO NOTHING;
+INSERT INTO admissions.screening_policy (session)
+SELECT DISTINCT p.session FROM admissions.session_policy p JOIN policy.academic_session a ON a.name = p.session ON CONFLICT DO NOTHING;   -- only sessions the calendar knows
 
 CREATE TABLE admissions.screening_form (
     application_id    uuid PRIMARY KEY REFERENCES admissions.application(id),
