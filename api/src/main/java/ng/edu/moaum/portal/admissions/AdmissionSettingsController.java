@@ -135,6 +135,37 @@ class AdmissionSettingsController {
         return service.setProgrammeDeSubjects(session + "/" + year, code, body.subjects(), body.choose());
     }
 
+    public record OlevelRequiredIn(java.util.List<@jakarta.validation.constraints.Size(max = 200) String> items, @jakarta.validation.constraints.Size(max = 2) String minGrade) {
+    }
+
+    /** the required O'Level subjects the eligibility engine checks (V266): each item "Physics", "Economics/Commerce" or
+     *  "2 of Chemistry/Physics/Biology", all required, at the minimum grade; a correction to what the engine reads */
+    @PutMapping("/sessions/{session}/{year}/policy/programmes/{code}/olevel-required")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy programmeOlevelRequired(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody OlevelRequiredIn body) {
+        return service.setProgrammeOlevelRequired(session + "/" + year, code, body.items(), body.minGrade());
+    }
+
+    public record ScreeningIn(@jakarta.validation.constraints.Size(max = 400) String additionalScreening) {
+    }
+
+    /** the additional screening a programme needs beyond the academic requirements (V266): interview, portfolio, practical; blank for none */
+    @PutMapping("/sessions/{session}/{year}/policy/programmes/{code}/screening")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy programmeScreening(@PathVariable String session, @PathVariable String year, @PathVariable String code, @RequestBody ScreeningIn body) {
+        return service.setProgrammeScreening(session + "/" + year, code, body.additionalScreening());
+    }
+
+    public record EquivalencesIn(java.util.List<AdmissionPolicy.Equivalence> rows) {
+    }
+
+    /** the subject equivalences the Committee accepts (V266) — replaces the set; nothing is inferred beyond it */
+    @PutMapping("/sessions/{session}/{year}/policy/equivalences")
+    @PreAuthorize(SECRETARIAT)
+    AdmissionPolicy equivalences(@PathVariable String session, @PathVariable String year, @RequestBody EquivalencesIn body) {
+        return service.saveEquivalences(session + "/" + year, body.rows());
+    }
+
     public record Catchment(java.util.List<@jakarta.validation.constraints.Size(max = 120) String> lgas) {
     }
 

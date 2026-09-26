@@ -302,6 +302,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Offer lapse (`LAPSED`) | CONFIGURED BUT UNUSED | `ck_candidate_state`; no setter found | |
 | In-app notices list on the applicant dashboard | IMPLEMENTED | Dashboard "Notices sent to you" | |
 | Application form print / PDF | IMPLEMENTED | `/applicant/apply` Print / Download | After submission |
+| Programme eligibility: verdict, reasons, check tables, eligible alternatives, Request Change, Recalculate (V266) | IMPLEMENTED | `applicant/Eligibility.tsx`, `AdmissionEligibilityController.java:292-335`, `admissions.evaluate_application` | Shown once submitted; a request only for a listed programme; nothing admits |
 
 ### 3.12 Undergraduate admissions office (dossier B2)
 
@@ -330,6 +331,11 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Offer lapse / waiting-list promotion | NOT IMPLEMENTED | No function moves WAITING → OFFERED or sets LAPSED | UI text promises it |
 | Registrar menu entries for settings, CAPS, candidate data, screening, scores, merit, DE screening | PARTIALLY IMPLEMENTED | Guards name `registrar`; menu lists only Admissions, Admitted List and the CBT schedule | Reachable by URL |
 | Notices on application submission and on decline | NOT IMPLEMENTED | No `queue_notice` on either | |
+| Automatic admission course suggestion engine: rule-based evaluation of the applied programme and every alternative from the settings (V266) | IMPLEMENTED | `db/V266__admission_eligibility_engine.sql` (`evaluate_programme`, `evaluate_application`, `eligibility_current`), `AdmissionEligibilityController.java` | Verdicts ELIGIBLE / ELIGIBLE_SCREENING / NOT_ELIGIBLE / UNVERIFIED; every check explained; policy version recorded; re-evaluated on data or rule change |
+| Programme Eligibility register: server-side search and filters, statistics, View Matching Details, recalculation, reports (V266) | IMPLEMENTED | `admissions/eligibility/Eligibility.tsx` | Menu: academic, registrar |
+| Programme change requests: applicant or Office request, approve (revalidated) / reject (reason), notices, trail (V266) | IMPLEMENTED | `request_programme_change`, `decide_programme_change`, `programme_change_request` | One open per application; none after the decision is released |
+| Eligibility rule fields on the programme rule (required O'Level subjects, minimum grade, additional screening) and subject equivalencies (V266) | IMPLEMENTED | `AdmissionSettings.tsx` modal and panel, `PUT …/olevel-required`, `…/screening`, `…/equivalences` | Editable in force; each change moves `rules_version` |
+| Applicant notice when the applied programme is refused or the verdict changes (V266) | IMPLEMENTED | `evaluate_application` → `notify_applicant` | Once per change of verdict; never a promise of admission |
 
 ### 3.13 Post-UTME CBT scheduling, check-in and slip verification (dossier B3)
 

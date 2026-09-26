@@ -542,6 +542,7 @@ export const TITLES: Record<string, [string, string]> = {
     "ADAMU, Grace Mwuese",
     "MOAUM/CSC/23/1487 · 300 Level"
   ],
+  "t/admeligibility": ["Programme Eligibility", "Applicants against the admission settings; the programmes they qualify for"],
   "t/admissions": [
     "Admissions",
     "2026 UTME cycle"

@@ -194,7 +194,10 @@ class ApplicantRepository {
     }
 
     String submit(UUID applicationId, String ip) {
-        return jdbc.sql("SELECT admissions.submit_application(:id, :ip)").param("id", applicationId).param("ip", ip, Types.VARCHAR).query(String.class).single();
+        String out = jdbc.sql("SELECT admissions.submit_application(:id, :ip)").param("id", applicationId).param("ip", ip, Types.VARCHAR).query(String.class).single();
+        // the eligibility engine (V266) reads the submitted application at once: the applied programme, and the alternatives when it is refused
+        jdbc.sql("SELECT admissions.evaluate_application(:id, 'SUBMISSION', NULL)").param("id", applicationId).query(UUID.class).single();
+        return out;
     }
 
     String undertaking(UUID applicationId) {

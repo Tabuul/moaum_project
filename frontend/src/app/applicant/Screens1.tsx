@@ -13,6 +13,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Gate, Gates, money, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, Rail, TwoCol, useAct, when } from "./common";
+import { Eligibility } from "./Eligibility";
 
 /* ── 1. overview ── */
 
@@ -42,6 +43,7 @@ export function Dashboard({ a }: { a: Application }) {
         action={<LinkBtn href={nx[2]} kind={a.stage === 5 ? "urgent" : "primary"}>{nx[3]}</LinkBtn>}>
         {nx[1]}
       </Note>
+      {at(a, 2) && !at(a, 5) ? <Eligibility /> : null}
       <TwoCol>
         <Rail a={a} />
         <Panel title="Dates that matter" right={a.session}>

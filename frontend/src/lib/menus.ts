@@ -483,6 +483,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/admissionsetup", "icon": "doc", "label": "Admission Settings", "badge": "!" },
+          { "id": "t/admeligibility", "icon": "check", "label": "Programme Eligibility" },
           { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants and Candidates" },
           { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
@@ -1008,6 +1009,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
+          { "id": "t/admeligibility", "icon": "check", "label": "Programme Eligibility" },
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" }
         ]
       },

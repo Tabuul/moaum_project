@@ -30,6 +30,7 @@ This volume describes every end-to-end business workflow the portal runs today, 
    - 2.9 The Direct Entry variant
    - 2.10 The JAMB admission-status upload path
    - 2.11 What is not implemented
+   - 2.12 Programme eligibility and course suggestions (V266)
 3. [Postgraduate admission, research and external examiners](#3-postgraduate-admission-research-and-external-examiners)
    - 3.1 Postgraduate admission
    - 3.2 Coursework registration and results
@@ -273,6 +274,24 @@ On Report on Admissions → "Admission status from JAMB", the Academic Office or
 | `ONGOING` exam state moved automatically; `keep_programme`, `registration_deadline` honoured | PARTIALLY IMPLEMENTED / CONFIGURED BUT UNUSED |
 
 > **Screenshot Required:** Report on Admissions — `/admissions` — the red note "n admitted candidates are not yet on the register" with the button "Bring n candidates onto the register".
+
+### 2.12 Programme eligibility and course suggestions (V266)
+
+Rule-based, explainable, configurable and audited; it neither admits nor changes a programme by itself.
+
+| Step | Actor | Screen / function | What happens |
+|---|---|---|---|
+| 1 | Secretariat | Admission Settings → programme rule modal, Subject equivalencies | States per programme the required O'Level subjects and grade, the UTME (or DE) subject set, the cut-off, the credits and sittings, any additional screening; states equivalencies. Each change moves `session_policy.rules_version` (`admissions.rules_touched`). |
+| 2 | Applicant / system | `POST /applicant/me/submit` → `admissions.evaluate_application(app, 'SUBMISSION')` | On submission the applied programme is evaluated (`evaluate_programme`: active · stated · open · places · sittings · compulsory credits · required subjects · credit count · UTME combination with equivalences · score against greatest(programme or faculty cut-off, load cut-off) · DE subjects · screening). Verdict ELIGIBLE / ELIGIBLE_SCREENING / NOT_ELIGIBLE / UNVERIFIED with `checks` (requirement · candidate · status) and `reasons`. |
+| 3 | System | same | Only when NOT_ELIGIBLE: every other active, stated, open programme is evaluated and stored as an ALTERNATIVE, ordered eligible → screening → unverified → not, same faculty first. `eligibility_run` (one current per application; earlier runs superseded) and `eligibility_result` rows; EVALUATED and RECOMMENDATION_GENERATED on `eligibility_event`; the applicant told once per change of verdict. |
+| 4 | Applicant | Overview / Admission Status → Programme eligibility | Reads the verdict and reasons (`GET /applicant/me/eligibility` → `eligibility_current`, which re-evaluates when none stands, the record changed or the rules version moved), the eligible alternatives only, View eligibility details, Recalculate. |
+| 5 | Applicant | Request Change | `POST /applicant/me/eligibility/change` — refused (`ELIG_NOT_SUGGESTED`) unless the programme is an eligible alternative on the current run; `request_programme_change` refuses a second open request, the applied programme, an inactive programme or an application whose decision is released; PROGRAMME_CHANGE_REQUESTED on the trail. |
+| 6 | Admissions Office | Programme Eligibility register | Searches and filters on the server; View Matching Details (RECOMMENDATION_VIEWED logged); Recalculate one (OFFICER) / Evaluate the unevaluated (SYSTEM) / Recalculate all (OFFICER); may itself request a change for an applicant. |
+| 7 | Admissions Office | Programme change requests → Approve / Reject | `decide_programme_change`: APPROVE re-reads eligibility for the target at that moment, sets `candidate.programme`, re-evaluates under PROGRAMME_CHANGE, notifies; REJECT needs a reason and notifies. |
+| 8 | System | triggers `eligibility_touched` on `olevel_sitting`, `olevel_grade`, `caps_row`, `de_award(_subject)`, `candidate.programme / entry_mode` | Marks the current run stale; the next opening re-evaluates (DATA_CHANGE); a rules-version change re-evaluates as POLICY_CHANGE. |
+| 9 | Admissions Office | Reports | Register, Candidates not eligible, Alternative programme suggestions, Statistics — Excel and PDF, S/N first, names A–Z. |
+
+Tested end to end by `AdmissionEligibilityIT` (seven methods covering the ten acceptance cases: eligible; not eligible with alternatives; explained; no alternatives and closed / unstated programmes never suggested; one-versus-two sittings with automatic re-evaluation on the rule change; equivalence honoured only when stated and additional screening; the register's search, filters and statistics; the applicant's own view, the refused request, the approved change; the stale record re-read; the doors).
 
 ---
 ## 3. Postgraduate admission, research and external examiners

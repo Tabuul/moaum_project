@@ -79,7 +79,14 @@ class AdmissionSettingsRepository {
                        (SELECT string_agg(a.subject, E'\n' ORDER BY a.subject)
                           FROM admissions.programme_olevel_allowance a
                          WHERE a.policy_id = r.policy_id AND a.programme_code = r.programme_code) AS olevel_allowances,
-                       (cl.programme_code IS NOT NULL) AS closed, cl.reason AS closed_reason
+                       (cl.programme_code IS NOT NULL) AS closed, cl.reason AS closed_reason,
+                       (SELECT string_agg(rs.subject, E'\n' ORDER BY rs.subject)
+                          FROM admissions.rule_subject rs
+                          JOIN admissions.rule_subject_group sg ON sg.id = rs.group_id
+                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'OLEVEL_REQUIRED') AS olevel_required,
+                       (SELECT max(sg.min_grade) FROM admissions.rule_subject_group sg
+                         WHERE sg.policy_id = r.policy_id AND sg.programme_code = r.programme_code AND sg.scope = 'OLEVEL_REQUIRED') AS olevel_required_min,
+                       r.additional_screening
                   FROM ref.programme g
                   JOIN ref.faculty f ON f.code = g.faculty_code
                   LEFT JOIN (SELECT r.* FROM admissions.programme_rule r
@@ -101,8 +108,61 @@ class AdmissionSettingsRepository {
                         lines(rs.getString("utme_subjects")),
                         lines(rs.getString("de_subjects")),
                         rs.getObject("de_choose", Integer.class),
-                        rs.getBoolean("closed"), rs.getString("closed_reason")))
+                        rs.getBoolean("closed"), rs.getString("closed_reason"),
+                        lines(rs.getString("olevel_required")), rs.getString("olevel_required_min"), rs.getString("additional_screening")))
                 .list();
+    }
+
+    /** Replace a programme's required O'Level subjects the eligibility engine checks (V266, scope OLEVEL_REQUIRED):
+     *  each item under the shared grammar ("Physics", "Economics/Commerce", "2 of Chemistry/Physics/Biology"), all items
+     *  required, at the given minimum grade. Editable in force like the other subject sets. */
+    void setProgrammeOlevelRequired(UUID policyId, String code, java.util.List<String> items, String minGrade) {
+        jdbc.sql("""
+                DELETE FROM admissions.rule_subject WHERE group_id IN (
+                    SELECT id FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'OLEVEL_REQUIRED')
+                """).param("id", policyId).param("code", code).update();
+        jdbc.sql("DELETE FROM admissions.rule_subject_group WHERE policy_id = :id AND programme_code = :code AND scope = 'OLEVEL_REQUIRED'")
+                .param("id", policyId).param("code", code).update();
+        java.util.List<String> subs = items == null ? java.util.List.of()
+                : items.stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+        if (subs.isEmpty()) {
+            return;
+        }
+        String grade = minGrade == null || minGrade.isBlank() ? "C6" : minGrade.trim().toUpperCase();
+        if (!java.util.Set.of("A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8").contains(grade)) {
+            grade = "C6";
+        }
+        UUID group = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose, min_grade)
+                VALUES (:g, :id, :code, 'OLEVEL_REQUIRED', :choose, :grade)
+                """).param("g", group).param("id", policyId).param("code", code).param("choose", subs.size()).param("grade", grade).update();
+        for (String subject : subs) {
+            jdbc.sql("INSERT INTO admissions.rule_subject (group_id, subject) VALUES (:g, :s)").param("g", group).param("s", subject).update();
+        }
+    }
+
+    /** more than the academic requirements (V266): an interview, a portfolio, a practical test — or none */
+    void setProgrammeScreening(UUID policyId, String code, String text) {
+        jdbc.sql("UPDATE admissions.programme_rule SET additional_screening = :t WHERE policy_id = :id AND programme_code = :code")
+                .param("t", text == null || text.isBlank() ? null : text.trim(), Types.VARCHAR).param("id", policyId).param("code", code).update();
+    }
+
+    List<AdmissionPolicy.Equivalence> equivalences(String session) {
+        return jdbc.sql("""
+                SELECT e.subject, e.equivalent, e.scope FROM admissions.subject_equivalence e JOIN admissions.session_policy p ON p.id = e.policy_id
+                 WHERE p.session = :s ORDER BY e.subject, e.equivalent, e.scope
+                """).param("s", session).query((rs, i) -> new AdmissionPolicy.Equivalence(rs.getString("subject"), rs.getString("equivalent"), rs.getString("scope"))).list();
+    }
+
+    /** the subject equivalences under a session's settings, replaced whole (V266) */
+    void saveEquivalences(UUID policyId, List<AdmissionPolicy.Equivalence> rows) {
+        jdbc.sql("DELETE FROM admissions.subject_equivalence WHERE policy_id = :id").param("id", policyId).update();
+        for (AdmissionPolicy.Equivalence e : rows) {
+            jdbc.sql("INSERT INTO admissions.subject_equivalence (policy_id, subject, equivalent, scope) VALUES (:id, :s, :e, :sc) ON CONFLICT DO NOTHING")
+                    .param("id", policyId).param("s", e.subject().trim()).param("e", e.equivalent().trim())
+                    .param("sc", e.scope() == null || e.scope().isBlank() ? "ANY" : e.scope().trim().toUpperCase()).update();
+        }
     }
 
     private static List<String> lines(String text) {

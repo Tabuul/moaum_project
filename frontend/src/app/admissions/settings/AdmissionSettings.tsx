@@ -72,10 +72,17 @@ export interface AdmissionPolicy {
   /** closed for the session (V023): not admitted into, needs no rule */
   closed?: boolean;
   closedReason?: string | null;
+  /** the O'Level subjects the eligibility engine requires at a credit (V266) */
+  olevelRequired?: string[];
+  olevelRequiredMinGrade?: string | null;
+  /** an additional screening the programme requires beyond the academic rules (V266) */
+  additionalScreening?: string | null;
     stated: boolean;
   }[];
   findings: { finding: string; detail: string; owner: string }[];
   catchmentLgas?: string[];
+  /** subject equivalencies the eligibility engine honours (V266) — stated by the Secretariat, never invented */
+  equivalences?: { subject: string; equivalent: string; scope: "ANY" | "OLEVEL" | "UTME" }[];
 }
 
 const CRIT_LABEL: Record<string, [string, string]> = {
@@ -154,6 +161,7 @@ export function AdmissionSettings({
   const router = useRouter();
   const [tab, setTab] = useState<string>("session");
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const equivText = (policy?.equivalences ?? []).map((e) => `${e.subject} = ${e.equivalent}${e.scope !== "ANY" ? ` @${e.scope}` : ""}`).join("\n");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [instrument, setInstrument] = useState("");
@@ -385,6 +393,23 @@ export function AdmissionSettings({
           </div>
         </PBody>
       </Panel>
+      <Panel title="Subject equivalencies" right="For the eligibility engine">
+        <PBody>
+          <div className="sub2 mb-2">Where Senate accepts one subject in place of another, it is stated here and nowhere else: the engine never invents an equivalence. One per line as <b>Required subject = Accepted subject</b>, optionally followed by <b>@OLEVEL</b> or <b>@UTME</b> to limit it to one examination (the default holds for both). Saving moves the policy&rsquo;s rules version and every evaluation is re-read against the new list.</div>
+          <textarea id="equiv" className="ctl tnum" rows={5} value={"equiv" in edits ? edits["equiv"] : equivText} onChange={(e) => setEdits({ ...edits, equiv: e.target.value })} placeholder={"Biology = Agricultural Science\nMathematics = Further Mathematics @OLEVEL"} disabled={!may} />
+          <div className="mt-2 row row--inline row--tight">
+            <Btn kind="primary" disabled={!may || busy !== null} onClick={() => {
+              const rows: { subject: string; equivalent: string; scope: string }[] = [];
+              for (const line of ("equiv" in edits ? edits["equiv"] : equivText).split(/\n/)) {
+                const m = line.trim().match(/^([^=]+?)\s*=\s*([^@]+?)\s*(?:@\s*(OLEVEL|UTME|ANY))?$/i);
+                if (m) rows.push({ subject: m[1].trim(), equivalent: m[2].trim(), scope: (m[3] ?? "ANY").toUpperCase() });
+              }
+              void send("PUT", `${base}/equivalences`, { rows }, `Subject equivalencies stated for ${session}: ${rows.length}`, "equiv");
+            }}>{busy === "equiv" ? "Saving…" : "Save the equivalencies"}</Btn>
+            <span className="sub2">{(policy.equivalences ?? []).length} on record</span>
+          </div>
+        </PBody>
+      </Panel>
     </>
   );
 
@@ -420,6 +445,17 @@ export function AdmissionSettings({
   /* ── 3 · the programmes ── */
   const progRows = policy.programmes;
   const editingProgramme = editing ? policy.programmes.find((p) => p.code === editing) ?? null : null;
+  /** the eligibility engine's own fields (V266): required O'Level subjects at a grade, additional screening — saved whether the policy is draft or in force; the rules version moves and every evaluation is re-read */
+  async function saveEligibility(pr: AdmissionPolicy["programmes"][number]): Promise<boolean> {
+    const items = ("pr-oreq" in edits ? edits["pr-oreq"] : (pr.olevelRequired ?? []).join(", ")).split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+    const minGrade = ("pr-ogr" in edits ? edits["pr-ogr"] : pr.olevelRequiredMinGrade ?? "C6").trim() || "C6";
+    const same = items.join("|") === (pr.olevelRequired ?? []).join("|") && minGrade === (pr.olevelRequiredMinGrade ?? "C6");
+    const ok = same ? true : await send("PUT", `${base}/programmes/${pr.code}/olevel-required`, { items, minGrade }, `Required O’Level subjects for eligibility set for ${pr.name} (${session})`, "pr");
+    if (!ok) return false;
+    const screening = ("pr-scr" in edits ? edits["pr-scr"] : pr.additionalScreening ?? "").trim();
+    if (screening === (pr.additionalScreening ?? "").trim()) return true;
+    return send("PUT", `${base}/programmes/${pr.code}/screening`, { additionalScreening: screening || null }, `Additional screening ${screening ? "stated" : "removed"} for ${pr.name} (${session})`, "pr");
+  }
   const progTab = (
     <>
       <Note kind="info" title="Quotas and cut-offs are set here, per programme">
@@ -507,10 +543,11 @@ export function AdmissionSettings({
                     subjects: ("pr-dsubj" in edits ? edits["pr-dsubj"] : (editingProgramme.deSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                     choose: num("pr-dchoose" in edits ? edits["pr-dchoose"] : String(editingProgramme.deChoose ?? "")),
                   }, `Required Direct Entry subjects set for ${editingProgramme.name} (${session})`, "pr");
-                  if (ok3) { setEditing(null); setEdits({}); }
+                  const ok4 = ok3 && await saveEligibility(editingProgramme);
+                  if (ok4) { setEditing(null); setEdits({}); }
                 }}
               >
-                {busy === "pr" ? "Saving…" : "Save O’Level, UTME & DE subjects"}
+                {busy === "pr" ? "Saving…" : "Save O’Level, UTME, DE & eligibility rules"}
               </Btn>
             ) : (
               <Btn
@@ -529,7 +566,8 @@ export function AdmissionSettings({
                     deSubjects: ("pr-dsubj" in edits ? edits["pr-dsubj"] : (editingProgramme.deSubjects ?? []).join(", ")).split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
                     deChoose: num("pr-dchoose" in edits ? edits["pr-dchoose"] : String(editingProgramme.deChoose ?? "")),
                   }, `Rule stated for ${editingProgramme.name} (${session})`, "pr");
-                  if (ok) { setEditing(null); setEdits({}); }
+                  const okE = ok && await saveEligibility(editingProgramme);
+                  if (okE) { setEditing(null); setEdits({}); }
                 }}
               >
                 {busy === "pr" ? "Saving…" : "Save the rule"}
@@ -538,7 +576,7 @@ export function AdmissionSettings({
           </>}
         >
           {policy.inForce ? (
-            <Note kind="bad" title="These settings are in force — only the relevant O’Level subjects may be corrected">
+            <Note kind="bad" title="These settings are in force — only the subject sets and the eligibility rules may be corrected">
               The cut-off, the requirement text and the UTME/Direct-Entry rules a candidate is ranked against are frozen once the policy is in force. You may still correct the <b>relevant O&rsquo;Level subjects</b> the screening counts, because that names which subjects the score reads — a data correction, not a change to the standard.
             </Note>
           ) : (
@@ -566,6 +604,15 @@ export function AdmissionSettings({
             </Field>
             <Field id="pr-dsubj" label="Direct Entry subjects (checked)" hint="The set a DE candidate is checked against · comma or one per line · “/” = alternatives (e.g. Biology/Zoology) · read from the captured award, not from CAPS · English is NOT auto-counted · blank = not checked" full>
               <textarea id="pr-dsubj" className="ctl" rows={2} value={"pr-dsubj" in edits ? edits["pr-dsubj"] : (editingProgramme.deSubjects ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-dsubj": e.target.value })} placeholder="Physics, Chemistry, Biology" />
+            </Field>
+            <Field id="pr-oreq" label="Required O’Level subjects for eligibility (checked)" hint="Comma = all required at the grade below · “/” = any-one-of (e.g. Economics/Accounting) · “N of A/B/C” = any N of a set · English and Mathematics are checked separately as the compulsory credits · blank = only the compulsory credits and the credit count are checked" full>
+              <textarea id="pr-oreq" className="ctl" rows={2} value={"pr-oreq" in edits ? edits["pr-oreq"] : (editingProgramme.olevelRequired ?? []).join(", ")} onChange={(e) => setEdits({ ...edits, "pr-oreq": e.target.value })} placeholder="Physics, Chemistry, Biology/Agricultural Science" />
+            </Field>
+            <Field id="pr-ogr" label="Minimum grade for those subjects" hint="C6 is a credit · a pass (D7/E8) only where Senate allows it">
+              <select id="pr-ogr" className="ctl" value={"pr-ogr" in edits ? edits["pr-ogr"] : editingProgramme.olevelRequiredMinGrade ?? "C6"} onChange={(e) => setEdits({ ...edits, "pr-ogr": e.target.value })}>{["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8"].map((g) => <option key={g} value={g}>{g}</option>)}</select>
+            </Field>
+            <Field id="pr-scr" label="Additional screening" hint="Named here when the programme requires more than the academic rules (an aptitude test, an interview, a medical) · a candidate who meets the rules then reads ACADEMICALLY ELIGIBLE — ADDITIONAL SCREENING REQUIRED · blank = none">
+              <input id="pr-scr" className="ctl" value={"pr-scr" in edits ? edits["pr-scr"] : editingProgramme.additionalScreening ?? ""} onChange={(e) => setEdits({ ...edits, "pr-scr": e.target.value })} placeholder="Aptitude test and interview" autoComplete="off" />
             </Field>
             <Field id="pr-dchoose" label="DE passes required" hint="How many of the set above the candidate must offer (e.g. 2 for “two ’A’ Level passes”) · blank defaults to two">
               <input id="pr-dchoose" className="ctl tnum" inputMode="numeric" value={"pr-dchoose" in edits ? edits["pr-dchoose"] : editingProgramme.deChoose ?? ""} onChange={(e) => setEdits({ ...edits, "pr-dchoose": e.target.value })} autoComplete="off" placeholder="2" />

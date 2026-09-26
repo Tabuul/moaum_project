@@ -387,6 +387,7 @@ Students
 Admissions
  → Post-UTME CBT Schedule → /admissions/putme
  → Admissions → /admissions
+ → Programme Eligibility → /admissions/eligibility
  → Admitted List → /admissions/applicants
 Staff
  → Staff Records → /staff  (refused by API — payroll readers exclude registrar)
@@ -480,6 +481,7 @@ Students
  → Certificates → /credentials/certificates
 Admissions
  → Admission Settings → /admissions/settings
+ → Programme Eligibility → /admissions/eligibility
  → Upload Applicants and Candidates → /admissions/caps
  → Upload Passport, DOB & O'Level → /admissions/candidate-data
  → Migrate Old-Portal Applicants → /admissions/migrate
@@ -1697,9 +1699,9 @@ Every module is described against the same 22 points, as a two-column table, fol
 |---|---|
 | Purpose | The office side of the UTME/Direct Entry cycle: admission settings put in force under a Central Admissions Committee minute; the load cut-off; CAPS lists loaded, committed or withdrawn; passports, dates of birth and O'Level recorded; screening seated and scored (legacy batches or the V260 CBT schedule with centres, rooms, slots, days, batches, publish, check-in by QR); merit lists, Board decisions and releases; the JAMB status list; intake to the register with admission numbers; Direct Entry screening; old-portal migration; reconsiderations. |
 | Users / roles | `LOADERS` academic, registrar (CAPS, merit, DE awards, JAMB list, programme aliases); `READERS` academic, registrar, dregistrar, dvc, vc, records, ict, admin, super; `OFFICE` academic, registrar, dregistrar (decisions, releases, batches, scores); `CONFIRMERS` + bursar; `REGISTRY` + records (clearance recording); `IMPORTERS` + ict, super; `SCORE_UPLOADERS` academic, registrar, dregistrar, ict, admin, super; `/post-utme-computed` academic, super; settings `SECRETARIAT` academic, registrar, dregistrar (readers add dean, hod); intake `StudentController.WRITERS` academic, registrar, dregistrar; CBT `OFFICE` academic, registrar, dregistrar, super; `DOOR` academic, registrar, dregistrar, records, ict, super. |
-| Navigation | Academic Office → Admissions group (thirteen items, §2.9); Registrar → Post-UTME CBT Schedule, Admissions, Admitted List; ict/admin → CBT Schedule, Post-UTME Scores (admin also Admissions); records, dregistrar, super → CBT Schedule; sub-pages `/admissions/putme/{setup,candidates,checkin,batches/{id}}`, `/admissions/screened`, `/admissions/screening/{batch}` from buttons. |
+| Navigation | Academic Office → Admissions group (fourteen items, §2.9, including Programme Eligibility `/admissions/eligibility`); Registrar → Post-UTME CBT Schedule, Admissions, Programme Eligibility, Admitted List; ict/admin → CBT Schedule, Post-UTME Scores (admin also Admissions); records, dregistrar, super → CBT Schedule; sub-pages `/admissions/putme/{setup,candidates,checkin,batches/{id}}`, `/admissions/screened`, `/admissions/screening/{batch}` from buttons. |
 | Dashboard | Report on Admissions tiles Applications / Screened / Offers issued / Accepted; ApplicantsDesk tiles; CBT dashboard tiles, validation report and breakdowns; Academic dashboard "Committed admission list". |
-| Main features | Settings (weights 70/30, ratios, four criteria, quotas, catchment, per-programme cut-off/quota/subject rules, O'Level grading, exam-screened programmes, "Put in force" with a CAC minute, "Begin from {previous}"); load cut-off; CAPS parse in the browser, alias mapper, load/commit/withdraw/reset; candidate data uploads; legacy screening batches and hall lists; CBT exam setup, generate, publish and notify, move, unschedule, postpone/cancel, attendance sheet, check-in desk; scores per application, bulk CSV, zero missing, from O'Level, release, clear; merit list (UTME only) and "Record all programmes"; decision modal; release decisions; JAMB status upload; "Bring N candidates onto the register" (intake); DE award capture; migrate old-portal applicants; reconsideration suggestions. |
+| Main features | Settings (weights 70/30, ratios, four criteria, quotas, catchment, per-programme cut-off/quota/subject rules, O'Level grading, exam-screened programmes, "Put in force" with a CAC minute, "Begin from {previous}"); load cut-off; CAPS parse in the browser, alias mapper, load/commit/withdraw/reset; candidate data uploads; legacy screening batches and hall lists; CBT exam setup, generate, publish and notify, move, unschedule, postpone/cancel, attendance sheet, check-in desk; scores per application, bulk CSV, zero missing, from O'Level, release, clear; merit list (UTME only) and "Record all programmes"; decision modal; release decisions; JAMB status upload; "Bring N candidates onto the register" (intake); DE award capture; migrate old-portal applicants; reconsideration suggestions; **Programme Eligibility** (V266): every submitted applicant read against the settings — verdict, failed requirements, suggested programmes, server-side search and filters, View Matching Details, Recalculate / Evaluate the unevaluated, the programme-change queue (Approve revalidates and changes the programme; Reject needs a reason), three reports; the rule modal's required O'Level subjects, minimum grade and additional screening; the Subject equivalencies panel. |
 | Create | Many (see §4.17–4.20); the intake `POST /api/v1/student/intake/{session}` is wired at `Admissions.tsx:49`. |
 | View | Screening register, screened pool, hall list, applicants report, merit table, DE table, candidates table, batch page. |
 | Edit | Settings while DRAFT (quotas, catchment, subject sets and closures remain editable in force); programme names/aliases; CBT places until publish. |
@@ -1728,8 +1730,8 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Users / roles | Applicant only (`OFFICE_applicant`); public lookup, register, sign-in, forgot, reset. |
 | Navigation | `/apply` (public), then My application → Overview `/applicant`, Application Form, Application Fee; Screening → Screening Slip, Screening Result; Admission → Admission Status, Accept Your Offer, Document Clearance, Matriculation. |
 | Dashboard | Overview: passport card, tiles Application number / Programme applied for / UTME score / Stage n of 10, the ten-step rail, "Dates that matter", "Notices sent to you". |
-| Main features | Lookup on every keystroke once the number is shaped; biodata read-only from CAPS; next of kin; declaration and submit; fee references (`MOAUM-APP-…`, `MOAUM-ACC-…`, 24 h) paid by card/USSD/PayDirect/bank; slip with QR once the batch is published; result with aggregate breakdown and merit position; status, undertaking, acceptance fee, decline; six-item clearance checklist (read-only); admission and matric number display. |
-| Create | `POST /applicant/register`; `POST /me/fee-references`; `POST /me/submit`; `POST /me/accept`; `POST /me/decline`. |
+| Main features | Lookup on every keystroke once the number is shaped; biodata read-only from CAPS; next of kin; declaration and submit; fee references (`MOAUM-APP-…`, `MOAUM-ACC-…`, 24 h) paid by card/USSD/PayDirect/bank; slip with QR once the batch is published; result with aggregate breakdown and merit position; status, undertaking, acceptance fee, decline; six-item clearance checklist (read-only); admission and matric number display; **Programme eligibility** (V266) on the Overview and Admission Status once submitted — the verdict with its reasons, View eligibility details, the programmes the applicant may be eligible for with Request Change, Recalculate. |
+| Create | `POST /applicant/register`; `POST /me/fee-references`; `POST /me/submit`; `POST /me/accept`; `POST /me/decline`; `POST /me/eligibility/change` (a programme the engine listed only). |
 | View | Every screen renders from one `GET /api/v1/applicant/me`. |
 | Edit | Next of kin until submission; PASSPORT replaceable after submission (API only). |
 | Delete / deactivate | Decline the offer (not reinstated). |
@@ -3560,6 +3562,11 @@ Admissions → Upload Passport, DOB & O'Level → /admissions/candidate-data
 > **Screenshot Required:** Candidate data — `/admissions/candidate-data` — the three panels and the gallery.
 
 #### 4.7.4 Report on Admissions (the admissions desk)
+
+```text
+Admissions → Programme Eligibility → /admissions/eligibility
+```
+**URL** `/admissions/eligibility?session=` · **Purpose** The automatic admission course suggestion engine's register (V266): every submitted applicant against the session's admission settings — the verdict on the applied programme, the failed requirements, the suggested programmes, the programme-change queue and the reports. · **Who** academic, registrar (menu); readers dregistrar, records, bursar, ict, admin, super, dvc, vc; acting academic, registrar, dregistrar, super. · **Layout** PageHead with Admissions / Admission Settings links, Evaluate the unevaluated, Recalculate all, Excel / PDF; eight tiles; filter bar (Eligibility, Faculty, Department, Programme applied, Recommended programme, Mode, Search); "Applicant eligibility" table (S/N, Applicant, Applied programme, Eligibility, Failed requirements, Suggested programmes, Change, View Matching Details / Recalculate); "Programme change requests" (Approve / Reject / Details); "Reports" (Candidates not eligible, Alternative programme suggestions, Statistics); the details modal (O'Level and UTME on record, check tables, suggested programmes with View Eligibility Details and Request Change, change requests, trail).
 
 ```text
 Admissions → Report on Admissions / Admissions → /admissions

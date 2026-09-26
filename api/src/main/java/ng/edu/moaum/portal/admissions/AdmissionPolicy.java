@@ -18,7 +18,12 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
                               List<ProgrammeCutoff> programmeCutoffs, List<ProgrammeRule> programmes,
                               List<PolicyFinding> findings,
                               /** the local governments in the University's catchment, for the Locality basis (V054) */
-                              List<String> catchmentLgas) {
+                              List<String> catchmentLgas,
+                              /** a subject accepted in place of another under these settings (V266) */
+                              List<Equivalence> equivalences) {
+
+    public record Equivalence(String subject, String equivalent, String scope) {
+    }
 
     public record Criterion(String criterion, int percent) {
     }
@@ -46,7 +51,13 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
                                 /** how many of the DE subject set a candidate must offer (V200); null = not gated */
                                 Integer deChoose,
                                 /** closed for the session (V023): not admitted into, needs no rule */
-                                boolean closed, String closedReason) {
+                                boolean closed, String closedReason,
+                                /** the required O'Level subjects the eligibility engine checks (V266, scope OLEVEL_REQUIRED): items under the shared grammar */
+                                List<String> olevelRequired,
+                                /** the minimum grade those required subjects must carry (V266); C6 when unstated */
+                                String olevelRequiredMinGrade,
+                                /** more than the academic requirements — an interview, a portfolio, a practical (V266); null when none */
+                                String additionalScreening) {
     }
 
     /** One line of the register of sessions that have settings at all. */

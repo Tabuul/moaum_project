@@ -707,7 +707,7 @@ One read: the alumni register for the Registry, the academic offices and audit.
 |---|---|---|---|---|
 | GET | `/api/v1/alumni` | alumni | academic, admin, audit, deputyaudit, dregistrar, dvc, records, registrar, super, vc | `alumni/AlumniController.java:26` |
 
-### Applicant portal (`applicant`, 14 endpoints)
+### Applicant portal (`applicant`, 17 endpoints)
 
 The undergraduate applicant's own portal: look up a JAMB number, register an account, sign in, biodata and next of kin, documents (base64 upload and download), fee references, submission with the declaration, acceptance of an offer with the undertaking, and password reset. Applicant-only except the public doors listed in §1.12.
 
@@ -723,6 +723,9 @@ The undergraduate applicant's own portal: look up a JAMB number, register an acc
 | POST | `/api/v1/applicant/me/fee-references` | feeReference | applicant | `applicant/ApplicantController.java:102` |
 | PUT | `/api/v1/applicant/me/next-of-kin` | nextOfKin | applicant | `applicant/ApplicantController.java:96` |
 | POST | `/api/v1/applicant/me/submit` | submit | applicant | `applicant/ApplicantController.java:123` |
+| GET | `/api/v1/applicant/me/eligibility` | the applicant's own current evaluation: verdict, reasons, the eligible alternatives, change requests, `canRequestChange`; `available` false before submission | applicant | `admissions/AdmissionEligibilityController.java:292` |
+| POST | `/api/v1/applicant/me/eligibility/recalculate` | re-read the applicant's own record (APPLICANT) | applicant | `admissions/AdmissionEligibilityController.java:311` |
+| POST | `/api/v1/applicant/me/eligibility/change` | request a change to a programme the current run found the applicant eligible for `{ programmeCode, note }`; otherwise 422 `ELIG_NOT_SUGGESTED` | applicant | `admissions/AdmissionEligibilityController.java:320` |
 | POST | `/api/v1/applicant/register` | register | public | `applicant/ApplicantController.java:72` |
 | POST | `/api/v1/applicant/reset` | reset | public | `applicant/ApplicantController.java:154` |
 | POST | `/api/v1/applicant/sign-in` | signIn | public | `applicant/ApplicantController.java:77` |
@@ -1733,7 +1736,7 @@ Change of programme (transfers): the student's application and processing fee, t
 | POST | `/api/v1/transfers/{id}/senate` | senate | dregistrar, dvc, registrar, super, vc | `transfers/TransferController.java:276` |
 | POST | `/api/v1/transfers/{id}/withdraw` | withdraw | academic, dregistrar, registrar, super | `transfers/TransferController.java:286` |
 
-### Undergraduate admissions (`admissions`, 112 endpoints)
+### Undergraduate admissions (`admissions`, 124 endpoints)
 
 Undergraduate admissions: CAPS batches loaded whole, reconciled and committed; programmes and their JAMB aliases; the merit list and offers within quota; Direct Entry awards and screening; O'Level grading and JAMB's own results; session policy, cut-offs and catchment; applicants, applications, documents, screening scores, decisions and their release; fee references and applicant fees; reconsiderations; candidate data (passports, dates of birth) and the JAMB admission template; the migration of paid applicants from the old portal; and the Post-UTME CBT (V260) — exam, centres, rooms, slots and days, batches with seating, publication and the slip. Academic Office, Registrar, Deputy Registrar (Academic Affairs), Exams and Records, Bursar and ICT act; management reads.
 
@@ -1793,6 +1796,18 @@ Undergraduate admissions: CAPS batches loaded whole, reconciled and committed; p
 | GET | `/api/v1/admissions/sessions/{session}/{year}/policy-findings` | policy | academic, admin, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionsController.java:208` |
 | PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/catchment` | the catchment local governments, for the Locality basis (V054) — replaces the set | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:142` |
 | PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/criteria` | criteria | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:52` |
+| GET | `/api/v1/admissions/sessions/{session}/{year}/eligibility` | the eligibility register (V266): submitted applicants against the settings, with `q`, `fac`, `dept`, `prog`, `status`, `recommended`, `mode`, `page`, `size`; returns rows, stats, options, recommendable | academic, admin, bursar, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionEligibilityController.java:78` |
+| GET | `/api/v1/admissions/sessions/{session}/{year}/eligibility/stats` | the eligibility statistics for the session | academic, admin, bursar, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionEligibilityController.java:141` |
+| GET | `/api/v1/admissions/sessions/{session}/{year}/eligibility/{appId}` | one application's current evaluation (re-read when stale or the rules moved) — application, run, applied, alternatives, changes, events, O'Level and UTME on record; logs RECOMMENDATION_VIEWED | academic, admin, bursar, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionEligibilityController.java:149` |
+| POST | `/api/v1/admissions/sessions/{session}/{year}/eligibility/{appId}/recalculate` | re-evaluate one application (OFFICER) | academic, dregistrar, registrar, super | `admissions/AdmissionEligibilityController.java:198` |
+| POST | `/api/v1/admissions/sessions/{session}/{year}/eligibility/recalculate-all` | evaluate every submitted application, or with `onlyMissing=true` only those without a current evaluation (SYSTEM) | academic, dregistrar, registrar, super | `admissions/AdmissionEligibilityController.java:208` |
+| POST | `/api/v1/admissions/sessions/{session}/{year}/eligibility/{appId}/change` | request a change of programme on the applicant's behalf `{ programmeCode, note }` | academic, dregistrar, registrar, super | `admissions/AdmissionEligibilityController.java:229` |
+| GET | `/api/v1/admissions/sessions/{session}/{year}/eligibility/changes` | the programme-change requests, optionally `?state=` | academic, admin, bursar, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionEligibilityController.java:240` |
+| POST | `/api/v1/admissions/sessions/{session}/{year}/eligibility/changes/{id}/approve` | approve a change: eligibility re-read, programme changed, re-evaluated, applicant told `{ note }` | academic, dregistrar, registrar, super | `admissions/AdmissionEligibilityController.java:256` |
+| POST | `/api/v1/admissions/sessions/{session}/{year}/eligibility/changes/{id}/reject` | reject a change with its reason `{ note }` (required) | academic, dregistrar, registrar, super | `admissions/AdmissionEligibilityController.java:263` |
+| PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/programmes/{code}/olevel-required` | the O'Level subjects the eligibility engine requires and their minimum grade `{ items, minGrade }` (V266) | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:143` |
+| PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/programmes/{code}/screening` | the additional screening a programme requires beyond the academic rules `{ additionalScreening }` (V266) | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:153` |
+| PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/equivalences` | the subject equivalences the engine honours `{ rows: [{ subject, equivalent, scope }] }` — replaces the set (V266) | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:163` |
 | PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/faculties/{code}` | faculty | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:58` |
 | PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/faculties/{code}/quota` | facultyQuota | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:85` |
 | PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/nuc-quota` | nucQuota | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:79` |

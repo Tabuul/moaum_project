@@ -50,6 +50,7 @@ export const ROUTES: Record<string, string> = {
   "t/migration": "/migrations",
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
+  "t/admeligibility": "/admissions/eligibility",
   "t/capsintake": "/admissions/caps",
   "t/applicants": "/admissions/applicants",
   "t/merit": "/admissions/merit",

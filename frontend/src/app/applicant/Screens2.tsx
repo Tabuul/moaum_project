@@ -11,6 +11,7 @@ import { KvGrid, LinkBtn, Note, Panel, PBody, Tick, Tiles, Two } from "@/compone
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 import { Rail, when } from "./common";
+import { Eligibility } from "./Eligibility";
 
 /* ── 4. screening slip: ScreeningSlip.tsx (V260) ── */
 
@@ -85,6 +86,7 @@ export function Status({ a }: { a: Application }) {
         <Note kind="info" title="Your application is with the Admissions Board">
           The Board meets once every screening score has been released and every O&rsquo;Level result has been verified with the examination bodies. Decisions are published here and by email on the same day &mdash; there is no earlier list circulating anywhere.
         </Note>
+        {at(a, 2) ? <Eligibility /> : null}
         <Rail a={a} />
         <Panel title="What the Board can decide" right="Three outcomes">
           <DTable cols={["Outcome", "What it means"]} rows={[
@@ -103,6 +105,7 @@ export function Status({ a }: { a: Application }) {
         <Note kind={a.decision === "WAITING" ? "info" : "bad"} title={a.decision === "WAITING" ? "You are on the waiting list" : "You were not offered a place this session"}>
           {a.decision === "WAITING" ? "You are above the cut-off, but the approved quota is full. You are offered a place only if an offered candidate fails to accept in time; this page changes the moment that happens." : "You may be considered for a related programme in the same faculty if places remain, or reapply next session."}{a.decisionNote ? ` ${a.decisionNote}` : ""}
         </Note>
+        <Eligibility />
         <Rail a={a} />
       </>
     );

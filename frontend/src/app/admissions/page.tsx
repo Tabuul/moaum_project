@@ -5,6 +5,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Admissions } from "./Admissions";
 import { ApplicantsDesk, type Desk } from "./ApplicantsDesk";
 import { Reconsiderations } from "./Reconsiderations";
+import { LinkBtn, Note } from "@/components/proto/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function AdmissionsPage({ searchParams }: { searchParams: P
     <Shell route="t/admissions" me={me.ok ? me.data : null}>
       {cycle.ok ? <Admissions cycle={cycle.data} actingOffice={office} /> : <ProblemNotice problem={cycle.problem} />}
       {desk.ok ? <ApplicantsDesk desk={desk.data} actingOffice={office} /> : <ProblemNotice problem={desk.problem} />}
+      <Note kind="info" title="Programme eligibility and course suggestions" action={<LinkBtn kind="primary" href={`/admissions/eligibility?session=${encodeURIComponent(session)}`}>Open Programme Eligibility</LinkBtn>}>Every submitted applicant is read against the session&rsquo;s admission settings; where the applied programme is refused, the programmes the candidate qualifies for are listed with every reason, and a change of programme is requested and decided on the record.</Note>
       <Reconsiderations session={session} actingOffice={office} />
     </Shell>
   );

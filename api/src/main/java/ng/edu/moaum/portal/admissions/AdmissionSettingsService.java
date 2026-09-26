@@ -85,7 +85,43 @@ public class AdmissionSettingsService {
                 r.nucQuota(), r.weightUtme(), r.weightPutme(), r.ratioUtme(), r.ratioDe(), r.ratioScience(), r.ratioArts(),
                 r.elgCapPct(), r.deptSharePct(), r.indexPrelimPlaces(), r.indexPerZone(), r.mpfOnly(), r.screeningRequired(),
                 settings.criteria(session), caps.facultyCutoffs(session), caps.programmeCutoffs(session),
-                settings.programmeRules(session), caps.policyFindings(session), settings.catchmentLgas(session));
+                settings.programmeRules(session), caps.policyFindings(session), settings.catchmentLgas(session), settings.equivalences(session));
+    }
+
+    /** the required O'Level subjects the eligibility engine checks (V266) — a data correction like the other subject sets */
+    @Transactional
+    public AdmissionPolicy setProgrammeOlevelRequired(String session, String programmeCode, List<String> items, String minGrade) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        settings.setProgrammeOlevelRequired(id, code, items, minGrade);
+        return policy(session);
+    }
+
+    /** the additional screening a programme needs beyond the academic requirements (V266) */
+    @Transactional
+    public AdmissionPolicy setProgrammeScreening(String session, String programmeCode, String text) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        String code = programmeCode.trim().toUpperCase();
+        if (!settings.programmeExists(code)) {
+            throw new NotFound("programme", code);
+        }
+        settings.setProgrammeScreening(id, code, text);
+        return policy(session);
+    }
+
+    /** the subject equivalences (V266): stated by the Committee, replaced whole; never inferred */
+    @Transactional
+    public AdmissionPolicy saveEquivalences(String session, List<AdmissionPolicy.Equivalence> rows) {
+        UUID id = settings.id(session).orElseThrow(() -> new NotFound("admission settings for", session));
+        List<AdmissionPolicy.Equivalence> clean = (rows == null ? List.<AdmissionPolicy.Equivalence>of() : rows).stream()
+                .filter(e -> e.subject() != null && e.equivalent() != null && !e.subject().isBlank() && !e.equivalent().isBlank()
+                        && !e.subject().trim().equalsIgnoreCase(e.equivalent().trim()))
+                .distinct().toList();
+        settings.saveEquivalences(id, clean);
+        return policy(session);
     }
 
     /** The catchment local governments, stated for the Locality basis; replaces the set. This is the

@@ -478,6 +478,11 @@ A person may hold several offices at once (`office_assignment` rows), each with 
    ◀──policy_id── faculty_quota ──▶ ref.faculty
    ◀──policy_id── programme_closed ──▶ ref.programme;  catchment_lga;  selection_criterion;  programme_olevel_allowance
  admissions.load_cutoff, olevel_grading ◀── olevel_grade_point, olevel_compulsory, screening_exam_programme, applicant_fee  (per session)
+   ◀──policy_id── subject_equivalence  (V266; every rules table bumps session_policy.rules_version)
+
+ admissions.application ◀──application_id── eligibility_run  (V266: one current per application; policy_id, rules_version, applied_result, alternatives, stale, superseded_at)
+                                              ◀──run_id── eligibility_result  (APPLIED | ALTERNATIVE per programme; checks jsonb, reasons; audit-exempt)
+                        ◀──application_id── eligibility_event  (write-once trail)   ◀──application_id── programme_change_request  (REQUESTED → APPROVED / REJECTED / CANCELLED)
 ```
 
 The chain is *file → row → candidate → account → application*. The row from JAMB is kept verbatim and audit-exempt; the act of loading it is audited on the batch. Policy for a session hangs off `session_policy`, which is frozen once `IN_FORCE`.
@@ -945,6 +950,9 @@ Total tables: 331 across 26 schemas (the `public` schema holds only the deployme
 | `de_award` | ── 2 · the DE candidate's prior qualification and its subjects ───────────── One award per basis a candidate holds (a few hold two, e.g. NCE and an 'A' Level). Unlike O'Level — which is read from the JAMB attachment and re-derived at will — a DE award is read  | id | iam.person | 8 | (session, jamb_key, basis) | 1 | attached | V200 |
 | `de_award_subject` | A subject of a Direct Entry award, read by the DE combination gate | id | de_award | 4 | (award_id, subject) | 1 | attached | V200 |
 | `faculty_quota` | ── 2.3 · the faculty quota, and 2.13 · the faculty cut-off ──────────── | policy_id, faculty_code | session_policy, ref.faculty | 6 |  | 1 | attached | V008 |
+| `eligibility_event` | ── the trail of the course suggestion engine (V266) ──────────────────── write-once: EVALUATED, RECOMMENDATION_GENERATED, RECOMMENDATION_VIEWED, PROGRAMME_CHANGE_REQUESTED / APPROVED / REJECTED | id | application, eligibility_run | 10 |  | 0 | write-once | V266 |
+| `eligibility_result` | one programme's reading within a run — APPLIED or ALTERNATIVE, the verdict, the checks (requirement · candidate · status · mandatory) and the reasons | id | eligibility_run, ref.programme | 12 |  | 0 | exempt | V266 |
+| `eligibility_run` | ── one evaluation of one application (V266) ─────────────────────────── the applied programme's verdict, the count of eligible alternatives, the policy and its rules version, the trigger, stale and superseded_at; one current per application | id | application, candidate, session_policy | 20 |  | 1 | attached | V266 |
 | `fee_reference` | An applicant's payment reference for the APPLICATION or ACCEPTANCE fee, valid 24 hours, confirmed by the Bursary or a gateway | id | application | 12 | (reference); (receipt_no) | 1 | attached | V021 |
 | `jamb_admission` | A row of JAMB's admission status list, matched to a candidate where the registration number is on the register | id | candidate | 20 | (session, jamb_reg_no) | 1 | attached | V081 |
 | `load_cutoff` | The one UTME cut-off a session loads its JAMB lists under, stated before the file is uploaded. Faculty and programme cut-offs are the screening's. | session |  | 3 |  | 1 | attached | V024 |
@@ -976,6 +984,7 @@ Total tables: 331 across 26 schemas (the `public` schema holds only the deployme
 | `pg_research_supervisor` | ── 2 · the supervisors assigned to a candidate (Policy 14) ────────────────── | id | pg_research, iam.person | 8 |  | 1 | attached | V209 |
 | `pg_score` | ── 4 · the score for a registered course (CA + exam → total → grade) ──────── | id | pg_registration_entry, iam.person | 9 | (entry_id) | 1 | attached | V211 |
 | `pg_semester` | ── 2 · the semester windows of each PG session ───────────────────────────── | session, number | pg_academic_session | 10 |  | 1 | attached | V224 |
+| `programme_change_request` | a request to move an application to a programme the engine found the candidate eligible for; one open per application; decided by the Office with eligibility re-read at the decision | id | application, candidate, ref.programme, eligibility_run | 19 | (open per application) | 1 | attached | V266 |
 | `programme_closed` | A programme closed for admission under a session's policy | policy_id, programme_code | session_policy, ref.programme | 4 |  | 1 | attached | V023 |
 | `programme_olevel_allowance` | A per-programme exception to the compulsory O'Level credit: the programme accepts a pass in the named subject (or waives it). For the few programmes whose own requirements differ from the University's general rule. | policy_id, programme_code, subject | session_policy | 3 |  | 1 | attached | V053 |
 | `programme_rule` | ── the programme rule ───────────────────────────────────────────────── One row per programme per session. A programme with no row cannot be admitted into: that is the point, not an omission to work around. | policy_id, programme_code | session_policy, ref.programme | 9 |  | 1 | attached | V008 |
@@ -991,6 +1000,7 @@ Total tables: 331 across 26 schemas (the `public` schema holds only the deployme
 | `screening_exam_programme` | The programmes a session screens by the post-UTME examination. Their screening component is the examination score alone; the O'Level grading is not applied to them. | session, programme_code | ref.programme | 3 |  | 1 | attached | V022 |
 | `selection_criterion` | ── 2.4 · the four selection criteria ────────────────────────────────── | policy_id, criterion | session_policy | 3 |  | 0 | exempt | V008 |
 | `session_policy` | ── the session's own settings ───────────────────────────────────────── | id |  | 18 | (session) | 1 | attached | V008 |
+| `subject_equivalence` | a subject the Secretariat accepts in place of the one a rule names, for OLEVEL, UTME or ANY; nothing is inferred beyond these rows (V266) | id | session_policy | 6 | (policy, subject, equivalent, scope) | 1 | attached | V266 |
 | `suggestion_sent` | the record that a candidate has been emailed their suggestions | application_id | application | 4 |  | 0 | exempt | V106 |
 
 ### Schema `apimgmt` — API keys for integrations
