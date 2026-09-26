@@ -36,6 +36,8 @@ export interface Registration { id: string; status: string; level: number; submi
 export interface MenuItem {
   offering_id: string; course_code: string; title: string; units: number; kind: string; basis: string; owner_dept: string;
   carryover: boolean; failed_in: string | null; lecturer: string | null;
+  /** a course of an approved deferment, due since the return (V264): fixed on the form like a carry-over, never a failure */
+  deferred?: boolean; deferred_from?: string | null;
 }
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;

@@ -529,6 +529,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
+          { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/clearance", "icon": "check", "label": "Financial Clearance" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
@@ -867,6 +868,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
+          { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },

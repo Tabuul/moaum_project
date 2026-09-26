@@ -1,22 +1,22 @@
 "use client";
 
-/** The student's deferment desk (V259): where they stand now; the request form in three steps — the period and
- *  the reason, the documents, the review and declaration — and every request they have made, with its history
- *  and, once approved, the letter. Nothing is submitted until the student presses Submit on the review. */
+/** The student's deferment desk (V259, revised by V264): the application fee first — generated, paid by card or at the
+ *  bank, confirmed — and only then the form in three steps; where the request stands on the six-desk chain, with the
+ *  approval timeline; the academic effect of an approved deferment (no failure, no CGPA penalty, the programme timeline
+ *  extended by the period deferred); the deferred courses and where each stands; and every request with its history. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Me } from "@/lib/student-portal";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, KvGrid, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { ACTION_WORD, DOC_KIND, SEM, StatePil, ReturnPil, dayOf, periodOf, readBase64, returnOf, whenAt, type Deferment as Row, type DefermentFull, type MyDeferments, type Reason } from "@/lib/deferments";
-
-const OPEN = new Set(["DRAFT", "CORRECTION_REQUIRED"]);
-const LIVE = new Set(["SUBMITTED", "DEPT_RECOMMENDED", "FAC_RECOMMENDED", "APPROVED", "ACTIVE"]);
+import { PayByCard } from "../common";
+import { ACTION_WORD, ApprovalTimeline, COURSE_STATE, DOC_KIND, FeePil, IN_REVIEW, LIVE, OFFICE_OF, OPEN, SEM, STATE, StatePil, ReturnPil, dayOf, effectPairs, naira, periodOf, readBase64, returnOf, whenAt, type Deferment as Row, type DefermentFull, type MyDeferments, type Reason } from "@/lib/deferments";
+import { DocViewer } from "@/lib/deferment-viewer";
 
 export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
   const router = useRouter();
@@ -30,11 +30,16 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
   const [file, setFile] = useState<File | null>(null);
   const [fileKey, setFileKey] = useState(0);
   const [opened, setOpened] = useState<DefermentFull | null>(null);
+  const [viewing, setViewing] = useState<{ url: string; title: string; image: boolean } | null>(null);
   const reason: Reason | undefined = data.reasons.find((r) => r.code === form.reason);
   const sessionRow = data.sessions.find((x) => x.name === form.session);
   const semesters = Array.from({ length: sessionRow?.semesters ?? 2 }, (_, i) => i + 1);
+  const fee = data.fee;
+  const feePaid = !!fee && fee.state === "CONFIRMED" && !fee.used_by;
+  const feeAmount = Number(data.setting.fee ?? 0);
   const eligible = data.eligibility.eligible && !live;
   const editing = live && OPEN.has(live.state) ? live : null;
+  const formOpen = (eligible && (feePaid || feeAmount <= 0)) || !!editing;
 
   async function call<T>(path: string, method: "GET" | "POST" | "PUT", body: unknown, reason: string): Promise<T | null> {
     setBusy(true); setProblem(null);
@@ -47,6 +52,10 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
   }
   const payload = () => ({ kind: form.kind, session: form.session, semester: form.kind === "SEMESTER" ? Number(form.semester) : null, reason: form.reason, explanation: form.explanation.trim() || null, declared: form.declared });
 
+  async function startFee() {
+    const r = await call<{ reference: string }>("/fee", "POST", {}, "Deferment application fee reference generated");
+    if (r) { notify(`Reference ${r.reference} generated`); router.refresh(); }
+  }
   async function saveAndNext() {
     const d = draft ?? editing ? await call<DefermentFull>(`/${(draft ?? editing)!.id}`, "PUT", payload(), "Deferment request changed") : await call<DefermentFull>("", "POST", payload(), "Deferment request opened");
     if (d) { setDraft(d); setStep(2); }
@@ -78,40 +87,81 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
   function startEditing(d: Row) {
     setForm({ kind: d.kind, session: d.session, semester: String(d.semester ?? 1), reason: d.reason_code, explanation: d.explanation ?? "", declared: d.declared });
     setStep(1);
-    void openOne(d.id).then(() => { /* the documents show on step 2 */ });
+    void openOne(d.id);
     setDraft(null);
   }
   const current = draft ?? (editing ? opened && opened.id === editing.id ? opened : null : null);
+  const tl = data.timeline;
+  const deferred = data.deferredCourses;
 
   return (
     <>
-      <PageHead title="Deferment" description="Defer a semester or a whole academic session on the record: the department, the faculty and the Registry decide in turn; approved, the period is held and your return is named."
-        actions={live && live.state === "ACTIVE" ? <a className="btn btn--primary btn--sm" href={`/student/deferment/letter/${live.id}`} target="_blank" rel="noopener">Download Approval Letter</a> : undefined} />
+      <PageHead title="Deferment" description="Defer a semester or a whole academic session on the record. The application fee is paid first; the Bursary, your Head of Department, your faculty, the Academic Office, the Deputy Vice-Chancellor and the Senate Business Committee decide in turn; approved, the period is held, your courses for it are marked deferred (never failed) and your completion timeline moves by exactly the period deferred."
+        actions={live && ["ACTIVE", "APPROVED"].includes(live.state) ? <a className="btn btn--primary btn--sm" href={`/student/deferment/letter/${live.id}`} target="_blank" rel="noopener">Download Approval Letter</a> : undefined} />
 
       {live ? (
         live.state === "ACTIVE" || live.state === "APPROVED" ? (
-          <Note kind="ok" title={`DEFERMENT ${live.state === "ACTIVE" ? "ACTIVE" : "APPROVED"} · ${periodOf(live)}`} action={<a className="btn btn--ghost btn--sm" href={`/student/deferment/letter/${live.id}`} target="_blank" rel="noopener">Approval Letter</a>}>
-            Reference <b className="tnum">{live.reference}</b>. Expected return: <b>{returnOf(live)}</b>{live.return_on ? ` (${dayOf(live.return_on)})` : ""}. You cannot register courses for the deferred period; the department confirms your return when you present yourself. <ReturnPil status={live.return_status} />
+          <Note kind="ok" title={`DEFERMENT ${live.state === "ACTIVE" ? "IN FORCE" : "APPROVED"} · ${periodOf(live)}`} action={<a className="btn btn--ghost btn--sm" href={`/student/deferment/letter/${live.id}`} target="_blank" rel="noopener">Approval Letter</a>}>
+            Application number <b className="tnum">{live.reference}</b>. Expected return: <b>{returnOf(live)}</b>{live.return_on ? ` (${dayOf(live.return_on)})` : ""}. You cannot register courses for the deferred period; your department confirms your return when you present yourself, and your deferred courses then appear on your registration form. <ReturnPil status={live.return_status} />
           </Note>
         ) : OPEN.has(live.state) ? (
-          <Note kind={live.state === "CORRECTION_REQUIRED" ? "bad" : "info"} title={live.state === "CORRECTION_REQUIRED" ? "Your deferment request requires correction" : "You have a draft deferment request"} action={<Btn kind="primary" onClick={() => startEditing(live)}>Continue the Request</Btn>}>
-            {live.state === "CORRECTION_REQUIRED" ? `The desk returned ${live.reference}: ${live.correction_note ?? ""} Correct it and submit again.` : `${live.reference} for ${periodOf(live)} is not yet submitted.`}
+          <Note kind={live.state === "CORRECTION_REQUIRED" ? "bad" : "info"} title={live.state === "CORRECTION_REQUIRED" ? "Your deferment application requires correction" : "You have a draft deferment application"} action={<Btn kind="primary" onClick={() => startEditing(live)}>Continue the Application</Btn>}>
+            {live.state === "CORRECTION_REQUIRED" ? <>Returned by the <b>{live.returned_by_office ? (OFFICE_OF[live.returned_from_state ?? ""] ?? live.returned_by_office) : "desk"}</b> on {dayOf(live.updated_at)}: {live.correction_note ?? ""} Correct it and submit it again; it goes back to the same desk.</> : `${live.reference} for ${periodOf(live)} is not yet submitted.`}
           </Note>
         ) : (
-          <Note kind="info" title="DEFERMENT REQUEST UNDER REVIEW" action={<Btn kind="ghost" disabled={busy} onClick={() => void cancel(live.id)}>Withdraw Request</Btn>}>
-            {live.reference} for {periodOf(live)} is {live.state === "SUBMITTED" ? "with your department" : live.state === "DEPT_RECOMMENDED" ? "with your faculty, recommended by the department" : "with the Registry, recommended by the department and the faculty"}. You are told by email at each turn.
+          <Note kind="info" title={`DEFERMENT APPLICATION · ${STATE[live.state]?.[0] ?? live.state}`} action={IN_REVIEW.has(live.state) ? <Btn kind="ghost" disabled={busy} onClick={() => void cancel(live.id)}>Withdraw Application</Btn> : undefined}>
+            {live.reference} for {periodOf(live)} is with the <b>{OFFICE_OF[live.state] ?? "desk"}</b>. You are told by email and text at each turn.
           </Note>
         )
       ) : !data.eligibility.eligible ? (
-        <Note kind="bad" title="DEFERMENT REQUEST NOT AVAILABLE">{data.eligibility.reason}</Note>
+        <Note kind="bad" title="DEFERMENT APPLICATION NOT AVAILABLE">{data.eligibility.reason}</Note>
       ) : (
-        <Note kind="info" title="No active deferment">You may ask to defer a semester or a session below. You have used {data.eligibility.used} of the {data.eligibility.allowed} session(s) the University allows.</Note>
+        <Note kind="info" title="No active deferment">You may apply to defer a semester or a session. You have used {data.eligibility.used} of the {data.eligibility.allowed} session(s) the University allows. The application fee is {naira(feeAmount)}; the form opens once it is confirmed.</Note>
       )}
 
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      {(eligible || editing) ? (
-        <Panel title={editing ? `Deferment request · ${editing.reference}` : "New deferment request"} right={<span className="sub2">Step {step} of 3</span>}>
+      {live && !OPEN.has(live.state) ? (
+        <Panel title="Deferment application" right={<StatePil state={live.state} />}>
+          <PBody>
+            <KvGrid cls="grid--4" pairs={[["Application number", <span key="r" className="tnum b600">{live.reference}</span>], ["Application fee", live.fee_amount != null ? naira(live.fee_amount) : naira(feeAmount)], ["Payment status", <FeePil key="f" state={live.fee_state ?? (live.fee_id ? "CONFIRMED" : null)} />],
+              ["Application status", <StatePil key="s" state={live.state} />], ["Current office", OFFICE_OF[live.state] ?? (["APPROVED", "ACTIVE"].includes(live.state) ? "Registry (in force)" : "—")], ["Period", periodOf(live)], ["Expected return", returnOf(live)], ["Submitted", dayOf(live.submitted_at)]]} />
+            <div className="eyebrow mt-3 mb-1">Approval timeline</div>
+            <ApprovalTimeline d={live} />
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {eligible && !editing && feeAmount > 0 ? (
+        <Panel title="Deferment application fee" right={<FeePil state={feePaid ? "CONFIRMED" : fee?.state ?? null} />}>
+          <PBody>
+            {feePaid ? (
+              <>
+                <KvGrid cls="grid--4" pairs={[["Amount", naira(fee!.amount)], ["Payment status", "PAID"], ["Transaction reference", <span key="r" className="tnum">{fee!.reference}</span>], ["Payment date", dayOf(fee!.confirmed_at)], ["Receipt", fee!.receipt_no ?? "—"]]} />
+                <div className="row mt-2">
+                  {fee!.receipt_no ? <><LinkBtn kind="ghost" href={`/student/receipt/${encodeURIComponent(fee!.reference)}`}>View Receipt</LinkBtn><a className="btn btn--ghost btn--sm" href={`/student/receipt/${encodeURIComponent(fee!.reference)}/pdf`} target="_blank" rel="noopener">Download Receipt</a></> : null}
+                  <span className="sub2">The application form below is open to you.</span>
+                </div>
+              </>
+            ) : fee && fee.state === "PENDING" ? (
+              <>
+                <KvGrid cls="grid--3" pairs={[["Amount", naira(fee.amount)], ["Payment status", "NOT PAID"], ["Payment reference", <span key="r" className="tnum">{fee.reference}</span>], ["Reference expires", whenAt(fee.expires_at)]]} />
+                <div className="mt-2"><PayByCard reference={fee.reference} amount={Number(fee.amount)} /></div>
+                <div className="sub2 mt-2">Pay by card or USSD here, or at any bank branch quoting the reference; the Bursary confirms a bank payment. The form opens the moment the payment is confirmed. The fee is not refunded if the application is refused.</div>
+              </>
+            ) : (
+              <>
+                <KvGrid cls="grid--3" pairs={[["Application fee", naira(feeAmount)], ["Payment status", "NOT PAID"], ["Session", data.current.session ?? s.session]]} />
+                {fee && fee.state === "EXPIRED" ? <div className="sub2 mt-1">Your earlier reference {fee.reference} expired unpaid; generate a new one.</div> : null}
+                <div className="row mt-2"><Btn kind="primary" disabled={busy} onClick={() => void startFee()}>Pay {naira(feeAmount)} Deferment Fee</Btn><span className="sub2">A payment reference is generated; the application form opens when the payment is confirmed.</span></div>
+              </>
+            )}
+          </PBody>
+        </Panel>
+      ) : null}
+
+      {formOpen ? (
+        <Panel title={editing ? `Deferment application · ${editing.reference}` : "New deferment application"} right={<span className="sub2">Step {step} of 3</span>}>
           <PBody>
             <Steps list={[[step > 1 ? "done" : "now", "Period and reason", ""], [step > 2 ? "done" : step === 2 ? "now" : "todo", "Supporting documents", ""], [step === 3 ? "now" : "todo", "Review and submit", ""]]} />
             <div className="hr" />
@@ -119,6 +169,7 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
               <div className="stack">
                 <div className="eyebrow">Student information</div>
                 <KvGrid cls="grid--4" pairs={[["Student ID", s.matricNo ?? s.admissionNo ?? "—"], ["Name", s.name], ["Faculty", s.faculty], ["Department", s.department], ["Programme", s.programme], ["Level", String(s.level)], ["Current session", data.current.session ?? s.session], ["Current semester", SEM(data.current.semester ?? null) || "None open"]]} />
+                <div className="sub2">Your identity, programme and standing are read from the record; they are not typed here.</div>
                 <div className="eyebrow">Deferment information</div>
                 <div className="row row--end">
                   <Field id="df-kind" label="Deferment type" required style={{ flex: "1 1 200px" }}>
@@ -136,16 +187,16 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
                     <select id="df-reason" className="ctl" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })}><option value="">Choose…</option>{data.reasons.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}</select>
                   </Field>
                 </div>
-                <Field id="df-words" label="Explanation" required={!!reason && (reason.needs_words || reason.code === "OTHER")} hint={reason?.needs_document ? `A ${reason.label.toLowerCase()} deferment is supported by a document, uploaded at the next step.` : "A few sentences on your circumstances."}>
+                <Field id="df-words" label="Additional explanation" required={!!reason && (reason.needs_words || reason.code === "OTHER")} hint={reason?.needs_document ? `A ${reason.label.toLowerCase()} deferment is supported by a document, uploaded at the next step.` : "A few sentences on your circumstances."}>
                   <textarea id="df-words" className="ctl" rows={4} value={form.explanation} onChange={(e) => setForm({ ...form, explanation: e.target.value })} />
                 </Field>
                 <div className="row row--end"><span className="grow" /><Btn kind="primary" disabled={busy || !form.session || !form.reason} onClick={() => void saveAndNext()}>Save and Continue</Btn></div>
               </div>
             ) : step === 2 ? (
               <div className="stack">
-                <div className="sub2">{reason?.needs_document ? <b>A {reason.label.toLowerCase()} deferment requires at least one supporting document.</b> : "Supporting documents are optional for this reason; attach any that help the desk."} PDF, JPEG or PNG, at most 5 MB each, at most six.</div>
+                <div className="sub2">{reason?.needs_document ? <b>A {reason.label.toLowerCase()} deferment requires at least one supporting document.</b> : "Supporting documents are optional for this reason; attach any that help the desks."} PDF, JPEG or PNG, at most 5 MB each, at most six.</div>
                 {current?.documents.length ? (
-                  <ul className="plain">{current.documents.map((d) => <li key={d.id} className="row row--between" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}><span><a className="lnk" href={`/api/bff/api/v1/me/deferments/${current.id}/documents/${d.id}/content`} target="_blank" rel="noopener">{DOC_KIND[d.kind] ?? d.kind}</a><div className="sub2">{d.filename} · {(d.size_bytes / 1024).toFixed(0)} KB · {dayOf(d.uploaded_at)}</div></span></li>)}</ul>
+                  <ul className="plain">{current.documents.map((d) => <li key={d.id} className="row row--between" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}><span><button type="button" className="lnk" onClick={() => setViewing({ url: `/api/bff/api/v1/me/deferments/${current.id}/documents/${d.id}/content`, title: d.filename, image: d.content_type.startsWith("image/") })}>{DOC_KIND[d.kind] ?? d.kind}</button><div className="sub2">{d.filename} · {(d.size_bytes / 1024).toFixed(0)} KB · {dayOf(d.uploaded_at)}</div></span></li>)}</ul>
                 ) : <div className="sub2">Nothing uploaded yet.</div>}
                 <div className="row row--end">
                   <Field id="df-dk" label="Document" style={{ flex: "1 1 200px" }}><select id="df-dk" className="ctl" value={docKind} onChange={(e) => setDocKind(e.target.value)}>{Object.entries(DOC_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
@@ -159,52 +210,77 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
                 <div className="eyebrow">Deferment summary</div>
                 <KvGrid cls="grid--2" pairs={[["Student", s.name], ["Student ID", s.matricNo ?? s.admissionNo ?? "—"], ["Programme", s.programme], ["Department", s.department], ["Faculty", s.faculty],
                   ["Deferment type", form.kind === "SESSION" ? "Academic session" : "Semester"], ["Academic session", form.session], ["Semester", form.kind === "SESSION" ? "Whole session" : SEM(Number(form.semester))],
-                  ["Reason", reason?.label ?? "—"], ["Expected return", current ? returnOf(current) : "Named on submission"], ["Supporting documents", `${current?.documents.length ?? 0} uploaded`]]} />
+                  ["Reason", reason?.label ?? "—"], ["Expected return", current ? returnOf(current) : "Named on submission"], ["Supporting documents", `${current?.documents.length ?? 0} uploaded`],
+                  ["Application fee", current?.fee_receipt_no ? `${naira(current.fee_amount)} · receipt ${current.fee_receipt_no}` : feePaid && fee ? `${naira(fee.amount)} · receipt ${fee.receipt_no ?? fee.reference}` : "Waived"]]} />
                 {form.explanation ? <div className="sub2" style={{ whiteSpace: "pre-wrap" }}>{form.explanation}</div> : null}
                 <label className="row" style={{ gap: "var(--s-2)", alignItems: "flex-start" }}>
                   <input type="checkbox" checked={form.declared} onChange={(e) => setForm({ ...form, declared: e.target.checked })} />
-                  <span>I confirm that the information provided in this deferment request is accurate and understand that approval is subject to the University&rsquo;s academic regulations.</span>
+                  <span>I confirm that the information provided in this deferment application is accurate and understand that approval is subject to the University&rsquo;s academic regulations, that the application fee is not refunded, and that an approved deferment extends my expected completion by the period deferred.</span>
                 </label>
-                <div className="row row--between"><Btn kind="ghost" onClick={() => setStep(2)}>Back</Btn><Btn kind="go" disabled={busy || !form.declared} onClick={() => void submit()}>Submit Deferment Request</Btn></div>
+                <div className="row row--between"><Btn kind="ghost" onClick={() => setStep(2)}>Back</Btn><Btn kind="go" disabled={busy || !form.declared} onClick={() => void submit()}>Submit Deferment Application</Btn></div>
               </div>
             )}
           </PBody>
         </Panel>
       ) : null}
 
-      <Panel title="Deferment history" right={data.requests.length ? `${data.requests.length} request${data.requests.length === 1 ? "" : "s"}` : "None yet"}>
+      {tl && (tl.approved_count > 0 || deferred.length) ? (
+        <div className="grid grid--2">
+          <Panel title="Academic effect of your deferment" right={`${tl.approved_count} approved`}>
+            <PBody>
+              <KvGrid cls="grid--2" pairs={[["Original programme duration", `${tl.original_semesters} semesters (${tl.original_semesters / tl.semesters_per_session} sessions)`], ["Approved deferment", `${tl.approved_semesters} semester${tl.approved_semesters === 1 ? "" : "s"}`],
+                ["Adjusted programme duration", `${tl.adjusted_semesters} semesters`], ["CGPA effect", "None — deferred courses carry no grade"],
+                ["Original expected completion", `${tl.original_completion_session} · ${SEM(tl.original_completion_semester)}`], ["Adjusted expected completion", `${tl.adjusted_completion_session} · ${SEM(tl.adjusted_completion_semester)}${tl.adjusted_completion_on ? ` (${dayOf(tl.adjusted_completion_on)})` : ""}`],
+                ["Entry session", `${tl.entry_session} — unchanged`], ["Expected return", tl.live_return_session ? `${tl.live_return_session} · ${SEM(tl.live_return_semester)}` : "—"]]} />
+            </PBody>
+          </Panel>
+          <Panel title="Deferred courses" right={deferred.length ? `${deferred.filter((c) => c.status === "DEFERRED").length} still to take` : "None"}>
+            {deferred.length ? (
+              <DTable pageSize={0} cols={["Course", "Units|num", "Original period", "Status|mid", "Taken"]} rows={deferred.map((c) => [
+                <span key="c"><strong className="tnum">{c.course_code}</strong><div className="sub2">{c.title}</div></span>, <span key="u" className="tnum">{c.units}</span>,
+                <span key="p" className="tnum">{c.original_session} · {SEM(c.original_semester)}</span>, <Pil key="s" kind={COURSE_STATE[c.status]?.[1] ?? "grey"}>{COURSE_STATE[c.status]?.[0] ?? c.status}</Pil>,
+                <span key="t" className="sub2">{c.taken_session ? `${c.taken_session} · ${SEM(c.taken_semester)}${c.grade ? ` · grade ${c.grade}` : ""}` : c.due ? "Due on your registration form" : "After your return"}</span>])} />
+            ) : <PBody><div className="sub2">No course is deferred.</div></PBody>}
+          </Panel>
+        </div>
+      ) : null}
+
+      <Panel title="Deferment history" right={data.requests.length ? `${data.requests.length} application${data.requests.length === 1 ? "" : "s"}` : "None yet"}>
         {data.requests.length ? (
-          <DTable pageSize={0} cols={["Reference", "Type|mid", "Session", "Semester|mid", "Reason", "Status|mid", "Requested|mid", "Decided|mid", "Return", "|num"]}
+          <DTable pageSize={0} cols={["Application No.", "Type|mid", "Period", "Reason", "Fee|mid", "Status|mid", "Current office", "Submitted|mid", "Return", "|num"]}
             rows={data.requests.map((r) => [
-              <span key="r" className="tnum b600">{r.reference}</span>, <span key="k">{r.kind === "SESSION" ? "Session" : "Semester"}</span>, <span key="s" className="tnum">{r.session}</span>,
-              <span key="m">{r.kind === "SESSION" ? "All" : SEM(r.semester)}</span>, <span key="w">{r.reason}</span>, <StatePil key="st" state={r.state} />,
-              <span key="a" className="tnum sub2">{dayOf(r.submitted_at ?? r.created_at)}</span>, <span key="d" className="tnum sub2">{dayOf(r.decided_at)}</span>,
-              <span key="rt" className="sub2">{returnOf(r)}</span>,
-              <span key="o" className="row row--inline row--tight" style={{ justifyContent: "flex-end" }}>
+              <span key="r" className="tnum b600">{r.reference}</span>, <span key="k">{r.kind === "SESSION" ? "Session" : "Semester"}</span>, <span key="s" className="tnum">{periodOf(r)}</span>,
+              <span key="w">{r.reason}</span>, <FeePil key="f" state={r.fee_state ?? (r.fee_id ? "CONFIRMED" : null)} />, <StatePil key="st" state={r.state} />,
+              <span key="o" className="sub2">{OFFICE_OF[r.state] ?? "—"}</span>,
+              <span key="a" className="tnum sub2">{dayOf(r.submitted_at ?? r.created_at)}</span>, <span key="rt" className="sub2">{returnOf(r)}</span>,
+              <span key="x" className="row row--inline row--tight" style={{ justifyContent: "flex-end" }}>
                 {["APPROVED", "ACTIVE", "COMPLETED"].includes(r.state) ? <a className="btn btn--ghost btn--sm" href={`/student/deferment/letter/${r.id}`} target="_blank" rel="noopener">Letter</a> : null}
-                <Btn kind="ghost" size="sm" onClick={() => void openOne(r.id)}>History</Btn>
+                <Btn kind="ghost" size="sm" onClick={() => void openOne(r.id)}>Timeline</Btn>
               </span>,
             ])} />
-        ) : <PBody><div className="sub2">You have not asked to defer before.</div></PBody>}
+        ) : <PBody><div className="sub2">You have not applied to defer before.</div></PBody>}
       </Panel>
 
       {opened && !editing ? (
         <Panel title={`${opened.reference} · ${periodOf(opened)}`} right={<StatePil state={opened.state} />}>
           <PBody>
-            <KvGrid cls="grid--4" pairs={[["Reason", opened.reason], ["Expected return", returnOf(opened)], ["Department", opened.dept_at ? `${dayOf(opened.dept_at)}${opened.dept_note ? ` · ${opened.dept_note}` : ""}` : "—"], ["Faculty", opened.fac_at ? `${dayOf(opened.fac_at)}${opened.fac_note ? ` · ${opened.fac_note}` : ""}` : "—"], ["Registry", opened.decided_at ? `${dayOf(opened.decided_at)}${opened.decision_note ? ` · ${opened.decision_note}` : ""}` : "—"], ["Return", opened.returned_at ? dayOf(opened.returned_at) : (opened.return_status ? RETURN_WORD(opened.return_status) : "—")]]} />
-            <ol className="plain mt-3" style={{ display: "grid", gap: 6 }}>
-              {opened.history.map((h, i) => <li key={i} className="row row--base" style={{ gap: "var(--s-3)", flexWrap: "wrap" }}><span className="tnum sub2" style={{ minWidth: 150 }}>{whenAt(h.at)}</span><span className="b600">{ACTION_WORD[h.action] ?? h.action}</span>{h.note ? <span className="sub2">{h.note}</span> : null}{h.actor_office && h.actor_office !== "student" ? <Pil kind="grey">{h.actor_office}</Pil> : null}</li>)}
+            <div className="eyebrow mb-1">Approval timeline</div>
+            <ApprovalTimeline d={opened} />
+            {opened.effect?.applied ? <><div className="eyebrow mt-3 mb-1">Academic effect of deferment</div><KvGrid cls="grid--3" pairs={effectPairs(opened.effect)} /></> : null}
+            <div className="eyebrow mt-3 mb-1">Every act on the record</div>
+            <ol className="plain" style={{ display: "grid", gap: 6 }}>
+              {opened.history.filter((h) => !["VIEWED", "DOCUMENT_VIEWED", "DOWNLOADED"].includes(h.action)).map((h, i) => <li key={i} className="row row--base" style={{ gap: "var(--s-3)", flexWrap: "wrap" }}><span className="tnum sub2" style={{ minWidth: 150 }}>{whenAt(h.at)}</span><span className="b600">{ACTION_WORD[h.action] ?? h.action}</span>{h.note ? <span className="sub2">{h.note}</span> : null}{h.actor_office && h.actor_office !== "student" ? <Pil kind="grey">{h.actor_office}</Pil> : null}</li>)}
             </ol>
             <div className="mt-2"><Btn kind="ghost" onClick={() => setOpened(null)}>Close</Btn></div>
           </PBody>
         </Panel>
       ) : null}
 
-      <Note kind="info" title="What a deferment does and does not do">
-        An approved deferment holds the period on every register: you cannot register courses for it, and your status reads Deferred while it runs. Your registrations, payments, results and research from other periods stay exactly as they were. A deferment is not a withdrawal, a suspension or a failure; your history shows the period as deferred and your return as confirmed.
+      {viewing ? <DocViewer url={viewing.url} title={viewing.title} image={viewing.image} onClose={() => setViewing(null)} /> : null}
+
+      <Note kind="info" title="What an approved deferment does and does not do">
+        It holds the period on every register: you cannot register courses for it, and your status reads Deferred while it runs. The courses of that period are marked <b>DEFERRED</b> — not failed, no F, no zero, no carry-over — and your GPA and CGPA are not touched. Your expected completion moves by exactly the period deferred (one semester, or one session); your entry session and matriculation number never change. When you return, the deferred courses appear on your registration form under their own heading and count only when you take them and a result is published.
       </Note>
     </>
   );
 }
-
-const RETURN_WORD = (s: string) => ({ UPCOMING: "Upcoming", DUE: "Due now", OVERDUE: "Overdue", RETURNED: "Returned" } as Record<string, string>)[s] ?? s;

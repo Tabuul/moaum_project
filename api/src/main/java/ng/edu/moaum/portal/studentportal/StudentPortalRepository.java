@@ -282,9 +282,9 @@ class StudentPortalRepository {
         return jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', c.title, 'units', e.units,
-                               'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' ELSE co.basis END, 'courseSemester', c.semester,
+                               'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
-                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
+                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type IN ('CARRYOVER','DEFERRED') DESC, c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                           LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = st.programme_code AND co.level = r.level
@@ -299,9 +299,9 @@ class StudentPortalRepository {
         return jdbc.sql("""
                 SELECT r.id, r.session, r.semester, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        (SELECT json_agg(json_build_object('courseCode', c.code, 'title', c.title, 'units', e.units,
-                               'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' ELSE co.basis END, 'courseSemester', c.semester,
+                               'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE co.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
-                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type = 'CARRYOVER' DESC, c.code)::text
+                               'entryType', e.entry_type, 'status', e.status) ORDER BY e.entry_type IN ('CARRYOVER','DEFERRED') DESC, c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                           LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = st.programme_code AND co.level = r.level

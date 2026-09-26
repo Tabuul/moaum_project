@@ -497,26 +497,30 @@ If you sat a paper before your registration for that course was approved, the le
 
 ### 3.13 Deferment
 
-> **Screenshot Required:** Deferment — `/student/deferment` — the state banner, the three-step wizard (Student information and Deferment type; Supporting documents; Review and declaration) and the Deferment history table.
+> **Screenshot Required:** Deferment — `/student/deferment` — the state banner, the Deferment application fee panel (Pay ₦10,000 Deferment Fee / the receipt), the three-step form, the approval timeline, the Academic effect panel and the Deferred courses table.
 
 ```text
 Academic
  → Deferment
 ```
 
-A matriculated student may ask to defer one semester or a whole session. The request passes the department (recommend), the faculty (recommend) and the Registry (approve).
+A matriculated student may apply to defer one semester or a whole session. The **application fee** (₦10,000 unless the Bursary states otherwise) is paid first; the form opens only when the payment is confirmed. The application then passes, in this order, the **Bursary** (which verifies your last school-fee payment from the finance record), your **Head of Department**, your **Faculty**, the **Academic Office** (which forwards approved applications to the DVC in a numbered batch), the **Deputy Vice-Chancellor (Academic)** (with a comment) and the **Senate Business Committee**, whose approval is final.
 
-**Eligibility.** The banner says "DEFERMENT REQUEST NOT AVAILABLE" with the reason when: you are not yet matriculated ("Deferment is asked for once you are matriculated…"); your status is graduated, withdrawn, expelled, transferred out, deceased, rusticated or suspended; a request is already live ("You already have a deferment request … One request is decided before another is made."); or you have used the University's allowance ("You have deferred N session(s) in all; the University allows M." — the allowance is 2 sessions; a semester counts as half).
+**Eligibility.** The banner says "DEFERMENT APPLICATION NOT AVAILABLE" with the reason when: you are not yet matriculated; your status is graduated, withdrawn, expelled, transferred out, deceased, rusticated or suspended; an application is already live; or you have used the sessions the University allows (2 in all; a semester counts a half).
 
 **Procedure**
 
-1. Open **Deferment** `/student/deferment`. Step 1: choose **Deferment type** (A semester / The whole academic session), **Academic session** (the current or a planned one — a past session cannot be deferred), **Semester**, **Reason** (Medical, Financial, Family circumstances, Pregnancy or childbirth, Employment, Relocation, Bereavement, Personal reasons, Other) and, where the reason asks for words, an **Explanation** of at least twenty characters. Press **Save and Continue**.
-2. Step 2: **Supporting documents** — choose a kind (Medical, Financial, Official letter, Employer letter, Other) and a file (PDF, JPEG or PNG, up to 5 MB, at most six). A medical, maternity or employment reason **requires** a document ("a medical deferment is supported by a document").
-3. Step 3: **Review**, tick the declaration "I confirm that the information provided in this deferment request is accurate…" and press **Submit Deferment Request**. Toast: "Deferment request DEF-… submitted successfully".
-4. Follow the state on the banner and in **Deferment history**: *Submitted* → *Department recommended* → *Faculty recommended* → *Approved* → *Active* (in force) → *Completed* (returned). Side exits: *Correction required* (press **Continue the Request**, fix, resubmit), *Rejected* (with the reason), *Cancelled*. While under review you may **Withdraw Request** (a reason is asked for).
-5. Once approved, a daily clock (06:20 West Africa time) brings the period into force on its start date: your status becomes DEFERRED and course registration for the period is refused. Fourteen days before the return date you are reminded. On return the department, faculty or Registry confirms it and your previous status is restored.
+1. Open **Deferment** `/student/deferment`. In **Deferment application fee** press **Pay ₦10,000 Deferment Fee**. A payment reference is generated (valid 24 hours). Pay by card or USSD with **Pay now**, or at any bank branch quoting the reference (the Bursary confirms it). The panel then shows Amount, Payment Status PAID, Transaction Reference, Payment Date and **View Receipt** / **Download Receipt**. The fee is not refunded if the application is refused.
+2. The form opens. Step 1: your **Student information** is read from the record (you cannot change it). Choose **Deferment type**, **Academic session**, **Semester**, **Reason** and write the **Additional explanation** where the reason needs it. **Save and Continue**.
+3. Step 2: **Supporting documents** (PDF, JPEG or PNG, up to 5 MB, at most six). A medical, maternity or employment reason requires one. You can open a document you uploaded in a viewer on the page.
+4. Step 3: **Review**, tick the declaration and press **Submit Deferment Application**. Toast: "Deferment request DEF-… submitted successfully". The application is now **WAITING BURSARY ACTION**.
+5. Follow the **Deferment application** panel: Application number, Application fee, Payment status, Application status, Current office, and the **Approval timeline** — Application submitted ✓ → Bursary approved → Head of Department approved → Faculty approved → Forwarded to the DVC by the Academic Office → Deputy Vice-Chancellor approved → Senate Business Committee approved → Deferment in force → Return confirmed. The status badges read WAITING BURSARY ACTION, WAITING HOD ACTION, WAITING FACULTY ACTION, WAITING ACADEMIC OFFICE ACTION, FORWARDED TO DVC, **WAITING SBC ACTION**, APPROVED, REJECTED, RETURNED FOR CORRECTION.
+6. If a desk **returns** the application, the banner names the office, the date and the reason; press **Continue the Application**, correct it and submit again — it goes back to the same desk, and the history is kept. If a desk **rejects** it, the reason is on the record and the application is kept. While in review you may **Withdraw Application**.
+7. When the Senate Business Committee approves, you receive "DEFERMENT APPROVED" by email and SMS with the deferred period, the duration, the expected return, the number of courses affected and the timeline extension. The daily clock brings the period into force on its start date: your status becomes DEFERRED and registration for that period is refused. Fourteen days before the return date you are reminded; on your return the department, faculty or Registry confirms it.
 
-You are told by email and SMS at every turn (§7). The **Approval Letter** button opens the approval letter PDF once the request is approved (§8).
+**What the approval does to your record** (the **Academic effect of your deferment** panel): the courses of the deferred period are marked **DEFERRED** — no F, no zero, no carry-over, no GPA or CGPA change; your **expected completion** moves by exactly one semester (or one session); your **entry session** and **matriculation number** never change. The **Deferred courses** table lists each course with its original period and its status — DEFERRED, REGISTERED (once you take it again) or COMPLETED (once a result is published). After your return, they appear on your registration form under **Deferred / catch-up courses**, added automatically like carry-overs but never called failed; their grades enter your GPA only when you complete them.
+
+You are told by email and SMS at every turn (§7). **Download Approval Letter** opens the letter once the Committee has approved (§8).
 
 ### 3.14 Inter-departmental transfer
 
@@ -1373,7 +1377,7 @@ Each entry gives the message you see, the real cause and what to do.
 15. **The Results screen has an "Official transcript" button that does nothing.** It is a stale placeholder. Use Academic → My Documents.
 16. **How long do I have to query a mark?** Seven calendar days from publication, one mark in one course per query. The answer comes by email and SMS. A "Corrected" answer does not by itself change the published mark on the portal.
 17. **Why can't I see my course space?** Your registration is not approved yet, or the lecturer has not published anything.
-18. **Who approves a deferment and how long does it take?** Department → Faculty → Registry. You are told at each turn; once approved, a daily clock brings it into force on its start date.
+18. **Who approves a deferment and how long does it take?** Bursary → HOD → Faculty → Academic Office → DVC → Senate Business Committee. You are told at each turn; once approved, a daily clock brings it into force on its start date.
 19. **Can I defer before I am matriculated?** No: "Deferment is asked for once you are matriculated".
 20. **I was allocated a hostel bed but did not pay in time.** The hold lapsed (72 hours by default) and the bed passed to the next name. Ask the housing desk to seat you by hand in a free bed if any remains.
 21. **Can anyone check my receipt / course form / certificate is real?** Yes. Each carries a QR or a code and a public page (`/verify/…`) that reads the University's record. The deferment letter's link and the PG offer letter's QR are exceptions — they cannot be verified online yet; the identity card has no verification page.

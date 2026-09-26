@@ -37,6 +37,7 @@ function courseType(e: { kind?: string; basis?: string; entryType?: string }): s
 /** display order: carryover first, then GST, then Core, then Elective */
 function orderRank(e: { kind?: string; basis?: string; entryType?: string }): number {
   if ((e.entryType ?? "").toUpperCase() === "CARRYOVER") return 0;
+  if ((e.entryType ?? "").toUpperCase() === "DEFERRED") return 0;
   const t = courseType(e);
   return t === "GST" ? 1 : t === "Core" ? 2 : 3;
 }
@@ -48,15 +49,16 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
   const locked = !!reg && (reg.status === "SUBMITTED" || reg.status === "APPROVED" || reg.status === "LOCKED");
-  const chosenNow = new Set((reg?.entries ?? []).filter((e) => e.entryType !== "CARRYOVER").map((e) => e.offeringId));
+  const chosenNow = new Set((reg?.entries ?? []).filter((e) => e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED").map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
-  const carry = v.menu.filter((m) => m.carryover);
+  const carry = v.menu.filter((m) => m.carryover && !m.deferred);
+  const deferredCourses = v.menu.filter((m) => m.deferred);
   // Group by the PER-PROGRAMME offer basis, not the course's global kind: a course can be Core for
   // its own department yet Elective for this programme (course_offer.basis). Core/GST are required here;
   // everything else is an elective. GST (General Studies) is a University requirement.
   const core = v.menu.filter((m) => !m.carryover && (m.basis === "Core" || m.basis === "GST"));
   const elec = v.menu.filter((m) => !m.carryover && !core.includes(m));
-  const total = carry.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
+  const total = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + core.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0) + elec.filter((m) => chosen.has(m.offering_id)).reduce((n, m) => n + m.units, 0);
   const min = v.limit.min_units;
   const max = v.limit.max_units;
   const onProbation = !!v.probation && v.probation.standing === "PROBATION";
@@ -132,7 +134,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       onClick={() => { if (fixed || locked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else n.add(m.offering_id); setChosen(n); }}>
       <div className="pick__box" style={on ? { background: red ? "var(--red)" : "var(--chrome)", borderColor: red ? "var(--red)" : "var(--chrome)" } : undefined}>{on ? <Tick size={12} colour="#fff" /> : null}</div>
       <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
-        <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
+        <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.deferred ? `Deferred · originally ${m.deferred_from ?? ""} · status DEFERRED` : m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
       <div className="tnum b700" style={{ color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>
@@ -160,7 +162,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
 
       {locked && v.addDropOpen ? (() => {
         const activeIds = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
-        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.entryType !== "CARRYOVER"));
+        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED"));
         const addable = v.menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
         return (
           <Panel title="Add or drop courses" right="the add/drop window is open">
@@ -205,6 +207,13 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="sub2">{meter.hint}</div>
         </div>
       </div></div>
+      {deferredCourses.length ? (
+        <Panel title="Deferred / catch-up courses" right="from your approved deferment · added automatically, cannot be removed">
+          <PBody>
+            <div className="sub2 mb-1">Courses of the period you deferred, now due. They were never failed: no grade, no units attempted and no quality points were recorded for them; their actual grades enter your GPA and CGPA only when you take them.</div>
+            {deferredCourses.map((m) => pick(m, true, true))}
+          </PBody></Panel>
+      ) : null}
       {carry.length ? (
         <Panel title={<span className="ink-red">Outstanding carryovers</span>} right="added automatically, cannot be removed">
           <PBody>{carry.map((m) => pick(m, true, true, true))}</PBody></Panel>
@@ -275,7 +284,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
             <th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Type</th>
           </tr></thead>
           <tbody>
-            {byOrder(reg.entries).map((e) => { const co = e.entryType === "CARRYOVER"; return (
+            {byOrder(reg.entries).map((e) => { const co = e.entryType === "CARRYOVER" || e.entryType === "DEFERRED"; return (
               <tr key={e.offeringId}>
                 <td className="tnum b600">{e.courseCode}{co ? <span className="ink-red b700"> · C/O</span> : null}</td>
                 <td>{e.title}</td>

@@ -484,21 +484,33 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | `LOCKED` registration status | CONFIGURED BUT UNUSED | Only checks in V139 / V195; no writer | Every "APPROVED/LOCKED" test is effectively APPROVED |
 | Notifications on approve / return | NOT IMPLEMENTED | No `queue_notice` | |
 
-### 3.21 Deferments (dossier D5)
+### 3.21 Deferments (dossier D5; revised by V264 on 26 September 2026)
 
 | Feature | Status | Evidence | Notes |
 |---|---|---|---|
-| Student wizard, documents, submit, withdraw | IMPLEMENTED | `Deferment.tsx`, V259 functions | Uploads validated by magic bytes, served sandboxed |
-| Three-desk decision chain with bounds and stages | IMPLEMENTED | `DefermentsController.may/act` | Bound enforced on every read and act |
+| Application fee before the form (Bursary-stated, default ₦10,000; reference → confirmation opens the form) | IMPLEMENTED | V264 `people.deferment_fee`, `deferment_fee_start`, trigger `deferment_fee_confirmed`, `deferment_save` | Uses the existing payment reference, gateways, bank confirmation and receipts; no second payment system |
+| Student wizard, documents, submit, withdraw | IMPLEMENTED | `Deferment.tsx`, V259/V264 functions | Identity read from the record; documents open in a modal viewer |
+| Six-desk chain Bursary → HOD → Faculty → Academic Office → DVC → SBC, office checked in SQL and at the door, no stage skipped | IMPLEMENTED | V264 `people.deferment_decide`, `deferment_office_may`; `DefermentsController.may/act`; `DefermentIT` | `APPROVE` at any earlier stage is refused |
+| Bursary financial verification read from the finance record and recorded with the approval | IMPLEMENTED | `people.deferment_financials`, `bursary_*` columns | "No qualifying school-fee payment found." when none |
+| Academic Office sees every stage; downloads only faculty-approved applications (server-enforced) | IMPLEMENTED | `GET /deferments/{id}/application` → 422 `DEF_NOT_DOWNLOADABLE` before `fac_at` | Every download logged DOWNLOADED |
+| Forwarding batches to the DVC (`DEF-DVC-YYYY-NNNNN`), whole list or selection, never duplicated | IMPLEMENTED | `people.deferment_forward`, `/deferments/batches` | |
+| DVC decision with a required comment; status WAITING SBC ACTION after | IMPLEMENTED | `DEF_DVC_COMMENT`; `deferment_stage_label` | |
+| SBC final action by the Registry recording the Committee | IMPLEMENTED | `SBC_APPROVE` (`registrar`, `dregistrar`, `super`) | The Committee has no office of its own; the Registry records its act |
+| Academic effect: courses of the period DEFERRED (not F, not in results/GPA), `deferred_course` rows, timeline +period, entry session and matric unchanged, transactional | IMPLEMENTED | `people.deferment_apply_effect`, `programme_timeline`, `deferred_courses`; `DefermentIT` asserts CGPA unchanged | Curriculum fallback takes core and GST courses of the level and semester when no registration exists |
+| Deferred courses due on the registration form under their own heading (entry type DEFERRED, not droppable) | IMPLEMENTED | `registration.student_menu` (`deferred`, `deferred_from`), `student_draft`, `student_choose`, `student_drop`; `Screens3.tsx` | Prerequisite and unit rules unchanged |
+| Students Due to Resume with server-side search and filters | IMPLEMENTED | `/api/v1/deferments/returns`, `Returns.tsx` | |
+| Server-side search and filters on the desk (name, ID, application no., faculty, department, programme, session, semester, status, batch, dates) | IMPLEMENTED | `GET /api/v1/deferments` | 500 rows a page |
+| Dashboards per office (Bursary, HOD, Faculty, Academic, DVC) with clickable statistics | IMPLEMENTED | `Desk.tsx` tiles → filtered list | |
+| Audit of readings: VIEWED, DOCUMENT_VIEWED, DOWNLOADED once per actor and stage | IMPLEMENTED | `people.deferment_viewed` | |
 | Clock: activation, DEFERRED status, reminders | IMPLEMENTED | `DefermentClock`, `deferments_tick` | |
 | Registration gates (UG, PG, College) | IMPLEMENTED | Triggers | |
-| Return confirmation and status restore | IMPLEMENTED | `deferment_confirm_return` | |
-| Notices at every turn (student) and desk emails | IMPLEMENTED | V259 | |
-| Approval letter PDF | IMPLEMENTED | `deferment-letter.ts` | QR points to a non-existent verify route |
+| Notices at every turn (student) and desk emails (Bursary, HOD, Dean, Academic, DVC, Registry) | IMPLEMENTED | V264 | |
+| Approval letter PDF; application PDF (desk copy) | IMPLEMENTED | `deferment-letter.ts` | The letter's QR still points to a non-existent verify route |
 | Public verification of a letter (`/verify/deferment`) | NOT IMPLEMENTED | No route | The printed link is dead |
+| Fee setting screen (Bursary, Fee Setup) | IMPLEMENTED | `FeeSchedule.tsx`, `PUT /api/v1/deferments/settings` | |
+| Limits / reasons administration screen | PARTIALLY IMPLEMENTED | Endpoint exists (Registry); no screen | |
 | Document verification (`verified_at/by`) | CONFIGURED BUT UNUSED | Columns only | |
-| Settings / reasons administration screen | NOT IMPLEMENTED | Tables only | |
-| Desk report Excel / PDF | IMPLEMENTED | `Desk.tsx` | |
+| Progression withheld by outstanding deferred courses | NOT IMPLEMENTED | `people.roll_over_session` promotes by status | The deferred courses are due and fixed on the form; level promotion is not withheld |
 
 ### 3.22 Inter-departmental transfer (dossier D6)
 

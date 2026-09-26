@@ -231,6 +231,26 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   });
 
   // the applicant fees live under admissions, not finance, so they have their own save
+  // the deferment application fee (V264): stated by the Bursary in people.deferment_setting, read by the student's Deferment screen
+  const [df, setDf] = useState("");
+  const [dfMeta, setDfMeta] = useState<{ fee_updated_at: string | null } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/bff/api/v1/deferments/settings").then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (alive && j) { setDf(String(j.fee ?? "")); setDfMeta({ fee_updated_at: j.fee_updated_at ?? null }); }
+    }).catch(() => { /* leave blank */ });
+    return () => { alive = false; };
+  }, []);
+  async function saveDefermentFee(): Promise<void> {
+    setBusy("df"); setProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/deferments/settings", { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Deferment application fee stated: ${df}`) }, body: JSON.stringify({ fee: Number(df) || 0 }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      setDfMeta({ fee_updated_at: (j as { fee_updated_at?: string | null }).fee_updated_at ?? new Date().toISOString() });
+      notify("Deferment application fee stated");
+    } finally { setBusy(null); }
+  }
   // the inter-departmental transfer processing fee (Bursary-set; defaults to ₦10,000 when unset)
   const [tf, setTf] = useState("");
   const [tfStated, setTfStated] = useState(false);
@@ -564,6 +584,20 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div className="row mt-2">
             <Btn kind="primary" disabled={!may || busy !== null || !pgf.applicationFee.trim()} onClick={() => void savePgFees()}>{busy === "pgf" ? "Saving…" : "State the postgraduate fees"}</Btn>
             <span className="sub2">A postgraduate applicant pays {naira(Number(pgf.applicationFee) || 0)} to apply; accepting an offer costs {naira((Number(pgf.acceptanceFee) || 0) + (Number(pgf.checkingFee) || 0))} (acceptance {naira(Number(pgf.acceptanceFee) || 0)} + checking {naira(Number(pgf.checkingFee) || 0)}).</span>
+          </div>
+        </PBody>
+      </Panel>
+      <Panel title="Deferment · application fee" right={dfMeta?.fee_updated_at ? `Stated by the Bursary · ${new Date(dfMeta.fee_updated_at).toLocaleDateString("en-GB")}` : "Default ₦10,000 until the Bursary states it"}>
+        <PBody>
+          <div className="sub2 mb-3">
+            The fee a student pays before the deferment application form opens. It is generated as a payment reference on the student&rsquo;s Deferment screen, paid by card or at the bank, and confirmed like every other payment; only a confirmed payment opens the form. The fee is not refunded when an application is refused. Stated here by the Bursary; never hard-coded in the application.
+          </div>
+          <div className="grid grid--2">
+            <Field id="df-fee" label="Deferment application fee" hint="Zero waives the fee"><input id="df-fee" className="ctl tnum" inputMode="numeric" value={df} onChange={(e) => setDf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>
+          </div>
+          <div className="row mt-2">
+            <Btn kind="primary" disabled={!may || busy !== null || !df.trim()} onClick={() => void saveDefermentFee()}>{busy === "df" ? "Saving…" : "State the deferment fee"}</Btn>
+            <span className="sub2">A student pays {naira(Number(df) || 0)} before the deferment application form opens.</span>
           </div>
         </PBody>
       </Panel>

@@ -58,6 +58,11 @@ final class ItSupport {
         return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(Map.class);
     }
 
+    /** a read of bytes (a PDF, an image): the status and the body as they came */
+    ResponseEntity<byte[]> getBytes(String token, String path) {
+        return client.get().uri(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + token).retrieve().toEntity(byte[].class);
+    }
+
     @SuppressWarnings("rawtypes")
     ResponseEntity<List> callList(String token, HttpMethod method, String path, Object body) {
         RestClient.RequestBodySpec spec = client.method(method).uri(path)
