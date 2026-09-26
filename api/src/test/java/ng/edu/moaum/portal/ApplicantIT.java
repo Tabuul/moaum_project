@@ -168,6 +168,12 @@ class ApplicantIT {
         assertThat(decided.getStatusCode().value()).as(String.valueOf(decided.getBody())).isEqualTo(200);
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("decision")).isNull();
         it.call(academic, HttpMethod.POST, PATH + "/decisions/release", Map.of());
+        // the admission checking fee (V271/V272): its own reference, paid once, opens the released decision — closed until then
+        assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("decision")).isNull();
+        assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("checkingDue")).isEqualTo(true);
+        String checking = String.valueOf(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")).getBody().get("reference"));
+        assertThat(checking).startsWith("MOAUM-CHK-");
+        it.call(bursar, HttpMethod.POST, PATH + "/fee-references/" + checking + "/confirm", Map.of("channel", "Card"));
         Map<String, Object> offered = it.get(token, "/api/v1/applicant/me").getBody();
         assertThat(offered.get("decision")).isEqualTo("OFFERED");
         assertThat(offered.get("offerState")).isEqualTo("ADMITTED");

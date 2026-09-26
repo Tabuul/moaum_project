@@ -1783,6 +1783,11 @@ BEGIN
     PERFORM admissions.release_decisions('9997/9998');
     PERFORM set_config('moaum.actor_office', 'applicant', true);
     PERFORM admissions.sign_undertaking(app);
+    -- the admission checking fee first, on its own (V271): the decision opens on it, the acceptance follows
+    ref := admissions.new_fee_reference(app, 'CHECKING');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM admissions.confirm_fee(ref, 'Card', NULL);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
     ref := admissions.new_fee_reference(app, 'ACCEPTANCE');
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     PERFORM admissions.confirm_fee(ref, 'Card', NULL);
