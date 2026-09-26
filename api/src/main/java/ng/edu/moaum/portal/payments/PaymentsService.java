@@ -367,6 +367,7 @@ public class PaymentsService {
         return switch (kind == null ? "" : kind) {
             case "FEES" -> "school fees";
             case "ACCEPTANCE", "PG_ACCEPTANCE" -> "acceptance fee";
+            case "CHECKING" -> "admission checking fee";
             case "PG_CHECKING" -> "postgraduate checking fee";
             case "PG_APPLICATION" -> "postgraduate application fee";
             default -> "application fee";
@@ -378,6 +379,7 @@ public class PaymentsService {
         return switch (kind) {
             case "FEES" -> "/student/fees";
             case "ACCEPTANCE" -> "/applicant/accept";
+            case "CHECKING" -> "/applicant/admission";
             case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> "/pg/portal";
             default -> "/applicant/fee";
         };

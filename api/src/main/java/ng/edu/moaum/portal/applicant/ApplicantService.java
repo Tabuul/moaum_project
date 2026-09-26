@@ -317,8 +317,13 @@ public class ApplicantService {
         v.put("olevel", sittings);
 
         Map<String, Object> fees = repo.fees(session);
-        v.put("fees", Map.of("applicationFee", fees.get("application_fee"), "portalCharge", fees.get("portal_charge"),
-                "acceptanceFee", fees.get("acceptance_fee"), "stated", fees.get("stated")));
+        Map<String, Object> feeMap = new LinkedHashMap<>();
+        feeMap.put("applicationFee", fees.get("application_fee"));
+        feeMap.put("portalCharge", fees.get("portal_charge"));
+        feeMap.put("acceptanceFee", fees.get("acceptance_fee"));
+        feeMap.put("checkingFee", fees.get("checking_fee"));
+        feeMap.put("stated", fees.get("stated"));
+        v.put("fees", feeMap);
         v.put("feeReferences", repo.feeReferences(applicationId));
         v.put("feeConfirmedAt", a.get("fee_confirmed_at"));
         v.put("documents", repo.documents(applicationId));
@@ -381,7 +386,11 @@ public class ApplicantService {
             v.put("screeningScore", a.get("screening_score"));
         }
 
-        boolean decisionVisible = a.get("decision_released_at") != null || forOffice;
+        /* the released decision opens to the applicant once the admission checking fee is confirmed (V271); the office always reads it */
+        boolean checkingDue = !forOffice && repo.checkingDue(applicationId);
+        boolean decisionVisible = (a.get("decision_released_at") != null && !checkingDue) || forOffice;
+        v.put("checkingDue", checkingDue);
+        v.put("checkingConfirmedAt", a.get("checking_confirmed_at"));
         v.put("decisionReleasedAt", a.get("decision_released_at"));
         v.put("decision", decisionVisible ? a.get("decision") : null);
         v.put("decisionNote", decisionVisible ? a.get("decision_note") : null);
@@ -420,9 +429,9 @@ public class ApplicantService {
     public Map<String, Object> feeReference(UUID account, String kind) {
         UUID app = applicationOf(account);
         String k = kind == null ? "" : kind.trim().toUpperCase();
-        if (!k.equals("APPLICATION") && !k.equals("ACCEPTANCE")) {
+        if (!k.equals("APPLICATION") && !k.equals("CHECKING") && !k.equals("ACCEPTANCE")) {
             throw new DomainRuleViolation("APP_FEE_KIND", "'" + kind + "' is not a fee this portal takes.",
-                    new DomainRuleViolation.Remedy("APPLICATION or ACCEPTANCE.", "Directorate of ICT"));
+                    new DomainRuleViolation.Remedy("APPLICATION, CHECKING or ACCEPTANCE.", "Directorate of ICT"));
         }
         String reference = repo.newFeeReference(app, k);
         Map<String, Object> out = new LinkedHashMap<>(view(app, false));

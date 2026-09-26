@@ -4,13 +4,13 @@ export type ScreeningState = "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "RETURNED"
 export type TrackerState = "done" | "now" | "todo" | "failed";
 export interface TrackerStep { key: string; label: string; state: TrackerState }
 export interface AdmissionStatus { status: string; label: string; next_action: string | null; next_href: string | null; detail: string | null }
-export interface Entitlement { paid: boolean; reference: string | null; confirmed_at: string | null; amount: number | null }
+export interface Entitlement { paid: boolean; reference: string | null; confirmed_at: string | null; amount: number | null; checking_paid?: boolean; checking_reference?: string | null; checking_confirmed_at?: string | null; checking_amount?: number | null }
 export interface Offer {
   application_no: string; session: string; decision: string | null; decision_released_at: string | null; decision_basis: string | null; accepted_at: string | null; undertaking_at: string | null; acceptance_confirmed_at: string | null; cleared_at: string | null;
   surname: string; other_names: string; jamb_reg_no: string; programme: string; entry_mode: string; entry_level: number; programme_code: string | null; degree_type: string | null; faculty: string | null; department: string | null;
   student_id: string | null; admission_no: string | null; matric_no: string | null; matriculated_at: string | null; student_status: string | null; current_level: number | null; changed_to: string | null; changed_from: string | null;
 }
-export interface Admission extends AdmissionStatus { tracker: string; entitlement: Entitlement; screeningRequired: boolean; offer: Offer }
+export interface Admission extends AdmissionStatus { tracker: string; entitlement: Entitlement; screeningRequired: boolean; offer: Offer; checkingDue?: boolean; checkingFee?: number | null; checkingReference?: string | null }
 
 export interface ScreeningForm {
   application_id: string; screening_no: string; state: ScreeningState; version: number; opened_at: string; submitted_at: string | null; declaration_at: string | null;

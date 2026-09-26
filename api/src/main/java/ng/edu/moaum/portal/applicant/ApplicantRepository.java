@@ -111,6 +111,11 @@ class ApplicantRepository {
                 """).param("id", applicationId).query().listOfRows().stream().findFirst();
     }
 
+    /** the admission checking fee still stands between the applicant and the released decision (V271) */
+    boolean checkingDue(UUID applicationId) {
+        return jdbc.sql("SELECT admissions.checking_due(:a)").param("a", applicationId).query(Boolean.class).single();
+    }
+
     /** the online screening form is open for the applicant to edit: DRAFT, or RETURNED for correction (V269) */
     boolean screeningOpen(UUID applicationId) {
         return jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.screening_form f WHERE f.application_id = :a AND f.state IN ('DRAFT', 'RETURNED'))")

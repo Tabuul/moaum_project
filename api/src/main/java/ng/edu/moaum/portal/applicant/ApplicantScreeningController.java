@@ -59,7 +59,11 @@ class ApplicantScreeningController {
         out.put("tracker", jdbc.sql("SELECT admissions.admission_tracker(:a)::text").param("a", app).query(String.class).single());
         out.put("entitlement", jdbc.sql("SELECT * FROM admissions.acceptance_entitlement(:a)").param("a", app).query().singleRow());
         out.put("screeningRequired", jdbc.sql("SELECT admissions.screening_required(:a)").param("a", app).query(Boolean.class).single());
-        out.put("offer", jdbc.sql("""
+        boolean checkingDue = jdbc.sql("SELECT admissions.checking_due(:a)").param("a", app).query(Boolean.class).single();
+        out.put("checkingDue", checkingDue);
+        out.put("checkingFee", jdbc.sql("SELECT coalesce((SELECT f.checking_fee FROM admissions.application a JOIN admissions.applicant_fee_rule(a.session) f ON true WHERE a.id = :a), 0)").param("a", app).query(java.math.BigDecimal.class).single());
+        out.put("checkingReference", jdbc.sql("SELECT reference FROM admissions.fee_reference WHERE application_id = :a AND kind = 'CHECKING' AND confirmed_at IS NULL AND expires_at > now() ORDER BY generated_at DESC LIMIT 1").param("a", app).query(String.class).optional().orElse(null));
+        Map<String, Object> offer = jdbc.sql("""
                 SELECT a.application_no, a.session, a.decision, a.decision_released_at, a.decision_basis, a.accepted_at, a.undertaking_at, a.acceptance_confirmed_at, a.cleared_at,
                        c.surname, c.other_names, c.jamb_reg_no, c.programme, c.entry_mode, c.entry_level,
                        p.code AS programme_code, p.category AS degree_type, f.name AS faculty, d.name AS department,
@@ -70,8 +74,23 @@ class ApplicantScreeningController {
                   LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme) LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
                   LEFT JOIN people.student s ON s.candidate_id = c.id
                  WHERE a.id = :a
-                """).param("a", app).query().singleRow());
+                """).param("a", app).query().singleRow();
+        if (checkingDue) {
+            // the decision and what it names stay closed until the checking fee is confirmed
+            for (String k : List.of("decision", "decision_basis", "programme", "programme_code", "degree_type", "faculty", "department", "changed_to", "changed_from")) offer.put(k, null);
+        }
+        out.put("offer", offer);
         return out;
+    }
+
+    /** the applicant's own reading of the released status, stamped once (V271): the step before the acceptance */
+    @PostMapping("/api/v1/applicant/me/admission/checked")
+    @PreAuthorize(APPLICANT)
+    @Transactional
+    Map<String, Object> checked(Authentication a) {
+        UUID app = myApplication(a);
+        jdbc.sql("SELECT admissions.admission_status_checked(:a)").param("a", app).query().listOfRows();
+        return admission(a);
     }
 
     /* ── the screening form ── */

@@ -74,6 +74,7 @@ class AdmissionLifecycleIT {
             group(ACC, "OLEVEL_REQUIRED", "C6", "Economics/Accounting");
             group(ACC, "UTME", null, "Economics");
             jdbc.sql("INSERT INTO admissions.screening_policy (session) VALUES (:s) ON CONFLICT (session) DO UPDATE SET enabled = true").param("s", SESSION).update();
+            jdbc.sql("INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, checking_fee) VALUES (:s, 2000, 0, 25000, 3000) ON CONFLICT (session) DO UPDATE SET acceptance_fee = 25000, checking_fee = 3000").param("s", SESSION).update();
             return null;
         });
     }
@@ -126,10 +127,21 @@ class AdmissionLifecycleIT {
     Map<String, Object> admission(Applicant a) { return m(it.get(a.token(), "/api/v1/applicant/me/admission").getBody()); }
 
     /** the acceptance as the journey already does it: the undertaking, the fee reference, the Bursary's confirmation */
+    /** the admission checking fee, on its own, opens the decision (V271) */
+    void check(Applicant a) {
+        ResponseEntity<Map> ref = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING"));
+        assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
+        String r = String.valueOf(ref.getBody().get("reference"));
+        assertThat(r).startsWith("MOAUM-CHK-");
+        assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", r).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("3000");
+        assertThat(it.call(bursar, HttpMethod.POST, PATH + "/fee-references/" + r + "/confirm", Map.of("channel", "Card")).getStatusCode().value()).isEqualTo(200);
+    }
+
     void accept(Applicant a) {
         assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/accept", Map.of("undertaking", true)).getStatusCode().value()).isEqualTo(200);
         String ref = String.valueOf(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getBody().get("reference"));
         assertThat(ref).startsWith("MOAUM-ACC-");
+        assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", ref).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("25000");   // the acceptance fee alone
         ResponseEntity<Map> c = it.call(bursar, HttpMethod.POST, PATH + "/fee-references/" + ref + "/confirm", Map.of("channel", "Card"));
         assertThat(c.getStatusCode().value()).as(String.valueOf(c.getBody())).isEqualTo(200);
     }
@@ -158,14 +170,29 @@ class AdmissionLifecycleIT {
         Applicant a = offered(CS, 210, List.of("English Language", "Mathematics", "Physics", "Chemistry"), SCIENCE);                 // PATH A
         Applicant b = offered(CS, 210, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);           // PATH B: not a science candidate
 
-        // 3–6 · admitted: the congratulations page reads the offer, the next step is the acceptance fee
+        // 3–6 · the decision is released; the admission checking fee, on its own, opens it (V271) — nothing of the decision shows before
         Map<String, Object> st = admission(a);
+        assertThat(st.get("status")).isEqualTo("CHECKING_FEE_PENDING");
+        assertThat(m(st.get("offer")).get("decision")).isNull();
+        assertThat(m(st.get("offer")).get("programme")).isNull();
+        assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("decision")).isNull();
+        assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("checkingDue")).isEqualTo(true);
+        assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getStatusCode().value()).isEqualTo(422);   // the checking fee comes first
+        check(a);
+        assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")).getStatusCode().value()).isEqualTo(422);      // paid once
+        st = admission(a);
         assertThat(st.get("status")).isEqualTo("ADMITTED");
+        assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("decision")).isEqualTo("OFFERED");
+        // the status is read on the confirmation of the checking fee; the acceptance fee is the next step
         assertThat(String.valueOf(st.get("next_action"))).contains("acceptance fee");
+        assertThat(m(st.get("entitlement")).get("checking_paid")).isEqualTo(true);
+        assertThat(String.valueOf(st.get("tracker"))).contains("\"key\": \"ADMISSION_STATUS\", \"label\": \"Admission status checked\", \"state\": \"done\"").contains("\"key\": \"SCHOOL_FEES\", \"label\": \"School fees\", \"state\": \"todo\"");
+        assertThat(jdbc.sql("SELECT status_checked_at FROM admissions.application WHERE id = :a").param("a", a.app()).query().singleRow().get("status_checked_at")).isNotNull();
+        check(b);
         assertThat(m(st.get("offer")).get("decision")).isEqualTo("OFFERED");
         assertThat(m(st.get("offer")).get("faculty")).isNotNull();
         assertThat(m(st.get("entitlement")).get("paid")).isEqualTo(false);
-        assertThat(String.valueOf(st.get("tracker"))).contains("\"ADMISSION\"").contains("\"ACCEPTANCE_PAYMENT\"").contains("\"SCREENING\"");
+        assertThat(String.valueOf(st.get("tracker"))).contains("\"ADMISSION\"").contains("\"ADMISSION_STATUS\"").contains("\"ACCEPTANCE_PAYMENT\"").contains("\"SCREENING\"");
         // V270: admitted from the list without a CBT slip or score, the journey stands at the decision (stage 5), not behind the screening slip
         assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("stage")).isEqualTo(5);
         // 8 / 28 · the screening does not open before acceptance; nothing is saved
@@ -249,7 +276,8 @@ class AdmissionLifecycleIT {
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%successfully screened%'").param("a", a.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
         // 16–18 · registration opens (the gate lets the insert through), the readiness reads it, the matriculation candidates no longer name the screening
         it.db(() -> jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'APPROVED', now()) ON CONFLICT (student_id, session, semester) DO UPDATE SET status = 'APPROVED'").param("s", sa).param("ses", SESSION).update());
-        assertThat(admission(a).get("status")).isEqualTo("MATRICULATION_PENDING");
+        // registered; the fees stay pending until the Bursary states the session's schedule (V271: nothing due is not "paid")
+        assertThat(admission(a).get("status")).isIn("MATRICULATION_PENDING", "SCHOOL_FEES_PENDING");
         assertThat(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'SC') x WHERE x.student_id = :id").param("s", SESSION).param("id", sa).query().singleRow().get("reason")).isNull();
 
         // 13–17 · PATH B: unsuccessful with the reason → alternatives → change requested after the Board's decision → approved → no second acceptance fee
@@ -287,6 +315,8 @@ class AdmissionLifecycleIT {
         assertThat(bst.get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
         assertThat(m(bst.get("offer")).get("changed_to")).isEqualTo("B.Sc. ACCOUNTING");
         assertThat(m(bst.get("entitlement")).get("paid")).isEqualTo(true);
+        assertThat(m(bst.get("entitlement")).get("checking_paid")).isEqualTo(true);
+        assertThat(it.call(b.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")).getStatusCode().value()).isEqualTo(422);
         assertThat(String.valueOf(bst.get("tracker"))).contains("\"key\": \"CHANGE_APPROVAL\", \"label\": \"Approval\", \"state\": \"done\"").contains("\"key\": \"SCREENING_DECISION\", \"label\": \"Screening unsuccessful\", \"state\": \"failed\"");
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%next step: school fees%'").param("a", b.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
         assertThat(String.valueOf(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'MS') x WHERE x.student_id = :id").param("s", SESSION).param("id", sb).query().singleRow().get("reason"))).doesNotContain("screening").contains("course registration");

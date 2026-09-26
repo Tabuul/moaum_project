@@ -80,6 +80,16 @@ export function Score({ a }: { a: Application }) {
 /* ── 6. admission status ── */
 
 export function Status({ a }: { a: Application }) {
+  if (a.checkingDue) {
+    return (
+      <>
+        <Note kind="bad" title="Your admission decision has been released" action={<LinkBtn kind="urgent" href="/applicant/admission">Pay the admission checking fee</LinkBtn>}>
+          It opens once the admission checking fee{a.fees.checkingFee ? ` of \u20a6${Number(a.fees.checkingFee).toLocaleString()}` : ""} is confirmed. It is paid once, on its own; the acceptance fee, if you are offered a place, follows separately.
+        </Note>
+        <Rail a={a} />
+      </>
+    );
+  }
   if (!at(a, 5) || !a.decision) {
     return (
       <>

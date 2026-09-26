@@ -74,7 +74,7 @@ export interface Application {
   phone: string;
   biodata: { sex: string | null; stateOfOrigin: string | null; lga: string | null; dateOfBirth: string | null; utme: number | null; nextOfKin: string | null };
   olevel: OlSitting[];
-  fees: { applicationFee: number; portalCharge: number; acceptanceFee: number; stated: boolean };
+  fees: { applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee?: number | null; stated: boolean };
   feeReferences: FeeReference[];
   feeConfirmedAt: string | null;
   documents: ApplicationDocument[];
@@ -85,6 +85,9 @@ export interface Application {
   result: ScreeningResult | null;
   screeningScore?: number | null;
   decisionReleasedAt: string | null;
+  /** the released decision is closed until the admission checking fee is confirmed (V271) */
+  checkingDue?: boolean;
+  checkingConfirmedAt?: string | null;
   decision: "OFFERED" | "WAITING" | "NOT_OFFERED" | null;
   decisionNote: string | null;
   decisionBasis: string | null;
@@ -121,7 +124,7 @@ export const NEXT: [string, string, string, string][] = [
   ["Wait for your screening batch", "Batches are published once applications close, so that every candidate is placed.", "/applicant/screening", "Screening slip"],
   ["Sit the post-UTME screening", "Bring your slip and photo identification.", "/applicant/screening", "Screening slip"],
   ["Check your admission status", "The offer appears here the moment the University uploads JAMB’s admission list or the Board releases its decision.", "/applicant/status", "Admission status"],
-  ["Accept your offer and pay the acceptance fee", "An offer that lapses cannot be reinstated.", "/applicant/accept", "Accept the offer"],
+  ["Check your admission status", "Read the offer — programme, faculty, department, session — then accept it and pay the acceptance fee. An offer that lapses cannot be reinstated.", "/applicant/admission", "Admission status"],
   ["Complete the online screening", "Take your acceptance letter, then complete and submit the screening form; the screening officers decide.", "/applicant/clearance", "Online screening"],
   ["Pay your fees and register your courses", "You do this under your admission number, before you are matriculated.", "/applicant/matric", "What happens next"],
   ["Wait for your matriculation number", "Your Faculty Officer confirms you registered; the Academic Office then issues numbers in one run.", "/applicant/matric", "Matriculation"],
@@ -152,12 +155,12 @@ export function at(a: Application, n: number): boolean {
 }
 
 /** the reference still open for a fee, if any */
-export function openReference(a: Application, kind: "APPLICATION" | "ACCEPTANCE"): FeeReference | null {
+export function openReference(a: Application, kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"): FeeReference | null {
   const now = Date.now();
   return a.feeReferences.find((r) => r.kind === kind && !r.confirmedAt && new Date(r.expiresAt).getTime() > now) ?? null;
 }
 
-export function confirmedReference(a: Application, kind: "APPLICATION" | "ACCEPTANCE"): FeeReference | null {
+export function confirmedReference(a: Application, kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"): FeeReference | null {
   return a.feeReferences.find((r) => r.kind === kind && r.confirmedAt) ?? null;
 }
 

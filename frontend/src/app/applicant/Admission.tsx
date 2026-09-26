@@ -4,19 +4,25 @@
  *  comes next, the acceptance fee paid once for the admission, and the tracker of the steps that concern them. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
+import { reasonHeader } from "@/lib/reason";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tick } from "@/components/proto/ui";
 import { STATUS_KIND, dayOf, parseTracker, whenAt, type Admission, type TrackerStep } from "@/lib/screening";
+import { reasonHeader as reason } from "@/lib/reason";
+import { notifyProblem } from "@/components/proto/Toast";
+import { Btn } from "@/components/proto/ui";
+import { PayByCard } from "./common";
 
-export function useAdmission() {
+export function useAdmission(check = false) {
   const [d, setD] = useState<Admission | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   useEffect(() => {
     let live = true;
-    fetch("/api/bff/api/v1/applicant/me/admission", { cache: "no-store" })
+    /* the full page is the applicant's reading of the status: it is stamped on the record (V271); the overview only reads */
+    fetch(check ? "/api/bff/api/v1/applicant/me/admission/checked" : "/api/bff/api/v1/applicant/me/admission", check ? { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Admission status checked") }, body: "{}" } : { cache: "no-store" })
       .then(async (r) => { const j = await r.json().catch(() => null); if (!live) return; if (!r.ok) setProblem((j as Problem) ?? { status: r.status, title: r.statusText }); else setD(j as Admission); })
       .catch(() => { if (live) setProblem({ status: 0, title: "Could not read your admission." }); });
     return () => { live = false; };
-  }, []);
+  }, [check]);
   return { d, problem };
 }
 
@@ -56,11 +62,12 @@ export function AdmissionProgress() {
 
 /** the full page */
 export function AdmissionPage() {
-  const { d, problem } = useAdmission();
+  const { d, problem } = useAdmission(true);
   if (problem) return <Note kind="bad" title="Your admission">{problem.title}</Note>;
   if (!d) return <Panel title="Your admission"><PBody><div className="sub2">Reading…</div></PBody></Panel>;
   const o = d.offer;
   const steps = parseTracker(d.tracker);
+  if (d.status === "CHECKING_FEE_PENDING") return <CheckingFee d={d} />;
   if (!o || o.decision !== "OFFERED" || !o.decision_released_at) {
     return <Note kind="info" title={d.label}>{d.detail ?? "The Admissions Board's decision is published here and by email."}</Note>;
   }
@@ -107,6 +114,43 @@ export function AdmissionPage() {
           </PBody>
         </Panel>
       </div>
+    </>
+  );
+}
+
+/** the admission checking fee (V271): paid once, on its own, to open the released decision; a reference of the portal's own, paid by card, USSD or bank */
+function CheckingFee({ d }: { d: Admission }) {
+  const [reference, setReference] = useState<string | null>(d.checkingReference ?? null);
+  const [busy, setBusy] = useState(false);
+  const fee = Number(d.checkingFee ?? 0);
+  async function getReference() {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/bff/api/v1/applicant/me/fee-references", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reason("Admission checking fee reference") }, body: JSON.stringify({ kind: "CHECKING" }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { notifyProblem((j as Problem) ?? { status: r.status, title: r.statusText }); return; }
+      setReference(String((j as { reference: string }).reference));
+    } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <Note kind="bad" title="Your admission decision has been released">
+        It opens once the admission checking fee of <b className="tnum">\u20a6{fee.toLocaleString()}</b> is confirmed. The fee is paid once, on its own; the acceptance fee, if you are offered a place, follows separately, and neither is ever asked for a second time.
+      </Note>
+      <Panel title="Admission checking fee" right={reference ? <span className="tnum">{reference}</span> : "Get a payment reference"}>
+        <PBody>
+          {reference ? (
+            <>
+              <KvGrid cls="grid--3" pairs={[["Reference", <b key="r" className="tnum">{reference}</b>], ["Amount", <b key="a" className="tnum">\u20a6{fee.toLocaleString()}</b>], ["Purpose", "Admission checking fee"]]} />
+              <div className="mt-2"><PayByCard reference={reference} amount={fee} /></div>
+              <div className="sub2 mt-2">Paying at a bank: quote the reference exactly; the Bursary confirms it against the bank&rsquo;s record and this page opens on the next visit.</div>
+            </>
+          ) : (
+            <div className="row row--between"><span className="sub2">A reference of the University&rsquo;s own is generated for you; it is good for 24 hours and is paid by card, USSD or at the bank.</span><Btn kind="primary" disabled={busy} onClick={() => void getReference()}>{busy ? "Generating\u2026" : "Get a payment reference"}</Btn></div>
+          )}
+        </PBody>
+      </Panel>
+      <Panel title="Progress tracker"><PBody><Tracker steps={parseTracker(d.tracker)} /></PBody></Panel>
     </>
   );
 }
