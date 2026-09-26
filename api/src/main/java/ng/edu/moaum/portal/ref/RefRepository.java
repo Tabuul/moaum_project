@@ -105,4 +105,16 @@ class RefRepository {
                 .param("dept", deptCode).param("sem", semester).param("level", level)
                 .query(Course.class).list();
     }
+
+    /** V273: the states with their local governments, names A–Z */
+    List<Map<String, Object>> states() {
+        return jdbc.sql("""
+                SELECT s.code, s.name, coalesce((SELECT json_agg(l.name ORDER BY l.name) FROM ref.lga l WHERE l.state_code = s.code), '[]'::json)::text AS lgas
+                  FROM ref.state s ORDER BY s.name
+                """).query().listOfRows();
+    }
+
+    List<String> countries() {
+        return jdbc.sql("SELECT name FROM ref.country ORDER BY home DESC, name").query(String.class).list();
+    }
 }

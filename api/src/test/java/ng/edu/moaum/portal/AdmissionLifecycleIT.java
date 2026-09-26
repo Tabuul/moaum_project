@@ -147,9 +147,9 @@ class AdmissionLifecycleIT {
     }
 
     Map<String, Object> answers() {
-        return Map.ofEntries(Map.entry("nationality", "Nigerian"), Map.entry("state_of_origin", "Benue"), Map.entry("lga", "Gboko"), Map.entry("religion", "Christianity"), Map.entry("marital_status", "Single"),
+        return Map.ofEntries(Map.entry("nationality", "Nigeria"), Map.entry("state_of_origin", "Benue"), Map.entry("lga", "Gboko"), Map.entry("religion", "Christianity"), Map.entry("marital_status", "Single"),
                 Map.entry("home_address", "No. 26 Dagye Street, Kaduna"), Map.entry("mobile", "08031234567"), Map.entry("sponsor_name", "Mrs Rebecca Test"), Map.entry("sponsor_address", "No. 26 Dagye Street, Kaduna"),
-                Map.entry("kin_name", "Wilfred Test"), Map.entry("kin_mobile", "09040519378"), Map.entry("kin_relationship", "Father"), Map.entry("secondary_school", "Gwazachat Academy, Sabo Tasha"), Map.entry("secondary_graduation_year", "2083"),
+                Map.entry("kin_name", "Wilfred Test"), Map.entry("kin_mobile", "09040519378"), Map.entry("kin_relationship", "Father"), Map.entry("secondary_school", "Gwazachat Academy, Sabo Tasha"), Map.entry("secondary_graduation_year", "2020"),
                 Map.entry("parent_profession", "Businessman"), Map.entry("primary_school", "Righton International School"));
     }
 
@@ -227,6 +227,14 @@ class AdmissionLifecycleIT {
         assertThat(l(saved.getBody().get("institutions"))).hasSize(2);
         assertThat(l(saved.getBody().get("answers"))).anyMatch(x -> "secondary_school".equals(x.get("field")));
         assertThat(l(saved.getBody().get("missing")).stream().map(x -> x.get("kind"))).contains("DOCUMENT").doesNotContain("FIELD", "OLEVEL");
+        // V273: the lists the form chooses from, and the shape of what was given checked before submission
+        List<Map<String, Object>> states = it.getList(a.token(), "/api/v1/ref/states").getBody();
+        assertThat(states).hasSize(37);
+        assertThat(String.valueOf(states.stream().filter(x -> "Benue".equals(x.get("name"))).findFirst().orElseThrow().get("lgas"))).contains("Gboko").contains("Gwer East");
+        assertThat(l(it.getList(a.token(), "/api/v1/ref/countries").getBody()).size() > 0 || it.getList(a.token(), "/api/v1/ref/countries").getBody().get(0).equals("Nigeria")).isTrue();
+        Map<String, Object> badSaved = m(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", Map.of("mobile", "0803", "lga", "Awka", "personal_email", "not-an-email"))).getBody());
+        assertThat(l(badSaved.get("missing")).stream().filter(x -> "INVALID".equals(x.get("kind"))).map(x -> x.get("item"))).contains("mobile", "lga", "personal_email");
+        assertThat(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", Map.of("mobile", "08031234567", "lga", "Gboko", "personal_email", ""))).getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> early = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", true));
         assertThat(early.getStatusCode().value()).isEqualTo(422);
         for (String k : List.of("OLEVEL_STATEMENT", "JAMB_SLIP", "BIRTH_CERT", "LGA_ID", "PASSPORT")) upload(a, k);

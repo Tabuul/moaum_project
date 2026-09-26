@@ -67,3 +67,28 @@ export interface ReviewDetail {
   documents: ScreeningDocument[]; missing: Missing[]; events: ScreeningEvent[]; eligibility: { applied_result: string; alternatives: number; evaluated_at: string; rules_version: number | null; eligible_alternatives: string | null; reasons: string[] | null } | null;
   changes: ChangeRow[]; status: AdmissionStatus; tracker: string; entitlement: Entitlement;
 }
+
+/** V273: the reference lists the form chooses from */
+export interface RefState { code: string; name: string; lgas: string }
+export const MARITAL = ["Single", "Married", "Divorced", "Widowed", "Separated"];
+export const RELIGIONS = ["Christianity", "Islam", "Traditional", "Other"];
+export const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+export const PHONE_FIELDS = ["mobile", "alt_mobile", "kin_mobile", "kin_alt_mobile", "guardian_mobile", "father_mobile", "mother_mobile", "guarantor_mobile", "whatsapp"];
+export const EMAIL_FIELDS = ["personal_email", "kin_email", "guardian_email", "father_email", "mother_email"];
+export const YEAR_FIELDS = ["secondary_graduation_year", "alevel_graduation_year"];
+/** the same checks the database applies on submission, for the form to say so before */
+export function fieldProblem(field: string, value: string, ctx: { states: RefState[]; countries: string[]; answers: Record<string, string> }): string | null {
+  const v = (value ?? "").trim();
+  if (!v) return null;
+  if (PHONE_FIELDS.includes(field) && !/^0[0-9]{10}$/.test(v)) return "Eleven digits, starting with 0";
+  if (EMAIL_FIELDS.includes(field) && !/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(v)) return "Not shaped as an email address";
+  if (field === "date_of_birth") { const d = new Date(v); if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || isNaN(d.getTime()) || d >= new Date() || d < new Date(Date.now() - 100 * 365.25 * 86400000)) return "A past date as YYYY-MM-DD"; }
+  if (YEAR_FIELDS.includes(field)) { const n = Number(v); if (!/^\d{4}$/.test(v) || n < 1950 || n > new Date().getFullYear()) return "A four-digit year"; }
+  if (field === "bank_account_no" && !/^[0-9]{10}$/.test(v)) return "Ten digits";
+  if (["primary_fees_per_term", "secondary_fees_per_term", "parent_income", "children"].includes(field) && !/^[0-9][0-9,]*(\.[0-9]+)?$/.test(v)) return "A number";
+  if (field === "nationality" && ctx.countries.length && !ctx.countries.some((c) => c.toLowerCase() === v.toLowerCase())) return "Choose a country from the list";
+  if (field === "state_of_origin" && ctx.states.length && !ctx.states.some((s) => s.name.toLowerCase() === v.toLowerCase())) return "Choose a state from the list";
+  if (field === "lga" && ctx.states.length) { const st = ctx.states.find((s) => s.name.toLowerCase() === (ctx.answers.state_of_origin ?? "").toLowerCase()); if (!st || !(JSON.parse(st.lgas) as string[]).some((l) => l.toLowerCase() === v.toLowerCase())) return "Choose a local government of the chosen state"; }
+  return null;
+}
+export const ageOn = (dob: string | null | undefined) => { if (!dob) return null; const d = new Date(dob); if (isNaN(d.getTime())) return null; const now = new Date(); let a = now.getFullYear() - d.getFullYear(); if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) a--; return a; };

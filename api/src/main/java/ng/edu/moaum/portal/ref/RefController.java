@@ -1,6 +1,7 @@
 package ng.edu.moaum.portal.ref;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,6 +27,18 @@ class RefController {
     @GetMapping("/structure")
     Structure structure() {
         return ref.structure();
+    }
+
+    /** the thirty-six states and the FCT, each with its local government areas (V273): the lists the forms choose from */
+    @GetMapping("/states")
+    List<Map<String, Object>> states() {
+        return ref.states();
+    }
+
+    /** the countries, Nigeria first (V273) */
+    @GetMapping("/countries")
+    List<String> countries() {
+        return ref.countries();
     }
 
     @GetMapping("/sessions")
