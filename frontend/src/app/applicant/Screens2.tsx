@@ -84,7 +84,7 @@ export function Status({ a }: { a: Application }) {
     return (
       <>
         <Note kind="info" title="Your application is with the Admissions Board">
-          The Board meets once every screening score has been released and every O&rsquo;Level result has been verified with the examination bodies. Decisions are published here and by email on the same day &mdash; there is no earlier list circulating anywhere.
+          Your admission status appears here the moment the University uploads JAMB&rsquo;s admission list, or when the Admissions Board releases its decision after the screening scores and the O&rsquo;Level verification. It is published here and by email on the same day &mdash; there is no earlier list circulating anywhere. Once offered: accept and pay the acceptance fee, take your acceptance letter, then complete the online screening.
         </Note>
         {at(a, 2) ? <Eligibility /> : null}
         <Rail a={a} />

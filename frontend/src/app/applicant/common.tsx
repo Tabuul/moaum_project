@@ -17,14 +17,16 @@ import { asProblem } from "@/app/student/common";
 
 /* stage N means milestone N is complete, so N is ticked and N+1 is in hand */
 export function Rail({ a }: { a: Application }) {
+  /* a candidate admitted from the JAMB list (V270) never had a CBT slip or score here: those two steps do not concern them */
+  const fromList = !!a.decisionReleasedAt && !a.screeningSlip;
   return (
     <Panel title="Your application" right={STAGES[Math.min(a.stage, 9)][0]}>
       <div style={{ padding: "var(--s-1) 0" }}>
-        {STAGES.map((s, i) => (
+        {STAGES.map((s, i) => (fromList && (i === 3 || i === 4) ? null : (
           <div key={s[0]} style={{ padding: "var(--s-2) var(--s-4)", borderTop: i ? "1px solid var(--line-2)" : undefined }}>
             <Step state={a.stage >= i ? "done" : a.stage + 1 === i ? "now" : "todo"} title={s[0]} sub={s[1]} />
           </div>
-        ))}
+        )))}
       </div>
     </Panel>
   );

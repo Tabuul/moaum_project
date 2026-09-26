@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 1.6 |
+| **Version** | 1.7 |
 | **Date** | 26 September 2026 |
-| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V269` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
+| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V270` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
 | **Nature** | Documentation only. Nothing in the portal — code, schema, configuration or data — was changed to produce this package |
 | **Prepared by** | Directorate of ICT (prepared with Claude Code) |
 
@@ -229,6 +229,7 @@ Terms as the portal uses them, in alphabetical order. Codes in backticks are the
 | Version | Date | Change | By |
 |---|---|---|---|
 | 1.0 | 26 September 2026 | Initial complete portal documentation: ten volumes, seven audit dossiers and the inventory tools, as at commit `8c2b6fa` on `main` | Directorate of ICT (prepared with Claude Code) |
+| 1.7 | 26 September 2026 | Admission status from the JAMB list (V270): the released decision leads the applicant's journey; the CBT steps are not shown to a candidate admitted from the list — volume 01 §4.1 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.6 | 26 September 2026 | Online screening and the admission lifecycle (V269): the Registry's screening forms online, the officers' desk and decisions, the change of programme after an unsuccessful screening without a second acceptance fee, the fee and registration gates, the applicant's Admission Progress and tracker, the pipeline tiles, the matriculation broadcast — volumes 01 §4.1, 02 §2.13.7, 05, 06 §2.13, 07, 08 and 09 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.5 | 26 September 2026 | Eligibility engine (V268): reasons appended as text (an applicant without a programme rule no longer stops the evaluation); the catch-up runs in chunks of fifty with the remainder shown and is quiet by default — volumes 02 §2.13.6 and 07 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.4 | 26 September 2026 | Matriculation Management (V267): faculty-by-faculty batches prepared, reviewed, corrected and issued on confirmation; the matriculation number becomes the sign-in username on the same account; a lock timeout on the migration runner — volumes 01 §3.13, 02 §2.12.x, 04, 05, 06 §4.6, 07, 08 and 09 §3.19 updated | Directorate of ICT (prepared with Claude Code) |

@@ -166,6 +166,8 @@ class AdmissionLifecycleIT {
         assertThat(m(st.get("offer")).get("faculty")).isNotNull();
         assertThat(m(st.get("entitlement")).get("paid")).isEqualTo(false);
         assertThat(String.valueOf(st.get("tracker"))).contains("\"ADMISSION\"").contains("\"ACCEPTANCE_PAYMENT\"").contains("\"SCREENING\"");
+        // V270: admitted from the list without a CBT slip or score, the journey stands at the decision (stage 5), not behind the screening slip
+        assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("stage")).isEqualTo(5);
         // 8 / 28 · the screening does not open before acceptance; nothing is saved
         assertThat(m(it.get(a.token(), "/api/v1/applicant/me/screening").getBody()).get("form")).isNull();
         assertThat(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", answers())).getStatusCode().value()).isEqualTo(422);
