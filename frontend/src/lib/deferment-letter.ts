@@ -35,13 +35,13 @@ export function defermentLetter(d: DefermentFull, verifyUrl: string): Uint8Array
   line("FACULTY:", d.faculty);
   line("LEVEL:", `${d.level} Level`);
   y -= 8;
-  y = p.paragraph(L, y, `The University has considered your request to defer ${d.kind === "SESSION" ? `the ${d.session} academic session` : `the ${SEM(d.semester).toLowerCase()} of the ${d.session} academic session`} on ${d.reason.toLowerCase()} grounds, verified by the Bursary, approved by your department, your faculty and the Deputy Vice-Chancellor (Academic), and approved by the Senate Business Committee as follows:`, A4.w - 2 * L, 10, 1.45) - 8;
+  y = p.paragraph(L, y, `The University has considered your request to defer ${d.kind === "SESSION" ? `the ${d.session} academic session` : `the ${SEM(d.semester).toLowerCase()} of the ${d.session} academic session`} on ${d.reason.toLowerCase()} grounds, verified by the Bursary, approved by your department and your faculty, forwarded by the Academic Office, and approved by the Deputy Vice-Chancellor (Academic) as follows:`, A4.w - 2 * L, 10, 1.45) - 8;
   line("DEFERMENT TYPE:", d.kind === "SESSION" ? "Academic session" : "Semester");
   line("PERIOD DEFERRED:", d.kind === "SESSION" ? `${d.session} academic session` : `${d.session}, ${SEM(d.semester)}`);
   line("EFFECTIVE FROM:", day(d.period_from) || d.session);
   line("EXPECTED RETURN:", `${d.return_session ?? ""}, ${SEM(d.return_semester)}${d.return_on ? ` (${day(d.return_on)})` : ""}`);
   line("APPROVED ON:", day(d.decided_at));
-  line("APPROVED BY:", "Senate Business Committee" + (d.decided_officer ? ` (recorded by ${d.decided_officer})` : ""));
+  line("APPROVED BY:", "Deputy Vice-Chancellor (Academic)" + (d.dvc_officer ?? d.decided_officer ? ` — ${d.dvc_officer ?? d.decided_officer}` : ""));
   if (d.decision_note) line("REMARKS:", d.decision_note);
   y -= 8;
   const notes = [

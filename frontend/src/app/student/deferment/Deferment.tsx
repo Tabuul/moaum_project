@@ -99,7 +99,7 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
 
   return (
     <>
-      <PageHead title="Deferment" description="Defer a semester or a whole academic session on the record. The application fee is paid first; the Bursary, your Head of Department, your faculty, the Academic Office, the Deputy Vice-Chancellor and the Senate Business Committee decide in turn; approved, the period is held, your courses for it are marked deferred (never failed) and your completion timeline moves by exactly the period deferred."
+      <PageHead title="Deferment" description="Defer a semester or a whole academic session on the record. The application fee is paid first; the Bursary, your Head of Department, your faculty, the Academic Office and the Deputy Vice-Chancellor decide in turn, the DVC's approval being final; approved, the period is held, your courses for it are marked deferred (never failed) and your completion timeline moves by exactly the period deferred."
         actions={live && ["ACTIVE", "APPROVED"].includes(live.state) ? <a className="btn btn--primary btn--sm" href={`/student/deferment/letter/${live.id}`} target="_blank" rel="noopener">Download Approval Letter</a> : undefined} />
 
       {live ? (
@@ -128,7 +128,7 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
         <Panel title="Deferment application" right={<StatePil state={live.state} />}>
           <PBody>
             <KvGrid cls="grid--4" pairs={[["Application number", <span key="r" className="tnum b600">{live.reference}</span>], ["Application fee", live.fee_amount != null ? naira(live.fee_amount) : naira(feeAmount)], ["Payment status", <FeePil key="f" state={live.fee_state ?? (live.fee_id ? "CONFIRMED" : null)} />],
-              ["Application status", <StatePil key="s" state={live.state} />], ["Current office", OFFICE_OF[live.state] ?? (["APPROVED", "ACTIVE"].includes(live.state) ? "Registry (in force)" : "—")], ["Period", periodOf(live)], ["Expected return", returnOf(live)], ["Submitted", dayOf(live.submitted_at)]]} />
+              ["Application status", <StatePil key="s" state={live.state} />], ["Current office", OFFICE_OF[live.state] ?? (["APPROVED", "ACTIVE"].includes(live.state) ? "Approved by the DVC · on the record" : "—")], ["Period", periodOf(live)], ["Expected return", returnOf(live)], ["Submitted", dayOf(live.submitted_at)]]} />
             <div className="eyebrow mt-3 mb-1">Approval timeline</div>
             <ApprovalTimeline d={live} />
           </PBody>

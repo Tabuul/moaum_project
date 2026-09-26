@@ -47,7 +47,7 @@ export interface Financials {
 }
 export interface Batch {
   id: string; reference: string; session: string | null; semester: number | null; forwarded_at: string; forwarded_by: string | null; office: string | null; note: string | null; count: number;
-  forwarded_officer: string | null; awaiting_dvc: number; waiting_sbc: number; approved: number; rejected: number; returned: number; dvc_status: "OPEN" | "DECIDED";
+  forwarded_officer: string | null; awaiting_dvc: number; approved: number; rejected: number; returned: number; dvc_status: "OPEN" | "DECIDED";
 }
 export interface DefermentFull extends Deferment {
   documents: DefermentDoc[]; history: DefermentEvent[]; effect: Effect | null; deferredCourses: DeferredCourse[];
@@ -73,15 +73,15 @@ type Kind = "grey" | "info" | "warn" | "ok" | "bad";
 export const STATE: Record<string, [string, Kind]> = {
   DRAFT: ["Draft", "grey"], SUBMITTED: ["WAITING BURSARY ACTION", "info"], CORRECTION_REQUIRED: ["RETURNED FOR CORRECTION", "warn"],
   BURSARY_APPROVED: ["WAITING HOD ACTION", "info"], DEPT_RECOMMENDED: ["WAITING FACULTY ACTION", "info"], FAC_RECOMMENDED: ["WAITING ACADEMIC OFFICE ACTION", "info"],
-  FORWARDED_TO_DVC: ["FORWARDED TO DVC", "info"], DVC_APPROVED: ["WAITING SBC ACTION", "warn"],
+  FORWARDED_TO_DVC: ["WAITING DVC ACTION", "info"], DVC_APPROVED: ["APPROVED", "ok"],
   APPROVED: ["APPROVED", "ok"], ACTIVE: ["APPROVED · IN FORCE", "ok"], COMPLETED: ["COMPLETED", "ok"], REJECTED: ["REJECTED", "bad"], CANCELLED: ["CANCELLED", "grey"],
 };
-export const IN_REVIEW = new Set(["SUBMITTED", "BURSARY_APPROVED", "DEPT_RECOMMENDED", "FAC_RECOMMENDED", "FORWARDED_TO_DVC", "DVC_APPROVED"]);
+export const IN_REVIEW = new Set(["SUBMITTED", "BURSARY_APPROVED", "DEPT_RECOMMENDED", "FAC_RECOMMENDED", "FORWARDED_TO_DVC"]);
 export const OPEN = new Set(["DRAFT", "CORRECTION_REQUIRED"]);
 export const LIVE = new Set([...IN_REVIEW, "APPROVED", "ACTIVE"]);
 export const OFFICE_OF: Record<string, string> = {
   SUBMITTED: "Bursary", BURSARY_APPROVED: "Head of Department", DEPT_RECOMMENDED: "Faculty", FAC_RECOMMENDED: "Academic Office",
-  FORWARDED_TO_DVC: "Deputy Vice-Chancellor (Academic)", DVC_APPROVED: "Senate Business Committee", CORRECTION_REQUIRED: "You", DRAFT: "You",
+  FORWARDED_TO_DVC: "Deputy Vice-Chancellor (Academic)", CORRECTION_REQUIRED: "You", DRAFT: "You",
 };
 export const RETURN: Record<string, [string, Kind]> = {
   UPCOMING: ["Upcoming", "grey"], DUE: ["Due", "warn"], OVERDUE: ["Overdue", "bad"], RETURNED: ["Returned", "ok"],
@@ -94,7 +94,7 @@ export const DOC_KIND: Record<string, string> = { MEDICAL: "Medical documentatio
 export const ACTION_WORD: Record<string, string> = {
   CREATED: "Request opened", UPDATED: "Request changed", DOCUMENT: "Document uploaded", FEE_PAID: "Application fee confirmed", SUBMITTED: "Submitted", RESUBMITTED: "Corrected and resubmitted",
   BURSARY_APPROVE: "Approved by the Bursary", RECOMMEND: "Approved by the Head of Department", FAC_RECOMMEND: "Approved by the Faculty", FORWARD: "Forwarded to the DVC by the Academic Office",
-  DVC_APPROVE: "Approved by the Deputy Vice-Chancellor", SBC_APPROVE: "Approved by the Senate Business Committee", APPROVE: "Approved", EFFECT_APPLIED: "Academic effect applied",
+  DVC_APPROVE: "Approved by the Deputy Vice-Chancellor (final)", SBC_APPROVE: "Approved (legacy final act)", APPROVE: "Approved", EFFECT_APPLIED: "Academic effect applied",
   REJECT: "Rejected", CORRECTION: "Returned for correction", CANCEL: "Cancelled", ACTIVATED: "Deferment came into force", RETURNED: "Return confirmed",
   VIEWED: "Opened", DOCUMENT_VIEWED: "Document viewed", DOWNLOADED: "Application downloaded",
 };
@@ -129,11 +129,11 @@ export function readBase64(file: File): Promise<string> {
   });
 }
 
-/** the approval timeline: every desk in the order the procedure names, done · current · to come */
+/** the approval timeline: every desk in the order the procedure names, done · current · to come; it ends at the DVC, whose approval is final */
 export interface Step { key: string; label: string; when: string | null; who: string | null; note: string | null; done: boolean; current: boolean; failed?: boolean }
 export function stepsOf(d: Deferment): Step[] {
   const s = d.state;
-  const idx: Record<string, number> = { DRAFT: 0, CORRECTION_REQUIRED: 0, SUBMITTED: 1, BURSARY_APPROVED: 2, DEPT_RECOMMENDED: 3, FAC_RECOMMENDED: 4, FORWARDED_TO_DVC: 5, DVC_APPROVED: 6, APPROVED: 7, ACTIVE: 8, COMPLETED: 9, REJECTED: -1, CANCELLED: -1 };
+  const idx: Record<string, number> = { DRAFT: 0, CORRECTION_REQUIRED: 0, SUBMITTED: 1, BURSARY_APPROVED: 2, DEPT_RECOMMENDED: 3, FAC_RECOMMENDED: 4, FORWARDED_TO_DVC: 5, DVC_APPROVED: 6, APPROVED: 6, ACTIVE: 6, COMPLETED: 6, REJECTED: -1, CANCELLED: -1 };
   const at = idx[s] ?? 0;
   const mk = (key: string, label: string, n: number, when: string | null, who: string | null, note: string | null): Step => ({ key, label, when, who, note, done: !!when || at > n, current: at === n });
   const steps: Step[] = [
@@ -142,10 +142,7 @@ export function stepsOf(d: Deferment): Step[] {
     mk("hod", "Head of Department approved", 3, d.dept_at, d.dept_officer, d.dept_note),
     mk("faculty", "Faculty approved", 4, d.fac_at, d.faculty_officer, d.fac_note),
     mk("academic", "Forwarded to the DVC by the Academic Office", 5, d.forwarded_at, d.forwarded_officer, d.batch_reference ? `Batch ${d.batch_reference}` : null),
-    mk("dvc", "Deputy Vice-Chancellor approved", 6, d.dvc_at, d.dvc_officer, d.dvc_note),
-    mk("sbc", "Senate Business Committee approved", 7, ["APPROVED", "ACTIVE", "COMPLETED"].includes(s) ? d.decided_at : null, ["APPROVED", "ACTIVE", "COMPLETED"].includes(s) ? d.decided_officer : null, ["APPROVED", "ACTIVE", "COMPLETED"].includes(s) ? d.decision_note : null),
-    mk("active", "Deferment in force", 8, d.activated_at, null, null),
-    mk("returned", "Return confirmed", 9, d.returned_at, d.returned_officer, d.return_note),
+    mk("dvc", "Deputy Vice-Chancellor approved — final approval", 6, d.dvc_at ?? (["DVC_APPROVED", "APPROVED", "ACTIVE", "COMPLETED"].includes(s) ? d.decided_at : null), d.dvc_officer ?? (["DVC_APPROVED", "APPROVED", "ACTIVE", "COMPLETED"].includes(s) ? d.decided_officer : null), d.dvc_note ?? (["DVC_APPROVED", "APPROVED", "ACTIVE", "COMPLETED"].includes(s) ? d.decision_note : null)),
   ];
   // a waiting stage is the "current" one: the step after the last done
   if (s === "SUBMITTED") steps[1].current = true;

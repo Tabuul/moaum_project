@@ -484,18 +484,17 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | `LOCKED` registration status | CONFIGURED BUT UNUSED | Only checks in V139 / V195; no writer | Every "APPROVED/LOCKED" test is effectively APPROVED |
 | Notifications on approve / return | NOT IMPLEMENTED | No `queue_notice` | |
 
-### 3.21 Deferments (dossier D5; revised by V264 on 26 September 2026)
+### 3.21 Deferments (dossier D5; revised by V264 and V265 on 26 September 2026)
 
 | Feature | Status | Evidence | Notes |
 |---|---|---|---|
 | Application fee before the form (Bursary-stated, default ₦10,000; reference → confirmation opens the form) | IMPLEMENTED | V264 `people.deferment_fee`, `deferment_fee_start`, trigger `deferment_fee_confirmed`, `deferment_save` | Uses the existing payment reference, gateways, bank confirmation and receipts; no second payment system |
 | Student wizard, documents, submit, withdraw | IMPLEMENTED | `Deferment.tsx`, V259/V264 functions | Identity read from the record; documents open in a modal viewer |
-| Six-desk chain Bursary → HOD → Faculty → Academic Office → DVC → SBC, office checked in SQL and at the door, no stage skipped | IMPLEMENTED | V264 `people.deferment_decide`, `deferment_office_may`; `DefermentsController.may/act`; `DefermentIT` | `APPROVE` at any earlier stage is refused |
+| Five-desk chain Bursary → HOD → Faculty → Academic Office → DVC (final), office checked in SQL and at the door, no stage skipped | IMPLEMENTED | V264 `people.deferment_decide`, `deferment_office_may`; `DefermentsController.may/act`; `DefermentIT` | `APPROVE` at any earlier stage is refused |
 | Bursary financial verification read from the finance record and recorded with the approval | IMPLEMENTED | `people.deferment_financials`, `bursary_*` columns | "No qualifying school-fee payment found." when none |
 | Academic Office sees every stage; downloads only faculty-approved applications (server-enforced) | IMPLEMENTED | `GET /deferments/{id}/application` → 422 `DEF_NOT_DOWNLOADABLE` before `fac_at` | Every download logged DOWNLOADED |
 | Forwarding batches to the DVC (`DEF-DVC-YYYY-NNNNN`), whole list or selection, never duplicated | IMPLEMENTED | `people.deferment_forward`, `/deferments/batches` | |
-| DVC decision with a required comment; status WAITING SBC ACTION after | IMPLEMENTED | `DEF_DVC_COMMENT`; `deferment_stage_label` | |
-| SBC final action by the Registry recording the Committee | IMPLEMENTED | `SBC_APPROVE` (`registrar`, `dregistrar`, `super`) | The Committee has no office of its own; the Registry records its act |
+| DVC decision with a required comment — the final approval (V265) | IMPLEMENTED | `DEF_DVC_COMMENT`; `people.deferment_decide` DVC_APPROVE → APPROVED | The state DVC_APPROVED and the action SBC_APPROVE are retired; a request that sat at DVC_APPROVED was carried to APPROVED by V265 |
 | Academic effect: courses of the period DEFERRED (not F, not in results/GPA), `deferred_course` rows, timeline +period, entry session and matric unchanged, transactional | IMPLEMENTED | `people.deferment_apply_effect`, `programme_timeline`, `deferred_courses`; `DefermentIT` asserts CGPA unchanged | Curriculum fallback takes core and GST courses of the level and semester when no registration exists |
 | Deferred courses due on the registration form under their own heading (entry type DEFERRED, not droppable) | IMPLEMENTED | `registration.student_menu` (`deferred`, `deferred_from`), `student_draft`, `student_choose`, `student_drop`; `Screens3.tsx` | Prerequisite and unit rules unchanged |
 | Students Due to Resume with server-side search and filters | IMPLEMENTED | `/api/v1/deferments/returns`, `Returns.tsx` | |

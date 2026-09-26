@@ -18,7 +18,7 @@ export default async function BatchesPage() {
       {!r.ok ? <ProblemNotice problem={r.problem} /> : null}
       <Panel title="Batches" right={`${rows.length}`}>
         {rows.length ? (
-          <DTable pageSize={0} cols={["S/N|num", "Batch", "Session · semester", "Applications|num", "Forwarded|mid", "By", "Awaiting DVC|num", "Waiting SBC|num", "Approved|num", "Rejected|num", "Returned|num", "DVC status|mid", "|num"]}
+          <DTable pageSize={0} cols={["S/N|num", "Batch", "Session · semester", "Applications|num", "Forwarded|mid", "By", "Awaiting DVC|num", "Approved|num", "Rejected|num", "Returned|num", "DVC status|mid", "|num"]}
             rows={rows.map((b, i) => [
               <span key="sn" className="tnum sub2">{i + 1}</span>,
               <span key="r" className="tnum b600">{b.reference}</span>,
@@ -26,7 +26,7 @@ export default async function BatchesPage() {
               <span key="n" className="tnum">{b.count}</span>,
               <span key="d" className="tnum sub2">{dayOf(b.forwarded_at)}</span>,
               <span key="o" className="sub2">{b.forwarded_officer ?? b.office ?? ""}{b.note ? <div>{b.note}</div> : null}</span>,
-              <span key="a" className="tnum">{b.awaiting_dvc}</span>, <span key="w" className="tnum">{b.waiting_sbc}</span>, <span key="ap" className="tnum">{b.approved}</span>, <span key="rj" className="tnum">{b.rejected}</span>, <span key="rt" className="tnum">{b.returned}</span>,
+              <span key="a" className="tnum">{b.awaiting_dvc}</span>, <span key="ap" className="tnum">{b.approved}</span>, <span key="rj" className="tnum">{b.rejected}</span>, <span key="rt" className="tnum">{b.returned}</span>,
               <Pil key="st" kind={b.dvc_status === "OPEN" ? "warn" : "ok"}>{b.dvc_status === "OPEN" ? "With the DVC" : "Decided"}</Pil>,
               <Link key="v" className="btn btn--ghost btn--sm" href={`/deferments?batch=${encodeURIComponent(b.reference)}`}>Applications</Link>,
             ])} texts={rows.map((b) => `${b.reference} ${b.session ?? ""} ${b.forwarded_officer ?? ""}`)} />

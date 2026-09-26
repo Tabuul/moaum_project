@@ -22,14 +22,14 @@ import type { DeskFilters, DeskList } from "./page";
 
 export interface DefermentDashboard {
   scope: { kind: string; office: string; stage: string }; session: string | null;
-  totals: { total: number; waiting_bursary: number; waiting_hod: number; waiting_faculty: number; waiting_academic: number; forwarded_dvc: number; waiting_sbc: number; pending: number; correction: number;
+  totals: { total: number; waiting_bursary: number; waiting_hod: number; waiting_faculty: number; waiting_academic: number; forwarded_dvc: number; pending: number; correction: number;
     approved: number; rejected: number; active: number; completed: number; faculty_approved: number; forwarded: number; returning: number; overdue: number; extensions: number; mine: number };
   byFaculty: Row[]; byDepartment: Row[]; byProgramme: Row[]; byKind: Row[]; bySession: Row[]; byReason: Row[];
   setting: { fee: number; max_sessions: number; allow_extension: boolean; reminder_days: number; overdue_after_days: number };
 }
 interface Row { faculty?: string; department?: string; programme?: string; kind?: string; session?: string; reason?: string; total: number; pending: number; approved: number; active: number; rejected: number }
 
-const STAGE_WORD: Record<string, string> = { bursar: "the Bursary", hod: "the department", dean: "the faculty", facultyofficer: "the faculty", academic: "the Academic Office", dvc: "the Deputy Vice-Chancellor", registrar: "the Senate Business Committee (Registry)", dregistrar: "the Senate Business Committee (Registry)", super: "the Senate Business Committee" };
+const STAGE_WORD: Record<string, string> = { bursar: "the Bursary", hod: "the department", dean: "the faculty", facultyofficer: "the faculty", academic: "the Academic Office", dvc: "the Deputy Vice-Chancellor", registrar: "the Registry (reads the whole chain)", dregistrar: "the Registry (reads the whole chain)", super: "every desk" };
 
 export function Desk({ list, dash, filters, batches }: { list: DeskList; dash: DefermentDashboard | null; filters: DeskFilters; batches: Batch[] }) {
   const queryNav = useQueryNav();
@@ -96,21 +96,20 @@ export function Desk({ list, dash, filters, batches }: { list: DeskList; dash: D
 
   const tiles: [string, string, string | null, string][] = !t ? [] : office === "bursar" ? [
     ["Awaiting Bursary", String(t.waiting_bursary), t.waiting_bursary ? "var(--amber-ink)" : null, "Submitted, fee paid, financial verification due"],
-    ["Approved", String(t.approved + t.waiting_hod + t.waiting_faculty + t.waiting_academic + t.forwarded_dvc + t.waiting_sbc), null, "Passed the Bursary"],
+    ["Approved", String(t.approved + t.waiting_hod + t.waiting_faculty + t.waiting_academic + t.forwarded_dvc), null, "Passed the Bursary"],
     ["Rejected", String(t.rejected), null, "With the reason on the record"], ["Returned", String(t.correction), t.correction ? "var(--amber-ink)" : null, "Returned for correction"],
   ] : office === "hod" ? [
     ["Awaiting HOD", String(t.waiting_hod), t.waiting_hod ? "var(--amber-ink)" : null, "Bursary-approved, your decision due"],
-    ["Approved", String(t.approved + t.waiting_faculty + t.waiting_academic + t.forwarded_dvc + t.waiting_sbc), null, "Passed the department"],
+    ["Approved", String(t.approved + t.waiting_faculty + t.waiting_academic + t.forwarded_dvc), null, "Passed the department"],
     ["Rejected", String(t.rejected), null, "With the reason on the record"], ["Returned", String(t.correction), t.correction ? "var(--amber-ink)" : null, "Returned for correction"],
   ] : ["dean", "facultyofficer"].includes(office) ? [
     ["Awaiting Faculty", String(t.waiting_faculty), t.waiting_faculty ? "var(--amber-ink)" : null, "Department-approved, your decision due"],
-    ["Approved", String(t.approved + t.waiting_academic + t.forwarded_dvc + t.waiting_sbc), null, "Passed the faculty"],
+    ["Approved", String(t.approved + t.waiting_academic + t.forwarded_dvc), null, "Passed the faculty"],
     ["Rejected", String(t.rejected), null, "With the reason on the record"], ["Returned", String(t.correction), t.correction ? "var(--amber-ink)" : null, "Returned for correction"],
   ] : office === "dvc" ? [
     ["Pending approval", String(t.forwarded_dvc), t.forwarded_dvc ? "var(--amber-ink)" : null, "Forwarded by the Academic Office"],
-    ["Approved", String(t.waiting_sbc + t.approved), t.waiting_sbc + t.approved ? "var(--green-ink)" : null, "With your comment on the record"],
+    ["Approved", String(t.approved), t.approved ? "var(--green-ink)" : null, "Final approval, with your comment on the record"],
     ["Rejected", String(t.rejected), null, "With the reason on the record"], ["Returned", String(t.correction), null, "Returned for correction"],
-    ["WAITING SBC ACTION", String(t.waiting_sbc), t.waiting_sbc ? "var(--amber-ink)" : null, "Approved by you, before the Senate Business Committee"],
     ["Total received", String(t.forwarded), null, "Every application forwarded to this office"],
   ] : [
     ["Total applications", String(t.total), null, dash?.session ?? "Every session"],
@@ -119,19 +118,18 @@ export function Desk({ list, dash, filters, batches }: { list: DeskList; dash: D
     ["Faculty pending", String(t.waiting_faculty), t.waiting_faculty ? "var(--amber-ink)" : null, "WAITING FACULTY ACTION"],
     ["Faculty approved", String(t.faculty_approved), t.faculty_approved ? "var(--green-ink)" : null, "Downloadable by the Academic Office"],
     ["Pending forwarding", String(t.waiting_academic), t.waiting_academic ? "var(--chrome)" : null, "Faculty-approved, not yet forwarded"],
-    ["Forwarded to DVC", String(t.forwarded_dvc), null, "Awaiting the DVC"],
-    ["WAITING SBC ACTION", String(t.waiting_sbc), t.waiting_sbc ? "var(--amber-ink)" : null, "DVC-approved, before the Committee"],
-    ["Approved", String(t.approved), t.approved ? "var(--green-ink)" : null, "Approved, in force or completed"],
+    ["Forwarded to DVC", String(t.forwarded_dvc), null, "WAITING DVC ACTION"],
+    ["Approved", String(t.approved), t.approved ? "var(--green-ink)" : null, "Approved by the DVC, in force or completed"],
     ["Completed", String(t.completed), null, "Returned from deferment"],
     ["Rejected", String(t.rejected), null, "With the reason on the record"],
     ["Overdue returns", String(t.overdue), t.overdue ? "var(--red-ink)" : null, "Past the return date, not confirmed"],
   ];
   const tileState: Record<string, string> = { "Awaiting Bursary": "SUBMITTED", "Bursary pending": "SUBMITTED", "Awaiting HOD": "BURSARY_APPROVED", "HOD pending": "BURSARY_APPROVED", "Awaiting Faculty": "DEPT_RECOMMENDED", "Faculty pending": "DEPT_RECOMMENDED",
-    "Faculty approved": "FACULTY_APPROVED", "Pending forwarding": "FAC_RECOMMENDED", "Forwarded to DVC": "FORWARDED_TO_DVC", "Pending approval": "FORWARDED_TO_DVC", "WAITING SBC ACTION": "DVC_APPROVED", "Approved": "APPROVED", "Completed": "COMPLETED", "Rejected": "REJECTED", "Returned": "CORRECTION_REQUIRED", "Total applications": "", "Total received": "" };
+    "Faculty approved": "FACULTY_APPROVED", "Pending forwarding": "FAC_RECOMMENDED", "Forwarded to DVC": "FORWARDED_TO_DVC", "Pending approval": "FORWARDED_TO_DVC", "Approved": "APPROVED", "Completed": "COMPLETED", "Rejected": "REJECTED", "Returned": "CORRECTION_REQUIRED", "Total applications": "", "Total received": "" };
 
   return (
     <>
-      <PageHead title="Deferments" description={`${dash?.scope.kind === "DEPARTMENT" ? "Your department's" : dash?.scope.kind === "FACULTY" ? "Your faculty's" : dash?.scope.kind === "PG_SCHOOL" ? "The Postgraduate School's" : dash?.scope.kind === "COLLEGE" ? "The College's" : "The University's"} deferment applications: what waits at ${STAGE_WORD[office] ?? "this desk"}, every application and where it stands on the chain — Bursary → HOD → Faculty → Academic Office → DVC → Senate Business Committee — and the students due to resume.`}
+      <PageHead title="Deferments" description={`${dash?.scope.kind === "DEPARTMENT" ? "Your department's" : dash?.scope.kind === "FACULTY" ? "Your faculty's" : dash?.scope.kind === "PG_SCHOOL" ? "The Postgraduate School's" : dash?.scope.kind === "COLLEGE" ? "The College's" : "The University's"} deferment applications: what waits at ${STAGE_WORD[office] ?? "this desk"}, every application and where it stands on the chain — Bursary → HOD → Faculty → Academic Office → DVC (final) — and the students due to resume.`}
         actions={<><LinkBtn kind="primary" href="/deferments/returns">Students Due to Resume</LinkBtn>{isAcademic ? <LinkBtn kind="secondary" href="/deferments/batches">Batches</LinkBtn> : null}<Btn kind="secondary" onClick={() => void excel()} disabled={!exportable().length}>Download Excel</Btn><Btn kind="ghost" onClick={pdf} disabled={!exportable().length}>Download PDF</Btn></>} />
 
       {t ? <Tiles items={tiles.map(([l, v, c, s]) => { const st = tileState[l]; const qs = new URLSearchParams(); for (const [k, val] of Object.entries({ ...filters, state: st ?? "" })) if (val) qs.set(k, val); return [<Link key={l} className="lnk" href={`/deferments?${qs}`}>{l}</Link>, v, c, s]; })} /> : null}

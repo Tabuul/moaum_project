@@ -41,8 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
  * the form opens on the confirmed payment; the request then goes to the Bursary (the last school-fee payment and the
  * balance read from the finance record), the Head of Department, the faculty, the Academic Office (which sees every
  * stage, downloads only what the faculty has approved, and forwards the approved list to the DVC in a numbered batch),
- * the Deputy Vice-Chancellor (with a comment) and the Senate Business Committee, whose approval applies the academic
- * effect. The student reaches only their own requests (/api/v1/me/deferments); a desk reaches those within its bound —
+ * and the Deputy Vice-Chancellor (with a comment), whose approval is final and applies the academic effect. The student reaches only their own requests (/api/v1/me/deferments); a desk reaches those within its bound —
  * a Head their department, a Dean their faculty, the Bursary, the Academic Office, the DVC and the Registry all — and
  * each acts only at its own stage. The rules are in the database; this is the door to them.
  */
@@ -55,7 +54,7 @@ class DefermentsController {
     private static final String SETTINGS = "hasAnyAuthority('OFFICE_bursar','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
     private static final Set<String> REGISTRY = Set.of("academic", "registrar", "dregistrar", "super");
     private static final Set<String> ALL_SEEING = Set.of("academic", "registrar", "dregistrar", "records", "super", "admin", "bursar", "dvc", "vc");
-    private static final Set<String> IN_REVIEW = Set.of("SUBMITTED", "BURSARY_APPROVED", "DEPT_RECOMMENDED", "FAC_RECOMMENDED", "FORWARDED_TO_DVC", "DVC_APPROVED");
+    private static final Set<String> IN_REVIEW = Set.of("SUBMITTED", "BURSARY_APPROVED", "DEPT_RECOMMENDED", "FAC_RECOMMENDED", "FORWARDED_TO_DVC");
     private static final Set<String> DOC_TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
     private static final Set<String> DOC_KINDS = Set.of("MEDICAL", "FINANCIAL", "OFFICIAL_LETTER", "EMPLOYER_LETTER", "OTHER");
     private static final long DOC_MAX = 5L * 1024 * 1024;
@@ -308,7 +307,6 @@ class DefermentsController {
             case "dean", "facultyofficer" -> "DEPT_RECOMMENDED";
             case "academic" -> "FAC_RECOMMENDED";
             case "dvc" -> "FORWARDED_TO_DVC";
-            case "registrar", "dregistrar", "super" -> "DVC_APPROVED";
             default -> "__none__";
         };
     }
@@ -325,9 +323,9 @@ class DefermentsController {
         Bound b = bound();
         String st = state == null || state.isBlank() ? null : state.trim().toUpperCase();
         String stPred = st == null ? "" : switch (st) {
-            case "PENDING" -> " AND d.state IN ('SUBMITTED','BURSARY_APPROVED','DEPT_RECOMMENDED','FAC_RECOMMENDED','FORWARDED_TO_DVC','DVC_APPROVED')";
+            case "PENDING" -> " AND d.state IN ('SUBMITTED','BURSARY_APPROVED','DEPT_RECOMMENDED','FAC_RECOMMENDED','FORWARDED_TO_DVC')";
             case "MINE" -> " AND d.state = '" + stageOf(b.office()) + "'";
-            case "FACULTY_APPROVED" -> " AND d.fac_at IS NOT NULL AND d.state IN ('FAC_RECOMMENDED','FORWARDED_TO_DVC','DVC_APPROVED','APPROVED','ACTIVE','COMPLETED')";
+            case "FACULTY_APPROVED" -> " AND d.fac_at IS NOT NULL AND d.state IN ('FAC_RECOMMENDED','FORWARDED_TO_DVC','APPROVED','ACTIVE','COMPLETED')";
             case "DECIDED" -> " AND d.state IN ('APPROVED','ACTIVE','COMPLETED','REJECTED')";
             default -> " AND d.state = :st";
         };
@@ -370,7 +368,7 @@ class DefermentsController {
                 SELECT DISTINCT f.code AS faculty_code, f.name AS faculty, dp.code AS dept_code, dp.name AS department, p.code AS programme_code, p.name AS programme
                   FROM people.deferment d JOIN people.student s ON s.id = d.student_id JOIN ref.programme p ON p.code = s.programme_code
                   JOIN ref.department dp ON dp.code = p.dept_code JOIN ref.faculty f ON f.code = p.faculty_code WHERE true""" + WITHIN + " ORDER BY f.name, dp.name, p.name"), b).query().listOfRows());
-        o.put("states", List.of("DRAFT", "SUBMITTED", "CORRECTION_REQUIRED", "BURSARY_APPROVED", "DEPT_RECOMMENDED", "FAC_RECOMMENDED", "FORWARDED_TO_DVC", "DVC_APPROVED", "APPROVED", "ACTIVE", "COMPLETED", "REJECTED", "CANCELLED"));
+        o.put("states", List.of("DRAFT", "SUBMITTED", "CORRECTION_REQUIRED", "BURSARY_APPROVED", "DEPT_RECOMMENDED", "FAC_RECOMMENDED", "FORWARDED_TO_DVC", "APPROVED", "ACTIVE", "COMPLETED", "REJECTED", "CANCELLED"));
         o.put("batches", jdbc.sql("SELECT id, reference, forwarded_at, count FROM people.deferment_batch ORDER BY forwarded_at DESC LIMIT 200").query().listOfRows());
         return o;
     }
@@ -394,14 +392,13 @@ class DefermentsController {
                        count(*) FILTER (WHERE state = 'DEPT_RECOMMENDED') AS waiting_faculty,
                        count(*) FILTER (WHERE state = 'FAC_RECOMMENDED') AS waiting_academic,
                        count(*) FILTER (WHERE state = 'FORWARDED_TO_DVC') AS forwarded_dvc,
-                       count(*) FILTER (WHERE state = 'DVC_APPROVED') AS waiting_sbc,
-                       count(*) FILTER (WHERE state IN ('SUBMITTED','BURSARY_APPROVED','DEPT_RECOMMENDED','FAC_RECOMMENDED','FORWARDED_TO_DVC','DVC_APPROVED')) AS pending,
+                       count(*) FILTER (WHERE state IN ('SUBMITTED','BURSARY_APPROVED','DEPT_RECOMMENDED','FAC_RECOMMENDED','FORWARDED_TO_DVC')) AS pending,
                        count(*) FILTER (WHERE state = 'CORRECTION_REQUIRED') AS correction,
                        count(*) FILTER (WHERE state IN ('APPROVED','ACTIVE','COMPLETED')) AS approved,
                        count(*) FILTER (WHERE state = 'REJECTED') AS rejected,
                        count(*) FILTER (WHERE state = 'ACTIVE') AS active,
                        count(*) FILTER (WHERE state = 'COMPLETED') AS completed,
-                       count(*) FILTER (WHERE fac_at IS NOT NULL AND state IN ('FAC_RECOMMENDED','FORWARDED_TO_DVC','DVC_APPROVED','APPROVED','ACTIVE','COMPLETED')) AS faculty_approved,
+                       count(*) FILTER (WHERE fac_at IS NOT NULL AND state IN ('FAC_RECOMMENDED','FORWARDED_TO_DVC','APPROVED','ACTIVE','COMPLETED')) AS faculty_approved,
                        count(*) FILTER (WHERE batch_id IS NOT NULL) AS forwarded,
                        count(*) FILTER (WHERE state IN ('ACTIVE','APPROVED') AND return_status = 'DUE') AS returning,
                        count(*) FILTER (WHERE return_status = 'OVERDUE') AS overdue,
@@ -415,7 +412,7 @@ class DefermentsController {
         out.put("totals", totals);
         for (String[] g : new String[][]{{"byFaculty", "faculty_code, faculty"}, {"byDepartment", "dept_code, department"}, {"byProgramme", "programme_code, programme"},
                 {"byKind", "kind"}, {"bySession", "session"}, {"byReason", "reason"}}) {
-            out.put(g[0], within(jdbc.sql(base + "SELECT " + g[1] + ", count(*) AS total, count(*) FILTER (WHERE state IN ('SUBMITTED','BURSARY_APPROVED','DEPT_RECOMMENDED','FAC_RECOMMENDED','FORWARDED_TO_DVC','DVC_APPROVED')) AS pending,"
+            out.put(g[0], within(jdbc.sql(base + "SELECT " + g[1] + ", count(*) AS total, count(*) FILTER (WHERE state IN ('SUBMITTED','BURSARY_APPROVED','DEPT_RECOMMENDED','FAC_RECOMMENDED','FORWARDED_TO_DVC')) AS pending,"
                     + " count(*) FILTER (WHERE state IN ('APPROVED','ACTIVE','COMPLETED')) AS approved, count(*) FILTER (WHERE state = 'ACTIVE') AS active, count(*) FILTER (WHERE state = 'REJECTED') AS rejected"
                     + " FROM x GROUP BY " + g[1] + " ORDER BY " + g[1].split(",")[g[1].contains(",") ? 1 : 0]).param("ses", ses, Types.VARCHAR), b).query().listOfRows());
         }
@@ -459,7 +456,6 @@ class DefermentsController {
         return jdbc.sql("""
                 SELECT b.*, CASE WHEN fw.id IS NULL THEN NULL ELSE fw.surname || ', ' || fw.given_names END AS forwarded_officer,
                        (SELECT count(*) FROM people.deferment d WHERE d.batch_id = b.id AND d.state = 'FORWARDED_TO_DVC') AS awaiting_dvc,
-                       (SELECT count(*) FROM people.deferment d WHERE d.batch_id = b.id AND d.state = 'DVC_APPROVED') AS waiting_sbc,
                        (SELECT count(*) FROM people.deferment d WHERE d.batch_id = b.id AND d.state IN ('APPROVED','ACTIVE','COMPLETED')) AS approved,
                        (SELECT count(*) FROM people.deferment d WHERE d.batch_id = b.id AND d.state = 'REJECTED') AS rejected,
                        (SELECT count(*) FROM people.deferment d WHERE d.batch_id = b.id AND d.state = 'CORRECTION_REQUIRED') AS returned,
@@ -538,7 +534,6 @@ class DefermentsController {
             case "DEPT_RECOMMENDED" -> Set.of("dean", "facultyofficer").contains(o) || sup;
             case "FAC_RECOMMENDED" -> Set.of("academic", "registrar", "dregistrar").contains(o) || sup;
             case "FORWARDED_TO_DVC" -> "dvc".equals(o) || sup;
-            case "DVC_APPROVED" -> Set.of("registrar", "dregistrar").contains(o) || sup;
             default -> false;
         };
         Map<String, Boolean> m = new LinkedHashMap<>();
@@ -547,7 +542,6 @@ class DefermentsController {
         m.put("facRecommend", "DEPT_RECOMMENDED".equals(state) && stageMine);
         m.put("forward", "FAC_RECOMMENDED".equals(state) && stageMine);
         m.put("dvcApprove", "FORWARDED_TO_DVC".equals(state) && stageMine);
-        m.put("sbcApprove", "DVC_APPROVED".equals(state) && stageMine);
         m.put("reject", IN_REVIEW.contains(state) && stageMine);
         m.put("correction", IN_REVIEW.contains(state) && stageMine);
         m.put("cancel", registry && (IN_REVIEW.contains(state) || "APPROVED".equals(state)));
@@ -572,7 +566,6 @@ class DefermentsController {
             case "RECOMMEND" -> m.get("recommend");
             case "FAC_RECOMMEND" -> m.get("facRecommend");
             case "DVC_APPROVE" -> m.get("dvcApprove");
-            case "SBC_APPROVE" -> m.get("sbcApprove");
             case "REJECT" -> m.get("reject");
             case "CORRECTION" -> m.get("correction");
             case "CANCEL" -> m.get("cancel");
@@ -580,7 +573,7 @@ class DefermentsController {
         };
         if (!allowed) {
             throw new DomainRuleViolation("DEF_NOT_YOUR_STAGE", "This request is " + String.valueOf(d.get("stage_label")).toLowerCase() + "; " + action.toLowerCase().replace('_', ' ') + " is not this desk's act at that stage.",
-                    new DomainRuleViolation.Remedy("The Bursary verifies a submitted request, the Head of Department decides after the Bursary, the faculty after the department, the Academic Office forwards, the DVC decides a forwarded request, and the Senate Business Committee acts last; each may return or reject at its own stage only.", "Registry"));
+                    new DomainRuleViolation.Remedy("The Bursary verifies a submitted request, the Head of Department decides after the Bursary, the faculty after the department, the Academic Office forwards, and the DVC decides a forwarded request — the final approval; each may return or reject at its own stage only.", "Registry"));
         }
         if ("DVC_APPROVE".equals(action) && (body.note() == null || body.note().isBlank())) {
             throw new DomainRuleViolation("DEF_DVC_COMMENT", "The DVC's decision carries a comment.", new DomainRuleViolation.Remedy("Write the recommendation or observation that goes on the record with the approval.", "Deputy Vice-Chancellor"));

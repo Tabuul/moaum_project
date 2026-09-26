@@ -4,8 +4,8 @@
  *  fee; the financial verification the Bursary reads from the finance record (the last school-fee payment, the balance —
  *  never typed); the request and its documents, opened in a modal on this page; each desk's word and the approval
  *  timeline; the academic effect once approved; and the act this desk may take at this stage — the Bursary's approval,
- *  the department's, the faculty's, the Academic Office's forwarding, the DVC's decision with a comment, the Senate
- *  Business Committee's final act — or a return for correction, a rejection with the reason, a cancellation, a return
+ *  the department's, the faculty's, the Academic Office's forwarding, the DVC's final decision with a comment
+ *  — or a return for correction, a rejection with the reason, a cancellation, a return
  *  confirmed. Every act and every reading goes on the trail. */
 import { useState } from "react";
 import Link from "next/link";
@@ -24,8 +24,7 @@ const ACTS: Record<string, [string, string, "primary" | "go" | "urgent" | "ghost
   bursaryApprove: ["BURSARY_APPROVE", "Approve (financial verification done)", "go", false],
   recommend: ["RECOMMEND", "Approve and send to the Faculty", "go", false],
   facRecommend: ["FAC_RECOMMEND", "Approve and send to the Academic Office", "go", false],
-  dvcApprove: ["DVC_APPROVE", "Approve with comment", "go", true],
-  sbcApprove: ["SBC_APPROVE", "Record SBC Approval", "go", false],
+  dvcApprove: ["DVC_APPROVE", "Approve with comment (final approval)", "go", true],
   correction: ["CORRECTION", "Return for Correction", "secondary", true],
   reject: ["REJECT", "Reject", "urgent", true],
   cancel: ["CANCEL", "Cancel Application", "ghost", true],
@@ -56,8 +55,8 @@ export function Review({ d }: { d: DefermentFull }) {
     if (needsNote && !note.trim()) { const pr: Problem = { status: 422, title: key === "reject" ? "A rejection carries its reason." : key === "correction" ? "Say what the student must correct." : key === "dvcApprove" ? "The DVC's decision carries a comment." : "A cancellation carries its reason." }; setProblem(pr); notifyProblem(pr); return; }
     void act("/action", { action, note: note.trim() || null }, `${label}: ${d.reference}`);
   };
-  const confirmKeys = new Set(["bursaryApprove", "recommend", "facRecommend", "dvcApprove", "sbcApprove", "reject"]);
-  const askTitle: Record<string, string> = { bursaryApprove: "Bursary approval", recommend: "Head of Department's approval", facRecommend: "Faculty approval", dvcApprove: "Deputy Vice-Chancellor's approval", sbcApprove: "Senate Business Committee's approval", reject: "Rejection", return: "Confirm the return" };
+  const confirmKeys = new Set(["bursaryApprove", "recommend", "facRecommend", "dvcApprove", "reject"]);
+  const askTitle: Record<string, string> = { bursaryApprove: "Bursary approval", recommend: "Head of Department's approval", facRecommend: "Faculty approval", dvcApprove: "Deputy Vice-Chancellor's final approval", reject: "Rejection", return: "Confirm the return" };
 
   return (
     <>
@@ -75,8 +74,7 @@ export function Review({ d }: { d: DefermentFull }) {
         <Panel title="This desk's act" right={<span>{OFFICE_OF[d.state] ? `Waiting: ${OFFICE_OF[d.state]}` : d.stage_label}</span>}>
           <PBody>
             {may.bursaryApprove ? <Note kind="info" title="Financial verification">The last school-fee payment and the outstanding balance below are read from the finance record and recorded with your approval; nothing is typed. {fin && !fin.found ? <b>No qualifying school-fee payment found.</b> : null}</Note> : null}
-            {may.dvcApprove ? <Note kind="info" title="DVC comment">Your comment or recommendation is saved with the decision and read by the Senate Business Committee and the student. It is required.</Note> : null}
-            {may.sbcApprove ? <Note kind="info" title="Final act">Recording the Senate Business Committee&rsquo;s approval applies the academic effect at once: the period is marked deferred, the courses of the period are set aside as DEFERRED (never failed), the CGPA is untouched, the completion timeline moves by the period deferred, the student is told.</Note> : null}
+            {may.dvcApprove ? <Note kind="info" title="Final approval">Your approval is the final approval and carries your comment. It applies the academic effect at once: the period is marked deferred, the courses of the period are set aside as DEFERRED (never failed), the CGPA is untouched, the completion timeline moves by the period deferred, the approval letter is issued and the student is told. The comment is required.</Note> : null}
             <Field id="rv-note" label={may.dvcApprove ? "DVC comment" : "Comment"} hint={may.dvcApprove ? "Required for the DVC's decision." : "Required for a rejection, a correction or a cancellation; optional for an approval."}><textarea id="rv-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
             <div className="row mt-2">
               {Object.entries(ACTS).filter(([k]) => may[k]).map(([k, [, label, kind]]) => <Btn key={k} kind={kind} disabled={busy} onClick={() => (confirmKeys.has(k) ? setAsk(k) : doAct(k))}>{label}</Btn>)}
@@ -139,8 +137,7 @@ export function Review({ d }: { d: DefermentFull }) {
             ["Head of Department", d.dept_at ? <span key="d"><b>Approved</b> {dayOf(d.dept_at)}{d.dept_officer ? ` by ${d.dept_officer}` : ""}{d.dept_note ? <div className="sub2">{d.dept_note}</div> : null}</span> : <span key="d" className="sub2">Awaiting</span>],
             ["Faculty", d.fac_at ? <span key="f"><b>Approved</b> {dayOf(d.fac_at)}{d.faculty_officer ? ` by ${d.faculty_officer}` : ""}{d.fac_note ? <div className="sub2">{d.fac_note}</div> : null}</span> : <span key="f" className="sub2">Awaiting</span>],
             ["Academic Office", d.forwarded_at ? <span key="a"><b>Forwarded</b> {dayOf(d.forwarded_at)}{d.forwarded_officer ? ` by ${d.forwarded_officer}` : ""}{d.batch_reference ? <div className="sub2 tnum">Batch {d.batch_reference}</div> : null}</span> : <span key="a" className="sub2">Awaiting</span>],
-            ["Deputy Vice-Chancellor", d.dvc_at ? <span key="v"><b>Approved</b> {dayOf(d.dvc_at)}{d.dvc_officer ? ` by ${d.dvc_officer}` : ""}{d.dvc_note ? <div className="sub2">{d.dvc_note}</div> : null}</span> : <span key="v" className="sub2">Awaiting</span>],
-            ["Senate Business Committee", ["APPROVED", "ACTIVE", "COMPLETED"].includes(d.state) ? <span key="s"><b>Approved</b> {dayOf(d.decided_at)}{d.decided_officer ? ` recorded by ${d.decided_officer}` : ""}{d.decision_note ? <div className="sub2">{d.decision_note}</div> : null}</span> : d.state === "REJECTED" ? <span key="s"><b>Rejected</b> {dayOf(d.decided_at)} by the {OFFICE_OF[d.returned_from_state ?? ""] ?? d.returned_by_office ?? "desk"}{d.decision_note ? <div className="sub2">{d.decision_note}</div> : null}</span> : <span key="s" className="sub2">{d.state === "DVC_APPROVED" ? "WAITING SBC ACTION" : "Awaiting"}</span>],
+            ["Deputy Vice-Chancellor (final approval)", d.dvc_at ? <span key="v"><b>Approved</b> {dayOf(d.dvc_at)}{d.dvc_officer ? ` by ${d.dvc_officer}` : ""}{d.dvc_note ? <div className="sub2">{d.dvc_note}</div> : null}</span> : d.state === "REJECTED" ? <span key="v"><b>Rejected</b> {dayOf(d.decided_at)} by the {OFFICE_OF[d.returned_from_state ?? ""] ?? d.returned_by_office ?? "desk"}{d.decision_note ? <div className="sub2">{d.decision_note}</div> : null}</span> : <span key="v" className="sub2">Awaiting</span>],
             ["Return", d.returned_at ? <span key="rt"><b>Confirmed</b> {dayOf(d.returned_at)}{d.returned_officer ? ` by ${d.returned_officer}` : ""}{d.return_note ? <div className="sub2">{d.return_note}</div> : null}</span> : <span key="rt" className="sub2">{returnOf(d)}</span>],
           ]} />
           {d.correction_note ? <Note kind="bad" title={`Returned for correction by the ${OFFICE_OF[d.returned_from_state ?? ""] ?? d.returned_by_office ?? "desk"}`}>{d.correction_note}</Note> : null}
@@ -172,8 +169,7 @@ export function Review({ d }: { d: DefermentFull }) {
               : <Btn kind={ask === "reject" ? "urgent" : "go"} disabled={busy} onClick={() => doAct(ask)}>{ask === "reject" ? "Reject" : "Approve"}</Btn>}</>}>
           {ask === "return" ? <p>The student&rsquo;s status is restored and normal academic activity resumes for {returnOf(d)}. The courses of the deferred period become due on their registration form as deferred courses. Add a note if you wish.</p>
             : ask === "bursaryApprove" ? <p>Your approval records the last school-fee payment ({fin?.found ? `${naira(fin.last_fee_amount)} on ${dayOf(fin.last_fee_at)}, ${fin.last_fee_ref}` : "none found"}) and the outstanding balance ({naira(fin?.balance)}) as read from the finance record, and sends the application to the Head of Department.</p>
-            : ask === "sbcApprove" ? <p>The Senate Business Committee&rsquo;s approval is final: the deferred period is held on every register, the courses of the period are marked DEFERRED (never failed), the CGPA is untouched, the programme timeline is extended by {d.kind === "SESSION" ? "one academic session" : "one semester"}, the approval letter is issued and the student is told. This cannot be undone.</p>
-            : ask === "dvcApprove" ? <p>Your comment goes on the record with the approval; the application becomes <b>WAITING SBC ACTION</b> and the Senate Business Committee is told.</p>
+            : ask === "dvcApprove" ? <p>Your approval is final. Your comment goes on the record with it; the deferred period is held on every register, the courses of the period are marked DEFERRED (never failed), the CGPA is untouched, the programme timeline is extended by {d.kind === "SESSION" ? "one academic session" : "one semester"}, the approval letter is issued and the student is told. This cannot be undone.</p>
             : ask === "reject" ? <p>The student is told the reason you have written above. This cannot be undone.</p>
             : <p>The application moves to the next desk and the student is told.</p>}
           {note.trim() ? <div className="sub2 mt-2">Comment: {note.trim()}</div> : null}

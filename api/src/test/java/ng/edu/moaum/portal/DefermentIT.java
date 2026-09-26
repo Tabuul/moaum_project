@@ -26,8 +26,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * Deferment (V259, revised by V264), end to end: the student cannot open the form before the application fee is
  * confirmed; paid, the form opens and the request goes to the Bursary (the last school-fee payment read from the finance
  * record), the Head of Department, the faculty, the Academic Office (which cannot download it before the faculty's
- * approval and forwards it to the DVC in a numbered batch), the DVC (whose decision carries a comment; the status then
- * reads WAITING SBC ACTION) and the Senate Business Committee, whose approval applies the academic effect: the
+ * approval and forwards it to the DVC in a numbered batch) and the DVC, whose decision carries a comment and is the
+ * final approval, applying the academic effect: the
  * registered course of the period is DEFERRED (not failed, not in the GPA), the programme timeline grows by one
  * semester, the entry session and matriculation number stand; the return is listed and confirmed and the deferred
  * course is due on the next form under its own name. A stage cannot be skipped; another student, another department's
@@ -203,7 +203,6 @@ class DefermentIT {
         assertThat(refused(ItSupport.token("lecturer"), id, "BURSARY_APPROVE", null)).isEqualTo(403);
         assertThat(refused(hodMtc, id, "RECOMMEND", null)).as("the HOD before the Bursary").isEqualTo(422);
         assertThat(refused(registrar, id, "APPROVE", null)).as("no stage is skipped").isEqualTo(422);
-        assertThat(refused(registrar, id, "SBC_APPROVE", null)).isEqualTo(422);
         assertThat(refused(dvc, id, "DVC_APPROVE", "too early")).isEqualTo(422);
         // the office is checked in the database as well as at the door
         assertThatThrownBy(() -> it.db(() -> jdbc.sql("SELECT people.deferment_decide(:id, 'BURSARY_APPROVE', NULL, NULL, 'hod')").param("id", id).query(String.class).single()))
@@ -258,21 +257,16 @@ class DefermentIT {
         assertThat(viewed.getStatusCode().value()).isEqualTo(200);
         assertThat(new String(viewed.getBody(), StandardCharsets.US_ASCII)).startsWith("%PDF");
 
-        // ── DVC: a comment is required; approved, the status reads WAITING SBC ACTION ──
+        // ── DVC: a comment is required; the approval is final and applies the academic effect, transactionally ──
         assertThat(refused(dvc, id, "DVC_APPROVE", null)).as("the DVC's decision carries a comment").isEqualTo(422);
-        assertThat(act(dvc, id, "DVC_APPROVE", "Recommended; the reason is genuine and the record is clean")).isEqualTo("DVC_APPROVED");
-        Map<String, Object> waitingSbc = it.get(registrar, "/api/v1/deferments/" + id).getBody();
-        assertThat(waitingSbc.get("stage_label")).isEqualTo("WAITING SBC ACTION");
-        assertThat(waitingSbc.get("dvc_note")).isEqualTo("Recommended; the reason is genuine and the record is clean");
-        assertThat(refused(dvc, id, "SBC_APPROVE", null)).as("the DVC does not act for the Committee").isEqualTo(422);
-
-        // ── SBC: the final act applies the academic effect, transactionally ──
         BigDecimal cgpaBefore = jdbc.sql("SELECT cgpa FROM assessment.student_gpa(:s) ORDER BY session DESC, semester DESC LIMIT 1").param("s", student).query(BigDecimal.class).optional().orElse(null);
         String entryBefore = jdbc.sql("SELECT entry_session FROM people.student WHERE id = :s").param("s", student).query(String.class).single();
         String matricBefore = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", student).query(String.class).single();
         Map<String, Object> tlBefore = jdbc.sql("SELECT * FROM people.programme_timeline(:s)").param("s", student).query().singleRow();
-        assertThat(act(registrar, id, "SBC_APPROVE", "Approved at the Committee's sitting")).isEqualTo("ACTIVE");
+        assertThat(act(dvc, id, "DVC_APPROVE", "Recommended; the reason is genuine and the record is clean")).isEqualTo("ACTIVE");
         Map<String, Object> approved = it.get(registrar, "/api/v1/deferments/" + id).getBody();
+        assertThat(approved.get("dvc_note")).isEqualTo("Recommended; the reason is genuine and the record is clean");
+        assertThat(refused(registrar, id, "SBC_APPROVE", null)).as("no stage after the DVC").isEqualTo(422);
         Map<String, Object> effect = (Map<String, Object>) approved.get("effect");
         assertThat(effect.get("applied")).isEqualTo(true);
         assertThat(((Number) effect.get("extension_semesters")).intValue()).isEqualTo(1);
@@ -297,7 +291,7 @@ class DefermentIT {
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", student).query(String.class).single()).isEqualTo("DEFERRED");
         // every act is on the trail, including the readings
         List<String> actions = jdbc.sql("SELECT action FROM people.deferment_event WHERE deferment_id = :id").param("id", id).query(String.class).list();
-        assertThat(actions).contains("FEE_PAID", "SUBMITTED", "BURSARY_APPROVE", "RECOMMEND", "FAC_RECOMMEND", "FORWARD", "DVC_APPROVE", "SBC_APPROVE", "EFFECT_APPLIED", "VIEWED", "DOCUMENT_VIEWED", "DOWNLOADED", "ACTIVATED");
+        assertThat(actions).contains("FEE_PAID", "SUBMITTED", "BURSARY_APPROVE", "RECOMMEND", "FAC_RECOMMEND", "FORWARD", "DVC_APPROVE", "EFFECT_APPLIED", "VIEWED", "DOCUMENT_VIEWED", "DOWNLOADED", "ACTIVATED");
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = :s AND subject LIKE 'DEFERMENT APPROVED%'").param("s", student).query(Long.class).single()).isGreaterThanOrEqualTo(1);
 
         // ── the register refuses the deferred period, not the other semester ──
