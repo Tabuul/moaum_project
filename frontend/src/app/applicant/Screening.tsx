@@ -12,7 +12,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Field, Modal } from "@/components/proto/blocks";
+import { Field, Modal, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { BLOOD_GROUPS, DOC_WORD, MARITAL, RELIGIONS, STATE_WORD, ageOn, fieldProblem, parseTracker, whenAt, type FieldDef, type Institution, type OlevelRow, type RefState, type ScreeningView } from "@/lib/screening";
 import { Eligibility } from "./Eligibility";
@@ -194,9 +194,10 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
   const age = ageOn(dob);
   const sexWord = p.sex === "M" ? "Male" : p.sex === "F" ? "Female" : p.sex ?? "—";
   const facultyGroup = (() => { const fac = (p.faculty ?? "").toLowerCase(); if (/law/.test(fac)) return "B · Law"; if (/art/.test(fac)) return "A · Arts"; if (/social/.test(fac)) return "B · Social Sciences"; if (/management|admin/.test(fac)) return "B · Management Sciences"; if (/educ/.test(fac)) return "C · Education"; if (/health|medic|clinical|pharm|basic/.test(fac)) return "C · College of Health Sciences"; if (/scien|computing|engineer|agric|environ|architec/.test(fac)) return "C · Sciences"; return p.faculty ?? "—"; })();
-  const docKinds = [...new Set([...(v.policy?.required_documents ?? []), ...Object.keys(DOC_WORD).filter((k) => !(v.policy?.required_documents ?? []).includes(k))])];
+  // the passport photograph is JAMB's (V274): never asked for here
+  const docKinds = [...new Set([...(v.policy?.required_documents ?? []), ...Object.keys(DOC_WORD).filter((k) => !(v.policy?.required_documents ?? []).includes(k))])].filter((k) => k !== "PASSPORT");
   const docOf = (kind: string) => v.documents.find((d) => d.kind === kind && d.status !== "REJECTED") ?? v.documents.find((d) => d.kind === kind);
-  const passport = docOf("PASSPORT");
+  const photo = <Passport w={72} h={90} radius={6} src={p.jamb_passport ?? null} alt="Your passport photograph, as JAMB sent it" />;
   const uploadCell = (k: string) => (editable || !docOf(k)) ? <label key="u" className="btn btn--secondary btn--sm" style={{ cursor: "pointer", margin: 0 }}>{busy === k ? "Uploading…" : docOf(k) ? "Replace" : "Upload"}<input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style={{ display: "none" }} disabled={busy !== null || !editable} onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(k, file); e.target.value = ""; }} /></label> : <span key="u" />;
   const numCell = (val: number | null | undefined, onChange: (n: number | null) => void, aria: string) => <input className="ctl tnum" style={{ width: 90 }} value={val ?? ""} disabled={!editable} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} aria-label={aria} inputMode="numeric" />;
   const setInst = (i: number, patch: Partial<Institution>) => { const c = [...institutions]; c[i] = { ...c[i], ...patch }; setInstitutions(c); setDirty(true); };
@@ -248,8 +249,8 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
           {step === "B" ? (
             <>
               <div className="row row--between">
-                {record([["Pin no", <span key="p" className="tnum">{p.application_no}</span>], ["JAMB no", <span key="j" className="tnum">{p.jamb_reg_no}</span>], ["Faculty group (ticked as appropriate)", facultyGroup], ["Passport photograph", passport ? <Pil key="pp" kind="ok">Uploaded</Pil> : <Pil key="pp" kind="warn">Not uploaded</Pil>]])}
-                {uploadCell("PASSPORT")}
+                {record([["Pin no", <span key="p" className="tnum">{p.application_no}</span>], ["JAMB no", <span key="j" className="tnum">{p.jamb_reg_no}</span>], ["Faculty group (ticked as appropriate)", facultyGroup]])}
+                <span title="Passport photograph, as JAMB sent it">{photo}</span>
               </div>
               <div className="sub2 mt-1">To be completed in triplicate: one copy to the Registrar (Academic Office), one to the Dean of Faculty, one to the Head of Department. You must bring to the screening, when called, the originals of your academic qualifications, the original UME result slip, the certificate of state of origin, the birth certificate or declaration of age, the marriage certificate or declaration and the change of name where applicable.</div>
               <div className="eyebrow mt-3 mb-1">Section A · Personal data</div>
@@ -303,7 +304,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
             <>
               <div className="row row--between">
                 {record([["JAMB reg. no", <span key="j" className="tnum">{p.jamb_reg_no}</span>], ["Matric no", "Issued after registration"], ["Surname · other names", `${p.surname} · ${p.other_names}`], ["Course of study", p.programme], ["Sex", sexWord], ["Level", "100"], ["Present age", age != null ? String(age) : "—"], ["Mode of entry", p.entry_mode.replace("_", " ")]])}
-                {uploadCell("PASSPORT")}
+                <span title="Passport photograph, as JAMB sent it">{photo}</span>
               </div>
               <div className="grid grid--3 rfgrid mt-2">{F("preferred_name")}{F("date_of_birth")}{F("lga")}{F("state_of_origin")}{F("nationality")}{F("marital_status")}{F("blood_group")}{F("children")}{F("religion")}{F("ethnic_group")}
                 {F("mobile")}{F("alt_mobile")}{F("personal_email")}{F("bank_name")}{F("bank_sort_code")}{F("bank_account_no")}{F("bank_location")}{F("working_experience", { hint: "Rank, place and duration" })}{F("postal_address")}{F("home_address", { hint: "Permanent home address (village)" })}

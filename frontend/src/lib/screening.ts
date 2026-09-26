@@ -28,6 +28,8 @@ export interface ChangeRow { id: string; from_programme: string; to_programme: s
 export interface Prefill {
   surname: string; other_names: string; jamb_reg_no: string; programme: string; entry_mode: string; session: string; application_no: string; sex: string | null; state_of_origin: string | null; lga: string | null;
   faculty: string | null; department: string | null; date_of_birth: string | null; email: string; phone: string; next_of_kin: string | null;
+  /** the photograph as JAMB sent it (a data URL), the one every screen shows; the form takes no other (V274) */
+  jamb_passport?: string | null;
 }
 export interface ScreeningView {
   required: boolean; form: ScreeningForm | null; policy: ScreeningPolicy | null; fields: FieldDef[]; answers: { field: string; value: string }[]; institutions: Institution[]; olevel: OlevelRow[]; jambOlevel: JambOlevel[];

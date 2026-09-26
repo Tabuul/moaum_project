@@ -113,7 +113,8 @@ class ApplicantScreeningController {
         out.put("prefill", jdbc.sql("""
                 SELECT c.surname, c.other_names, c.jamb_reg_no, c.programme, c.entry_mode, a.session, a.application_no, r.sex, r.state_of_origin, r.lga, f.name AS faculty, d.name AS department,
                        (SELECT x.payload ->> 'dob' FROM admissions.attachment x WHERE x.candidate_id = c.id AND x.kind = 'DATE_OF_BIRTH' ORDER BY x.arrived_at DESC LIMIT 1) AS date_of_birth,
-                       acc.email, acc.phone, a.next_of_kin
+                       acc.email, acc.phone, a.next_of_kin,
+                       (SELECT x.payload ->> 'dataUrl' FROM admissions.attachment x WHERE x.session = c.session AND x.jamb_key = c.jamb_key AND x.kind = 'PASSPORT' AND jsonb_exists(x.payload, 'dataUrl') ORDER BY x.arrived_at DESC LIMIT 1) AS jamb_passport
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id JOIN admissions.applicant_account acc ON acc.id = a.account_id
                   LEFT JOIN admissions.caps_row r ON r.id = c.admitted_from
                   LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme) LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
