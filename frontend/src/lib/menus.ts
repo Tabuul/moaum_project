@@ -815,6 +815,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/matriculation", "icon": "cap", "label": "Matriculation" },
+          { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
@@ -991,6 +993,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/matriculation", "icon": "cap", "label": "Matriculation" },
+          { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
@@ -1726,9 +1730,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
-          { "id": "t/pgstudents", "icon": "user", "label": "PG Students" },
-          { "id": "t/matriculation", "icon": "user", "label": "Matriculation" },
-          { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" }
+          { "id": "t/pgstudents", "icon": "user", "label": "PG Students" }
         ]
       },
       {
