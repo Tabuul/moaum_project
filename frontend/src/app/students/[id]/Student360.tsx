@@ -22,6 +22,7 @@ import { Btn, Note, Panel, PBody, Pil, Tick, WarnIcon } from "@/components/proto
 import { Field, Modal, Passport, Row, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Biodata } from "./Biodata";
+import { MatriculationPanel } from "./MatriculationPanel";
 
 const WRITERS = ["academic", "registrar", "dregistrar"];
 
@@ -178,6 +179,8 @@ export function Student360({
       <div className="sub2">
         Assembled live from the modules that own each part of it. No data is copied into the student record.
       </div>
+
+      <MatriculationPanel studentId={s.id} />
 
       <div className="grid grid--3">
         <Panel title="Finance" right={<Pil kind="grey">NOT YET SERVED</Pil>}>

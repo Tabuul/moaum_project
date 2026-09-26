@@ -467,6 +467,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation", "badge": "!" },
+          { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
@@ -708,6 +709,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
+          { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matlist", "icon": "cap", "label": "Registered Students", "badge": "!" }
         ]
       },
@@ -814,6 +816,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation" },
+          { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
@@ -993,6 +996,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation" },
+          { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },

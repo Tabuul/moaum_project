@@ -14,7 +14,7 @@ import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 
-export interface Format { id: string; university_code: string; faculty_code: boolean; programme_code: boolean; year: boolean; sequence: boolean; sequence_digits: number; separator: string; note: string | null }
+export interface Format { id: string; university_code: string; faculty_code: boolean; programme_code: boolean; year: boolean; sequence: boolean; sequence_digits: number; separator: string; note: string | null; separate_duties?: boolean }
 export interface Series { code: string; name: string; last_issued: number; active: boolean; note: string | null; issued: number; last_issued_at: string | null }
 export interface Faculty { code: string; name: string; matric_code: string | null; matric_series: string | null; programmes: number }
 export interface ProgrammeRow { programme_code: string; programme: string; faculty_code: string; faculty: string; faculty_matric_code: string | null; faculty_series: string | null; matric_code: string | null; matric_uses_code: boolean; matric_faculty_code: string | null; matric_series: string | null; series_effective: string; sample: string; problem: string | null; students_admitted: number; archived: boolean; category: string | null }
@@ -65,6 +65,9 @@ export function MatricConfig({ data, office }: { data: ConfigData; office: strin
       {missing.length ? <Note kind="bad" title={`${missing.length} programme(s) are set to carry a code and have none`}>A run that reaches one of them stops: no code is invented. Give each its code below, or set it to carry none.</Note> : null}
       <Tiles items={[["Series", String(data.series.length), null, data.series.map((s) => `${s.code} ${s.last_issued}`).join(" · ")], ["Programmes with a code", String(data.programmes.filter((p) => p.matric_code).length), "var(--green-ink)", `of ${data.programmes.length}`], ["Carrying none", String(data.programmes.filter((p) => !p.matric_uses_code).length), null, "Medicine, Pharmacy, Law and the unconfigured"], ["Numbers issued on record", String(data.series.reduce((a, s) => a + Number(s.issued), 0)), null, "Since this rule"]]} cls="grid--4" />
 
+      <Note kind="info" title="Matriculation Management (V267)" action={<><LinkBtn kind="secondary" href="/matriculation/manage">Open Matriculation Management</LinkBtn><Btn kind={f.separate_duties ? "urgent" : "ghost"} disabled={!may || busy} onClick={() => void run(put("/duties", { separateDuties: !f.separate_duties }, f.separate_duties ? "Separation of duties turned off" : "Separation of duties turned on"), f.separate_duties ? "The preparer may now issue" : "Duties separated: the preparer does not issue")}>{f.separate_duties ? "Separation of duties: ON" : "Separation of duties: OFF"}</Btn></>}>
+        Numbers are proposed and reviewed faculty by faculty on a batch, and issued only when an authorised officer confirms. With the separation of duties on, the officer who generated or marked a batch ready cannot be the one who issues it.
+      </Note>
       <div className="grid grid--2">
         <Panel title="The format rule" right={<span className="tnum">{sample("AD", fmt.programmeCode ? "ACC" : null, 13557)} · {sample("MBBS", null, 6094)}</span>}>
           <PBody>

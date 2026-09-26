@@ -1353,12 +1353,26 @@ The library desk: items, loans, returns, renewals, fine waivers, settings; and t
 | POST | `/api/v1/me/library/loans/{id}/renew` | renew | student | `library/LibraryController.java:67` |
 | POST | `/api/v1/me/library/reservations` | reserve | student | `library/LibraryController.java:79` |
 
-### Matriculation (`matriculation`, 14 endpoints)
+### Matriculation (`matriculation`, 30 endpoints)
 
 Matriculation (V263): the session overview and faculty lists, queries on a name and their withdrawal, a faculty's confirmation, the run (every number or none), matriculating one straggler (§2.4), and the number-format configuration — the rule, the series, each faculty's segment and series, each programme's code with the number it would give next, the preview and the history (§2.5). Academic Office, Registrar, Deputy Registrar (Academic Affairs), Faculty Officers; management reads.
 
 | Method | Endpoint | Purpose | Who may call | Source |
 |---|---|---|---|---|
+| GET | `/api/v1/matriculation/sessions/{s}/{y}/management` | the faculty view (V267): faculties, batches, and with `fac` the KPIs, programme groups, students (`prog`, `status`, `q`) and the open batch | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
+| GET | `/api/v1/matriculation/sessions/{s}/{y}/management/overview` | every faculty: eligible, pending, prepared, valid, conflicts, issued, batch state; refused to a faculty office | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
+| POST | `/api/v1/matriculation/sessions/{s}/{y}/management/faculties/{code}/generate` | propose and reserve numbers for the faculty's eligible students `{ programme? }` — preparation, nothing on the record | academic, dregistrar, facultyofficer, registrar | `matriculation/MatriculationManagementController.java` |
+| GET | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}` | one batch with its rows and corrections | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
+| POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/validate` | re-validate every row | academic, dregistrar, facultyofficer, registrar | `matriculation/MatriculationManagementController.java` |
+| PUT | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/rows/{rowId}` | correct a proposed number `{ matricNo, reason }` — validated, recorded | academic, dregistrar, facultyofficer, registrar | `matriculation/MatriculationManagementController.java` |
+| POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/rows/{rowId}/drop` | take a student off the batch `{ reason }` | academic, dregistrar, facultyofficer, registrar | `matriculation/MatriculationManagementController.java` |
+| POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/ready` | mark the batch ready (zero conflicts) | academic, dregistrar, facultyofficer, registrar | `matriculation/MatriculationManagementController.java` |
+| POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/issue` | the official act `{ confirm: true }`: one transaction — numbers, series, status, sign-in username, histories, notices; returns the result and the verification | academic, dregistrar, registrar | `matriculation/MatriculationManagementController.java` |
+| POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/cancel` | cancel a prepared batch `{ reason }`; never an issued one | academic, dregistrar, registrar | `matriculation/MatriculationManagementController.java` |
+| GET | `/api/v1/matriculation/sessions/{s}/{y}/management/issued` | issued numbers (`fac`, `prog`, `q`, `batch`, `from`, `to`) with the previous username | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
+| GET | `/api/v1/matriculation/sessions/{s}/{y}/management/pending` | admitted students not yet eligible, with the reason (`fac`) | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
+| GET | `/api/v1/matriculation/students/{id}/record` | one student's matriculation before and after: number, date, batch, username and its history, proposals | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
+| PUT | `/api/v1/matriculation/config/duties` | the separation of duties `{ separateDuties }` | academic, dregistrar, registrar | `matriculation/MatriculationManagementController.java` |
 | GET | `/api/v1/matriculation/config` | config | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatricFormatController.java:55` |
 | PUT | `/api/v1/matriculation/config/faculties/{code}` | faculty | academic, dregistrar, registrar, super | `matriculation/MatricFormatController.java:116` |
 | PUT | `/api/v1/matriculation/config/format` | format | academic, dregistrar, registrar, super | `matriculation/MatricFormatController.java:78` |

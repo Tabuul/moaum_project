@@ -522,6 +522,8 @@ A matriculated student may apply to defer one semester or a whole session. The *
 
 You are told by email and SMS at every turn (§7). **Download Approval Letter** opens the letter once the DVC has approved (§8).
 
+**Matriculation and your sign-in (V267).** Until you are matriculated you sign in with your admission number. When the Registry issues your matriculation number you are told by email and SMS; from that moment the matriculation number is your portal sign-in username — same account, same password — and the admission number no longer opens the portal. The number is permanent and appears on every document the University issues to you.
+
 ### 3.14 Inter-departmental transfer
 
 ```text

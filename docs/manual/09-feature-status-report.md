@@ -472,6 +472,9 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Run-screen "What the run does" text | IMPLEMENTED | `MatriculationScreen.tsx` | Text stale: describes per-department sequences (pre-V263) |
 | Configuration desk exports (Excel, PDF) | IMPLEMENTED | `MatricConfig.tsx` | |
 | End-to-end test of the rule | IMPLEMENTED | V263 IT | |
+| Matriculation Management: faculty-by-faculty batches — eligible students by programme, numbers proposed and reserved, validated, corrected with a reason, marked ready, issued on explicit confirmation in one transaction (V267) | IMPLEMENTED | `db/V267__matriculation_management.sql`, `MatriculationManagementController.java`, `matriculation/manage/Manage.tsx` | Preparation never touches the record; issued numbers permanent; separation of duties configurable |
+| Matriculation number becomes the sign-in username on the same account and password; admission number closed at issue; username history (V267) | IMPLEMENTED | `student_username_change`, `StudentPortalRepository.byMatric` | Before / After on Student 360 |
+| All-faculties final review, issued / pending / batch registers, five reports (V267) | IMPLEMENTED | `matric_overview`, `Manage.tsx` tabs | Faculty officers bound to their faculty |
 
 ### 3.20 Course registration, approvals, class lists and the offering desk (dossier D4)
 

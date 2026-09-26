@@ -375,6 +375,7 @@ Academic
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
+ → Matriculation Management → /matriculation/manage
  → Matriculation Number Format → /matriculation/config
  → Records & Queries → /records
  → Inter-Departmental Transfer → /transfers
@@ -429,6 +430,7 @@ Academic
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
+ → Matriculation Management → /matriculation/manage
  → Matriculation Number Format → /matriculation/config
  → Clearance → /clearance
  → Student Records → /students
@@ -469,6 +471,7 @@ Academic
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
+ → Matriculation Management → /matriculation/manage
  → Matriculation Number Format → /matriculation/config
  → Records & Queries → /records
  → Student Records → /students
@@ -3503,6 +3506,11 @@ Students → SIWES Supervision → /siwes
 ### 4.7 Undergraduate admissions
 
 #### 4.7.1 Admission settings
+
+```text
+Students → Matriculation Management → /matriculation/manage
+```
+**URL** `/matriculation/manage?session=&fac=&prog=&status=&q=&tab=` · **Purpose** The matriculation exercise faculty by faculty (V267): eligible students by programme, numbers proposed and reserved, reviewed, corrected with a reason, marked ready, issued on confirmation — the number becoming the sign-in username. · **Who** academic, registrar, dregistrar, facultyofficer (menu; the officer bound to their faculty); readers dvc, vc, records, dean, ict, admin, super. · **Layout** PageHead (Matriculation run, Number format, Excel / PDF); scope bar (Academic session, Faculty, Programme, Status, Search + Load Students); tabs Faculty view / All faculties / Batches / Issued / Pending / Conflicts; eight tiles; the batch panel (Generate, Validate, Mark ready, Final review & issue, Cancel, Batch record); programme groups with the student table (Edit / Fix / Drop); modals for the correction, the drop, the cancellation, the final review, the confirmation, the completion and the batch record.
 
 ```text
 Admissions → Admission Settings → /admissions/settings

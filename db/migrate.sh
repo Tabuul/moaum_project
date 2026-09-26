@@ -28,6 +28,12 @@ set -euo pipefail
 : "${DATABASE_URL:?DATABASE_URL is not set — Railway provides it when the Postgres service is attached to this one}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# A migration that needs a table lock waits behind any open transaction on the live API — and while
+# it waits, every new reader of that table queues behind it. Better to fail the deployment loudly
+# after a bounded wait (the file is re-run on the next deploy) than to hang for half an hour in
+# silence. MIGRATE_LOCK_TIMEOUT overrides it; statement_timeout stays off so a long data migration
+# is never cut short.
+export PGOPTIONS="${PGOPTIONS:-} -c lock_timeout=${MIGRATE_LOCK_TIMEOUT:-90s} -c statement_timeout=0"
 PSQL=(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q --no-psqlrc)
 
 echo "── MOAUMPP migrations ─────────────────────────────────────────"

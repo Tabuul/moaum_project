@@ -43,6 +43,7 @@ This volume describes every end-to-end business workflow the portal runs today, 
    - 4.3 Refusal conditions
    - 4.4 The configuration workflow
    - 4.5 What is not implemented
+   - 4.6 Matriculation Management: prepared, reviewed, issued (V267)
 5. [Academic workflow: structure, registration, results](#5-academic-workflow-structure-registration-results)
    - 5.1 Structure upload, curriculum binding and course allocation
    - 5.2 Session and semester opening; course registration
@@ -533,6 +534,21 @@ No notice is sent on a configuration change; every change is on the audit spine 
 | Notice on query, confirm or configuration change | none by design |
 
 > **Screenshot Required:** Matriculation Number Format — `/matriculation/config` — the rule panel with the live pattern, the Series table and the Programmes table with the "Next number or problem" pill.
+
+### 4.6 Matriculation Management: prepared, reviewed, issued (V267)
+
+| Step | Actor | Screen / function | What happens |
+|---|---|---|---|
+| 1 | Registry / Academic Office / Faculty Officer | Matriculation Management → session, faculty → Load Students | `people.matric_candidates`: the faculty's admitted students of the session, eligible (registered, fees settled, not under query, number buildable) or pending with the reason; grouped by programme. |
+| 2 | Preparer | Generate Matriculation Numbers | `matric_batch_generate`: the faculty's one open batch (`MAT/YYYY/NNN`), the series locked, the next free sequence past the last issued and the batches' reservations, a row per student, a reservation per number. Nothing on the student record. |
+| 3 | Preparer | review table · Validate · Fix / Edit · Drop | `matric_batch_validate` on every act; `matric_batch_edit_row` (shape, the student's segments, free sequence, reason; `matric_batch_edit` history); `matric_batch_drop_row` (reason; reservation released). |
+| 4 | Preparer | Mark ready for issuance | `matric_batch_ready`: zero conflicts, at least one student → READY_FOR_ISSUANCE with the reviewer stamped. |
+| 5 | Registry | All faculties tab | `matric_overview`: prepared, valid, conflicts, issued per faculty; the final review totals. |
+| 6 | Issuer | Final review → Confirm & Issue | `matric_batch_issue` (READY only; separation of duties honoured; re-validated): per student the history, the series forward, `matric_no` + `matriculated_at` + `matriculation_run`, status ADMITTED → ACTIVE and its `status_change`, `student_username_change` (admission number → matriculation number), reservation released, `matric_tell`. One transaction; a failure issues nothing. `matric_batch_verify` afterwards. |
+| 7 | Student | Sign-in | The matriculation number opens the portal on the same account and password; the admission number no longer does once the number is issued (`StudentPortalRepository.byMatric`). |
+| 8 | Issuer | Cancel batch | `matric_batch_cancel`: reason required, reservations released, rows dropped; never on an issued batch. Issued numbers are permanent (V263's write-once history). |
+
+Tested end to end by `MatriculationManagementIT`: grouping and the pending reason; generation without writing to the record; another faculty's batch on its own series; a correction refused without the student's segments, a reason or a free number and recorded when right; a duplicate detected and issuance refused; ready; the all-faculties view refused to a faculty officer; issuance refused without confirmation, before ready and to the preparer under separated duties; the issue with its verification, series, histories, status change and notice; the new sign-in and the old one refused on the same account; the registers and the before-and-after; the cancelled batch releasing its numbers.
 
 ---
 ## 5. Academic workflow: structure, registration, results

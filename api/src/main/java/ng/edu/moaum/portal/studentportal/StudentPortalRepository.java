@@ -44,7 +44,9 @@ class StudentPortalRepository {
        same JAMB number that opened the applicant portal opens the student dashboard once they are
        on the register. */
     Optional<Student> byMatric(String matricNo) {
-        return jdbc.sql(STUDENT + " WHERE upper(s.matric_no) = upper(:m) OR upper(s.admission_no) = upper(:m) OR upper(s.jamb_reg_no) = upper(:m)")
+        /* the door opens on the matriculation number; on the admission (or JAMB) number only until the matriculation
+           number is issued — from that moment the number IS the sign-in (V267), and the old one is history */
+        return jdbc.sql(STUDENT + " WHERE upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND (upper(s.admission_no) = upper(:m) OR upper(s.jamb_reg_no) = upper(:m)))")
                 .param("m", matricNo == null ? "" : matricNo.trim()).query(Student.class).optional();
     }
 
