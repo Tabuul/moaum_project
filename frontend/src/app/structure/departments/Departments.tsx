@@ -14,7 +14,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Department { code: string; name: string; faculty_code: string; faculty_name: string; programmes: number; courses: number }
-const MAY = ["ict", "super", "admin", "academic", "registrar", "dregistrar"];
+const MAY = ["ict"];
 
 export function Departments({ departments, actingOffice }: { departments: Department[]; actingOffice: string | null }) {
   const router = useRouter();
@@ -95,7 +95,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
 
   return (
     <>
-      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Creating and editing departments" />
+      <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing departments" />
       <Note kind="info" title="Create a department, or upload the list">
         A department carries a code, a name and a faculty. Create one below, or upload a spreadsheet of them. The faculty
         is matched by code or name and must exist first (add it on the Faculty upload screen). Uploading again updates

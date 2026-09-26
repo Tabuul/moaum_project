@@ -14,7 +14,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Faculty { code: string; name: string; departments: number; programmes: number }
-const MAY = ["ict", "super", "admin", "academic", "registrar", "dregistrar"];
+const MAY = ["ict"];
 
 export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; actingOffice: string | null }) {
   const router = useRouter();
@@ -85,7 +85,7 @@ export function Faculties({ faculties, actingOffice }: { faculties: Faculty[]; a
 
   return (
     <>
-      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Creating and editing faculties" />
+      <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing faculties" />
       <Note kind="info" title="Create a faculty, or upload the list">
         A faculty is a code and a name. Create one below, or upload a spreadsheet of them. Uploading again updates rather
         than duplicates; every change is on the record in your name. Programmes and departments hang off the faculty.

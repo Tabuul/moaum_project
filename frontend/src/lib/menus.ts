@@ -449,10 +449,6 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/facultyupload", "icon": "cap", "label": "Upload or Create Faculties" },
-          { "id": "t/programmeupload", "icon": "book", "label": "Upload or Create Programmes" },
-          { "id": "t/departmentupload", "icon": "cap", "label": "Upload or Create Departments" },
-          { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
           { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" },

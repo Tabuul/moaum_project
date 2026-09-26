@@ -19,7 +19,7 @@ import { semesterText } from "@/lib/student-portal";
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
 interface Row { code: string; title: string; units: string; status: string; level: number | null; semester: number | null; lh: string; ph: string; programmeCode?: string; category?: string }
 interface Loaded { code: string; title: string; units: number; level: number; semester: number | null; kind: string; basis: string }
-const MAY = ["ict", "super", "admin", "hod", "dean", "academic", "registrar", "dregistrar"];
+const MAY = ["ict"];
 
 export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOption[]; actingOffice: string | null }) {
   const may = MAY.includes(actingOffice ?? "");

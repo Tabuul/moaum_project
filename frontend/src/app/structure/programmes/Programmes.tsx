@@ -16,7 +16,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Programme { code: string; name: string; faculty_code: string; faculty_name: string; dept_code: string | null; department_name: string | null; category: string; min_score: number; archived: boolean }
 export interface FacultyOption { code: string; name: string }
-const MAY = ["ict", "super", "admin", "academic", "registrar", "dregistrar"];
+const MAY = ["ict"];
 
 export function Programmes({ programmes, faculties, actingOffice }: { programmes: Programme[]; faculties: FacultyOption[]; actingOffice: string | null }) {
   const router = useRouter();
@@ -103,7 +103,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
 
   return (
     <>
-      <RoleLine allowed={["academic", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Creating and editing programmes" />
+      <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing programmes" />
       <Note kind="info" title="Create a programme, or upload the list">
         A programme carries a code (<b>C</b> then five digits, e.g. C00101), a name and a faculty; a department is
         optional (it defaults to the faculty, and is created under it if new). Create one below or upload a spreadsheet.
