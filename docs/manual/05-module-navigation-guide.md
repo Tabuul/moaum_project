@@ -389,6 +389,7 @@ Admissions
  → Post-UTME CBT Schedule → /admissions/putme
  → Admissions → /admissions
  → Programme Eligibility → /admissions/eligibility
+ → Screening Review → /admissions/screening-review
  → Admitted List → /admissions/applicants
 Staff
  → Staff Records → /staff  (refused by API — payroll readers exclude registrar)
@@ -485,6 +486,7 @@ Students
 Admissions
  → Admission Settings → /admissions/settings
  → Programme Eligibility → /admissions/eligibility
+ → Screening Review → /admissions/screening-review
  → Upload Applicants and Candidates → /admissions/caps
  → Upload Passport, DOB & O'Level → /admissions/candidate-data
  → Migrate Old-Portal Applicants → /admissions/migrate
@@ -3513,6 +3515,16 @@ Students → Matriculation Management → /matriculation/manage
 **URL** `/matriculation/manage?session=&fac=&prog=&status=&q=&tab=` · **Purpose** The matriculation exercise faculty by faculty (V267): eligible students by programme, numbers proposed and reserved, reviewed, corrected with a reason, marked ready, issued on confirmation — the number becoming the sign-in username. · **Who** academic, registrar, dregistrar, facultyofficer (menu; the officer bound to their faculty); readers dvc, vc, records, dean, ict, admin, super. · **Layout** PageHead (Matriculation run, Number format, Excel / PDF); scope bar (Academic session, Faculty, Programme, Status, Search + Load Students); tabs Faculty view / All faculties / Batches / Issued / Pending / Conflicts; eight tiles; the batch panel (Generate, Validate, Mark ready, Final review & issue, Cancel, Batch record); programme groups with the student table (Edit / Fix / Drop); modals for the correction, the drop, the cancellation, the final review, the confirmation, the completion and the batch record.
 
 ```text
+Admissions → Screening Review → /admissions/screening-review
+```
+**URL** `/admissions/screening-review?session=&state=&fac=&dept=&prog=&q=&from=&to=` · **Purpose** The screening officers' desk (V269): the online screening forms of accepted applicants, counted, filtered and searched on the server; one form in full; the decision. · **Who** academic, registrar (menu); readers dregistrar, records, dean, facultyofficer (own faculty), hod, dvc, vc, ict, admin, super; deciding academic, registrar, dregistrar, super. · **Layout** PageHead (Admissions, Programme Eligibility, Screening policy, Excel / PDF); ten tiles; filter bar; the queue (Review / Open); the review dialog (tracker, on record, the sections, institutions, O'Level declared beside JAMB's, documents, change requests, trail; Approve screening / Unsuccessful / Request correction / Mark in review); the policy dialog.
+
+```text
+Admission → Admission Progress → /applicant/admission · Admission → Online Screening → /applicant/clearance
+```
+**Purpose** The applicant's admission in one place (congratulations, the details, the status and next step, the acceptance entitlement, the tracker) and the online screening form (sections A–C, documents, declaration, the outcome and the change of programme). · **Who** applicant.
+
+```text
 Admissions → Admission Settings → /admissions/settings
 ```
 **URL** `/admissions/settings?session=` · **Purpose** The session's admission policy, the load cut-off and the O'Level grading. · **Who** academic (menu; registrar and dregistrar by URL — `SECRETARIAT`); readers add dean, hod, dvc, vc, records, ict, admin, super. · **Layout** Without settings: "No admission settings exist for {session}" with "Begin from {previous}" or a NUC quota box and "Create the {session} settings". With settings: RoleLine; note "in force" or "a DRAFT, and nothing may be admitted under them"; tiles; panels The aggregate score, The four selection criteria, The ratios and the caps, Catchment local governments, NUC approved quota, Faculty UTME:Direct-Entry split, Every programme the University runs (per-row rule modal), Findings, Questions the guidelines raise, Put the {session} settings in force; General UTME cut-off for loading the JAMB lists; O'Level grading for the screening score.
@@ -3573,6 +3585,7 @@ Admissions → Upload Passport, DOB & O'Level → /admissions/candidate-data
 
 ```text
 Admissions → Programme Eligibility → /admissions/eligibility
+ → Screening Review → /admissions/screening-review
 ```
 **URL** `/admissions/eligibility?session=` · **Purpose** The automatic admission course suggestion engine's register (V266): every submitted applicant against the session's admission settings — the verdict on the applied programme, the failed requirements, the suggested programmes, the programme-change queue and the reports. · **Who** academic, registrar (menu); readers dregistrar, records, bursar, ict, admin, super, dvc, vc; acting academic, registrar, dregistrar, super. · **Layout** PageHead with Admissions / Admission Settings links, Evaluate the unevaluated, Recalculate all, Excel / PDF; eight tiles; filter bar (Eligibility, Faculty, Department, Programme applied, Recommended programme, Mode, Search); "Applicant eligibility" table (S/N, Applicant, Applied programme, Eligibility, Failed requirements, Suggested programmes, Change, View Matching Details / Recalculate); "Programme change requests" (Approve / Reject / Details); "Reports" (Candidates not eligible, Alternative programme suggestions, Statistics); the details modal (O'Level and UTME on record, check tables, suggested programmes with View Eligibility Details and Request Change, change requests, trail).
 

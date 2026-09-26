@@ -51,6 +51,7 @@ export const ROUTES: Record<string, string> = {
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
   "t/admeligibility": "/admissions/eligibility",
+  "t/screeningreview": "/admissions/screening-review",
   "t/capsintake": "/admissions/caps",
   "t/applicants": "/admissions/applicants",
   "t/merit": "/admissions/merit",
@@ -246,6 +247,7 @@ export const ROUTES: Record<string, string> = {
   "a/status": "/applicant/status",
   "a/accept": "/applicant/accept",
   "a/clearance": "/applicant/clearance",
+  "a/admission": "/applicant/admission",
   "a/matric": "/applicant/matric",
   /* the postgraduate applicant's own portal (pg/portal, pg/apply) */
   "pg/portal": "/pg/portal",

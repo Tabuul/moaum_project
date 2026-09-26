@@ -31,6 +31,7 @@ This volume describes every end-to-end business workflow the portal runs today, 
    - 2.10 The JAMB admission-status upload path
    - 2.11 What is not implemented
    - 2.12 Programme eligibility and course suggestions (V266)
+   - 2.13 The admission lifecycle after the offer: acceptance, online screening, change of programme, fees, registration, matriculation (V269)
 3. [Postgraduate admission, research and external examiners](#3-postgraduate-admission-research-and-external-examiners)
    - 3.1 Postgraduate admission
    - 3.2 Coursework registration and results
@@ -293,6 +294,21 @@ Rule-based, explainable, configurable and audited; it neither admits nor changes
 | 9 | Admissions Office | Reports | Register, Candidates not eligible, Alternative programme suggestions, Statistics — Excel and PDF, S/N first, names A–Z. |
 
 Tested end to end by `AdmissionEligibilityIT` (seven methods covering the ten acceptance cases: eligible; not eligible with alternatives; explained; no alternatives and closed / unstated programmes never suggested; one-versus-two sittings with automatic re-evaluation on the rule change; equivalence honoured only when stated and additional screening; the register's search, filters and statistics; the applicant's own view, the refused request, the approved change; the stale record re-read; the doors).
+
+### 2.13 The admission lifecycle after the offer: acceptance, online screening, change of programme, fees, registration, matriculation (V269)
+
+| Step | Actor | Screen / function | What happens |
+|---|---|---|---|
+| 1 | Office | JAMB list upload (V081) → offer → release | As before: the candidate matched on RG_NUM, the offer released, the applicant told. `admission_status` = ADMITTED. |
+| 2 | Applicant | Admission Progress / Accept Your Offer | The congratulations and the details; the undertaking and the acceptance fee (`fee_reference` ACCEPTANCE, confirmed by the Bursary or the gateway; a second one refused). `settle_acceptance` sets `accepted_at`; the letter opens. `acceptance_entitlement` = paid, for the admission. |
+| 3 | Applicant | Online Screening | `screening_open` on acceptance (where `screening_policy` requires it); `screening_save` (answers on `ref.biodata_field`, institutions, O'Level rows, membership), documents on `application_document`; `screening_submit` (declaration, `screening_missing` empty) → SUBMITTED, notices. |
+| 4 | Screening officer | Screening Review | `screening_start_review`; `screening_decide`: SUCCESSFUL (application `cleared_at`, answers → `people.biodata`, notice), UNSUCCESSFUL (reason; `evaluate_application` lists alternatives; notice), RETURNED (note; the applicant resubmits as version n+1). |
+| 5a | Applicant / student | student portal | PATH A: `screening_ok` → `finance.new_reference` opens, course registration opens (gates), `matric_candidates` no longer pending on the screening; `admission_status` SCHOOL_FEES_PENDING → COURSE_REGISTRATION_PENDING → MATRICULATION_PENDING. |
+| 5b | Applicant | Online Screening → Programmes you may be eligible for → Request Change | PATH B: `request_programme_change` after the Board's decision (only after an unsuccessful screening, once); Programme Eligibility queue. |
+| 6b | Admissions Office | Programme Eligibility → Approve | `decide_programme_change`: eligibility re-read; `candidate.programme` and `people.student.programme_code` (unmatriculated) moved; application cleared; the applicant told the acceptance fee is not charged again. `screening_ok` true; the gates open. |
+| 7 | Academic Office | Matriculation Management (V267) | Generate → review → ready → Confirm & Issue: number, ACTIVE, the sign-in username, histories, notice; **Broadcast** to the batch. `admission_status` MATRICULATED. |
+
+Tested end to end by `AdmissionLifecycleIT` (both paths, the gates, the entitlement, the readiness, the pipeline, the doors) and the broadcast by `MatriculationManagementIT`.
 
 ---
 ## 3. Postgraduate admission, research and external examiners

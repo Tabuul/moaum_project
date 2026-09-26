@@ -14,6 +14,7 @@ import { Field, Gate, Gates, money, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, Rail, TwoCol, useAct, when } from "./common";
 import { Eligibility } from "./Eligibility";
+import { AdmissionProgress } from "./Admission";
 
 /* ── 1. overview ── */
 
@@ -44,6 +45,7 @@ export function Dashboard({ a }: { a: Application }) {
         {nx[1]}
       </Note>
       {at(a, 2) && !at(a, 5) ? <Eligibility /> : null}
+      {at(a, 5) && a.decision === "OFFERED" ? <AdmissionProgress /> : null}
       <TwoCol>
         <Rail a={a} />
         <Panel title="Dates that matter" right={a.session}>

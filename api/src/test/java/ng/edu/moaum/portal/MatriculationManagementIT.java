@@ -269,6 +269,14 @@ class MatriculationManagementIT {
         assertThat(l(it.getList(academic, BASE + "/pending?fac=MS").getBody()).stream().map(r -> r.get("student_id"))).contains(pendingOne.toString());
         assertThat(l(it.get(academic, BASE + "?fac=MS").getBody().get("batches")).stream().map(b -> b.get("ref"))).contains(ref);
 
+        // 9b · the broadcast (V269): every student of the issued batch told, the send recorded, the failed re-sent on request
+        ResponseEntity<Map> bc = it.call(registrar, HttpMethod.POST, BASE + "/batches/" + batchId + "/broadcast", Map.of("onlyFailed", false));
+        assertThat(bc.getStatusCode().value()).as(String.valueOf(bc.getBody())).isEqualTo(200);
+        assertThat(((Number) bc.getBody().get("recipients")).intValue()).isEqualTo(3);
+        assertThat(l(bc.getBody().get("broadcasts"))).hasSize(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = :s AND subject LIKE 'Your matriculation —%'").param("s", acc1).query(Long.class).single()).isGreaterThanOrEqualTo(1);
+        assertThat(it.call(registrar, HttpMethod.POST, BASE + "/batches/" + sciBatch + "/broadcast", Map.of()).getStatusCode().value()).isEqualTo(422);
+
         // 10 · an issued batch is permanent; a prepared one is cancelled with its reason and its numbers released
         assertThat(it.call(registrar, HttpMethod.POST, BASE + "/batches/" + batchId + "/cancel", Map.of("reason", "try")).getStatusCode().value()).isEqualTo(422);
         assertThat(it.call(registrar, HttpMethod.PUT, BASE + "/batches/" + batchId + "/rows/" + rowAcc2, Map.of("matricNo", correctedNo, "reason", "late")).getStatusCode().value()).isEqualTo(422);

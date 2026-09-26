@@ -2,6 +2,7 @@ import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { loadApplication } from "../load";
 import { Clearance } from "../Screens3";
+import { Screening } from "../Screening";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export default async function Page() {
   const loaded = await loadApplication();
   return (
     <Shell route="a/clearance" me={loaded.me}>
-      {loaded.app ? <Clearance a={loaded.app} /> : <ProblemNotice problem={loaded.problem} />}
+      {loaded.app ? <Screening fallback={<Clearance a={loaded.app} />} /> : <ProblemNotice problem={loaded.problem} />}
     </Shell>
   );
 }

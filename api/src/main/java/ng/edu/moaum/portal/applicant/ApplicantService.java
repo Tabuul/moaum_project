@@ -44,7 +44,8 @@ public class ApplicantService {
     static final UUID NOBODY = new UUID(0, 0);
     static final Pattern REG_SHAPE = Pattern.compile("^\\d{12}[A-Z]{2,3}$");
     static final Pattern EMAIL_SHAPE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}$");
-    static final List<String> DOCUMENT_KINDS = List.of("OLEVEL_STATEMENT", "BIRTH_CERT", "LGA_ID", "JAMB_SLIP", "PASSPORT");
+    static final List<String> DOCUMENT_KINDS = List.of("OLEVEL_STATEMENT", "BIRTH_CERT", "LGA_ID", "JAMB_SLIP", "PASSPORT",
+            "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER");
     static final int MAX_DOCUMENT = 2 * 1024 * 1024;
 
     public record SignedIn(String token, Instant expiresAt, UUID accountId, String applicationNo, String surname, String otherNames) {
@@ -433,13 +434,14 @@ public class ApplicantService {
     public Map<String, Object> document(UUID account, String kind, String filename, String contentType, String base64) {
         UUID app = applicationOf(account);
         Map<String, Object> a = repo.application(app).orElseThrow();
-        /* the passport photograph comes whenever the applicant has one (V022); everything else is part of the declaration */
-        if (a.get("submitted_at") != null && !"PASSPORT".equals(kind)) {
+        /* the passport photograph comes whenever the applicant has one (V022); everything else is part of the declaration —
+           or of the online screening form while that form is the applicant's to edit (V269) */
+        if (a.get("submitted_at") != null && !"PASSPORT".equals(kind) && !repo.screeningOpen(app)) {
             throw new DomainRuleViolation("APP_SUBMITTED", "The application was submitted and can no longer be edited.",
                     new DomainRuleViolation.Remedy("Write to the Registry quoting your application number. The passport photograph can still be replaced.", "Registry"));
         }
         if (kind == null || !DOCUMENT_KINDS.contains(kind)) {
-            throw new DomainRuleViolation("APP_DOCUMENT_KIND", "'" + kind + "' is not one of the five documents.",
+            throw new DomainRuleViolation("APP_DOCUMENT_KIND", "'" + kind + "' is not one of the documents the portal takes.",
                     new DomainRuleViolation.Remedy(String.join(", ", DOCUMENT_KINDS) + ".", "Directorate of ICT"));
         }
         if (contentType == null || !List.of("application/pdf", "image/jpeg", "image/png").contains(contentType)) {

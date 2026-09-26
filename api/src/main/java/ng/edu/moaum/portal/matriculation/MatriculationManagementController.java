@@ -112,6 +112,7 @@ class MatriculationManagementController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("batch", batch(id));
         out.put("rows", rows(id));
+        out.put("broadcasts", broadcasts(id));
         out.put("edits", jdbc.sql("""
                 SELECT e.*, s.surname, s.other_names, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = e.edited_by) AS officer
                   FROM people.matric_batch_edit e JOIN people.student s ON s.id = e.student_id WHERE e.batch_id = :b ORDER BY e.edited_at DESC
@@ -313,6 +314,33 @@ class MatriculationManagementController {
         batchInScope(s + "/" + y, id);
         jdbc.sql("SELECT people.matric_batch_cancel(:b, :why, :by)").param("b", id).param("why", body.reason()).param("by", actor(), Types.OTHER).query().singleRow();
         return detail(id);
+    }
+
+    public record BroadcastIn(Boolean onlyFailed) {
+    }
+
+    /** the matriculation told to every student of an issued batch — or again to those whose notice failed — and recorded */
+    @PostMapping(BASE + "/batches/{id}/broadcast")
+    @PreAuthorize(ISSUERS)
+    @Transactional
+    Map<String, Object> broadcast(@PathVariable String s, @PathVariable String y, @PathVariable UUID id, @RequestBody(required = false) BroadcastIn body) {
+        batchInScope(s + "/" + y, id);
+        Map<String, Object> r = jdbc.sql("SELECT * FROM people.matric_batch_broadcast(:b, :f, :by, :o)").param("b", id).param("f", body != null && Boolean.TRUE.equals(body.onlyFailed()))
+                .param("by", actor(), Types.OTHER).param("o", office(), Types.VARCHAR).query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(r);
+        out.put("broadcasts", broadcasts(id));
+        return out;
+    }
+
+    private List<Map<String, Object>> broadcasts(UUID batch) {
+        return jdbc.sql("""
+                SELECT b.id, b.sent_at, b.recipients, b.only_failed, b.office, (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = b.sent_by) AS officer,
+                       (SELECT count(*) FROM platform.notice n JOIN people.matric_batch_row br ON br.student_id = n.about_id AND br.batch_id = b.batch_id AND br.state = 'ISSUED'
+                         WHERE n.about_kind = 'student' AND n.subject ILIKE 'Your matriculation —%' AND n.state = 'FAILED') AS failed,
+                       (SELECT count(*) FROM platform.notice n JOIN people.matric_batch_row br ON br.student_id = n.about_id AND br.batch_id = b.batch_id AND br.state = 'ISSUED'
+                         WHERE n.about_kind = 'student' AND n.subject ILIKE 'Your matriculation —%' AND n.state = 'SENT') AS sent
+                  FROM people.matric_broadcast b WHERE b.batch_id = :b ORDER BY b.sent_at DESC
+                """).param("b", batch).query().listOfRows();
     }
 
     /* ── the registers: issued, pending ── */

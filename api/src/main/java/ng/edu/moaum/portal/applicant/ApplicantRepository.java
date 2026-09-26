@@ -111,6 +111,12 @@ class ApplicantRepository {
                 """).param("id", applicationId).query().listOfRows().stream().findFirst();
     }
 
+    /** the online screening form is open for the applicant to edit: DRAFT, or RETURNED for correction (V269) */
+    boolean screeningOpen(UUID applicationId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.screening_form f WHERE f.application_id = :a AND f.state IN ('DRAFT', 'RETURNED'))")
+                .param("a", applicationId).query(Boolean.class).single();
+    }
+
     List<Map<String, Object>> sittings(String session, String jambKey) {
         return jdbc.sql("""
                 SELECT st.id, st.exam_body, st.exam_type_raw, st.exam_year, st.exam_number,

@@ -96,6 +96,10 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
     setConfirming(null); setReviewing(null);
     if (results.length) { setDone(results); router.refresh(); }
   };
+  const broadcast = async (b: Batch, onlyFailed: boolean) => {
+    const r = await call<{ recipients: number }>(`/batches/${b.id}/broadcast`, "POST", { onlyFailed }, onlyFailed ? `Failed matriculation notices re-sent for ${b.ref}` : `Matriculation broadcast for ${b.ref}`, `bc-${b.id}`);
+    if (r) { notify(`${r.recipients} student(s) notified`); router.refresh(); }
+  };
   async function openBatch(id: string) {
     setBusy(id);
     try {
@@ -260,7 +264,7 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
             <b key="r" className="tnum">{b.ref}</b>, <span key="f">{b.faculty}</span>, <Pil key="s" kind={BATCH_WORD[b.state][1]}>{BATCH_WORD[b.state][0]}</Pil>,
             <span key="n" className="tnum">{b.students}</span>, <span key="v" className="tnum">{b.valid}</span>, <span key="c" className={`tnum${b.conflicts ? " ink-red" : ""}`}>{b.conflicts}</span>, <span key="i" className="tnum">{b.issued}</span>,
             <span key="p" className="sub2">{b.prepared_officer ?? "—"} · {whenAt(b.prepared_at)}</span>, <span key="ib" className="sub2">{b.issued_at ? `${b.issued_officer ?? "—"} · ${whenAt(b.issued_at)}` : b.cancelled_at ? `Cancelled · ${b.cancel_reason ?? ""}` : "—"}</span>,
-            <span key="x" className="row row--inline row--tight row--end"><Btn kind="ghost" size="sm" disabled={busy === b.id} onClick={() => void openBatch(b.id)}>Record</Btn>{b.state === "ISSUED" ? <LinkBtn kind="ghost" size="sm" href={link({ tab: "issued", batch: b.ref, fac: b.faculty_code })}>Issued list</LinkBtn> : <LinkBtn kind="ghost" size="sm" href={link({ tab: "faculty", fac: b.faculty_code })}>Open</LinkBtn>}</span>,
+            <span key="x" className="row row--inline row--tight row--end"><Btn kind="ghost" size="sm" disabled={busy === b.id} onClick={() => void openBatch(b.id)}>Record</Btn>{b.state === "ISSUED" ? <><LinkBtn kind="ghost" size="sm" href={link({ tab: "issued", batch: b.ref, fac: b.faculty_code })}>Issued list</LinkBtn>{mayIssue ? <><Btn kind="secondary" size="sm" disabled={busy !== null} onClick={() => void broadcast(b, false)}>Broadcast</Btn><Btn kind="ghost" size="sm" disabled={busy !== null} title="Send again only where the notice failed" onClick={() => void broadcast(b, true)}>Retry failed</Btn></> : null}</> : <LinkBtn kind="ghost" size="sm" href={link({ tab: "faculty", fac: b.faculty_code })}>Open</LinkBtn>}</span>,
           ])} /> : <PBody><div className="sub2">No batch has been opened for {filters.session}.</div></PBody>}
         </Panel>
       ) : null}

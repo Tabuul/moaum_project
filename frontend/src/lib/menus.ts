@@ -485,6 +485,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/admissionsetup", "icon": "doc", "label": "Admission Settings", "badge": "!" },
           { "id": "t/admeligibility", "icon": "check", "label": "Programme Eligibility" },
+          { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
           { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants and Candidates" },
           { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
@@ -1014,6 +1015,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
           { "id": "t/admeligibility", "icon": "check", "label": "Programme Eligibility" },
+          { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" }
         ]
       },
@@ -1458,8 +1460,9 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admission",
         "items": [
           { "id": "a/status", "icon": "cap", "label": "Admission Status" },
+          { "id": "a/admission", "icon": "check", "label": "Admission Progress" },
           { "id": "a/accept", "icon": "check", "label": "Accept Your Offer" },
-          { "id": "a/clearance", "icon": "shield", "label": "Document Clearance" },
+          { "id": "a/clearance", "icon": "shield", "label": "Online Screening" },
           { "id": "a/matric", "icon": "user", "label": "Matriculation" }
         ]
       }

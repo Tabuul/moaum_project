@@ -543,6 +543,8 @@ export const TITLES: Record<string, [string, string]> = {
     "ADAMU, Grace Mwuese",
     "MOAUM/CSC/23/1487 · 300 Level"
   ],
+  "t/screeningreview": ["Screening Review", "The online screening forms of accepted applicants, reviewed and decided"],
+  "a/admission": ["Your admission", "Congratulations, the details, the next step and the tracker"],
   "t/admeligibility": ["Programme Eligibility", "Applicants against the admission settings; the programmes they qualify for"],
   "t/admissions": [
     "Admissions",

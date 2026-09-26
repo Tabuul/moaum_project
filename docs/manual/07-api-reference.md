@@ -707,7 +707,7 @@ One read: the alumni register for the Registry, the academic offices and audit.
 |---|---|---|---|---|
 | GET | `/api/v1/alumni` | alumni | academic, admin, audit, deputyaudit, dregistrar, dvc, records, registrar, super, vc | `alumni/AlumniController.java:26` |
 
-### Applicant portal (`applicant`, 17 endpoints)
+### Applicant portal (`applicant`, 21 endpoints)
 
 The undergraduate applicant's own portal: look up a JAMB number, register an account, sign in, biodata and next of kin, documents (base64 upload and download), fee references, submission with the declaration, acceptance of an offer with the undertaking, and password reset. Applicant-only except the public doors listed in §1.12.
 
@@ -723,6 +723,10 @@ The undergraduate applicant's own portal: look up a JAMB number, register an acc
 | POST | `/api/v1/applicant/me/fee-references` | feeReference | applicant | `applicant/ApplicantController.java:102` |
 | PUT | `/api/v1/applicant/me/next-of-kin` | nextOfKin | applicant | `applicant/ApplicantController.java:96` |
 | POST | `/api/v1/applicant/me/submit` | submit | applicant | `applicant/ApplicantController.java:123` |
+| GET | `/api/v1/applicant/me/admission` | the applicant's lifecycle: status, label, next action and door, tracker, acceptance entitlement, the offer's details | applicant | `applicant/ApplicantScreeningController.java` |
+| GET | `/api/v1/applicant/me/screening` | the screening form (opened on acceptance): policy, fields, answers, institutions, O'Level declared and JAMB's, documents, missing, prefill, trail, change requests | applicant | `applicant/ApplicantScreeningController.java` |
+| PUT | `/api/v1/applicant/me/screening` | save the draft `{ answers, institutions, olevel, membership }` (DRAFT or RETURNED only) | applicant | `applicant/ApplicantScreeningController.java` |
+| POST | `/api/v1/applicant/me/screening/submit` | submit `{ declaration: true }` once complete; read-only after | applicant | `applicant/ApplicantScreeningController.java` |
 | GET | `/api/v1/applicant/me/eligibility` | the applicant's own current evaluation: verdict, reasons, the eligible alternatives, change requests, `canRequestChange`; `available` false before submission | applicant | `admissions/AdmissionEligibilityController.java:292` |
 | POST | `/api/v1/applicant/me/eligibility/recalculate` | re-read the applicant's own record (APPLICANT) | applicant | `admissions/AdmissionEligibilityController.java:311` |
 | POST | `/api/v1/applicant/me/eligibility/change` | request a change to a programme the current run found the applicant eligible for `{ programmeCode, note }`; otherwise 422 `ELIG_NOT_SUGGESTED` | applicant | `admissions/AdmissionEligibilityController.java:320` |
@@ -1353,7 +1357,7 @@ The library desk: items, loans, returns, renewals, fine waivers, settings; and t
 | POST | `/api/v1/me/library/loans/{id}/renew` | renew | student | `library/LibraryController.java:67` |
 | POST | `/api/v1/me/library/reservations` | reserve | student | `library/LibraryController.java:79` |
 
-### Matriculation (`matriculation`, 30 endpoints)
+### Matriculation (`matriculation`, 31 endpoints)
 
 Matriculation (V263): the session overview and faculty lists, queries on a name and their withdrawal, a faculty's confirmation, the run (every number or none), matriculating one straggler (§2.4), and the number-format configuration — the rule, the series, each faculty's segment and series, each programme's code with the number it would give next, the preview and the history (§2.5). Academic Office, Registrar, Deputy Registrar (Academic Affairs), Faculty Officers; management reads.
 
@@ -1369,6 +1373,7 @@ Matriculation (V263): the session overview and faculty lists, queries on a name 
 | POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/ready` | mark the batch ready (zero conflicts) | academic, dregistrar, facultyofficer, registrar | `matriculation/MatriculationManagementController.java` |
 | POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/issue` | the official act `{ confirm: true }`: one transaction — numbers, series, status, sign-in username, histories, notices; returns the result and the verification | academic, dregistrar, registrar | `matriculation/MatriculationManagementController.java` |
 | POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/cancel` | cancel a prepared batch `{ reason }`; never an issued one | academic, dregistrar, registrar | `matriculation/MatriculationManagementController.java` |
+| POST | `/api/v1/matriculation/sessions/{s}/{y}/management/batches/{id}/broadcast` | tell every student of an issued batch `{ onlyFailed }`; recorded on `people.matric_broadcast` (V269) | academic, dregistrar, registrar | `matriculation/MatriculationManagementController.java` |
 | GET | `/api/v1/matriculation/sessions/{s}/{y}/management/issued` | issued numbers (`fac`, `prog`, `q`, `batch`, `from`, `to`) with the previous username | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
 | GET | `/api/v1/matriculation/sessions/{s}/{y}/management/pending` | admitted students not yet eligible, with the reason (`fac`) | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
 | GET | `/api/v1/matriculation/students/{id}/record` | one student's matriculation before and after: number, date, batch, username and its history, proposals | academic, admin, dean, dregistrar, dvc, facultyofficer, ict, records, registrar, super, vc | `matriculation/MatriculationManagementController.java` |
@@ -1750,7 +1755,7 @@ Change of programme (transfers): the student's application and processing fee, t
 | POST | `/api/v1/transfers/{id}/senate` | senate | dregistrar, dvc, registrar, super, vc | `transfers/TransferController.java:276` |
 | POST | `/api/v1/transfers/{id}/withdraw` | withdraw | academic, dregistrar, registrar, super | `transfers/TransferController.java:286` |
 
-### Undergraduate admissions (`admissions`, 124 endpoints)
+### Undergraduate admissions (`admissions`, 130 endpoints)
 
 Undergraduate admissions: CAPS batches loaded whole, reconciled and committed; programmes and their JAMB aliases; the merit list and offers within quota; Direct Entry awards and screening; O'Level grading and JAMB's own results; session policy, cut-offs and catchment; applicants, applications, documents, screening scores, decisions and their release; fee references and applicant fees; reconsiderations; candidate data (passports, dates of birth) and the JAMB admission template; the migration of paid applicants from the old portal; and the Post-UTME CBT (V260) — exam, centres, rooms, slots and days, batches with seating, publication and the slip. Academic Office, Registrar, Deputy Registrar (Academic Affairs), Exams and Records, Bursar and ICT act; management reads.
 
@@ -1810,6 +1815,12 @@ Undergraduate admissions: CAPS batches loaded whole, reconciled and committed; p
 | GET | `/api/v1/admissions/sessions/{session}/{year}/policy-findings` | policy | academic, admin, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionsController.java:208` |
 | PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/catchment` | the catchment local governments, for the Locality basis (V054) — replaces the set | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:142` |
 | PUT | `/api/v1/admissions/sessions/{session}/{year}/policy/criteria` | criteria | academic, dregistrar, registrar | `admissions/AdmissionSettingsController.java:52` |
+| GET | `/api/v1/admissions/sessions/{session}/{year}/screening-review` | the screening queue (V269) with `state`, `fac`, `dept`, `prog`, `q`, `from`, `to`; rows, stats, policy, options | academic, admin, dean, dregistrar, dvc, facultyofficer, hod, ict, records, registrar, super, vc | `admissions/ScreeningReviewController.java` |
+| GET | `/api/v1/admissions/sessions/{session}/{year}/screening-review/{appId}` | one screening form in full: answers by section, institutions, O'Level declared and JAMB's, UTME, documents, missing, trail, the engine's reading, change requests, status, tracker, entitlement | academic, admin, dean, dregistrar, dvc, facultyofficer, hod, ict, records, registrar, super, vc | `admissions/ScreeningReviewController.java` |
+| POST | `/api/v1/admissions/sessions/{session}/{year}/screening-review/{appId}/start` | mark the form in review | academic, dregistrar, registrar, super | `admissions/ScreeningReviewController.java` |
+| POST | `/api/v1/admissions/sessions/{session}/{year}/screening-review/{appId}/decide` | `{ decision: SUCCESSFUL | UNSUCCESSFUL | RETURNED, reason, remarks }` | academic, dregistrar, registrar, super | `admissions/ScreeningReviewController.java` |
+| GET | `/api/v1/admissions/sessions/{session}/{year}/pipeline` | the admission pipeline counted: JAMB uploaded/matched, admitted, acceptance, screening, change of programme, fees, registration, readiness, matriculated | academic, admin, dean, dregistrar, dvc, facultyofficer, hod, ict, records, registrar, super, vc | `admissions/ScreeningReviewController.java` |
+| PUT | `/api/v1/admissions/sessions/{session}/{year}/screening-policy` | `{ enabled, requiredDocuments[], requiredFields[], instructions }` for the session | academic, dregistrar, registrar, super | `admissions/ScreeningReviewController.java` |
 | GET | `/api/v1/admissions/sessions/{session}/{year}/eligibility` | the eligibility register (V266): submitted applicants against the settings, with `q`, `fac`, `dept`, `prog`, `status`, `recommended`, `mode`, `page`, `size`; returns rows, stats, options, recommendable | academic, admin, bursar, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionEligibilityController.java:78` |
 | GET | `/api/v1/admissions/sessions/{session}/{year}/eligibility/stats` | the eligibility statistics for the session | academic, admin, bursar, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionEligibilityController.java:141` |
 | GET | `/api/v1/admissions/sessions/{session}/{year}/eligibility/{appId}` | one application's current evaluation (re-read when stale or the rules moved) — application, run, applied, alternatives, changes, events, O'Level and UTME on record; logs RECOMMENDATION_VIEWED | academic, admin, bursar, dregistrar, dvc, ict, records, registrar, super, vc | `admissions/AdmissionEligibilityController.java:149` |
