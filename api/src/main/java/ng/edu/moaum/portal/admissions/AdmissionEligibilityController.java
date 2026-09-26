@@ -205,21 +205,30 @@ class AdmissionEligibilityController {
     }
 
     /** every submitted application of the session evaluated (again); the office runs it after a policy or data load */
+    /**
+     * Evaluate the unevaluated (or everyone) in chunks: an intake of ten thousand applications is not one request. Each
+     * call evaluates at most {@code limit} and says how many remain; the screen loops. The catch-up is quiet by default —
+     * a first mass reading of an existing intake must not queue ten thousand notices in one click; {@code notify=true}
+     * runs it as the system's reading, which tells each applicant once per verdict.
+     */
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/eligibility/recalculate-all")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> recalculateAll(@PathVariable String session, @PathVariable String year, @RequestParam(defaultValue = "false") boolean onlyMissing) {
+    Map<String, Object> recalculateAll(@PathVariable String session, @PathVariable String year, @RequestParam(defaultValue = "false") boolean onlyMissing,
+                                       @RequestParam(defaultValue = "50") int limit, @RequestParam(defaultValue = "false") boolean notify) {
         String s = session + "/" + year;
-        List<UUID> apps = jdbc.sql("SELECT a.id FROM admissions.application a WHERE a.session = :s AND a.submitted_at IS NOT NULL"
-                + (onlyMissing ? " AND NOT EXISTS (SELECT 1 FROM admissions.eligibility_run r WHERE r.application_id = a.id AND r.superseded_at IS NULL AND NOT r.stale)" : "")
-                + " ORDER BY a.submitted_at").param("s", s).query(UUID.class).list();
-        // catching up the unevaluated is the system's first reading (the applicant is told); a full re-run is the officer's own act
-        String trigger = onlyMissing ? "SYSTEM" : "OFFICER";
+        int n = Math.max(1, Math.min(limit, 500));
+        String missing = " AND NOT EXISTS (SELECT 1 FROM admissions.eligibility_run r WHERE r.application_id = a.id AND r.superseded_at IS NULL AND NOT r.stale)";
+        String where = "FROM admissions.application a WHERE a.session = :s AND a.submitted_at IS NOT NULL" + (onlyMissing ? missing : "");
+        List<UUID> apps = jdbc.sql("SELECT a.id " + where + " ORDER BY a.submitted_at LIMIT :n").param("s", s).param("n", n).query(UUID.class).list();
+        String trigger = notify ? "SYSTEM" : "OFFICER";
         for (UUID a : apps) {
             jdbc.sql("SELECT admissions.evaluate_application(:a, :t, :by)").param("a", a).param("t", trigger).param("by", actor(), Types.OTHER).query(UUID.class).single();
         }
+        long remaining = onlyMissing ? jdbc.sql("SELECT count(*) " + where).param("s", s).query(Long.class).single() : 0;
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("evaluated", apps.size());
+        out.put("remaining", remaining);
         out.put("stats", stats(s));
         return out;
     }

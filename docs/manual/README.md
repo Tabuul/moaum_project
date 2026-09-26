@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 1.4 |
+| **Version** | 1.5 |
 | **Date** | 26 September 2026 |
-| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V267` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
+| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V268` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
 | **Nature** | Documentation only. Nothing in the portal — code, schema, configuration or data — was changed to produce this package |
 | **Prepared by** | Directorate of ICT (prepared with Claude Code) |
 
@@ -229,6 +229,7 @@ Terms as the portal uses them, in alphabetical order. Codes in backticks are the
 | Version | Date | Change | By |
 |---|---|---|---|
 | 1.0 | 26 September 2026 | Initial complete portal documentation: ten volumes, seven audit dossiers and the inventory tools, as at commit `8c2b6fa` on `main` | Directorate of ICT (prepared with Claude Code) |
+| 1.5 | 26 September 2026 | Eligibility engine (V268): reasons appended as text (an applicant without a programme rule no longer stops the evaluation); the catch-up runs in chunks of fifty with the remainder shown and is quiet by default — volumes 02 §2.13.6 and 07 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.4 | 26 September 2026 | Matriculation Management (V267): faculty-by-faculty batches prepared, reviewed, corrected and issued on confirmation; the matriculation number becomes the sign-in username on the same account; a lock timeout on the migration runner — volumes 01 §3.13, 02 §2.12.x, 04, 05, 06 §4.6, 07, 08 and 09 §3.19 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.3 | 26 September 2026 | Automatic admission course suggestion engine (V266): rule-based, explainable eligibility from the admission settings, the applicant's verdict and suggested programmes, the Programme Eligibility register, the programme-change queue, the rule fields and subject equivalencies — volumes 01 §4.1, 02 §2.13.6, 05 §3.17–3.18, 06 §2.12, 07, 08 §2.3 and 09 §3.11–3.12 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.2 | 26 September 2026 | Deferment (V265): the DVC's approval is the final approval; the Senate Business Committee stage is removed and the approval timeline ends at the DVC — volumes 01, 02, 05, 06 and 09 updated | Directorate of ICT (prepared with Claude Code) |

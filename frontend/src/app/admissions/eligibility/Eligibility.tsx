@@ -61,7 +61,24 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
     } finally { setBusy(null); }
   }
   const recalc = async (id: string) => { const d = await call<Detail>(`/${id}/recalculate`, {}, "Eligibility recalculated", id); if (d) { setOpen(d); router.refresh(); } };
-  const recalcAll = async (onlyMissing: boolean) => { const r = await call<{ evaluated: number }>(`/recalculate-all?onlyMissing=${onlyMissing}`, {}, onlyMissing ? "Unevaluated applications evaluated" : "Every application re-evaluated", "all"); if (r) { notify(`${r.evaluated} application(s) evaluated`); router.refresh(); } };
+  const [progress, setProgress] = useState<{ done: number; remaining: number } | null>(null);
+  /** the catch-up runs in chunks of fifty and stops the moment the Office closes the page or a chunk fails; a full re-run the same way */
+  const recalcAll = async (onlyMissing: boolean) => {
+    setBusy("all"); setProblem(null);
+    let done = 0; let remaining = onlyMissing ? t.not_evaluated : rows.length;
+    try {
+      for (let guard = 0; guard < 2000; guard++) {
+        const r = await fetch(`${base}/recalculate-all?onlyMissing=${onlyMissing}&limit=50`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(onlyMissing ? "Unevaluated applications evaluated" : "Every application re-evaluated") }, body: "{}" });
+        const j = (await r.json().catch(() => null)) as { evaluated: number; remaining: number } | Problem | null;
+        if (!r.ok) { const pr = (j as Problem) ?? { status: r.status, title: r.statusText }; setProblem(pr); notifyProblem(pr); break; }
+        const chunk = j as { evaluated: number; remaining: number };
+        done += chunk.evaluated; remaining = onlyMissing ? chunk.remaining : 0;
+        setProgress({ done, remaining });
+        if (chunk.evaluated === 0 || remaining === 0 || !onlyMissing) break;
+      }
+      if (done) notify(`${done.toLocaleString()} application(s) evaluated${remaining ? ` · ${remaining.toLocaleString()} remaining` : ""}`);
+    } finally { setBusy(null); setProgress(null); router.refresh(); }
+  };
   const decide = async () => {
     if (!deciding) return;
     if (deciding.kind === "reject" && !note.trim()) { const pr: Problem = { status: 422, title: "A rejection carries its reason." }; setProblem(pr); notifyProblem(pr); return; }
@@ -93,7 +110,7 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
     <>
       <PageHead title="Programme Eligibility" description={`${filters.session} · every submitted applicant read against the session's admission settings — the applied programme first, then every other active, open programme when it is refused. Rule-based, explained check by check, kept under the policy version it was read under. Nothing here admits anybody or changes a programme by itself.`}
         actions={<><LinkBtn kind="ghost" href={`/admissions?session=${encodeURIComponent(filters.session)}`}>Admissions</LinkBtn><LinkBtn kind="ghost" href={`/admissions/settings?session=${encodeURIComponent(filters.session)}`}>Admission Settings</LinkBtn>
-          {may ? <><Btn kind="secondary" disabled={busy !== null} onClick={() => void recalcAll(true)}>Evaluate the unevaluated{t.not_evaluated ? ` (${t.not_evaluated})` : ""}</Btn><Btn kind="ghost" disabled={busy !== null} onClick={() => void recalcAll(false)}>Recalculate all</Btn></> : null}
+          {may ? <><Btn kind="secondary" disabled={busy !== null} onClick={() => void recalcAll(true)}>{busy === "all" && progress ? `Evaluating… ${progress.done.toLocaleString()} done · ${progress.remaining.toLocaleString()} to go` : `Evaluate the unevaluated${t.not_evaluated ? ` (${t.not_evaluated.toLocaleString()})` : ""}`}</Btn><Btn kind="ghost" disabled={busy !== null} onClick={() => void recalcAll(false)}>Recalculate all</Btn></> : null}
           <Btn kind="secondary" onClick={() => void excel("Programme Eligibility Register", HEAD1, body1(), "eligibility-register.xlsx")} disabled={!rows.length}>Excel</Btn><Btn kind="ghost" onClick={() => brandedPrint("Programme Eligibility Register", `${filters.session} · ${sub}`, HEAD1, body1(), docSerial("ELG"))} disabled={!rows.length}>PDF</Btn></>} />
       {problem ? <Note kind="bad" title={problem.title}>{problem.detail ?? ""}</Note> : null}
       <Tiles items={[

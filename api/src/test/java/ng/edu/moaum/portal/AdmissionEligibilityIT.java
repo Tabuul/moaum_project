@@ -200,7 +200,7 @@ class AdmissionEligibilityIT {
         Applicant hopeless = applicant(CS, 120, UTME_COMMERCIAL, COMMERCIAL);
 
         // submitted, not yet evaluated: the Office evaluates the unevaluated in one act
-        ResponseEntity<Map> all = it.call(academic, HttpMethod.POST, PATH + "/eligibility/recalculate-all?onlyMissing=true", Map.of());
+        ResponseEntity<Map> all = it.call(academic, HttpMethod.POST, PATH + "/eligibility/recalculate-all?onlyMissing=true&notify=true&limit=500", Map.of());
         assertThat(all.getStatusCode().value()).as(String.valueOf(all.getBody())).isEqualTo(200);
         assertThat(((Number) all.getBody().get("evaluated")).intValue()).isGreaterThanOrEqualTo(3);
 
@@ -238,6 +238,17 @@ class AdmissionEligibilityIT {
         assertThat(((Number) run(d3).get("alternatives")).intValue()).isZero();
         assertThat(alternatives(d3).stream().filter(a -> "ELIGIBLE".equals(a.get("result")))).isEmpty();
         assertThat(reasons((Map<String, Object>) d3.get("applied"))).anyMatch(x -> x.contains("120") && x.contains("below the minimum"));
+
+        // a programme with no rule this session (V268): refused with the reason, never an error
+        Applicant noRule = applicant("C00002", 250, UTME_COMMERCIAL, COMMERCIAL);
+        Map<String, Object> d4 = detail(academic, noRule.app());
+        assertThat(run(d4).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
+        assertThat(reasons((Map<String, Object>) d4.get("applied"))).anyMatch(x -> x.contains("No admission rule"));
+        // the catch-up runs in chunks and says how many remain
+        Applicant late = applicant(CS, 205, UTME_SCIENCE, SCIENCE);
+        Map<String, Object> chunk = it.call(academic, HttpMethod.POST, PATH + "/eligibility/recalculate-all?onlyMissing=true&limit=1", Map.of()).getBody();
+        assertThat(((Number) chunk.get("evaluated")).intValue()).isEqualTo(1);
+        assertThat(run(detail(academic, late.app())).get("applied_result")).isEqualTo("ELIGIBLE");
 
         // 10 · the trail: evaluated, recommendation generated, viewed by the office
         List<Map<String, Object>> events = (List<Map<String, Object>>) d2.get("events");
