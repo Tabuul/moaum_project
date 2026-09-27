@@ -325,8 +325,8 @@ BEGIN
     -- ── the applicant: a demo row on a demo CAPS list, registered under the number ──
     PERFORM set_config('moaum.actor_office', 'academic', true);
     IF NOT EXISTS (SELECT 1 FROM admissions.applicant_fee WHERE session = v_session) THEN
-        INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee)
-        VALUES (v_session, 2000, 300, 30000);
+        INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, checking_fee)
+        VALUES (v_session, 2000, 300, 30000, 3000);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM admissions.caps_row WHERE session = v_session AND jamb_reg_no = '20269999DM') THEN
         v_batch := gen_random_uuid();
@@ -403,6 +403,11 @@ BEGIN
          WHERE cc.session = v_session AND cc.jamb_key = '20269901DA';
         PERFORM admissions.decide_application(v_app, 'OFFERED', 'Demo merit offer (invented)');
         PERFORM admissions.release_decisions(v_session);
+        -- the admission checking fee first, on its own (V271/V277): it opens the released decision
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        v_ref := admissions.new_fee_reference(v_app, 'CHECKING');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.confirm_fee(v_ref, 'Card', 'Demo admission checking fee (invented)');
         PERFORM set_config('moaum.actor_office', 'applicant', true);
         PERFORM admissions.sign_undertaking(v_app);
         v_ref := admissions.new_fee_reference(v_app, 'ACCEPTANCE');
