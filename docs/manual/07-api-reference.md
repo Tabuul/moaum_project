@@ -328,6 +328,10 @@ Everything else has **no rate limit**: the payment webhooks (dossier F records t
 | `GET /api/v1/auth/sso`, `GET /api/v1/auth/sso/start`, `POST /api/v1/auth/sso/callback` | single sign-on |
 | `POST /api/v1/applicant/lookup`, `/register`, `/sign-in`, `/forgot`, `/reset` | the undergraduate applicant's door |
 | `POST /api/v1/payments/webhook/paystack`, `/flutterwave`, `/quickteller` | gateway callbacks (§1.13) |
+| `GET /api/v1/analytics/finance/summary` | the financial analytics of the acting office's scope (V279): `from`, `to` (YYYY-MM-DD), `granularity` (day/week/month/quarter/year), `types` (comma-separated category codes), `sex`, `fac`, `dept`, `prog`, `level`, `session` (default the current session; `ALL` for every session), `entry`, `channel`, `q`, `compare` — totals, breakdowns, trend, the period before, the options within the scope |
+| `GET /api/v1/analytics/finance/transactions` | the confirmed payments behind a figure, same filters plus `studentId`, `page`, `size` ≤ 500, newest first; the offices that hold the purse and the scoped Dean/Head |
+| `GET`/`PUT /api/v1/analytics/finance/categories[/{code}]` | the Bursary's payment categories: label, reference kinds, purpose pattern, order, counts as revenue, active |
+| `GET /api/v1/analytics/admissions/funnel[/rows]` | a session's applications at every stage of the admission within the scope, and the applicants at a stage |
 | `POST /api/v1/student-auth/continue` | applicant token → a student session for the student the applicant has become (V278); `422 AUTH_NOT_ON_REGISTER` until the register has them |
 | `GET /api/v1/payments/quickteller/start?reference=` | the self-submitting form that posts a reference to Interswitch WebPAY (HTML); the merchant is the payer's College's |
 | `GET`/`POST /api/v1/payments/quickteller/return?reference=` | WebPAY's return door: requery, then a page that sends the payer back to the portal (HTML) |

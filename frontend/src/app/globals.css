@@ -90,3 +90,13 @@ img { max-width: 100%; }
   .rpt__banner { padding: 14px 0 12px; }
   .rpt__title { font-size: 20px; }
 }
+
+/* ── the admission funnel (V279): a stage per row, its share of the applications as a bar ── */
+.funnel { display: flex; flex-direction: column; gap: 6px; }
+.funnel__stage { display: grid; grid-template-columns: minmax(150px, 1fr) 3fr minmax(140px, auto); gap: 12px; align-items: center; padding: 6px 8px; border-radius: var(--r-sm, 6px); color: inherit; text-decoration: none; }
+.funnel__stage:hover { background: var(--surface-2, var(--bg-2, rgba(0, 0, 0, 0.04))); }
+.funnel__label { font-weight: 600; font-size: var(--t-sm, 13px); }
+.funnel__bar { display: block; height: 10px; background: var(--line, #e7ebef); border-radius: 999px; overflow: hidden; }
+.funnel__fill { display: block; height: 100%; background: var(--chrome, #2a78d6); border-radius: 999px; }
+.funnel__n { font-size: var(--t-sm, 13px); text-align: right; }
+@media (max-width: 720px) { .funnel__stage { grid-template-columns: 1fr; gap: 4px; } .funnel__n { text-align: left; } }

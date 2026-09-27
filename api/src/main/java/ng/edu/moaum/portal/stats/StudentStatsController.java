@@ -7,8 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import ng.edu.moaum.portal.shared.AuditContextHolder;
-import ng.edu.moaum.portal.shared.OfficeScope;
+import ng.edu.moaum.portal.stats.AnalyticsScope.Bound;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,15 +33,11 @@ class StudentStatsController {
     private static final String READERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_bursar','OFFICE_academic','OFFICE_records',"
             + "'OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_dvc','OFFICE_vc','OFFICE_pgschool','OFFICE_pgsecretary',"
             + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod','OFFICE_exams')";
-    private static final Set<String> PG_OFFICES = Set.of("pgschool", "pgsecretary");
-    private static final Set<String> CHS_OFFICES = Set.of("provost", "collegesecretary", "financecontroller");
-    private static final Set<String> MONEY = Set.of("bursar", "financecontroller", "registrar", "dregistrar", "super", "admin",
-            "pgschool", "pgsecretary", "provost", "collegesecretary", "dvc", "vc");
     private static final Set<String> STATUSES = Set.of("ACTIVE", "PROBATION", "ADMITTED");
-    private static final Set<String> WHICH = Set.of("ALL", "PAID", "REGISTERED", "PAID_NOT_REGISTERED", "NOT_PAID", "NO_CHARGE", "NOT_REGISTERED");
+    private static final Set<String> WHICH = Set.of("ALL", "PAID", "REGISTERED", "PAID_NOT_REGISTERED", "NOT_PAID", "NO_CHARGE", "NOT_REGISTERED", "REGISTERED_OWING", "PART_PAID");
 
     private final JdbcClient jdbc;
-    private final OfficeScope scope;
+    private final AnalyticsScope scope;
 
     /** a summary counted once is kept for a short while for the same office scope and filters: a dashboard opened twice
      *  in a minute does not count the whole register twice; a payment or a registration is on the figures within it */
@@ -51,40 +46,30 @@ class StudentStatsController {
     private static final long SUMMARY_TTL_MS = 60_000L;
     private final java.util.concurrent.ConcurrentHashMap<String, Cached> summaries = new java.util.concurrent.ConcurrentHashMap<>();
 
-    StudentStatsController(JdbcClient jdbc, OfficeScope scope) {
+    StudentStatsController(JdbcClient jdbc, AnalyticsScope scope) {
         this.jdbc = jdbc;
         this.scope = scope;
     }
 
-    /** the scope the acting office is held to, and the predicates that hold it */
-    record Bound(String kind, String label, String faculty, String dept, boolean money) {
-    }
-
+    /** the scope the acting office is held to (AnalyticsScope, shared with the financial analytics since V279) */
     private Bound bound() {
-        String office = AuditContextHolder.current().map(c -> c.actorOffice()).orElse("");
-        boolean money = MONEY.contains(office);
-        if (PG_OFFICES.contains(office)) return new Bound("PG_SCHOOL", "Postgraduate School", null, null, money);
-        if (CHS_OFFICES.contains(office)) return new Bound("COLLEGE", "College of Health Sciences", null, null, money);
-        if (scope.actingFacultyOffice()) {
-            String f = scope.actingFaculty();
-            return new Bound("FACULTY", "Faculty", f == null ? "__none__" : f, null, money);
-        }
-        if (scope.actingDepartmentOffice()) {
-            String d = scope.actingDept();
-            return new Bound("DEPARTMENT", "Department", null, d == null ? "__none__" : d, money);
-        }
-        return new Bound("UNIVERSITY", "University", null, null, money);
+        return scope.bound();
     }
 
     /** the filters, each applied only within the bound: a faculty outside a Dean's own is simply empty */
-    record Filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q) {
+    record Filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q,
+                   String sex, String entry, String entrySession) {
     }
 
-    private Filters filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q) {
+    private Filters filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q,
+                            String sex, String entry, String entrySession) {
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session : currentSession();
         Integer sem = semester == null ? null : semester >= 1 && semester <= 3 ? semester : null;
+        String sx = sex == null ? null : sex.trim().toUpperCase();
         return new Filters(s, sem, blank(fac), blank(dept), blank(prog), level, status == null ? null : STATUSES.contains(status.toUpperCase()) ? status.toUpperCase() : null, blank(degree),
-                q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%");
+                q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%",
+                "M".equals(sx) || "F".equals(sx) ? sx : null, blank(entry) == null ? null : entry.trim().toUpperCase(),
+                entrySession != null && entrySession.matches("\\d{4}/\\d{4}") ? entrySession : null);
     }
 
     private static String blank(String v) {
@@ -108,6 +93,9 @@ class StudentStatsController {
                AND (:level::int IS NULL OR r.level = :level)
                AND (:status::text IS NULL OR r.status = :status)
                AND (:degree::text IS NULL OR r.degree_type = :degree)
+               AND (:sex::text IS NULL OR r.sex = :sex)
+               AND (:entry::text IS NULL OR r.entry_mode = :entry)
+               AND (:es::text IS NULL OR r.entry_session = :es)
                AND (:q::text IS NULL OR lower(r.surname || ' ' || r.other_names) LIKE :q OR lower(coalesce(r.number, '')) LIKE :q
                     OR lower(coalesce(r.last_reference, '')) LIKE :q OR lower(r.programme) LIKE :q OR lower(r.department) LIKE :q OR lower(r.faculty) LIKE :q)
             """;
@@ -119,7 +107,8 @@ class StudentStatsController {
                 .param("bf", b.faculty(), Types.VARCHAR).param("bd", b.dept(), Types.VARCHAR)
                 .param("fac", f.fac(), Types.VARCHAR).param("dept", f.dept(), Types.VARCHAR).param("prog", f.prog(), Types.VARCHAR)
                 .param("level", f.level(), Types.INTEGER).param("status", f.status(), Types.VARCHAR).param("degree", f.degree(), Types.VARCHAR)
-                .param("q", f.q(), Types.VARCHAR);
+                .param("q", f.q(), Types.VARCHAR)
+                .param("sex", f.sex(), Types.VARCHAR).param("entry", f.entry(), Types.VARCHAR).param("es", f.entrySession(), Types.VARCHAR);
     }
 
     /** the figures: in all, and by faculty, department, programme and degree type — one pass over the rows */
@@ -130,9 +119,10 @@ class StudentStatsController {
                                 @RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
                                 @RequestParam(required = false) String prog, @RequestParam(required = false) Integer level,
                                 @RequestParam(required = false) String status, @RequestParam(required = false) String degree,
-                                @RequestParam(required = false) String q) {
+                                @RequestParam(required = false) String q, @RequestParam(required = false) String sex,
+                                @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession) {
         Bound b = bound();
-        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q);
+        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession);
         String key = b + "|" + f;
         Cached hit = summaries.get(key);
         if (hit != null && System.currentTimeMillis() - hit.at() < SUMMARY_TTL_MS) return hit.value();
@@ -147,7 +137,8 @@ class StudentStatsController {
                 WITH r AS (""" + ROWS + """
                 )
                 SELECT grouping(faculty_code) AS g_f, grouping(dept_code) AS g_d, grouping(programme_code) AS g_p, grouping(degree_type) AS g_t,
-                       faculty_code, faculty, dept_code, department, programme_code, programme, degree_type,
+                       grouping(sex) AS g_s, grouping(entry_mode) AS g_e, grouping(level) AS g_l, grouping(entry_session) AS g_es,
+                       faculty_code, faculty, dept_code, department, programme_code, programme, degree_type, sex, entry_mode, level, entry_session,
                        count(*) AS total,
                        count(*) FILTER (WHERE paid) AS paid,
                        count(*) FILTER (WHERE registered) AS registered,
@@ -155,17 +146,29 @@ class StudentStatsController {
                        count(*) FILTER (WHERE pay_status IN ('PART_PAYMENT','NOT_PAID')) AS not_paid,
                        count(*) FILTER (WHERE pay_status = 'NO_CHARGE') AS no_charge,
                        count(*) FILTER (WHERE NOT registered) AS not_registered,
+                       count(*) FILTER (WHERE registered AND pay_status IN ('PART_PAYMENT','NOT_PAID')) AS registered_owing,
+                       count(*) FILTER (WHERE pay_status = 'PART_PAYMENT') AS part_paid,
+                       count(*) FILTER (WHERE sex = 'M') AS male, count(*) FILTER (WHERE sex = 'F') AS female,
+                       count(*) FILTER (WHERE matriculated_at IS NOT NULL) AS matriculated,
+                       count(*) FILTER (WHERE entry_session = :s) AS fresh,
                        coalesce(sum(payable), 0) AS payable, coalesce(sum(paid_amount), 0) AS paid_amount, coalesce(sum(outstanding), 0) AS outstanding
                   FROM r
                  GROUP BY GROUPING SETS ((), (faculty_code, faculty), (faculty_code, faculty, dept_code, department),
-                                         (faculty_code, faculty, dept_code, department, programme_code, programme), (degree_type))
-                 ORDER BY faculty, department, programme, degree_type
+                                         (faculty_code, faculty, dept_code, department, programme_code, programme), (degree_type),
+                                         (sex), (entry_mode), (level), (entry_session))
+                 ORDER BY faculty, department, programme, degree_type, sex, entry_mode, level, entry_session
                 """), b, f).query().listOfRows();
         Map<String, Object> totals = null;
-        List<Map<String, Object>> byFaculty = new ArrayList<>(), byDepartment = new ArrayList<>(), byProgramme = new ArrayList<>(), byDegree = new ArrayList<>();
+        List<Map<String, Object>> byFaculty = new ArrayList<>(), byDepartment = new ArrayList<>(), byProgramme = new ArrayList<>(), byDegree = new ArrayList<>(),
+                byGender = new ArrayList<>(), byEntry = new ArrayList<>(), byLevel = new ArrayList<>(), byEntrySession = new ArrayList<>();
         for (Map<String, Object> g : groups) {
             int gf = ((Number) g.get("g_f")).intValue(), gd = ((Number) g.get("g_d")).intValue(), gp = ((Number) g.get("g_p")).intValue(), gt = ((Number) g.get("g_t")).intValue();
+            int gs = ((Number) g.get("g_s")).intValue(), ge = ((Number) g.get("g_e")).intValue(), gl = ((Number) g.get("g_l")).intValue(), ges = ((Number) g.get("g_es")).intValue();
             Map<String, Object> row = counts(g, b.money());
+            if (gs == 0) { row.put("sex", g.get("sex")); byGender.add(row); continue; }
+            if (ge == 0) { row.put("entry_mode", g.get("entry_mode")); byEntry.add(row); continue; }
+            if (gl == 0) { row.put("level", g.get("level")); byLevel.add(row); continue; }
+            if (ges == 0) { row.put("entry_session", g.get("entry_session")); byEntrySession.add(row); continue; }
             if (gf == 1 && gd == 1 && gp == 1 && gt == 1) totals = row;
             else if (gt == 0) { if (g.get("degree_type") != null) { row.put("degree_type", g.get("degree_type")); byDegree.add(row); } }
             else if (gp == 0) { row.put("programme_code", g.get("programme_code")); row.put("programme", g.get("programme")); row.put("dept_code", g.get("dept_code")); row.put("department", g.get("department")); row.put("faculty_code", g.get("faculty_code")); row.put("faculty", g.get("faculty")); byProgramme.add(row); }
@@ -184,6 +187,10 @@ class StudentStatsController {
         out.put("byDepartment", byDepartment);
         out.put("byProgramme", byProgramme);
         out.put("byDegreeType", byDegree);
+        out.put("byGender", byGender);
+        out.put("byEntryMode", byEntry);
+        out.put("byLevel", byLevel);
+        out.put("byEntrySession", byEntrySession);
         out.put("options", options(b, f));
         out.put("window", jdbc.sql("""
                 SELECT number, registration_opens, registration_closes, state FROM policy.semester WHERE session = :s ORDER BY number
@@ -193,7 +200,9 @@ class StudentStatsController {
 
     private static Map<String, Object> counts(Map<String, Object> g, boolean money) {
         Map<String, Object> row = new LinkedHashMap<>();
-        for (String k : List.of("total", "paid", "registered", "paid_not_registered", "not_paid", "no_charge", "not_registered")) row.put(k, ((Number) g.get(k)).longValue());
+        for (String k : List.of("total", "paid", "registered", "paid_not_registered", "not_paid", "no_charge", "not_registered", "registered_owing", "part_paid", "male", "female", "matriculated", "fresh")) {
+            row.put(k, g.get(k) instanceof Number n ? n.longValue() : 0L);
+        }
         if (money) for (String k : List.of("payable", "paid_amount", "outstanding")) row.put(k, g.get(k));
         return row;
     }
@@ -222,6 +231,9 @@ class StudentStatsController {
         o.put("levels", "PG_SCHOOL".equals(b.kind()) ? List.of(700, 800, 900) : List.of(100, 200, 300, 400, 500, 600, 700, 800, 900));
         o.put("statuses", List.of("ACTIVE", "PROBATION", "ADMITTED"));
         o.put("degreeTypes", "PG_SCHOOL".equals(b.kind()) || "UNIVERSITY".equals(b.kind()) ? List.of("PGD", "MASTERS", "MPHIL", "PHD") : List.of());
+        o.put("genders", List.of("M", "F"));
+        o.put("entryModes", jdbc.sql("SELECT DISTINCT entry_mode FROM people.student WHERE entry_mode IS NOT NULL ORDER BY entry_mode").query(String.class).list());
+        o.put("entrySessions", jdbc.sql("SELECT DISTINCT entry_session FROM people.student WHERE entry_session ~ '^[0-9]{4}/[0-9]{4}$' ORDER BY entry_session DESC").query(String.class).list());
         return o;
     }
 
@@ -234,9 +246,10 @@ class StudentStatsController {
                                  @RequestParam(required = false) String prog, @RequestParam(required = false) Integer level,
                                  @RequestParam(required = false) String status, @RequestParam(required = false) String degree,
                                  @RequestParam(defaultValue = "ALL") String which, @RequestParam(required = false) String q,
-                                 @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+                                 @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
+                                 @RequestParam(required = false) String sex, @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession) {
         Bound b = bound();
-        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q);
+        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession);
         String w = WHICH.contains(which.toUpperCase()) ? which.toUpperCase() : "ALL";
         String pred = switch (w) {
             case "PAID" -> " AND r.paid";
@@ -245,6 +258,8 @@ class StudentStatsController {
             case "NOT_PAID" -> " AND r.pay_status IN ('PART_PAYMENT','NOT_PAID')";
             case "NO_CHARGE" -> " AND r.pay_status = 'NO_CHARGE'";
             case "NOT_REGISTERED" -> " AND NOT r.registered";
+            case "REGISTERED_OWING" -> " AND r.registered AND r.pay_status IN ('PART_PAYMENT','NOT_PAID')";
+            case "PART_PAID" -> " AND r.pay_status = 'PART_PAYMENT'";
             default -> "";
         };
         int sz = Math.max(1, Math.min(size, 500));

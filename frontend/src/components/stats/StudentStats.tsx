@@ -10,7 +10,8 @@ import { LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/u
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { Donut, GroupBars, VZ, vzNum, type LegendKey } from "@/components/proto/vz";
-import { DEGREE_WORD, SEMESTER_WORD, detailHref, statQuery, type StatCounts, type StatFilters, type StatSummary, type Which } from "@/lib/stats";
+import { DEGREE_WORD, SEMESTER_WORD, detailHref, entryWord, sexWord, statQuery, type StatCounts, type StatFilters, type StatSummary, type Which } from "@/lib/stats";
+import { AdmissionFunnel } from "./AdmissionFunnel";
 
 const KEYS: LegendKey[] = [{ l: "Total", c: VZ.axis }, { l: "Paid", c: VZ.s3 }, { l: "Registered", c: VZ.s1 }, { l: "Paid not registered", c: VZ.s4 }, { l: "Not paid", c: VZ.crit }];
 const naira = (n: number | undefined) => (n == null ? "—" : "₦" + Number(n).toLocaleString("en-NG", { maximumFractionDigits: 0 }));
@@ -25,7 +26,16 @@ export function StatTiles({ t, f, compact }: { t: StatCounts; f: StatFilters; co
     ["Paid not registered", "PAID_NOT_REGISTERED", t.paid_not_registered, t.paid_not_registered ? "var(--amber-ink)" : null, "Paid, yet to register"],
     ["Not paid", "NOT_PAID", t.not_paid, t.not_paid ? "var(--red-ink)" : null, t.no_charge ? `${vzNum(t.no_charge)} with no charge stated` : "Expected to pay"],
   ];
+  const more: [string, Which, number, string | null, string, Partial<StatFilters>][] = compact ? [] : [
+    ["Male students", "ALL", t.male ?? 0, null, pct(t.male ?? 0, t.total) + " of students", { sex: "M" }],
+    ["Female students", "ALL", t.female ?? 0, null, pct(t.female ?? 0, t.total) + " of students", { sex: "F" }],
+    ["New students", "ALL", t.fresh ?? 0, "var(--chrome)", `Entered in ${f.session}`, { entrySession: f.session }],
+    ["Returning students", "ALL", t.total - (t.fresh ?? 0), null, "Entered in an earlier session", {}],
+    ["Matriculated", "ALL", t.matriculated ?? 0, "var(--green-ink)", pct(t.matriculated ?? 0, t.total) + " hold a matriculation number", {}],
+    ["Registered, fees outstanding", "REGISTERED_OWING", t.registered_owing ?? 0, t.registered_owing ? "var(--amber-ink)" : null, "Registered while a balance stands", {}],
+  ];
   return (
+    <>
     <div className={`grid ${compact ? "grid--5" : "grid--5"}`}>
       {tiles.map(([label, which, v, colour, caption]) => (
         <Link key={which} href={detailHref(f, which)} className="tile stat-tile" title={`Open the ${label.toLowerCase()}`}>
@@ -35,6 +45,18 @@ export function StatTiles({ t, f, compact }: { t: StatCounts; f: StatFilters; co
         </Link>
       ))}
     </div>
+    {more.length ? (
+      <div className="grid grid--6 mt-2">
+        {more.map(([label, which, v, colour, caption, next]) => (
+          <Link key={label} href={detailHref({ ...f, ...next }, which)} className="tile stat-tile" title={`Open the ${label.toLowerCase()}`}>
+            <div className="eyebrow">{label}</div>
+            <div className="n" style={colour ? { color: colour } : undefined}>{vzNum(v)}</div>
+            <div className="c">{caption}</div>
+          </Link>
+        ))}
+      </div>
+    ) : null}
+    </>
   );
 }
 
@@ -83,6 +105,10 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
   const deptRows = data.byDepartment.map((x) => ({ ...x, key: x.dept_code, label: x.department, sub: showFac ? x.faculty : undefined, next: { fac: x.faculty_code, dept: x.dept_code } as Partial<StatFilters> }));
   const progRows = data.byProgramme.map((x) => ({ ...x, key: x.programme_code, label: x.programme, sub: showDept ? x.department : undefined, next: { fac: x.faculty_code, dept: x.dept_code, prog: x.programme_code } as Partial<StatFilters> }));
   const degRows = data.byDegreeType.map((x) => ({ ...x, key: x.degree_type, label: DEGREE_WORD[x.degree_type] ?? x.degree_type, next: { degree: x.degree_type } as Partial<StatFilters> }));
+  const sexRows = (data.byGender ?? []).map((x) => ({ ...x, key: String(x.sex), label: sexWord(x.sex), next: { sex: x.sex ?? "" } as Partial<StatFilters> }));
+  const entryRows = (data.byEntryMode ?? []).map((x) => ({ ...x, key: String(x.entry_mode), label: entryWord(x.entry_mode), next: { entry: x.entry_mode ?? "" } as Partial<StatFilters> }));
+  const levelRows = (data.byLevel ?? []).map((x) => ({ ...x, key: String(x.level), label: x.level == null ? "No level" : `${x.level} Level`, next: { level: x.level == null ? "" : String(x.level) } as Partial<StatFilters> }));
+  const esRows = (data.byEntrySession ?? []).map((x) => ({ ...x, key: String(x.entry_session), label: x.entry_session ?? "Unknown", next: { entrySession: x.entry_session ?? "" } as Partial<StatFilters> }));
 
   return (
     <>
@@ -128,6 +154,21 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
         <div className="scope__f"><Field id="st-status" label="Student status">
           <select id="st-status" className="ctl" value={f.status} onChange={(e) => go({ status: e.target.value })}>
             <option value="">In study (active, probation, admitted)</option>{opts.statuses.map((s) => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+          </select>
+        </Field></div>
+        <div className="scope__f"><Field id="st-sex" label="Gender">
+          <select id="st-sex" className="ctl" value={f.sex} onChange={(e) => go({ sex: e.target.value })}>
+            <option value="">All</option>{(opts.genders ?? ["M", "F"]).map((g) => <option key={g} value={g}>{sexWord(g)}</option>)}
+          </select>
+        </Field></div>
+        <div className="scope__f"><Field id="st-entry" label="Entry type">
+          <select id="st-entry" className="ctl" value={f.entry} onChange={(e) => go({ entry: e.target.value })}>
+            <option value="">All</option>{(opts.entryModes ?? []).map((m) => <option key={m} value={m}>{entryWord(m)}</option>)}
+          </select>
+        </Field></div>
+        <div className="scope__f"><Field id="st-es" label="Session admitted">
+          <select id="st-es" className="ctl" value={f.entrySession} onChange={(e) => go({ entrySession: e.target.value })}>
+            <option value="">Any</option>{(opts.entrySessions ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </Field></div>
         {opts.degreeTypes.length ? (
@@ -187,6 +228,22 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
           {showDept ? <Panel title="By department" right={`${data.byDepartment.length} department${data.byDepartment.length === 1 ? "" : "s"}`}>{table(deptRows, "Department")}</Panel> : null}
           <Panel title="By programme" right={`${data.byProgramme.length} programme${data.byProgramme.length === 1 ? "" : "s"}`}>{table(progRows, "Programme")}</Panel>
           {data.byDegreeType.length ? <Panel title="By degree type" right="Postgraduates">{table(degRows, "Degree type")}</Panel> : null}
+
+          <div className="grid grid--2">
+            <Panel title="Students by gender"><PBody>
+              {sexRows.length ? <Donut items={sexRows.map((r, i) => ({ l: r.label, v: r.total, c: [VZ.s1, VZ.s5, VZ.axis][i % 3] }))} capLabel="Students" capValue={vzNum(t.total)} onPick={(_, i) => go(sexRows[i].next)} /> : <div className="sub2">Nothing to draw.</div>}
+            </PBody></Panel>
+            <Panel title="Students by level"><PBody>
+              {levelRows.length ? <GroupBars rows={levelRows.map((r) => ({ l: r.label, v: counts(r), key: r.key }))} keys={KEYS} onPick={(_, i) => go(levelRows[i].next)} /> : <div className="sub2">Nothing to draw.</div>}
+            </PBody></Panel>
+          </div>
+          <div className="grid grid--2">
+            <Panel title="By gender">{table(sexRows, "Gender")}</Panel>
+            <Panel title="By entry type">{table(entryRows, "Entry type")}</Panel>
+            <Panel title="By level">{table(levelRows, "Level")}</Panel>
+            <Panel title="By session admitted">{table(esRows, "Session admitted")}</Panel>
+          </div>
+          <AdmissionFunnel session={f.session} />
 
           <Panel title="Quick actions" right={money ? `Payable ${naira(t.payable)} · paid ${naira(t.paid_amount)} · outstanding ${naira(t.outstanding)}` : scopeWords}>
             <PBody>

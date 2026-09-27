@@ -3,6 +3,7 @@ import { LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ConfirmFee } from "./ConfirmFee";
 import { StatsPanel } from "@/components/stats/StatsPanel";
+import { FinancePanel } from "@/components/stats/FinancePanel";
 
 export interface PgHome {
   session: string;
@@ -72,6 +73,8 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
       )}
 
       <StatsPanel session={home.session} title="Postgraduate student statistics" />
+
+      <FinancePanel />
       <Tiles items={[
         ["Applications", String(c.total), null, home.session, desk],
         ["Awaiting the School", String(awaitingSchool), awaitingSchool ? "var(--chrome)" : null, "Recommended by a faculty", desk],
@@ -154,6 +157,8 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
       )}
 
       <StatsPanel session={home.session} title="Postgraduate student statistics" />
+
+      <FinancePanel />
       <Tiles items={[
         ["To register", String(c.toRegister), Number(c.toRegister) ? "var(--chrome)" : null, "PG students yet to register this session", register],
         ["Fees to confirm", String(c.feesToConfirm), Number(c.feesToConfirm) ? "var(--chrome)" : null, "Live references awaiting confirmation", admissions],
