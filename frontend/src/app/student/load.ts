@@ -7,6 +7,8 @@ import type { Me } from "@/lib/student-portal";
 /** The student's record, read once per screen, and the shell's idea of who is signed in built from it. */
 export async function loadStudent(): Promise<{ me: ShellMe; student: Me } | { me: ShellMe | null; student: null; problem: import("@/lib/api").Problem }> {
   const [who, mine] = await Promise.all([api<ShellMe>("/api/v1/iam/me"), api<Me>("/api/v1/me")]);
+  /* an applicant who follows a link into the student portal is handed across, not bounced home */
+  if (who.ok && who.data.activeOffice === "applicant") redirect("/applicant/to-student?next=/student/fees");
   if (who.ok && who.data.activeOffice !== "student") redirect("/");
   if (!mine.ok) {
     if (mine.problem.status === 401) redirect("/login");

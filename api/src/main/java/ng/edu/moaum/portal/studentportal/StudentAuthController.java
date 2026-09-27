@@ -43,6 +43,13 @@ class StudentAuthController {
         return auth.signIn(body.matricNo(), body.password(), request.getRemoteAddr());
     }
 
+    /** the applicant, signed in, continues into the student portal as the student they have become (no second password) */
+    @PostMapping("/continue")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    StudentAuthService.SignedIn continueFromApplicant(Authentication authentication, HttpServletRequest request) {
+        return auth.continueFromApplicant(UUID.fromString(authentication.getName()), request.getRemoteAddr());
+    }
+
     @PostMapping("/sign-out")
     @PreAuthorize("hasAuthority('OFFICE_student')")
     Map<String, Object> signOut(Authentication authentication) {

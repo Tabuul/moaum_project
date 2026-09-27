@@ -126,6 +126,52 @@ public class StudentAuthService {
         return (SignedIn) outcome;
     }
 
+    /**
+     * The applicant, already signed in, continues into the student portal as the
+     * student they have become: the same person, so no second password is asked.
+     * The account is carried over from the applicant's on first use, exactly as
+     * the sign-in door does it. Refused while they are not yet on the register.
+     */
+    public SignedIn continueFromApplicant(UUID applicantAccountId, String ip) {
+        StudentPortalRepository.Student s = repo.byApplicantAccount(applicantAccountId).orElse(null);
+        Object outcome = atTheDoor(s == null ? null : s.id(), "student portal continued from the applicant portal", () -> {
+            if (s == null) {
+                return new DomainRuleViolation("AUTH_NOT_ON_REGISTER", "You are not yet on the student register.",
+                        new DomainRuleViolation.Remedy("The register follows your admission: it opens when your screening is successful, or on acceptance where the session needs no screening. Until then, everything is on the applicant portal.", "Registry"));
+            }
+            String number = s.matricNo() != null ? s.matricNo() : s.admissionNo();
+            StudentPortalRepository.Account a = repo.account(s.id()).orElse(null);
+            if (a == null) {
+                String applicantHash = repo.applicantHash(s.candidateId()).orElse(null);
+                if (applicantHash == null) {
+                    repo.event(number, s.id(), "NO_ACCOUNT", ip);
+                    return new DomainRuleViolation("AUTH_NO_STUDENT_ACCOUNT", "No portal account has been opened for this number yet.",
+                            new DomainRuleViolation.Remedy("The Registry opens it and gives you a first password; you change it when you sign in.", "Registry"));
+                }
+                repo.openAccount(s.id(), applicantHash, false);
+                repo.event(number, s.id(), "CARRIED_OVER", ip);
+                a = repo.account(s.id()).orElseThrow();
+            }
+            if (a.lockedUntil() != null && a.lockedUntil().isAfter(OffsetDateTime.now())) {
+                repo.event(number, s.id(), "LOCKED", ip);
+                return new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
+                        + a.lockedUntil().toLocalTime().withNano(0) + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
+            }
+            byte[] sid = new byte[32];
+            random.nextBytes(sid);
+            Instant end = Instant.now().plus(SESSION_LENGTH);
+            repo.openSession(sid, s.id(), end);
+            repo.signedIn(s.id());
+            repo.event(number, s.id(), "SIGNED_IN", ip);
+            String name = s.surname() + ", " + s.otherNames();
+            return new SignedIn(issuer.issue(s.id(), name, List.of("student"), sid, end), end, s.id(), s.matricNo(), s.surname(), s.otherNames(), a.mustChange());
+        });
+        if (outcome instanceof DomainRuleViolation refused) {
+            throw refused;
+        }
+        return (SignedIn) outcome;
+    }
+
     @Transactional
     public void signOut(UUID student, String sidHex) {
         if (sidHex != null) {

@@ -42,6 +42,12 @@ export function Tracker({ steps, compact }: { steps: TrackerStep[]; compact?: bo
   );
 }
 
+/** a step that lives on the student portal is reached through the handover: the applicant's session becomes the student's on the way */
+export function stepHref(href: string | null | undefined): string {
+  const h = href ?? "/applicant/admission";
+  return /^\/student(\/|$)/.test(h) ? `/applicant/to-student?next=${encodeURIComponent(h)}` : h;
+}
+
 /** the five screening forms print once the applicant has filled and submitted them (V273): not before the form is submitted */
 function formsPrintable(d: Admission): boolean {
   return !!d.screeningRequired && !["PENDING", "CHECKING_FEE_PENDING", "NOT_ADMITTED", "DECLINED", "ADMITTED", "ACCEPTANCE_PENDING", "SCREENING_PENDING", "SCREENING_IN_PROGRESS"].includes(d.status);
@@ -56,7 +62,7 @@ export function AdmissionProgress() {
       <PBody>
         <div className="row row--between">
           <span><b>{d.offer.changed_to ?? d.offer.programme}</b><div className="sub2">{d.offer.faculty ? `Faculty of ${d.offer.faculty}` : ""}{d.offer.department ? ` · ${d.offer.department}` : ""} · {d.offer.session}</div></span>
-          {d.next_action ? <LinkBtn kind="primary" href={d.next_href ?? "/applicant/admission"}>{d.next_action}</LinkBtn> : null}
+          {d.next_action ? <LinkBtn kind="primary" href={stepHref(d.next_href)}>{d.next_action}</LinkBtn> : null}
         </div>
         <div className="mt-2"><Tracker steps={parseTracker(d.tracker)} compact /></div>
         <div className="mt-1 row row--inline row--tight"><LinkBtn kind="ghost" size="sm" href="/applicant/admission">Admission progress</LinkBtn>{formsPrintable(d) ? <a className="btn btn--secondary btn--sm" href="/applicant/clearance/print" target="_blank" rel="noopener">Print your screening forms</a> : null}</div>
@@ -98,9 +104,9 @@ export function AdmissionPage() {
         </PBody>
       </div>
 
-      <Note kind={kind} title={d.next_action ? `Next step: ${d.next_action}` : d.label} action={d.next_action && d.next_href ? <LinkBtn kind={kind === "bad" ? "urgent" : "primary"} href={d.next_href}>{d.next_action}</LinkBtn> : null}>
+      <Note kind={kind} title={d.next_action ? `Next step: ${d.next_action}` : d.label} action={d.next_action && d.next_href ? <LinkBtn kind={kind === "bad" ? "urgent" : "primary"} href={stepHref(d.next_href)}>{d.next_action}</LinkBtn> : null}>
         {d.detail ?? ""}
-        {d.status === "SCHOOL_FEES_PENDING" || d.status === "COURSE_REGISTRATION_PENDING" ? <span className="blk"> Sign in to the student portal with your admission number{o.admission_no ? ` ${o.admission_no}` : ""} and the password you chose at application.</span> : null}
+        {d.status === "SCHOOL_FEES_PENDING" || d.status === "COURSE_REGISTRATION_PENDING" ? <span className="blk">Your admission number{o.admission_no ? ` ${o.admission_no}` : ""} is your sign-in on the student portal, with the password you chose as an applicant. From here, <a className="lnk" href={stepHref(d.next_href ?? "/student/fees")}>continue to the student portal</a> without signing in again.</span> : null}
       </Note>
 
       <div className="grid grid--2">

@@ -225,6 +225,11 @@ class AdmissionLifecycleIT {
         assertThat(it.get(b.token(), "/api/v1/applicant/me/letter").getStatusCode().value()).isEqualTo(200);   // each their own
         assertThat(m(it.get(b.token(), "/api/v1/applicant/me/letter").getBody()).get("number")).isNotEqualTo(letter.get("number"));
 
+        // the student portal is not open to them yet: the register follows the screening (V278)
+        ResponseEntity<Map> tooEarly = it.call(a.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
+        assertThat(tooEarly.getStatusCode().value()).isEqualTo(422);
+        assertThat(tooEarly.getBody().get("code")).isEqualTo("AUTH_NOT_ON_REGISTER");
+
         // 8–9 · the screening form: opened on acceptance, prefilled with JAMB's O'Level, drafted, incomplete refused, documents, declaration, submitted
         Map<String, Object> sv = m(it.get(a.token(), "/api/v1/applicant/me/screening").getBody());
         Map<String, Object> form = m(sv.get("form"));
@@ -294,6 +299,12 @@ class AdmissionLifecycleIT {
         assertThat(m(ok.getBody().get("form")).get("state")).isEqualTo("SUCCESSFUL");
         assertThat(jdbc.sql("SELECT cleared_at FROM admissions.application WHERE id = :a").param("a", a.app()).query().singleRow().get("cleared_at")).isNotNull();
         assertThat(jdbc.sql("SELECT admissions.screening_ok_student(:s)").param("s", sa).query(Boolean.class).single()).isTrue();
+        // the applicant continues into the student portal as the student they have become: the same person, no second password (V278)
+        ResponseEntity<Map> crossed = it.call(a.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
+        assertThat(crossed.getStatusCode().value()).as(String.valueOf(crossed.getBody())).isEqualTo(200);
+        Map<String, Object> asStudent = it.get(String.valueOf(crossed.getBody().get("token")), "/api/v1/me").getBody();
+        assertThat(asStudent.get("id")).isEqualTo(sa.toString());
+        assertThat(asStudent.get("admissionNo")).isNotNull();
         assertThat(jdbc.sql("SELECT value FROM people.biodata WHERE student_id = :s AND field = 'secondary_school'").param("s", sa).query(String.class).single()).contains("Gwazachat");
         // no fee schedule is stated for the test session, so the fees read as settled and the status moves straight on
         assertThat(admission(a).get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");

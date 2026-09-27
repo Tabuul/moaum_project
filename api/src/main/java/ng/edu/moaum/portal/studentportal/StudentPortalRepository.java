@@ -62,6 +62,12 @@ class StudentPortalRepository {
                 .param("s", student).query(Account.class).optional();
     }
 
+    /** the student behind an applicant account: the same person, once the Registry has them on the register */
+    Optional<Student> byApplicantAccount(UUID applicantAccountId) {
+        return jdbc.sql(STUDENT + " JOIN admissions.application ap ON ap.candidate_id = s.candidate_id WHERE ap.account_id = :acc ORDER BY s.matriculated_at NULLS LAST LIMIT 1")
+                .param("acc", applicantAccountId).query(Student.class).optional();
+    }
+
     /** the applicant's hash, when the student came in through the portal: the one account, carried over */
     Optional<String> applicantHash(UUID candidateId) {
         if (candidateId == null) {

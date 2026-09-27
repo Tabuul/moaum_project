@@ -328,6 +328,7 @@ Everything else has **no rate limit**: the payment webhooks (dossier F records t
 | `GET /api/v1/auth/sso`, `GET /api/v1/auth/sso/start`, `POST /api/v1/auth/sso/callback` | single sign-on |
 | `POST /api/v1/applicant/lookup`, `/register`, `/sign-in`, `/forgot`, `/reset` | the undergraduate applicant's door |
 | `POST /api/v1/payments/webhook/paystack`, `/flutterwave`, `/quickteller` | gateway callbacks (§1.13) |
+| `POST /api/v1/student-auth/continue` | applicant token → a student session for the student the applicant has become (V278); `422 AUTH_NOT_ON_REGISTER` until the register has them |
 | `GET /api/v1/payments/quickteller/start?reference=` | the self-submitting form that posts a reference to Interswitch WebPAY (HTML); the merchant is the payer's College's |
 | `GET`/`POST /api/v1/payments/quickteller/return?reference=` | WebPAY's return door: requery, then a page that sends the payer back to the portal (HTML) |
 | `POST /api/v1/student-auth/sign-in` | the student's door |
