@@ -18,6 +18,8 @@ export interface ChangeRequest {
   id: string; application_id: string; session: string; from_programme_code: string | null; from_programme: string; to_programme_code: string; to_programme: string;
   eligibility_at_request: string; requested_at: string; requested_by_kind: "APPLICANT" | "OFFICE"; note: string | null; state: "REQUESTED" | "APPROVED" | "REJECTED" | "CANCELLED";
   eligibility_at_decision: string | null; decided_at: string | null; decided_by: string | null; decision_note: string | null; decided_officer?: string | null;
+  /** V284: the officer's reason, the recommending office, the override with the engine's verdict it set aside */
+  reason_code?: string | null; recommended_office?: string | null; override?: boolean; override_reason?: string | null; original_eligibility?: string | null; screening_state_at_request?: string | null;
   application_no?: string; surname?: string; other_names?: string; jamb_reg_no?: string; entry_mode?: string;
 }
 export interface ListRow {
@@ -28,6 +30,7 @@ export interface ListRow {
   reasons: string[] | null; top_alternatives: string | null;
   change_id: string | null; change_to: string | null; change_to_code: string | null; change_state: string | null; change_requested_at: string | null;
 }
+export interface ChangeReason { code: string; label: string; ord: number; requires_note: boolean }
 export interface Stats { evaluated: number; eligible: number; eligible_screening: number; not_eligible: number; unverified: number; with_alternatives: number; without_alternatives: number; change_requests_open: number; not_evaluated: number; stale: number }
 export interface Detail {
   application: ListRow; run: Run; applied: ResultRow | null; alternatives: ResultRow[]; changes: ChangeRequest[];

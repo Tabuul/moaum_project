@@ -18,6 +18,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { DOC_WORD, SECTION_WORD, STATE_WORD, dayOf, parseTracker, whenAt, type Facts, type ReviewDetail, type ReviewList, type ReviewRow, type ScreeningState } from "@/lib/screening";
 import { Tracker } from "@/app/applicant/Admission";
+import { ProgrammeChange } from "./ProgrammeChange";
 
 export interface ReviewFilters { session: string; state: string; fac: string; dept: string; prog: string; q: string; from: string; to: string; open: string }
 const OFFICE = ["academic", "registrar", "dregistrar", "super"];
@@ -26,6 +27,8 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = OFFICE.includes(actingOffice ?? "");
+  const mayOverride = ["registrar", "dregistrar", "dvc", "vc", "super"].includes(actingOffice ?? "");
+  const [changing, setChanging] = useState(false);
   const [q, setQ] = useState(filters.q);
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -137,7 +140,7 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
 
       {open && a ? (
         <Modal title={`${a.surname}, ${a.other_names} · ${f?.screening_no ?? a.application_no}`} sub={`${a.programme} · ${a.faculty ?? ""}${a.department ? ` · ${a.department}` : ""} · ${a.jamb_reg_no} · ${a.entry_mode.replace("_", " ")}`} wide onClose={() => { setOpen(null); router.push(link({ open: "" })); }}
-          foot={<>{f && may && ["PENDING", "IN_REVIEW", "CORRECTION_REQUIRED"].includes(f.state) ? <><Btn kind="go" disabled={busy !== null} onClick={() => { setDeciding("SUCCESSFUL"); setReason(""); setRemarks(""); }}>Approve screening</Btn><Btn kind="urgent" disabled={busy !== null} onClick={() => { setDeciding("UNSUCCESSFUL"); setReason(""); setRemarks(""); }}>Unsuccessful</Btn><Btn kind="secondary" disabled={busy !== null} onClick={() => { setDeciding("CORRECTION"); setReason(""); setRemarks(""); }}>Request correction</Btn>{f.state === "SUBMITTED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void start()}>Mark in review</Btn> : null}</> : null}<span className="grow" /><Btn kind="primary" onClick={() => { setOpen(null); router.push(link({ open: "" })); }}>Close</Btn></>}>
+          foot={<>{f && may && ["PENDING", "IN_REVIEW", "CORRECTION_REQUIRED", "UNSUCCESSFUL"].includes(f.state) ? <Btn kind="secondary" disabled={busy !== null} onClick={() => setChanging(true)}>Change course / programme</Btn> : null}{f && may && ["PENDING", "IN_REVIEW", "CORRECTION_REQUIRED"].includes(f.state) ? <><Btn kind="go" disabled={busy !== null} onClick={() => { setDeciding("SUCCESSFUL"); setReason(""); setRemarks(""); }}>Approve screening</Btn><Btn kind="urgent" disabled={busy !== null} onClick={() => { setDeciding("UNSUCCESSFUL"); setReason(""); setRemarks(""); }}>Unsuccessful</Btn><Btn kind="secondary" disabled={busy !== null} onClick={() => { setDeciding("CORRECTION"); setReason(""); setRemarks(""); }}>Request correction</Btn>{f.state === "SUBMITTED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void start()}>Mark in review</Btn> : null}</> : null}<span className="grow" /><Btn kind="primary" onClick={() => { setOpen(null); router.push(link({ open: "" })); }}>Close</Btn></>}>
           <div className="stack">
             <div className="row row--between"><span className="row row--inline row--tight">{f ? <Pil kind={STATE_WORD[f.state][1]}>{STATE_WORD[f.state][0]}</Pil> : <Pil kind="grey">NOT STARTED</Pil>}<span className="sub2">{open.status.label}{open.status.next_action ? ` · next: ${open.status.next_action}` : ""}</span></span><span className="sub2">Acceptance fee {open.entitlement.paid ? <Pil kind="ok">PAID</Pil> : <Pil kind="warn">UNPAID</Pil>}</span></div>
             <Tracker steps={parseTracker(open.tracker)} compact />
@@ -160,6 +163,14 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
             {open.changes.length ? <div><div className="eyebrow mb-1">Change of programme</div>{open.changes.map((c) => <div key={c.id} className="sub2">{whenAt(c.requested_at)} · {c.from_programme} → <b>{c.to_programme}</b> · <Pil kind={c.state === "APPROVED" ? "ok" : c.state === "REQUESTED" ? "warn" : "grey"}>{c.state}</Pil>{c.decision_note ? ` · ${c.decision_note}` : ""}</div>)}<div className="sub2 mt-1"><Link className="lnk" href={`/admissions/eligibility?session=${encodeURIComponent(filters.session)}&status=PENDING_CHANGE`}>Decide on Programme Eligibility</Link></div></div> : null}
             {open.events.length ? <div><div className="eyebrow mb-1">Trail</div>{open.events.slice(0, 15).map((e, i) => <div key={i} className="sub2"><span className="tnum">{whenAt(e.at)}</span> · <b>{e.action.replace(/_/g, " ").toLowerCase()}</b>{e.detail ? ` · ${e.detail}` : ""}{e.officer ? ` · ${e.officer}` : ""}{e.actor_office ? ` (${e.actor_office})` : ""}</div>)}</div> : null}
           </div>
+        </Modal>
+      ) : null}
+      {changing && open && a ? (
+        <Modal title={`Change course / programme · ${a.surname}, ${a.other_names}`} sub="The engine's verdict on the current programme, the alternatives it finds the candidate eligible for under the session's settings, the recommendation and the approval" wide onClose={() => setChanging(false)}
+          foot={<Btn kind="ghost" onClick={() => setChanging(false)}>Close</Btn>}>
+          <ProgrammeChange base={base} appId={a.id} may={may} mayOverride={mayOverride}
+            current={{ name: `${a.surname}, ${a.other_names}`, programme: a.programme, faculty: a.faculty ?? null, department: a.department ?? null, session: filters.session, jamb: a.jamb_reg_no, utme: open.utme?.aggregate ?? null, screeningState: f?.state ?? null }}
+            onChanged={() => { void openOne(a.id); router.refresh(); }} />
         </Modal>
       ) : null}
       {deciding && open ? (

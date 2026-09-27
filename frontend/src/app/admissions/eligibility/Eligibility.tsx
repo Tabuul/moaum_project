@@ -34,6 +34,7 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
   const [deciding, setDeciding] = useState<{ c: ChangeRequest; kind: "approve" | "reject" } | null>(null);
   const [note, setNote] = useState("");
   const [requesting, setRequesting] = useState<ResultRow | null>(null);
+  const [reasonCode, setReasonCode] = useState("SCREENING_DECISION");
   const t = list.stats;
   const rows = list.rows;
   const base = `/api/bff/api/v1/admissions/sessions/${filters.session}/eligibility`;
@@ -87,7 +88,7 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
   };
   const officeRequest = async () => {
     if (!open || !requesting) return;
-    const d = await call<Detail>(`/${open.application.id}/change`, { programmeCode: requesting.programme_code, note: note.trim() || null }, `Change to ${requesting.programme} requested for ${open.application.surname}`, "req");
+    const d = await call<Detail>(`/${open.application.id}/change`, { programmeCode: requesting.programme_code, reasonCode, note: note.trim() || null }, `Change to ${requesting.programme} requested for ${open.application.surname}`, "req");
     if (d) { setOpen(d); setRequesting(null); setNote(""); router.refresh(); }
   };
 
@@ -214,7 +215,10 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
         <Modal title={`Request a change to ${requesting.programme} on the applicant's behalf`} sub={`${open.application.surname}, ${open.application.other_names}`} onClose={() => setRequesting(null)}
           foot={<><Btn kind="ghost" onClick={() => setRequesting(null)}>Back</Btn><Btn kind="primary" disabled={busy !== null} onClick={() => void officeRequest()}>Record the request</Btn></>}>
           <p>The request goes on the queue like the applicant&rsquo;s own and is decided separately; the programme does not change here.</p>
-          <Field id="rq-note" label="Note"><textarea id="rq-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+          <Field id="rq-reason" label="Reason for change" required><select id="rq-reason" className="ctl" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
+            <option value="OLEVEL_NOT_MET">O&rsquo;Level requirement not satisfied</option><option value="UTME_COMBINATION">UTME combination mismatch</option><option value="SCREENING_DECISION">Screening decision</option>
+            <option value="ADMISSION_POLICY">University admission policy</option><option value="SUITABILITY">Programme suitability</option><option value="OTHER">Other (describe in the note)</option></select></Field>
+          <Field id="rq-note" label={reasonCode === "OTHER" ? "Description (required)" : "Note"} required={reasonCode === "OTHER"}><textarea id="rq-note" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         </Modal>
       ) : null}
     </>

@@ -389,8 +389,60 @@ class AdmissionLifecycleIT {
         assertThat(m(bst.get("entitlement")).get("paid")).isEqualTo(true);
         assertThat(m(bst.get("entitlement")).get("checking_paid")).isEqualTo(true);
         assertThat(it.call(b.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")).getStatusCode().value()).isEqualTo(422);
-        assertThat(String.valueOf(bst.get("tracker"))).contains("\"key\": \"CHANGE_APPROVAL\", \"label\": \"Approval\", \"state\": \"done\"").contains("\"key\": \"SCREENING_DECISION\", \"label\": \"Screening unsuccessful\", \"state\": \"failed\"");
+        assertThat(String.valueOf(bst.get("tracker"))).contains("\"key\": \"CHANGE_APPROVAL\", \"label\": \"Approval\", \"state\": \"done\"").contains("\"key\": \"SCREENING_DECISION\", \"label\": \"Screening successful\", \"state\": \"done\"");   // V284: the approved change screens the record successful on the new programme
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%next step: school fees%'").param("a", b.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
+        // ── PATH C (V284): the officer changes the programme during the screening, on the engine's word ──
+        Applicant cc = offered(CS, 215, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);
+        check(cc); accept(cc);
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + cc.app() + "/start", Map.of()).getStatusCode().value()).isEqualTo(200);
+        // the engine's verdict on the current programme, with the requirement that failed, and the alternatives it finds
+        Map<String, Object> cd = m(it.get(academic, PATH + "/eligibility/" + cc.app()).getBody());
+        assertThat(m(cd.get("run")).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
+        assertThat(String.valueOf(m(cd.get("applied")).get("checks"))).contains("NOT_MET");
+        assertThat(l(cd.get("alternatives")).stream().filter(x -> "ELIGIBLE".equals(x.get("result"))).map(x -> x.get("programme_code"))).contains(ACC);
+        // the configured reasons; OTHER needs a description; a programme the engine refuses is refused; an override is not the Academic Office's
+        assertThat(jdbc.sql("SELECT string_agg(code, ',') FROM admissions.programme_change_reason WHERE active").query(String.class).single()).contains("OLEVEL_NOT_MET").contains("OTHER");
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", ACC, "reasonCode", "OTHER")).getStatusCode().value()).isEqualTo(422);
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", "C00061", "reasonCode", "SUITABILITY")).getStatusCode().value()).isEqualTo(422);
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", "C00061", "reasonCode", "SUITABILITY", "override", true, "overrideReason", "Senate directive")).getStatusCode().value()).isEqualTo(403);
+        // the recommendation with its reason, while the screening is in review; the applicant is told it is under review
+        ResponseEntity<Map> rec = it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", ACC, "reasonCode", "OLEVEL_NOT_MET", "note", "No Physics credit for Computer Science"));
+        assertThat(rec.getStatusCode().value()).as(String.valueOf(rec.getBody())).isEqualTo(200);
+        Map<String, Object> creq = l(rec.getBody().get("changes")).get(0);
+        assertThat(creq.get("state")).isEqualTo("REQUESTED");
+        assertThat(creq.get("reason_code")).isEqualTo("OLEVEL_NOT_MET");
+        assertThat(creq.get("recommended_office")).isEqualTo("academic");
+        assertThat(creq.get("override")).isEqualTo(false);
+        assertThat(admission(cc).get("status")).isEqualTo("CHANGE_OF_PROGRAMME_PENDING");
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%under review%'").param("a", cc.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
+        // the approval: re-validated, the programme changed on candidate and student, the screening successful on it, the forms issued, fees open, acceptance not charged again
+        ResponseEntity<Map> capproved = it.call(academic, HttpMethod.POST, PATH + "/eligibility/changes/" + creq.get("id") + "/approve", Map.of("note", "Within the department's quota"));
+        assertThat(capproved.getStatusCode().value()).as(String.valueOf(capproved.getBody())).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT programme FROM admissions.candidate WHERE id = :c").param("c", cc.candidate()).query(String.class).single()).isEqualTo("B.Sc. ACCOUNTING");
+        assertThat(jdbc.sql("SELECT state FROM admissions.screening_form WHERE application_id = :a").param("a", cc.app()).query(String.class).single()).isEqualTo("SUCCESSFUL");
+        UUID sc = jdbc.sql("SELECT id FROM people.student WHERE candidate_id = :c").param("c", cc.candidate()).query(UUID.class).single();
+        assertThat(jdbc.sql("SELECT programme_code FROM people.student WHERE id = :s").param("s", sc).query(String.class).single()).isEqualTo(ACC);
+        Map<String, Object> cforms = it.get(cc.token(), "/api/v1/applicant/me/screening/forms").getBody();
+        assertThat(String.valueOf(cforms.get("statement"))).contains("ACCOUNTING");
+        Map<String, Object> cst = admission(cc);
+        assertThat(cst.get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
+        assertThat(m(cst.get("entitlement")).get("paid")).isEqualTo(true);
+        assertThat(it.call(cc.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getStatusCode().value()).isEqualTo(422);
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE 'Programme change approved%'").param("a", cc.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
+        assertThat(String.valueOf(m(it.get(cc.token(), "/api/v1/applicant/me/letter").getBody()).get("statement"))).contains("ACCOUNTING");   // the letter, first opened now, states the new programme (b's, opened before its change, went to version 2)
+        // a second change after the successful screening is refused: the screening is not reopened
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + cc.app() + "/change", Map.of("programmeCode", "C00061", "reasonCode", "SUITABILITY")).getStatusCode().value()).isEqualTo(422);
+        // the override, by the Registrar, on a candidate the engine refuses everywhere: recorded as an override with the engine's verdict
+        Applicant dd = offered(CS, 130, List.of("English Language", "Mathematics", "Economics", "Government"), COMMERCIAL);
+        check(dd); accept(dd);
+        ResponseEntity<Map> over = it.call(registrar, HttpMethod.POST, PATH + "/eligibility/" + dd.app() + "/change", Map.of("programmeCode", "C00061", "reasonCode", "ADMISSION_POLICY", "override", true, "overrideReason", "Senate's directive of 12 March"));
+        assertThat(over.getStatusCode().value()).as(String.valueOf(over.getBody())).isEqualTo(200);
+        Map<String, Object> oreq = l(over.getBody().get("changes")).get(0);
+        assertThat(oreq.get("override")).isEqualTo(true);
+        assertThat(oreq.get("original_eligibility")).isEqualTo("NOT_ELIGIBLE");
+        assertThat(it.call(registrar, HttpMethod.POST, PATH + "/eligibility/changes/" + oreq.get("id") + "/approve", Map.of("note", "As directed")).getStatusCode().value()).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT count(*) FROM admissions.eligibility_event WHERE application_id = :a AND action = 'ELIGIBILITY_OVERRIDE_APPLIED'").param("a", dd.app()).query(Long.class).single()).isEqualTo(1);
+
         assertThat(String.valueOf(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'MS') x WHERE x.student_id = :id").param("s", SESSION).param("id", sb).query().singleRow().get("reason"))).doesNotContain("screening").contains("course registration");
 
         // 27 · the pipeline counts both paths

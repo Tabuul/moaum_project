@@ -233,17 +233,36 @@ class AdmissionEligibilityController {
         return out;
     }
 
-    public record ChangeIn(@NotBlank String programmeCode, @Size(max = 1000) String note) {
+    public record ChangeIn(@NotBlank String programmeCode, @Size(max = 1000) String note, @Size(max = 40) String reasonCode, Boolean override, @Size(max = 1000) String overrideReason) {
     }
 
-    /** the office asks for a change on the applicant's behalf; the same eligibility gate as the applicant's own request */
+    /** the offices that may recommend a programme the engine refuses (V284): the override, recorded as such */
+    private static final java.util.Set<String> OVERRIDERS = java.util.Set.of("OFFICE_registrar", "OFFICE_dregistrar", "OFFICE_dvc", "OFFICE_vc", "OFFICE_super");
+
+    /** the configured reasons for a change of programme (V284) */
+    @GetMapping("/api/v1/admissions/sessions/{session}/{year}/eligibility/reasons")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> reasons(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT code, label, ord, requires_note FROM admissions.programme_change_reason WHERE active ORDER BY ord, label").query().listOfRows();
+    }
+
+    /** the officer recommends a change on the engine's word (V284): a configured reason, eligibility read again on the server; the override only for the offices named */
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/eligibility/{appId}/change")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> officeRequest(@PathVariable String session, @PathVariable String year, @PathVariable UUID appId, @Valid @RequestBody ChangeIn body) {
+    Map<String, Object> officeRequest(@PathVariable String session, @PathVariable String year, @PathVariable UUID appId, @Valid @RequestBody ChangeIn body, Authentication auth) {
         inSession(appId, session + "/" + year);
-        jdbc.sql("SELECT admissions.request_programme_change(:a, :p, :n, 'OFFICE', :by)").param("a", appId).param("p", body.programmeCode().trim().toUpperCase())
-                .param("n", body.note(), Types.VARCHAR).param("by", actor(), Types.OTHER).query(UUID.class).single();
+        boolean override = Boolean.TRUE.equals(body.override());
+        if (override && auth.getAuthorities().stream().noneMatch(g -> OVERRIDERS.contains(g.getAuthority()))) {
+            throw new AccessDeniedException("An eligibility override is reserved to the Registrar, the Deputy Registrar and the Vice-Chancellor's office.");
+        }
+        String office = AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
+        jdbc.sql("SELECT admissions.recommend_programme_change(:a, :p, :r, :n, :by, :o, :ov, :ovr)")
+                .param("a", appId).param("p", body.programmeCode().trim().toUpperCase())
+                .param("r", body.reasonCode() == null || body.reasonCode().isBlank() ? "SCREENING_DECISION" : body.reasonCode().trim().toUpperCase())
+                .param("n", body.note(), Types.VARCHAR).param("by", actor(), Types.OTHER).param("o", office, Types.VARCHAR)
+                .param("ov", override).param("ovr", body.overrideReason(), Types.VARCHAR).query(UUID.class).single();
         UUID run = jdbc.sql("SELECT admissions.eligibility_current(:a, :by)").param("a", appId).param("by", actor(), Types.OTHER).query(UUID.class).single();
         return detail(appId, run, true);
     }
