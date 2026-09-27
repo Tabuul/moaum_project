@@ -59,6 +59,9 @@ class FinancialAnalyticsIT {
             jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 100000, 100, 'C00023'), (:s, 'School fees', 150000, 100, 'C00061')").param("s", SESSION).update();
             return null;
         });
+        // the charge and the payments of this session are removed in the finally: another test's student must not
+        // find this session as "the latest with charges" (StudentPortalService.session() falls back to it)
+        try {
         UUID a = it.student(tag + "A", "C00023", "MOAUM/ADM/94/" + (100000 + n * 6), "MOAUM/MTC/94/" + n, 100);
         UUID b = it.student(tag + "B", "C00023", "MOAUM/ADM/94/" + (100000 + n * 6 + 1), "MOAUM/MTC/94/" + (n + 1), 100);
         UUID c = it.student(tag + "C", "C00061", "MOAUM/ADM/94/" + (100000 + n * 6 + 2), "MOAUM/MED/94/" + n, 100);
@@ -122,7 +125,9 @@ class FinancialAnalyticsIT {
         assertThat(rows).hasSize(5);
         assertThat(rows.get(0).get("reference")).isEqualTo(refT);
         assertThat(rows).allSatisfy(r -> { assertThat(r).containsKeys("reference", "number", "surname", "sex", "faculty", "department", "programme", "level", "entry_mode", "session", "category", "amount", "confirmed_at", "status", "channel"); assertThat(r).doesNotContainKey("payment_id"); });
+        // a search by reference reaches across every session, whatever the current one is
         assertThat(((Number) it.get(bursar, "/api/v1/analytics/finance/transactions?q=" + refB1).getBody().get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number) it.get(bursar, "/api/v1/analytics/finance/transactions?session=" + SESSION + "&q=" + refB1).getBody().get("total")).intValue()).isEqualTo(1);
         assertThat(((Number) it.get(bursar, "/api/v1/analytics/finance/transactions?session=" + SESSION + "&studentId=" + b).getBody().get("total")).intValue()).isEqualTo(2);
 
         // a category the Bursary states takes the payments its pattern matches, at once
@@ -174,6 +179,14 @@ class FinancialAnalyticsIT {
         assertThat(stageRows.getStatusCode().value()).isEqualTo(200);
         assertThat(stageRows.getBody().get("stage")).isEqualTo("on_register");
         assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/analytics/admissions/funnel").getStatusCode().value()).isEqualTo(403);
+        } finally {
+            it.db(() -> {
+                jdbc.sql("DELETE FROM finance.payment_reference WHERE session = :s").param("s", SESSION).update();
+                jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update();
+                jdbc.sql("UPDATE finance.payment_category SET active = false WHERE code LIKE 'GST\\_%' AND code <> 'GST'").update();
+                return null;
+            });
+        }
     }
 
     private Map<String, Object> summary(String token, String query) {

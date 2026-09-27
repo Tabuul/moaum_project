@@ -80,10 +80,11 @@ class FinancialAnalyticsController {
         if (f != null && t != null && t.isBefore(f)) { LocalDate x = f; f = t; t = x; }
         String sx = sex == null ? null : sex.trim().toUpperCase();
         String ty = types == null ? null : String.join(",", java.util.Arrays.stream(types.split(",")).map(String::trim).filter(x -> x.matches("[A-Z][A-Z0-9_]{1,39}")).toList());
-        // the default is the current session (the portal's convention); "ALL" opens every session, and a date window stands on its own
+        // the default is the current session (the portal's convention); "ALL" opens every session, and a date window
+        // or a search (a reference, a receipt, a name) stands on its own across every session
         String ses = session != null && session.matches("\\d{4}/\\d{4}") ? session
                 : session != null && session.equalsIgnoreCase("ALL") ? null
-                : f == null && t == null ? currentSession() : null;
+                : f == null && t == null && (q == null || q.isBlank()) ? currentSession() : null;
         return new Filters(f, t, ty == null || ty.isEmpty() ? null : ty, "M".equals(sx) || "F".equals(sx) ? sx : null,
                 blank(fac), blank(dept), blank(prog), level, ses,
                 blank(entry) == null ? null : entry.trim().toUpperCase(), blank(channel),
