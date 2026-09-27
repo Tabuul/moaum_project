@@ -94,6 +94,47 @@ class PaymentsRepository {
                 .param("r", reference).param("g", gateway).param("k", kind).param("a", account).update();
     }
 
+    /** a WebPAY attempt: the txn_ref rendered on the payment page for this reference */
+    void quicktellerAttempt(String reference, String txnRef, String kind, UUID account) {
+        jdbc.sql("INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, txn_ref) VALUES (:r, 'quickteller', :k, :a, :t)")
+                .param("r", reference).param("k", kind).param("a", account).param("t", txnRef).update();
+    }
+
+    /** the txn_refs rendered for a reference so far, oldest first */
+    List<String> quicktellerAttempts(String reference) {
+        return jdbc.sql("SELECT DISTINCT ON (txn_ref) txn_ref FROM finance.gateway_attempt WHERE reference = :r AND txn_ref IS NOT NULL ORDER BY txn_ref, opened_at")
+                .param("r", reference).query(String.class).list().stream()
+                .sorted(java.util.Comparator.comparing((String t) -> t.length()).thenComparing(t -> t)).toList();
+    }
+
+    /** the fee reference behind a txn_ref WebPAY names */
+    Optional<String> referenceOfTxnRef(String txnRef) {
+        return jdbc.sql("SELECT reference FROM finance.gateway_attempt WHERE txn_ref = :t ORDER BY opened_at DESC LIMIT 1")
+                .param("t", txnRef).query(String.class).optional();
+    }
+
+    /**
+     * The College a reference is paid under: CHS when the payer's programme is in a
+     * faculty of the College of Health Sciences, else MAIN — an applicant's by the
+     * programme offered, a student's by the programme on the register, a postgraduate
+     * applicant's by the programme applied for.
+     */
+    String collegeOfReference(String reference) {
+        return jdbc.sql("""
+                SELECT CASE WHEN f.college_code = 'CHS' THEN 'CHS' ELSE 'MAIN' END
+                  FROM (SELECT admissions.programme_code_of(c.programme) AS code
+                          FROM admissions.fee_reference fr JOIN admissions.application a ON a.id = fr.application_id JOIN admissions.candidate c ON c.id = a.candidate_id
+                         WHERE fr.reference = upper(btrim(:r))
+                        UNION ALL
+                        SELECT s.programme_code FROM finance.payment_reference pr JOIN people.student s ON s.id = pr.student_id WHERE pr.reference = upper(btrim(:r))
+                        UNION ALL
+                        SELECT pa.programme_code FROM admissions.pg_fee_reference fr JOIN admissions.pg_application pa ON pa.id = fr.application_id WHERE fr.reference = upper(btrim(:r))) x
+                  JOIN ref.programme p ON p.code = x.code
+                  JOIN ref.faculty f ON f.code = p.faculty_code
+                 LIMIT 1
+                """).param("r", reference).query(String.class).optional().orElse("MAIN");
+    }
+
     void checked(String reference) {
         jdbc.sql("UPDATE finance.gateway_attempt SET checked_at = now(), checks = checks + 1 WHERE reference = :r").param("r", reference).update();
     }

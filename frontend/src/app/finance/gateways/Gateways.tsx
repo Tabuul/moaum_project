@@ -25,8 +25,12 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
   const [test, setTest] = useState({ number: "MOAUM/MTC/24/9903", amount: "100", gateway: d.gateways.find((g) => g.on)?.gateway ?? "paystack" });
   const [ref, setRef] = useState("");
   const [keys, setKeys] = useState<Record<string, { secret: string; hash: string }>>({ paystack: { secret: "", hash: "" }, flutterwave: { secret: "", hash: "" } });
-  // Quickteller Business is not one string but a set: the whole set is stored as one JSON secret
-  const [qt, setQt] = useState({ clientId: "", clientSecret: "", merchantCode: "", payItemId: "", sandbox: true });
+  // Quickteller on Interswitch WebPAY is not one string but a set — two merchants, each with a
+  // product id, a pay item and a MAC key: the whole set is stored as one JSON secret. The ids
+  // are the University's and are prefilled; the MAC keys are secrets and are pasted here only.
+  const QT_EMPTY = { productId: "6498", payItemId: "101", macKey: "", chsProductId: "6207", chsPayItemId: "101", chsMacKey: "", sandbox: false };
+  const [qt, setQt] = useState(QT_EMPTY);
+  const qtMain = d.gateways.find((g) => g.gateway === "quickteller")?.merchants ?? [];
   // Quickteller PayDirect: the query-API credentials (optional; the report import needs none)
   const [pdKey, setPdKey] = useState({ clientId: "", clientSecret: "", sandbox: true });
   const [pdText, setPdText] = useState("");
@@ -98,14 +102,21 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
                   {c.configured ? <div className="sub2">Set {c.set_at ? when(c.set_at) : ""}{c.set_by_name ? " by " + c.set_by_name : ""}{c.gateway === "flutterwave" ? (c.has_hash ? " \u00b7 hash set" : " \u00b7 no hash yet") : ""}</div> : null}
                   {c.gateway === "quickteller" ? (
                     <>
-                      <div className="sub2">Quickteller Business (Interswitch): the four things from your merchant profile at business.quickteller.com. They are stored together, encrypted, and shown never.</div>
-                      <Field id="qt-cid" label="Client ID" hint="From your Interswitch/Quickteller developer profile."><input id="qt-cid" className="ctl tnum" autoComplete="off" value={qt.clientId} onChange={(e) => setQt({ ...qt, clientId: e.target.value })} placeholder="IKIA\u2026" /></Field>
-                      <Field id="qt-cs" label="Client secret" hint="Pasted once; it is never displayed after this."><input id="qt-cs" className="ctl tnum" type="password" autoComplete="off" value={qt.clientSecret} onChange={(e) => setQt({ ...qt, clientSecret: e.target.value })} /></Field>
-                      <Field id="qt-mc" label="Merchant code" hint="Your Quickteller merchant code."><input id="qt-mc" className="ctl tnum" autoComplete="off" value={qt.merchantCode} onChange={(e) => setQt({ ...qt, merchantCode: e.target.value })} placeholder="MX\u2026" /></Field>
-                      <Field id="qt-pi" label="Pay item ID" hint="The payable/pay-item configured on the merchant profile."><input id="qt-pi" className="ctl tnum" autoComplete="off" value={qt.payItemId} onChange={(e) => setQt({ ...qt, payItemId: e.target.value })} placeholder="Default_Payable_MX\u2026" /></Field>
-                      <label className="sub2 row"><input type="checkbox" checked={qt.sandbox} onChange={(e) => setQt({ ...qt, sandbox: e.target.checked })} /> Sandbox (test) &mdash; uncheck for the live Interswitch endpoints</label>
+                      <div className="sub2">Quickteller on Interswitch WebPAY: the University&rsquo;s merchant and, for payers in the College of Health Sciences, the College&rsquo;s own. The product and pay-item ids are the University&rsquo;s and are filled in; the MAC keys come from the Interswitch merchant profile, are stored encrypted, and are shown never. A payer&rsquo;s merchant is chosen by the College their programme is in.</div>
+                      {qtMain.length ? <div className="sub2">Wired now: {qtMain.map((m) => `${m.scope} \u00b7 product ${m.productId} \u00b7 pay item ${m.payItemId}`).join(" \u00b7 ")}</div> : null}
+                      <div className="grid grid--2">
+                        <Field id="qt-pid" label="Product ID (University)" hint="Interswitch product id of the University's WebPAY merchant."><input id="qt-pid" className="ctl tnum" autoComplete="off" value={qt.productId} onChange={(e) => setQt({ ...qt, productId: e.target.value })} /></Field>
+                        <Field id="qt-pi" label="Pay item ID (University)" hint="The pay item on that merchant."><input id="qt-pi" className="ctl tnum" autoComplete="off" value={qt.payItemId} onChange={(e) => setQt({ ...qt, payItemId: e.target.value })} /></Field>
+                      </div>
+                      <Field id="qt-mac" label="MAC key (University)" hint="The long hexadecimal key from the merchant profile; pasted once, never displayed after this."><input id="qt-mac" className="ctl tnum" type="password" autoComplete="off" value={qt.macKey} onChange={(e) => setQt({ ...qt, macKey: e.target.value })} /></Field>
+                      <div className="grid grid--2">
+                        <Field id="qt-cpid" label="Product ID (College of Health Sciences)" hint="Leave the College's three fields as they are if the College has no merchant of its own."><input id="qt-cpid" className="ctl tnum" autoComplete="off" value={qt.chsProductId} onChange={(e) => setQt({ ...qt, chsProductId: e.target.value })} /></Field>
+                        <Field id="qt-cpi" label="Pay item ID (College of Health Sciences)"><input id="qt-cpi" className="ctl tnum" autoComplete="off" value={qt.chsPayItemId} onChange={(e) => setQt({ ...qt, chsPayItemId: e.target.value })} /></Field>
+                      </div>
+                      <Field id="qt-cmac" label="MAC key (College of Health Sciences)" hint="Optional: without it, College payers pay the University's merchant."><input id="qt-cmac" className="ctl tnum" type="password" autoComplete="off" value={qt.chsMacKey} onChange={(e) => setQt({ ...qt, chsMacKey: e.target.value })} /></Field>
+                      <label className="sub2 row"><input type="checkbox" checked={qt.sandbox} onChange={(e) => setQt({ ...qt, sandbox: e.target.checked })} /> Sandbox (test) &mdash; leave unchecked for the live Interswitch endpoints</label>
                       <div className="row">
-                        <Btn kind="primary" disabled={busy || !qt.clientId.trim() || !qt.clientSecret.trim() || !qt.merchantCode.trim() || !qt.payItemId.trim()} onClick={async () => { const j = await send("/gateways/quickteller/key", { secret: JSON.stringify({ clientId: qt.clientId.trim(), clientSecret: qt.clientSecret.trim(), merchantCode: qt.merchantCode.trim(), payItemId: qt.payItemId.trim(), sandbox: qt.sandbox }), hash: null }, "Quickteller configuration set from the dashboard", "PUT"); if (j) { setSaid("Quickteller configured \u2014 " + j.mode + " \u00b7 merchant ending " + j.last4); setQt({ clientId: "", clientSecret: "", merchantCode: "", payItemId: "", sandbox: true }); } }}>{c.configured ? "Replace the configuration" : "Set the configuration"}</Btn>
+                        <Btn kind="primary" disabled={busy || !qt.productId.trim() || !qt.payItemId.trim() || !qt.macKey.trim()} onClick={async () => { const chs = qt.chsMacKey.trim() ? { productId: qt.chsProductId.trim(), payItemId: qt.chsPayItemId.trim(), macKey: qt.chsMacKey.trim() } : undefined; const j = await send("/gateways/quickteller/key", { secret: JSON.stringify({ productId: qt.productId.trim(), payItemId: qt.payItemId.trim(), macKey: qt.macKey.trim(), sandbox: qt.sandbox, chs }), hash: null }, "Quickteller WebPAY configuration set from the dashboard", "PUT"); if (j) { setSaid("Quickteller configured \u2014 " + j.mode + " \u00b7 University MAC key ending " + j.last4 + (chs ? " \u00b7 College of Health Sciences merchant set" : "")); setQt(QT_EMPTY); } }}>{c.configured ? "Replace the configuration" : "Set the configuration"}</Btn>
                         {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the Quickteller configuration? The gateway turns off unless a service variable is set.") && await send("/gateways/quickteller/clear-key", {}, "Quickteller configuration cleared", "POST")) setSaid("Quickteller configuration cleared"); }}>Clear</Btn> : null}
                       </div>
                     </>

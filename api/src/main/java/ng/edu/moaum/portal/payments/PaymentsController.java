@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -87,8 +89,19 @@ class PaymentsController {
      * needs to pay a reference they already hold, so it is open like a webhook.
      */
     @GetMapping(value = "/quickteller/start", produces = "text/html;charset=UTF-8")
-    ResponseEntity<String> quicktellerStart(@org.springframework.web.bind.annotation.RequestParam String reference) {
+    ResponseEntity<String> quicktellerStart(@RequestParam String reference) {
         return ResponseEntity.ok().body(payments.quicktellerStartPage(reference));
+    }
+
+    /**
+     * WebPAY returns the payer here by a POST (txnref, resp, desc, payRef,
+     * apprAmt …) to the site_redirect_url the form named. Nothing posted is
+     * believed: the reference is requeried and settled on Interswitch's answer,
+     * and the page returns the payer to the portal. Open like a webhook.
+     */
+    @RequestMapping(value = "/quickteller/return", method = { RequestMethod.GET, RequestMethod.POST }, produces = "text/html;charset=UTF-8")
+    ResponseEntity<String> quicktellerReturn(@RequestParam(required = false) String reference, @RequestParam Map<String, String> posted) {
+        return ResponseEntity.ok().body(payments.quicktellerReturned(reference, posted));
     }
 
     /* ── V037: the Bursary's side of the gateways ── */

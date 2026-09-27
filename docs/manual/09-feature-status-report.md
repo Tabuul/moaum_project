@@ -748,7 +748,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 |---|---|---|---|
 | Paystack checkout, signed webhook, verify | IMPLEMENTED | `PaymentsIT.aSignedWebhookConfirmsTheFeeOnceAndAnUnsignedOneIsRefused` | Tested |
 | Flutterwave checkout, hash webhook, verify | IMPLEMENTED | Same | Tested for hash and unknown reference |
-| Quickteller Business hosted page and requery | PARTIALLY IMPLEMENTED | `PaymentsService.java:346-426,666-692` | Unverified against the live gateway; hash inputs "confirm on onboarding"; `/payments/quickteller/start` reveals reference, amount and payer to whoever holds the reference |
+| Quickteller on Interswitch WebPAY (V276): two merchants by College, signed form, attempts, requery, return | IMPLEMENTED | `PaymentsService.java` (`quicktellerStartPage`, `quicktellerReturned`, `verify`), `PaymentsIT.quicktellerWebpay…` | Built to Interswitch's WebPAY specification and tested against the sandbox host with invented keys; a live payment against the University's merchant remains to be run once the MAC keys are set on Finance → Gateways. `/payments/quickteller/start` still reveals reference, amount and payer number to whoever holds the reference |
 | PayDirect PRN instruction and collections import | IMPLEMENTED | `db/V080`; `PaymentsService.java:693-723` | Billers seeded with the former University's names and links |
 | PayDirect query API | PARTIALLY IMPLEMENTED | `PaymentsService.java:693-723` | Endpoint unconfirmed |
 | Encrypted gateway keys set from the screen | IMPLEMENTED | `db/V039/V052/V080` | Needs `MOAUM_CONFIG_KEY` |

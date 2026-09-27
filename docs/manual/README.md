@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 1.10 |
+| **Version** | 1.11 |
 | **Date** | 26 September 2026 |
-| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V275` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
+| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V276` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
 | **Nature** | Documentation only. Nothing in the portal — code, schema, configuration or data — was changed to produce this package |
 | **Prepared by** | Directorate of ICT (prepared with Claude Code) |
 
@@ -229,6 +229,7 @@ Terms as the portal uses them, in alphabetical order. Codes in backticks are the
 | Version | Date | Change | By |
 |---|---|---|---|
 | 1.0 | 26 September 2026 | Initial complete portal documentation: ten volumes, seven audit dossiers and the inventory tools, as at commit `8c2b6fa` on `main` | Directorate of ICT (prepared with Claude Code) |
+| 1.11 | 27 September 2026 | Quickteller rebuilt on Interswitch WebPAY (V276): two merchants routed by College (University 6498, College of Health Sciences 6207, pay item 101, naira 566), the signed form, per-visit attempts, the requery, the return door, the MAC keys set on Finance → Gateways or as service variables and never in the repository — volumes 01, 03, 05, 07, 09 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.10 | 27 September 2026 | The admission letter as a digital document (V275): number, code, hash, QR, public verification, a new version on an approved change of programme; the screening passport from JAMB (V274) — volume 01 §4.1 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.9 | 26 September 2026 | The screening form page by page as the paper forms are bound, validated page by page; nationality, state and local government chosen from reference lists (`ref.country`, `ref.state`, `ref.lga`, V273); applicant fees carried forward (V272) — volume 01 §4.1 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.8 | 26 September 2026 | The admission checking fee on its own, before the status (V271): a CHECKING reference opens the released decision, the acceptance fee is charged alone afterwards, neither is paid twice; the reading of the status precedes the acceptance; fees count as settled only when something was due — volume 01 §4.1 updated | Directorate of ICT (prepared with Claude Code) |
