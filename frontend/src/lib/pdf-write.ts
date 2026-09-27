@@ -26,7 +26,7 @@ export class Page {
 
   /** text with a chosen face and letter-spacing — for the card faces: serif bold (Times) for the University's name,
    *  spaced capitals for labels. Fonts: F1 Helvetica · F2 Helvetica-Bold · F3 Times-Bold. */
-  textStyled(x: number, y: number, s: string, size: number, o: { font?: "F1" | "F2" | "F3"; colour?: [number, number, number]; spacing?: number } = {}): this {
+  textStyled(x: number, y: number, s: string, size: number, o: { font?: "F1" | "F2" | "F3" | "F4" | "F5"; colour?: [number, number, number]; spacing?: number } = {}): this {
     const c = (o.colour ?? [0, 0, 0]).map((v) => v.toFixed(3)).join(" ");
     this.ops.push(`BT /${o.font ?? "F1"} ${size} Tf ${(o.spacing ?? 0).toFixed(2)} Tc ${c} rg ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdf(s)}) Tj ET`);
     return this;
@@ -97,6 +97,28 @@ export class Page {
       yy -= size * lead;
     }
     return yy;
+  }
+
+  /** centred styled text about the point x; F1/F4 regular, F2/F3/F5 bold widths */
+  textCenterStyled(cx: number, y: number, s: string, size: number, o: { font?: "F1" | "F2" | "F3" | "F4" | "F5"; colour?: [number, number, number] } = {}): this {
+    const bold = o.font === "F2" || o.font === "F3" || o.font === "F5";
+    const w = s.length * size * (bold ? 0.52 : 0.47);
+    return this.textStyled(cx - w / 2, y, s, size, o);
+  }
+
+  /** a paragraph in a styled font, wrapped by an approximate width; returns the y under it */
+  paragraphStyled(x: number, y: number, s: string, width: number, size: number, o: { font?: "F1" | "F2" | "F3" | "F4" | "F5"; colour?: [number, number, number] } = {}, lead = 1.4): number {
+    const bold = o.font === "F2" || o.font === "F3" || o.font === "F5";
+    const per = size * (bold ? 0.52 : 0.47);
+    const max = Math.max(8, Math.floor(width / per));
+    const words = s.split(/\s+/);
+    let line = "";
+    for (const w of words) {
+      const next = line ? `${line} ${w}` : w;
+      if (next.length > max && line) { this.textStyled(x, y, line, size, o); y -= size * lead; line = w; } else line = next;
+    }
+    if (line) { this.textStyled(x, y, line, size, o); y -= size * lead; }
+    return y;
   }
 
   /** centred text about the point x; width is approximated from the character count (Helvetica) */
@@ -236,8 +258,8 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
     push("\nendobj\n");
   };
   push("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n");
-  /* 1 catalog · 2 pages · 3 F1 · 4 F2 · 5 F3 · then per page: page, content, images */
-  let next = 6;
+  /* 1 catalog · 2 pages · 3 F1 · 4 F2 · 5 F3 · 6 F4 · 7 F5 · then per page: page, content, images */
+  let next = 8;
   const pageIds: number[] = [];
   const built: { id: number; content: number; images: { id: number; name: string; img: Image }[]; page: Page }[] = [];
   for (const p of pages) {
@@ -252,9 +274,11 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
   obj(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
   obj(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
   obj(5, "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>");
+  obj(6, "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>");
+  obj(7, "<< /Type /Font /Subtype /Type1 /BaseFont /Times-BoldItalic /Encoding /WinAnsiEncoding >>");
   for (const b of built) {
     const xobjects = b.images.map((im) => `/${im.name} ${im.id} 0 R`).join(" ");
-    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
+    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R /F5 7 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
     const stream = enc.encode(b.page.ops.join("\n"));
     obj(b.content, [enc.encode(`<< /Length ${stream.length} >>\nstream\n`), stream, enc.encode("\nendstream")]);
     for (const im of b.images) {

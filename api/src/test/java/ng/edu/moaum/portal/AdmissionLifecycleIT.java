@@ -317,6 +317,10 @@ class AdmissionLifecycleIT {
         List<Map<String, Object>> mine = l(it.get(studentToken, "/api/v1/me/admission-documents").getBody().get("rows"));
         assertThat(mine.stream().map(x -> x.get("key"))).contains("OFFER_LETTER", "ACCEPTANCE_RECEIPT", "SCREENING_FORMS");
         assertThat(m(it.get(studentToken, "/api/v1/me/admission-documents/letter").getBody().get("application")).get("jambKey")).isEqualTo(a.jamb());
+        // the letter states what the Registry's format asks (V283): the duration from the programme's final level, and the template's signatory
+        Map<String, Object> letterDoc = it.get(a.token(), "/api/v1/applicant/me/letter").getBody();
+        assertThat(((Number) m(letterDoc.get("application")).get("durationSemesters")).intValue()).isEqualTo(8);
+        assertThat(m(letterDoc.get("template")).get("signatory_title")).isEqualTo("Deputy Registrar, Admissions, Examinations and Records");
         assertThat(it.get(studentToken, "/api/v1/me/admission-documents/forms").getBody().get("number")).isEqualTo(form.get("screening_no"));
         // the nationality JAMB's state implies (V282): Benue → Nigeria, on the facts the forms print and on the student's record; never typed by the applicant
         assertThat(jdbc.sql("SELECT admissions.screening_facts(:a) -> 'identity' ->> 'nationality'").param("a", a.app()).query(String.class).single()).isEqualToIgnoringCase("Nigeria");

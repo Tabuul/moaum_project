@@ -111,14 +111,26 @@ public class AdmissionDocuments {
         out.remove("id");
         out.put("verifyPath", "/verify/document?key=" + row.get("verification_code"));
         out.put("application", jdbc.sql("""
-                SELECT a.application_no AS "applicationNo", a.session, c.surname || ', ' || c.other_names AS name, c.jamb_reg_no AS "jambKey", c.entry_level AS "entryLevel",
-                       coalesce(q.to_programme, c.programme) AS programme, f.name AS faculty, a.decision, a.decision_released_at AS "decisionReleasedAt", a.decision_basis AS "decisionBasis", a.accepted_at AS "acceptedAt"
+                SELECT a.application_no AS "applicationNo", a.session, c.surname || ', ' || c.other_names AS name, c.surname, c.other_names AS "otherNames",
+                       c.jamb_reg_no AS "jambKey", c.entry_level AS "entryLevel",
+                       coalesce(q.to_programme, c.programme) AS programme, f.name AS faculty, d.name AS department, p.category AS "degreeType",
+                       -- the duration in semesters from the programme's final level (100 → 400 is eight); eight when the level is not stated
+                       coalesce((finance.final_level(p.code) - c.entry_level) / 100 + 1, 4) * 2 AS "durationSemesters",
+                       -- the first semester's registration date for the session, as the calendar states it
+                       coalesce((SELECT sm.registration_opens FROM policy.semester sm WHERE sm.session = a.session AND sm.number = 1),
+                                (SELECT sm.lectures_from FROM policy.semester sm WHERE sm.session = a.session AND sm.number = 1),
+                                (SELECT s.starts_on FROM policy.academic_session s WHERE s.name = a.session)) AS "registrationOpens",
+                       a.decision, a.decision_released_at AS "decisionReleasedAt", a.decision_basis AS "decisionBasis", a.accepted_at AS "acceptedAt"
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
                   LEFT JOIN LATERAL (SELECT x.to_programme FROM admissions.programme_change_request x WHERE x.application_id = a.id AND x.state = 'APPROVED' ORDER BY x.decided_at DESC LIMIT 1) q ON true
                   LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(coalesce(q.to_programme, c.programme))
                   LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                  LEFT JOIN ref.department d ON d.code = p.dept_code
                  WHERE a.id = :a
                 """).param("a", app).query().singleRow());
+        // the wording, the signatory and the notes: the active ADMISSION_LETTER template (V283), a new version from Document settings
+        out.put("template", jdbc.sql("SELECT title, subtitle, signatory_name, signatory_title, second_name, second_title, footer, remarks FROM credentials.document_template WHERE kind = 'ADMISSION_LETTER' AND active ORDER BY version DESC LIMIT 1")
+                .query().listOfRows().stream().findFirst().orElse(null));
         return out;
     }
 

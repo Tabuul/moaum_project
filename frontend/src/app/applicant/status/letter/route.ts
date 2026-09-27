@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Application } from "@/lib/applicant";
 import { admissionLetterPdf, type LetterDoc } from "@/lib/admission-letter-pdf";
+import { crestImage, signatureImage } from "@/lib/pdf-crest";
+import { qrMatrix } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,6 @@ export async function GET(req: Request) {
   if (!doc.ok) return NextResponse.json(doc.problem, { status: doc.problem.status });
   const letter = doc.data;
   const app = letter.application ?? { applicationNo: a.applicationNo, session: a.session, name: a.name, jambKey: a.jambKey, entryLevel: a.entryLevel, programme: a.programme, faculty: a.faculty, decision: a.decision, decisionReleasedAt: a.decisionReleasedAt, decisionBasis: a.decisionBasis, acceptedAt: a.acceptedAt };
-  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, url.origin);
+  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, url.origin, { crest: crestImage(), signature: signatureImage("registrar"), qr: qrMatrix(`${url.origin}${letter.verifyPath}`) });
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `${download ? "attachment" : "inline"}; filename="admission-letter-${a.applicationNo.replace(/\//g, "-")}.pdf"` } });
 }

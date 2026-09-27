@@ -1,71 +1,114 @@
-/** The offer / confirmation letter as a PDF (V275): the released offer, the programme, the terms, on one A4 page, with the document's
- *  number, code and QR. Drawn the same from the applicant's dashboard and from the student's library (V282). */
-import type { ScreeningResult } from "@/lib/applicant";
-import { A4, Page, pdf } from "@/lib/pdf-write";
-import { brandHeader } from "@/lib/pdf-crest";
-import { qrMatrix } from "@/lib/qr";
+/** The letter of admission as the Registry issues it (V283): the crest and the University over the Office of the Registrar, the
+ *  date, the applicant's name and number, CONFIRMATION OF OFFER OF ADMISSION for the session, the course, programme, faculty,
+ *  level and duration, the Registry's six notes, the signatory the document template names, and the QR that verifies it. Drawn
+ *  the same from the applicant's dashboard and from the student's library (V282). */
+import type { ScreeningResult } from "./applicant.ts";
+import { A4, Page, pdf, type Image } from "./pdf-write.ts";
 
 export interface LetterApplication {
   applicationNo: string; session: string; name: string; jambKey: string; entryLevel: number; programme: string | null; faculty: string | null;
   decision: string | null; decisionReleasedAt: string | null; decisionBasis: string | null; acceptedAt: string | null; result?: ScreeningResult | null;
+  /** V283: what the letter states beyond the offer */
+  department?: string | null; degreeType?: string | null; durationSemesters?: number | null; registrationOpens?: string | null; surname?: string | null; otherNames?: string | null;
 }
-export interface LetterDoc { number: string; version: number; verification_code: string; statement: string; issued_on: string; verifyPath: string; application?: LetterApplication }
+export interface LetterTemplate { title?: string | null; subtitle?: string | null; signatory_name?: string | null; signatory_title?: string | null; second_name?: string | null; second_title?: string | null; footer?: string | null; remarks?: string | null }
+export interface LetterDoc { number: string; version: number; verification_code: string; statement: string; issued_on: string; verifyPath: string; application?: LetterApplication; template?: LetterTemplate | null }
 
-function qr(p: Page, x: number, y: number, side: number, text: string) {
-  const { size, dark } = qrMatrix(text);
+/** what the route supplies from the server: the crest, the lodged signature, and the QR of the verifying address */
+export interface LetterArt { crest: Image | null; signature: Image | null; qr: { size: number; dark: Uint8Array | boolean[] | number[] } | null }
+
+function qr(p: Page, x: number, y: number, side: number, m: NonNullable<LetterArt["qr"]>) {
+  const { size, dark } = m;
   const cell = side / size;
   for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (dark[r * size + c]) p.fill(x + c * cell, y + (size - 1 - r) * cell, cell, cell, 0);
 }
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "");
+const ordinal = (d: number) => `${d}${d % 10 === 1 && d !== 11 ? "st" : d % 10 === 2 && d !== 12 ? "nd" : d % 10 === 3 && d !== 13 ? "rd" : "th"}`;
+/** "5th January, 2026" */
+export function longDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return `${ordinal(d.getDate())} ${d.toLocaleDateString("en-GB", { month: "long" })}, ${d.getFullYear()}`;
+}
+const isoDay = (iso: string | null | undefined) => (iso ? String(iso).slice(0, 10) : "");
 
-export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, origin: string): Uint8Array {
-  const st = JSON.parse(letter.statement) as { changedFrom?: string | null; changedTo?: string | null; changedOn?: string | null };
-  const verifyUrl = `${origin}${letter.verifyPath}`;
-  const p = new Page();
-  const L = 64;
-  let y = brandHeader(p, L, "Office of the Registrar · Academic Affairs");
-  p.text(L, y, `Our ref: ${a.applicationNo} · Document no ${letter.number}${letter.version > 1 ? ` (version ${letter.version})` : ""}`, 9.5);
-  p.text(A4.w - L - 150, y, when(a.decisionReleasedAt), 9.5);
-  y -= 26;
-  p.text(L, y, a.name, 11, true);
-  y -= 14;
-  p.text(L, y, `JAMB registration number ${a.jambKey}`, 9.5);
-  y -= 30;
-  p.text(L, y, "OFFER OF PROVISIONAL ADMISSION", 13, true);
-  y -= 22;
-  y = p.paragraph(L, y, `I am pleased to inform you that the Admissions Board of the University has offered you provisional admission into the ${a.entryLevel} Level of the ${a.programme ?? "programme"} degree programme${a.faculty ? ` in the Faculty of ${a.faculty}` : ""} for the ${a.session} academic session${a.decisionBasis ? `, on the basis of ${basisName(a.decisionBasis)}` : ""}.`, A4.w - 2 * L, 10.5, 1.45);
-  y -= 8;
-  y = p.paragraph(L, y, "This offer is provisional. It stands on the results JAMB sent and the documents you declared, every one of which the Registry verifies with the examination bodies before clearance. A result that does not verify voids the admission at any point afterwards, including after the award of a degree.", A4.w - 2 * L, 10.5, 1.45);
-  y -= 8;
-  y = p.paragraph(L, y, `You accepted this offer on ${when(a.acceptedAt)} and the acceptance fee is confirmed. Nothing is paid to any person; every naira you owe is paid on the portal, to a reference the portal generates.`, A4.w - 2 * L, 10.5, 1.45);
-  if (st.changedTo) {
-    y -= 8;
-    y = p.paragraph(L, y, `Your change of programme from ${st.changedFrom ?? "the programme first offered"} to ${st.changedTo} was approved by the Admissions Office${st.changedOn ? ` on ${when(st.changedOn)}` : ""}; this letter, version ${letter.version} under the same document number, states the admission as it now stands. Your acceptance fee remains valid.`, A4.w - 2 * L, 10.5, 1.45);
-  }
-  y -= 8;
-  y = p.paragraph(L, y, "After acceptance, complete the online screening on the portal, then pay your school fees and register your courses. Your matriculation number is issued once your fees are paid and your courses registered; it is not issued with this letter.", A4.w - 2 * L, 10.5, 1.45);
-  y -= 30;
-  if (a.result) {
-    p.fill(L, y - 58, A4.w - 2 * L, 66);
-    p.text(L + 10, y - 4, "As screened", 9, true);
-    p.text(L + 10, y - 22, `UTME ${a.result.utme ?? "—"} of 400 · screening ${a.result.screening ?? "—"} of 100 · aggregate ${a.result.aggregate ?? "—"} · weighted ${a.result.weightUtme}/${a.result.weightPutme}`, 9);
-    p.text(L + 10, y - 40, `Departmental cut-off ${a.result.cutoff ?? "not stated"}${a.result.meritPosition ? ` · merit position ${a.result.meritPosition}${a.result.applied ? ` of ${a.result.applied}` : ""}` : ""}`, 9);
-    y -= 90;
-  }
-  p.text(L, y, "Registrar", 10.5, true);
-  y -= 14;
-  p.text(L, y, "For: Vice-Chancellor", 9.5);
-  // the verification block: the QR opens the public verifier; the code and the number are typed where it cannot be scanned
-  qr(p, A4.w - L - 84, 62, 84, verifyUrl);
-  p.text(L, 92, `Document no ${letter.number} · version ${letter.version} · issued ${when(letter.issued_on)}`, 8.5, true);
-  p.text(L, 80, `Verification code ${letter.verification_code}`, 8.5);
-  p.text(L, 68, `Verify at ${origin}/verify/document by the code or the document number. Only what the University discloses publicly is shown.`, 7.5, false, [0.4, 0.4, 0.4]);
-  p.text(L, 50, `Issued by the portal · ${a.applicationNo} · this letter is verified against the register, not by its appearance`, 7.5, false, [0.4, 0.4, 0.4]);
+/** the Registry's notes when the template states none */
+export const DEFAULT_NOTES = [
+  "The University shall commence registration of Fresh Students for the First Semester of {session} Academic Session{from}.",
+  "This admission is only provisional as only candidates who are successful at the screening exercise would be registered.",
+  "Successfully screened candidates are to proceed and pay appropriate user charges immediately in order to validate their admission.",
+  "There shall be physical screening of certificates at the faculties.",
+  "Please, note that should any problem be discovered with your credentials in the course of your study, you will be required to withdraw from the University.",
+  "Congratulations on your admission.",
+];
 
-  return pdf([p], `Admission letter ${a.applicationNo}`);
+const R = "F4", B = "F3", BI = "F5";
+
+/** the name as the letter writes it: surname first as the record holds it, in title case */
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (m, a: string, b: string) => a + b.toUpperCase());
 }
 
-function basisName(code: string): string {
-  return ({ NM: "National Merit", SM: "State Merit", ELG: "Equality of Local Government", LOCALITY: "Locality", PLWD: "Persons Living With Disability", OTHER: "the Board's decision" } as Record<string, string>)[code] ?? code;
+export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, origin: string, art: LetterArt): Uint8Array {
+  const st = JSON.parse(letter.statement) as { changedFrom?: string | null; changedTo?: string | null; changedOn?: string | null };
+  const t = letter.template ?? {};
+  const p = new Page();
+  const L = 56, W = A4.w - 2 * L, cx = A4.w / 2;
+  let y = A4.h - 40;
+  // the crest and the University, centred
+  const crest = art.crest;
+  if (crest) { p.jpeg(cx - 34, y - 68, 68, 68, crest); y -= 82; } else y -= 10;
+  p.textCenterStyled(cx, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12.5, { font: B }); y -= 17;
+  p.textCenterStyled(cx, y, "P. M. B 102119, Makurdi, Nigeria", 10.5, { font: B }); y -= 15;
+  p.textCenterStyled(cx, y, "(Office of the Registrar)", 10.5, { font: BI }); y -= 22;
+  // the date, right; the applicant's name and number
+  const dateText = `DATE: ${isoDay(letter.issued_on) || isoDay(a.decisionReleasedAt)}`;
+  p.textStyled(A4.w - L - dateText.length * 5.6, y, "DATE: ", 10.5, { font: B });
+  p.textStyled(A4.w - L - dateText.length * 5.6 + 36, y, dateText.slice(6), 10.5, { font: R }); y -= 22;
+  const name = a.surname && a.otherNames ? `${titleCase(a.otherNames)} ${titleCase(a.surname)}` : titleCase(a.name.includes(",") ? a.name.split(",").reverse().join(" ").trim() : a.name);
+  const kv = (k: string, v: string, size = 10.5) => { p.textStyled(L, y, k, size, { font: B }); p.textStyled(L + k.length * size * 0.69 + 5, y, v, size, { font: R }); y -= 20; };
+  kv("APPLICANT'S NAME:", name);
+  kv("APPLICATION NUMBER:", a.jambKey || a.applicationNo);
+  y -= 22;
+  p.textCenterStyled(cx, y, (t.title || "CONFIRMATION OF OFFER OF ADMISSION").toUpperCase() + ":", 11.5, { font: B }); y -= 16;
+  p.textCenterStyled(cx, y, (t.subtitle ? t.subtitle.replace("{session}", a.session) : `${a.session} ACADEMIC SESSION`).toUpperCase(), 11.5, { font: B }); y -= 26;
+  // the confirmation sentence, the University's name in bold within it
+  p.textStyled(L, y, "I am pleased to confirm your offer of provisional admission into the", 10.5, { font: R }); y -= 15;
+  p.textStyled(L, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 10.5, { font: B });
+  p.textStyled(L + 344, y, "as approved by JAMB as follows:", 10.5, { font: R }); y -= 22;
+  const programme = st.changedTo ?? a.programme ?? "";
+  const degree = (a.degreeType ?? "").replace(/\s+/g, "").toUpperCase() || "UNDERGRADUATE";
+  kv("COURSE:", programme);
+  kv("PROGRAMME:", degree);
+  kv("FACULTY:", (a.faculty ?? "").toUpperCase());
+  kv("LEVEL:", `${a.entryLevel} LEVEL`);
+  kv("DURATION:", `${a.durationSemesters ?? 8} SEMESTERS`);
+  if (st.changedTo) {
+    y -= 2;
+    y = p.paragraphStyled(L, y, `Your change of programme from ${st.changedFrom ?? "the programme first offered"} to ${st.changedTo} was approved${st.changedOn ? ` on ${longDate(st.changedOn)}` : ""}; this letter, version ${letter.version} under the same number, states the admission as it now stands.`, W, 9.5, { font: R });
+  }
+  y -= 6;
+  // the Registry's notes, numbered
+  const from = a.registrationOpens ? ` from ${longDate(a.registrationOpens)}` : "";
+  const notes = (t.remarks ? t.remarks.split(/\r?\n/).map((x) => x.trim()).filter(Boolean) : DEFAULT_NOTES).map((n) => n.replace("{session}", a.session).replace("{from}", from).replace("{date}", longDate(a.registrationOpens)));
+  notes.forEach((n, i) => {
+    p.textStyled(L + 14, y, `${i + 1}.`, 10.5, { font: R });
+    y = p.paragraphStyled(L + 30, y, n, W - 30, 10.5, { font: R }, 1.35);
+  });
+  // the signatory the template names, the signature above it when the University has lodged one
+  const sigTop = Math.min(y - 20, 176);
+  const sig = art.signature;
+  if (sig) p.jpeg(L, sigTop - 44, 120, 44, sig);
+  const sName = t.signatory_name || "The Registrar";
+  const sTitle = t.signatory_title || "Registrar";
+  let sy = sigTop - 58;
+  p.textStyled(L, sy, sName, 10.5, { font: B }); sy -= 15;
+  p.textStyled(L, sy, sTitle, 10.5, { font: R }); sy -= 15;
+  if (t.second_title || !t.signatory_name) p.textStyled(L, sy, t.second_title || "For: Registrar", 10.5, { font: R });
+  // the QR that opens the public verifier, the number and the code beneath the page
+  if (art.qr) qr(p, A4.w - L - 84, 96, 84, art.qr);
+  p.text(L, 44, `Document no ${letter.number} · version ${letter.version} · verification code ${letter.verification_code} · verify at ${origin}/verify/document`, 7.5, false, [0.4, 0.4, 0.4]);
+  if (t.footer) p.text(L, 33, t.footer, 7.5, false, [0.4, 0.4, 0.4]);
+  return pdf([p], `Admission letter ${a.applicationNo}`);
 }

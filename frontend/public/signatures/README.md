@@ -1,0 +1,1 @@
+Signatures drawn on generated documents, as JPEG. `registrar.jpg` signs the letter of admission (the Deputy Registrar's signature above the name the template states); when the file is absent the letter leaves the space for a hand signature.
