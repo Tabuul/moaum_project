@@ -6,14 +6,13 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
-import { OUTCOME, when, type GatewayConfig, type PaymentsDesk, type PaydirectDesk } from "@/lib/bursary";
-import { parseRows } from "@/lib/wallet";
+import { OUTCOME, when, type GatewayConfig, type PaymentsDesk } from "@/lib/bursary";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Field, day, money } from "@/components/proto/blocks";
+import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: PaymentsDesk; config: GatewayConfig[]; paydirect: PaydirectDesk | null; paid: string | null; actingOffice: string | null }) {
+export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; config: GatewayConfig[]; paid: string | null; actingOffice: string | null }) {
   const router = useRouter();
   // the Bursary monitors, tests and verifies; only the Directorate of ICT and the Super
   // Administrator set or clear a gateway key — the key setup is off the Bursar's desk
@@ -28,13 +27,9 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
   // Quickteller on Interswitch WebPAY is not one string but a set — two merchants, each with a
   // product id, a pay item and a MAC key: the whole set is stored as one JSON secret. The ids
   // are the University's and are prefilled; the MAC keys are secrets and are pasted here only.
-  const QT_EMPTY = { productId: "6498", payItemId: "101", macKey: "", chsProductId: "6207", chsPayItemId: "101", chsMacKey: "", sandbox: false };
+  const QT_EMPTY = { merchantCode: "", productId: "6498", payItemId: "101", macKey: "", chsMerchantCode: "", chsProductId: "6207", chsPayItemId: "101", chsMacKey: "", sandbox: false };
   const [qt, setQt] = useState(QT_EMPTY);
   const qtMain = d.gateways.find((g) => g.gateway === "quickteller")?.merchants ?? [];
-  // Quickteller PayDirect: the query-API credentials (optional; the report import needs none)
-  const [pdKey, setPdKey] = useState({ clientId: "", clientSecret: "", sandbox: true });
-  const [pdText, setPdText] = useState("");
-  const [pdEdit, setPdEdit] = useState<Record<string, { code: string; name: string; link: string }>>({});
   const on = d.gateways.filter((g) => g.on);
   const t = d.tiles;
   const apiBase = d.portalUrl.replace("moaum-portal", "moaum-api");
@@ -102,33 +97,24 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
                   {c.configured ? <div className="sub2">Set {c.set_at ? when(c.set_at) : ""}{c.set_by_name ? " by " + c.set_by_name : ""}{c.gateway === "flutterwave" ? (c.has_hash ? " \u00b7 hash set" : " \u00b7 no hash yet") : ""}</div> : null}
                   {c.gateway === "quickteller" ? (
                     <>
-                      <div className="sub2">Quickteller on Interswitch WebPAY: the University&rsquo;s merchant and, for payers in the College of Health Sciences, the College&rsquo;s own. The product and pay-item ids are the University&rsquo;s and are filled in; the MAC keys come from the Interswitch merchant profile, are stored encrypted, and are shown never. A payer&rsquo;s merchant is chosen by the College their programme is in.</div>
-                      {qtMain.length ? <div className="sub2">Wired now: {qtMain.map((m) => `${m.scope} \u00b7 product ${m.productId} \u00b7 pay item ${m.payItemId}`).join(" \u00b7 ")}</div> : null}
+                      <div className="sub2">Quickteller on Interswitch WebPAY: the University&rsquo;s merchant and, for payers in the College of Health Sciences, the College&rsquo;s own. Interswitch identifies a merchant today by a <b>merchant code</b> (MX&hellip;) and a pay item; an older profile is identified by a <b>product id</b> and signs the form with a MAC key. Give the merchant code if the profile shows one, else the product id and the MAC key. The keys are stored encrypted and shown never. A payer&rsquo;s merchant is chosen by the College their programme is in.</div>
+                      {qtMain.length ? <div className="sub2">Wired now: {qtMain.map((m) => `${m.scope} \u00b7 ${m.merchantCode ? `merchant ${m.merchantCode}` : `product ${m.productId}`} \u00b7 pay item ${m.payItemId}`).join(" \u00b7 ")}</div> : null}
                       <div className="grid grid--2">
-                        <Field id="qt-pid" label="Product ID (University)" hint="Interswitch product id of the University's WebPAY merchant."><input id="qt-pid" className="ctl tnum" autoComplete="off" value={qt.productId} onChange={(e) => setQt({ ...qt, productId: e.target.value })} /></Field>
+                        <Field id="qt-mc" label="Merchant code (University)" hint="MX… from the Interswitch merchant profile; leave blank to use the product id below."><input id="qt-mc" className="ctl tnum" autoComplete="off" value={qt.merchantCode} onChange={(e) => setQt({ ...qt, merchantCode: e.target.value })} placeholder="MX\u2026" /></Field>
                         <Field id="qt-pi" label="Pay item ID (University)" hint="The pay item on that merchant."><input id="qt-pi" className="ctl tnum" autoComplete="off" value={qt.payItemId} onChange={(e) => setQt({ ...qt, payItemId: e.target.value })} /></Field>
+                        <Field id="qt-pid" label="Product ID (University, older profile)" hint="Used only when no merchant code is given."><input id="qt-pid" className="ctl tnum" autoComplete="off" value={qt.productId} onChange={(e) => setQt({ ...qt, productId: e.target.value })} /></Field>
+                        <Field id="qt-mac" label="MAC key (University)" hint="Required with a product id; pasted once, never displayed after this."><input id="qt-mac" className="ctl tnum" type="password" autoComplete="off" value={qt.macKey} onChange={(e) => setQt({ ...qt, macKey: e.target.value })} /></Field>
                       </div>
-                      <Field id="qt-mac" label="MAC key (University)" hint="The long hexadecimal key from the merchant profile; pasted once, never displayed after this."><input id="qt-mac" className="ctl tnum" type="password" autoComplete="off" value={qt.macKey} onChange={(e) => setQt({ ...qt, macKey: e.target.value })} /></Field>
                       <div className="grid grid--2">
-                        <Field id="qt-cpid" label="Product ID (College of Health Sciences)" hint="Leave the College's three fields as they are if the College has no merchant of its own."><input id="qt-cpid" className="ctl tnum" autoComplete="off" value={qt.chsProductId} onChange={(e) => setQt({ ...qt, chsProductId: e.target.value })} /></Field>
+                        <Field id="qt-cmc" label="Merchant code (College of Health Sciences)" hint="Optional: leave the College's fields alone if it has no merchant of its own."><input id="qt-cmc" className="ctl tnum" autoComplete="off" value={qt.chsMerchantCode} onChange={(e) => setQt({ ...qt, chsMerchantCode: e.target.value })} placeholder="MX\u2026" /></Field>
                         <Field id="qt-cpi" label="Pay item ID (College of Health Sciences)"><input id="qt-cpi" className="ctl tnum" autoComplete="off" value={qt.chsPayItemId} onChange={(e) => setQt({ ...qt, chsPayItemId: e.target.value })} /></Field>
+                        <Field id="qt-cpid" label="Product ID (College, older profile)"><input id="qt-cpid" className="ctl tnum" autoComplete="off" value={qt.chsProductId} onChange={(e) => setQt({ ...qt, chsProductId: e.target.value })} /></Field>
+                        <Field id="qt-cmac" label="MAC key (College of Health Sciences)" hint="Required with the College's product id."><input id="qt-cmac" className="ctl tnum" type="password" autoComplete="off" value={qt.chsMacKey} onChange={(e) => setQt({ ...qt, chsMacKey: e.target.value })} /></Field>
                       </div>
-                      <Field id="qt-cmac" label="MAC key (College of Health Sciences)" hint="Optional: without it, College payers pay the University's merchant."><input id="qt-cmac" className="ctl tnum" type="password" autoComplete="off" value={qt.chsMacKey} onChange={(e) => setQt({ ...qt, chsMacKey: e.target.value })} /></Field>
                       <label className="sub2 row"><input type="checkbox" checked={qt.sandbox} onChange={(e) => setQt({ ...qt, sandbox: e.target.checked })} /> Sandbox (test) &mdash; leave unchecked for the live Interswitch endpoints</label>
                       <div className="row">
-                        <Btn kind="primary" disabled={busy || !qt.productId.trim() || !qt.payItemId.trim() || !qt.macKey.trim()} onClick={async () => { const chs = qt.chsMacKey.trim() ? { productId: qt.chsProductId.trim(), payItemId: qt.chsPayItemId.trim(), macKey: qt.chsMacKey.trim() } : undefined; const j = await send("/gateways/quickteller/key", { secret: JSON.stringify({ productId: qt.productId.trim(), payItemId: qt.payItemId.trim(), macKey: qt.macKey.trim(), sandbox: qt.sandbox, chs }), hash: null }, "Quickteller WebPAY configuration set from the dashboard", "PUT"); if (j) { setSaid("Quickteller configured \u2014 " + j.mode + " \u00b7 University MAC key ending " + j.last4 + (chs ? " \u00b7 College of Health Sciences merchant set" : "")); setQt(QT_EMPTY); } }}>{c.configured ? "Replace the configuration" : "Set the configuration"}</Btn>
+                        <Btn kind="primary" disabled={busy || !qt.payItemId.trim() || !(qt.merchantCode.trim() || (qt.productId.trim() && qt.macKey.trim()))} onClick={async () => { const chs = qt.chsMerchantCode.trim() || qt.chsMacKey.trim() ? { merchantCode: qt.chsMerchantCode.trim() || undefined, productId: qt.chsProductId.trim(), payItemId: qt.chsPayItemId.trim(), macKey: qt.chsMacKey.trim() } : undefined; const j = await send("/gateways/quickteller/key", { secret: JSON.stringify({ merchantCode: qt.merchantCode.trim() || undefined, productId: qt.productId.trim(), payItemId: qt.payItemId.trim(), macKey: qt.macKey.trim(), sandbox: qt.sandbox, chs }), hash: null }, "Quickteller WebPAY configuration set from the dashboard", "PUT"); if (j) { setSaid("Quickteller configured \u2014 " + j.mode + " \u00b7 University merchant ending " + j.last4 + (chs ? " \u00b7 College of Health Sciences merchant set" : "")); setQt(QT_EMPTY); } }}>{c.configured ? "Replace the configuration" : "Set the configuration"}</Btn>
                         {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the Quickteller configuration? The gateway turns off unless a service variable is set.") && await send("/gateways/quickteller/clear-key", {}, "Quickteller configuration cleared", "POST")) setSaid("Quickteller configuration cleared"); }}>Clear</Btn> : null}
-                      </div>
-                    </>
-                  ) : c.gateway === "paydirect" ? (
-                    <>
-                      <div className="sub2">Quickteller PayDirect query API (optional): the client id and secret Interswitch issues for the Transaction Query API. The collections import needs none of this — set it only to poll payments automatically.</div>
-                      <Field id="pd-cid" label="Client ID"><input id="pd-cid" className="ctl tnum" autoComplete="off" value={pdKey.clientId} onChange={(e) => setPdKey({ ...pdKey, clientId: e.target.value })} /></Field>
-                      <Field id="pd-cs" label="Client secret" hint="Pasted once; never displayed after this."><input id="pd-cs" className="ctl tnum" type="password" autoComplete="off" value={pdKey.clientSecret} onChange={(e) => setPdKey({ ...pdKey, clientSecret: e.target.value })} /></Field>
-                      <label className="sub2 row"><input type="checkbox" checked={pdKey.sandbox} onChange={(e) => setPdKey({ ...pdKey, sandbox: e.target.checked })} /> Sandbox (test)</label>
-                      <div className="row">
-                        <Btn kind="primary" disabled={busy || !pdKey.clientId.trim() || !pdKey.clientSecret.trim()} onClick={async () => { const j = await send("/gateways/paydirect/key", { secret: JSON.stringify({ clientId: pdKey.clientId.trim(), clientSecret: pdKey.clientSecret.trim(), sandbox: pdKey.sandbox }), hash: null }, "PayDirect query credentials set from the dashboard", "PUT"); if (j) { setSaid("PayDirect query API configured — " + j.mode); setPdKey({ clientId: "", clientSecret: "", sandbox: true }); } }}>{c.configured ? "Replace the credentials" : "Set the credentials"}</Btn>
-                        {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the PayDirect query credentials? The report import still works.") && await send("/gateways/paydirect/clear-key", {}, "PayDirect query credentials cleared", "POST")) setSaid("PayDirect query credentials cleared"); }}>Clear</Btn> : null}
                       </div>
                     </>
                   ) : (
@@ -150,53 +136,6 @@ export function Gateways({ d, config, paydirect, paid, actingOffice }: { d: Paym
                 </div></div>
               ))}
             </div>
-          </PBody>
-        </Panel>
-      ) : null}
-      {may && paydirect ? (
-        <Panel title="Quickteller PayDirect" right="Billers routed by College, and the collections report">
-          <PBody>
-            <Note kind="info" title="A student pays a PRN; the payment comes back by import or by query">
-              Each College pays its own biller — Health Sciences the CHS biller, every other department the main one — and the student cannot choose. The student&rsquo;s reference is the PRN they enter on Quickteller, an ATM, USSD or at a bank. Import the day&rsquo;s collections report here to confirm those payments; when the query credentials above are set, the ten-minute sweep also polls Interswitch.
-            </Note>
-            <DTable cols={["College|mid", "Biller", "Code|mid", "Pay link", "Active|mid"]} rows={paydirect.billers.map((b) => [
-              <Pil kind={b.scope === "CHS" ? "info" : "grey"} key="s">{b.scope === "CHS" ? "Health Sciences" : "All departments"}</Pil>,
-              <span key="n">{b.name}</span>,
-              <span className="tnum" key="c">{b.biller_code}</span>,
-              b.pay_link ? <a className="sub2" href={b.pay_link} target="_blank" rel="noreferrer" key="l">{b.pay_link}</a> : <span className="sub2" key="l">—</span>,
-              b.active ? <Pil kind="ok" key="a">Active</Pil> : <Pil kind="grey" key="a">Off</Pil>,
-            ])} />
-            <div className="mt-3">
-              {paydirect.billers.map((b) => {
-                const ed = pdEdit[b.scope] ?? { code: b.biller_code, name: b.name, link: b.pay_link ?? "" };
-                const set = (k: "code" | "name" | "link", v: string) => setPdEdit({ ...pdEdit, [b.scope]: { ...ed, [k]: v } });
-                return (
-                  <div key={b.scope} className="row row--end mb-2">
-                    <span className="sub2" style={{ minWidth: 120 }}>{b.scope === "CHS" ? "Health Sciences" : "All departments"}</span>
-                    <input className="ctl tnum" style={{ width: 130 }} placeholder="Biller code" value={ed.code} onChange={(e) => set("code", e.target.value)} />
-                    <input className="ctl" style={{ width: 220 }} placeholder="Name" value={ed.name} onChange={(e) => set("name", e.target.value)} />
-                    <input className="ctl" style={{ width: 240 }} placeholder="Pay link" value={ed.link} onChange={(e) => set("link", e.target.value)} />
-                    <Btn kind="ghost" disabled={busy || !ed.code.trim() || !ed.name.trim()} onClick={async () => { if (await send(`/paydirect/billers/${b.scope}`, { code: ed.code.trim(), name: ed.name.trim(), link: ed.link.trim() || null, active: true }, `PayDirect biller ${b.scope} updated`, "PUT")) setSaid(`${b.scope} biller saved`); }}>Save</Btn>
-                  </div>
-                );
-              })}
-            </div>
-            <Field id="pd-rows" label="Import the collections report" hint="Paste rows: PRN, amount, settlement reference (RRN) — with or without a header. One payment per line.">
-              <textarea id="pd-rows" className="ctl tnum" rows={5} value={pdText} onChange={(e) => setPdText(e.target.value)} />
-            </Field>
-            <div><Btn kind="primary" disabled={busy || !pdText.trim()} onClick={async () => { const rows = parseRows(pdText, ["prn", "amount", "rrn", "paidat", "channel", "payer"]).map((r) => ({ prn: r.prn, amount: r.amount, rrn: r.rrn, paidAt: r.paidat, channel: r.channel, payer: r.payer })); const j = await send("/paydirect/import", { rows }, "PayDirect collections report imported"); if (j) { setSaid(`Imported ${j.imported}: ${j.matched} matched, ${j.unmatched} unmatched, ${j.duplicate} already seen`); setPdText(""); } }}>Import and match</Btn></div>
-            {paydirect.collections.length ? (
-              <div className="mt-3">
-                <DTable cols={["Imported|mid", "PRN", "Amount|num", "Channel", "State|mid", "Note"]} rows={paydirect.collections.slice(0, 50).map((c2) => [
-                  <span className="sub2 tnum" key="i">{c2.imported_at ? day(c2.imported_at) : ""}</span>,
-                  <span className="tnum" key="p">{c2.prn}{c2.rrn ? <div className="sub2">{c2.rrn}</div> : null}</span>,
-                  <span className="tnum" key="a">{c2.amount === null ? "—" : money(Number(c2.amount))}</span>,
-                  <span className="sub2" key="c">{c2.channel ?? "—"}</span>,
-                  <Pil kind={c2.state === "MATCHED" ? "ok" : c2.state === "DUPLICATE" ? "grey" : "bad"} key="s">{c2.state.toLowerCase()}</Pil>,
-                  <span className="sub2" key="w">{c2.state === "MATCHED" ? `Confirmed ${c2.reference ?? ""}` : (c2.why ?? "")}</span>,
-                ])} texts={paydirect.collections.slice(0, 50).map((c2) => `${c2.prn} ${c2.state}`)} />
-              </div>
-            ) : null}
           </PBody>
         </Panel>
       ) : null}

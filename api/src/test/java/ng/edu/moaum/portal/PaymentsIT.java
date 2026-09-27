@@ -151,6 +151,7 @@ class PaymentsIT {
         assertThat(set.getBody().get("last4")).isEqualTo("CDEF");
         Map<String, Object> listing = it.get(academic, "/api/v1/payments/gateways").getBody();
         assertThat(listing.get("quickteller")).isEqualTo(true);
+        assertThat(listing).as("PayDirect is no longer offered").doesNotContainKey("paydirect");
         try {
             // a Direct Entry applicant into Computer Science (the University's merchant)
             String jamb = "2026" + String.format("%08d", new Random().nextInt(100_000_000)) + "QT";
@@ -216,6 +217,14 @@ class PaymentsIT {
             assertThat(college).as("the CHS applicant's programme resolves to the College").isEqualTo("CHS");
             String chsPage = open.get().uri("/api/v1/payments/quickteller/start?reference=" + chsReference).retrieve().body(String.class);
             assertThat(chsPage).contains("name=\"product_id\" value=\"6207\"").contains("College of Health Sciences");
+
+            // the current WebPAY knows a merchant by its merchant code: accepted without a MAC key, posted as merchant_code, unsigned
+            ResponseEntity<Map> byCode = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/quickteller/key", Map.of("secret", "{\"merchantCode\":\"MX000001\",\"payItemId\":\"101\",\"sandbox\":true}"));
+            assertThat(byCode.getStatusCode().value()).as(String.valueOf(byCode.getBody())).isEqualTo(200);
+            assertThat(byCode.getBody().get("last4")).isEqualTo("0001");
+            String codePage = open.get().uri("/api/v1/payments/quickteller/start?reference=" + reference).retrieve().body(String.class);
+            assertThat(codePage).contains("name=\"merchant_code\" value=\"MX000001\"").contains("name=\"txn_ref\" value=\"" + reference + "-A3\"")
+                    .doesNotContain("name=\"product_id\"").doesNotContain("name=\"hash\"");
         } finally {
             it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/quickteller/clear-key", Map.of());
         }

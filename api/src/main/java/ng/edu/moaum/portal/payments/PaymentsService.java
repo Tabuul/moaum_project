@@ -147,7 +147,11 @@ public class PaymentsService {
      * requery. The key is a secret and lives in the encrypted slot (V052) or a
      * service variable — never in this repository.
      */
-    record WebpayMerchant(String productId, String payItemId, String macKey, String name) {
+    record WebpayMerchant(String productId, String merchantCode, String payItemId, String macKey, String name) {
+        /** the legacy WebPAY identity: product_id and a MAC-signed form; otherwise the current one, merchant_code */
+        boolean legacy() {
+            return merchantCode == null || merchantCode.isEmpty();
+        }
     }
 
     /**
@@ -183,12 +187,14 @@ public class PaymentsService {
             return null;
         }
         String productId = str(m.get("productId"));
+        String merchantCode = str(m.get("merchantCode"));
         String payItemId = str(m.get("payItemId"));
         String macKey = str(m.get("macKey"));
-        if (productId.isEmpty() || payItemId.isEmpty() || macKey.isEmpty()) {
+        // a merchant is known by its merchant code (current WebPAY), or by its product id with the MAC key that signs the form (legacy WebPAY)
+        if (payItemId.isEmpty() || (merchantCode.isEmpty() && (productId.isEmpty() || macKey.isEmpty()))) {
             return null;
         }
-        return new WebpayMerchant(productId, payItemId, macKey, name);
+        return new WebpayMerchant(productId, merchantCode, payItemId, macKey, name);
     }
 
     Quickteller quickteller() {
@@ -218,57 +224,12 @@ public class PaymentsService {
         return quickteller() != null;
     }
 
-    /** PayDirect is on when a main biller is configured (the billers are a setting, seeded by V080) */
-    public boolean paydirectOn() {
-        return repo.paydirectActive();
-    }
-
-    /** the PayDirect query-API credentials (V080): the client id and secret Interswitch issues for the
-     *  Transaction Query; kept in the same encrypted secret slot as the other gateways, read only here. */
-    record PayDirect(String clientId, String clientSecret, boolean sandbox) {
-    }
-
-    private String paydirectConfigJson() {
-        if (!configKey.isBlank()) {
-            String db = repo.gatewaySecret("paydirect", configKey);
-            if (db != null && !db.isBlank()) return db;
-        }
-        return "";
-    }
-
-    PayDirect paydirectQuery() {
-        String json = paydirectConfigJson();
-        if (json.isBlank()) return null;
-        try {
-            Map<String, Object> m = mapper.readValue(json, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
-            String clientId = str(m.get("clientId"));
-            String clientSecret = str(m.get("clientSecret"));
-            boolean sandbox = m.get("sandbox") == null || Boolean.parseBoolean(String.valueOf(m.get("sandbox")));
-            if (clientId.isEmpty() || clientSecret.isEmpty()) return null;
-            return new PayDirect(clientId, clientSecret, sandbox);
-        } catch (RuntimeException notJson) {
-            LOG.warn("payments: the PayDirect configuration is not the JSON it should be: {}", notJson.getMessage());
-            return null;
-        }
-    }
-
-    public boolean paydirectQueryOn() {
-        return paydirectQuery() != null;
-    }
-
-    private static String paydirectQueryEndpoint(boolean sandbox) {
-        // Interswitch PayDirect transaction query; confirm the exact host/path on merchant onboarding
-        return sandbox ? "https://qa.interswitchng.com/paydirect/api/v1/gettransaction.json"
-                : "https://webpay.interswitchng.com/paydirect/api/v1/gettransaction.json";
-    }
-
     /** which gateways are wired, for the button to say so */
     public Map<String, Object> gateways() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("paystack", paystackOn());
         m.put("flutterwave", flutterwaveOn());
         m.put("quickteller", quicktellerOn());
-        m.put("paydirect", paydirectOn());
         return m;
     }
 
@@ -308,11 +269,6 @@ public class PaymentsService {
             // Quickteller's page is reached by a form POST, so the browser is sent to
             // this portal's own /quickteller/start, which renders the self-posting form.
             url = quicktellerStartUrl(r.reference());
-        } else if ("paydirect".equals(g) && paydirectOn()) {
-            // PayDirect is not a redirect checkout: the student pays the reference (the PRN)
-            // on the Quickteller biller for their College, or by ATM/USSD/bank. Return the
-            // instruction, and record the attempt so the sweep re-checks it.
-            return paydirectInstruction(r, account);
         } else {
             throw new DomainRuleViolation("PAY_GATEWAY_NOT_WIRED", "Card and USSD payment arrive when a payment gateway is wired to the portal.",
                     new DomainRuleViolation.Remedy("Pay by bank transfer or at a bank branch against the reference; the Bursary confirms it against the bank's record.", "Bursary"));
@@ -347,50 +303,6 @@ public class PaymentsService {
                     new DomainRuleViolation.Remedy("Try again in a moment, or pay by transfer against the reference.", "Bursary"));
         }
         return String.valueOf(d.get("link"));
-    }
-
-    /* ── Quickteller PayDirect (V080): billers routed by College; the PRN is the reference ── */
-
-    private Map<String, Object> paydirectInstruction(PaymentsRepository.Reference r, UUID account) {
-        Map<String, Object> b = "FEES".equals(r.kind()) ? repo.paydirectBillerFor(account) : repo.paydirectMain();
-        final String chosen = "paydirect";
-        AuditContextHolder.with(new AuditContext(account, "bursar", "PayDirect PRN issued for " + r.reference(), null, null),
-                () -> tx.execute(st -> { repo.attempt(r.reference(), chosen, r.kind(), account); return null; }));
-        String code = str(b.get("biller_code"));
-        String amt = r.amount().stripTrailingZeros().toPlainString();
-        Map<String, Object> out = new java.util.LinkedHashMap<>();
-        out.put("gateway", "paydirect");
-        out.put("reference", r.reference());
-        out.put("prn", r.reference());
-        out.put("billerCode", code);
-        out.put("billerName", str(b.get("name")));
-        out.put("payLink", b.get("pay_link"));
-        out.put("ussd", "*723*" + code + "*" + amt + "#");
-        out.put("amount", r.amount());
-        return out;
-    }
-
-    @Transactional(readOnly = true)
-    public Map<String, Object> paydirect() {
-        Map<String, Object> m = new java.util.LinkedHashMap<>();
-        m.put("billers", repo.paydirectBillers());
-        m.put("collections", repo.paydirectCollections(200));
-        return m;
-    }
-
-    /** the Quickteller/PayDirect collections report, matched by PRN and confirmed — the report route to the details */
-    public Map<String, Object> importPaydirect(java.util.List<Map<String, Object>> rows) {
-        if (rows == null || rows.isEmpty()) {
-            throw new DomainRuleViolation("PAY_PD_ROWS", "The report is rows: PRN, amount, and a settlement reference.",
-                    new DomainRuleViolation.Remedy("Export the Quickteller collections report and send its rows.", "Bursary"));
-        }
-        String json = mapper.writeValueAsString(rows);
-        return AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.importPaydirect(json)));
-    }
-
-    public Map<String, Object> setPaydirectBiller(String scope, String code, String name, String link, Boolean active) {
-        return AuditContextHolder.with(AuditContextHolder.required(),
-                () -> tx.execute(st -> repo.setPaydirectBiller(scope, code, name, link, active == null || active)));
     }
 
     /* ── Quickteller WebPAY: the hosted page is reached by a self-posting form; the payer returns by a POST ── */
@@ -488,7 +400,7 @@ public class PaymentsService {
         String txnRef = attempts == 0 ? r.reference() : r.reference() + "-A" + (attempts + 1);
         String action = quicktellerPayEndpoint(q.sandbox());
         String back = quicktellerReturnUrl(r.reference());
-        String hash = webpayHash(txnRef, m.productId(), m.payItemId(), kobo, back, m.macKey());
+        String hash = m.legacy() ? webpayHash(txnRef, m.productId(), m.payItemId(), kobo, back, m.macKey()) : null;
         AuditContextHolder.with(new AuditContext(r.accountId(), "bursar", "Quickteller attempt " + txnRef, null, null),
                 () -> tx.execute(st -> { repo.quicktellerAttempt(r.reference(), txnRef, r.kind(), r.accountId()); return null; }));
         StringBuilder f = new StringBuilder();
@@ -500,7 +412,11 @@ public class PaymentsService {
                 .append(esc(m.name())).append("…</p>")
                 .append("<p style=\"color:#666\">If it does not open in a moment, press the button.</p>")
                 .append("<form id=\"qt\" method=\"POST\" action=\"").append(esc(action)).append("\">");
-        field(f, "product_id", m.productId());
+        if (m.legacy()) {
+            field(f, "product_id", m.productId());
+        } else {
+            field(f, "merchant_code", m.merchantCode());
+        }
         field(f, "pay_item_id", m.payItemId());
         field(f, "pay_item_name", SCHOOL_ABBR + " " + feeName(r.kind()));
         field(f, "amount", Long.toString(kobo));
@@ -511,7 +427,9 @@ public class PaymentsService {
         field(f, "cust_id", r.applicationNo() == null ? r.reference() : r.applicationNo());
         field(f, "cust_id_desc", "FEES".equals(r.kind()) ? "Matriculation number" : "Application number");
         field(f, "cust_name", r.applicationNo() == null ? r.reference() : r.applicationNo());
-        field(f, "hash", hash);
+        if (hash != null) {
+            field(f, "hash", hash);
+        }
         f.append("<button type=\"submit\" style=\"font:inherit;padding:10px 18px;border:0;border-radius:8px;background:#0a7d3f;color:#fff;cursor:pointer\">Pay with Quickteller</button>")
                 .append("</form><script>document.getElementById('qt').submit();</script></body></html>");
         return f.toString();
@@ -710,8 +628,7 @@ public class PaymentsService {
             outcome = "SHORT_PAID";
             answer = Map.of("outcome", "short paid", "paid", paid, "owed", r.amount());
         } else {
-            String channel = gateway.equals("paydirect") ? "Quickteller PayDirect"
-                    : "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
+            String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
             String note = gateway + " " + providerRef + " · " + paid.toPlainString();
             String settled = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " " + providerRef, null, null),
                     () -> tx.execute(st -> switch (r.kind()) {
@@ -828,10 +745,11 @@ public class PaymentsService {
             }
             Map<String, Object> last = Map.of();
             for (String txnRef : txnRefs) {
-                String hash = sha512Hex(m.productId() + txnRef + m.macKey()).toUpperCase();
-                String url = quicktellerRequeryEndpoint(q.sandbox()) + "?productid=" + enc(m.productId())
+                String url = quicktellerRequeryEndpoint(q.sandbox()) + (m.legacy() ? "?productid=" + enc(m.productId()) : "?merchantcode=" + enc(m.merchantCode()))
                         + "&transactionreference=" + enc(txnRef) + "&amount=" + kobo;
-                Map<String, Object> a = getWith(url, Map.of("Hash", hash, "Accept", "application/json"));
+                Map<String, Object> a = getWith(url, m.legacy()
+                        ? Map.of("Hash", sha512Hex(m.productId() + txnRef + m.macKey()).toUpperCase(), "Accept", "application/json")
+                        : Map.of("Accept", "application/json"));
                 last = a;
                 Object rc = a.get("ResponseCode");
                 if (rc == null) {
@@ -851,37 +769,6 @@ public class PaymentsService {
                 log("quickteller", source, "verify", reference, null, null, String.valueOf(last.getOrDefault("ResponseDescription", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(last));
                 if ("no gateway".equals(out.get("outcome"))) {
                     out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "quickteller", "said", String.valueOf(last.getOrDefault("ResponseDescription", "")));
-                }
-            }
-        }
-        PayDirect pd = paydirectQuery();
-        if (pd != null) {
-            // the biller a reference belongs to: routed by College for a student's fees, else the main biller
-            String biller = "FEES".equals(r.kind())
-                    ? String.valueOf(repo.paydirectBillerFor(r.accountId()).get("biller_code"))
-                    : String.valueOf(repo.paydirectMain().get("biller_code"));
-            long kobo = r.amount().movePointRight(2).longValueExact();
-            // Interswitch transaction query: the Hash header is SHA-512 of (clientId + reference + clientSecret);
-            // the biller code is the merchantcode. The exact inputs are per the merchant's profile — confirm on onboarding.
-            String hash = sha512Hex(pd.clientId() + reference + pd.clientSecret());
-            String url = paydirectQueryEndpoint(pd.sandbox()) + "?merchantcode=" + enc(biller)
-                    + "&transactionreference=" + enc(reference) + "&amount=" + kobo;
-            Map<String, Object> a = getWith(url, Map.of("Hash", hash, "Accept", "application/json"));
-            Object rc = a.get("ResponseCode");
-            if (rc != null) {
-                boolean success = "00".equals(String.valueOf(rc));
-                BigDecimal paid = a.get("Amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(a.get("Amount"))).movePointLeft(2);
-                String providerRef = a.get("PaymentReference") != null ? String.valueOf(a.get("PaymentReference"))
-                        : a.get("RetrievalReferenceNumber") != null ? String.valueOf(a.get("RetrievalReferenceNumber")) : reference;
-                out = settle("paydirect", source, "verify", reference, paid, String.valueOf(rc), success, providerRef, mapper.writeValueAsString(a));
-                if (success) {
-                    AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "reconciler checked " + reference, null, null), () -> tx.execute(st -> { repo.checked(reference); return null; }));
-                    return out;
-                }
-            } else {
-                log("paydirect", source, "verify", reference, null, null, String.valueOf(a.getOrDefault("ResponseDescription", "no answer")), true, "GATEWAY_ERROR", mapper.writeValueAsString(a));
-                if ("no gateway".equals(out.get("outcome"))) {
-                    out = Map.of("outcome", "not found at the gateway", "reference", reference, "gateway", "paydirect", "said", String.valueOf(a.getOrDefault("ResponseDescription", "")));
                 }
             }
         }
@@ -909,7 +796,7 @@ public class PaymentsService {
      */
     @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${moaum.payments.sweep-every-ms:600000}", initialDelayString = "120000")
     public void sweep() {
-        if (!paystackOn() && !flutterwaveOn() && !quicktellerOn() && !paydirectQueryOn()) {
+        if (!paystackOn() && !flutterwaveOn() && !quicktellerOn()) {
             return;
         }
         for (Map<String, Object> h : repo.hanging()) {
@@ -971,6 +858,17 @@ public class PaymentsService {
 
     /* ── the dashboard's key management (V039): set encrypted, shown never ── */
 
+    private static Map<String, Object> merchantRow(String scope, WebpayMerchant m) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("scope", scope);
+        row.put("productId", m.productId());
+        row.put("merchantCode", m.merchantCode());
+        row.put("payItemId", m.payItemId());
+        row.put("identity", m.legacy() ? "product id (legacy WebPAY)" : "merchant code (WebPAY)");
+        row.put("name", m.name());
+        return row;
+    }
+
     /** the Quickteller row of the Bursary's listing: on, the mode, and which merchants are wired — never a key */
     private Map<String, Object> quicktellerListing() {
         Quickteller q = quickteller();
@@ -982,14 +880,14 @@ public class PaymentsService {
         row.put("return", "/api/v1/payments/quickteller/return");
         row.put("channels", "Card · bank transfer · USSD · Quickteller (Interswitch WebPAY)");
         row.put("merchants", q == null ? java.util.List.of() : q.chs() == null
-                ? java.util.List.of(Map.of("scope", "MAIN", "productId", q.main().productId(), "payItemId", q.main().payItemId(), "name", SCHOOL_NAME))
-                : java.util.List.of(Map.of("scope", "MAIN", "productId", q.main().productId(), "payItemId", q.main().payItemId(), "name", SCHOOL_NAME),
-                        Map.of("scope", "CHS", "productId", q.chs().productId(), "payItemId", q.chs().payItemId(), "name", CHS_NAME)));
+                ? java.util.List.of(merchantRow("MAIN", q.main()))
+                : java.util.List.of(merchantRow("MAIN", q.main()), merchantRow("CHS", q.chs())));
         return row;
     }
 
     public java.util.List<java.util.Map<String, Object>> gatewayConfig() {
-        return repo.gatewayConfig();
+        // PayDirect is no longer offered (its rows may remain from V080): the card gateways only
+        return repo.gatewayConfig().stream().filter(r -> !"paydirect".equals(r.get("gateway"))).toList();
     }
 
     public java.util.Map<String, Object> setKey(String gatewayIn, String secret, String hash) {
@@ -1015,19 +913,20 @@ public class PaymentsService {
                 Map<String, Object> m = mapper.readValue(s, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
                 WebpayMerchant main = merchant(m, SCHOOL_NAME);
                 if (main == null) {
-                    throw new DomainRuleViolation("PAY_QT_INCOMPLETE", "The Quickteller configuration needs the product id, the pay item id and the MAC key of the University's WebPAY merchant.",
-                            new DomainRuleViolation.Remedy("Paste the three from the Interswitch merchant profile, with sandbox true for test; the College of Health Sciences merchant is optional.", "Directorate of ICT"));
+                    throw new DomainRuleViolation("PAY_QT_INCOMPLETE", "The Quickteller configuration needs the University's WebPAY merchant: its merchant code and pay item id, or its product id, pay item id and MAC key.",
+                            new DomainRuleViolation.Remedy("Paste them from the Interswitch merchant profile, with sandbox true for test; the College of Health Sciences merchant is optional.", "Directorate of ICT"));
                 }
                 if (m.get("chs") != null && merchant(m.get("chs"), CHS_NAME) == null) {
-                    throw new DomainRuleViolation("PAY_QT_CHS_INCOMPLETE", "The College of Health Sciences merchant needs its product id, pay item id and MAC key, or leave it out.",
-                            new DomainRuleViolation.Remedy("Fill the three CHS fields or clear them.", "Directorate of ICT"));
+                    throw new DomainRuleViolation("PAY_QT_CHS_INCOMPLETE", "The College of Health Sciences merchant needs its merchant code and pay item id, or its product id, pay item id and MAC key — or leave it out.",
+                            new DomainRuleViolation.Remedy("Fill the College's fields or clear them.", "Directorate of ICT"));
                 }
-                if (!main.macKey().matches("[0-9A-Fa-f]{32,256}")) {
+                if (!main.macKey().isEmpty() && !main.macKey().matches("[0-9A-Fa-f]{32,256}")) {
                     throw new DomainRuleViolation("PAY_QT_MAC", "The MAC key is a hexadecimal string from Interswitch; this is not one.",
                             new DomainRuleViolation.Remedy("Copy the MAC key exactly as the merchant profile shows it.", "Directorate of ICT"));
                 }
                 mode = Boolean.parseBoolean(str(m.getOrDefault("sandbox", "false"))) ? "TEST" : "LIVE";
-                last4 = main.macKey().substring(main.macKey().length() - 4).toUpperCase();
+                String tail = main.macKey().isEmpty() ? main.merchantCode() : main.macKey();
+                last4 = (tail.length() > 4 ? tail.substring(tail.length() - 4) : tail).toUpperCase();
             } catch (DomainRuleViolation d) {
                 throw d;
             } catch (RuntimeException notJson) {

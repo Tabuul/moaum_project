@@ -298,7 +298,6 @@ Start here
 3. Press **Generate a reference for ₦{amount}**. The portal mints a payment reference of the form `MOAUM-FEE-…` valid for **24 hours** and shows it in large type: "Quote this reference and nothing else: at a bank branch, by transfer, or by card below."
 4. Pay against the reference in one of three ways:
    - **Card or USSD**: press **Pay ₦x by card or USSD**. If more than one gateway is live you choose Paystack, Flutterwave, Quickteller or Quickteller PayDirect. Card gateways take you to the gateway's own page and bring you back to this screen; the portal confirms the payment the moment the gateway tells it the money landed.
-   - **Quickteller PayDirect**: the screen shows "Pay ₦x to {biller} on Quickteller" with your PRN (the reference), a pay link, a USSD code and the biller code for a bank branch or ATM. After paying press **I've paid — check now**. "Not confirmed yet" means the collection has not reached the University; wait a few minutes and check again.
    - **Bank branch or transfer**: quote the reference. The Bursary confirms it against the bank's record.
 5. When confirmed, the reference appears in **Payment History** as **Paid** with a **Receipt** link, and you receive "Your payment is confirmed" by email and SMS (receipt number included). Until then it is **Awaiting confirmation**; after 24 hours unconfirmed it is **Expired** — generate a new one; a reference is free.
 

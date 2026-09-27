@@ -4616,7 +4616,7 @@ Finance → Payment Gateways → /finance/gateways
 |---|---|---|---|
 | Secret key (Paystack / Flutterwave) | `sk_test_…` / `FLWSECK_TEST-…` | Yes | Blank refused |
 | Webhook secret hash (Flutterwave) | Same value as on the Flutterwave webhook page | For webhooks | — |
-| Quickteller (Interswitch WebPAY, V276): Product ID and Pay item ID (University, prefilled `6498` / `101`), MAC key (University), Product ID, Pay item ID and MAC key (College of Health Sciences, prefilled `6207` / `101`, optional), Sandbox | Stored together as one JSON secret; the MAC keys never displayed | The University's three; the College's three together or not at all | `The Quickteller configuration needs the product id, the pay item id and the MAC key of the University's WebPAY merchant.` · `The MAC key is a hexadecimal string from Interswitch; this is not one.` |
+| Quickteller (Interswitch WebPAY, V276): Merchant code, Pay item ID, Product ID (older profile, prefilled `6498`) and MAC key for the University; the same four for the College of Health Sciences (product prefilled `6207`, optional); Sandbox | Stored together as one JSON secret; the MAC keys never displayed | The University's merchant code and pay item, or its product id, pay item and MAC key; the College's likewise or not at all | `The Quickteller configuration needs the product id, the pay item id and the MAC key of the University's WebPAY merchant.` · `The MAC key is a hexadecimal string from Interswitch; this is not one.` |
 | PayDirect: Client ID, Client secret, Sandbox | Query API | — | — |
 | Biller code, Name, Pay link (MAIN / CHS) | — | Code, Name | — |
 | Collections report rows | PRN, amount, RRN (…) | — | — |

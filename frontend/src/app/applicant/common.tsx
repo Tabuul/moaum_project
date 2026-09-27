@@ -83,31 +83,12 @@ export function useAct() {
  * webhook confirms it as the Bursary would. While no gateway is wired the
  * button says so, and the reference is paid by transfer or at a branch.
  */
-const GATEWAY_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller", paydirect: "Quickteller PayDirect" };
-
-interface Paydirect { gateway: string; billerName: string; billerCode: string; prn: string; payLink: string | null; ussd: string }
+const GATEWAY_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller" };
 
 export function PayByCard({ reference, amount }: { reference: string; amount: number }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [choices, setChoices] = useState<string[] | null>(null);
-  const [pd, setPd] = useState<Paydirect | null>(null);
-  const [checkMsg, setCheckMsg] = useState<string | null>(null);
-  async function check(prn: string) {
-    setBusy(true);
-    setProblem(null);
-    setCheckMsg(null);
-    try {
-      const r = await fetch("/api/bff/api/v1/payments/verify", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Checked ${prn}`) }, body: JSON.stringify({ reference: prn }) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      const outcome = String((j as { outcome?: string })?.outcome ?? "");
-      if (outcome === "confirmed" || outcome === "already confirmed") { window.location.reload(); return; }
-      setCheckMsg("Not confirmed yet. If you have just paid, it can take a few minutes to reach the University — wait a moment and check again.");
-    } finally {
-      setBusy(false);
-    }
-  }
   async function go(gateway?: string) {
     setBusy(true);
     setProblem(null);
@@ -118,7 +99,6 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
         setProblem(asProblem(j, r)); notifyProblem(asProblem(j, r));
         return;
       }
-      if (j && (j as Paydirect).gateway === "paydirect") { setPd(j as Paydirect); setChoices(null); return; }
       window.location.href = String((j as { url: string }).url);
     } finally {
       setBusy(false);
@@ -140,23 +120,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
   }
   return (
     <>
-      {pd ? (
-        <div className="notice notice--info mt-2">
-          <p><b>Pay &#8358;{amount.toLocaleString()} to {pd.billerName} on Quickteller.</b></p>
-          <p>Your Payment Reference Number (PRN) is <b className="tnum">{pd.prn}</b>. Enter it on any of these:</p>
-          <ul style={{ margin: "var(--s-2) 0 0 var(--s-5)" }}>
-            <li>Online: {pd.payLink ? <a href={pd.payLink} target="_blank" rel="noreferrer">{pd.payLink}</a> : <>Quickteller, biller code <b className="tnum">{pd.billerCode}</b></>}</li>
-            <li>USSD: <b className="tnum">{pd.ussd}</b></li>
-            <li>Any bank branch or ATM: quote biller code <b className="tnum">{pd.billerCode}</b> and the PRN.</li>
-          </ul>
-          <p className="sub2 mt-2">Keep the PRN. After you pay, use &ldquo;I&rsquo;ve paid&rdquo; below, or it is confirmed automatically once the collection reaches the University.</p>
-          <div className="row">
-            <Btn kind="go" disabled={busy} onClick={() => void check(pd.prn)}>{busy ? "Checking…" : "I've paid — check now"}</Btn>
-            <Btn kind="ghost" disabled={busy} onClick={() => setPd(null)}>Choose another way to pay</Btn>
-          </div>
-          {checkMsg ? <p className="sub2 mt-2">{checkMsg}</p> : null}
-        </div>
-      ) : choices ? (
+      {choices ? (
         <div className="row">
           <span className="sub2">Pay &#8358;{amount.toLocaleString()} with</span>
           {choices.map((g) => <Btn key={g} kind="go" size="md" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</Btn>)}
