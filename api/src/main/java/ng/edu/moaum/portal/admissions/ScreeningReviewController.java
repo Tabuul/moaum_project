@@ -71,7 +71,7 @@ class ScreeningReviewController {
                    (SELECT q.state FROM admissions.programme_change_request q WHERE q.application_id = a.id ORDER BY q.requested_at DESC LIMIT 1) AS change_state,
                    (SELECT q.to_programme FROM admissions.programme_change_request q WHERE q.application_id = a.id ORDER BY q.requested_at DESC LIMIT 1) AS change_to,
                    s.id AS student_id, s.admission_no, s.matric_no,
-                   CASE WHEN sf.submitted_at IS NOT NULL AND sf.state IN ('SUBMITTED', 'UNDER_REVIEW') AND sf.submitted_at < now() - interval '7 days' THEN true ELSE false END AS overdue
+                   CASE WHEN (sf.state IS NULL OR sf.state IN ('PENDING', 'IN_REVIEW')) AND a.accepted_at < now() - interval '7 days' THEN true ELSE false END AS overdue
               FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
               LEFT JOIN admissions.screening_form sf ON sf.application_id = a.id
               LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme) LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
@@ -88,13 +88,13 @@ class ScreeningReviewController {
         OfficeScope.Bound b = scope.bound(blank(fac), blank(dept), blank(prog));
         String st = blank(state) == null ? null : state.trim().toUpperCase();
         String pred = st == null ? "" : switch (st) {
-            case "PENDING" -> " AND (sf.state IS NULL OR sf.state = 'DRAFT') AND a.accepted_at IS NOT NULL AND admissions.screening_required(a.id)";
-            case "SUBMITTED" -> " AND sf.state = 'SUBMITTED'";
-            case "UNDER_REVIEW" -> " AND sf.state = 'UNDER_REVIEW'";
-            case "REVIEW" -> " AND sf.state IN ('SUBMITTED', 'UNDER_REVIEW')";
-            case "SUCCESSFUL", "UNSUCCESSFUL", "RETURNED" -> " AND sf.state = '" + st + "'";
+            // V280: the University screens on the record; the states are awaiting, in review, one correction asked, decided (the old names still answer)
+            case "PENDING", "SUBMITTED" -> " AND (sf.state IS NULL OR sf.state = 'PENDING') AND a.accepted_at IS NOT NULL AND admissions.screening_required(a.id)";
+            case "UNDER_REVIEW", "IN_REVIEW", "REVIEW" -> " AND sf.state = 'IN_REVIEW'";
+            case "RETURNED", "CORRECTION", "CORRECTION_REQUIRED" -> " AND sf.state = 'CORRECTION_REQUIRED'";
+            case "SUCCESSFUL", "UNSUCCESSFUL" -> " AND sf.state = '" + st + "'";
             case "CHANGE" -> " AND sf.state = 'UNSUCCESSFUL' AND EXISTS (SELECT 1 FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'REQUESTED')";
-            case "OVERDUE" -> " AND sf.state IN ('SUBMITTED', 'UNDER_REVIEW') AND sf.submitted_at < now() - interval '7 days'";
+            case "OVERDUE" -> " AND (sf.state IS NULL OR sf.state IN ('PENDING', 'IN_REVIEW')) AND a.accepted_at < now() - interval '7 days'";
             case "COMPLETED" -> " AND (sf.state = 'SUCCESSFUL' OR EXISTS (SELECT 1 FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'APPROVED'))";
             default -> "";
         };
@@ -103,7 +103,7 @@ class ScreeningReviewController {
         List<Map<String, Object>> rows = jdbc.sql(LIST + """
                  WHERE a.session = :s AND a.decision = 'OFFERED' AND a.decision_released_at IS NOT NULL AND a.accepted_at IS NOT NULL
                    AND (:fac::text IS NULL OR f.code = :fac) AND (:dept::text IS NULL OR d.code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
-                   AND (:from::date IS NULL OR sf.submitted_at::date >= :from::date) AND (:to::date IS NULL OR sf.submitted_at::date <= :to::date)
+                   AND (:from::date IS NULL OR a.accepted_at::date >= :from::date) AND (:to::date IS NULL OR a.accepted_at::date <= :to::date)
                    AND (:q::text IS NULL OR lower(c.surname || ' ' || c.other_names) LIKE :q OR lower(c.other_names || ' ' || c.surname) LIKE :q OR lower(c.jamb_reg_no) LIKE :q
                         OR lower(a.application_no) LIKE :q OR lower(coalesce(sf.screening_no, '')) LIKE :q OR lower(c.programme) LIKE :q)
                 """ + pred + " ORDER BY c.surname, c.other_names LIMIT :n OFFSET :o")
@@ -114,15 +114,15 @@ class ScreeningReviewController {
         out.put("rows", rows);
         out.put("stats", jdbc.sql("""
                 SELECT count(*) FILTER (WHERE sf.state IS NOT NULL) AS total,
-                       count(*) FILTER (WHERE (sf.state IS NULL OR sf.state = 'DRAFT') AND admissions.screening_required(a.id)) AS pending,
-                       count(*) FILTER (WHERE sf.state = 'SUBMITTED') AS submitted,
-                       count(*) FILTER (WHERE sf.state = 'UNDER_REVIEW') AS in_review,
+                       count(*) FILTER (WHERE (sf.state IS NULL OR sf.state = 'PENDING') AND admissions.screening_required(a.id)) AS pending,
+                       count(*) FILTER (WHERE sf.state = 'PENDING') AS submitted,
+                       count(*) FILTER (WHERE sf.state = 'IN_REVIEW') AS in_review,
                        count(*) FILTER (WHERE sf.state = 'SUCCESSFUL') AS successful,
                        count(*) FILTER (WHERE sf.state = 'UNSUCCESSFUL') AS unsuccessful,
-                       count(*) FILTER (WHERE sf.state = 'RETURNED') AS returned,
+                       count(*) FILTER (WHERE sf.state = 'CORRECTION_REQUIRED') AS returned,
                        count(*) FILTER (WHERE sf.state = 'UNSUCCESSFUL' AND EXISTS (SELECT 1 FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'REQUESTED')) AS change_requested,
                        count(*) FILTER (WHERE sf.state = 'SUCCESSFUL' OR EXISTS (SELECT 1 FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'APPROVED')) AS completed,
-                       count(*) FILTER (WHERE sf.state IN ('SUBMITTED', 'UNDER_REVIEW') AND sf.submitted_at < now() - interval '7 days') AS overdue
+                       count(*) FILTER (WHERE (sf.state IS NULL OR sf.state IN ('PENDING', 'IN_REVIEW')) AND a.accepted_at < now() - interval '7 days') AS overdue
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id LEFT JOIN admissions.screening_form sf ON sf.application_id = a.id
                   LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme)
                  WHERE a.session = :s AND a.decision = 'OFFERED' AND a.decision_released_at IS NOT NULL AND a.accepted_at IS NOT NULL AND (:fac::text IS NULL OR p.faculty_code = :fac)
@@ -165,6 +165,9 @@ class ScreeningReviewController {
                 """).param("a", app).query().singleRow());
         out.put("documents", jdbc.sql("SELECT id, kind, filename, content_type, bytes, uploaded_at, status, review_note, reviewed_at FROM admissions.application_document WHERE application_id = :a ORDER BY kind, uploaded_at DESC").param("a", app).query().listOfRows());
         out.put("missing", jdbc.sql("SELECT * FROM admissions.screening_missing(:a)").param("a", app).query().listOfRows());
+        // V280: the record assembled from every source the University holds — what the officers screen
+        out.put("facts", jdbc.sql("SELECT admissions.screening_facts(:a)::text").param("a", app).query(String.class).single());
+        out.put("forms", jdbc.sql("SELECT * FROM admissions.screening_forms_state(:a)").param("a", app).query().singleRow());
         out.put("events", jdbc.sql("SELECT e.action, e.detail, e.actor_office, e.at, (SELECT pe.surname || ', ' || pe.given_names FROM iam.person pe WHERE pe.id = e.actor) AS officer FROM admissions.screening_event e WHERE e.application_id = :a ORDER BY e.at DESC").param("a", app).query().listOfRows());
         out.put("eligibility", jdbc.sql("""
                 SELECT r.applied_result, r.alternatives, r.evaluated_at, r.rules_version,
@@ -206,8 +209,8 @@ class ScreeningReviewController {
         String s = session + "/" + year;
         detail(s, appId);
         String d = body.decision().trim().toUpperCase();
-        if (!List.of("SUCCESSFUL", "UNSUCCESSFUL", "RETURNED").contains(d)) {
-            throw new DomainRuleViolation("SCR_DECISION", "'" + body.decision() + "' is not a screening decision.", new DomainRuleViolation.Remedy("SUCCESSFUL, UNSUCCESSFUL with the reason, or RETURNED with what must be corrected.", "Screening officer"));
+        if (!List.of("SUCCESSFUL", "UNSUCCESSFUL", "RETURNED", "CORRECTION").contains(d)) {
+            throw new DomainRuleViolation("SCR_DECISION", "'" + body.decision() + "' is not a screening decision.", new DomainRuleViolation.Remedy("SUCCESSFUL, UNSUCCESSFUL with the reason, or CORRECTION with the one thing to be corrected.", "Screening officer"));
         }
         jdbc.sql("SELECT admissions.screening_decide(:a, :d, :r, :m, :by, :o)").param("a", appId).param("d", d).param("r", body.reason(), Types.VARCHAR).param("m", body.remarks(), Types.VARCHAR)
                 .param("by", actor(), Types.OTHER).param("o", office(), Types.VARCHAR).query().singleRow();

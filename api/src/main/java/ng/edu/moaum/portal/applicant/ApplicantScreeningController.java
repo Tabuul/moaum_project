@@ -136,6 +136,24 @@ class ApplicantScreeningController {
         out.put("events", jdbc.sql("SELECT action, detail, actor_office, at FROM admissions.screening_event WHERE application_id = :a ORDER BY at DESC").param("a", app).query().listOfRows());
         out.put("changes", jdbc.sql("SELECT id, from_programme, to_programme, state, requested_at, decided_at, decision_note FROM admissions.programme_change_request WHERE application_id = :a ORDER BY requested_at DESC").param("a", app).query().listOfRows());
         out.put("status", jdbc.sql("SELECT * FROM admissions.admission_status(:a)").param("a", app).query().singleRow());
+        // V280: the record the University screens, assembled from what it already holds, and the state of the generated forms
+        out.put("facts", jdbc.sql("SELECT admissions.screening_facts(:a)::text").param("a", app).query(String.class).single());
+        out.put("forms", jdbc.sql("SELECT * FROM admissions.screening_forms_state(:a)").param("a", app).query().singleRow());
+        return out;
+    }
+
+    /** the official screening forms of a successful screening (V280): generated from the record, numbered under the screening number,
+     *  a new version when the record changed; each opening is on the document's trail */
+    @GetMapping("/api/v1/applicant/me/screening/forms")
+    @PreAuthorize(APPLICANT)
+    @Transactional
+    Map<String, Object> forms(Authentication a) {
+        UUID app = myApplication(a);
+        Map<String, Object> row = jdbc.sql("SELECT id, number, version, verification_code, statement::text AS statement, issued_on FROM admissions.issue_screening_forms(:a)").param("a", app).query().singleRow();
+        jdbc.sql("SELECT credentials.log(NULL, :i, NULL, 'DOWNLOADED', 'AVAILABLE', 'DOWNLOADED', 'Screening forms opened by the applicant')").param("i", row.get("id"), Types.OTHER).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>(row);
+        out.remove("id");
+        out.put("verifyPath", "/verify/document?key=" + row.get("verification_code"));
         return out;
     }
 
@@ -144,7 +162,7 @@ class ApplicantScreeningController {
     @Transactional
     Map<String, Object> screening(Authentication a) {
         UUID app = myApplication(a);
-        // the form opens on first sight once the offer is accepted; before that the page says so without a form
+        // the record opens by itself when the acceptance settles (V280); a record accepted before that is opened on first sight
         boolean accepted = jdbc.sql("SELECT accepted_at IS NOT NULL FROM admissions.application WHERE id = :a").param("a", app).query(Boolean.class).single();
         if (accepted) {
             jdbc.sql("SELECT admissions.screening_open(:a)").param("a", app).query().singleRow();

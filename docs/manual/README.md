@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Version** | 1.17 |
+| **Version** | 1.18 |
 | **Date** | 26 September 2026 |
-| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V279` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
+| **Basis** | An audit of the source code, the database schema (migrations `V001`–`V280` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
 | **Nature** | Documentation only. Nothing in the portal — code, schema, configuration or data — was changed to produce this package |
 | **Prepared by** | Directorate of ICT (prepared with Claude Code) |
 
@@ -229,6 +229,7 @@ Terms as the portal uses them, in alphabetical order. Codes in backticks are the
 | Version | Date | Change | By |
 |---|---|---|---|
 | 1.0 | 26 September 2026 | Initial complete portal documentation: ten volumes, seven audit dossiers and the inventory tools, as at commit `8c2b6fa` on `main` | Directorate of ICT (prepared with Claude Code) |
+| 1.18 | 27 September 2026 | The screening reviews the record (V280): no form after acceptance — the screening record opens by itself in PENDING, the officers screen `admissions.screening_facts` (JAMB, application, documents, payments), decide SUCCESSFUL / UNSUCCESSFUL / CORRECTION_REQUIRED (one thing asked of the applicant), and the official screening forms are generated as a numbered, versioned, verifiable document (kind SCREENING_FORMS) with blanks for what the University does not hold; the applicant enters only the schools attended; the states, statuses and tracker renamed — volumes 01, 07 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.17 | 27 September 2026 | One student and financial analytics engine (V279): the payment ledger `reporting.payments` over the three reference tables with the payer's dimensions, the Bursary's configurable payment categories, `/api/v1/analytics/finance/summary` and `/transactions` with the global filter bar (date presets and range, grain, several payment types, gender, faculty, department, programme, level, session, entry type, channel, search), breakdowns, trend, period comparison, drill-down and exports, the admission funnel, the student statistics extended by gender, entry type, level and session admitted, the financial panel on the dashboards — all within the acting office's scope held on the server | Directorate of ICT (prepared with Claude Code) |
 | 1.16 | 27 September 2026 | The register follows the lifecycle (V278): the student record and admission number are created when the screening succeeds, on acceptance where no screening is asked, or when a change of programme is approved after an unsuccessful screening; people.intake_one, the intake button for stragglers; the applicant continues into the student portal without a second sign-in (`POST /api/v1/student-auth/continue`, `/applicant/to-student`) — volumes 01, 07 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.15 | 27 September 2026 | The student portal opens on the entrant's session when it is later than the current one: fees, registration and a reference without a session named follow it, so an entrant of a planned session can pay the fees stated for it; the fee page names the sessions that carry a charge — volume 01 §5 updated | Directorate of ICT (prepared with Claude Code) |

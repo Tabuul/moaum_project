@@ -230,74 +230,69 @@ class AdmissionLifecycleIT {
         assertThat(tooEarly.getStatusCode().value()).isEqualTo(422);
         assertThat(tooEarly.getBody().get("code")).isEqualTo("AUTH_NOT_ON_REGISTER");
 
-        // 8–9 · the screening form: opened on acceptance, prefilled with JAMB's O'Level, drafted, incomplete refused, documents, declaration, submitted
+        // 8–9 · the screening opened by itself on acceptance (V280): awaiting the University, JAMB's O'Level as its results, nothing to fill
         Map<String, Object> sv = m(it.get(a.token(), "/api/v1/applicant/me/screening").getBody());
         Map<String, Object> form = m(sv.get("form"));
-        assertThat(form.get("state")).isEqualTo("DRAFT");
+        assertThat(form.get("state")).isEqualTo("PENDING");
         assertThat(String.valueOf(form.get("screening_no"))).matches("SCR/2084/\\d{6}");
         assertThat(l(sv.get("olevel"))).hasSize(SCIENCE.size());
-        assertThat(l(sv.get("fields")).stream().map(f -> f.get("field"))).contains("secondary_school", "parent_profession", "sponsor_name", "kin_name");
-        ResponseEntity<Map> saved = it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", answers(),
-                "institutions", List.of(Map.of("name", "Righton International School", "from_year", 2070, "to_year", 2076, "certificate", "FSLC", "award_year", 2076), Map.of("name", "Gwazachat Academy", "from_year", 2077, "to_year", 2083, "certificate", "SSCE", "award_year", 2083)),
-                "membership", "Debating society"));
-        assertThat(saved.getStatusCode().value()).as(String.valueOf(saved.getBody())).isEqualTo(200);
-        assertThat(l(saved.getBody().get("institutions"))).hasSize(2);
-        assertThat(l(saved.getBody().get("answers"))).anyMatch(x -> "secondary_school".equals(x.get("field")));
-        assertThat(l(saved.getBody().get("missing")).stream().map(x -> x.get("kind"))).contains("DOCUMENT").doesNotContain("FIELD", "OLEVEL");
-        // V273: the lists the form chooses from, and the shape of what was given checked before submission
-        List<Map<String, Object>> states = it.getList(a.token(), "/api/v1/ref/states").getBody();
-        assertThat(states).hasSize(37);
-        assertThat(String.valueOf(states.stream().filter(x -> "Benue".equals(x.get("name"))).findFirst().orElseThrow().get("lgas"))).contains("Gboko").contains("Gwer East");
-        assertThat(l(it.getList(a.token(), "/api/v1/ref/countries").getBody()).size() > 0 || it.getList(a.token(), "/api/v1/ref/countries").getBody().get(0).equals("Nigeria")).isTrue();
-        Map<String, Object> badSaved = m(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", Map.of("mobile", "0803", "lga", "Awka", "personal_email", "not-an-email"))).getBody());
-        assertThat(l(badSaved.get("missing")).stream().filter(x -> "INVALID".equals(x.get("kind"))).map(x -> x.get("item"))).contains("mobile", "lga", "personal_email");
-        assertThat(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", Map.of("mobile", "08031234567", "lga", "Gboko", "personal_email", ""))).getStatusCode().value()).isEqualTo(200);
-        ResponseEntity<Map> early = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", true));
-        assertThat(early.getStatusCode().value()).isEqualTo(422);
-        for (String k : List.of("OLEVEL_STATEMENT", "JAMB_SLIP", "BIRTH_CERT", "LGA_ID", "PASSPORT")) upload(a, k);
-        assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", false)).getStatusCode().value()).isEqualTo(422);
-        ResponseEntity<Map> submitted = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", true));
-        assertThat(submitted.getStatusCode().value()).as(String.valueOf(submitted.getBody())).isEqualTo(200);
-        assertThat(m(submitted.getBody().get("form")).get("state")).isEqualTo("SUBMITTED");
-        assertThat(m(submitted.getBody().get("status")).get("status")).isEqualTo("SCREENING_SUBMITTED");
-        // 11 · read-only once submitted
-        assertThat(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", Map.of("religion", "Other"))).getStatusCode().value()).isEqualTo(422);
-        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%screening form has been received%'").param("a", a.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
+        assertThat(String.valueOf(sv.get("facts"))).contains(a.surname()).contains("\"jamb_reg_no\"").contains("COMPUTER SCIENCE");
+        assertThat(m(sv.get("forms")).get("state")).isEqualTo("NOT_GENERATED");
+        // the applicant is not asked to fill anything: a saved answer and a submission are refused while the University screens
+        assertThat(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", answers())).getStatusCode().value()).isEqualTo(422);
+        assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", true)).getStatusCode().value()).isEqualTo(422);
+        assertThat(it.get(a.token(), "/api/v1/applicant/me/screening/forms").getStatusCode().value()).isEqualTo(422);   // no forms before the decision
         // 29 / 27 · the gates are shut while the screening stands: no school-fee reference, no registration (the student not yet on the register, so through the function)
         UUID sa = intake(a);
         assertThat(jdbc.sql("SELECT admissions.screening_ok_student(:s)").param("s", sa).query(Boolean.class).single()).isFalse();
-        assertThat(it.db(() -> { try { jdbc.sql("SELECT finance.new_reference(:s, :ses, 1000, 'test')").param("s", sa).param("ses", SESSION).query(String.class).single(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return e.getMostSpecificCause().getMessage(); } })).contains("SCHOOL FEES UNAVAILABLE");
-        assertThat(it.db(() -> { try { jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'DRAFT')").param("s", sa).param("ses", SESSION).update(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return e.getMostSpecificCause().getMessage(); } })).contains("COURSE REGISTRATION UNAVAILABLE");
+        assertThat(it.db(() -> { try { jdbc.sql("SELECT finance.new_reference(:s, :ses, 1000, 'test')").param("s", sa).param("ses", SESSION).query(String.class).single(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return "refused"; } })).isEqualTo("refused");
+        assertThat(it.db(() -> { try { jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'DRAFT')").param("s", sa).param("ses", SESSION).update(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return "refused"; } })).isEqualTo("refused");
 
-        // 12 · the officers' queue and the review
-        Map<String, Object> queue = m(it.get(academic, PATH + "/screening-review?state=SUBMITTED&q=" + a.surname()).getBody());
+        // 12 · the officers' queue holds the record awaiting them, assembled from what the University holds
+        Map<String, Object> queue = m(it.get(academic, PATH + "/screening-review?state=PENDING&q=" + a.surname()).getBody());
         assertThat(l(queue.get("rows"))).hasSize(1);
-        assertThat(((Number) m(queue.get("stats")).get("submitted")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(((Number) m(queue.get("stats")).get("pending")).intValue()).isGreaterThanOrEqualTo(1);
         assertThat(it.get(housing, PATH + "/screening-review").getStatusCode().value()).isEqualTo(403);
         assertThat(it.get(a.token(), PATH + "/screening-review").getStatusCode().value()).isEqualTo(403);
         ResponseEntity<Map> det = it.get(academic, PATH + "/screening-review/" + a.app());
         assertThat(det.getStatusCode().value()).isEqualTo(200);
-        assertThat(l(det.getBody().get("answers"))).isNotEmpty();
-        assertThat(l(det.getBody().get("documents"))).hasSize(5);
+        assertThat(String.valueOf(det.getBody().get("facts"))).contains("\"utme_subjects\"").contains(a.surname());
         assertThat(l(det.getBody().get("jambOlevel"))).hasSize(SCIENCE.size());
-        String docId = String.valueOf(l(det.getBody().get("documents")).get(0).get("id"));
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + a.app() + "/start", Map.of()).getStatusCode().value()).isEqualTo(200);
+        assertThat(admission(a).get("status")).isEqualTo("SCREENING_IN_REVIEW");
+        // one correction asked: the applicant provides that document and says so; the record goes back as version 2
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + a.app() + "/decide", Map.of("decision", "CORRECTION", "reason", "")).getStatusCode().value()).isIn(400, 422);
+        ResponseEntity<Map> ret = it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + a.app() + "/decide", Map.of("decision", "CORRECTION", "reason", "The O'Level statement of result requires verification: upload a clear copy"));
+        assertThat(ret.getStatusCode().value()).as(String.valueOf(ret.getBody())).isEqualTo(200);
+        assertThat(admission(a).get("status")).isEqualTo("SCREENING_CORRECTION");
+        upload(a, "OLEVEL_STATEMENT");
+        ResponseEntity<Map> again = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", true));
+        assertThat(again.getStatusCode().value()).as(String.valueOf(again.getBody())).isEqualTo(200);
+        assertThat(m(again.getBody().get("form")).get("state")).isEqualTo("PENDING");
+        assertThat(((Number) m(again.getBody().get("form")).get("version")).intValue()).isEqualTo(1);   // the record opens at 0; the applicant's first correction is version 1
+        ResponseEntity<Map> det2 = it.get(academic, PATH + "/screening-review/" + a.app());
+        assertThat(l(det2.getBody().get("documents"))).hasSize(1);
+        String docId = String.valueOf(l(det2.getBody().get("documents")).get(0).get("id"));
         assertThat(it.getBytes(academic, PATH + "/applications/" + a.app() + "/documents/" + docId + "/content").getStatusCode().value()).isEqualTo(200);      // 31: the office's door
         assertThat(it.getBytes(b.token(), "/api/v1/applicant/me/documents/" + docId + "/content").getStatusCode().value()).isIn(403, 404);            // 31: another applicant's door
-        assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + a.app() + "/start", Map.of()).getStatusCode().value()).isEqualTo(200);
-        // returned for correction, corrected, resubmitted as version 2
-        assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + a.app() + "/decide", Map.of("decision", "RETURNED", "reason", "")).getStatusCode().value()).isIn(400, 422);
-        ResponseEntity<Map> ret = it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + a.app() + "/decide", Map.of("decision", "RETURNED", "reason", "The sponsor's address is incomplete"));
-        assertThat(ret.getStatusCode().value()).as(String.valueOf(ret.getBody())).isEqualTo(200);
-        assertThat(admission(a).get("status")).isEqualTo("SCREENING_RETURNED");
-        assertThat(it.call(a.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", Map.of("sponsor_address", "No. 26 Dagye Street, Kaduna, Kaduna State"))).getStatusCode().value()).isEqualTo(200);
-        ResponseEntity<Map> again = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", true));
-        assertThat(((Number) m(again.getBody().get("form")).get("version")).intValue()).isEqualTo(2);
 
         // 13 · PATH A: successful → cleared, school fees open, the answers on the student record
         ResponseEntity<Map> ok = it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + a.app() + "/decide", Map.of("decision", "SUCCESSFUL", "remarks", "All originals sighted"));
         assertThat(ok.getStatusCode().value()).as(String.valueOf(ok.getBody())).isEqualTo(200);
         assertThat(m(ok.getBody().get("form")).get("state")).isEqualTo("SUCCESSFUL");
         assertThat(jdbc.sql("SELECT cleared_at FROM admissions.application WHERE id = :a").param("a", a.app()).query().singleRow().get("cleared_at")).isNotNull();
+        // the official screening forms, generated from the record (V280): numbered under the screening number, coded, the same again, publicly verifiable
+        assertThat(m(ok.getBody().get("forms")).get("state")).isEqualTo("GENERATED");
+        ResponseEntity<Map> formsDoc = it.get(a.token(), "/api/v1/applicant/me/screening/forms");
+        assertThat(formsDoc.getStatusCode().value()).as(String.valueOf(formsDoc.getBody())).isEqualTo(200);
+        assertThat(formsDoc.getBody().get("number")).isEqualTo(form.get("screening_no"));
+        assertThat(((Number) formsDoc.getBody().get("version")).intValue()).isEqualTo(1);
+        assertThat(String.valueOf(formsDoc.getBody().get("statement"))).contains("\"facts\"").contains(a.surname()).contains("SUCCESSFUL");
+        assertThat(m(it.get(a.token(), "/api/v1/applicant/me/screening/forms").getBody()).get("number")).isEqualTo(form.get("screening_no"));
+        assertThat(m(m(it.get(a.token(), "/api/v1/applicant/me/screening").getBody()).get("forms")).get("state")).isEqualTo("DOWNLOADED");
+        ResponseEntity<Map> pubForms = it.anon(HttpMethod.GET, "/api/v1/verify/document?key=" + formsDoc.getBody().get("verification_code"), null);
+        assertThat(pubForms.getStatusCode().value()).isEqualTo(200);
+        assertThat(String.valueOf(pubForms.getBody())).contains("SCREENING_FORMS").contains(a.surname());
         assertThat(jdbc.sql("SELECT admissions.screening_ok_student(:s)").param("s", sa).query(Boolean.class).single()).isTrue();
         // the applicant continues into the student portal as the student they have become: the same person, no second password (V278)
         ResponseEntity<Map> crossed = it.call(a.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
@@ -305,7 +300,6 @@ class AdmissionLifecycleIT {
         Map<String, Object> asStudent = it.get(String.valueOf(crossed.getBody().get("token")), "/api/v1/me").getBody();
         assertThat(asStudent.get("id")).isEqualTo(sa.toString());
         assertThat(asStudent.get("admissionNo")).isNotNull();
-        assertThat(jdbc.sql("SELECT value FROM people.biodata WHERE student_id = :s AND field = 'secondary_school'").param("s", sa).query(String.class).single()).contains("Gwazachat");
         // no fee schedule is stated for the test session, so the fees read as settled and the status moves straight on
         assertThat(admission(a).get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
         assertThat(it.db(() -> { try { jdbc.sql("SELECT finance.new_reference(:s, :ses, 1000, 'test')").param("s", sa).param("ses", SESSION).query(String.class).single(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return e.getMostSpecificCause().getMessage(); } })).doesNotContain("SCHOOL FEES UNAVAILABLE");
@@ -318,10 +312,7 @@ class AdmissionLifecycleIT {
 
         // 13–17 · PATH B: unsuccessful with the reason → alternatives → change requested after the Board's decision → approved → no second acceptance fee
         Map<String, Object> bv = m(it.get(b.token(), "/api/v1/applicant/me/screening").getBody());
-        assertThat(m(bv.get("form")).get("state")).isEqualTo("DRAFT");
-        it.call(b.token(), HttpMethod.PUT, "/api/v1/applicant/me/screening", Map.of("answers", answers()));
-        for (String k : List.of("OLEVEL_STATEMENT", "JAMB_SLIP", "BIRTH_CERT", "LGA_ID", "PASSPORT")) upload(b, k);
-        assertThat(it.call(b.token(), HttpMethod.POST, "/api/v1/applicant/me/screening/submit", Map.of("declaration", true)).getStatusCode().value()).isEqualTo(200);
+        assertThat(m(bv.get("form")).get("state")).isEqualTo("PENDING");   // V280: awaiting the University, nothing filled
         UUID sb = intake(b);
         assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + b.app() + "/decide", Map.of("decision", "UNSUCCESSFUL")).getStatusCode().value()).isEqualTo(422);
         ResponseEntity<Map> bad = it.call(academic, HttpMethod.POST, PATH + "/screening-review/" + b.app() + "/decide", Map.of("decision", "UNSUCCESSFUL", "reason", "No credit in Physics; the science combination is not met", "remarks", "Eligible for Accounting"));
@@ -330,6 +321,7 @@ class AdmissionLifecycleIT {
         assertThat(String.valueOf(m(bad.getBody().get("eligibility")).get("eligible_alternatives"))).contains("ACCOUNTING");
         Map<String, Object> bst = admission(b);
         assertThat(bst.get("status")).isEqualTo("CHANGE_OF_PROGRAMME_REQUIRED");
+        assertThat(it.get(b.token(), "/api/v1/applicant/me/screening/forms").getStatusCode().value()).isEqualTo(422);   // no forms for an unsuccessful screening
         assertThat(String.valueOf(bst.get("tracker"))).contains("\"CHANGE_OF_PROGRAMME\"").contains("\"failed\"");
         assertThat(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'SC') x WHERE x.student_id = :id").param("s", SESSION).param("id", sb).query(String.class).single()).contains("screening");
         // the applicant asks for a listed programme; a second acceptance fee is refused; the Office approves

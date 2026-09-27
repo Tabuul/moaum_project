@@ -1,6 +1,6 @@
 /** The admission lifecycle and the online screening (V269): the shapes the endpoints answer with, and the words for them. */
 
-export type ScreeningState = "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "RETURNED" | "SUCCESSFUL" | "UNSUCCESSFUL";
+export type ScreeningState = "PENDING" | "IN_REVIEW" | "CORRECTION_REQUIRED" | "SUCCESSFUL" | "UNSUCCESSFUL" | "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "RETURNED";
 export type TrackerState = "done" | "now" | "todo" | "failed";
 export interface TrackerStep { key: string; label: string; state: TrackerState }
 export interface AdmissionStatus { status: string; label: string; next_action: string | null; next_href: string | null; detail: string | null }
@@ -34,6 +34,17 @@ export interface Prefill {
 export interface ScreeningView {
   required: boolean; form: ScreeningForm | null; policy: ScreeningPolicy | null; fields: FieldDef[]; answers: { field: string; value: string }[]; institutions: Institution[]; olevel: OlevelRow[]; jambOlevel: JambOlevel[];
   documents: ScreeningDocument[]; missing: Missing[]; prefill: Prefill; events: ScreeningEvent[]; changes: ChangeRow[]; status: AdmissionStatus;
+  /** V280: the record the University screens, as JSON text, and the state of the generated forms */
+  facts?: string; forms?: FormsState;
+}
+/** V280: the generated screening forms as a document — apart from the screening decision */
+export interface FormsState { state: "NOT_GENERATED" | "GENERATED" | "DOWNLOADED"; number: string | null; version: number | null; verification_code: string | null; issued_on: string | null; downloads: number; last_downloaded_at: string | null }
+/** V280: the record assembled from what the University holds (admissions.screening_facts) */
+export interface Facts {
+  identity: Record<string, unknown>; jamb: Record<string, unknown>; admission: Record<string, unknown>;
+  olevel: Record<string, unknown>[]; jamb_olevel: Record<string, unknown>[]; institutions: Record<string, unknown>[]; documents: Record<string, unknown>[];
+  payments: Record<string, { reference?: string; amount?: number; confirmed_at?: string; receipt_no?: string; channel?: string }>; answers: Record<string, string>; biodata: Record<string, string>;
+  screening: Record<string, unknown> | null;
 }
 
 export const SECTION_WORD: Record<string, string> = {
@@ -45,9 +56,10 @@ export const DOC_WORD: Record<string, string> = {
   PREVIOUS_QUALIFICATION: "Previous qualification (Direct Entry)", OTHER: "Other document",
 };
 export const STATE_WORD: Record<ScreeningState, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
-  DRAFT: ["DRAFT", "grey"], SUBMITTED: ["SUBMITTED — PENDING REVIEW", "info"], UNDER_REVIEW: ["IN REVIEW", "info"], RETURNED: ["RETURNED FOR CORRECTION", "warn"], SUCCESSFUL: ["SUCCESSFUL", "ok"], UNSUCCESSFUL: ["UNSUCCESSFUL", "bad"],
+  PENDING: ["AWAITING SCREENING", "info"], IN_REVIEW: ["IN REVIEW", "info"], CORRECTION_REQUIRED: ["CORRECTION REQUIRED", "warn"], SUCCESSFUL: ["SUCCESSFUL", "ok"], UNSUCCESSFUL: ["UNSUCCESSFUL", "bad"],
+  DRAFT: ["AWAITING SCREENING", "info"], SUBMITTED: ["AWAITING SCREENING", "info"], UNDER_REVIEW: ["IN REVIEW", "info"], RETURNED: ["CORRECTION REQUIRED", "warn"],
 };
-export const STATUS_KIND = (status: string): "ok" | "bad" | "info" => (status === "MATRICULATED" || status.endsWith("_SUCCESSFUL") ? "ok" : ["NOT_ADMITTED", "DECLINED", "CHANGE_OF_PROGRAMME_REQUIRED", "SCREENING_RETURNED"].includes(status) ? "bad" : "info");
+export const STATUS_KIND = (status: string): "ok" | "bad" | "info" => (status === "MATRICULATED" || status.endsWith("_SUCCESSFUL") ? "ok" : ["NOT_ADMITTED", "DECLINED", "CHANGE_OF_PROGRAMME_REQUIRED", "SCREENING_RETURNED", "SCREENING_CORRECTION"].includes(status) ? "bad" : "info");
 export const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 export const dayOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—");
 export function parseTracker(t: string | null | undefined): TrackerStep[] { try { return t ? (JSON.parse(t) as TrackerStep[]) : []; } catch { return []; } }
@@ -67,7 +79,7 @@ export interface ReviewDetail {
   application: ReviewRow; form: ScreeningForm | null; answers: { section: string; field: string; label: string; ord: number; value: string }[]; institutions: Institution[]; olevel: OlevelRow[]; jambOlevel: JambOlevel[];
   utme: { aggregate: number | null; subjects: string | null } | null; prefill: { sex: string | null; state_of_origin: string | null; lga: string | null; email: string; phone: string; next_of_kin: string | null; entry_mode: string; entry_level: number; date_of_birth: string | null };
   documents: ScreeningDocument[]; missing: Missing[]; events: ScreeningEvent[]; eligibility: { applied_result: string; alternatives: number; evaluated_at: string; rules_version: number | null; eligible_alternatives: string | null; reasons: string[] | null } | null;
-  changes: ChangeRow[]; status: AdmissionStatus; tracker: string; entitlement: Entitlement;
+  changes: ChangeRow[]; status: AdmissionStatus; tracker: string; entitlement: Entitlement; facts?: string; forms?: FormsState;
 }
 
 /** V273: the reference lists the form chooses from */

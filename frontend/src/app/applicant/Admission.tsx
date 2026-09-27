@@ -50,7 +50,7 @@ export function stepHref(href: string | null | undefined): string {
 
 /** the five screening forms print once the applicant has filled and submitted them (V273): not before the form is submitted */
 function formsPrintable(d: Admission): boolean {
-  return !!d.screeningRequired && !["PENDING", "CHECKING_FEE_PENDING", "NOT_ADMITTED", "DECLINED", "ADMITTED", "ACCEPTANCE_PENDING", "SCREENING_PENDING", "SCREENING_IN_PROGRESS"].includes(d.status);
+  return !!d.screeningRequired && !["PENDING", "CHECKING_FEE_PENDING", "NOT_ADMITTED", "DECLINED", "ADMITTED", "ACCEPTANCE_PENDING", "SCREENING_PENDING", "SCREENING_IN_REVIEW", "SCREENING_CORRECTION", "SCREENING_IN_PROGRESS", "SCREENING_SUBMITTED", "SCREENING_RETURNED", "CHANGE_OF_PROGRAMME_REQUIRED", "CHANGE_OF_PROGRAMME_PENDING"].includes(d.status);
 }
 
 /** the compact block on the dashboard: status, next step, tracker */
@@ -118,8 +118,8 @@ export function AdmissionPage() {
             <KvGrid cls="grid--2" pairs={[
               ["Acceptance fee", d.entitlement.paid ? <span key="e"><Pil kind="ok">PAID</Pil> <span className="sub2 tnum">{d.entitlement.reference ?? ""} · {dayOf(d.entitlement.confirmed_at)}</span></span> : <Pil key="e" kind="warn">NOT YET PAID</Pil>],
               ["Acceptance letter", o.accepted_at ? <span key="l"><a href="/applicant/status/letter" target="_blank" rel="noopener" className="lnk">View · download · print</a><div className="sub2">A numbered document with a QR code; anyone may verify it at /verify/document.</div></span> : <span key="l" className="sub2">After acceptance</span>],
-              ["Screening forms", formsPrintable(d) ? <span key="pf"><a href="/applicant/clearance/print" target="_blank" rel="noopener" className="lnk">Print the five forms (PDF)</a><div className="sub2">Form A, the screening form, the supplementary biodata form and the data capture form, filled from your answers.</div></span> : <span key="pf" className="sub2">Printable once your screening form is submitted</span>],
-              ["Online screening", !d.screeningRequired ? <span key="s" className="sub2">Not required for your session</span> : o.cleared_at ? <Pil key="s" kind="ok">SUCCESSFUL</Pil> : <LinkBtn key="s" kind="secondary" size="sm" href="/applicant/clearance">Open the screening form</LinkBtn>],
+              ["Screening forms", formsPrintable(d) ? <span key="pf"><a href="/applicant/clearance/print" target="_blank" rel="noopener" className="lnk">Print the five forms (PDF)</a><div className="sub2">Form A, the screening form, the supplementary biodata form and the data capture form, generated from your record; what the University does not hold is left blank to fill by hand.</div></span> : <span key="pf" className="sub2">Generated once the University&rsquo;s screening is successful</span>],
+              ["University screening", !d.screeningRequired ? <span key="s" className="sub2">Not required for your session</span> : o.cleared_at ? <Pil key="s" kind="ok">SUCCESSFUL</Pil> : <LinkBtn key="s" kind="secondary" size="sm" href="/applicant/clearance">Open the screening form</LinkBtn>],
               ["Change of programme", o.changed_to ? <span key="c">{o.changed_from} → <b>{o.changed_to}</b><div className="sub2">Your acceptance payment remained valid; it was not charged again.</div></span> : <span key="c" className="sub2">None</span>],
             ]} />
             {d.entitlement.paid ? <div className="sub2 mt-2">Whatever programme your admission ends on, the acceptance fee is never asked for a second time.</div> : null}

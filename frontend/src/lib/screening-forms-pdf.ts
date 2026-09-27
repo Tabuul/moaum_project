@@ -38,6 +38,8 @@ export interface FormsInput {
   crest: Image | null;
   /** the day the print is made, for the footer */
   printedOn?: Date;
+  /** the issued document (V280): its number, version and verification code, and the QR that opens the public verifier */
+  document?: { number: string; version: number; code: string; issuedOn: string; verifyUrl: string; verifyPage: string; qr: { size: number; dark: Uint8Array | boolean[] | number[] } };
 }
 
 const L = 46;
@@ -94,6 +96,11 @@ function textWidth(s: string, size: number, bold = false): number {
 function kv(p: Page, x: number, y: number, label: string, value: string, width: number, size = 10): number {
   p.text(x, y, label, size, true);
   const lx = x + textWidth(label, size, true) + 5;
+  if (!(value || "").trim()) {
+    // not held by the University: a dotted line for the student's hand
+    p.rule(lx, y - 2, x + width, y - 2, 0.5, 0.6);
+    return y - size * 1.3;
+  }
   const ls = wrap(value || "", Math.max(60, x + width - lx), size);
   p.text(lx, y, ls[0], size);
   let yy = y - size * 1.3;
@@ -154,7 +161,19 @@ function underlined(p: Page, x: number, y: number, s: string, size: number, bold
 }
 function footer(p: Page, input: FormsInput, page: number) {
   const on = input.printedOn ?? new Date();
-  p.text(L, 28, `${input.form.screening_no} · ${input.prefill.application_no} · printed from the portal ${longDate(on.toISOString())} · page ${page} of 5`, 7.5, false, GREY);
+  const d = input.document;
+  p.text(L, 28, `${d ? `Document ${d.number} v${d.version} · code ${d.code} · ` : `${input.form.screening_no} · `}${input.prefill.application_no} · generated from the University's record ${longDate(on.toISOString())} · page ${page} of 5`, 7.5, false, GREY);
+}
+/** the verification block on the first page: the QR opens the public verifier; the code is typed where it cannot be scanned */
+function verification(p: Page, input: FormsInput) {
+  const d = input.document;
+  if (!d) return;
+  const side = 70;
+  const cell = side / d.qr.size;
+  const x0 = R - side, y0 = 40;
+  for (let r = 0; r < d.qr.size; r++) for (let c = 0; c < d.qr.size; c++) if (d.qr.dark[r * d.qr.size + c]) p.fill(x0 + c * cell, y0 + (d.qr.size - 1 - r) * cell, cell, cell, 0);
+  p.text(L, 62, `Screening forms ${d.number} · version ${d.version} · issued ${longDate(d.issuedOn)} · verification code ${d.code}`, 8, true);
+  p.text(L, 50, `Verify at ${d.verifyPage} by the code or the document number; only what the University discloses is shown. A field left blank is not held by the University and is filled by hand.`, 7.5, false, GREY);
 }
 
 /** the faculty group ticked on the screening form: A Arts, Law · B Soc. Sc, Mgt. Sc · C Edu., Scs., CHS */
@@ -218,6 +237,7 @@ export function screeningFormsPdf(input: FormsInput): Uint8Array {
   dotted(p1, L, y, "Student's Signature:", 310, signature); dotted(p1, L + 330, y, "Date:", W - 330, signedOn ? longDate(signedOn) : "");
   y -= 40;
   dotted(p1, L, y, "Name of Reg. Officer:", 230); dotted(p1, L + 240, y, "Sign:", 130); dotted(p1, L + 380, y, "Date:", W - 380);
+  verification(p1, input);
   footer(p1, input, 1);
 
   /* ── page 2 · Screening of Fresh Undergraduate Students · Sections A and B ── */
@@ -320,6 +340,7 @@ export function screeningFormsPdf(input: FormsInput): Uint8Array {
     p4.text(L + 10, y, n, 10); p4.text(L + 34, y, label, 10);
     const below = L + 34 + textWidth(label, 10) + 8 > vx;
     let yy = below ? y - 14 : y;
+    if (!(value || "").trim()) { p4.rule(vx, yy - 2, R, yy - 2, 0.5, 0.6); y = Math.min(y - lead, yy - 21); return; }
     const ls = wrap(value, R - vx, 10);
     for (const l of ls) { p4.text(vx, yy, l, 10); yy -= 13; }
     y = Math.min(y - lead, yy - 8);

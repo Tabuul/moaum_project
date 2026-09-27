@@ -118,7 +118,7 @@ class ApplicantRepository {
 
     /** the online screening form is open for the applicant to edit: DRAFT, or RETURNED for correction (V269) */
     boolean screeningOpen(UUID applicationId) {
-        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.screening_form f WHERE f.application_id = :a AND f.state IN ('DRAFT', 'RETURNED'))")
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.screening_form f WHERE f.application_id = :a AND f.state IN ('PENDING', 'IN_REVIEW', 'CORRECTION_REQUIRED'))")
                 .param("a", applicationId).query(Boolean.class).single();
     }
 
