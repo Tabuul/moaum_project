@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
+import { createHash } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ const NOTES = [
 ];
 
 /** the confirmation of offer of admission — available once the applicant has paid the acceptance fee */
-export async function GET() {
+export async function GET(req: Request) {
   const me = await api<PgMe>("/api/v1/pg/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const s = me.data;
@@ -72,11 +73,15 @@ export async function GET() {
   p.text(L, y, "Ajuma Isaac Ugbabe", 10.5, true); y -= 13;
   p.text(L, y, "Secretary, Postgraduate School", 9.5, false, [0.35, 0.35, 0.35]);
 
-  // a small verification QR (the application number), bottom-right
-  const { size, dark } = qrMatrix(`MOAUM PG ${s.applicationNo}`);
+  // the verification QR (V286): the public verifier of this offer, by the application number and its code — the same digest the API checks
+  const origin = (() => { const h = req.headers; const host = h.get("x-forwarded-host") ?? h.get("host"); const proto = h.get("x-forwarded-proto") ?? "https"; try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; } })();
+  const code = createHash("sha256").update(`${s.applicationNo.toUpperCase()}|MOAUM-PG-OFFER`).digest("hex").slice(0, 12).toUpperCase();
+  const verifyUrl = `${origin}/verify/pg-offer/${encodeURIComponent(s.applicationNo)}?t=${code}`;
+  const { size, dark } = qrMatrix(verifyUrl);
   const cell = 1.7, qDim = size * cell, qx = A4.w - L - qDim, qy = y + 6;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy + qDim - (rr + 1) * cell, cell, cell, 0);
 
+  p.text(L, 52, `Verify at ${origin}/verify/pg-offer with the application number and code ${code}`, 7.5, false, [0.4, 0.4, 0.4]);
   p.text(L, 40, `${clean(s.name)} · ${s.applicationNo} · generated ${today()}`, 7.5, false, [0.5, 0.5, 0.5]);
 
   const bytes = pdf([p], `Offer of admission ${s.applicationNo}`);

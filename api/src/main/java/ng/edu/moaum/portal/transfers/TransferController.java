@@ -240,6 +240,7 @@ class TransferController {
                     new DomainRuleViolation.Remedy("The current department approves only after the student has paid; each later office approves in turn.", "Registry"));
         }
         String next = jdbc.sql("SELECT people.approve_transfer(:id)").param("id", id).query(String.class).single();
+        tell(id, "Your transfer application moved forward", "Your application to transfer has been approved at the " + stageWord(state) + " and is now at: " + stageWord(next) + ". You will be told at each stage.");
         return Map.of("id", id, "state", next);
     }
 
@@ -257,6 +258,7 @@ class TransferController {
                     new DomainRuleViolation.Remedy("Only the office holding the application at this stage may decline it.", "Registry"));
         }
         jdbc.sql("SELECT people.decline_transfer(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();
+        tell(id, "Your transfer application was declined", "Your application to transfer was declined at the " + stageWord(state) + ".\n\nReason: " + body.why() + "\n\nWrite to the Academic Office if you wish to take it further.");
         return Map.of("id", id, "state", "DECLINED");
     }
 
@@ -270,6 +272,8 @@ class TransferController {
         jdbc.sql("SELECT people.review_transfer(:id, :rec, :lvl, :note)")
                 .param("id", id).param("rec", body.recommend()).param("lvl", body.level(), Types.INTEGER).param("note", body.note(), Types.VARCHAR)
                 .query().singleRow();
+        tell(id, body.recommend() ? "Your transfer is recommended to Senate" : "Your transfer was not recommended",
+                body.recommend() ? "The Senate Admissions Committee recommends your transfer, into " + body.level() + " Level. Senate decides next; you will be told." : "The Senate Admissions Committee did not recommend your transfer." + (body.note() == null ? "" : "\n\nNote: " + body.note()));
         return Map.of("id", id, "state", body.recommend() ? "RECOMMENDED" : "NOT_RECOMMENDED");
     }
 
@@ -280,6 +284,8 @@ class TransferController {
         jdbc.sql("SELECT people.senate_transfer(:id, :ap, :note)")
                 .param("id", id).param("ap", body.approve()).param("note", body.note(), Types.VARCHAR)
                 .query().singleRow();
+        tell(id, body.approve() ? "Senate approved your transfer" : "Senate did not approve your transfer",
+                body.approve() ? "Senate approved your transfer. The Registry gives it effect on your record; you will be told when your new programme stands." : "Senate did not approve your transfer." + (body.note() == null ? "" : "\n\nNote: " + body.note()));
         return Map.of("id", id, "state", body.approve() ? "APPROVED" : "DECLINED");
     }
 
@@ -296,6 +302,21 @@ class TransferController {
     @Transactional
     Map<String, Object> effect(@PathVariable UUID id) {
         jdbc.sql("SELECT people.effect_transfer(:id)").param("id", id).query().singleRow();
+        tell(id, "Your transfer has taken effect", "Your transfer has been given effect on the register: your new programme and level now stand on your record. Register your courses on the portal for the current semester.");
         return Map.of("id", id, "state", "EFFECTED");
+    }
+
+    /* ── V286 · the student told at every stage ── */
+
+    private static String stageWord(String state) {
+        return state == null ? "desk" : state.replace('_', ' ').toLowerCase();
+    }
+
+    private void tell(UUID transfer, String subject, String body) {
+        jdbc.sql("""
+                SELECT platform.queue_notice('EMAIL', r.email, :s, :b || E'\\n\\nOffice of the Registrar, Rev. Fr. Moses Orshio Adasu University, Makurdi', 'student', t.student_id),
+                       platform.queue_notice('SMS', r.phone, :s, left(:sms, 150), 'student', t.student_id)
+                  FROM people.transfer_application t CROSS JOIN LATERAL people.student_reach(t.student_id) r WHERE t.id = :id
+                """).param("s", subject).param("b", body).param("sms", "MOAUM: " + subject + ". See the portal.").param("id", transfer).query().listOfRows();
     }
 }

@@ -18,12 +18,29 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/audit")
 class AuditLogController {
 
-    private static final String OVERSIGHT = "hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc')";
+    private static final String OVERSIGHT = "hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc','OFFICE_registrar','OFFICE_dvc')";
 
     private final JdbcClient jdbc;
+    private final AuditChainVerifier verifier;
 
-    AuditLogController(JdbcClient jdbc) {
+    AuditLogController(JdbcClient jdbc, AuditChainVerifier verifier) {
         this.jdbc = jdbc;
+        this.verifier = verifier;
+    }
+
+    /** the chain's verification (V286): the last runs, nightly and on demand, with any break named */
+    @GetMapping("/chain")
+    @PreAuthorize(OVERSIGHT)
+    @Transactional(readOnly = true)
+    Map<String, Object> chain() {
+        return verifier.status();
+    }
+
+    /** the chain recomputed now, by the desk; the same run the night makes */
+    @org.springframework.web.bind.annotation.PostMapping("/chain/verify")
+    @PreAuthorize(OVERSIGHT)
+    Map<String, Object> verifyNow() {
+        return verifier.run("ON_DEMAND");
     }
 
     @GetMapping("/entries")

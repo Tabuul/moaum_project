@@ -21,6 +21,14 @@ class RegistrationRepository {
     record RegistrationRow(UUID id, UUID studentId, String session, int semester, int level, String status, String studentStatus) {
     }
 
+    /** the student told of a decision on their registration (V286): email and SMS where the record has them */
+    void tellStudent(UUID student, String subject, String body, String sms) {
+        jdbc.sql("""
+                SELECT platform.queue_notice('EMAIL', r.email, :s, :b, 'student', :id), platform.queue_notice('SMS', r.phone, :s, :sms, 'student', :id)
+                  FROM people.student_reach(:id) r
+                """).param("s", subject).param("b", body).param("sms", sms).param("id", student).query().listOfRows();
+    }
+
     record OfferingRow(UUID id, String courseCode, String courseTitle, int units, String session, int semester,
                        String deptCode, String deptName, UUID lecturerId, String lecturer) {
     }

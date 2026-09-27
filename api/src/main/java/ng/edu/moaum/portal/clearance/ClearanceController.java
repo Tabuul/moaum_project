@@ -29,10 +29,12 @@ class ClearanceController {
 
     private final ClearanceService service;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
-    ClearanceController(ClearanceService service, ng.edu.moaum.portal.shared.OfficeScope scope) {
+    ClearanceController(ClearanceService service, ng.edu.moaum.portal.shared.OfficeScope scope, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.service = service;
         this.scope = scope;
+        this.jdbc = jdbc;
     }
 
     @GetMapping
@@ -69,14 +71,35 @@ class ClearanceController {
         return service.hold(id, unit, purpose(body), body == null ? null : body.get("item"), body == null ? null : body.get("note"));
     }
 
-    /** No notification module yet: the notice is counted, not sent, and the answer says so. */
+    /** the held candidates told what holds them and by which unit (V286): one notice each, by email and SMS, on the notice queue */
     @PostMapping("/notify-held")
     @PreAuthorize(SIGNERS)
+    @org.springframework.transaction.annotation.Transactional
     ResponseEntity<Map<String, Object>> notifyHeld(@RequestBody(required = false) Map<String, Object> body) {
         Object ids = body == null ? null : body.get("students");
-        int n = ids instanceof List<?> l ? l.size() : 0;
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("wouldNotify", n,
-                "note", "The notification module is not on the portal yet; nothing was sent."));
+        String purpose = body == null || body.get("purpose") == null ? "CONVOCATION" : String.valueOf(body.get("purpose"));
+        int sent = 0, none = 0;
+        if (ids instanceof List<?> l) {
+            for (Object o : l) {
+                UUID id;
+                try { id = UUID.fromString(String.valueOf(o)); } catch (IllegalArgumentException e) { continue; }
+                List<Clearance.Position> holds = service.position(id, purpose).stream().filter(p -> "HELD".equalsIgnoreCase(p.state())).toList();
+                if (holds.isEmpty()) { none++; continue; }
+                StringBuilder lines = new StringBuilder();
+                for (Clearance.Position p : holds) lines.append("\n- ").append(p.label()).append(": ").append(p.item() == null ? "outstanding" : p.item()).append(p.note() == null ? "" : " (" + p.note() + ")");
+                String subject = "Clearance held: " + holds.size() + " unit" + (holds.size() == 1 ? "" : "s") + " outstanding";
+                String text = "Your clearance for " + purpose.toLowerCase() + " is held by the following unit" + (holds.size() == 1 ? "" : "s") + ":" + lines
+                        + "\n\nSettle each with the unit named; the hold is lifted on the portal the moment the unit clears you.\n\nOffice of the Registrar, Rev. Fr. Moses Orshio Adasu University, Makurdi";
+                int q = jdbc.sql("""
+                        SELECT count(*) FROM (
+                            SELECT platform.queue_notice('EMAIL', r.email, :s, :b, 'student', :id) AS n FROM people.student_reach(:id) r
+                            UNION ALL SELECT platform.queue_notice('SMS', r.phone, :s, :sms, 'student', :id) FROM people.student_reach(:id) r) x WHERE x.n IS NOT NULL
+                        """).param("s", subject).param("b", text).param("sms", "MOAUM: your clearance is held by " + holds.size() + " unit(s). See the portal for what is outstanding.")
+                        .param("id", id).query(Integer.class).single();
+                if (q > 0) sent++; else none++;
+            }
+        }
+        return ResponseEntity.ok(Map.of("notified", sent, "unreached", none, "note", sent == 0 ? "Nobody could be reached: no hold stands, or no contact is on the record." : "Each held candidate was told what holds them, by email and SMS where the record has them."));
     }
 
     private static String purpose(Map<String, String> body) {

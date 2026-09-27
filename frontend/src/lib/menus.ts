@@ -394,6 +394,58 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "deputyaudit": {
+    "label": "Deputy Director of Audit",
+    "home": "t/prepayment",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "t/prepayment", "icon": "check", "label": "Payment Vouchers", "badge": "7" },
+          { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Students",
+        "items": [
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
+        ]
+      },
+      {
+        "name": "Finance",
+        "items": [
+          { "id": "t/pv", "icon": "doc", "label": "A Voucher in Full" },
+          { "id": "t/auditrevenue", "icon": "chart", "label": "Revenue & Student Income", "badge": "9" },
+          { "id": "t/ledger", "icon": "card", "label": "Ledger" },
+          { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
+          { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
+          { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
+        ]
+      },
+      {
+        "name": "Staff",
+        "items": [
+          { "id": "t/auditstaff", "icon": "user", "label": "Staff Movements" }
+        ]
+      },
+      {
+        "name": "Reports",
+        "items": [
+          { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
   "exams": {
     "label": "Exams Officer (Programme)",
     "home": "r/exams",

@@ -392,4 +392,44 @@ class VerifyController {
         out.put("photo", photo);
         return out;
     }
+
+    /* ── V286 · the two printed QR codes that led nowhere ── */
+
+    /** the deferment approval letter: the University's record of the deferment, by its reference */
+    @GetMapping("/deferment/{reference}")
+    @Transactional(readOnly = true)
+    Map<String, Object> deferment(@PathVariable String reference) {
+        String r = reference == null ? "" : reference.trim().toUpperCase();
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT d.reference, d.state, d.kind, d.session, d.semester, d.return_session, d.return_semester, d.return_on, d.decided_at, d.period_from, d.extension_semesters,
+                       st.surname || ', ' || st.other_names AS student_name, coalesce(st.matric_no, st.admission_no) AS student_number, p.name AS programme, f.name AS faculty
+                  FROM people.deferment d JOIN people.student st ON st.id = d.student_id LEFT JOIN ref.programme p ON p.code = st.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                 WHERE upper(d.reference) = :r AND d.state IN ('APPROVED', 'ACTIVE', 'COMPLETED')
+                """).param("r", r).query().listOfRows();
+        if (r.isEmpty() || rows.isEmpty()) { out.put("genuine", false); return out; }
+        out.put("genuine", true);
+        out.putAll(rows.get(0));
+        return out;
+    }
+
+    /** the postgraduate offer letter: the application, the programme and the offer, by the number on the letter and the token its QR carries */
+    @GetMapping("/pg-offer/{applicationNo}")
+    @Transactional(readOnly = true)
+    Map<String, Object> pgOffer(@PathVariable String applicationNo, @RequestParam(required = false) String t) {
+        String no = applicationNo == null ? "" : applicationNo.trim().toUpperCase();
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (t == null || !t.equalsIgnoreCase(token(no, "MOAUM-PG-OFFER"))) { out.put("genuine", false); return out; }
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT ap.application_no, ap.session, ap.state, ap.entry_level, ap.spgs_decided_at AS offered_on, ap.acceptance_confirmed_at AS accepted_on,
+                       a.surname || ', ' || a.other_names AS applicant_name, p.name AS programme, p.pg_award AS award, f.name AS faculty, d.name AS department
+                  FROM admissions.pg_application ap JOIN admissions.pg_applicant a ON a.id = ap.applicant_id
+                  LEFT JOIN ref.programme p ON p.code = ap.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
+                 WHERE upper(ap.application_no) = :n AND ap.acceptance_confirmed_at IS NOT NULL
+                """).param("n", no).query().listOfRows();
+        if (no.isEmpty() || rows.isEmpty()) { out.put("genuine", false); return out; }
+        out.put("genuine", true);
+        out.putAll(rows.get(0));
+        return out;
+    }
 }

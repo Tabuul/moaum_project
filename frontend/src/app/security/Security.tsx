@@ -8,7 +8,7 @@ import { Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
 export interface Posture {
-  audit: { entries: number; shards: number; unattached_tables: number; last_entry: string | null };
+  audit: { entries: number; shards: number; unattached_tables: number; last_entry: string | null; chain_last_run?: string | null; chain_ok?: boolean | null };
   signins: { signed_in: number; bad_password: number; unknown_user: number; locked: number; total: number };
   topFailures: { username: string; attempts: number; last_at: string }[];
 }
@@ -33,6 +33,7 @@ export function Security({ p }: { p: Posture }) {
         ["Unattached tables", String(a.unattached_tables), Number(a.unattached_tables) ? "var(--red-ink)" : "var(--green-ink)", Number(a.unattached_tables) ? "A state change could go unrecorded" : "All state is recorded"],
         ["Failed sign-ins, 7 days", String(failed), failed ? "var(--chrome)" : null, `${s.locked} lock-out${Number(s.locked) === 1 ? "" : "s"}`],
         ["Last audit entry", when(a.last_entry), null, "The chain is written on every change"],
+        ["Chain last verified", a.chain_last_run ? when(a.chain_last_run) : "Not yet", a.chain_last_run ? (a.chain_ok === false ? "var(--red-ink)" : "var(--green-ink)") : "var(--chrome)", a.chain_last_run ? (a.chain_ok === false ? "A break was found: see the audit trail" : "Every shard held") : "The nightly job runs at 02:20; the desk may run it now"],
       ]} />
 
       <Panel title="The audit spine" right="Hash-chained, verified nightly across every shard">

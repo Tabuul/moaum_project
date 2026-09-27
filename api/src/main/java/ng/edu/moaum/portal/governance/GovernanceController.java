@@ -133,7 +133,9 @@ class GovernanceController {
                 SELECT (SELECT count(*) FROM audit.entries) AS entries,
                        (SELECT count(*) FROM audit.chain_head) AS shards,
                        (SELECT count(*) FROM audit.unattached()) AS unattached_tables,
-                       (SELECT max(occurred_at) FROM audit.entries) AS last_entry
+                       (SELECT max(occurred_at) FROM audit.entries) AS last_entry,
+                       (SELECT max(run_at) FROM platform.chain_verification) AS chain_last_run,
+                       (SELECT bool_and(ok) FROM platform.chain_verification v WHERE v.run_ref = (SELECT v2.run_ref FROM platform.chain_verification v2 ORDER BY v2.run_at DESC LIMIT 1)) AS chain_ok
                 """).query().singleRow();
         Map<String, Object> signins = jdbc.sql("""
                 SELECT count(*) FILTER (WHERE outcome = 'SIGNED_IN') AS signed_in,
