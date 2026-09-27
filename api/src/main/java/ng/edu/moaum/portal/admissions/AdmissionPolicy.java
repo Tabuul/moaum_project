@@ -14,6 +14,8 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
                               int nucQuota, int weightUtme, int weightPutme, int ratioUtme, int ratioDe,
                               int ratioScience, int ratioArts, int elgCapPct, int deptSharePct,
                               int indexPrelimPlaces, int indexPerZone, boolean mpfOnly, boolean screeningRequired,
+                              /** how many alternative programmes the eligibility engine suggests to a refused candidate (1–5, V281) */
+                              int maxAlternatives,
                               List<Criterion> criteria, List<FacultyCutoff> facultyCutoffs,
                               List<ProgrammeCutoff> programmeCutoffs, List<ProgrammeRule> programmes,
                               List<PolicyFinding> findings,
@@ -68,6 +70,6 @@ public record AdmissionPolicy(String session, String state, boolean inForce, Str
     record Row(String session, String state, String instrument, OffsetDateTime inForceSince, int nucQuota,
                int weightUtme, int weightPutme, int ratioUtme, int ratioDe, int ratioScience, int ratioArts,
                int elgCapPct, int deptSharePct, int indexPrelimPlaces, int indexPerZone, boolean mpfOnly,
-               boolean screeningRequired) {
+               boolean screeningRequired, int maxAlternatives) {
     }
 }

@@ -1438,7 +1438,7 @@ class ApplicantsController {
         }
         return jdbc.sql("""
                 SELECT programme_code AS code, programme AS name, result FROM admissions.eligibility_result
-                 WHERE run_id = :r AND kind = 'ALTERNATIVE' AND result IN ('ELIGIBLE', 'ELIGIBLE_SCREENING') ORDER BY ord, programme
+                 WHERE run_id = :r AND kind = 'ALTERNATIVE' AND suggested ORDER BY ord, programme
                 """).param("r", run).query().listOfRows();
     }
 }

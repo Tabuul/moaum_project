@@ -5,6 +5,8 @@ export interface Check { kind: string; label: string; requirement: string; candi
 export type Verdict = "ELIGIBLE" | "ELIGIBLE_SCREENING" | "NOT_ELIGIBLE" | "UNVERIFIED";
 export interface ResultRow {
   programme_code: string; programme: string; faculty_code?: string | null; faculty: string | null; department: string | null;
+  /** among the run's suggestions: the best-ranked eligible ones within the session's cap (V281) */
+  suggested?: boolean;
   result: Verdict; checks: string; reasons: string[]; ord?: number;
 }
 export interface Run {

@@ -44,7 +44,9 @@ public class AdmissionSettingsService {
                                  @NotNull @Min(0) @Max(100) Integer ratioScience, @NotNull @Min(0) @Max(100) Integer ratioArts,
                                  @NotNull @Min(0) @Max(100) Integer elgCapPct, @NotNull @Min(0) @Max(100) Integer deptSharePct,
                                  @NotNull @Min(0) Integer indexPrelimPlaces, @NotNull @Min(0) Integer indexPerZone,
-                                 @NotNull Boolean mpfOnly, @NotNull Boolean screeningRequired) {
+                                 @NotNull Boolean mpfOnly, @NotNull Boolean screeningRequired,
+                                 /** suggested programmes per refused candidate (V281); absent = 3 */
+                                 @Min(1) @Max(5) Integer maxAlternatives) {
     }
 
     public record FacultyQuotaIn(@Min(0) Integer quota, @Min(1) @Max(400) Integer cutoff,
@@ -83,7 +85,7 @@ public class AdmissionSettingsService {
         AdmissionPolicy.Row r = settings.row(session).orElseThrow(() -> new NotFound("admission settings for", session));
         return new AdmissionPolicy(r.session(), r.state(), "IN_FORCE".equals(r.state()), r.instrument(), r.inForceSince(),
                 r.nucQuota(), r.weightUtme(), r.weightPutme(), r.ratioUtme(), r.ratioDe(), r.ratioScience(), r.ratioArts(),
-                r.elgCapPct(), r.deptSharePct(), r.indexPrelimPlaces(), r.indexPerZone(), r.mpfOnly(), r.screeningRequired(),
+                r.elgCapPct(), r.deptSharePct(), r.indexPrelimPlaces(), r.indexPerZone(), r.mpfOnly(), r.screeningRequired(), r.maxAlternatives(),
                 settings.criteria(session), caps.facultyCutoffs(session), caps.programmeCutoffs(session),
                 settings.programmeRules(session), caps.policyFindings(session), settings.catchmentLgas(session), settings.equivalences(session));
     }

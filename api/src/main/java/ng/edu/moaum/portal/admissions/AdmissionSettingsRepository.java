@@ -28,7 +28,7 @@ class AdmissionSettingsRepository {
         return jdbc.sql("""
                 SELECT session, state, instrument, lower(in_force) AS in_force_since, nuc_quota, weight_utme, weight_putme,
                        ratio_utme, ratio_de, ratio_science, ratio_arts, elg_cap_pct, dept_share_pct,
-                       index_prelim_places, index_per_zone, mpf_only, screening_required
+                       index_prelim_places, index_per_zone, mpf_only, screening_required, max_alternatives
                   FROM admissions.session_policy WHERE session = :session
                 """)
                 .param("session", session)
@@ -177,16 +177,16 @@ class AdmissionSettingsRepository {
         jdbc.sql("""
                 INSERT INTO admissions.session_policy
                        (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, ratio_science, ratio_arts,
-                        elg_cap_pct, dept_share_pct, index_prelim_places, index_per_zone, mpf_only, screening_required, state)
+                        elg_cap_pct, dept_share_pct, index_prelim_places, index_per_zone, mpf_only, screening_required, max_alternatives, state)
                 VALUES (gen_random_uuid(), :session, :quota, :wu, :wp, :ru, :rd, :rs, :ra,
-                        :elg, :dept, :prelim, :zone, :mpf, :screening, 'DRAFT')
+                        :elg, :dept, :prelim, :zone, :mpf, :screening, :alts, 'DRAFT')
                 ON CONFLICT (session) DO UPDATE SET
                         nuc_quota = EXCLUDED.nuc_quota, weight_utme = EXCLUDED.weight_utme, weight_putme = EXCLUDED.weight_putme,
                         ratio_utme = EXCLUDED.ratio_utme, ratio_de = EXCLUDED.ratio_de,
                         ratio_science = EXCLUDED.ratio_science, ratio_arts = EXCLUDED.ratio_arts,
                         elg_cap_pct = EXCLUDED.elg_cap_pct, dept_share_pct = EXCLUDED.dept_share_pct,
                         index_prelim_places = EXCLUDED.index_prelim_places, index_per_zone = EXCLUDED.index_per_zone,
-                        mpf_only = EXCLUDED.mpf_only, screening_required = EXCLUDED.screening_required
+                        mpf_only = EXCLUDED.mpf_only, screening_required = EXCLUDED.screening_required, max_alternatives = EXCLUDED.max_alternatives
                 """)
                 .param("session", session)
                 .param("quota", s.nucQuota())
@@ -202,6 +202,7 @@ class AdmissionSettingsRepository {
                 .param("zone", s.indexPerZone())
                 .param("mpf", s.mpfOnly())
                 .param("screening", s.screeningRequired())
+                .param("alts", s.maxAlternatives() == null ? 3 : s.maxAlternatives())
                 .update();
     }
 
@@ -481,9 +482,9 @@ class AdmissionSettingsRepository {
         jdbc.sql("""
                 INSERT INTO admissions.session_policy
                        (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, ratio_science, ratio_arts,
-                        elg_cap_pct, dept_share_pct, index_prelim_places, index_per_zone, mpf_only, screening_required, state)
+                        elg_cap_pct, dept_share_pct, index_prelim_places, index_per_zone, mpf_only, screening_required, max_alternatives, state)
                 SELECT :id, :to, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, ratio_science, ratio_arts,
-                       elg_cap_pct, dept_share_pct, index_prelim_places, index_per_zone, mpf_only, screening_required, 'DRAFT'
+                       elg_cap_pct, dept_share_pct, index_prelim_places, index_per_zone, mpf_only, screening_required, max_alternatives, 'DRAFT'
                   FROM admissions.session_policy WHERE session = :from
                 """).param("id", id).param("to", to).param("from", from).update();
         jdbc.sql("""

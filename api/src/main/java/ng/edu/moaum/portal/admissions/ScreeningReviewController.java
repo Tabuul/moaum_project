@@ -171,7 +171,7 @@ class ScreeningReviewController {
         out.put("events", jdbc.sql("SELECT e.action, e.detail, e.actor_office, e.at, (SELECT pe.surname || ', ' || pe.given_names FROM iam.person pe WHERE pe.id = e.actor) AS officer FROM admissions.screening_event e WHERE e.application_id = :a ORDER BY e.at DESC").param("a", app).query().listOfRows());
         out.put("eligibility", jdbc.sql("""
                 SELECT r.applied_result, r.alternatives, r.evaluated_at, r.rules_version,
-                       (SELECT string_agg(x.programme, ' · ' ORDER BY x.ord, x.programme) FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'ALTERNATIVE' AND x.result IN ('ELIGIBLE','ELIGIBLE_SCREENING')) AS eligible_alternatives,
+                       (SELECT string_agg(x.programme, ' · ' ORDER BY x.ord, x.programme) FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'ALTERNATIVE' AND x.suggested) AS eligible_alternatives,
                        (SELECT x.reasons FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'APPLIED') AS reasons
                   FROM admissions.eligibility_run r WHERE r.application_id = :a AND r.superseded_at IS NULL ORDER BY r.evaluated_at DESC LIMIT 1
                 """).param("a", app).query().listOfRows().stream().findFirst().orElse(null));

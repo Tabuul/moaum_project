@@ -233,6 +233,21 @@ class AdmissionEligibilityIT {
         Map<String, Object> templateRow = ((List<Map<String, Object>>) template.getBody().get("rows")).stream().filter(x -> notEligible.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
         assertThat(((List<Map<String, Object>>) templateRow.get("suggestions")).stream().map(x -> String.valueOf(x.get("code")))).containsExactlyInAnyOrder(ACC, ECO);
         assertThat(String.valueOf(templateRow.get("olRemark"))).contains("Suggested");
+        // the suggestions are capped on the session's settings (V281): one allowed → one suggested, the other eligible programme kept on the full view
+        it.db(() -> jdbc.sql("UPDATE admissions.session_policy SET max_alternatives = 1 WHERE session = :s").param("s", SESSION).update());
+        it.db(() -> jdbc.sql("SELECT admissions.evaluate_application(:a, 'OFFICER', NULL)").param("a", notEligible.app()).query(java.util.UUID.class).single());
+        Map<String, Object> capped = detail(academic, notEligible.app());
+        List<Map<String, Object>> suggested = alternatives(capped).stream().filter(a -> Boolean.TRUE.equals(a.get("suggested"))).toList();
+        assertThat(suggested).hasSize(1);
+        assertThat(suggested.get(0).get("result")).isEqualTo("ELIGIBLE");
+        assertThat(((Number) run(capped).get("alternatives")).intValue()).isEqualTo(1);
+        // the desk still sees both eligible programmes on its full view; the list that goes back to JAMB carries the one suggestion
+        assertThat(alternatives(capped).stream().filter(a -> "ELIGIBLE".equals(a.get("result"))).count()).isEqualTo(2);
+        Map<String, Object> cappedRow = ((List<Map<String, Object>>) it.get(academic, PATH + "/jamb-template").getBody().get("rows")).stream().filter(x -> notEligible.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
+        assertThat((List<Map<String, Object>>) cappedRow.get("suggestions")).hasSize(1);
+        it.db(() -> jdbc.sql("UPDATE admissions.session_policy SET max_alternatives = 3 WHERE session = :s").param("s", SESSION).update());
+        it.db(() -> jdbc.sql("SELECT admissions.evaluate_application(:a, 'OFFICER', NULL)").param("a", notEligible.app()).query(java.util.UUID.class).single());
+        assertThat(alternatives(detail(academic, notEligible.app())).stream().filter(a -> Boolean.TRUE.equals(a.get("suggested"))).count()).isEqualTo(2);
 
         // 3 · explained check by check: requirement · candidate · result
         String checks = String.valueOf(applied2.get("checks"));

@@ -104,7 +104,7 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
 
   const openChanges = changes.filter((c) => c.state === "REQUESTED");
   const applied = open?.applied ?? null;
-  const alts = open ? (showAll ? open.alternatives : open.alternatives.filter((a) => a.result === "ELIGIBLE" || a.result === "ELIGIBLE_SCREENING")) : [];
+  const alts = open ? (showAll ? open.alternatives : open.alternatives.filter((a) => a.suggested ?? (a.result === "ELIGIBLE" || a.result === "ELIGIBLE_SCREENING"))) : [];
 
   return (
     <>
@@ -188,7 +188,7 @@ export function EligibilityDesk({ list, changes, filters, actingOffice }: { list
             </div>
             <div className="eyebrow">Matching details — the programme applied for</div>
             <CheckTables row={applied} />
-            <div className="row row--between"><div className="eyebrow">Suggested programmes{open.run.applied_result !== "NOT_ELIGIBLE" ? " (searched only when the applied programme is refused)" : ""}</div>{open.alternatives.length ? <label className="sub2 row row--tight" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show every programme evaluated, including the ineligible (diagnostics)</label> : null}</div>
+            <div className="row row--between"><div className="eyebrow">Suggested programmes{open.run.applied_result !== "NOT_ELIGIBLE" ? " (searched only when the applied programme is refused)" : ""}</div>{open.alternatives.length ? <label className="sub2 row row--tight" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show every programme evaluated, including the eligible beyond the session&rsquo;s cap and the ineligible (diagnostics)</label> : null}</div>
             {alts.length ? (
               <DTable pageSize={0} cols={["S/N|num", "Programme", "Faculty", "O'Level|mid", "UTME|mid", "Score|mid", "Overall", "Reasons", "|num"]} rows={alts.map((a, i) => { const h = headline(parseChecks(a)); return [
                 <span key="sn" className="tnum sub2">{i + 1}</span>, <strong key="p">{a.programme}</strong>, <span key="f" className="sub2">{a.faculty ?? ""}{a.department ? ` · ${a.department}` : ""}</span>,

@@ -64,7 +64,7 @@ class AdmissionEligibilityController {
                    r.id AS run_id, r.applied_result, r.alternatives, r.evaluated_at, r.rules_version, r.policy_state, r.stale,
                    (SELECT x.reasons FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'APPLIED' LIMIT 1) AS reasons,
                    (SELECT string_agg(y.programme, ' · ' ORDER BY y.ord, y.programme)
-                      FROM (SELECT x.programme, x.ord FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'ALTERNATIVE' AND x.result IN ('ELIGIBLE','ELIGIBLE_SCREENING') ORDER BY x.ord, x.programme LIMIT 3) y) AS top_alternatives,
+                      FROM (SELECT x.programme, x.ord FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'ALTERNATIVE' AND x.suggested ORDER BY x.ord, x.programme) y) AS top_alternatives,
                    q.id AS change_id, q.to_programme AS change_to, q.to_programme_code AS change_to_code, q.state AS change_state, q.requested_at AS change_requested_at
               FROM admissions.application a
               JOIN admissions.candidate c ON c.id = a.candidate_id
@@ -102,7 +102,7 @@ class AdmissionEligibilityController {
                    AND (:dept::text IS NULL OR pc.dept_code = :dept)
                    AND (:prog::text IS NULL OR pc.code = :prog)
                    AND (:mode::text IS NULL OR c.entry_mode = :mode)
-                   AND (:rec::text IS NULL OR EXISTS (SELECT 1 FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'ALTERNATIVE' AND x.programme_code = :rec AND x.result IN ('ELIGIBLE','ELIGIBLE_SCREENING')))
+                   AND (:rec::text IS NULL OR EXISTS (SELECT 1 FROM admissions.eligibility_result x WHERE x.run_id = r.id AND x.kind = 'ALTERNATIVE' AND x.programme_code = :rec AND x.suggested))
                    AND (:q::text IS NULL OR lower(c.surname || ' ' || c.other_names) LIKE :q OR lower(c.other_names || ' ' || c.surname) LIKE :q OR lower(c.jamb_reg_no) LIKE :q
                         OR lower(a.application_no) LIKE :q OR lower(c.programme) LIKE :q OR lower(coalesce(f.name, '')) LIKE :q OR lower(coalesce(d.name, '')) LIKE :q)
                 """ + pred + " ORDER BY c.surname, c.other_names LIMIT :n OFFSET :o")
@@ -123,7 +123,7 @@ class AdmissionEligibilityController {
                 """).param("s", s).query().listOfRows());
         out.put("recommendable", jdbc.sql("""
                 SELECT DISTINCT x.programme_code, x.programme FROM admissions.eligibility_result x JOIN admissions.eligibility_run r ON r.id = x.run_id
-                 WHERE r.session = :s AND r.superseded_at IS NULL AND x.kind = 'ALTERNATIVE' AND x.result IN ('ELIGIBLE','ELIGIBLE_SCREENING') ORDER BY x.programme
+                 WHERE r.session = :s AND r.superseded_at IS NULL AND x.kind = 'ALTERNATIVE' AND x.suggested ORDER BY x.programme
                 """).param("s", s).query().listOfRows());
         return out;
     }
@@ -169,8 +169,8 @@ class AdmissionEligibilityController {
         d.put("run", jdbc.sql("SELECT * FROM admissions.eligibility_run WHERE id = :r").param("r", run).query().singleRow());
         d.put("applied", jdbc.sql("SELECT programme_code, programme, faculty, department, result, checks::text AS checks, reasons FROM admissions.eligibility_result WHERE run_id = :r AND kind = 'APPLIED' LIMIT 1")
                 .param("r", run).query().listOfRows().stream().findFirst().orElse(null));
-        d.put("alternatives", jdbc.sql("SELECT programme_code, programme, faculty_code, faculty, department, result, checks::text AS checks, reasons, ord FROM admissions.eligibility_result WHERE run_id = :r AND kind = 'ALTERNATIVE'"
-                + (everything ? "" : " AND result IN ('ELIGIBLE','ELIGIBLE_SCREENING')") + " ORDER BY ord, programme").param("r", run).query().listOfRows());
+        d.put("alternatives", jdbc.sql("SELECT programme_code, programme, faculty_code, faculty, department, result, checks::text AS checks, reasons, ord, suggested FROM admissions.eligibility_result WHERE run_id = :r AND kind = 'ALTERNATIVE'"
+                + (everything ? "" : " AND suggested") + " ORDER BY ord, programme").param("r", run).query().listOfRows());
         d.put("changes", jdbc.sql("""
                 SELECT q.*, CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS decided_officer
                   FROM admissions.programme_change_request q LEFT JOIN iam.person p ON p.id = q.decided_by WHERE q.application_id = :a ORDER BY q.requested_at DESC
@@ -336,7 +336,7 @@ class AdmissionEligibilityController {
         String code = body.programmeCode().trim().toUpperCase();
         // the applicant may ask only for a programme the current run found them eligible for
         UUID run = jdbc.sql("SELECT admissions.eligibility_current(:a, NULL)").param("a", app).query(UUID.class).single();
-        long ok = jdbc.sql("SELECT count(*) FROM admissions.eligibility_result WHERE run_id = :r AND kind = 'ALTERNATIVE' AND programme_code = :p AND result IN ('ELIGIBLE','ELIGIBLE_SCREENING')")
+        long ok = jdbc.sql("SELECT count(*) FROM admissions.eligibility_result WHERE run_id = :r AND kind = 'ALTERNATIVE' AND programme_code = :p AND suggested")
                 .param("r", run).param("p", code).query(Long.class).single();
         if (ok == 0) {
             throw new DomainRuleViolation("ELIG_NOT_SUGGESTED", "That programme is not among the programmes you are eligible for on the current admission policy.",

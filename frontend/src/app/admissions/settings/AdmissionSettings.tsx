@@ -44,6 +44,7 @@ export interface AdmissionPolicy {
   indexPerZone: number;
   mpfOnly: boolean;
   screeningRequired: boolean;
+  maxAlternatives: number;
   criteria: { criterion: string; percent: number }[];
   facultyCutoffs: { facultyCode: string; facultyName: string; quota: number | null; cutoff: number | null; ratioUtme: number | null; ratioDe: number | null }[];
   programmeCutoffs: { code: string; name: string; cutoff: number }[];
@@ -258,7 +259,7 @@ export function AdmissionSettings({
                 onClick={() =>
                   void send("PUT", base, {
                     nucQuota: num(newQuota), weightUtme: 70, weightPutme: 30, ratioUtme: 80, ratioDe: 20, ratioScience: 60, ratioArts: 40,
-                    elgCapPct: 50, deptSharePct: 80, indexPrelimPlaces: 6, indexPerZone: 2, mpfOnly: true, screeningRequired: true,
+                    elgCapPct: 50, deptSharePct: 80, indexPrelimPlaces: 6, indexPerZone: 2, mpfOnly: true, screeningRequired: true, maxAlternatives: 3,
                   }, `${session} admission settings created`, "create")
                 }
               >
@@ -304,7 +305,7 @@ export function AdmissionSettings({
     nucQuota: policy.nucQuota, weightUtme: policy.weightUtme, weightPutme: policy.weightPutme,
     ratioUtme: policy.ratioUtme, ratioDe: policy.ratioDe, ratioScience: policy.ratioScience, ratioArts: policy.ratioArts,
     elgCapPct: policy.elgCapPct, deptSharePct: policy.deptSharePct, indexPrelimPlaces: policy.indexPrelimPlaces,
-    indexPerZone: policy.indexPerZone, mpfOnly: policy.mpfOnly, screeningRequired: policy.screeningRequired, ...patch,
+    indexPerZone: policy.indexPerZone, mpfOnly: policy.mpfOnly, screeningRequired: policy.screeningRequired, maxAlternatives: policy.maxAlternatives ?? 3, ...patch,
   });
   const critMap = Object.fromEntries(policy.criteria.map((c) => [c.criterion, c.percent]));
 
@@ -381,6 +382,7 @@ export function AdmissionSettings({
             ["Index programmes, Preliminary placement", <span className="tnum" key="v">{policy.indexPrelimPlaces}</span>, <span className="sub2" key="s">2.5 &mdash; under State Merit, {policy.indexPerZone} from each Senatorial Zone</span>],
             ["Most Preferred First only", policy.mpfOnly ? <Pil kind="ok" key="v">Required</Pil> : <Pil kind="bad" key="v">Relaxed</Pil>, <span className="sub2" key="s">2.8 &mdash; every recommended name must be on the MPF list</span>],
             ["University screening passed", policy.screeningRequired ? <Pil kind="ok" key="v">Required</Pil> : <Pil kind="bad" key="v">Relaxed</Pil>, <span className="sub2" key="s">2.7 &mdash; only candidates who passed the University&rsquo;s own standard screening may be recommended</span>],
+            ["Programmes suggested to a refused candidate", <span key="v">{field("maxAlternatives", policy.maxAlternatives ?? 3, 60, (v) => void send("PUT", base, settingsBody({ maxAlternatives: Math.max(1, Math.min(5, v ?? 3)) }), "Suggested programmes per candidate changed", "w"))}</span>, <span className="sub2" key="s">The eligibility engine evaluates every open programme but suggests only the best-ranked eligible ones &mdash; one to five, three by default &mdash; on Programme Eligibility, the applicant&rsquo;s page, the JAMB list and the reconsiderations; the rest stay on the desk&rsquo;s full view</span>],
           ]}
         />
       </Panel>
