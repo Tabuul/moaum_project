@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  * The department's desk for result queries (V027): what students said about
  * one mark in one course, routed here because the department owns the
  * course, answered on the record. And the Examinations Office's timetable
- * for an offering's paper, which the docket carries.
+ * for an offering's paper, which the examination card carries.
  */
 @RestController
 @RequestMapping("/api/v1/results")
@@ -90,7 +90,7 @@ class QueriesController {
         return Map.of("id", id, "state", outcome);
     }
 
-    /** the paper's slot: day, time and venue, which the docket carries */
+    /** the paper's slot: day, time and venue, which the examination card carries */
     @PutMapping("/offerings/{offeringId}/exam-slot")
     @PreAuthorize(EXAMS)
     @Transactional

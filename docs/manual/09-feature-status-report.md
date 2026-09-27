@@ -674,7 +674,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Withheld set shown with the Board's reason (screen text) | NOT IMPLEMENTED | No withheld-set concept in the data | Text only |
 | Print the Senate schedule | NOT IMPLEMENTED | No export on `SenateScreen.tsx` | |
 
-### 3.35 The student's results, statement, broadsheet, docket and verification (dossier E-G)
+### 3.35 The student's results, statement, broadsheet, examination card and verification (dossier E-G)
 
 | Feature | Status | Evidence | Notes |
 |---|---|---|---|
@@ -682,7 +682,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Statement of results PDF with QR verification | IMPLEMENTED | PDF route; `VerifyController.java:251-300` | Grading key hard-coded in the PDF |
 | Broadsheet PDF | IMPLEMENTED | `broadsheet/pdf/route.ts` | |
 | Carry-over screen | IMPLEMENTED | `Screens5.tsx:80-110` | "How a repeat is scored" is static text |
-| Docket and examination card | IMPLEMENTED | `docket`, card route | |
+| Examination card | IMPLEMENTED | `docket`, card route | |
 | "Official transcript" button | PLACEHOLDER | `Screens4.tsx:70` disabled | Transcripts are under My Documents (V262) |
 | Rate limit on `/verify/results`, `/verify/exam`, `/verify/registration` | NOT IMPLEMENTED | No limiter in `verify` | Protected by the check code only |
 

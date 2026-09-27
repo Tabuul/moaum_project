@@ -10,7 +10,7 @@ Modules covered, in order:
 - D. Result queries and the examination slot (`results`, `studentportal`)
 - E. Grading policy, GPA/CGPA, class of degree, probation and withdrawal (`policy`, `assessment` functions)
 - F. Broadsheet, Senate schedule and publication (`results`)
-- G. The student's results, statement of results, broadsheet, docket and public verification (`studentportal`, `verify`)
+- G. The student's results, statement of results, broadsheet, examination card and public verification (`studentportal`, `verify`)
 - H. CBT question bank (`cbt`)
 - I. College of Health Sciences / MB;BS (`college`, `provost`)
 
@@ -291,7 +291,7 @@ Held script; Release; Lapse; Late-registration closing date.
 # D. Result queries and the examination slot  (API: results/QueriesController, studentportal MeController; tables assessment.result_query, assessment.exam_timetable; pages /results/queries, /student/query)
 
 ## 1 Purpose
-For seven days after a sheet is published a student may query one mark in one course (the examination mark, the CA mark, or an absence recorded for a paper they sat). The query is routed to the department that owns the course and answered on the record as UPHELD, CORRECTED or CLOSED; the student is told by email and SMS and reads the answer on their screen. The same controller lets the Examinations Office set an offering's examination slot (day, time, venue), which the student's docket carries.
+For seven days after a sheet is published a student may query one mark in one course (the examination mark, the CA mark, or an absence recorded for a paper they sat). The query is routed to the department that owns the course and answered on the record as UPHELD, CORRECTED or CLOSED; the student is told by email and SMS and reads the answer on their screen. The same controller lets the Examinations Office set an offering's examination slot (day, time, venue), which the student's examination card carries.
 
 ## 2 Users and roles
 - Read/answer queries: `DEPARTMENT = hod, lecturer, exams, dean, records, academic, registrar, super` (`QueriesController.java:39`); an HOD sees their own department unless they pick one; `scope.deptWithin` binds department offices (`:62`).
@@ -434,10 +434,10 @@ Programme bound checked server-side. Publication by a `DESKS` office through the
 
 ---
 
-# G. The student's results, statement, broadsheet, docket and public verification  (API: studentportal MeController `/api/v1/me/results|queries|docket`, verify; pages /student/results, /student/results/[session]/[semester] (+pdf), /student/broadsheet (+pdf), /student/carryover, /student/exams (+card pdf), /verify/results, /verify/exam)
+# G. The student's results, statement, broadsheet, examination card and public verification  (API: studentportal MeController `/api/v1/me/results|queries|examination card`, verify; pages /student/results, /student/results/[session]/[semester] (+pdf), /student/broadsheet (+pdf), /student/carryover, /student/exams (+card pdf), /verify/results, /verify/exam)
 
 ## 1 Purpose
-The student sees only what Senate has published: per semester the courses with the desk each unpublished sheet is on, the published score/grade/points, GPA and CGPA, the class of standing, carry-overs; a per-semester Statement of Results PDF with a QR that opens the University's own record; a whole-history broadsheet PDF; the examination docket with timetabled papers and an examination card PDF. A results fee gate withholds marks server-side when the clearance scheme says so.
+The student sees only what Senate has published: per semester the courses with the desk each unpublished sheet is on, the published score/grade/points, GPA and CGPA, the class of standing, carry-overs; a per-semester Statement of Results PDF with a QR that opens the University's own record; a whole-history broadsheet PDF; the examination card with timetabled papers and an examination card PDF. A results fee gate withholds marks server-side when the clearance scheme says so.
 
 ## 2 Users and roles
 Student only (`OFFICE_student`). Verification endpoints are public (`SecurityConfig.java:56` permits `/api/v1/verify/**`).
@@ -450,13 +450,13 @@ Results `s/results` → `/student/results`; Result Broadsheet `s/broadsheet`; Re
 - **Statement of results** (`Slip`, `:98-134`): GPA/CGPA banner with the class of standing, table Course/Unit/Score/Grade, totals "Units registered N · passed M", "GP x.x", carryover note, **Download result slip** → `/student/results/{session}/{semester}/pdf`, "Published {date} after Senate approval · minute X".
 - **Result broadsheet** (`:138-196`): tiles Name/Level/CGPA/Standing; one panel per published semester (Course, Title, Unit, CA, Exam, Total, Grade, Point) with the CUR…CGPA line; **Print broadsheet** → `/student/broadsheet/pdf`.
 - **Carryover** (`Screens5.tsx:80-110`): note "You are carrying N courses, U units" / "You are carrying nothing"; tiles; table Course, Units, Failed in, Note; panel "How a repeat is scored" (static text: pass mark 40, units counted once, registered before a new course).
-- **Examinations / docket** (`Screens5.tsx:112-141`): notes for no scheme ("What a payment releases is not yet stated"), not cleared ("Your docket is withheld until your fees are settled"), or "Bring your identity card"; per open exam session a table Course, Date & time ("Not yet timetabled"), Venue, Status (Withheld / Docket ready / Awaiting slot); **Download exam card** → `/student/exams/card/pdf?session=&semester=` and **Print the docket**.
+- **Examinations / examination card** (`Screens5.tsx:112-141`): notes for no scheme ("What a payment releases is not yet stated"), not cleared ("Your examination card is withheld until your fees are settled"), or "Bring your identity card"; per open exam session a table Course, Date & time ("Not yet timetabled"), Venue, Status (Withheld / Card ready / Awaiting slot); **Download exam card** → `/student/exams/card/pdf?session=&semester=` and **Print the card**.
 - **Public verification pages**: `/verify/results?m=&s=&sem=&c=` ("Genuine statement — this is the University's record" / "Not verified"; name, matric, programme, level, session, semester, GPA, CGPA, class of standing, "Approved by Senate on … · minute …", published grades) and `/verify/exam` (name, photo, matric, session, semester, "Cleared" Yes/No, courses).
 
 ## 5–6 Rules
 - `StudentPortalService.results` (`:289-338`): rows from `assessment.student_results`, semesters from `assessment.student_gpa`; when a clearance scheme is in force and `repo.clears(student, session, 'RESULTS')` is false the row's ca/exam/total/grade/points are nulled and `withheld=true`, GPA/CGPA nulled for that session, `withheldSessions` listed; `clearsResults` for the current session; `standing = policy.class_of(cgpa)`; `carryovers = registration.carryovers(student)`.
 - PDF routes refuse with 409 "Withheld — Results are withheld until the fees are settled." and "Nothing published" (`pdf/route.ts:33-35`, `broadsheet/pdf/route.ts:21`). The exam card refuses "No approved registration" and "Not cleared for examinations".
-- Docket: `assessment.student_docket(student, exam_session)` — the approved registration's offerings with any timetable slot and the sheet stage; `clearsExamination = clears(…,'EXAMINATION')`.
+- Examination card: `assessment.student_docket(student, exam_session)` — the approved registration's offerings with any timetable slot and the sheet stage; `clearsExamination = clears(…,'EXAMINATION')`.
 
 ## 7 Notifications
 None from these screens.
@@ -474,7 +474,7 @@ None from these screens.
 | Statement PDF with QR verification | IMPLEMENTED | pdf route; `VerifyController.java:251-300` | grading key hard-coded |
 | Broadsheet PDF | IMPLEMENTED | `broadsheet/pdf/route.ts` | |
 | Carryover screen | IMPLEMENTED | `Screens5.tsx:80-110` | "How a repeat is scored" is static text |
-| Docket and exam card | IMPLEMENTED | `docket`, card route | |
+| Examination card and exam card | IMPLEMENTED | `docket`, card route | |
 | "Official transcript" button | PLACEHOLDER (stale) | `Screens4.tsx:70` disabled | transcripts are under My Documents (V262) |
 | Verify rate limit | NOT IMPLEMENTED | no limiter in api | |
 

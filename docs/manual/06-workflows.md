@@ -719,7 +719,7 @@ Bursar states the fee schedule (lines with filters) → finance.charges(student,
 |---|---|---|
 | Course registration | `semester_cleared` for the semester (paid in full) | `student_submit`; the College's `register_level` / `register_semester` |
 | Add / drop, hostel maintenance | `finance.clears(…,'REGISTRATION')` (INSTALMENT_1 under the recommended scheme) | `student_add` |
-| Examination docket / card | `clears(…,'EXAMINATION')` (PAID_IN_FULL) | `/student/exams`, exam card PDF (409 "Not cleared for examinations"), class-list Clearance column |
+| Examination card | `clears(…,'EXAMINATION')` (PAID_IN_FULL) | `/student/exams`, exam card PDF (409 "Not cleared for examinations"), class-list Clearance column |
 | Results | `clears(…,'RESULTS')` — marks nulled server-side per session | `/student/results`, statement PDF (409 "Withheld") |
 | Transcript | `clears(…,'TRANSCRIPT')` and the TRANSCRIPT clearance units | document requests HELD_AT_CLEARANCE |
 | Identity card | `clears(…,'ID_CARD')` (INSTALMENT_1) | `credentials.issue_identity_card`: "the Bursary has not cleared this student for the identity card in {session}" |

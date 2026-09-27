@@ -13,7 +13,7 @@ export default async function Page() {
   const loaded = await loadStudent();
   if (!loaded.student) return <Shell route="s/exams" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   const d = await api<Docket>("/api/v1/me/docket");
-  // a live subtitle for the header — the exam sitting the docket actually shows, not a fixed month
+  // a live subtitle for the header — the exam sitting the examination card actually shows, not a fixed month
   let sub: string | undefined;
   if (d.ok) {
     const sits = d.data.examSessions;

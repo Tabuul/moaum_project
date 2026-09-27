@@ -31,7 +31,7 @@ This volume is for the people who use the portal without administering it: stude
    - 3.8 [Timetable and attendance](#38-timetable-and-attendance)
    - 3.9 [Results, statement of results, broadsheet and carryovers](#39-results-statement-of-results-broadsheet-and-carryovers)
    - 3.10 [Result queries](#310-result-queries)
-   - 3.11 [Examinations: the docket and the examination card](#311-examinations-the-docket-and-the-examination-card)
+   - 3.11 [Examinations: the examination card](#311-examinations-the-examination-card)
    - 3.12 [Held scripts](#312-held-scripts)
    - 3.13 [Deferment](#313-deferment)
    - 3.14 [Inter-departmental transfer](#314-inter-departmental-transfer)
@@ -245,7 +245,7 @@ Start here
 1. A **standing banner** if the published results have pronounced you *on probation* or *advised to withdraw* (see §3.9).
 2. The **fee gate** note: "You are cleared to register" when this semester's school fees are settled, otherwise "Action required" with **Pay now** and **See breakdown**. If the Bursary has not yet stated what a payment releases for the session, the note reads "What a payment releases is not yet stated for this session".
 3. Your **identity card** preview with your passport photograph.
-4. **This session** — three steps: On the register → Course registration → Examination docket, each ticked when done.
+4. **This session** — three steps: On the register → Course registration → Examination card, each ticked when done.
 5. A read-only **Student details** card (name, numbers, programme, level, status).
 6. **Quick tiles**: My results, Fees & payments, Graduation (final year) or My documents, Deferment, Hostel and **Course form** — the last is enabled only once your registration is approved.
 7. A **carryover warning** naming the courses you owe.
@@ -479,16 +479,16 @@ Refusals: "the query window for this course is not open"; "a query on this mark 
 
 > **Planned / Not Yet Implemented:** A query answered *Corrected* has **no mechanical effect** on the portal today. The screen text "A corrected mark does not quietly change your result" and the desk's note about "an amendment minute" describe a path that does not yet exist: a published sheet cannot be reopened or amended. A correction, if any, is a Registry matter outside the portal.
 
-### 3.11 Examinations: the docket and the examination card
+### 3.11 Examinations: the examination card
 
 ```text
 Learning
  → Examinations
 ```
 
-**Examinations** `/student/exams` lists, for each open examination session, the courses on your approved registration with **Date & time** ("Not yet timetabled" until the Examinations Office sets the slot), **Venue** and **Status** (*Docket ready*, *Awaiting slot* or *Withheld*). The note says "Bring your identity card", or "Your docket is withheld until your fees are settled" when the scheme's examination release is not met.
+**Examinations** `/student/exams` lists, for each open examination session, the courses on your approved registration with **Date & time** ("Not yet timetabled" until the Examinations Office sets the slot), **Venue** and **Status** (*Card ready*, *Awaiting slot* or *Withheld*). The note says "Bring your identity card", or "Your examination card is withheld until your fees are settled" when the scheme's examination release is not met.
 
-**Download exam card** produces the examination card PDF (§8); **Print the docket** prints the list. The card is refused with "No approved registration" or "Not cleared for examinations".
+**Download exam card** produces the examination card PDF (§8); **Print the card** prints the list. The card is refused with "No approved registration" or "Not cleared for examinations".
 
 ### 3.12 Held scripts
 
@@ -925,7 +925,7 @@ Below the roll:
 
 - **Attendance**: pick the date, **All present** / **None**, tick per student, **Record N of M present**. Re-marking a date replaces it; "Rate so far" shows the recorded rate. This is what the student's Attendance screen and the course space's engagement panel read.
 - **Timetable slots**: Day, Kind (Lecture / Practical / Tutorial), From, To, Venue → add; **End** a slot. These feed the students' timetable and your own.
-- **Examination slot**: set by the Examinations Office (day, time, venue) — this is what the students' docket shows.
+- **Examination slot**: set by the Examinations Office (day, time, venue) — this is what the students' examination card shows.
 
 ### 5.4 Score sheets
 
@@ -1131,7 +1131,7 @@ The Examinations Officer (`exams`) is a department office.
 | Verification of score sheets | Academic → Verification Queue `/results/approvals`, Approval Chain `/results/chain` | Your stage is **VERIFICATION** (the first desk after the lecturer): approve or return with a reason. (The screen text speaks of "the second examiner"; on the portal it is this office that acts at verification — the second examiner named at allocation gains read access only.) |
 | Score entry | Academic → Score Sheets `/results/sheets` | You may enter and save marks on any sheet of the department and submit it, the same rules as the lecturer (§5.4), and hold scripts. |
 | Examination sessions | Academic → CBT Sessions `/examinations/sessions` | Read the sessions, the submission monitor and the sheets holding the faculty. Creating, editing and opening a session is the Academic Office's and Exams & Records' act; the buttons answer 403 for this office. |
-| Examination roll and slot | Students → Examination Roll `/registration/class-list` | The roll with the clearance column; **Examination roll** CSV; set the **Examination slot** (day, time, venue) per offering — this is what appears on the students' docket and card. |
+| Examination roll and slot | Students → Examination Roll `/registration/class-list` | The roll with the clearance column; **Examination roll** CSV; set the **Examination slot** (day, time, venue) per offering — this is what appears on the students' examination card and card. |
 | Result queries | Academic → Result Queries `/results/queries` | Answer queries on the department's courses. |
 | Question bank | Academic → Question Bank `/exams/question-bank` | Per course: author multiple-choice questions (stem, at least two options, the correct one, topic, difficulty, marks), **Retire / Restore**, read the blueprint counts. There is **no CBT examination** on the portal — no test, paper or delivery; the bank is a store of questions. |
 | External examiners | Academic → External Examiners and related | As for the HOD, department reach. |

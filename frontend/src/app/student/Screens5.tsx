@@ -107,7 +107,7 @@ export function Carryover({ r }: { r: Results }) {
   );
 }
 
-/* ── examinations (the docket) ── */
+/* ── examinations (the examination card) ── */
 
 export function Exams({ d }: { d: Docket; s: Me }) {
   const cleared = d.clearsExamination === true;
@@ -115,21 +115,21 @@ export function Exams({ d }: { d: Docket; s: Me }) {
   return (
     <>
       {d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
-        : !cleared ? <Note kind="bad" title="Your docket is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, sitting an examination is released on payment in full. The papers below are what your approved registration carries; the docket prints the moment the Bursary&rsquo;s position releases it.</Note>
+        : !cleared ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, sitting an examination is released on payment in full. The papers below are what your approved registration carries; the card prints the moment the Bursary&rsquo;s position releases it.</Note>
           : <Note kind="info" title="Bring your identity card">Your photograph is checked against the record on file before the paper opens. Arrive 20 minutes early &mdash; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
       {!withPapers.length ? (
         <Note kind="info" title={`No examination session is open for ${d.session} yet`}>Papers appear here when the Examinations Office opens the session over your approved registration and timetables them.</Note>
       ) : withPapers.map((x) => (
-        <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cleared ? " · docket" : ""}`}>
+        <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cleared ? " · examination card" : ""}`}>
           <DTable cols={["Course", "Date & time", "Venue|mid", "Status|num"]} rows={x.papers.map((p) => [
             <Two key="c" a={p.course_code} b={p.title} />,
             <span className="tnum" key="w">{p.held_on ? `${onDay(p.held_on)} · ${String(p.starts_at).slice(0, 5)}` : "Not yet timetabled"}</span>,
             <span key="v">{p.venue ?? "—"}</span>,
-            !cleared ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Docket ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
+            !cleared ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Card ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
           ])} />
           {cleared ? <div className="card__body row">
             <a href={`/student/exams/card/pdf?session=${encodeURIComponent(x.session)}&semester=${x.semester}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download exam card</a>
-            <Btn kind="ghost" onClick={(e) => { const card = (e.currentTarget as HTMLElement).closest(".card") as HTMLElement | null; printNode(card, card?.querySelector(".card__title")?.textContent ?? "Examination docket"); }}>Print the docket</Btn>
+            <Btn kind="ghost" onClick={(e) => { const card = (e.currentTarget as HTMLElement).closest(".card") as HTMLElement | null; printNode(card, card?.querySelector(".card__title")?.textContent ?? "Examination card"); }}>Print the card</Btn>
             <span className="sub2">The card carries your photograph and a QR the invigilator scans to verify it — it cannot be cloned.</span>
           </div> : null}
         </Panel>

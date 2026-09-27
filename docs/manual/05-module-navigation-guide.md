@@ -2166,15 +2166,15 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 
 **Status:** IMPLEMENTED — raise, answer, notify; NOT IMPLEMENTED — the correction path after CORRECTED (UI text promises it), a notice to the department.
 
-### 3.33 Examination sessions, dockets and examination cards (student side)
+### 3.33 Examination sessions and examination cards (student side)
 
 | Point | Content |
 |---|---|
-| Purpose | The student sees only what Senate published: per-semester results with the desk each unpublished sheet is on, GPA/CGPA and class of standing, a Statement of Results PDF with a QR, a broadsheet PDF, carryovers, the examination docket with timetabled papers and an examination card PDF; the Examinations Office sets an offering's examination slot. |
+| Purpose | The student sees only what Senate published: per-semester results with the desk each unpublished sheet is on, GPA/CGPA and class of standing, a Statement of Results PDF with a QR, a broadsheet PDF, carryovers, the examination card with timetabled papers and an examination card PDF; the Examinations Office sets an offering's examination slot. |
 | Users / roles | Student; exam slot `EXAMS` exams, facultyexams, records, academic, registrar, super (on the class-list desk); verification public. |
 | Navigation | Academic → Results `/student/results`, Result Broadsheet `/student/broadsheet`, Carryover `/student/carryover`; Learning → Examinations `/student/exams`; slip `/student/results/{session}/{semester}`; slot on `/registration/class-list`. |
 | Dashboard | Tiles This semester / Cumulative / Standing / Units this semester. |
-| Main features | Results with "Where it is" stage per course; Academic summary (CUR, CUE, WGP, GPA, TCR, TCE, TWGP, LCGPA, CGPA); Download result slip; Print broadsheet; carryover list and "How a repeat is scored"; docket per open exam session (Course, Date & time, Venue, Status Withheld / Docket ready / Awaiting slot); Download exam card; Print the docket. |
+| Main features | Results with "Where it is" stage per course; Academic summary (CUR, CUE, WGP, GPA, TCR, TCE, TWGP, LCGPA, CGPA); Download result slip; Print broadsheet; carryover list and "How a repeat is scored"; examination card per open exam session (Course, Date & time, Venue, Status Withheld / Card ready / Awaiting slot); Download exam card; Print the card. |
 | Create | `PUT /results/offerings/{id}/exam-slot`. |
 | View | As above. |
 | Edit | None. |
@@ -2185,7 +2185,7 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 | Export | Semester Results PDF (QR to `/verify/results`, check code), Result broadsheet PDF (no QR), Examination card PDF (QR to `/verify/exam`). |
 | Notifications | None. |
 | Approval workflow | None. |
-| Statuses | Docket Withheld / Docket ready / Awaiting slot; results withheld per session when the clearance scheme says so. |
+| Statuses | Withheld / Card ready / Awaiting slot; results withheld per session when the clearance scheme says so. |
 | Validation rules | Results redacted server-side when `finance.clears(…,'RESULTS')` is false under a scheme in force; PDFs refuse 409 "Withheld" / "Nothing published" / "No approved registration" / "Not cleared for examinations". |
 | Security | Stateless SHA-256 check codes on the QR; `/api/v1/verify/**` unthrottled. |
 | Audit trail | Reads only (`assessment.exam_timetable` attached). |
@@ -5208,7 +5208,7 @@ Overview → Card Printing (library) ; Services → Card Collection / Lost & Rep
 ```text
 Start here → Dashboard → /student
 ```
-**URL** `/student` · **Purpose** Standing, fee gate, session steps, quick tiles, notices. · **Who** student (a postgraduate sees the PG dashboard). · **Layout** Banners for ADVISED_TO_WITHDRAW / PROBATION; fee gate ("You are cleared to register" / "Action required" with "Pay now" and "See breakdown" / "What a payment releases is not yet stated for this session"); identity card with passport; "This session" steps (On the register → Course registration → Examination docket); Student details; quick tiles (My results, Fees & payments, Graduation or My documents, Deferment, Hostel, Course form — enabled only when APPROVED/LOCKED); carryover warning; "Notices sent to you". PG dashboard: coursework, research and documents summaries.
+**URL** `/student` · **Purpose** Standing, fee gate, session steps, quick tiles, notices. · **Who** student (a postgraduate sees the PG dashboard). · **Layout** Banners for ADVISED_TO_WITHDRAW / PROBATION; fee gate ("You are cleared to register" / "Action required" with "Pay now" and "See breakdown" / "What a payment releases is not yet stated for this session"); identity card with passport; "This session" steps (On the register → Course registration → Examination card); Student details; quick tiles (My results, Fees & payments, Graduation or My documents, Deferment, Hostel, Course form — enabled only when APPROVED/LOCKED); carryover warning; "Notices sent to you". PG dashboard: coursework, research and documents summaries.
 
 > **Screenshot Required:** Student dashboard — `/student` — the fee gate and the session steps.
 
@@ -5279,7 +5279,7 @@ Learning → Timetable → /student/timetable ; Attendance → /student/attendan
 ```text
 Academic → Results → /student/results → Semester Results → /student/results/{session}/{semester} ; Result Broadsheet → /student/broadsheet ; Carryover → /student/carryover ; Result Query → /student/query ; Learning → Examinations → /student/exams
 ```
-**URLs** as above · **Purpose** Published results and GPA; the statement; the whole broadsheet; carryovers; a query; the docket and card. · **Who** student. · **Layout** Results: notes ("Your results are withheld until your fees are settled", "N of your M courses are published", "All N courses are published under minute X — Released {date}"); tiles This semester / Cumulative / Standing / Units this semester; latest semester panel (Course, Units, Score, Grade, Points, Where it is, Taught by; Semester Results; disabled Official transcript); "Academic summary" (CUR…CGPA). Slip: GPA/CGPA banner, table, totals, "Download result slip". Broadsheet: tiles Name/Level/CGPA/Standing; per semester Course, Title, Unit, CA, Exam, Total, Grade, Point; "Print broadsheet". Carryover: note, tiles, table Course, Units, Failed in, Note; "How a repeat is scored". Query: window note; tiles; "Raise a query" (Course, Which mark EXAM/CA/ABSENT, "What you say is wrong"); "Your queries". Exams: scheme/cleared notes; per session Course, Date & time, Venue, Status; "Download exam card"; "Print the docket". · **Actions** `POST /me/queries`; PDFs `/student/results/{s}/{n}/pdf`, `/student/broadsheet/pdf`, `/student/exams/card/pdf?session&semester`. · **Messages** "The query window is open until {date}"; "a query on this mark is already open"; 409 "Withheld", "Nothing published", "Not cleared for examinations".
+**URLs** as above · **Purpose** Published results and GPA; the statement; the whole broadsheet; carryovers; a query; the examination card. · **Who** student. · **Layout** Results: notes ("Your results are withheld until your fees are settled", "N of your M courses are published", "All N courses are published under minute X — Released {date}"); tiles This semester / Cumulative / Standing / Units this semester; latest semester panel (Course, Units, Score, Grade, Points, Where it is, Taught by; Semester Results; disabled Official transcript); "Academic summary" (CUR…CGPA). Slip: GPA/CGPA banner, table, totals, "Download result slip". Broadsheet: tiles Name/Level/CGPA/Standing; per semester Course, Title, Unit, CA, Exam, Total, Grade, Point; "Print broadsheet". Carryover: note, tiles, table Course, Units, Failed in, Note; "How a repeat is scored". Query: window note; tiles; "Raise a query" (Course, Which mark EXAM/CA/ABSENT, "What you say is wrong"); "Your queries". Exams: scheme/cleared notes; per session Course, Date & time, Venue, Status; "Download exam card"; "Print the card". · **Actions** `POST /me/queries`; PDFs `/student/results/{s}/{n}/pdf`, `/student/broadsheet/pdf`, `/student/exams/card/pdf?session&semester`. · **Messages** "The query window is open until {date}"; "a query on this mark is already open"; 409 "Withheld", "Nothing published", "Not cleared for examinations".
 
 > **Screenshot Required:** Results — `/student/results` — the tiles, latest semester panel and academic summary.
 

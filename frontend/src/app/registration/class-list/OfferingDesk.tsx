@@ -4,7 +4,7 @@
  * Beside the class list, the offering's own desk (V027): the register the
  * lecturer marks over the roll, lecture by lecture; the slots the
  * department gives it on the timetable; and the paper's slot on the
- * examination timetable, which the student's docket carries.
+ * examination timetable, which the student's examination card carries.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -90,9 +90,9 @@ export function OfferingDesk({ roll, desk, actingOffice }: { roll: ClassList; de
             <div><Btn kind="primary" disabled={!teaches || busy !== null || !slot.venue.trim()} onClick={() => void send("slot", "POST", `/registration/offerings/${roll.offeringId}/slots`, { weekday: Number(slot.weekday), startsAt: slot.startsAt, endsAt: slot.endsAt, venue: slot.venue, kind: slot.kind }, `Slot given to ${roll.courseCode}: ${WEEKDAY[Number(slot.weekday)]} ${slot.startsAt}`)}>{busy === "slot" ? "Adding…" : "Add the slot"}</Btn></div>
           </PBody>
         </Panel>
-        <Panel title="Examination slot" right={desk.examSlot.held_on ? "on the docket" : "not yet timetabled"}>
+        <Panel title="Examination slot" right={desk.examSlot.held_on ? "on the examination card" : "not yet timetabled"}>
           <PBody>
-            <div className="sub2">The Examinations Office gives the paper its day, time and venue; every candidate on the roll sees it on the docket the scheme releases.</div>
+            <div className="sub2">The Examinations Office gives the paper its day, time and venue; every candidate on the roll sees it on the examination card the scheme releases.</div>
             <div className="grid grid--2">
               <Field id="ed" label="Date"><input id="ed" className="ctl tnum" type="date" value={exam.heldOn} onChange={(e) => setExam({ ...exam, heldOn: e.target.value })} disabled={!examsOffice} /></Field>
               <Field id="ev" label="Venue"><input id="ev" className="ctl" value={exam.venue} onChange={(e) => setExam({ ...exam, venue: e.target.value })} disabled={!examsOffice} placeholder="CBT Hall A" /></Field>
