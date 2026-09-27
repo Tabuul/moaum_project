@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tick } from "@/components/proto/ui";
-import { STATUS_KIND, dayOf, parseTracker, whenAt, type Admission, type TrackerStep } from "@/lib/screening";
+import { STATUS_KIND, dayOf, parseTracker, stepHref, whenAt, type Admission, type TrackerStep } from "@/lib/screening";
+import { AdmissionDocumentsCentre, useAdmissionDocuments } from "@/components/AdmissionDocumentsCentre";
 import { reasonHeader as reason } from "@/lib/reason";
 import { notifyProblem } from "@/components/proto/Toast";
 import { Btn } from "@/components/proto/ui";
@@ -42,11 +43,7 @@ export function Tracker({ steps, compact }: { steps: TrackerStep[]; compact?: bo
   );
 }
 
-/** a step that lives on the student portal is reached through the handover: the applicant's session becomes the student's on the way */
-export function stepHref(href: string | null | undefined): string {
-  const h = href ?? "/applicant/admission";
-  return /^\/student(\/|$)/.test(h) ? `/applicant/to-student?next=${encodeURIComponent(h)}` : h;
-}
+export { stepHref } from "@/lib/screening";
 
 /** the five screening forms print once the applicant has filled and submitted them (V273): not before the form is submitted */
 function formsPrintable(d: Admission): boolean {
@@ -65,7 +62,7 @@ export function AdmissionProgress() {
           {d.next_action ? <LinkBtn kind="primary" href={stepHref(d.next_href)}>{d.next_action}</LinkBtn> : null}
         </div>
         <div className="mt-2"><Tracker steps={parseTracker(d.tracker)} compact /></div>
-        <div className="mt-1 row row--inline row--tight"><LinkBtn kind="ghost" size="sm" href="/applicant/admission">Admission progress</LinkBtn>{formsPrintable(d) ? <a className="btn btn--secondary btn--sm" href="/applicant/clearance/print" target="_blank" rel="noopener">Print your screening forms</a> : null}</div>
+        <div className="mt-1 row row--inline row--tight"><LinkBtn kind="ghost" size="sm" href="/applicant/admission">Admission progress</LinkBtn><LinkBtn kind="ghost" size="sm" href="/applicant/admission#documents">My documents</LinkBtn>{formsPrintable(d) ? <a className="btn btn--secondary btn--sm" href="/applicant/clearance/print" target="_blank" rel="noopener">Print your screening forms</a> : null}</div>
       </PBody>
     </Panel>
   );
@@ -74,6 +71,7 @@ export function AdmissionProgress() {
 /** the full page */
 export function AdmissionPage() {
   const { d, problem } = useAdmission(true);
+  const docs = useAdmissionDocuments("/api/bff/api/v1/applicant/me/documents-centre");
   if (problem) return <Note kind="bad" title="Your admission">{problem.title}</Note>;
   if (!d) return <Panel title="Your admission"><PBody><div className="sub2">Reading…</div></PBody></Panel>;
   const o = d.offer;
@@ -113,18 +111,38 @@ export function AdmissionPage() {
         <Panel title="Progress tracker" right={`${steps.filter((s) => s.state === "done").length} of ${steps.length} done`}>
           <PBody><Tracker steps={steps} /></PBody>
         </Panel>
-        <Panel title="Payments and documents" right="Acceptance fee is paid once, for the admission">
+        <Panel title="Acceptance and screening" right="Acceptance fee is paid once, for the admission">
           <PBody>
             <KvGrid cls="grid--2" pairs={[
               ["Acceptance fee", d.entitlement.paid ? <span key="e"><Pil kind="ok">PAID</Pil> <span className="sub2 tnum">{d.entitlement.reference ?? ""} · {dayOf(d.entitlement.confirmed_at)}</span></span> : <Pil key="e" kind="warn">NOT YET PAID</Pil>],
-              ["Acceptance letter", o.accepted_at ? <span key="l"><a href="/applicant/status/letter" target="_blank" rel="noopener" className="lnk">View · download · print</a><div className="sub2">A numbered document with a QR code; anyone may verify it at /verify/document.</div></span> : <span key="l" className="sub2">After acceptance</span>],
-              ["Screening forms", formsPrintable(d) ? <span key="pf"><a href="/applicant/clearance/print" target="_blank" rel="noopener" className="lnk">Print the five forms (PDF)</a><div className="sub2">Form A, the screening form, the supplementary biodata form and the data capture form, generated from your record; what the University does not hold is left blank to fill by hand.</div></span> : <span key="pf" className="sub2">Generated once the University&rsquo;s screening is successful</span>],
-              ["University screening", !d.screeningRequired ? <span key="s" className="sub2">Not required for your session</span> : o.cleared_at ? <Pil key="s" kind="ok">SUCCESSFUL</Pil> : <LinkBtn key="s" kind="secondary" size="sm" href="/applicant/clearance">Open the screening form</LinkBtn>],
+              ["University screening", !d.screeningRequired ? <span key="s" className="sub2">Not required for your session</span> : o.cleared_at ? <Pil key="s" kind="ok">SUCCESSFUL</Pil> : <LinkBtn key="s" kind="secondary" size="sm" href="/applicant/clearance">Screening status</LinkBtn>],
               ["Change of programme", o.changed_to ? <span key="c">{o.changed_from} → <b>{o.changed_to}</b><div className="sub2">Your acceptance payment remained valid; it was not charged again.</div></span> : <span key="c" className="sub2">None</span>],
+              ["School fees", d.status === "SCHOOL_FEES_PENDING" ? <LinkBtn key="f" kind="primary" size="sm" href={stepHref("/student/fees")}>Pay school fees</LinkBtn> : ["COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING", "MATRICULATED"].includes(d.status) ? <Pil key="f" kind="ok">PAID</Pil> : <span key="f" className="sub2">After successful screening</span>],
             ]} />
             {d.entitlement.paid ? <div className="sub2 mt-2">Whatever programme your admission ends on, the acceptance fee is never asked for a second time.</div> : null}
           </PBody>
         </Panel>
+      </div>
+
+      {["SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING", "MATRICULATED"].includes(d.status) && o.student_id ? (
+        <Panel title="Student status" right={o.matric_no ? "Matriculated" : d.status === "SCHOOL_FEES_PENDING" ? "Admitted · school fees pending" : "Student · matriculation pending"}>
+          <PBody>
+            <KvGrid cls="grid--3" pairs={[
+              ["Status", <Pil key="s" kind={o.matric_no ? "ok" : d.status === "SCHOOL_FEES_PENDING" ? "info" : "ok"}>{o.matric_no ? "MATRICULATED · ACTIVE STUDENT" : d.status === "SCHOOL_FEES_PENDING" ? "ADMITTED · SCHOOL FEES PENDING" : "STUDENT · MATRICULATION PENDING"}</Pil>],
+              ["School fees", d.status === "SCHOOL_FEES_PENDING" ? <Pil key="f" kind="warn">PENDING</Pil> : <Pil key="f" kind="ok">PAID</Pil>],
+              ["Student portal", d.status === "SCHOOL_FEES_PENDING" ? <span key="p" className="sub2">Opens fully once your school fees are paid</span> : <Pil key="p" kind="ok">ACTIVE</Pil>],
+              ["Matriculation number", <span key="m" className="tnum">{o.matric_no ?? "Pending · issued by the Academic Office"}</span>],
+              ["Login username", <span key="u" className="tnum">{o.matric_no ?? o.jamb_reg_no}</span>],
+              ["Password", <span key="w" className="sub2">The one you chose as an applicant; it does not change when your matriculation number becomes your username</span>],
+            ]} />
+            <div className="sub2 mt-2">{o.matric_no ? `Your matriculation number ${o.matric_no} is now your username on the student portal.` : d.status === "SCHOOL_FEES_PENDING" ? "Pay your school fees to activate your student portal; your official matriculation number is issued by the Academic Office afterwards." : "Your student account is active. Your official matriculation number is being processed by the Academic Office; you will be notified when it is issued, and it becomes your username."}</div>
+            <div className="mt-2 row row--inline row--tight"><LinkBtn kind={d.status === "SCHOOL_FEES_PENDING" ? "secondary" : "primary"} href={stepHref(d.status === "SCHOOL_FEES_PENDING" ? "/student/fees" : "/student")}>{d.status === "SCHOOL_FEES_PENDING" ? "Pay school fees" : "Open the student portal"}</LinkBtn></div>
+          </PBody>
+        </Panel>
+      ) : null}
+
+      <div id="documents">
+        {docs ? <AdmissionDocumentsCentre rows={docs} side="applicant" /> : <Panel title="Admission & screening documents"><PBody><div className="sub2">Reading your documents…</div></PBody></Panel>}
       </div>
     </>
   );

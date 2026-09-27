@@ -4,7 +4,7 @@ export type BatchState = "DRAFT" | "GENERATED" | "READY_FOR_ISSUANCE" | "ISSUED"
 export type RowState = "PROPOSED" | "ISSUED" | "DROPPED";
 
 export interface Candidate {
-  student_id: string; admission_no: string | null; surname: string; other_names: string; programme_code: string; programme: string; dept_code: string | null; department: string | null;
+  student_id: string; admission_no: string | null; jamb_reg_no?: string | null; surname: string; other_names: string; programme_code: string; programme: string; dept_code: string | null; department: string | null;
   faculty_code: string; faculty: string; entry_session: string | null; status: string; matric_no: string | null; matriculated_at: string | null;
   registered: boolean; paid: boolean; query_reason: string | null; config_problem: string | null; eligible: boolean; reason: string | null;
   batch_id: string | null; batch_ref: string | null; batch_state: BatchState | null; row_id: string | null; proposed_no: string | null; row_state: RowState | null; problems: string[] | null; edited: boolean | null;

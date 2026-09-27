@@ -300,6 +300,35 @@ class AdmissionLifecycleIT {
         Map<String, Object> asStudent = it.get(String.valueOf(crossed.getBody().get("token")), "/api/v1/me").getBody();
         assertThat(asStudent.get("id")).isEqualTo(sa.toString());
         assertThat(asStudent.get("admissionNo")).isNotNull();
+        // V282 · the document centre: what may be opened now and what waits, each read from the table that owns it
+        List<Map<String, Object>> centre = l(it.get(a.token(), "/api/v1/applicant/me/documents-centre").getBody().get("rows"));
+        Map<String, String> centreStatus = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> row : centre) centreStatus.put(String.valueOf(row.get("key")), String.valueOf(row.get("status")));
+        assertThat(centreStatus.get("OFFER_LETTER")).as(String.valueOf(centre)).isIn("GENERATED", "DOWNLOADED");
+        assertThat(centreStatus.get("ACCEPTANCE_RECEIPT")).isEqualTo("AVAILABLE");
+        assertThat(centreStatus.get("SCREENING_FORMS")).isEqualTo("DOWNLOADED");
+        assertThat(centreStatus.get("SCHOOL_FEES_RECEIPT")).isEqualTo("PENDING");
+        assertThat(centre.stream().filter(x -> "ACCEPTANCE_RECEIPT".equals(x.get("key"))).findFirst().orElseThrow().get("reference")).isNotNull();
+        // the letter opened once more, this time printed: the trail says so and the centre reads PRINTED
+        assertThat(it.get(a.token(), "/api/v1/applicant/me/letter?event=PRINTED").getStatusCode().value()).isEqualTo(200);
+        assertThat(l(it.get(a.token(), "/api/v1/applicant/me/documents-centre").getBody().get("rows")).stream().filter(x -> "OFFER_LETTER".equals(x.get("key"))).findFirst().orElseThrow().get("status")).isEqualTo("PRINTED");
+        // the same documents from the student side of the same account, with the letter and the forms openable there
+        String studentToken = String.valueOf(crossed.getBody().get("token"));
+        List<Map<String, Object>> mine = l(it.get(studentToken, "/api/v1/me/admission-documents").getBody().get("rows"));
+        assertThat(mine.stream().map(x -> x.get("key"))).contains("OFFER_LETTER", "ACCEPTANCE_RECEIPT", "SCREENING_FORMS");
+        assertThat(m(it.get(studentToken, "/api/v1/me/admission-documents/letter").getBody().get("application")).get("jambKey")).isEqualTo(a.jamb());
+        assertThat(it.get(studentToken, "/api/v1/me/admission-documents/forms").getBody().get("number")).isEqualTo(form.get("screening_no"));
+        // the nationality JAMB's state implies (V282): Benue → Nigeria, on the facts the forms print and on the student's record; never typed by the applicant
+        assertThat(jdbc.sql("SELECT admissions.screening_facts(:a) -> 'identity' ->> 'nationality'").param("a", a.app()).query(String.class).single()).isEqualToIgnoringCase("Nigeria");
+        assertThat(jdbc.sql("SELECT value FROM people.biodata WHERE student_id = :s AND field = 'nationality'").param("s", sa).query(String.class).single()).isEqualToIgnoringCase("Nigeria");
+        // the student's sign-in is the JAMB number until the matriculation number is issued; the password is the applicant's own
+        assertThat(asStudent.get("jambRegNo")).isEqualTo(a.jamb());
+        assertThat(asStudent.get("loginId")).isEqualTo(a.jamb());
+        assertThat(String.valueOf(asStudent.get("lifecycle"))).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
+        ResponseEntity<Map> byJamb = it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", a.jamb(), "password", "x"));
+        assertThat(byJamb.getStatusCode().value()).as(String.valueOf(byJamb.getBody())).isEqualTo(200);
+        // the tracker runs to the end of the journey
+        assertThat(String.valueOf(admission(a).get("tracker"))).contains("\"key\": \"STUDENT_ACCOUNT\"").contains("\"key\": \"USERNAME\"");
         // no fee schedule is stated for the test session, so the fees read as settled and the status moves straight on
         assertThat(admission(a).get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
         assertThat(it.db(() -> { try { jdbc.sql("SELECT finance.new_reference(:s, :ses, 1000, 'test')").param("s", sa).param("ses", SESSION).query(String.class).single(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return e.getMostSpecificCause().getMessage(); } })).doesNotContain("SCHOOL FEES UNAVAILABLE");

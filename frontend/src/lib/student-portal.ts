@@ -66,6 +66,8 @@ export interface Me {
   id: string; name: string; surname: string; otherNames: string; matricNo: string | null; admissionNo: string | null;
   programmeCode: string; programme: string; faculty: string; department: string; entryMode: string; entrySession: string;
   entryLevel: number; level: number; status: string; curriculumVersion: string | null; session: string;
+  /** the JAMB number an entrant signs in with until the matriculation number is issued, the sign-in they use now, and where they stand on the admission lifecycle (V282) */
+  jambRegNo?: string | null; loginId?: string | null; lifecycle?: string | null;
   contact: { phone: string | null; email: string | null; address: string | null; reach_email: string | null; reach_phone: string | null };
   passportDocumentId: string | null;
   /** whether a passport photo exists in any store (document, or JAMB/attachment) — use with /api/v1/me/passport */

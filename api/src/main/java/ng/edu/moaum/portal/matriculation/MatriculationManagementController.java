@@ -159,9 +159,9 @@ class MatriculationManagementController {
         };
         String needle = blank(q) == null ? null : "%" + q.trim().toLowerCase() + "%";
         List<Map<String, Object>> students = jdbc.sql("""
-                SELECT x.* FROM people.matric_candidates(:s, :f) x
+                SELECT x.*, (SELECT st.jamb_reg_no FROM people.student st WHERE st.id = x.student_id) AS jamb_reg_no FROM people.matric_candidates(:s, :f) x
                  WHERE (:p::text IS NULL OR x.programme_code = :p)
-                   AND (:q::text IS NULL OR lower(x.surname || ' ' || x.other_names) LIKE :q OR lower(x.other_names || ' ' || x.surname) LIKE :q OR lower(coalesce(x.admission_no, '')) LIKE :q
+                   AND (:q::text IS NULL OR lower(x.surname || ' ' || x.other_names) LIKE :q OR lower(x.other_names || ' ' || x.surname) LIKE :q OR lower(coalesce(x.admission_no, '')) LIKE :q OR EXISTS (SELECT 1 FROM people.student st WHERE st.id = x.student_id AND lower(coalesce(st.jamb_reg_no, '')) LIKE :q)
                         OR lower(coalesce(x.matric_no, '')) LIKE :q OR lower(coalesce(x.proposed_no, '')) LIKE :q OR lower(x.programme) LIKE :q OR x.student_id::text LIKE :q OR lower(coalesce(x.series_code, '')) LIKE :q
                         OR EXISTS (SELECT 1 FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id JOIN people.student st ON st.candidate_id = c.id WHERE st.id = x.student_id AND lower(a.application_no) LIKE :q))
                 """ + pred + " ORDER BY x.surname, x.other_names")

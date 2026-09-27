@@ -138,12 +138,15 @@ export function Manage({ page, overview, issued, pending, filters, actingOffice 
   const link = (extra: Partial<ManageFilters>) => { const f = { ...filters, ...extra }; const qs = new URLSearchParams(); for (const [k, v] of Object.entries(f)) if (v && !(k === "tab" && v === "faculty")) qs.set(k, v); return `/matriculation/manage?${qs}`; };
 
   const studentTable = (list: Candidate[]) => (
-    <DTable pageSize={0} cols={["S/N|num", "Student ID", "Student Name", "Programme", "Year|mid", "Series|mid", "Proposed Matric No.", "Status|mid", "Validation", "|num"]} rows={list.map((c, i) => [
+    <DTable pageSize={0} cols={["S/N|num", "Student ID", "JAMB No.|mid", "Student Name", "Programme", "Year|mid", "Fees|mid", "Registration|mid", "Series|mid", "Proposed Matric No.", "Status|mid", "Validation", "|num"]} rows={list.map((c, i) => [
       <span key="sn" className="tnum sub2">{i + 1}</span>,
       <span key="id" className="tnum sub2">{c.admission_no ?? "—"}</span>,
+      <span key="j" className="tnum sub2">{c.jamb_reg_no ?? "—"}</span>,
       <Link key="n" className="lnk" href={`/students/${c.student_id}`}><strong>{c.surname}, {c.other_names}</strong></Link>,
       <span key="p" className="sub2">{c.programme}</span>,
       <span key="y" className="tnum">{yy(c.entry_session)}</span>,
+      <Pil key="fee" kind={c.paid ? "ok" : "warn"}>{c.paid ? "PAID" : "OWING"}</Pil>,
+      <Pil key="reg" kind={c.registered ? "ok" : "grey"}>{c.registered ? "APPROVED" : "NONE"}</Pil>,
       <span key="s" className="tnum sub2">{c.series_code ?? "—"}</span>,
       <b key="m" className="tnum">{c.matric_no ?? c.proposed_no ?? "—"}</b>,
       <Pil key="st" kind={standing(c).kind}>{standing(c).word}</Pil>,

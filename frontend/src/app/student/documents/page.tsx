@@ -2,6 +2,7 @@ import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { api } from "@/lib/api";
 import type { MyDocuments } from "@/lib/documents";
+import type { AdmissionDocRow } from "@/lib/admission-documents";
 import { loadStudent } from "../load";
 import { Documents } from "./Documents";
 
@@ -13,9 +14,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const loaded = await loadStudent();
   if (!loaded.student) return <Shell route="s/documents" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   const d = await api<MyDocuments>("/api/v1/me/documents");
+  // the documents of the admission the student came through (V282): none for a student who did not
+  const adm = await api<{ rows: AdmissionDocRow[] }>("/api/v1/me/admission-documents");
   return (
     <Shell route="s/documents" me={loaded.me}>
-      {d.ok ? <Documents d={d.data} open={typeof p.request === "string" ? p.request : ""} wizard={typeof p.new === "string" ? p.new : ""} /> : <ProblemNotice problem={d.problem} />}
+      {d.ok ? <Documents d={d.data} admission={adm.ok ? adm.data.rows : []} open={typeof p.request === "string" ? p.request : ""} wizard={typeof p.new === "string" ? p.new : ""} /> : <ProblemNotice problem={d.problem} />}
     </Shell>
   );
 }

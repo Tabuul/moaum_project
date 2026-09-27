@@ -116,6 +116,10 @@ public class StudentPortalService {
         v.put("otherNames", s.otherNames());
         v.put("matricNo", s.matricNo());
         v.put("admissionNo", s.admissionNo());
+        // the sign-in they use: the matriculation number once issued, until then the JAMB number they have used since application (V282)
+        v.put("jambRegNo", s.jambRegNo());
+        v.put("loginId", s.matricNo() != null ? s.matricNo() : s.jambRegNo() != null ? s.jambRegNo() : s.admissionNo());
+        v.put("lifecycle", repo.lifecycle(id));
         v.put("programmeCode", s.programmeCode());
         v.put("programme", s.programme());
         v.put("faculty", s.facultyName());

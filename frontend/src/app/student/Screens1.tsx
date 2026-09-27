@@ -133,8 +133,30 @@ export function Dashboard({ s }: { s: Me }) {
   const prob = s.probation && s.probation.standing === "PROBATION" ? s.probation : null;
   const adv = s.probation && s.probation.standing === "ADVISED_TO_WITHDRAW" ? s.probation : null;
   const semWord = (n: number | null) => (n === 2 ? "second" : "first");
+  // before matriculation (V282): the fees paid make the person a student awaiting their number; the JAMB number stays the sign-in
+  const feesPaidStage = ["COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING"].includes(s.lifecycle ?? "");
+  const preMatric = !s.matricNo && s.entryMode !== "POSTGRADUATE";
+  const lastPaid = [...f.references].filter((r) => r.confirmed_at && r.session === f.session).sort((a, b) => String(b.confirmed_at).localeCompare(String(a.confirmed_at)))[0] ?? null;
   return (
     <>
+      {preMatric ? (
+        <Note kind="info" title={feesPaidStage ? "Matriculation number pending" : "Admitted · school fees pending"}>
+          {feesPaidStage ? <>Your school fees payment has been confirmed and your student portal access is active. Your official matriculation number is currently being processed by the Academic Office; you will be notified when it is issued, and it then becomes your username. Your password does not change.</> : <>You are on the register. Your student portal opens fully once your school fees are paid; your official matriculation number is issued by the Academic Office after that.</>}
+          <div className="mt-2"><KvGrid cls="grid--3" pairs={[
+            ["Student status", feesPaidStage ? "Matriculation pending" : "School fees pending"], ["Admission session", s.entrySession], ["Faculty", s.faculty],
+            ["Department", s.department], ["Programme", s.programme], ["Login ID", <span key="l" className="tnum">{s.loginId ?? s.jambRegNo ?? s.admissionNo ?? "—"}</span>],
+            ["Matriculation number", "Pending"],
+          ]} /></div>
+        </Note>
+      ) : null}
+      {lastPaid ? (
+        <Panel title="School fees" right={<Pil kind="ok">PAID</Pil>}>
+          <PBody><KvGrid cls="grid--4" pairs={[
+            ["Payment reference", <span key="r" className="tnum">{lastPaid.reference}</span>], ["Payment date", onDay(lastPaid.confirmed_at)], ["Amount", <b key="a" className="tnum">{naira(Number(lastPaid.amount))}</b>],
+            ["Receipt", <span key="x" className="row row--inline row--tight"><a className="btn btn--primary btn--sm" href={`/student/receipt/${encodeURIComponent(lastPaid.reference)}/pdf`} target="_blank" rel="noopener">View</a><a className="btn btn--secondary btn--sm" href={`/student/receipt/${encodeURIComponent(lastPaid.reference)}/pdf?download=1`} target="_blank" rel="noopener">Download</a><Link className="btn btn--ghost btn--sm" href={`/student/receipt/${encodeURIComponent(lastPaid.reference)}`}>Print</Link></span>],
+          ]} /></PBody>
+        </Panel>
+      ) : null}
       {adv ? (
         <Note kind="bad" title="The result sheet advises your withdrawal" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
           Your CGPA stood at <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester at {adv.pronounced_level} level, still under 1.0 after the level&rsquo;s probation list. Senate&rsquo;s rule advises withdrawal from the programme. The decision is Senate&rsquo;s; your Head of Department will tell you of it. Until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
@@ -177,7 +199,7 @@ export function Dashboard({ s }: { s: Me }) {
         </div></div>
         <Panel title="This session" right={s.session}>
           <PBody><div className="steps">
-            <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : "Admitted"} · entered ${s.entrySession}`} />
+            <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : feesPaidStage ? "Matriculation pending" : "Admitted"} · entered ${s.entrySession}`} />
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"
               sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Head of Department" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
             <Step state="todo" title="Examination card" sub="Available after approval" />

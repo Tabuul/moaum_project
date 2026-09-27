@@ -26,13 +26,13 @@ class StudentPortalRepository {
 
     record Student(UUID id, String matricNo, String admissionNo, String surname, String otherNames, String programmeCode,
                    String programme, String facultyCode, String facultyName, String collegeCode, String deptCode, String deptName, String entryMode,
-                   String entrySession, int entryLevel, int currentLevel, String status, UUID candidateId, String curriculumVersion) {
+                   String entrySession, int entryLevel, int currentLevel, String status, UUID candidateId, String curriculumVersion, String jambRegNo) {
     }
 
     private static final String STUDENT = """
             SELECT s.id, s.matric_no, s.admission_no, s.surname, s.other_names, s.programme_code, p.name AS programme,
                    p.faculty_code, f.name AS faculty_name, f.college_code, p.dept_code, d.name AS dept_name, s.entry_mode, s.entry_session,
-                   s.entry_level, s.current_level, s.status, s.candidate_id, s.curriculum_version
+                   s.entry_level, s.current_level, s.status, s.candidate_id, s.curriculum_version, s.jamb_reg_no
               FROM people.student s
               JOIN ref.programme p ON p.code = s.programme_code
               JOIN ref.faculty f ON f.code = p.faculty_code
@@ -390,6 +390,16 @@ class StudentPortalRepository {
     }
 
     /* ── the calendar ── */
+
+    /** where the student stands on the admission lifecycle (V282): MATRICULATED, else the admission status of the application they came through, else the register's status */
+    String lifecycle(UUID student) {
+        return jdbc.sql("""
+                SELECT CASE WHEN s.matric_no IS NOT NULL THEN 'MATRICULATED'
+                            ELSE coalesce((SELECT x.status FROM admissions.application ap CROSS JOIN LATERAL admissions.admission_status(ap.id) x
+                                            WHERE ap.candidate_id = s.candidate_id ORDER BY ap.submitted_at DESC NULLS LAST LIMIT 1), s.status) END
+                  FROM people.student s WHERE s.id = :s
+                """).param("s", student).query(String.class).optional().orElse("ADMITTED");
+    }
 
     Optional<String> currentSession() {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional();

@@ -4,6 +4,8 @@
  *  the requests with payment, stage and delivery, each opening its timeline; and the wizard — document, delivery, recipient,
  *  fee, payment, submit — one step at a time. */
 import { useEffect, useState } from "react";
+import type { AdmissionDocRow } from "@/lib/admission-documents";
+import { AdmissionDocumentsCentre } from "@/components/AdmissionDocumentsCentre";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -16,7 +18,7 @@ import { PayByCard } from "../common";
 type Wizard = { kind: string; session: string; semester: string; delivery: string; destination: string; destinationName: string; department: string; recipientName: string; recipientEmail: string; recipientAddress: string; recipientReference: string; purpose: string; express: boolean; international: boolean; copies: string };
 const EMPTY: Wizard = { kind: "TRANSCRIPT", session: "", semester: "", delivery: "DIGITAL", destination: "SELF", destinationName: "", department: "", recipientName: "", recipientEmail: "", recipientAddress: "", recipientReference: "", purpose: "", express: false, international: false, copies: "1" };
 
-export function Documents({ d, open, wizard }: { d: MyDocuments; open: string; wizard: string }) {
+export function Documents({ d, admission = [], open, wizard }: { d: MyDocuments; admission?: AdmissionDocRow[]; open: string; wizard: string }) {
   const router = useRouter();
   const [step, setStep] = useState(wizard ? 1 : 0);
   const [w, setW] = useState<Wizard>({ ...EMPTY, kind: wizard && KIND[wizard.toUpperCase()] ? wizard.toUpperCase() : "TRANSCRIPT" });
@@ -91,6 +93,8 @@ export function Documents({ d, open, wizard }: { d: MyDocuments; open: string; w
           {pending.map((r) => <span className="blk" key={r.id}><strong>{r.ref}</strong> · {r.kind_label} · <Pil kind={STAGE[r.stage]?.[1] ?? "grey"}>{STAGE[r.stage]?.[0] ?? r.stage}</Pil>{r.stage === "AWAITING_PAYMENT" && r.reference ? <> · pay {naira(r.fee)} against <span className="tnum">{r.reference}</span> <PayByCard reference={r.reference} amount={Number(r.fee)} /></> : null}{r.sla_due_on && !["AWAITING_PAYMENT"].includes(r.stage) ? <span className="sub2"> · expected by {dayOf(r.sla_due_on)}</span> : null}</span>)}
         </Note>
       ) : null}
+
+      {admission.length ? <AdmissionDocumentsCentre rows={admission} side="student" /> : null}
 
       <Panel title="Documents issued to you" right={active.length ? `${active.length} valid` : "none yet"}>
         {d.documents.length ? (

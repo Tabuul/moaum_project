@@ -3,6 +3,11 @@
 export type ScreeningState = "PENDING" | "IN_REVIEW" | "CORRECTION_REQUIRED" | "SUCCESSFUL" | "UNSUCCESSFUL" | "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "RETURNED";
 export type TrackerState = "done" | "now" | "todo" | "failed";
 export interface TrackerStep { key: string; label: string; state: TrackerState }
+/** a step that lives on the student portal is reached through the handover: the applicant's session becomes the student's on the way (V278) */
+export function stepHref(href: string | null | undefined): string {
+  const h = href ?? "/applicant/admission";
+  return /^\/student(\/|$)/.test(h) ? `/applicant/to-student?next=${encodeURIComponent(h)}` : h;
+}
 export interface AdmissionStatus { status: string; label: string; next_action: string | null; next_href: string | null; detail: string | null }
 export interface Entitlement { paid: boolean; reference: string | null; confirmed_at: string | null; amount: number | null; checking_paid?: boolean; checking_reference?: string | null; checking_confirmed_at?: string | null; checking_amount?: number | null }
 export interface Offer {
@@ -41,6 +46,7 @@ export interface ScreeningView {
 export interface FormsState { state: "NOT_GENERATED" | "GENERATED" | "DOWNLOADED"; number: string | null; version: number | null; verification_code: string | null; issued_on: string | null; downloads: number; last_downloaded_at: string | null }
 /** V280: the record assembled from what the University holds (admissions.screening_facts) */
 export interface Facts {
+  /** identity carries nationality where JAMB's state implies it (V282) */
   identity: Record<string, unknown>; jamb: Record<string, unknown>; admission: Record<string, unknown>;
   olevel: Record<string, unknown>[]; jamb_olevel: Record<string, unknown>[]; institutions: Record<string, unknown>[]; documents: Record<string, unknown>[];
   payments: Record<string, { reference?: string; amount?: number; confirmed_at?: string; receipt_no?: string; channel?: string }>; answers: Record<string, string>; biodata: Record<string, string>;

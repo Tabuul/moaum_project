@@ -16,6 +16,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,9 +34,11 @@ class ApplicantScreeningController {
 
     private static final String APPLICANT = "hasAuthority('OFFICE_applicant')";
     private final JdbcClient jdbc;
+    private final AdmissionDocuments documents;
 
-    ApplicantScreeningController(JdbcClient jdbc) {
+    ApplicantScreeningController(JdbcClient jdbc, AdmissionDocuments documents) {
         this.jdbc = jdbc;
+        this.documents = documents;
     }
 
     private UUID myApplication(Authentication a) {
@@ -98,12 +102,67 @@ class ApplicantScreeningController {
     @GetMapping("/api/v1/applicant/me/letter")
     @PreAuthorize(APPLICANT)
     @Transactional
-    Map<String, Object> letter(Authentication a) {
-        UUID app = myApplication(a);
-        Map<String, Object> row = jdbc.sql("SELECT id, number, version, verification_code, statement::text AS statement, issued_on, supersedes FROM admissions.issue_admission_letter(:a)").param("a", app).query().singleRow();
-        Map<String, Object> out = new LinkedHashMap<>(row);
-        out.put("verifyPath", "/verify/document?key=" + row.get("verification_code"));
-        return out;
+    Map<String, Object> letter(Authentication a, @RequestParam(required = false) String event) {
+        return documents.letter(myApplication(a), event);
+    }
+
+    /* ── the document centre (V282): every document of the admission, with its state, in one place ── */
+
+    @GetMapping("/api/v1/applicant/me/documents-centre")
+    @PreAuthorize(APPLICANT)
+    @Transactional(readOnly = true)
+    Map<String, Object> documentsCentre(Authentication a) {
+        return Map.of("rows", documents.centre(myApplication(a)));
+    }
+
+    @GetMapping("/api/v1/applicant/me/receipts/{reference}")
+    @PreAuthorize(APPLICANT)
+    @Transactional(readOnly = true)
+    Map<String, Object> receipt(Authentication a, @PathVariable String reference) {
+        return documents.receipt(myApplication(a), reference);
+    }
+
+    /* the same documents from the student side of the same account: the register knows the applicant they were */
+
+    private static final String STUDENT = "hasAuthority('OFFICE_student')";
+
+    private UUID studentApplication(Authentication a) {
+        return documents.applicationOfStudent(UUID.fromString(a.getName()));
+    }
+
+    @GetMapping("/api/v1/me/admission-documents")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    Map<String, Object> studentDocuments(Authentication a) {
+        return Map.of("rows", documents.centre(studentApplication(a)));
+    }
+
+    @GetMapping("/api/v1/me/admission-documents/letter")
+    @PreAuthorize(STUDENT)
+    @Transactional
+    Map<String, Object> studentLetter(Authentication a, @RequestParam(required = false) String event) {
+        return documents.letter(studentApplication(a), event);
+    }
+
+    @GetMapping("/api/v1/me/admission-documents/forms")
+    @PreAuthorize(STUDENT)
+    @Transactional
+    Map<String, Object> studentForms(Authentication a, @RequestParam(required = false) String event) {
+        return documents.forms(studentApplication(a), event);
+    }
+
+    @GetMapping("/api/v1/me/admission-documents/screening")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    Map<String, Object> studentScreening(Authentication a) {
+        return form(studentApplication(a));
+    }
+
+    @GetMapping("/api/v1/me/admission-documents/receipts/{reference}")
+    @PreAuthorize(STUDENT)
+    @Transactional(readOnly = true)
+    Map<String, Object> studentReceipt(Authentication a, @PathVariable String reference) {
+        return documents.receipt(studentApplication(a), reference);
     }
 
     /* ── the screening form ── */
@@ -147,14 +206,8 @@ class ApplicantScreeningController {
     @GetMapping("/api/v1/applicant/me/screening/forms")
     @PreAuthorize(APPLICANT)
     @Transactional
-    Map<String, Object> forms(Authentication a) {
-        UUID app = myApplication(a);
-        Map<String, Object> row = jdbc.sql("SELECT id, number, version, verification_code, statement::text AS statement, issued_on FROM admissions.issue_screening_forms(:a)").param("a", app).query().singleRow();
-        jdbc.sql("SELECT credentials.log(NULL, :i, NULL, 'DOWNLOADED', 'AVAILABLE', 'DOWNLOADED', 'Screening forms opened by the applicant')").param("i", row.get("id"), Types.OTHER).query().listOfRows();
-        Map<String, Object> out = new LinkedHashMap<>(row);
-        out.remove("id");
-        out.put("verifyPath", "/verify/document?key=" + row.get("verification_code"));
-        return out;
+    Map<String, Object> forms(Authentication a, @RequestParam(required = false) String event) {
+        return documents.forms(myApplication(a), event);
     }
 
     @GetMapping("/api/v1/applicant/me/screening")
