@@ -74,6 +74,22 @@ public class StudentPortalService {
         return repo.currentSession().orElseGet(() -> repo.sessionsWithCharges().stream().findFirst().orElse("2026/2027"));
     }
 
+    /**
+     * The session a student stands in: the University's current session — or, for
+     * an entrant admitted for a session that is still planned (the register is
+     * built before the session opens), that entry session. Fees, registration and
+     * the dashboard open on it; otherwise a fresh student landed on the closing
+     * session, saw no charge there, and could not pay.
+     */
+    private String sessionOf(StudentPortalRepository.Student s) {
+        String current = session();
+        return s.entrySession() != null && s.entrySession().compareTo(current) > 0 ? s.entrySession() : current;
+    }
+
+    public String sessionFor(UUID id) {
+        return sessionOf(student(id));
+    }
+
     /* ── me ── */
 
     @Transactional(readOnly = true)
@@ -85,7 +101,7 @@ public class StudentPortalService {
                     "Your record was closed as a voluntary withdrawal: four consecutive semesters passed without a course registration, and the University's regulation removes the record.",
                     new DomainRuleViolation.Remedy("Write to the Registrar if you believe the record should be reopened.", "Registry"));
         }
-        String session = session();
+        String session = sessionOf(s);
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("id", s.id());
         v.put("name", s.surname() + ", " + s.otherNames());
@@ -179,7 +195,7 @@ public class StudentPortalService {
 
     @Transactional
     public Map<String, Object> newReference(UUID id, String session, BigDecimal amount) {
-        String ses = session == null || session.isBlank() ? session() : session.trim();
+        String ses = session == null || session.isBlank() ? sessionFor(id) : session.trim();
         Map<String, Object> pos = repo.position(id, ses);
         BigDecimal balance = (BigDecimal) pos.get("balance");
         BigDecimal amt = amount == null ? balance : amount;

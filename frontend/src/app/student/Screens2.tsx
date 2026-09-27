@@ -38,7 +38,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
         <div className="tile"><span className="eyebrow">Outstanding</span><span className="n tnum" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</span><span className="c">{noCharge ? "No charge stated yet" : fees.balance > 0 ? "Due this session" : "Cleared"}</span></div>
       </div>
       {noCharge ? (
-        <Note kind="info" title={`No charge is stated for ${fees.session} yet`}>The Bursar states the session&rsquo;s fee schedule; your charge is computed from it the moment it is stated. Nothing is paid against a charge that does not exist.</Note>
+        <Note kind="info" title={`No charge is stated for ${fees.session} yet`}>The Bursar states the session&rsquo;s fee schedule; your charge is computed from it the moment it is stated. Nothing is paid against a charge that does not exist.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
       ) : fees.schemeProblem ? (
         <Note kind="info" title="What a payment releases is not yet stated">{fees.schemeProblem}</Note>
       ) : fees.clearsRegistration ? (
@@ -111,7 +111,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
         ])} />
         {!fees.references.length ? <PBody><div className="sub2">Every payment against a reference this portal generated appears here, with its receipt. Nothing is released against a payment the bank has not confirmed.</div></PBody> : null}
       </Panel>
-      {fees.sessions.length > 1 ? (
+      {fees.sessions.some((x) => x !== fees.session) ? (
         <div className="sub2">Sessions with a charge: {fees.sessions.map((x) => <Link key={x} href={`/student/fees?session=${encodeURIComponent(x)}`} style={{ marginRight: "var(--s-2)" }}>{x}</Link>)}</div>
       ) : null}
     </>

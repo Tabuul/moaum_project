@@ -58,7 +58,7 @@ class MeController {
 
     @GetMapping("/fees")
     Map<String, Object> fees(Authentication auth, @RequestParam(required = false) String session) {
-        return portal.fees(id(auth), session == null || session.isBlank() ? portal.session() : session);
+        return portal.fees(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session);
     }
 
     @PostMapping("/fees/references")
@@ -73,7 +73,7 @@ class MeController {
 
     @GetMapping("/registration")
     Map<String, Object> registration(Authentication auth, @RequestParam(required = false) String session, @RequestParam(defaultValue = "1") int semester) {
-        return portal.registrationView(id(auth), session == null || session.isBlank() ? portal.session() : session, semester);
+        return portal.registrationView(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session, semester);
     }
 
     @GetMapping("/registration-history")

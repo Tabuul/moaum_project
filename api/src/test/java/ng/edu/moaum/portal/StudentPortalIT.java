@@ -317,4 +317,43 @@ class StudentPortalIT {
             });
         }
     }
+
+    /**
+     * An entrant admitted for a session that is still planned (the register is built before the session
+     * opens) stands in that session, not the University's current one: the dashboard, the fees and a
+     * reference without a session named all open on the entry session, where the Bursar's charge is.
+     * Before this, a fresh student landed on the closing session, saw no charge there, and could not pay.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void anEntrantOfAPlannedSessionSeesThatSessionsFeesByDefault() {
+        int n = new Random().nextInt(9000) + 1000;
+        String ses = "2097/2098";
+        it.session(ses, 2097);
+        String matric = "MOAUM/NEW/97/" + n;
+        UUID student = it.student("ITNEWSESSION" + n, "C00023", "MOAUM/ADM/97/00" + n, matric, 100);
+        it.db(() -> {
+            jdbc.sql("UPDATE people.student SET entry_session = :s WHERE id = :id").param("s", ses).param("id", student).update();
+            jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (:s, 'School fees (planned session)', 120000, 100)").param("s", ses).update();
+            return null;
+        });
+        String token = TestTokens.token(student, List.of("student"));
+        try {
+            Map<String, Object> me = it.get(token, "/api/v1/me").getBody();
+            assertThat(me.get("session")).as(String.valueOf(me)).isEqualTo(ses);
+            assertThat(((Number) ((Map<String, Object>) me.get("fees")).get("due")).doubleValue()).isEqualTo(120000.0);
+            Map<String, Object> fees = it.get(token, "/api/v1/me/fees").getBody();
+            assertThat(fees.get("session")).isEqualTo(ses);
+            assertThat(((Number) fees.get("due")).doubleValue()).isEqualTo(120000.0);
+            ResponseEntity<Map> ref = it.call(token, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("amount", 120000));
+            assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
+            assertThat(ref.getBody().get("session")).isEqualTo(ses);
+        } finally {
+            it.db(() -> {
+                jdbc.sql("DELETE FROM finance.payment_reference WHERE session = :s").param("s", ses).update();
+                jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", ses).update();
+                return null;
+            });
+        }
+    }
 }
