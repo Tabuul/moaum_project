@@ -259,6 +259,11 @@ export const ROUTES: Record<string, string> = {
 
 /* the portal's own subtitles where the prototype's named an invented figure */
 const OVERRIDES: Record<string, [string, string]> = {
+  // the student pages pass the live session as `sub`; these stand where a page cannot (a record that failed to load)
+  "s/dashboard": ["Dashboard", "Your record this session, as the register holds it"],
+  "s/fees": ["Fees & payments", "Your charge for the session, the payments against it, and what they release"],
+  "s/slip": ["Semester result", "One semester's statement of results"],
+  "s/courses": ["My courses", "The course spaces open to you this session"],
   "t/student": ["Student record", "Assembled live from the modules that own it"],
   "t/admissions": ["Admissions", "The admission cycle"],
   "t/admissionsetup": ["Admission settings", "The Central Admissions Committee’s guidelines, made into settings the portal applies"],

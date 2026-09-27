@@ -16,7 +16,7 @@ export default async function Page() {
   }
   if (loaded.student.entryMode === "POSTGRADUATE") {
     const pg = await api<PgSummary>("/api/v1/pg/coursework/summary");
-    return <Shell route="s/dashboard" me={loaded.me}><PgDashboard s={loaded.student} pg={pg.ok ? pg.data : null} /></Shell>;
+    return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><PgDashboard s={loaded.student} pg={pg.ok ? pg.data : null} /></Shell>;
   }
-  return <Shell route="s/dashboard" me={loaded.me}><Dashboard s={loaded.student} /></Shell>;
+  return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><Dashboard s={loaded.student} /></Shell>;
 }

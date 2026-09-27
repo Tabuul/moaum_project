@@ -395,6 +395,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional();
     }
 
+    /** the latest session the University has run (CURRENT or CLOSED) — the one a returning student stands in between sessions */
+    Optional<String> latestRunSession() {
+        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state <> 'PLANNED' ORDER BY name DESC LIMIT 1").query(String.class).optional();
+    }
+
     /* ── the services (V027) ── */
 
     List<Map<String, Object>> queries(UUID student) {

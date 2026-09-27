@@ -22,6 +22,9 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Authentication is Keycloak's; authorisation is ours (ADR-004).
@@ -40,6 +43,7 @@ class SecurityConfig {
     @Bean
     SecurityFilterChain api(HttpSecurity http, SessionGuard sessions) throws Exception {
         http.csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(publicCors()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/api/v1/platform/status",
@@ -53,12 +57,31 @@ class SecurityConfig {
                                 "/api/v1/student-auth/sign-in",
                                 "/api/v1/pg/apply", "/api/v1/pg/programmes", "/api/v1/pg/status",
                                 "/api/v1/pg/sign-in", "/api/v1/pg/referee/**",
-                                "/api/v1/verify/**", "/api/v1/helpdesk/track",
+                                "/api/v1/verify/**", "/api/v1/helpdesk/track", "/api/v1/public/**",
                                 "/api/v1/examiners/invitation/*", "/api/v1/examiners/activate").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
                 .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);
         return http.build();
+    }
+
+    /**
+     * The University's website, on its own domain, reads the public figures
+     * ({@code /api/v1/public/**}) straight from the browser: those paths answer any
+     * origin, GET only, without credentials. Every other path stays same-origin —
+     * the portal's own frontend calls the API server-side — so no CORS headers are
+     * issued for them and a cross-origin preflight to them is refused.
+     */
+    private static CorsConfigurationSource publicCors() {
+        CorsConfiguration open = new CorsConfiguration();
+        open.setAllowedOrigins(List.of("*"));
+        open.setAllowedMethods(List.of("GET", "HEAD", "OPTIONS"));
+        open.setAllowedHeaders(List.of("Accept", "Content-Type"));
+        open.setAllowCredentials(false);
+        open.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/v1/public/**", open);
+        return source;
     }
 
     /**

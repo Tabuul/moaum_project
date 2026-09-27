@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { loadStudent } from "../../../load";
 
 export const dynamic = "force-dynamic";
+import { semesterText } from "@/lib/student-portal";
 import type { Results } from "@/lib/student-portal";
 import { Slip } from "../../../Screens4";
 
@@ -14,7 +15,7 @@ export default async function Page({ params }: { params: Promise<{ session: stri
   if (!loaded.student) return <Shell route="s/slip" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   const r = await api<Results>("/api/v1/me/results");
   return (
-    <Shell route="s/slip" me={loaded.me}>
+    <Shell route="s/slip" me={loaded.me} sub={`${decodeURIComponent(p.session)} · ${semesterText(Number(p.semester))}`}>
       {r.ok ? <Slip r={r.data} session={decodeURIComponent(p.session)} semester={Number(p.semester)} /> : <ProblemNotice problem={r.problem} />}
     </Shell>
   );

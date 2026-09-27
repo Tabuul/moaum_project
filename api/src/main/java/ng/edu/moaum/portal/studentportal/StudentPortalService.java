@@ -80,9 +80,16 @@ public class StudentPortalService {
      * built before the session opens), that entry session. Fees, registration and
      * the dashboard open on it; otherwise a fresh student landed on the closing
      * session, saw no charge there, and could not pay.
+     * <p>
+     * Between sessions — none CURRENT, the last one CLOSED and the next still
+     * PLANNED — a returning student stands in the session the University last
+     * ran (2025/2026), not in the planned one the Bursar has already stated a
+     * charge for (2026/2027): their charge, payments and registration are there,
+     * and the planned session is a click away on the fees page. An entrant of the
+     * planned session still stands in it.
      */
     private String sessionOf(StudentPortalRepository.Student s) {
-        String current = session();
+        String current = repo.currentSession().or(repo::latestRunSession).orElseGet(this::session);
         return s.entrySession() != null && s.entrySession().compareTo(current) > 0 ? s.entrySession() : current;
     }
 

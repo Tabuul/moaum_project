@@ -19,7 +19,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   }
   const fees = await api<Fees>(`/api/v1/me/fees?session=${encodeURIComponent(session)}`);
   return (
-    <Shell route="s/fees" me={loaded.me}>
+    <Shell route="s/fees" me={loaded.me} sub={`${fees.ok ? fees.data.session : session} session`}>
       {fees.ok ? <FeesScreen s={loaded.student} fees={fees.data} paid={typeof q.paid === "string" ? q.paid : null} /> : <ProblemNotice problem={fees.problem} />}
     </Shell>
   );
