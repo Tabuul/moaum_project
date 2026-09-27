@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Version** | 1.13 |
+| **Version** | 1.14 |
 | **Date** | 26 September 2026 |
 | **Basis** | An audit of the source code, the database schema (migrations `V001`–`V277` applied) and the user interface of the portal as at commit `8c2b6fa` on `main` |
 | **Nature** | Documentation only. Nothing in the portal — code, schema, configuration or data — was changed to produce this package |
@@ -229,6 +229,7 @@ Terms as the portal uses them, in alphabetical order. Codes in backticks are the
 | Version | Date | Change | By |
 |---|---|---|---|
 | 1.0 | 26 September 2026 | Initial complete portal documentation: ten volumes, seven audit dossiers and the inventory tools, as at commit `8c2b6fa` on `main` | Directorate of ICT (prepared with Claude Code) |
+| 1.14 | 27 September 2026 | The five screening forms printable, filled from the applicant's answers, from the dashboard, Admission Progress and the screening page (`/applicant/clearance/print`) — volume 01 §4.1 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.13 | 27 September 2026 | The admission checking fee never silently zero (V277): a session whose fees were stated before the checking fee existed carried a 0 that opened the released decision without payment; restored to ₦3,000, the column's default now 3,000 | Directorate of ICT (prepared with Claude Code) |
 | 1.12 | 27 September 2026 | Quickteller PayDirect withdrawn from the gateways (no PRN instruction, no billers desk, no collections import; the V080 tables remain); the WebPAY merchant known by a merchant code as well as by a product id — volumes 01, 03, 05 updated | Directorate of ICT (prepared with Claude Code) |
 | 1.11 | 27 September 2026 | Quickteller rebuilt on Interswitch WebPAY (V276): two merchants routed by College (University 6498, College of Health Sciences 6207, pay item 101, naira 566), the signed form, per-visit attempts, the requery, the return door, the MAC keys set on Finance → Gateways or as service variables and never in the repository — volumes 01, 03, 05, 07, 09 updated | Directorate of ICT (prepared with Claude Code) |

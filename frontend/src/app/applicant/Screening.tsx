@@ -205,7 +205,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
 
   return (
     <>
-      <Panel title={`Screening of fresh undergraduate students · ${f.screening_no}`} right={<Pil kind={STATE_WORD[f.state][1]}>{STATE_WORD[f.state][0]}</Pil>}>
+      <Panel title={`Screening of fresh undergraduate students · ${f.screening_no}`} right={<span className="row row--inline row--tight">{f.state !== "DRAFT" ? <a className="btn btn--secondary btn--sm" href="/applicant/clearance/print" target="_blank" rel="noopener" title="The five forms as the University binds them, filled from your answers, as a PDF">Print the forms</a> : null}<Pil kind={STATE_WORD[f.state][1]}>{STATE_WORD[f.state][0]}</Pil></span>}>
         <PBody>
           <div className="sub2">Every fresh undergraduate must undergo screening by the Screening Committee before registration as a student. The paper forms are here page by page; what the University already holds is shown first, the rest is completed by you. A question asked on more than one page is answered once.{v.policy?.instructions ? ` ${v.policy.instructions}` : ""}</div>
           {tracker ? <div className="mt-2"><Tracker steps={parseTracker(tracker)} compact /></div> : null}
