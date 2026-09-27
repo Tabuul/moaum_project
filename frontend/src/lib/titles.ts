@@ -395,6 +395,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Score sheet by level",
     "Downloaded for the cohort, filled, uploaded; every mark judged by the rule, the decision applied provisionally"
   ],
+  "t/collegerules": [
+    "College Rules",
+    "The regulations as the tables hold them and the portal applies them: attendance, pass marks, resit window, distinction, carry-overs, the 100 Level act"
+  ],
   "t/collegecalendar": [
     "College calendar",
     "Each level's semesters dated for the session; a cohort's year runs on these dates, and its examination sits at the end"

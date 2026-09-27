@@ -15,7 +15,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { buildXlsx, csvRows, loadCrest, xlsxRows } from "@/lib/xlsx";
 import type { Candidates, Result, Decision, ExamSummary } from "../examinations/Examinations";
 
-const UNI = "Moshood Abiola University of Science and Technology, Abeokuta";
+const UNI = "Rev. Fr. Moses Orshio Adasu University, Makurdi";
 const word = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 const parse = <T,>(s: string | null, fallback: T): T => { try { return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; } };
 interface Row { number: string; name: string; line: number; marks: { subjectId: string; subject: string; ca: string; exam: string; clinical: string; attendance: string }[]; flags: string[] }

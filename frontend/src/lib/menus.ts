@@ -1577,7 +1577,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
           { "id": "t/college", "icon": "flask", "label": "College Overview" },
           { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
-          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" },
+          { "id": "t/collegerules", "icon": "check", "label": "College Rules" }
         ]
       },
       {
@@ -1616,7 +1617,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
           { "id": "t/college", "icon": "flask", "label": "College Overview" },
           { "id": "t/collegeexams", "icon": "chart", "label": "Professional Examinations" },
-          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" }
+          { "id": "t/collegecalendar", "icon": "calendar", "label": "College Calendar" },
+          { "id": "t/collegerules", "icon": "check", "label": "College Rules" }
         ]
       },
       {

@@ -100,6 +100,7 @@ export const ROUTES: Record<string, string> = {
   "t/supervision": "/college/supervision",
   "t/collegeexams": "/college/examinations",
   "t/collegecalendar": "/college/calendar",
+  "t/collegerules": "/college/rules",
   "t/collegesheets": "/college/scoresheets",
   "r/mbbscoordinator": "/college/coordinator",
   "r/college": "/college/dashboard",

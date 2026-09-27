@@ -602,6 +602,24 @@ class CollegeController {
         if (body.clinicalScore() != null && (body.clinicalScore().signum() < 0 || body.clinicalScore().compareTo(java.math.BigDecimal.valueOf(100)) > 0)) {
             throw new DomainRuleViolation("COLLEGE_CLINICAL_RANGE", "The clinical component is out of 100.", new DomainRuleViolation.Remedy("Enter it within 0 to 100.", "College Secretary"));
         }
+        // V285 · an assessment item flagged as an eligibility gate must carry its score before the candidate sits
+        String gates = jdbc.sql("SELECT college.gates_missing(:st, :s)").param("st", body.studentId()).param("s", body.subjectId()).query(String.class).optional().orElse(null);
+        if (gates != null && (body.caScore() != null || body.examScore() != null)) {
+            throw new DomainRuleViolation("COLLEGE_GATE", subject.get("name") + ": the candidate has no score in the gating assessment(s) " + gates + ", so is not eligible to sit.",
+                    new DomainRuleViolation.Remedy("Record the assessment on the CA desk, or take the gate off the item on the College Rules desk.", "College Secretary"));
+        }
+        // V285 · a resit is recorded within the resit window after the first attempt
+        if ("RESIT".equals(attempt) && !Boolean.TRUE.equals(jdbc.sql("SELECT college.resit_window_open(:st, :s, :ses)").param("st", body.studentId()).param("s", body.subjectId()).param("ses", body.session()).query(Boolean.class).single())) {
+            throw new DomainRuleViolation("COLLEGE_RESIT_WINDOW", subject.get("name") + ": the resit window after the first attempt has closed; on the regulations the candidate repeats the year.",
+                    new DomainRuleViolation.Remedy("Record the repeat attempt when the year is repeated; the window is set on the College Rules desk.", "College Secretary"));
+        }
+        // V285 · the CA composed from the year's assessment items when the examiner leaves it blank
+        java.math.BigDecimal ca = body.caScore();
+        String caSource = "typed";
+        if (ca == null && body.examScore() != null) {
+            ca = jdbc.sql("SELECT college.ca_from_items(:st, :s)").param("st", body.studentId()).param("s", body.subjectId()).query(java.math.BigDecimal.class).optional().orElse(null);
+            if (ca != null) caSource = "items";
+        }
         // the candidate is a member of the cohort — a year at the examination's level in the session — and the cohort's year has reached its end
         long member = jdbc.sql("SELECT count(*) FROM college.cohort(:l, :s) c WHERE c.student_id = :st")
                 .param("l", e.get("level")).param("s", body.session()).param("st", body.studentId()).query(Long.class).single();
@@ -610,8 +628,8 @@ class CollegeController {
         boolean reached = jdbc.sql("SELECT college.year_reached_final(:l, :s)").param("l", e.get("level")).param("s", body.session()).query(Boolean.class).single();
         if (!reached) throw new DomainRuleViolation("COLLEGE_YEAR_NOT_ENDED", "The " + e.get("level") + " Level year for " + body.session() + " has not reached its final semester; the College's students sit once, at the end of the year.",
                 new DomainRuleViolation.Remedy("Results are entered when the final semester has begun, by the College's calendar.", "College Secretary"));
-        Map<String, Object> judged = jdbc.sql("SELECT passed, barred FROM college.judge(:s, :ca, :ex, :cl, :at)").param("s", body.subjectId())
-                .param("ca", body.caScore(), Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC).param("cl", body.clinicalScore(), Types.NUMERIC)
+        Map<String, Object> judged = jdbc.sql("SELECT passed, barred, min_attendance FROM college.judge(:s, :ca, :ex, :cl, :at)").param("s", body.subjectId())
+                .param("ca", ca, Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC).param("cl", body.clinicalScore(), Types.NUMERIC)
                 .param("at", body.attendancePct(), Types.NUMERIC).query().singleRow();
         Boolean passed = (Boolean) judged.get("passed");
         boolean barred = Boolean.TRUE.equals(judged.get("barred"));
@@ -623,7 +641,7 @@ class CollegeController {
                        attendance_pct = EXCLUDED.attendance_pct, barred = EXCLUDED.barred, passed = EXCLUDED.passed, decided_on = EXCLUDED.decided_on
                 RETURNING id
                 """).param("st", body.studentId()).param("s", body.subjectId()).param("ses", body.session()).param("a", attempt)
-                .param("ca", body.caScore(), Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC).param("cl", body.clinicalScore(), Types.NUMERIC)
+                .param("ca", ca, Types.NUMERIC).param("ex", body.examScore(), Types.NUMERIC).param("cl", body.clinicalScore(), Types.NUMERIC)
                 .param("at", body.attendancePct(), Types.NUMERIC).param("b", barred).param("p", passed, Types.BOOLEAN).query(UUID.class).single();
         // the rule, applied provisionally the moment every subject has a result; a confirmed decision is left alone
         String outcome = jdbc.sql("SELECT college.apply_provisional(:st, :c, :ses)").param("st", body.studentId()).param("c", e.get("code")).param("ses", body.session())
@@ -632,7 +650,12 @@ class CollegeController {
         out.put("id", id);
         out.put("passed", passed);
         out.put("barred", barred);
-        out.put("distinction", Boolean.TRUE.equals(passed) && body.caScore() != null && body.examScore() != null && body.caScore().add(body.examScore()).compareTo(java.math.BigDecimal.valueOf(70)) >= 0);
+        // the distinction mark is the programme rule's (V285), not a literal
+        out.put("distinction", Boolean.TRUE.equals(passed) && ca != null && body.examScore() != null
+                && Boolean.TRUE.equals(jdbc.sql("SELECT college.distinction(st.programme_code, :t) FROM people.student st WHERE st.id = :s").param("t", ca.add(body.examScore())).param("s", body.studentId()).query(Boolean.class).optional().orElse(false)));
+        out.put("ca", ca);
+        out.put("caSource", caSource);
+        out.put("minAttendance", judged.get("min_attendance"));
         out.put("outcome", outcome);
         return out;
     }
@@ -665,6 +688,13 @@ class CollegeController {
                     new DomainRuleViolation.Remedy("Enter the remaining subjects' results first.", "College Secretary"));
         }
         String[] carry = body.carryOvers() == null ? new String[0] : body.carryOvers().stream().map(String::trim).filter(x -> !x.isEmpty()).toArray(String[]::new);
+        for (String c : carry) {
+            String u = c.toUpperCase();
+            if (!(u.startsWith("GST") || u.startsWith("EPS"))) {
+                throw new DomainRuleViolation("COLLEGE_CARRY_OVER", "No carry-over except GST and EPS courses: " + c + " is not carried over on the MBBS programme.",
+                        new DomainRuleViolation.Remedy("A failed subject of the examination is a resit or a repeat, never a carry-over; only GST and EPS courses are carried.", "College Secretary"));
+            }
+        }
         UUID id = jdbc.sql("""
                 INSERT INTO college.progression_decision (student_id, from_level, session, outcome, carry_overs, rule_ref, minute, state)
                 VALUES (:st, :l, :ses, :o, :c, :r, :m, 'PROVISIONAL')
@@ -1430,4 +1460,167 @@ class CollegeController {
         return Map.of("result", r);
     }
 
+    /* ── V285 · the College's rules, read and set on the desk; the Board's 100 Level act; the carry-overs ── */
+
+    private static final String RULES = "hasAnyAuthority('OFFICE_provost','OFFICE_collegesecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+
+    @GetMapping("/rules")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> rules() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("exams", jdbc.sql("SELECT id, code, name, level, papers, resit_allowed, resit_window_months, no_resit_if_all_failed, appeal_to_senate, min_attendance_pct, on_failure, ordinal FROM college.professional_exam ORDER BY ordinal").query().listOfRows());
+        out.put("subjects", jdbc.sql("""
+                SELECT s.id, e.code AS exam, e.level, s.name, s.departments, s.ca_weight, s.exam_weight, s.pass_mark, s.clinical_component_min, s.ordinal, college.min_attendance_for(s.id) AS min_attendance
+                  FROM college.exam_subject s JOIN college.professional_exam e ON e.id = s.exam_id ORDER BY e.ordinal, s.ordinal
+                """).query().listOfRows());
+        out.put("attendance", jdbc.sql("""
+                SELECT a.id, a.scope, a.phase, a.block_id, b.code AS block_code, b.name AS block, a.min_pct, a.applies_to, a.note
+                  FROM college.attendance_rule a LEFT JOIN college.block b ON b.id = a.block_id ORDER BY a.scope, a.phase, b.ordinal
+                """).query().listOfRows());
+        out.put("programme", jdbc.sql("SELECT r.*, p.name AS programme FROM college.programme_rule r JOIN ref.programme p ON p.code = r.programme_code ORDER BY r.programme_code").query().listOfRows());
+        out.put("gates", jdbc.sql("""
+                SELECT i.id, i.name, i.item_type, i.weight_within_ca, i.max_score, i.eligibility_gate, s.name AS subject, e.code AS exam
+                  FROM college.assessment_item i JOIN college.exam_subject s ON s.id = i.subject_id JOIN college.professional_exam e ON e.id = s.exam_id ORDER BY e.ordinal, s.ordinal, i.name
+                """).query().listOfRows());
+        return out;
+    }
+
+    public record ExamRuleIn(Integer minAttendancePct, Boolean resitAllowed, Integer resitWindowMonths, Boolean noResitIfAllFailed, Boolean appealToSenate, @Size(max = 600) String onFailure) {
+    }
+
+    @PutMapping("/rules/exams/{code}")
+    @PreAuthorize(RULES)
+    @Transactional
+    Map<String, Object> setExamRule(@PathVariable String code, @Valid @RequestBody ExamRuleIn body) {
+        Map<String, Object> e = exam(code);
+        if (body.minAttendancePct() != null && (body.minAttendancePct() < 0 || body.minAttendancePct() > 100)) throw new DomainRuleViolation("COLLEGE_RULE_RANGE", "Attendance is a percentage, 0 to 100.", new DomainRuleViolation.Remedy("Enter it within 0 to 100, or blank for none.", "College Secretary"));
+        if (body.resitWindowMonths() != null && (body.resitWindowMonths() < 1 || body.resitWindowMonths() > 12)) throw new DomainRuleViolation("COLLEGE_RULE_RANGE", "The resit window is one to twelve months.", new DomainRuleViolation.Remedy("Enter months within 1 to 12.", "College Secretary"));
+        jdbc.sql("""
+                UPDATE college.professional_exam SET min_attendance_pct = :att, resit_allowed = coalesce(:ra, resit_allowed), resit_window_months = coalesce(:rw, resit_window_months),
+                       no_resit_if_all_failed = coalesce(:nr, no_resit_if_all_failed), appeal_to_senate = coalesce(:ap, appeal_to_senate), on_failure = coalesce(nullif(btrim(:of), ''), on_failure)
+                 WHERE id = :id
+                """).param("att", body.minAttendancePct(), Types.INTEGER).param("ra", body.resitAllowed(), Types.BOOLEAN).param("rw", body.resitWindowMonths(), Types.INTEGER)
+                .param("nr", body.noResitIfAllFailed(), Types.BOOLEAN).param("ap", body.appealToSenate(), Types.BOOLEAN).param("of", body.onFailure(), Types.VARCHAR).param("id", e.get("id")).update();
+        return rules();
+    }
+
+    public record SubjectRuleIn(Integer passMark, java.math.BigDecimal caWeight, java.math.BigDecimal examWeight, Integer clinicalComponentMin) {
+    }
+
+    @PutMapping("/rules/subjects/{id}")
+    @PreAuthorize(RULES)
+    @Transactional
+    Map<String, Object> setSubjectRule(@PathVariable UUID id, @Valid @RequestBody SubjectRuleIn body) {
+        Map<String, Object> cur = jdbc.sql("SELECT pass_mark, ca_weight, exam_weight, clinical_component_min FROM college.exam_subject WHERE id = :id").param("id", id).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("examination subject", id));
+        int pass = body.passMark() != null ? body.passMark() : ((Number) cur.get("pass_mark")).intValue();
+        java.math.BigDecimal caW = body.caWeight() != null ? body.caWeight() : (java.math.BigDecimal) cur.get("ca_weight");
+        java.math.BigDecimal exW = body.examWeight() != null ? body.examWeight() : (java.math.BigDecimal) cur.get("exam_weight");
+        if (pass < 1 || pass > 100) throw new DomainRuleViolation("COLLEGE_RULE_RANGE", "The pass mark is 1 to 100.", new DomainRuleViolation.Remedy("Enter it within 1 to 100.", "College Secretary"));
+        if (caW.add(exW).compareTo(java.math.BigDecimal.valueOf(100)) != 0) throw new DomainRuleViolation("COLLEGE_RULE_WEIGHTS", "The CA and examination weights add up to 100; these make " + caW.add(exW).stripTrailingZeros().toPlainString() + ".", new DomainRuleViolation.Remedy("Set the two weights so they total 100.", "College Secretary"));
+        if (body.clinicalComponentMin() != null && (body.clinicalComponentMin() < 0 || body.clinicalComponentMin() > 100)) throw new DomainRuleViolation("COLLEGE_RULE_RANGE", "The clinical minimum is 0 to 100.", new DomainRuleViolation.Remedy("Enter it within 0 to 100, or blank for none.", "College Secretary"));
+        jdbc.sql("UPDATE college.exam_subject SET pass_mark = :p, ca_weight = :c, exam_weight = :e, clinical_component_min = :m WHERE id = :id")
+                .param("p", pass).param("c", caW).param("e", exW).param("m", body.clinicalComponentMin() != null ? body.clinicalComponentMin() : cur.get("clinical_component_min"), Types.INTEGER).param("id", id).update();
+        return rules();
+    }
+
+    public record AttendanceRuleIn(@NotNull Integer minPct, String appliesTo, @Size(max = 400) String note) {
+    }
+
+    @PutMapping("/rules/attendance/{id}")
+    @PreAuthorize(RULES)
+    @Transactional
+    Map<String, Object> setAttendanceRule(@PathVariable UUID id, @Valid @RequestBody AttendanceRuleIn body) {
+        if (body.minPct() < 0 || body.minPct() > 100) throw new DomainRuleViolation("COLLEGE_RULE_RANGE", "Attendance is a percentage, 0 to 100.", new DomainRuleViolation.Remedy("Enter it within 0 to 100.", "College Secretary"));
+        int n = jdbc.sql("UPDATE college.attendance_rule SET min_pct = :m, applies_to = coalesce(nullif(btrim(:a), ''), applies_to), note = coalesce(nullif(btrim(:n), ''), note) WHERE id = :id")
+                .param("m", body.minPct()).param("a", body.appliesTo(), Types.VARCHAR).param("n", body.note(), Types.VARCHAR).param("id", id).update();
+        if (n == 0) throw new NotFound("attendance rule", id);
+        return rules();
+    }
+
+    public record ProgrammeRuleIn(Integer distinctionMark, Integer minYearsUtme, Integer minYearsDe, Integer minTotalCu, Integer resitWindowMonths, @Size(max = 600) String honoursRule, @Size(max = 600) String carryOverNote) {
+    }
+
+    @PutMapping("/rules/programme/{code}")
+    @PreAuthorize(RULES)
+    @Transactional
+    Map<String, Object> setProgrammeRule(@PathVariable String code, @Valid @RequestBody ProgrammeRuleIn body) {
+        if (body.distinctionMark() != null && (body.distinctionMark() < 50 || body.distinctionMark() > 100)) throw new DomainRuleViolation("COLLEGE_RULE_RANGE", "The distinction mark is 50 to 100.", new DomainRuleViolation.Remedy("Enter it within 50 to 100.", "College Secretary"));
+        if (body.resitWindowMonths() != null && (body.resitWindowMonths() < 1 || body.resitWindowMonths() > 12)) throw new DomainRuleViolation("COLLEGE_RULE_RANGE", "The resit window is one to twelve months.", new DomainRuleViolation.Remedy("Enter months within 1 to 12.", "College Secretary"));
+        int n = jdbc.sql("""
+                UPDATE college.programme_rule SET distinction_mark = coalesce(:d, distinction_mark), min_years_utme = coalesce(:u, min_years_utme), min_years_de = coalesce(:de, min_years_de),
+                       min_total_cu = coalesce(:cu, min_total_cu), resit_window_months = coalesce(:rw, resit_window_months), honours_rule = coalesce(nullif(btrim(:h), ''), honours_rule), carry_over_note = coalesce(nullif(btrim(:c), ''), carry_over_note)
+                 WHERE programme_code = :p
+                """).param("d", body.distinctionMark(), Types.INTEGER).param("u", body.minYearsUtme(), Types.INTEGER).param("de", body.minYearsDe(), Types.INTEGER).param("cu", body.minTotalCu(), Types.INTEGER)
+                .param("rw", body.resitWindowMonths(), Types.INTEGER).param("h", body.honoursRule(), Types.VARCHAR).param("c", body.carryOverNote(), Types.VARCHAR).param("p", code.trim().toUpperCase()).update();
+        if (n == 0) throw new NotFound("programme rule", code);
+        return rules();
+    }
+
+    @PutMapping("/rules/gates/{id}")
+    @PreAuthorize(RULES)
+    @Transactional
+    Map<String, Object> setGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+        boolean gate = Boolean.TRUE.equals(body.get("eligibilityGate"));
+        int n = jdbc.sql("UPDATE college.assessment_item SET eligibility_gate = :g WHERE id = :id").param("g", gate).param("id", id).update();
+        if (n == 0) throw new NotFound("assessment item", id);
+        return rules();
+    }
+
+    /** the College's 100 Level rule read for a session's entrants: what the University's published results say, and what the Board would do */
+    @GetMapping("/level100")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> level100(@RequestParam String session) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT st.id, st.surname, st.other_names, coalesce(st.matric_no, st.admission_no) AS number, st.status, st.current_level, d.outcome, d.failed, d.carried, d.published, d.registered,
+                       (SELECT pd.minute FROM college.progression_decision pd WHERE pd.student_id = st.id AND pd.from_level = 100 AND pd.session = st.entry_session) AS minute
+                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                  CROSS JOIN LATERAL college.decide_100(st.id) d
+                 WHERE f.college_code = 'CHS' AND st.entry_session = :s AND st.entry_level = 100 AND (st.current_level = 100 OR EXISTS (SELECT 1 FROM college.progression_decision pd WHERE pd.student_id = st.id AND pd.from_level = 100))
+                 ORDER BY st.surname, st.other_names
+                """).param("s", session).query().listOfRows();
+        return Map.of("session", session, "rows", rows);
+    }
+
+    public record Level100In(@NotBlank String session, @NotBlank String minute) {
+    }
+
+    @PostMapping("/level100/confirm")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> confirm100(@Valid @RequestBody Level100In body) {
+        Map<String, Object> r = jdbc.sql("SELECT * FROM college.confirm_100(:s, :m)").param("s", body.session()).param("m", body.minute()).query().singleRow();
+        Map<String, Object> out = new java.util.LinkedHashMap<>(r);
+        out.putAll(level100(body.session()));
+        return out;
+    }
+
+    @GetMapping("/carry-overs")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> carryOvers(@RequestParam(required = false) String q) {
+        String needle = q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%";
+        return Map.of("rows", jdbc.sql("""
+                SELECT c.student_id, c.code, c.from_session, c.note, c.cleared_on, st.surname, st.other_names, coalesce(st.matric_no, st.admission_no) AS number, st.current_level, st.status
+                  FROM college.carry_over c JOIN people.student st ON st.id = c.student_id
+                 WHERE (:q::text IS NULL OR lower(st.surname || ' ' || st.other_names) LIKE :q OR lower(coalesce(st.matric_no, '')) LIKE :q OR lower(c.code) LIKE :q)
+                 ORDER BY c.cleared_on IS NOT NULL, st.surname, st.other_names, c.code
+                """).param("q", needle, Types.VARCHAR).query().listOfRows());
+    }
+
+    public record CarryClearIn(@NotNull UUID studentId, @NotBlank String code, @NotBlank String minute) {
+    }
+
+    @PostMapping("/carry-overs/clear")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> clearCarryOver(@Valid @RequestBody CarryClearIn body) {
+        int n = jdbc.sql("SELECT college.clear_carry_over(:s, :c, :m)").param("s", body.studentId()).param("c", body.code()).param("m", body.minute()).query(Integer.class).single();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("cleared", n);
+        out.putAll(carryOvers(null));
+        return out;
+    }
 }

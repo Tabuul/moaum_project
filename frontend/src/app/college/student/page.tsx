@@ -35,6 +35,7 @@ const parseSem = (s: string | undefined): YearSemester[] => { try { return s ? (
 
 const OUTCOME: Record<string, [string, "ok" | "bad" | "info" | "warn" | "grey"]> = {
   PROMOTE: ["Promoted", "ok"], GRADUATE: ["Passed the Final MBBS", "ok"], RESIT: ["Resit required", "warn"], REPEAT: ["Repeat the level", "warn"],
+  CARRY_OVER_PENDING: ["Passed · graduation waits on a carry-over", "warn"], MIN_YEARS_PENDING: ["Passed · graduation waits on the minimum years", "warn"],
   WITHDRAW_ADVISED: ["Advised to withdraw", "bad"], WITHDRAW_REQUIRED: ["Required to withdraw", "bad"], APPEAL: ["Advised to withdraw · Senate appeal possible", "bad"],
 };
 const word = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");

@@ -30,6 +30,7 @@ interface Dashboard {
 const ROLE: Record<string, string> = { provost: "Provost", collegesecretary: "College Secretary", financecontroller: "Finance Controller" };
 const OUTCOME: Record<string, [string, "ok" | "bad" | "info" | "warn"]> = {
   PROMOTE: ["Promoted", "ok"], GRADUATE: ["Graduated", "ok"], RESIT: ["Resit", "warn"], REPEAT: ["Repeat", "warn"],
+  CARRY_OVER_PENDING: ["Passed · graduation waits on a carry-over", "warn"], MIN_YEARS_PENDING: ["Passed · graduation waits on the minimum years", "warn"],
   WITHDRAW_ADVISED: ["Advised to withdraw", "bad"], WITHDRAW_REQUIRED: ["Required to withdraw", "bad"], APPEAL: ["Appeal to Senate", "bad"],
 };
 const KIND: Record<Waiting["kind"], [string, "ok" | "bad" | "info" | "warn" | "grey"]> = {
