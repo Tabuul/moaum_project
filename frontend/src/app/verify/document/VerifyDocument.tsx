@@ -3,7 +3,7 @@ import { Note } from "@/components/proto/ui";
 import { DOC_STATUS, type Verify } from "@/lib/documents";
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
-const LABEL: Record<string, string> = { holder: "Name", programme: "Programme", award: "Award", classOfDegree: "Class of degree", faculty: "Faculty", department: "Department", graduationSession: "Graduation session", graduationDate: "Graduation date", session: "Session", level: "Level" };
+const LABEL: Record<string, string> = { holder: "Name", programme: "Programme", award: "Award", classOfDegree: "Class of degree", faculty: "Faculty", department: "Department", graduationSession: "Graduation session", graduationDate: "Graduation date", session: "Session", level: "Level", admissionType: "Admission type", acceptedOn: "Offer accepted on" };
 
 /** the public verification page (V262): a reference or a document number typed or scanned; the University's record answers VALID, REVOKED, REPLACED or NOT FOUND with public fields only */
 export function VerifyDocument({ v, keyAsked }: { v: Verify | null; keyAsked: string }) {

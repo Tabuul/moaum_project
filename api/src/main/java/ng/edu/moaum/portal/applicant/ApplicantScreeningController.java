@@ -93,6 +93,19 @@ class ApplicantScreeningController {
         return admission(a);
     }
 
+    /** the letter of provisional admission as a digital document (V275): issued on first request once the offer is accepted, a new
+     *  version when the programme changed; the number, the verification code and the statement the PDF is drawn from */
+    @GetMapping("/api/v1/applicant/me/letter")
+    @PreAuthorize(APPLICANT)
+    @Transactional
+    Map<String, Object> letter(Authentication a) {
+        UUID app = myApplication(a);
+        Map<String, Object> row = jdbc.sql("SELECT id, number, version, verification_code, statement::text AS statement, issued_on, supersedes FROM admissions.issue_admission_letter(:a)").param("a", app).query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(row);
+        out.put("verifyPath", "/verify/document?key=" + row.get("verification_code"));
+        return out;
+    }
+
     /* ── the screening form ── */
 
     private Map<String, Object> form(UUID app) {

@@ -3,13 +3,21 @@ import { api } from "@/lib/api";
 import type { Application } from "@/lib/applicant";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
+import { qrMatrix } from "@/lib/qr";
+
+interface Letter { number: string; version: number; verification_code: string; statement: string; issued_on: string; verifyPath: string }
+function qr(p: Page, x: number, y: number, side: number, text: string) {
+  const { size, dark } = qrMatrix(text);
+  const cell = side / size;
+  for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (dark[r * size + c]) p.fill(x + c * cell, y + (size - 1 - r) * cell, cell, cell, 0);
+}
 
 export const dynamic = "force-dynamic";
 
 const when = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
 /** the letter of provisional admission as a PDF: the released offer, the programme, the terms, on one A4 page */
-export async function GET() {
+export async function GET(req: Request) {
   const me = await api<Application>("/api/v1/applicant/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const a = me.data;
@@ -19,10 +27,17 @@ export async function GET() {
   if (!a.acceptedAt) {
     return NextResponse.json({ status: 409, title: "Accept your offer first", detail: "The admission letter is issued once you have accepted the offer and the acceptance fee is confirmed. Sign the undertaking and pay the acceptance fee, then print the letter." }, { status: 409 });
   }
+  // the letter as a digital document (V275): its number, its code, the QR that opens the public verifier
+  const doc = await api<Letter>("/api/v1/applicant/me/letter");
+  if (!doc.ok) return NextResponse.json(doc.problem, { status: doc.problem.status });
+  const letter = doc.data;
+  const st = JSON.parse(letter.statement) as { changedFrom?: string | null; changedTo?: string | null; changedOn?: string | null };
+  const origin = new URL(req.url).origin;
+  const verifyUrl = `${origin}${letter.verifyPath}`;
   const p = new Page();
   const L = 64;
   let y = brandHeader(p, L, "Office of the Registrar · Academic Affairs");
-  p.text(L, y, `Our ref: ${a.applicationNo}`, 9.5);
+  p.text(L, y, `Our ref: ${a.applicationNo} · Document no ${letter.number}${letter.version > 1 ? ` (version ${letter.version})` : ""}`, 9.5);
   p.text(A4.w - L - 150, y, when(a.decisionReleasedAt), 9.5);
   y -= 26;
   p.text(L, y, a.name, 11, true);
@@ -36,8 +51,12 @@ export async function GET() {
   y = p.paragraph(L, y, "This offer is provisional. It stands on the results JAMB sent and the documents you declared, every one of which the Registry verifies with the examination bodies before clearance. A result that does not verify voids the admission at any point afterwards, including after the award of a degree.", A4.w - 2 * L, 10.5, 1.45);
   y -= 8;
   y = p.paragraph(L, y, `You accepted this offer on ${when(a.acceptedAt)} and the acceptance fee is confirmed. Nothing is paid to any person; every naira you owe is paid on the portal, to a reference the portal generates.`, A4.w - 2 * L, 10.5, 1.45);
+  if (st.changedTo) {
+    y -= 8;
+    y = p.paragraph(L, y, `Your change of programme from ${st.changedFrom ?? "the programme first offered"} to ${st.changedTo} was approved by the Admissions Office${st.changedOn ? ` on ${when(st.changedOn)}` : ""}; this letter, version ${letter.version} under the same document number, states the admission as it now stands. Your acceptance fee remains valid.`, A4.w - 2 * L, 10.5, 1.45);
+  }
   y -= 8;
-  y = p.paragraph(L, y, "After acceptance, present your original documents at the Registry for clearance, then pay your school fees and register your courses on the portal. Your matriculation number is issued once your fees are paid and your courses registered; it is not issued with this letter.", A4.w - 2 * L, 10.5, 1.45);
+  y = p.paragraph(L, y, "After acceptance, complete the online screening on the portal, then pay your school fees and register your courses. Your matriculation number is issued once your fees are paid and your courses registered; it is not issued with this letter.", A4.w - 2 * L, 10.5, 1.45);
   y -= 30;
   if (a.result) {
     p.fill(L, y - 58, A4.w - 2 * L, 66);
@@ -49,7 +68,12 @@ export async function GET() {
   p.text(L, y, "Registrar", 10.5, true);
   y -= 14;
   p.text(L, y, "For: Vice-Chancellor", 9.5);
-  p.text(L, 50, `Issued by the portal on ${when(new Date().toISOString())} · ${a.applicationNo} · this letter is verified against the register, not by its appearance`, 7.5, false, [0.4, 0.4, 0.4]);
+  // the verification block: the QR opens the public verifier; the code and the number are typed where it cannot be scanned
+  qr(p, A4.w - L - 84, 62, 84, verifyUrl);
+  p.text(L, 92, `Document no ${letter.number} · version ${letter.version} · issued ${when(letter.issued_on)}`, 8.5, true);
+  p.text(L, 80, `Verification code ${letter.verification_code}`, 8.5);
+  p.text(L, 68, `Verify at ${origin}/verify/document by the code or the document number. Only what the University discloses publicly is shown.`, 7.5, false, [0.4, 0.4, 0.4]);
+  p.text(L, 50, `Issued by the portal · ${a.applicationNo} · this letter is verified against the register, not by its appearance`, 7.5, false, [0.4, 0.4, 0.4]);
 
   const bytes = pdf([p], `Admission letter ${a.applicationNo}`);
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="admission-letter-${a.applicationNo.replace(/\//g, "-")}.pdf"` } });

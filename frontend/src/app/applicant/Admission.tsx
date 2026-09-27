@@ -106,7 +106,7 @@ export function AdmissionPage() {
           <PBody>
             <KvGrid cls="grid--2" pairs={[
               ["Acceptance fee", d.entitlement.paid ? <span key="e"><Pil kind="ok">PAID</Pil> <span className="sub2 tnum">{d.entitlement.reference ?? ""} · {dayOf(d.entitlement.confirmed_at)}</span></span> : <Pil key="e" kind="warn">NOT YET PAID</Pil>],
-              ["Acceptance letter", o.accepted_at ? <a key="l" href="/applicant/status/letter" target="_blank" rel="noopener" className="lnk">View · download · print</a> : <span key="l" className="sub2">After acceptance</span>],
+              ["Acceptance letter", o.accepted_at ? <span key="l"><a href="/applicant/status/letter" target="_blank" rel="noopener" className="lnk">View · download · print</a><div className="sub2">A numbered document with a QR code; anyone may verify it at /verify/document.</div></span> : <span key="l" className="sub2">After acceptance</span>],
               ["Online screening", !d.screeningRequired ? <span key="s" className="sub2">Not required for your session</span> : o.cleared_at ? <Pil key="s" kind="ok">SUCCESSFUL</Pil> : <LinkBtn key="s" kind="secondary" size="sm" href="/applicant/clearance">Open the screening form</LinkBtn>],
               ["Change of programme", o.changed_to ? <span key="c">{o.changed_from} → <b>{o.changed_to}</b><div className="sub2">Your acceptance payment remained valid; it was not charged again.</div></span> : <span key="c" className="sub2">None</span>],
             ]} />

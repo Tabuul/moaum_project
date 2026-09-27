@@ -213,6 +213,18 @@ class AdmissionLifecycleIT {
         assertThat(m(st.get("offer")).get("accepted_at")).isNotNull();
         assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getStatusCode().value()).isEqualTo(422);   // 33
 
+        // 7 · the acceptance letter as a digital document (V275): numbered, coded, publicly verifiable; the same again on a second request
+        Map<String, Object> letter = m(it.get(a.token(), "/api/v1/applicant/me/letter").getBody());
+        assertThat(String.valueOf(letter.get("number"))).matches("ADM/\\d{4}/\\d{6}");
+        assertThat(((Number) letter.get("version")).intValue()).isEqualTo(1);
+        String code = String.valueOf(letter.get("verification_code"));
+        assertThat(m(it.get(a.token(), "/api/v1/applicant/me/letter").getBody()).get("number")).isEqualTo(letter.get("number"));
+        ResponseEntity<Map> pub = it.anon(HttpMethod.GET, "/api/v1/verify/document?key=" + code, null);
+        assertThat(pub.getStatusCode().value()).as(String.valueOf(pub.getBody())).isEqualTo(200);
+        assertThat(String.valueOf(pub.getBody())).contains("ADMISSION_LETTER").contains(a.surname()).contains("COMPUTER SCIENCE");
+        assertThat(it.get(b.token(), "/api/v1/applicant/me/letter").getStatusCode().value()).isEqualTo(200);   // each their own
+        assertThat(m(it.get(b.token(), "/api/v1/applicant/me/letter").getBody()).get("number")).isNotEqualTo(letter.get("number"));
+
         // 8–9 · the screening form: opened on acceptance, prefilled with JAMB's O'Level, drafted, incomplete refused, documents, declaration, submitted
         Map<String, Object> sv = m(it.get(a.token(), "/api/v1/applicant/me/screening").getBody());
         Map<String, Object> form = m(sv.get("form"));
@@ -327,6 +339,10 @@ class AdmissionLifecycleIT {
         bst = admission(b);
         assertThat(bst.get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
         assertThat(m(bst.get("offer")).get("changed_to")).isEqualTo("B.Sc. ACCOUNTING");
+        // the letter follows the change: a new version under the same number naming Accounting
+        Map<String, Object> letter2 = m(it.get(b.token(), "/api/v1/applicant/me/letter").getBody());
+        assertThat(((Number) letter2.get("version")).intValue()).isEqualTo(2);
+        assertThat(String.valueOf(letter2.get("statement"))).contains("ACCOUNTING").contains("changedFrom");
         assertThat(m(bst.get("entitlement")).get("paid")).isEqualTo(true);
         assertThat(m(bst.get("entitlement")).get("checking_paid")).isEqualTo(true);
         assertThat(it.call(b.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")).getStatusCode().value()).isEqualTo(422);
