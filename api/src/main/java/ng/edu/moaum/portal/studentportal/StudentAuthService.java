@@ -64,6 +64,19 @@ public class StudentAuthService {
                 new DomainRuleViolation.Remedy("Use your matriculation number, or your admission number before it is issued, with the password you chose at application or the one the Registry gave you; five failures lock the account for fifteen minutes.", "Registry"));
     }
 
+    /** what the student account opens with when it is carried over from the applicant's: the applicant's own bcrypt hash — or, for an
+     *  account still on its first-login sentinel (V178: the JAMB number is the password until one is chosen), a fresh hash nobody knows
+     *  with must-change on, so the door opens the same way it did for the applicant: the number is the first password, changed at once.
+     *  The sentinel itself is not a hash and the account table refuses it (ck_student_hash). */
+    private record Carried(String hash, boolean mustChange) { }
+
+    private Carried carried(String applicantHash) {
+        if (applicantHash != null && applicantHash.startsWith("$2")) {
+            return new Carried(applicantHash, false);
+        }
+        return new Carried(encoder.encode(UUID.randomUUID().toString()), true);
+    }
+
     public SignedIn signIn(String matricNo, String password, String ip) {
         StudentPortalRepository.Student s = repo.byMatric(matricNo).orElse(null);
         Object outcome = atTheDoor(s == null ? null : s.id(), "student sign-in", () -> {
@@ -87,7 +100,8 @@ public class StudentAuthService {
                     repo.event(matricNo, s.id(), "BAD_PASSWORD", ip);
                     return badCredentials();
                 }
-                repo.openAccount(s.id(), applicantHash, false);
+                Carried c = carried(applicantHash);
+                repo.openAccount(s.id(), c.hash(), c.mustChange());
                 repo.event(matricNo, s.id(), "CARRIED_OVER", ip);
                 a = repo.account(s.id()).orElseThrow();
             }
@@ -148,7 +162,8 @@ public class StudentAuthService {
                     return new DomainRuleViolation("AUTH_NO_STUDENT_ACCOUNT", "No portal account has been opened for this number yet.",
                             new DomainRuleViolation.Remedy("The Registry opens it and gives you a first password; you change it when you sign in.", "Registry"));
                 }
-                repo.openAccount(s.id(), applicantHash, false);
+                Carried c = carried(applicantHash);
+                repo.openAccount(s.id(), c.hash(), c.mustChange());
                 repo.event(number, s.id(), "CARRIED_OVER", ip);
                 a = repo.account(s.id()).orElseThrow();
             }

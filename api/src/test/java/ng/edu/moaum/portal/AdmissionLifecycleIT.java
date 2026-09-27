@@ -371,6 +371,13 @@ class AdmissionLifecycleIT {
         bst = admission(b);
         assertThat(bst.get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
         assertThat(m(bst.get("offer")).get("changed_to")).isEqualTo("B.Sc. ACCOUNTING");
+        // an applicant account still on its first-login sentinel (V178) crosses too: the student account opens with the number as its
+        // first password, to be changed — the sentinel is not a hash and the account table refuses it (this stopped real applicants)
+        it.db(() -> jdbc.sql("UPDATE admissions.applicant_account SET password_hash = 'SET_ON_FIRST_LOGIN' WHERE id = :id").param("id", b.account()).update());
+        ResponseEntity<Map> crossedB = it.call(b.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
+        assertThat(crossedB.getStatusCode().value()).as(String.valueOf(crossedB.getBody())).isEqualTo(200);
+        assertThat(crossedB.getBody().get("mustChange")).isEqualTo(true);
+        assertThat(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", b.jamb(), "password", b.jamb())).getStatusCode().value()).isEqualTo(200);
         // the letter follows the change: a new version under the same number naming Accounting
         Map<String, Object> letter2 = m(it.get(b.token(), "/api/v1/applicant/me/letter").getBody());
         assertThat(((Number) letter2.get("version")).intValue()).isEqualTo(2);

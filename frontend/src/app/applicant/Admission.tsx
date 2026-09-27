@@ -72,6 +72,13 @@ export function AdmissionProgress() {
 export function AdmissionPage() {
   const { d, problem } = useAdmission(true);
   const docs = useAdmissionDocuments("/api/bff/api/v1/applicant/me/documents-centre");
+  // the handover to the student portal sends the applicant back here when it is refused, naming the rule (V278, V282)
+  const [refused] = useState<{ code: string; why: string } | null>(() => {
+    if (typeof window === "undefined") return null;
+    const q = new URLSearchParams(window.location.search);
+    const code = q.get("portal");
+    return code ? { code, why: q.get("why") ?? "" } : null;
+  });
   if (problem) return <Note kind="bad" title="Your admission">{problem.title}</Note>;
   if (!d) return <Panel title="Your admission"><PBody><div className="sub2">Reading…</div></PBody></Panel>;
   const o = d.offer;
@@ -83,6 +90,11 @@ export function AdmissionPage() {
   const kind = STATUS_KIND(d.status);
   return (
     <>
+      {refused ? (
+        <Note kind="bad" title="The student portal could not be opened">
+          {refused.code === "AUTH_NOT_ON_REGISTER" ? "You are not yet on the student register; the portal opens the moment your screening is successful (or on acceptance where your session needs no screening). Everything until then is here." : refused.why || `The crossing was refused (${refused.code}). Try again; if it persists, write to the Directorate of ICT quoting this code.`}
+        </Note>
+      ) : null}
       <div className="card" style={{ borderTop: "4px solid var(--green)" }}>
         <PBody>
           <div className="row" style={{ gap: 10 }}>
