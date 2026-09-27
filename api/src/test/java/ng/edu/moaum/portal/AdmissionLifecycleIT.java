@@ -448,9 +448,9 @@ class AdmissionLifecycleIT {
         // 27 · the pipeline counts both paths
         Map<String, Object> pipe = m(it.get(academic, PATH + "/pipeline").getBody());
         assertThat(((Number) pipe.get("admitted")).intValue()).isGreaterThanOrEqualTo(2);
-        assertThat(((Number) pipe.get("screening_successful")).intValue()).isGreaterThanOrEqualTo(1);
-        assertThat(((Number) pipe.get("screening_unsuccessful")).intValue()).isGreaterThanOrEqualTo(1);
-        assertThat(((Number) pipe.get("change_approved")).intValue()).isGreaterThanOrEqualTo(1);
+        // a, b (after its approved change), cc and dd are all screened successful: an approved change of programme closes the screening as successful (V284), so none stays unsuccessful
+        assertThat(((Number) pipe.get("screening_successful")).intValue()).isGreaterThanOrEqualTo(3);
+        assertThat(((Number) pipe.get("change_approved")).intValue()).isGreaterThanOrEqualTo(3);
         assertThat(((Number) pipe.get("ready_for_matric")).intValue()).isGreaterThanOrEqualTo(1);
         // the desk's completed filter carries both
         Map<String, Object> done = m(it.get(academic, PATH + "/screening-review?state=COMPLETED&q=ZZLIFE-").getBody());
