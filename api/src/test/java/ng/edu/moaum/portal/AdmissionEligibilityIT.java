@@ -227,6 +227,12 @@ class AdmissionEligibilityIT {
         // the eligible come first; a closed programme and one without a rule are never among the suggestions
         assertThat(alts.get(0).get("result")).isEqualTo("ELIGIBLE");
         assertThat(alts.stream().map(a -> a.get("programme_code"))).doesNotContain(MBBS).doesNotContain("C00002");
+        // the list that goes back to JAMB carries the same alternatives as its suggestions — the engine's, not a second reading
+        ResponseEntity<Map> template = it.get(academic, PATH + "/jamb-template");
+        assertThat(template.getStatusCode().value()).as(String.valueOf(template.getBody())).isEqualTo(200);
+        Map<String, Object> templateRow = ((List<Map<String, Object>>) template.getBody().get("rows")).stream().filter(x -> notEligible.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
+        assertThat(((List<Map<String, Object>>) templateRow.get("suggestions")).stream().map(x -> String.valueOf(x.get("code")))).containsExactlyInAnyOrder(ACC, ECO);
+        assertThat(String.valueOf(templateRow.get("olRemark"))).contains("Suggested");
 
         // 3 · explained check by check: requirement · candidate · result
         String checks = String.valueOf(applied2.get("checks"));

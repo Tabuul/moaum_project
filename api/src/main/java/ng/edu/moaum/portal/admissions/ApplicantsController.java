@@ -20,6 +20,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.applicant.ApplicantService;
+import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -814,7 +815,7 @@ class ApplicantsController {
      */
     @GetMapping("/jamb-template")
     @PreAuthorize(READERS)
-    @Transactional(readOnly = true)
+    @Transactional
     Map<String, Object> jambTemplate(@PathVariable String session, @PathVariable String year,
                                      @org.springframework.web.bind.annotation.RequestParam(required = false) String programme) {
         String s = session + "/" + year;
@@ -869,6 +870,8 @@ class ApplicantsController {
                     """).param("s", s).param("c", code).query().listOfRows());
         }
         List<Map<String, Object>> out = new java.util.ArrayList<>();
+        int[] budget = { 400 };   // evaluations this export may run for applications the engine has not seen; the desk's button does the rest
+        int unevaluated = 0;
         for (Map<String, Object> r : rows) {
             Map<String, Object> raw = CandidateDataController.Json.map((String) r.get("raw_text"));
             List<Map<String, Object>> grades = jdbc.sql("""
@@ -939,15 +942,18 @@ class ApplicantsController {
             String olRemark = !olUploaded ? "O'Level result not uploaded"
                     : (olMissing != null && !olMissing.isBlank()) ? "Insufficient O'Level: [" + olMissing + "]"
                     : "Correct Combination";
-            // for a non-qualified candidate, suggest open programmes they could be moved to
+            // for a non-qualified candidate, the programmes the eligibility engine finds them eligible for (V266) — the same
+            // the Programme Eligibility desk shows; an application the engine has not seen yet is evaluated here, within a budget
             List<Map<String, Object>> suggestions = List.of();
             if ("NOT_OFFERED".equals(row.get("decision"))) {
-                suggestions = jdbc.sql("SELECT code, name FROM admissions.programme_suggestions(:s, :k, :x)")
-                        .param("s", s).param("k", r.get("jamb_key")).param("x", r.get("programme_code"), Types.VARCHAR)
-                        .query().listOfRows();
-                if (!suggestions.isEmpty()) {
-                    String names = suggestions.stream().map(m -> String.valueOf(m.get("name"))).collect(java.util.stream.Collectors.joining(", "));
-                    olRemark = olRemark + " — Suggested: " + names;
+                List<Map<String, Object>> alt = engineAlternatives((UUID) r.get("id"), budget);
+                if (alt == null) {
+                    olRemark = olRemark + " — Eligibility not yet evaluated";
+                    unevaluated++;
+                } else {
+                    suggestions = alt;
+                    olRemark = olRemark + (alt.isEmpty() ? " — No eligible alternative on the current admission policy"
+                            : " — Suggested: " + alt.stream().map(m -> String.valueOf(m.get("name"))).collect(java.util.stream.Collectors.joining(", ")));
                 }
             }
             row.put("olRemark", olRemark);
@@ -979,6 +985,7 @@ class ApplicantsController {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("totalApplicants", onCaps);
         summary.put("registeredApplicants", ((Number) fees.get("n")).longValue());
+        summary.put("unevaluated", unevaluated);
         summary.put("qualifiedCases", out.stream().filter(x -> ("OFFERED".equals(x.get("decision")) || "WAITING".equals(x.get("decision"))) && "UTME".equals(x.get("entryMode"))).count());
         summary.put("nonQualifiedCases", out.stream().filter(x -> "NOT_OFFERED".equals(x.get("decision")) && "UTME".equals(x.get("entryMode"))).count());
         summary.put("totalQuota", quota);
@@ -1088,7 +1095,7 @@ class ApplicantsController {
     /** non-qualified candidates who hold five O'Level credits and could be moved to an open programme, with the suggestions */
     @GetMapping("/reconsiderations")
     @PreAuthorize(READERS)
-    @Transactional(readOnly = true)
+    @Transactional
     Map<String, Object> reconsiderations(@PathVariable String session, @PathVariable String year) {
         String s = session + "/" + year;
         List<Map<String, Object>> rows = jdbc.sql("""
@@ -1104,14 +1111,14 @@ class ApplicantsController {
                 """).param("s", s).query().listOfRows();
         java.util.Set<java.util.UUID> offered = offeredApps(s, rows);
         List<Map<String, Object>> out = new java.util.ArrayList<>();
+        int[] reconsiderBudget = { 400 };
         for (Map<String, Object> r : rows) {
             if (offered.contains((java.util.UUID) r.get("id"))) {
                 continue;   // qualified for their own programme — not a move
             }
-            List<Map<String, Object>> sug = jdbc.sql("SELECT code, name FROM admissions.programme_suggestions(:s, :k, :x)")
-                    .param("s", s).param("k", r.get("jamb_key")).param("x", r.get("programme_code"), Types.VARCHAR).query().listOfRows();
-            if (sug.isEmpty()) {
-                continue;   // nothing to suggest
+            List<Map<String, Object>> sug = engineAlternatives((java.util.UUID) r.get("id"), reconsiderBudget);
+            if (sug == null || sug.isEmpty()) {
+                continue;   // not yet evaluated, or nothing to suggest
             }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("applicationId", r.get("id"));
@@ -1199,9 +1206,8 @@ class ApplicantsController {
         }
         Map<String, Object> r = found.get(0);
 
-        // the chosen programme must be one the candidate qualifies for — the open set the dashboard computes
-        List<Map<String, Object>> sug = jdbc.sql("SELECT code, name FROM admissions.programme_suggestions(:s, :k, :x)")
-                .param("s", s).param("k", r.get("jamb_key")).param("x", r.get("programme_code"), Types.VARCHAR).query().listOfRows();
+        // the chosen programme must be one the engine finds the candidate eligible for — the same set the desks show
+        List<Map<String, Object>> sug = java.util.Objects.requireNonNullElse(engineAlternatives(appId, new int[] { 1 }), List.of());
         Map<String, Object> chosen = sug.stream()
                 .filter(x -> body.programme().equalsIgnoreCase(String.valueOf(x.get("code"))))
                 .findFirst()
@@ -1411,5 +1417,28 @@ class ApplicantsController {
         jdbc.sql("SELECT admissions.clear_document(:id, :i, :s, :n)").param("id", id).param("i", item.trim().toUpperCase())
                 .param("s", st).param("n", body.note(), Types.VARCHAR).query(Integer.class).single();
         return applicants.view(id, true);
+    }
+
+    /* ── the eligibility engine's alternatives (V266): the same the Programme Eligibility desk shows ── */
+
+    /** the programmes the engine finds the candidate eligible for, in the engine's order; null when the application
+     *  has no evaluation yet and the budget for evaluating on the spot is spent (or the evaluation is refused) */
+    private List<Map<String, Object>> engineAlternatives(UUID app, int[] budget) {
+        UUID run = jdbc.sql("SELECT id FROM admissions.eligibility_run WHERE application_id = :a AND superseded_at IS NULL ORDER BY evaluated_at DESC LIMIT 1")
+                .param("a", app).query(UUID.class).optional().orElse(null);
+        if (run == null) {
+            if (budget[0] <= 0) return null;
+            budget[0]--;
+            try {
+                run = jdbc.sql("SELECT admissions.evaluate_application(:a, 'SYSTEM', :by)").param("a", app)
+                        .param("by", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER).query(UUID.class).single();
+            } catch (org.springframework.dao.DataAccessException cannot) {
+                return null;   // a candidate whose programme the engine does not know is not evaluated; the row says so
+            }
+        }
+        return jdbc.sql("""
+                SELECT programme_code AS code, programme AS name, result FROM admissions.eligibility_result
+                 WHERE run_id = :r AND kind = 'ALTERNATIVE' AND result IN ('ELIGIBLE', 'ELIGIBLE_SCREENING') ORDER BY ord, programme
+                """).param("r", run).query().listOfRows();
     }
 }
