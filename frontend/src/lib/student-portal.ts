@@ -9,8 +9,11 @@ export interface PaymentRef {
   id: string; session: string; reference: string; purpose: string; amount: number; generated_at: string; expires_at: string;
   confirmed_at: string | null; channel: string | null; note: string | null; receipt_no: string | null;
 }
+/** a portal window's state now (V288): open, scheduled, closed or expired; phase NORMAL or LATE */
+export interface PortalWindow { configured: boolean; state: "OPEN" | "SCHEDULED" | "CLOSED" | "EXPIRED"; phase: "NORMAL" | "LATE" | "NONE"; opens_at: string | null; closes_at: string | null; late_until: string | null; late_fee_enabled: boolean; reason: string | null }
 export interface Fees {
   session: string;
+  window?: PortalWindow;
   charges: Charge[];
   due: number;
   paid: number;
@@ -43,7 +46,7 @@ export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
   /** V287: the semester's door — open, closed, not yet open, or open early to the session's fresh students */
-  window?: { state?: string | null; registration_opens?: string | null; registration_closes?: string | null; fresh_registration_from?: string | null; gate: string | null; open: boolean; fresh: boolean };
+  window?: { state?: string | null; registration_opens?: string | null; registration_closes?: string | null; fresh_registration_from?: string | null; gate: string | null; open: boolean; fresh: boolean; portal?: PortalWindow };
   /** whether THIS semester's school fees are cleared (registration for it is gated on that) */
   clears?: boolean;
   /** the highest open semester of the session; the student may also register any earlier one */
@@ -75,6 +78,8 @@ export interface Me {
   /** whether a passport photo exists in any store (document, or JAMB/attachment) — use with /api/v1/me/passport */
   hasPhoto?: boolean;
   fees: Fees; gpa: Semester[]; cgpa: number | null; standing: string | null; carryovers: Carryover[];
+  /** V288: the dashboard's indicators */
+  windows?: { schoolFees: PortalWindow; courseRegistration: PortalWindow };
   registration: Registration | null; notices: Notice[]; graduation?: Graduation | null;
   /** the standing the record pronounces (V244, V246): probation, or advice to withdraw, by Senate's rule on the latest semester's CGPA */
   probation?: Probation | null;

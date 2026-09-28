@@ -395,6 +395,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Score sheet by level",
     "Downloaded for the cohort, filled, uploaded; every mark judged by the rule, the decision applied provisionally"
   ],
+  "t/portalwindows": [
+    "Payment & Registration Windows",
+    "Whether school fees payment and course registration are open, closed, scheduled or in their late period; opened and closed by the Director of ICT, on the record"
+  ],
   "t/collegerules": [
     "College Rules",
     "The regulations as the tables hold them and the portal applies them: attendance, pass marks, resit window, distinction, carry-overs, the 100 Level act"

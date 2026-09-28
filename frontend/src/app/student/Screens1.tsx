@@ -203,7 +203,14 @@ export function Dashboard({ s }: { s: Me }) {
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"
               sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted, with your Head of Department" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
             <Step state="todo" title="Examination card" sub="Available after approval" />
-          </div></PBody>
+          </div>
+          {s.windows ? (
+            <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
+              <span className="sub2">School fees:</span><Pil kind={s.windows.schoolFees.state === "OPEN" ? (s.windows.schoolFees.phase === "LATE" ? "warn" : "ok") : "bad"}>{s.windows.schoolFees.state === "OPEN" ? (s.windows.schoolFees.phase === "LATE" ? "LATE PAYMENT" : "OPEN") : s.windows.schoolFees.state}</Pil>
+              <span className="sub2">Course registration:</span><Pil kind={s.windows.courseRegistration.state === "OPEN" ? (s.windows.courseRegistration.phase === "LATE" ? "warn" : "ok") : "bad"}>{s.windows.courseRegistration.state === "OPEN" ? (s.windows.courseRegistration.phase === "LATE" ? "LATE REGISTRATION" : "OPEN") : s.windows.courseRegistration.state}</Pil>
+            </div>
+          ) : null}
+          </PBody>
         </Panel>
       </div>
 

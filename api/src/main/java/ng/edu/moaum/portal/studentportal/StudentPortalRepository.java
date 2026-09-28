@@ -211,6 +211,12 @@ class StudentPortalRepository {
                 .query(Boolean.class).single());
     }
 
+    /** the portal window's state now (V288): school fees payment for the session, or course registration for a semester */
+    Map<String, Object> windowState(String type, String session, Integer semester) {
+        return jdbc.sql("SELECT configured, state, phase, opens_at, closes_at, late_until, late_fee_enabled, reason FROM policy.window_state(:t, :s, :sem)")
+                .param("t", type).param("s", session).param("sem", semester, Types.INTEGER).query().singleRow();
+    }
+
     /** why the student may not register the semester now, or null when the door is open (V287): closed, not yet open, or open early to the session's fresh students from a date */
     String registrationGate(UUID student, String session, int semester) {
         return jdbc.sql("SELECT registration.registration_gate(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query(String.class).optional().orElse(null);

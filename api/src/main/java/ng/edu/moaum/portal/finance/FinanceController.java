@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
@@ -40,7 +41,9 @@ class FinanceController {
 
     public record Item(@NotBlank @Size(max = 120) String item, @NotNull @DecimalMin("0") BigDecimal amount, Integer level,
                        @Size(max = 20) String entryMode, @Size(max = 12) String facultyCode, @Size(max = 12) String programmeCode,
-                       @Size(max = 12) String feeGroup, Integer semester, Integer ord) {
+                       @Size(max = 12) String feeGroup, Integer semester, Integer ord,
+                       /** V288: FEE, or LATE_PAYMENT / LATE_REGISTRATION charged only in the window's late period */
+                       @Pattern(regexp = "FEE|LATE_PAYMENT|LATE_REGISTRATION") String kind) {
     }
 
     public record Scheme(@NotBlank @Size(max = 200) String instrument, LocalDate from) {
@@ -120,7 +123,7 @@ class FinanceController {
         String s = session + "/" + year;
         List<Map<String, Object>> items = jdbc.sql("""
                 SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
-                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.ord, f.spillover
+                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.ord, f.spillover, f.kind
                   FROM finance.fee_schedule f
                   LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code
                   LEFT JOIN ref.programme p ON p.code = f.programme_code
@@ -176,9 +179,9 @@ class FinanceController {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
         }
         jdbc.sql("""
-                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord)
-                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o)
-                """).param("s", s).param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
+                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord, kind)
+                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o, :k)
+                """).param("s", s).param("k", body.kind() == null || body.kind().isBlank() ? "FEE" : body.kind()).param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
                 .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)
                 .param("sem", body.semester(), Types.INTEGER)
@@ -219,9 +222,9 @@ class FinanceController {
         }
         int n = jdbc.sql("""
                 UPDATE finance.fee_schedule SET item = :i, amount = :a, level = :l, entry_mode = :m, faculty_code = :f,
-                       programme_code = :p, fee_group = :g, semester = :sem, ord = :o
+                       programme_code = :p, fee_group = :g, semester = :sem, ord = :o, kind = coalesce(:k, kind)
                  WHERE id = :id AND session = :s AND ended_at IS NULL
-                """).param("id", id).param("s", session + "/" + year)
+                """).param("id", id).param("k", body.kind() == null || body.kind().isBlank() ? null : body.kind(), Types.VARCHAR).param("s", session + "/" + year)
                 .param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
                 .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)

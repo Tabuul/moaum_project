@@ -20,7 +20,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
-export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number; spillover: boolean }
+export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number; spillover: boolean; kind?: string }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
 export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string }
@@ -219,7 +219,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     setAdding(true);
     setEdits({
       item: known ? i.item : "__other__", itemOther: known ? "" : i.item, amount: String(i.amount),
-      addSession: session, semester: i.semester ? String(i.semester) : "", group: i.fee_group ?? "",
+      addSession: session, semester: i.semester ? String(i.semester) : "", group: i.fee_group ?? "", kind: i.kind ?? "FEE",
       level: i.level ? String(i.level) : "", mode: i.entry_mode ?? "", faculty: i.faculty_code ?? "", progs: i.programme_code ?? "",
     });
   }
@@ -469,7 +469,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         return (
         <Modal title={editingId ? "Edit the charge item" : "An item of the charge"} sub={`${addSession} · applies where every filter it carries matches, or is blank`} onClose={() => { setAdding(false); setEditingId(null); }}
           foot={<><Btn kind="ghost" onClick={() => { setAdding(false); setEditingId(null); }}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
-            const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null };
+            const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null, kind: val("kind") || "FEE" };
             let ok = true;
             if (editingId) {
               // edit the one line in place
@@ -500,6 +500,13 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Field id="fs" label="Session" hint="Which session this charge is for"><select id="fs" className="ctl" value={addSession} onChange={(e) => setEdits({ ...edits, addSession: e.target.value })}>{(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
             <Field id="fsem" label="Semester" hint="Blank for the whole session"><select id="fsem" className="ctl" value={val("semester")} onChange={(e) => setEdits({ ...edits, semester: e.target.value })}><option value="">Whole session</option><option value="1">First semester</option><option value="2">Second semester</option></select></Field>
           </div>
+          <Field id="fk" label="Kind" hint="A fee is charged as stated; a late payment or late registration fee is charged only while the Directorate of ICT's window is in its late period and the obligation was not met in time (V288)">
+            <select id="fk" className="ctl" value={val("kind") || "FEE"} onChange={(e) => setEdits({ ...edits, kind: e.target.value })}>
+              <option value="FEE">Fee (charged as stated)</option>
+              <option value="LATE_PAYMENT">Late school fees payment fee</option>
+              <option value="LATE_REGISTRATION">Late registration fee</option>
+            </select>
+          </Field>
           <Field id="fg" label="Programme group" hint="Undergraduate, Postgraduate, GST, EPS — blank for every group">
             <select id="fg" className="ctl" value={val("group")} onChange={(e) => setEdits({ ...edits, group: e.target.value })}>
               <option value="">Every group</option>

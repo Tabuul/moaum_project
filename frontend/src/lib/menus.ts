@@ -1150,6 +1150,12 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Portal Management",
+        "items": [
+          { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" }
+        ]
+      },
+      {
         "name": "Finance",
         "items": [
           { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" }

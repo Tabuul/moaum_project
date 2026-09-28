@@ -136,6 +136,11 @@ public class StudentPortalService {
         v.put("passportDocumentId", repo.passportDocument(s.candidateId()).orElse(null));
         v.put("hasPhoto", repo.hasPassport(id));
         v.put("fees", fees(id, session));
+        // V288: the portal's windows as the dashboard shows them: school fees payment for the session, course registration for the open semester
+        Map<String, Object> windows = new LinkedHashMap<>();
+        windows.put("schoolFees", repo.windowState("SCHOOL_FEES_PAYMENT", session, null));
+        windows.put("courseRegistration", repo.windowState("COURSE_REGISTRATION", session, repo.openSemester(session)));
+        v.put("windows", windows);
         List<Map<String, Object>> gpa = repo.gpa(id);
         v.put("gpa", gpa);
         BigDecimal cgpa = gpa.isEmpty() ? null : (BigDecimal) gpa.get(gpa.size() - 1).get("cgpa");
@@ -201,12 +206,25 @@ public class StudentPortalService {
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
         out.put("sessions", repo.sessionsWithCharges());
+        out.put("window", repo.windowState("SCHOOL_FEES_PAYMENT", session, null));   // V288: open, scheduled, closed, or in the late period
         return out;
+    }
+
+    /** the portal's school-fees window (V288): a new reference is generated only while it is open; one already generated is paid as before */
+    private void assertFeesWindowOpen(String session) {
+        Map<String, Object> w = repo.windowState("SCHOOL_FEES_PAYMENT", session, null);
+        String state = String.valueOf(w.get("state"));
+        if (!"OPEN".equals(state)) {
+            throw new DomainRuleViolation("SCHOOL_FEES_PAYMENT_CLOSED", "School fees payment is currently " + ("SCHEDULED".equals(state) ? "not yet open" : "closed") + " for " + session + "."
+                    + (w.get("reason") == null ? "" : " " + w.get("reason")),
+                    new DomainRuleViolation.Remedy("SCHEDULED".equals(state) ? "It opens on the date the Directorate of ICT set; check again then." : "The Directorate of ICT reopens the payment window; a reference already generated may still be paid.", "Directorate of ICT"));
+        }
     }
 
     @Transactional
     public Map<String, Object> newReference(UUID id, String session, BigDecimal amount) {
         String ses = session == null || session.isBlank() ? sessionFor(id) : session.trim();
+        assertFeesWindowOpen(ses);
         Map<String, Object> pos = repo.position(id, ses);
         BigDecimal balance = (BigDecimal) pos.get("balance");
         BigDecimal amt = amount == null ? balance : amount;
@@ -271,6 +289,7 @@ public class StudentPortalService {
         window.put("gate", gate);
         window.put("open", gate == null);
         window.put("fresh", session.equals(s.entrySession()));
+        window.put("portal", repo.windowState("COURSE_REGISTRATION", session, semester));   // V288
         out.put("window", window);
         return out;
     }
@@ -279,8 +298,8 @@ public class StudentPortalService {
     private void assertWindowOpen(UUID id, String session, int semester) {
         String gate = repo.registrationGate(id, session, semester);
         if (gate != null) {
-            throw new DomainRuleViolation("REG_SEMESTER_NOT_OPEN", gate,
-                    new DomainRuleViolation.Remedy("The Academic Office opens the semester on the calendar, or dates the early window for the session's fresh students.", "Academic Office"));
+            throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate,
+                    new DomainRuleViolation.Remedy("The Directorate of ICT opens the registration window; the Academic Office opens the semester on the calendar or dates the early window for the session's fresh students.", "Directorate of ICT"));
         }
     }
 

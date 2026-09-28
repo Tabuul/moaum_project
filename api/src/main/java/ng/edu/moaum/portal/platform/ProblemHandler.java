@@ -95,8 +95,11 @@ class ProblemHandler {
         }
         if ("23514".equals(state) || "23502".equals(state) || "22P02".equals(state) || "P0002".equals(state)
                 || "23P01".equals(state)) {
-            ProblemDetail problem = problem(HttpStatus.UNPROCESSABLE_CONTENT, message, request);
-            problem.setProperty("code", "DATABASE_RULE_REFUSED");
+            // a rule that names its own business code ("SCHOOL_FEES_PAYMENT_CLOSED: ...") carries it (V288); the rest are the database's refusals
+            java.util.regex.Matcher coded = message == null ? null : java.util.regex.Pattern.compile("^([A-Z][A-Z0-9_]{3,60}): (.+)$", java.util.regex.Pattern.DOTALL).matcher(message);
+            boolean named = coded != null && coded.matches();
+            ProblemDetail problem = problem(HttpStatus.UNPROCESSABLE_CONTENT, named ? coded.group(2) : message, request);
+            problem.setProperty("code", named ? coded.group(1) : "DATABASE_RULE_REFUSED");
             if (hint != null) {
                 problem.setProperty("remedy", Map.of("message", hint, "office", "the office named in the rule"));
             }

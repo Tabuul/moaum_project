@@ -95,17 +95,20 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
     </div></div>
   ) : null;
 
+  // V288 · the late registration period, when the portal window is in it
+  const lateReg = v.window?.portal && v.window.portal.state === "OPEN" && v.window.portal.phase === "LATE" ? v.window.portal : null;
   // V287 · the calendar's door on this semester: closed, not yet open, or open early to the session's fresh students
   if (v.window && !v.window.open && !locked) {
     return (
       <>
         {switcher}
-        <Note kind="info" title={v.window.state === "CLOSED" ? "Registration is closed for this semester" : "Registration is not yet open for this semester"}>
+        <Note kind="bad" title={v.window.portal && v.window.portal.configured && v.window.portal.state !== "OPEN" ? "COURSE REGISTRATION IS CURRENTLY CLOSED" : v.window.state === "CLOSED" ? "Registration is closed for this semester" : "Registration is not yet open for this semester"}>
           {v.window.gate}{v.window.fresh && v.window.fresh_registration_from ? "" : v.window.fresh_registration_from ? "" : " The Academic Office opens the semester on the University calendar."}
         </Note>
       </>
     );
   }
+  const lateNote = lateReg ? <Note kind="info" title="LATE REGISTRATION">The normal registration window closed on {new Date(lateReg.closes_at ?? "").toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" })}; late registration runs until {new Date(lateReg.late_until ?? "").toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" })}{lateReg.late_fee_enabled ? ", and the late registration fee the Bursar stated is in your charge on Fees & payments" : ""}.</Note> : null;
   if (!cleared && !locked) {
     return (
       <>
@@ -153,6 +156,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
 
   return (
     <>
+      {lateNote}
       {switcher}
       {v.siwes ? (
         <Note kind="info" title="Industrial training (SIWES) semester">

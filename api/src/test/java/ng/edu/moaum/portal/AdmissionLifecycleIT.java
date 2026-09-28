@@ -341,7 +341,7 @@ class AdmissionLifecycleIT {
         it.db(() -> jdbc.sql("INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), :s, 1, 'NOT_YET_OPEN') ON CONFLICT (session, number) DO UPDATE SET state = 'NOT_YET_OPEN', fresh_registration_from = NULL").param("s", SESSION).update());
         ResponseEntity<Map> shut = it.call(studentToken, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", SESSION, "semester", 1, "offerings", List.of()));
         assertThat(shut.getStatusCode().value()).isEqualTo(422);
-        assertThat(shut.getBody().get("code")).isEqualTo("REG_SEMESTER_NOT_OPEN");
+        assertThat(shut.getBody().get("code")).isEqualTo("COURSE_REGISTRATION_CLOSED");
         assertThat(m(it.get(studentToken, "/api/v1/me/registration?session=" + SESSION + "&semester=1").getBody().get("window")).get("open")).isEqualTo(false);
         ResponseEntity<Map> dated = it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/2084/2085/semesters/1", Map.of("state", "NOT_YET_OPEN", "freshRegistrationFrom", java.time.LocalDate.now().toString()));
         assertThat(dated.getStatusCode().value()).as(String.valueOf(dated.getBody())).isEqualTo(200);
