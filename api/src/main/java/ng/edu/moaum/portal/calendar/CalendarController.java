@@ -26,6 +26,9 @@ class CalendarController {
 
     private static final String WRITERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_ict')";
+    /** V289: the session transition is the Registrar's act (or the Super Administrator's), not every calendar writer's */
+    private static final String TRANSITIONERS =
+            "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final CalendarService calendar;
 
@@ -47,10 +50,32 @@ class CalendarController {
     }
 
     @PostMapping("/sessions/{session}/{year}/make-current")
-    @PreAuthorize(WRITERS)
+    @PreAuthorize(TRANSITIONERS)
     Calendar makeCurrent(@PathVariable String session, @PathVariable String year,
                          @RequestBody CalendarService.Minute body) {
         return calendar.makeCurrent(session + "/" + year, body.senateMinute());
+    }
+
+    /** V289: the readiness checks of the transition into this session, as the dashboard lists them */
+    @GetMapping("/sessions/{session}/{year}/readiness")
+    java.util.Map<String, Object> readiness(@PathVariable String session, @PathVariable String year) {
+        return calendar.readiness(session + "/" + year);
+    }
+
+    /** V289: the Registrar's transition — the current session completed and this one made current, in one transaction, logged */
+    @PostMapping("/sessions/{session}/{year}/transition")
+    @PreAuthorize(TRANSITIONERS)
+    java.util.Map<String, Object> transition(@PathVariable String session, @PathVariable String year,
+                                             @Valid @RequestBody CalendarService.TransitionIn body) {
+        return calendar.transitionByHand(session + "/" + year, body);
+    }
+
+    /** V289: a completed session archived; the record stays */
+    @PostMapping("/sessions/{session}/{year}/archive")
+    @PreAuthorize(WRITERS)
+    Calendar archive(@PathVariable String session, @PathVariable String year,
+                     @RequestBody(required = false) CalendarService.Reason body) {
+        return calendar.archive(session + "/" + year, body == null ? null : body.reason());
     }
 
     @PostMapping("/sessions/{session}/{year}/close")

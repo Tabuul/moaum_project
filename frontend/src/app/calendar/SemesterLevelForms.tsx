@@ -14,7 +14,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { RecDay, RecFoot, RecSelect, RecText, semesterDraft, levelDraft, type Draft } from "./CalendarForms";
 
-const SEM_STATES = ["Open", "Not yet open", "Closed"];
+const SEM_STATES = ["Planned", "Open", "Completed", "Archived"];
 const LEVELS = ["100", "200", "300", "400", "500", "600"];
 const APPLIES = ["All programmes", "MBBS, LL.B and other five-year programmes", "One programme"];
 const YESNO = ["Yes", "No"];

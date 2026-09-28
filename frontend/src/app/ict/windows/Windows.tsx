@@ -97,7 +97,7 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
   return (
     <>
       <PageHead title="Payment & Registration Windows" description="Whether the portal's school fees payment and course registration are open, closed, scheduled or in their late period, for a session and each semester. The Director of ICT controls availability; the Bursary and the Academic Office keep every financial and academic rule. Every act is confirmed with its reason and kept in the history."
-        actions={<span className="row row--inline row--tight"><label htmlFor="pw-session" className="sub2">Session</label><select id="pw-session" className="ctl" value={session} onChange={(e) => go(`/ict/windows?session=${encodeURIComponent(e.target.value)}`)}>{page.sessions.map((s) => <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : ""}</option>)}</select></span>} />
+        actions={<span className="row row--inline row--tight"><label htmlFor="pw-session" className="sub2">Session</label><select id="pw-session" className="ctl" value={session} onChange={(e) => go(`/ict/windows?session=${encodeURIComponent(e.target.value)}`)}>{page.sessions.map((s) => <option key={s.name} value={s.name}>{s.name} — {s.state === "CLOSED" ? "COMPLETED" : s.state === "NOT_YET_OPEN" ? "PLANNED" : s.state}</option>)}</select></span>} />
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
       {!may ? <Note kind="info" title="Read only">The portal&rsquo;s windows are opened and closed by the Director of ICT alone.</Note> : null}
       <Tiles items={[

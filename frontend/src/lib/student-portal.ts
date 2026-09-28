@@ -67,6 +67,11 @@ export interface Results {
   cgpa: number | null; standing: string | null; carryovers: Carryover[]; clearsResults: boolean | null;
 }
 export interface Notice { id: string; channel: string; recipient: string; subject: string; body: string; created_at: string; state: string; sent_at: string | null }
+export interface AcademicContext {
+  session: string; context: "CURRENT" | "PREPARING" | "NONE" | string; session_state: string | null; current_session: string | null; transitions_on: string | null;
+  steps: { admission: boolean; acceptance: boolean; screening: boolean; schoolFees: boolean; account: boolean; courseRegistration: boolean; matriculation: boolean };
+  ready: boolean; status: "READY_FOR_RESUMPTION" | "FRESH_STUDENT_PREPARING" | "CURRENT_SESSION" | string;
+}
 export interface Me {
   id: string; name: string; surname: string; otherNames: string; matricNo: string | null; admissionNo: string | null;
   programmeCode: string; programme: string; faculty: string; department: string; entryMode: string; entrySession: string;
@@ -80,6 +85,8 @@ export interface Me {
   fees: Fees; gpa: Semester[]; cgpa: number | null; standing: string | null; carryovers: Carryover[];
   /** V288: the dashboard's indicators */
   windows?: { schoolFees: PortalWindow; courseRegistration: PortalWindow };
+  /** V289: the session the student stands in and why — CURRENT, or PREPARING for an entrant of a session still planned — with the pre-resumption steps */
+  academic?: AcademicContext;
   registration: Registration | null; notices: Notice[]; graduation?: Graduation | null;
   /** the standing the record pronounces (V244, V246): probation, or advice to withdraw, by Senate's rule on the latest semester's CGPA */
   probation?: Probation | null;

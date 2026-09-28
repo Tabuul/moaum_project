@@ -151,7 +151,48 @@ public class StudentPortalService {
         v.put("registration", repo.registration(id, session, 1).map(StudentPortalService::withEntries).orElse(null));
         v.put("notices", repo.notices(id));
         v.put("graduation", repo.graduation(id));
+        v.put("academic", academic(id, s, String.valueOf(v.get("lifecycle")), (Map<String, Object>) v.get("fees")));
         return v;
+    }
+
+    /**
+     * V289: the academic context the dashboard names — the session the student
+     * stands in, whether they are a returning student of the current session or
+     * an entrant preparing for a session still planned — and, for the entrant,
+     * where they stand on the University's own pre-resumption requirements:
+     * admission, acceptance, screening, school fees, the account, course
+     * registration and the matriculation number. Nothing is invented: each step
+     * is read from the record that already holds it.
+     */
+    private Map<String, Object> academic(UUID id, StudentPortalRepository.Student s, String lifecycle, Map<String, Object> fees) {
+        Map<String, Object> ctx = new LinkedHashMap<>(repo.academicContext(id));
+        boolean preparing = "PREPARING".equals(ctx.get("context"));
+        int rank = switch (lifecycle == null ? "" : lifecycle) {
+            case "ACCEPTANCE_PENDING", "OFFERED", "APPROVED", "CHECKING_FEE_PENDING" -> 1;
+            case "SCREENING_PENDING", "SCREENING_IN_REVIEW", "SCREENING_CORRECTION", "CHANGE_OF_PROGRAMME_PENDING", "CHANGE_OF_PROGRAMME_REQUIRED" -> 2;
+            case "SCHOOL_FEES_PENDING" -> 3;
+            case "REGISTER_PENDING" -> 4;
+            case "COURSE_REGISTRATION_PENDING" -> 5;
+            case "MATRICULATION_PENDING" -> 6;
+            case "MATRICULATED" -> 7;
+            default -> s.matricNo() != null ? 7 : 4;   // on the register without an admission trail: the fees decide the rest
+        };
+        String session = String.valueOf(ctx.get("session"));
+        boolean feesPaid = Boolean.TRUE.equals(fees.get("paidInFull")) || Boolean.TRUE.equals(fees.get("clearsRegistration")) || rank >= 4;
+        boolean registered = repo.registrationIn(id, session) || rank >= 6;
+        Map<String, Object> steps = new LinkedHashMap<>();
+        steps.put("admission", true);
+        steps.put("acceptance", rank >= 2);
+        steps.put("screening", rank >= 3);
+        steps.put("schoolFees", feesPaid);
+        steps.put("account", true);
+        steps.put("courseRegistration", registered);
+        steps.put("matriculation", s.matricNo() != null);
+        boolean ready = steps.values().stream().allMatch(Boolean.TRUE::equals);
+        ctx.put("steps", steps);
+        ctx.put("ready", ready);
+        ctx.put("status", preparing ? (ready ? "READY_FOR_RESUMPTION" : "FRESH_STUDENT_PREPARING") : "CURRENT_SESSION");
+        return ctx;
     }
 
     @Transactional

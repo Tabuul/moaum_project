@@ -422,9 +422,21 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional();
     }
 
-    /** the latest session the University has run (CURRENT or CLOSED) — the one a returning student stands in between sessions */
+    /** the latest session the University has run (CURRENT, CLOSED or ARCHIVED; never a draft or planned one) — the one a returning student stands in between sessions */
     Optional<String> latestRunSession() {
-        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state <> 'PLANNED' ORDER BY name DESC LIMIT 1").query(String.class).optional();
+        return jdbc.sql("SELECT name FROM policy.academic_session WHERE state IN ('CURRENT', 'CLOSED', 'ARCHIVED') ORDER BY name DESC LIMIT 1").query(String.class).optional();
+    }
+
+    /** the session the student stands in and why (V289): CURRENT, or PREPARING for an entrant of a session still planned */
+    Map<String, Object> academicContext(UUID student) {
+        return jdbc.sql("SELECT session, context, session_state, current_session, transitions_on::text AS transitions_on FROM people.academic_context(:s)")
+                .param("s", student).query().singleRow();
+    }
+
+    /** whether the student's course registration for a session is in (submitted, approved or locked) — the resumption step (V289) */
+    boolean registrationIn(UUID student, String session) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM registration.course_registration r WHERE r.student_id = :s AND r.session = :ses AND r.status IN ('SUBMITTED', 'APPROVED', 'LOCKED'))")
+                .param("s", student).param("ses", session).query(Boolean.class).single();
     }
 
     /* ── the services (V027) ── */

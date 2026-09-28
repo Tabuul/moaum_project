@@ -68,7 +68,16 @@ function Foot({ onClose, onEnd, endLabel, save, busy }: { onClose: () => void; o
   );
 }
 
-const STATES = ["Planned", "Current", "Closed"];
+const STATES = ["Draft", "Planned", "Current", "Completed", "Archived"];
+const MODES = ["By the Registrar", "Automatic on the date"];
+
+/** the form's word for a stored state, and back (V289: CLOSED reads Completed) */
+export function stateWord(state: string | undefined): string {
+  return state === "CURRENT" ? "Current" : state === "CLOSED" ? "Completed" : state === "DRAFT" ? "Draft" : state === "ARCHIVED" ? "Archived" : "Planned";
+}
+export function stateCode(word: string): string {
+  return word === "Completed" ? "CLOSED" : word.toUpperCase();
+}
 const SEMS = ["2", "3 (Summer semester)"];
 
 export function SessionModal({
@@ -93,7 +102,9 @@ export function SessionModal({
     closes: row?.endsOn ?? "",
     sems: row && row.semesters === 3 ? SEMS[1] : SEMS[0],
     minute: row?.senateMinute ?? "",
-    state: row?.state === "CURRENT" ? "Current" : row?.state === "CLOSED" ? "Closed" : "Planned",
+    state: stateWord(row?.state),
+    mode: row?.transitionMode === "AUTOMATIC" ? MODES[1] : MODES[0],
+    on: row?.transitionsOn ?? "",
   });
   const [ending, setEnding] = useState(false);
   const [reason, setReason] = useState("");
@@ -141,7 +152,7 @@ export function SessionModal({
       sub={
         isNew
           ? ""
-          : `${row.state === "CURRENT" ? "Current" : row.state === "CLOSED" ? "Closed" : "Planned"} · ${row.senateMinute ?? "no minute recorded"}`
+          : `${stateWord(row.state)} · ${row.senateMinute ?? "no minute recorded"}`
       }
       onClose={onClose}
       wide
@@ -168,8 +179,14 @@ export function SessionModal({
         <Field id="rf_minute" label="Senate minute">
           <Txt k="minute" draft={draft} set={set} num ph="SEN/2027/…" />
         </Field>
-        <Field id="rf_state" label="State" full hint="A session stays Planned until its Senate minute is recorded against it.">
+        <Field id="rf_state" label="State" hint="Draft while it is set up; Planned once agreed (its entrants stand in it from then); Current only by the transition; Completed at the end; Archived as history.">
           <Sel k="state" draft={draft} set={set} options={STATES} />
+        </Field>
+        <Field id="rf_mode" label="Transition" hint="Who makes this session current: the Registrar by hand, or the session clock on the transition date once the readiness checks pass.">
+          <Sel k="mode" draft={draft} set={set} options={MODES} />
+        </Field>
+        <Field id="rf_on" label="Transition date" hint="The official transition point; the clock acts on it when the transition is automatic.">
+          <Day k="on" draft={draft} set={set} />
         </Field>
       </div>
     </Modal>
@@ -179,7 +196,7 @@ export function SessionModal({
 export function semesterDraft(row: SemesterRow | null, next: number): Draft {
   return {
     n: semesterName(row?.number ?? next),
-    state: row?.state === "OPEN" ? "Open" : row?.state === "CLOSED" ? "Closed" : "Not yet open",
+    state: row?.state === "OPEN" ? "Open" : row?.state === "CLOSED" ? "Completed" : row?.state === "ARCHIVED" ? "Archived" : "Planned",
     lectFrom: row?.lecturesFrom ?? "",
     lectTo: row?.lecturesTo ?? "",
     ropen: row?.registrationOpens ?? "",

@@ -1889,3 +1889,23 @@ a.card:hover, a.tile:hover { border-color: var(--chrome-dim); box-shadow: var(--
 .scope__search { display: flex; gap: var(--s-2); flex-wrap: nowrap; align-items: stretch; }
 .scope__search .ctl { flex: 1 1 auto; min-width: 0; }
 .scope__search .btn { white-space: nowrap; align-self: center; }
+
+
+/* ── V289 · the academic state: session cards, the timeline, the readiness checks ── */
+.card--state { padding: var(--s-4); display: grid; gap: var(--s-2); background: var(--surface); }
+.timeline { display: grid; gap: var(--s-2); margin-top: var(--s-4); }
+.timeline__row { display: grid; grid-template-columns: minmax(120px, 160px) 1fr; align-items: center; gap: var(--s-3); }
+.timeline__label { display: grid; line-height: 1.2; }
+.timeline__track { position: relative; height: 14px; border-radius: 7px; background: var(--line); overflow: hidden; }
+.timeline__bar { position: absolute; top: 0; bottom: 0; border-radius: 7px; }
+.timeline__bar--current { background: var(--green); }
+.timeline__bar--planned { background: var(--chrome-deep); opacity: .85; }
+.timeline__bar--draft { background: var(--chrome-deep); opacity: .4; }
+.timeline__bar--past { background: var(--chrome); opacity: .7; }
+.timeline__today { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red-ink); }
+.checks { list-style: none; margin: var(--s-3) 0 0; padding: 0; display: grid; gap: var(--s-1); }
+.checks__item { display: grid; grid-template-columns: 18px 1fr; gap: var(--s-2); align-items: start; font-size: var(--t-sm); }
+.checks__mark { display: inline-flex; justify-content: center; font-weight: 700; }
+.checks__item--bad .checks__mark { color: var(--red-ink); }
+.checks__item--warn .checks__mark { color: var(--amber-ink); }
+@media (max-width: 640px) { .timeline__row { grid-template-columns: 1fr; gap: var(--s-1); } }

@@ -8,10 +8,35 @@ export interface SessionRow {
   name: string;
   startsOn: string;
   endsOn: string;
-  state: "PLANNED" | "CURRENT" | "CLOSED" | string;
+  /** V289: DRAFT, PLANNED, CURRENT, CLOSED (read "Completed") or ARCHIVED */
+  state: "DRAFT" | "PLANNED" | "CURRENT" | "CLOSED" | "ARCHIVED" | string;
   senateMinute: string | null;
   semesters: number;
   students: number;
+  /** V289: MANUAL (the Registrar makes it current) or AUTOMATIC (the clock does, on transitionsOn) */
+  transitionMode?: "MANUAL" | "AUTOMATIC" | string;
+  transitionsOn?: string | null;
+  madeCurrentAt?: string | null;
+  completedAt?: string | null;
+  archivedAt?: string | null;
+  /** entrants whose entry session this is */
+  freshStudents?: number;
+}
+
+/** one readiness check of the transition into a planned session (V289) */
+export interface ReadinessCheck { code: string; ok: boolean; blocking: boolean; detail: string }
+
+/** one attempt at a session transition (V289) */
+export interface TransitionRow { id: string; from_session: string | null; to_session: string; outcome: "DONE" | "BLOCKED" | "ALREADY" | string; mode: string; reason: string | null; senate_minute: string | null; at: string; actor: string | null; actor_office: string | null }
+
+/** the label the University reads for a session state: Draft, Planned, Current, Completed, Archived */
+export function sessionLabel(state: string): string {
+  return state === "DRAFT" ? "Draft" : state === "PLANNED" ? "Planned" : state === "CURRENT" ? "Current" : state === "CLOSED" ? "Completed" : state === "ARCHIVED" ? "Archived" : state;
+}
+
+/** the label for a semester state: Planned, Open, Completed, Archived */
+export function semesterLabel(state: string): string {
+  return state === "NOT_YET_OPEN" ? "Planned" : state === "OPEN" ? "Open" : state === "CLOSED" ? "Completed" : state === "ARCHIVED" ? "Archived" : state;
 }
 
 export interface SemesterRow {
@@ -28,7 +53,7 @@ export interface SemesterRow {
   examsTo: string | null;
   resultsDue: string | null;
   queryWindow: string | null;
-  state: "NOT_YET_OPEN" | "OPEN" | "CLOSED" | string;
+  state: "NOT_YET_OPEN" | "OPEN" | "CLOSED" | "ARCHIVED" | string;
 }
 
 export interface LevelLimitRow {
@@ -45,9 +70,13 @@ export interface LevelLimitRow {
 export interface CalendarData {
   sessions: SessionRow[];
   current: string | null;
+  /** V289: the next planned session after the current one */
+  next?: string | null;
   session: string | null;
   semesters: SemesterRow[];
   levelLimits: LevelLimitRow[];
+  /** V289: the last session transitions, newest first */
+  transitions?: TransitionRow[];
 }
 
 export const SEMESTER_NAMES = ["First", "Second", "Third"];

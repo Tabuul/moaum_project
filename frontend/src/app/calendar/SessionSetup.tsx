@@ -14,11 +14,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { CalendarData, LevelLimitRow, SemesterRow, SessionRow } from "@/lib/calendar";
-import { SEMESTER_NAMES, d, daysBetween, semesterName, span, withThousands, within } from "@/lib/calendar";
+import { SEMESTER_NAMES, d, daysBetween, semesterLabel, semesterName, span, withThousands, within } from "@/lib/calendar";
+import { SessionState, statePill } from "./SessionState";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { SessionModal, type Draft } from "./CalendarForms";
+import { SessionModal, stateCode, type Draft } from "./CalendarForms";
 import { LevelModal, SemesterModal } from "./SemesterLevelForms";
 
 type Open =
@@ -27,17 +28,9 @@ type Open =
   | { kind: "level"; row: LevelLimitRow | null }
   | null;
 
-function sessPill(state: string) {
-  return state === "CURRENT" ? (
-    <Pil kind="ok" key="s">Current</Pil>
-  ) : state === "PLANNED" ? (
-    <Pil kind="info" key="s">Planned</Pil>
-  ) : (
-    <Pil kind="bad" key="s">Closed</Pil>
-  );
-}
+const sessPill = statePill;
 
-const SEM_STATE: Record<string, string> = { Open: "OPEN", "Not yet open": "NOT_YET_OPEN", Closed: "CLOSED" };
+const SEM_STATE: Record<string, string> = { Open: "OPEN", Planned: "NOT_YET_OPEN", Completed: "CLOSED", Archived: "ARCHIVED" };
 
 export function SessionSetup({
   calendar,
@@ -104,7 +97,7 @@ export function SessionSetup({
       });
       return;
     }
-    const wanted = draft.state === "Current" ? null : draft.state.toUpperCase();
+    const wanted = draft.state === "Current" ? null : stateCode(draft.state);
     const ok = await send(
       "PUT",
       `/api/v1/calendar/sessions/${name}`,
@@ -114,6 +107,8 @@ export function SessionSetup({
         semesters: draft.sems.startsWith("3") ? 3 : 2,
         senateMinute: draft.minute.trim() || null,
         state: wanted,
+        transitionMode: draft.mode === "Automatic on the date" ? "AUTOMATIC" : "MANUAL",
+        transitionsOn: draft.on || null,
       },
       `${name} recorded on the calendar`,
     );
@@ -213,6 +208,8 @@ export function SessionSetup({
       {refusal && !open ? <ProblemNotice problem={refusal} /> : null}
       {rolled ? <Note kind="ok" title="The register rolled over">{rolled}</Note> : null}
 
+      {calendar ? <SessionState calendar={calendar} actingOffice={actingOffice} /> : null}
+
       {looking ? (
         <Panel title="Roll the register into a new session" right={<Btn kind="primary" disabled={busy} onClick={() => void rollOver()}>{busy ? "Rolling over…" : `Roll into ${looking}`}</Btn>}>
           <PBody><div className="sub2">
@@ -278,7 +275,7 @@ export function SessionSetup({
         ]}
       />
 
-      <Panel title="Academic sessions" right="One current, the rest closed or planned">
+      <Panel title="Academic sessions" right="Draft → Planned → Current → Completed → Archived; one current at a time">
         {sessions.length === 0 ? (
           <PBody>
             <Note kind="info" title="No session has been recorded yet">
@@ -297,9 +294,14 @@ export function SessionSetup({
               s.senateMinute ? <span className="sub2 tnum" key="m">{s.senateMinute}</span> : <span className="sub2" key="m">&mdash;</span>,
               s.students ? <span className="tnum" key="s">{withThousands(s.students)}</span> : <span className="sub2" key="s">&mdash;</span>,
               sessPill(s.state),
-              <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "session", row: s })}>
-                {s.state === "CLOSED" ? "Reopen" : "Edit"}
-              </Btn>,
+              s.state === "ARCHIVED" ? (
+                <span className="sub2" key="a">Archived {d(s.archivedAt ?? null)}</span>
+              ) : (
+                <span className="row row--inline row--tight" key="a">
+                  <Btn kind="ghost" onClick={() => setOpen({ kind: "session", row: s })}>{s.state === "CLOSED" ? "Reopen / edit" : "Edit"}</Btn>
+                  {s.state === "CLOSED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Archive ${s.name}? It stays on the record as history and is not reopened.`)) void send("POST", `/api/v1/calendar/sessions/${s.name}/archive`, { reason: `${s.name} archived` }, `${s.name} archived`); }}>Archive</Btn> : null}
+                </span>
+              ),
             ])}
           />
         )}
@@ -307,7 +309,7 @@ export function SessionSetup({
           <Btn kind="primary" onClick={() => setOpen({ kind: "session", row: null })}>
             + New session
           </Btn>
-          <span className="sub2">It is held as planned until its Senate minute is recorded against it.</span>
+          <span className="sub2">A draft is set up in private; a planned session is a real academic context for its entrants; the Registrar makes it current by the transition above.</span>
         </div>
       </Panel>
 
@@ -328,13 +330,7 @@ export function SessionSetup({
               <span className="tnum" key="r">{d(w.registrationCloses)}</span>,
               <span className="tnum" key="e">{span(w.examsFrom, w.examsTo)}</span>,
               <span className="tnum" key="d">{d(w.resultsDue)}</span>,
-              w.state === "OPEN" ? (
-                <Pil kind="ok" key="s">Open</Pil>
-              ) : w.state === "CLOSED" ? (
-                <Pil kind="bad" key="s">Closed</Pil>
-              ) : (
-                <Pil kind="info" key="s">Not yet open</Pil>
-              ),
+              <Pil kind={w.state === "OPEN" ? "ok" : w.state === "CLOSED" ? "bad" : w.state === "ARCHIVED" ? "grey" : "info"} key="s">{semesterLabel(w.state)}{w.state === "OPEN" && within(w.lecturesFrom, w.lecturesTo) ? " · lectures running" : w.state === "OPEN" && within(w.examsFrom, w.examsTo) ? " · examinations" : ""}</Pil>,
               <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "semester", row: w })}>
                 Edit windows
               </Btn>,

@@ -21,7 +21,9 @@ class CalendarRepository {
     List<Calendar.SessionRow> sessions() {
         return jdbc.sql("""
                 SELECT s.name, s.starts_on, s.ends_on, s.state, s.senate_minute, s.semesters,
-                       (SELECT count(*) FROM people.enrolment e WHERE e.session = s.name) AS students
+                       (SELECT count(*) FROM people.enrolment e WHERE e.session = s.name) AS students,
+                       s.transition_mode, s.transitions_on, s.made_current_at, s.completed_at, s.archived_at,
+                       (SELECT count(*) FROM people.student st WHERE st.entry_session = s.name) AS fresh_students
                   FROM policy.academic_session s
                  ORDER BY s.name DESC
                 """)
@@ -45,6 +47,45 @@ class CalendarRepository {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'")
                 .query(String.class)
                 .optional();
+    }
+
+    /** the next planned session: the earliest planned one that begins after the current session (V289) */
+    Optional<String> nextPlanned() {
+        return jdbc.sql("SELECT policy.next_planned_session()").query(String.class).optional();
+    }
+
+    String state(String session) {
+        return jdbc.sql("SELECT state FROM policy.academic_session WHERE name = :n").param("n", session).query(String.class).optional().orElse(null);
+    }
+
+    /** the readiness checks of the transition into a session (V289): blocking and advisory, each with what it found */
+    List<java.util.Map<String, Object>> readiness(String session) {
+        return jdbc.sql("SELECT code, ok, blocking, detail FROM policy.transition_readiness(:s)").param("s", session).query().listOfRows();
+    }
+
+    /** the transition itself, in the database's one transaction: DONE, BLOCKED (with the checks) or ALREADY */
+    String transition(String toSession, String mode, String reason, String minute) {
+        return jdbc.sql("SELECT policy.transition_session(:s, :m, :r, :minute)::text")
+                .param("s", toSession).param("m", mode).param("r", reason).param("minute", minute, Types.VARCHAR)
+                .query(String.class).single();
+    }
+
+    void tellOffice(String office, String subject, String body) {
+        jdbc.sql("SELECT admissions.tell_office(:o, :s, :b, NULL)").param("o", office).param("s", subject).param("b", body).query().listOfRows();
+    }
+
+    void archive(String session, String reason) {
+        jdbc.sql("SELECT policy.archive_session(:s, :r)").param("s", session).param("r", reason, Types.VARCHAR).query().listOfRows();
+    }
+
+    /** the last session transitions, newest first: who or what asked, from which session to which, and the outcome */
+    List<java.util.Map<String, Object>> transitions(int limit) {
+        return jdbc.sql("""
+                SELECT t.id, t.from_session, t.to_session, t.outcome, t.mode, t.reason, t.senate_minute, t.checks::text AS checks, t.at,
+                       t.actor_office, coalesce(p.surname || ', ' || p.given_names, CASE WHEN t.mode = 'AUTOMATIC' THEN 'Session clock' ELSE NULL END) AS actor
+                  FROM policy.session_transition t LEFT JOIN iam.person p ON p.id = t.actor_id
+                 ORDER BY t.at DESC LIMIT :n
+                """).param("n", limit).query().listOfRows();
     }
 
     boolean exists(String session) {
@@ -84,16 +125,20 @@ class CalendarRepository {
      * cleared by a form that did not carry it, and neither is the state: both
      * fall back to what the row already says.
      */
-    void upsertSession(String name, LocalDate startsOn, LocalDate endsOn, int semesters, String minute, String state) {
+    void upsertSession(String name, LocalDate startsOn, LocalDate endsOn, int semesters, String minute, String state,
+                       String transitionMode, LocalDate transitionsOn) {
         jdbc.sql("""
-                INSERT INTO policy.academic_session (id, name, starts_on, ends_on, semesters, senate_minute, state)
-                VALUES (gen_random_uuid(), :name, :from, :to, :sems, cast(:minute as text), coalesce(cast(:state as text), 'PLANNED'))
+                INSERT INTO policy.academic_session (id, name, starts_on, ends_on, semesters, senate_minute, state, transition_mode, transitions_on)
+                VALUES (gen_random_uuid(), :name, :from, :to, :sems, cast(:minute as text), coalesce(cast(:state as text), 'PLANNED'),
+                        coalesce(cast(:mode as text), 'MANUAL'), cast(:on as date))
                 ON CONFLICT (name) DO UPDATE SET
-                       starts_on     = EXCLUDED.starts_on,
-                       ends_on       = EXCLUDED.ends_on,
-                       semesters     = EXCLUDED.semesters,
-                       senate_minute = coalesce(cast(:minute as text), policy.academic_session.senate_minute),
-                       state         = coalesce(cast(:state as text), policy.academic_session.state)
+                       starts_on       = EXCLUDED.starts_on,
+                       ends_on         = EXCLUDED.ends_on,
+                       semesters       = EXCLUDED.semesters,
+                       senate_minute   = coalesce(cast(:minute as text), policy.academic_session.senate_minute),
+                       state           = coalesce(cast(:state as text), policy.academic_session.state),
+                       transition_mode = coalesce(cast(:mode as text), policy.academic_session.transition_mode),
+                       transitions_on  = cast(:on as date)
                 """)
                 .param("name", name)
                 .param("from", startsOn)
@@ -101,25 +146,14 @@ class CalendarRepository {
                 .param("sems", semesters)
                 .param("minute", minute, Types.VARCHAR)
                 .param("state", state, Types.VARCHAR)
+                .param("mode", transitionMode, Types.VARCHAR)
+                .param("on", transitionsOn, Types.DATE)
                 .update();
     }
 
-    /** Whatever else is current stops being current, in the caller's transaction. */
-    void closeOtherCurrent(String keep) {
-        jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED' WHERE state = 'CURRENT' AND name <> :name")
-                .param("name", keep)
-                .update();
-    }
-
-    void setCurrent(String session, String minute) {
-        jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT', senate_minute = :minute WHERE name = :name")
-                .param("name", session)
-                .param("minute", minute)
-                .update();
-    }
-
+    /** a session completed by hand, outside a transition: the record says when (V289) */
     void close(String session) {
-        jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED' WHERE name = :name")
+        jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED', completed_at = coalesce(completed_at, now()) WHERE name = :name AND state <> 'ARCHIVED'")
                 .param("name", session)
                 .update();
     }

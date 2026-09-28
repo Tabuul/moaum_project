@@ -44,6 +44,8 @@ class CalendarIT {
 
     RestClient client;
     final String academic = TestTokens.token(UUID.randomUUID(), List.of("academic"));
+    /** V289: making a session current is the Registrar's act */
+    final String registrar = TestTokens.token(UUID.randomUUID(), List.of("registrar"));
 
     @BeforeEach
     void client() {
@@ -54,8 +56,12 @@ class CalendarIT {
     }
 
     ResponseEntity<Map> call(HttpMethod method, String path, Object body) {
+        return call(academic, method, path, body);
+    }
+
+    ResponseEntity<Map> call(String token, HttpMethod method, String path, Object body) {
         RestClient.RequestBodySpec spec = client.method(method).uri(path)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + academic)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON);
         return (body == null ? spec : spec.body(body)).retrieve().toEntity(Map.class);
     }
@@ -65,7 +71,8 @@ class CalendarIT {
     }
 
     static Map<String, Object> session(String starts, String ends) {
-        return Map.of("startsOn", starts, "endsOn", ends, "semesters", 2);
+        // planned again on a re-run: an earlier run left it completed (V289 keeps the state a form does not name)
+        return Map.of("startsOn", starts, "endsOn", ends, "semesters", 2, "state", "PLANNED");
     }
 
     @SuppressWarnings("unchecked")
@@ -97,19 +104,21 @@ class CalendarIT {
         assertThat(after).noneSatisfy(s -> assertThat(s.get("name")).isEqualTo(OVERLAPS));
 
         // 3 · a session does not open without the minute that opened it
-        ResponseEntity<Map> noMinute = call(HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current",
+        // 3a · and not by the Academic Office at all: the transition is the Registrar's (V289)
+        assertThat(call(HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current", Map.of("senateMinute", "SEN/TEST/2096/001")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> noMinute = call(registrar, HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current",
                 Map.of("senateMinute", " "));
         assertThat(noMinute.getStatusCode().value()).isEqualTo(422);
         assertThat(noMinute.getBody().get("code")).isEqualTo("CAL_MINUTE_REQUIRED");
 
         // 4 · with it, it is current
-        ResponseEntity<Map> opened = call(HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current",
+        ResponseEntity<Map> opened = call(registrar, HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current",
                 Map.of("senateMinute", "SEN/TEST/2096/001"));
         assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
         assertThat(opened.getBody().get("current")).isEqualTo(FIRST);
 
         // 5 · opening the next one closes it, in one transaction
-        ResponseEntity<Map> moved = call(HttpMethod.POST, "/api/v1/calendar/sessions/" + SECOND + "/make-current",
+        ResponseEntity<Map> moved = call(registrar, HttpMethod.POST, "/api/v1/calendar/sessions/" + SECOND + "/make-current",
                 Map.of("senateMinute", "SEN/TEST/2097/001"));
         assertThat(moved.getStatusCode().value()).as(String.valueOf(moved.getBody())).isEqualTo(200);
         assertThat(moved.getBody().get("current")).isEqualTo(SECOND);

@@ -197,7 +197,28 @@ export function Dashboard({ s }: { s: Me }) {
             {s.curriculumVersion ? <Pil kind="grey">Curriculum {s.curriculumVersion}</Pil> : null}
           </div>
         </div></div>
-        <Panel title="This session" right={s.session}>
+        {s.academic && s.academic.context === "PREPARING" ? (
+          <Panel title="Admission session" right={<span className="row row--inline row--tight"><b className="tnum">{s.academic.session}</b><Pil kind={s.academic.ready ? "ok" : "info"}>{s.academic.ready ? "READY FOR RESUMPTION" : "PREPARING FOR RESUMPTION"}</Pil></span>}>
+            <PBody>
+              <div className="sub2">You belong to <b>{s.academic.session}</b>, which the University is preparing while {s.academic.current_session ? <><b>{s.academic.current_session}</b> runs for returning students</> : <>no session is current</>}. Complete the steps below before resumption{s.academic.transitions_on ? <>; the session becomes current on <b>{onDay(s.academic.transitions_on)}</b></> : null}. Your account and everything on it continue unchanged when it does.</div>
+              <div className="steps mt-2">
+                {([
+                  ["Admission", s.academic.steps.admission],
+                  ["Acceptance", s.academic.steps.acceptance],
+                  ["Screening", s.academic.steps.screening],
+                  ["School fees", s.academic.steps.schoolFees],
+                  ["Student account", s.academic.steps.account],
+                  ["Course registration", s.academic.steps.courseRegistration],
+                  ["Matriculation number", s.academic.steps.matriculation],
+                ] as [string, boolean][]).map(([t, ok], i, all) => (
+                  <Step key={t} state={ok ? "done" : all.slice(0, i).every((x) => x[1]) ? "now" : "todo"} title={t} sub={ok ? "Complete" : "Pending"} />
+                ))}
+                <Step state={s.academic.ready ? "now" : "todo"} title="Resumption" sub={s.academic.ready ? "Every requirement is met; you are ready for resumption" : "After the steps above"} />
+              </div>
+            </PBody>
+          </Panel>
+        ) : null}
+        <Panel title={s.academic && s.academic.context === "PREPARING" ? "Pre-resumption work" : "This session"} right={s.session}>
           <PBody><div className="steps">
             <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : feesPaidStage ? "Matriculation pending" : "Admitted"} · entered ${s.entrySession}`} />
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"

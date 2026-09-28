@@ -32,10 +32,14 @@ public class CalendarService {
 
     private final CalendarRepository calendar;
     private final tools.jackson.databind.ObjectMapper json;
+    /** the transition's own transaction (V289): a BLOCKED attempt commits its log row, and the refusal is raised after */
+    private final org.springframework.transaction.support.TransactionTemplate tx;
 
-    CalendarService(CalendarRepository calendar, tools.jackson.databind.ObjectMapper json) {
+    CalendarService(CalendarRepository calendar, tools.jackson.databind.ObjectMapper json,
+                    org.springframework.transaction.PlatformTransactionManager transactions) {
         this.calendar = calendar;
         this.json = json;
+        this.tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
     }
 
     public record RollOverIn(@NotNull @Size(max = 200) String confirm, @NotNull @Size(max = 400) String reason) {
@@ -59,7 +63,18 @@ public class CalendarService {
     public record SessionIn(@NotNull LocalDate startsOn, @NotNull LocalDate endsOn,
                             @NotNull @Min(1) @Max(3) Integer semesters,
                             @Size(max = 200) String senateMinute,
-                            @Pattern(regexp = "PLANNED|CURRENT|CLOSED") String state) {
+                            @Pattern(regexp = "DRAFT|PLANNED|CURRENT|CLOSED|ARCHIVED") String state,
+                            /** V289: MANUAL (the Registrar makes it current) or AUTOMATIC (the clock does, on transitionsOn) */
+                            @Pattern(regexp = "MANUAL|AUTOMATIC") String transitionMode,
+                            LocalDate transitionsOn) {
+    }
+
+    /** V289: the Registrar's transition, confirmed by the word TRANSITION, with the reason the log keeps and the minute if not yet recorded */
+    public record TransitionIn(@NotNull @Size(max = 40) String confirm, @NotNull @Size(max = 400) String reason,
+                               @Size(max = 200) String senateMinute) {
+    }
+
+    public record Reason(@Size(max = 400) String reason) {
     }
 
     public record SemesterIn(LocalDate lecturesFrom, LocalDate lecturesTo,
@@ -86,29 +101,57 @@ public class CalendarService {
     public Calendar read(String requested) {
         String current = calendar.current().orElse(null);
         String looking = requested == null || requested.isBlank() ? current : requested.trim();
-        return new Calendar(calendar.sessions(), current, looking,
+        return new Calendar(calendar.sessions(), current, calendar.nextPlanned().orElse(null), looking,
                 looking == null ? List.<Calendar.Semester>of() : calendar.semesters(looking),
-                calendar.levelLimits());
+                calendar.levelLimits(), calendar.transitions(50));
+    }
+
+    /** the readiness checks of the transition into a session (V289), as the dashboard lists them */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> readiness(String session) {
+        List<java.util.Map<String, Object>> checks = calendar.readiness(session);
+        boolean ready = checks.stream().noneMatch(c -> Boolean.FALSE.equals(c.get("ok")) && Boolean.TRUE.equals(c.get("blocking")));
+        boolean clean = checks.stream().noneMatch(c -> Boolean.FALSE.equals(c.get("ok")));
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", session);
+        out.put("state", calendar.state(session));
+        out.put("current", calendar.current().orElse(null));
+        out.put("ready", ready);
+        out.put("readyForAutomatic", clean);
+        out.put("checks", checks);
+        return out;
     }
 
     /**
-     * Records the session, or amends it. Asking for CURRENT here closes
-     * whatever else is current in the same transaction; the minute is still
-     * the database's requirement, and it refuses without one.
+     * Records the session, or amends it. Asking for CURRENT here is the
+     * transition (V289): validated, transactional and logged, never a plain
+     * state change; asking for ARCHIVED archives a completed session; an
+     * archived session is not edited back to life.
      */
-    @Transactional
     public Calendar saveSession(String session, SessionIn in) {
         String minute = in.senateMinute() == null || in.senateMinute().isBlank() ? null : in.senateMinute().trim();
         String state = in.state() == null || in.state().isBlank() ? null : in.state().trim();
-        if ("CURRENT".equals(state)) {
-            calendar.closeOtherCurrent(session);
-        }
-        calendar.upsertSession(session, in.startsOn(), in.endsOn(), in.semesters(), minute, state);
+        String mode = in.transitionMode() == null || in.transitionMode().isBlank() ? null : in.transitionMode().trim();
+        java.util.Map<String, Object> result = tx.execute(st -> {
+            String was = calendar.state(session);
+            if ("ARCHIVED".equals(was) && state != null && !"ARCHIVED".equals(state)) {
+                throw new DomainRuleViolation("SESSION_ARCHIVED", session + " is archived and is not reopened from the form.",
+                        new DomainRuleViolation.Remedy("An archived session stays on the record as it was.", "Registry"));
+            }
+            boolean toCurrent = "CURRENT".equals(state) && !"CURRENT".equals(was);
+            boolean toArchived = "ARCHIVED".equals(state) && !"ARCHIVED".equals(was);
+            calendar.upsertSession(session, in.startsOn(), in.endsOn(), in.semesters(), minute,
+                    toCurrent || toArchived ? null : state, mode, in.transitionsOn());
+            if (toArchived) {
+                calendar.archive(session, "Archived from the calendar");
+            }
+            return toCurrent ? transition(session, "MANUAL", "Made current from the calendar", minute) : java.util.Map.<String, Object>of();
+        });
+        refuseIfBlocked(result, session);
         return read(session);
     }
 
-    /** One session is current at a time: the one that was becomes CLOSED, in this transaction. */
-    @Transactional
+    /** One session is current at a time: the transition (V289) completes the one that was and makes this one current, in one transaction. */
     public Calendar makeCurrent(String session, String senateMinute) {
         if (senateMinute == null || senateMinute.isBlank()) {
             throw new DomainRuleViolation("CAL_MINUTE_REQUIRED",
@@ -119,14 +162,89 @@ public class CalendarService {
                             "Academic Office"));
         }
         mustExist(session);
-        calendar.closeOtherCurrent(session);
-        calendar.setCurrent(session, senateMinute.trim());
+        refuseIfBlocked(tx.execute(st -> transition(session, "MANUAL", "Made current from the calendar under " + senateMinute.trim(), senateMinute.trim())), session);
         return read(session);
+    }
+
+    /** The Registrar's transition (V289): the word TRANSITION, a reason, and the minute if the session has none. */
+    public java.util.Map<String, Object> transitionByHand(String session, TransitionIn in) {
+        if (!"TRANSITION".equalsIgnoreCase(in.confirm() == null ? "" : in.confirm().trim())) {
+            throw new DomainRuleViolation("SESSION_TRANSITION_UNCONFIRMED",
+                    "Type TRANSITION to confirm completing the current session and making " + session + " current.",
+                    new DomainRuleViolation.Remedy("The word is the confirmation; the reason is what the log keeps.", "Registry"));
+        }
+        if (in.reason() == null || in.reason().isBlank()) {
+            throw new DomainRuleViolation("SESSION_TRANSITION_UNCONFIRMED", "A session transition names its reason.",
+                    new DomainRuleViolation.Remedy("Say why, as it will read in the log.", "Registry"));
+        }
+        mustExist(session);
+        java.util.Map<String, Object> result = tx.execute(st -> transition(session, "MANUAL", in.reason().trim(),
+                in.senateMinute() == null || in.senateMinute().isBlank() ? null : in.senateMinute().trim()));
+        refuseIfBlocked(result, session);
+        result.put("calendar", read(session));
+        return result;
+    }
+
+    /** a completed session archived (V289): the record stays, the state says it is history */
+    @Transactional
+    public Calendar archive(String session, String reason) {
+        mustExist(session);
+        calendar.archive(session, reason == null || reason.isBlank() ? "Archived from the calendar" : reason.trim());
+        return read(session);
+    }
+
+    /**
+     * The one path a planned session becomes current: policy.transition_session
+     * does both moves in its transaction and logs the attempt; BLOCKED is turned
+     * into the refusal that names each failed check. The offices are told when
+     * it is done.
+     */
+    java.util.Map<String, Object> transition(String session, String mode, String reason, String minute) {
+        java.util.Map<String, Object> result = json.readValue(calendar.transition(session, mode, reason, minute),
+                new tools.jackson.core.type.TypeReference<java.util.Map<String, Object>>() { });
+        if ("DONE".equals(result.get("outcome"))) {
+            tell(String.valueOf(result.get("from")), session, mode, reason);
+        }
+        return result;
+    }
+
+    /** a BLOCKED outcome, once its log row is committed, is the refusal that names each failed check */
+    @SuppressWarnings("unchecked")
+    private static void refuseIfBlocked(java.util.Map<String, Object> result, String session) {
+        if (result == null || !"BLOCKED".equals(result.get("outcome"))) {
+            return;
+        }
+        List<java.util.Map<String, Object>> checks = (List<java.util.Map<String, Object>>) result.get("checks");
+        String failed = checks.stream().filter(c -> Boolean.FALSE.equals(c.get("ok")))
+                .map(c -> String.valueOf(c.get("detail"))).reduce((a, b) -> a + " " + b).orElse("A readiness check failed.");
+        throw new DomainRuleViolation("SESSION_TRANSITION_BLOCKED", "The transition into " + session + " is blocked. " + failed,
+                new DomainRuleViolation.Remedy("Put right what the checks name on the calendar, then transition again; nothing was changed.", "Registry"));
+    }
+
+    /** the offices that work to the session are told the transition happened */
+    private void tell(String from, String to, String mode, String reason) {
+        String subject = "Academic session transition: " + to + " is now the current session";
+        String body = (from == null || "null".equals(from) ? "No session was current; " : from + " is completed and ")
+                + to + " is the current academic session from now"
+                + ("AUTOMATIC".equals(mode) ? ", by the session clock on the configured transition date." : ", by the Registry's act.")
+                + " Reason: " + reason + ". Returning students continue under the progression rules; entrants of " + to
+                + " continue under the same accounts. No record was moved or recreated.";
+        for (String office : List.of("registrar", "academic", "bursar", "ict")) {
+            try {
+                calendar.tellOffice(office, subject, body);
+            } catch (RuntimeException e) {
+                // a notice that cannot be queued does not undo the transition
+            }
+        }
     }
 
     @Transactional
     public Calendar closeSession(String session) {
         mustExist(session);
+        if ("ARCHIVED".equals(calendar.state(session))) {
+            throw new DomainRuleViolation("SESSION_ARCHIVED", session + " is archived; it is already complete.",
+                    new DomainRuleViolation.Remedy("Nothing is to be done.", "Registry"));
+        }
         calendar.close(session);
         return read(session);
     }
