@@ -20,7 +20,9 @@ const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/ap
   /* a referee's form (V225): opened from the email link by someone who has no account here */
   "/pg/referee/", "/api/bff/api/v1/pg/referee/",
   /* a recipient's secure document link (V262): opened from the email by someone who has no account here */
-  "/documents/d/"];
+  "/documents/d/",
+  /* the University's public figures for its website (V282): counts only, no session, any origin */
+  "/api/v1/public/"];
 /* the public postgraduate endpoints, matched exactly so the prefix does not also open the
    authenticated PG desks that share the /api/v1/pg base (e.g. /pg/applications) */
 const OPEN_EXACT = new Set([
