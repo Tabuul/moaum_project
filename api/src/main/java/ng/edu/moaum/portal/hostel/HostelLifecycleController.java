@@ -39,8 +39,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class HostelLifecycleController {
 
-    private static final String OFFICE = "hasAnyAuthority('OFFICE_services','OFFICE_housing','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_audit','OFFICE_vc','OFFICE_dvc')";
+    private static final String OFFICE = "hasAnyAuthority('OFFICE_dsa','OFFICE_services','OFFICE_housing','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_dsa','OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_audit','OFFICE_vc','OFFICE_dvc')";
     private static final String STUDENT = "hasAuthority('OFFICE_student')";
     private static final Set<String> METHODS = Set.of("BALLOT", "FIRST_COME", "LEVEL", "FACULTY", "PROGRAMME", "SPECIAL_NEEDS", "MANUAL");
 
@@ -63,6 +63,12 @@ class HostelLifecycleController {
         return jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT'").query(String.class).optional().orElse("2026/2027");
     }
 
+    /** the session a student stands in (V289): their entry session while it is planned, else the current one */
+    private String studentSession(UUID me, String asked) {
+        if (asked != null && !asked.isBlank()) return asked;
+        return jdbc.sql("SELECT session FROM people.academic_context(:s)").param("s", me).query(String.class).optional().orElseGet(() -> session(null));
+    }
+
     private static String blank(String v) {
         return v == null || v.isBlank() ? null : v.trim();
     }
@@ -74,7 +80,7 @@ class HostelLifecycleController {
     @Transactional(readOnly = true)
     Map<String, Object> mine(Authentication auth, @RequestParam(required = false) String session) {
         UUID me = student(auth);
-        String s = session(session);
+        String s = studentSession(me, session);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
         Map<String, Object> view = jdbc.sql("SELECT * FROM hostel.student_view(:s, :n)").param("s", me).param("n", s).query().listOfRows().stream().findFirst().orElse(Map.of());
@@ -120,7 +126,7 @@ class HostelLifecycleController {
     @Transactional
     Map<String, Object> apply(Authentication auth, @Valid @RequestBody ApplyIn body) {
         UUID me = student(auth);
-        String s = session(body.session());
+        String s = studentSession(me, body.session());
         UUID roommate = null;
         if (blank(body.roommateNumber()) != null) {
             roommate = jdbc.sql("SELECT id FROM people.student WHERE upper(matric_no) = upper(:n) OR upper(admission_no) = upper(:n) LIMIT 1").param("n", body.roommateNumber().trim()).query(UUID.class).optional()
@@ -311,7 +317,9 @@ class HostelLifecycleController {
         return Map.of("id", id, "hall", hall, "code", code);
     }
 
-    public record RoomIn(@NotBlank String hall, @NotBlank String block, @NotBlank String roomNo, @NotNull Integer beds, Integer floor, String roomType, String sex, String state, @Size(max = 400) String note) {
+    public record RoomIn(@NotBlank String hall, @NotBlank String block, @NotBlank String roomNo, @NotNull Integer beds, Integer floor, String roomType, String sex, String state, @Size(max = 400) String note,
+                         /** V290: GENERAL, SPECIAL, STUDENT_UNION, SECURITY or any category the Dean added */
+                         @Size(max = 30) String category) {
     }
 
     @PutMapping("/api/v1/hostel/rooms-full")
@@ -319,6 +327,9 @@ class HostelLifecycleController {
     @Transactional
     Map<String, Object> room(@Valid @RequestBody RoomIn body) {
         UUID id = saveRoom(body.hall(), body.block(), body.roomNo(), body.beds(), body.floor(), body.roomType(), body.sex(), body.state(), body.note());
+        if (blank(body.category()) != null) {
+            jdbc.sql("SELECT hostel.set_room_category(:r, :c, 'Set on the room form')").param("r", id).param("c", body.category().trim().toUpperCase()).query().listOfRows();
+        }
         return Map.of("id", id);
     }
 
@@ -409,7 +420,9 @@ class HostelLifecycleController {
 
     public record WindowIn(BigDecimal fee, Integer holdHours, LocalDate applicationsOpen, LocalDate applicationsClose, String allocationMethod, Boolean requiresReview, Boolean waitlist, Integer maxApplications,
                            List<String> eligibleStatuses, List<Integer> eligibleLevels, List<String> eligibleFaculties, List<String> eligibleKinds, Boolean requireRegistration, Boolean refuseHostelDebt,
-                           @Size(max = 20000) String rules, LocalDate stayFrom, LocalDate stayTo, String state) {
+                           @Size(max = 20000) String rules, LocalDate stayFrom, LocalDate stayTo, String state,
+                           /** V290: the semester the window belongs to, and whether school fees paid in full is required (it is, by the University's rule) */
+                           Integer semester, Boolean requireSchoolFees) {
     }
 
     @PutMapping("/api/v1/hostel/sessions/{s}/{y}/window")
@@ -429,20 +442,23 @@ class HostelLifecycleController {
         String[] kinds = body.eligibleKinds() == null || body.eligibleKinds().isEmpty() ? null : body.eligibleKinds().stream().map(String::toUpperCase).toArray(String[]::new);
         jdbc.sql("""
                 INSERT INTO hostel.session_setting (session, fee, hold_hours, applications_open, applications_close, allocation_method, requires_review, waitlist, max_applications,
-                                                    eligible_statuses, eligible_levels, eligible_faculties, eligible_kinds, require_registration, refuse_hostel_debt, rules, rules_version, stay_from, stay_to, state)
-                VALUES (:s, :f, :h, :ao, :ac, :m, :rv, :w, :mx, :es, :el, :ef, :ek, :rr, :rd, :rules, 1, :sf, :st, coalesce(:state, 'OPEN'))
+                                                    eligible_statuses, eligible_levels, eligible_faculties, eligible_kinds, require_registration, refuse_hostel_debt, rules, rules_version, stay_from, stay_to, state, semester, require_school_fees)
+                VALUES (:s, :f, :h, :ao, :ac, :m, :rv, :w, :mx, :es, :el, :ef, :ek, :rr, :rd, :rules, 1, :sf, :st, coalesce(:state, 'OPEN'), :sem, :rsf)
                 ON CONFLICT (session) DO UPDATE SET fee = EXCLUDED.fee, hold_hours = EXCLUDED.hold_hours, applications_open = EXCLUDED.applications_open, applications_close = EXCLUDED.applications_close,
+                    semester = EXCLUDED.semester, require_school_fees = EXCLUDED.require_school_fees,
                     allocation_method = EXCLUDED.allocation_method, requires_review = EXCLUDED.requires_review, waitlist = EXCLUDED.waitlist, max_applications = EXCLUDED.max_applications,
                     eligible_statuses = EXCLUDED.eligible_statuses, eligible_levels = EXCLUDED.eligible_levels, eligible_faculties = EXCLUDED.eligible_faculties, eligible_kinds = EXCLUDED.eligible_kinds,
                     require_registration = EXCLUDED.require_registration, refuse_hostel_debt = EXCLUDED.refuse_hostel_debt, rules = EXCLUDED.rules,
                     rules_version = CASE WHEN :changed THEN hostel.session_setting.rules_version + 1 ELSE hostel.session_setting.rules_version END,
                     stay_from = EXCLUDED.stay_from, stay_to = EXCLUDED.stay_to, state = coalesce(:state, hostel.session_setting.state), updated_at = now()
-                """).param("s", session).param("f", body.fee()).param("h", body.holdHours() == null ? 72 : body.holdHours()).param("ao", body.applicationsOpen(), Types.DATE).param("ac", body.applicationsClose(), Types.DATE)
+                """).param("s", session).param("f", body.fee()).param("h", body.holdHours() == null ? 48 : body.holdHours()).param("sem", body.semester(), Types.INTEGER).param("rsf", body.requireSchoolFees() == null || body.requireSchoolFees()).param("ao", body.applicationsOpen(), Types.DATE).param("ac", body.applicationsClose(), Types.DATE)
                 .param("m", method).param("rv", body.requiresReview() != null && body.requiresReview()).param("w", body.waitlist() == null || body.waitlist()).param("mx", body.maxApplications(), Types.INTEGER)
                 .param("es", statuses).param("el", levels, Types.ARRAY).param("ef", faculties, Types.ARRAY).param("ek", kinds, Types.ARRAY)
                 .param("rr", body.requireRegistration() != null && body.requireRegistration()).param("rd", body.refuseHostelDebt() == null || body.refuseHostelDebt())
                 .param("rules", blank(body.rules()), Types.VARCHAR).param("sf", body.stayFrom(), Types.DATE).param("st", body.stayTo(), Types.DATE).param("state", state, Types.VARCHAR).param("changed", rulesChanged).update();
-        jdbc.sql("SELECT hostel.log(NULL, NULL, NULL, NULL, NULL, NULL, 'WINDOW_SAVED', :f, :t, :n)").param("f", cur == null ? null : String.valueOf(cur.get("state")), Types.VARCHAR).param("t", session + " · " + method + (state == null ? "" : " · " + state)).param("n", rulesChanged ? "Rules changed (new version)" : null, Types.VARCHAR).query().listOfRows();
+        String was = cur == null ? null : String.valueOf(cur.get("state"));
+        String act = state == null || state.equals(was) ? "WINDOW_SAVED" : "OPEN".equals(state) && "CLOSED".equals(was) ? "HOSTEL_APPLICATION_REOPENED" : "OPEN".equals(state) ? "HOSTEL_APPLICATION_OPENED" : "CLOSED".equals(state) ? "HOSTEL_APPLICATION_CLOSED" : "WINDOW_SAVED";
+        jdbc.sql("SELECT hostel.log(NULL, NULL, NULL, NULL, NULL, NULL, :act, :f, :t, :n)").param("act", act).param("f", cur == null ? null : String.valueOf(cur.get("state")), Types.VARCHAR).param("t", session + " · " + method + (state == null ? "" : " · " + state)).param("n", rulesChanged ? "Rules changed (new version)" : null, Types.VARCHAR).query().listOfRows();
         if (cur == null || ("OPEN".equals(state) && !"OPEN".equals(String.valueOf(cur.get("state"))))) {
             jdbc.sql("""
                     SELECT hostel.tell_student(st.id, 'Hostel applications are open', 'Applications for accommodation in ' || :s || ' are open on the portal' || coalesce(' until ' || :c::text, '') || '. Apply under Hostel on your dashboard.', 'MOAUM: hostel applications for ' || :s || ' are open. See the portal.')

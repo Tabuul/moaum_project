@@ -132,6 +132,43 @@ export async function sheetRowsAsync(xml: string, shared: string[], onRows?: (n:
   return rows;
 }
 
+export interface Sheet { name: string; rows: string[][] }
+
+/** Every worksheet of an .xlsx by its name, as rows of strings (V290): the workbook's sheet list and its relationships
+ *  name the parts; a workbook without them falls back to the worksheets in file order. */
+export async function xlsxWorkbook(buf: ArrayBuffer): Promise<Sheet[]> {
+  const z = zipEntries(buf);
+  const shared = z["xl/sharedStrings.xml"] ? sharedStrings(await inflate(z["xl/sharedStrings.xml"])) : [];
+  const parts: { name: string; path: string }[] = [];
+  if (z["xl/workbook.xml"] && z["xl/_rels/workbook.xml.rels"]) {
+    const wb = await inflate(z["xl/workbook.xml"]);
+    const rels = await inflate(z["xl/_rels/workbook.xml.rels"]);
+    const targets: Record<string, string> = {};
+    for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) {
+      const id = /\bId="([^"]+)"/.exec(m[0])?.[1];
+      const target = /\bTarget="([^"]+)"/.exec(m[0])?.[1];
+      if (id && target) targets[id] = target.replace(/^\/?(xl\/)?/, "xl/");
+    }
+    for (const m of wb.matchAll(/<sheet\b[^>]*>/g)) {
+      const name = unescapeXml(/\bname="([^"]*)"/.exec(m[0])?.[1] ?? "");
+      const rid = /\br:id="([^"]+)"/.exec(m[0])?.[1] ?? /\bid="([^"]+)"/.exec(m[0])?.[1];
+      const path = rid ? targets[rid] : undefined;
+      if (path && z[path]) parts.push({ name: name || `Sheet ${parts.length + 1}`, path });
+    }
+  }
+  if (!parts.length) {
+    Object.keys(z).filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort().forEach((k, i) => parts.push({ name: `Sheet ${i + 1}`, path: k }));
+  }
+  const out: Sheet[] = [];
+  for (const part of parts) {
+    const xml = await inflate(z[part.path]);
+    if (!/<(?:\w+:)?sheetData\b/.test(xml)) continue;
+    out.push({ name: part.name, rows: sheetRows(xml, shared) });
+  }
+  if (!out.length) throw new Error("the workbook has no readable worksheet in it");
+  return out;
+}
+
 /** The first worksheet of an .xlsx, as rows of strings. */
 export async function xlsxRows(buf: ArrayBuffer): Promise<string[][]> {
   const z = zipEntries(buf);

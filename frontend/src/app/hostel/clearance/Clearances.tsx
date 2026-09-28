@@ -13,7 +13,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { CLEAR_STATE, MAINT_CATS, TRANSFER_STATE, callHostel, dayOf, naira, whenAt, type BedRow, type ClearanceRow, type Maintenance, type TransferReq } from "@/lib/hostel";
 
-const OFFICERS = ["services", "housing", "registrar", "admin", "super"];
+const OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
 
 export function Clearances({ rows, checkouts, transfers, maintenance, session: s, state, q: q0, tab, office }: { rows: ClearanceRow[]; checkouts: BedRow[]; transfers: TransferReq[]; maintenance: Maintenance[]; session: string; state: string; q: string; tab: string; office: string | null }) {
   const router = useRouter();

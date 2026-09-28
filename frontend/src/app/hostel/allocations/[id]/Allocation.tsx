@@ -13,7 +13,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { ALLOC_STATE, CLEAR_STATE, TRANSFER_STATE, callHostel, dayOf, naira, whenAt, type FreeBed } from "@/lib/hostel";
 import type { AllocationFull } from "./page";
 
-const OFFICERS = ["services", "housing", "registrar", "admin", "super"];
+const OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
 
 export function Allocation({ a, session: s, office }: { a: AllocationFull; session: string; office: string | null }) {
   const router = useRouter();

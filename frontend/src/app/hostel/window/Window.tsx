@@ -11,7 +11,7 @@ import { Field } from "@/components/proto/blocks";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { METHODS, WINDOW_STATE, callHostel, type Dash, type DashboardData } from "@/lib/hostel";
 
-const OFFICERS = ["services", "housing", "registrar", "admin", "super"];
+const OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
 const STATUSES = ["ADMITTED", "ACTIVE", "PROBATION", "DEFERRED", "SUSPENDED", "DORMANT"];
 
 export function WindowScreen({ data, session: s, office }: { data: DashboardData; session: string; office: string | null }) {
@@ -20,8 +20,9 @@ export function WindowScreen({ data, session: s, office }: { data: DashboardData
   const w = d.setting;
   const may = !!office && OFFICERS.includes(office);
   const [busy, setBusy] = useState(false);
+  const semesterWord = (n: string) => (n === "1" ? "First semester" : n === "2" ? "Second semester" : n === "3" ? "Third semester" : "Whole session");
   const [f, setF] = useState({
-    fee: w ? String(w.fee) : "", holdHours: w ? String(w.hold_hours) : "72", applicationsOpen: w?.applications_open ?? "", applicationsClose: w?.applications_close ?? "", allocationMethod: w?.allocation_method ?? "BALLOT",
+    fee: w ? String(w.fee) : "", holdHours: w ? String(w.hold_hours) : "48", semester: w?.semester ? String(w.semester) : "1", requireSchoolFees: w?.require_school_fees ?? true, applicationsOpen: w?.applications_open ?? "", applicationsClose: w?.applications_close ?? "", allocationMethod: w?.allocation_method ?? "BALLOT",
     requiresReview: w?.requires_review ?? false, waitlist: w?.waitlist ?? true, maxApplications: w?.max_applications ? String(w.max_applications) : "", eligibleStatuses: w?.eligible_statuses ?? ["ACTIVE", "ADMITTED", "PROBATION"],
     eligibleLevels: (w?.eligible_levels ?? []).map(String), eligibleFaculties: w?.eligible_faculties ?? [], eligibleKinds: w?.eligible_kinds ?? [], requireRegistration: w?.require_registration ?? false, refuseHostelDebt: w?.refuse_hostel_debt ?? true,
     rules: w?.rules ?? "", stayFrom: w?.stay_from ?? "", stayTo: w?.stay_to ?? "", state: w?.state ?? "OPEN",
@@ -33,7 +34,7 @@ export function WindowScreen({ data, session: s, office }: { data: DashboardData
     setBusy(true);
     try {
       const r = await callHostel("PUT", `/hostel/sessions/${s1}/${s2}/window`, {
-        fee: Number(f.fee), holdHours: Number(f.holdHours) || 72, applicationsOpen: f.applicationsOpen || null, applicationsClose: f.applicationsClose || null, allocationMethod: f.allocationMethod, requiresReview: f.requiresReview, waitlist: f.waitlist,
+        fee: Number(f.fee), holdHours: Number(f.holdHours) || 48, semester: f.semester ? Number(f.semester) : null, requireSchoolFees: f.requireSchoolFees, applicationsOpen: f.applicationsOpen || null, applicationsClose: f.applicationsClose || null, allocationMethod: f.allocationMethod, requiresReview: f.requiresReview, waitlist: f.waitlist,
         maxApplications: f.maxApplications ? Number(f.maxApplications) : null, eligibleStatuses: f.eligibleStatuses, eligibleLevels: f.eligibleLevels.map(Number), eligibleFaculties: f.eligibleFaculties, eligibleKinds: f.eligibleKinds,
         requireRegistration: f.requireRegistration, refuseHostelDebt: f.refuseHostelDebt, rules: f.rules || null, stayFrom: f.stayFrom || null, stayTo: f.stayTo || null, state: state ?? f.state,
       }, `Save the hostel window for ${s}`);
@@ -47,14 +48,16 @@ export function WindowScreen({ data, session: s, office }: { data: DashboardData
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href={`/hostel?session=${encodeURIComponent(s)}`}>Accommodation</Link><span>›</span><strong>Window &amp; rules</strong></div>
       <PageHead title="Application window" description={`${s}. What the student sees, what makes them eligible, how beds are allocated, and the rules they acknowledge.`}
         actions={<>{w ? <Pil kind={WINDOW_STATE[w.state]?.[1] ?? "grey"}>{WINDOW_STATE[w.state]?.[0] ?? w.state}</Pil> : null}<LinkBtn kind="ghost" href={`/hostel?session=${encodeURIComponent(s)}`}>Back to the desk</LinkBtn></>} />
-      {!may ? <Note kind="info" title="You are reading this window">The housing desk and Student Services change it.</Note> : null}
+      {!may ? <Note kind="info" title="You are reading this window">The Dean of Student Affairs and the housing desk change it.</Note> : null}
+      {w ? <Note kind={w.state === "OPEN" ? "ok" : "info"} title={`Hostel application · ${s} · ${semesterWord(f.semester)} · ${WINDOW_STATE[w.state]?.[0] ?? w.state}`}>Opening {w.applications_open ?? "not dated"} · closing {w.applications_close ?? "not dated"}. {w.state === "OPEN" ? "Students who have paid school fees and submitted course registration may apply" : "Students see why they cannot apply and the dates"}; opening, closing, reopening and extending are on the record.</Note> : null}
       {w?.drawn_at ? <Note kind="info" title="The allocation has been made">The method and the seed are on the record; the dates and the rules may still be changed for late seating and check-in.</Note> : null}
 
       <Panel title="Fee, dates and stay">
         <PBody>
           <div className="grid grid--3">
             <Field id="w-fee" label="Accommodation fee (₦)" required><input id="w-fee" type="number" min={0} className="ctl" value={f.fee} onChange={(e) => setF({ ...f, fee: e.target.value })} disabled={!may} /></Field>
-            <Field id="w-hold" label="Hold window (hours)" hint="A bed is held this long for payment"><input id="w-hold" type="number" min={1} max={720} className="ctl" value={f.holdHours} onChange={(e) => setF({ ...f, holdHours: e.target.value })} disabled={!may} /></Field>
+            <Field id="w-semester" label="Semester"><select id="w-semester" className="ctl" value={f.semester} onChange={(e) => setF({ ...f, semester: e.target.value })} disabled={!may}><option value="1">First semester</option><option value="2">Second semester</option><option value="3">Third semester</option><option value="">Whole session</option></select></Field>
+            <Field id="w-hold" label="Hold window (hours)" hint="A reserved bed is held this long for payment; 48 by the University's rule"><input id="w-hold" type="number" min={1} max={720} className="ctl" value={f.holdHours} onChange={(e) => setF({ ...f, holdHours: e.target.value })} disabled={!may} /></Field>
             <Field id="w-max" label="Maximum applications" hint="Blank for no limit"><input id="w-max" type="number" min={1} className="ctl" value={f.maxApplications} onChange={(e) => setF({ ...f, maxApplications: e.target.value })} disabled={!may} /></Field>
             <Field id="w-open" label="Applications open"><input id="w-open" type="date" className="ctl" value={f.applicationsOpen} onChange={(e) => setF({ ...f, applicationsOpen: e.target.value })} disabled={!may} /></Field>
             <Field id="w-close" label="Applications close"><input id="w-close" type="date" className="ctl" value={f.applicationsClose} onChange={(e) => setF({ ...f, applicationsClose: e.target.value })} disabled={!may} /></Field>
@@ -89,6 +92,7 @@ export function WindowScreen({ data, session: s, office }: { data: DashboardData
               <div className="eyebrow">Kinds of hall open this session (none chosen = every kind)</div>
               {data.kinds.map((k) => <label key={k.code} className="row row--tight" style={{ gap: 6 }}><input type="checkbox" checked={f.eligibleKinds.includes(k.code)} onChange={() => setF({ ...f, eligibleKinds: toggle(f.eligibleKinds, k.code) })} disabled={!may} /> {k.label}</label>)}
               <div className="eyebrow mt-2">Other conditions</div>
+              <label className="row row--tight" style={{ gap: 6 }}><input type="checkbox" checked={f.requireSchoolFees} onChange={(e) => setF({ ...f, requireSchoolFees: e.target.checked })} disabled={!may} /> School fees for the session paid in full</label>
               <label className="row row--tight" style={{ gap: 6 }}><input type="checkbox" checked={f.requireRegistration} onChange={(e) => setF({ ...f, requireRegistration: e.target.checked })} disabled={!may} /> Course registration for the session submitted</label>
               <label className="row row--tight" style={{ gap: 6 }}><input type="checkbox" checked={f.refuseHostelDebt} onChange={(e) => setF({ ...f, refuseHostelDebt: e.target.checked })} disabled={!may} /> No unsettled hostel damage charge or uncleared stay</label>
             </div>

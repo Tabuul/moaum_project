@@ -161,6 +161,10 @@ export const TITLES: Record<string, [string, string]> = {
   "t/hostel-applications": ["Hostel applications", "Reviewed, approved, waitlisted, seated by hand"],
   "t/hostel-occupancy": ["Occupancy", "Every bed and who holds it; check-in at the lodge"],
   "t/hostel-clearance": ["Checkout and clearance", "Inspection, damage, clearance, transfers, maintenance"],
+  "t/hostel-special": ["Special allocations", "Special, Student Union and Security rooms and who occupies them; the Dean allocates"],
+  "t/hostel-accountability": ["Occupancy accountability", "Who occupies every room, paying or not; room utilisation"],
+  "t/hostel-import": ["Import hostels and rooms", "The University's workbook previewed and imported without duplicates"],
+  "t/hostel-finance": ["Hostel finance", "Charges, paid, outstanding and exempt; the Bursar's fee rules"],
   "t/pv": [
     "Payment voucher",
     "Expenditure and Control"

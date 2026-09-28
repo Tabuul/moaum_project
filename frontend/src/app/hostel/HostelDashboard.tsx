@@ -14,7 +14,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { OCCUPANCY, WINDOW_STATE, callHostel, dayOf, pct, type Dash, type DashboardData } from "@/lib/hostel";
 
-const OFFICERS = ["services", "housing", "registrar", "admin", "super"];
+const OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
 const OCC_COL: Record<string, string> = { OCCUPIED: VZ.s1, RESERVED: VZ.warn, AVAILABLE: VZ.good, MAINTENANCE: VZ.crit, OUT_OF_SERVICE: VZ.s5 };
 const APP_COL: Record<string, string> = { UNDER_REVIEW: VZ.warn, APPROVED: VZ.s1, ALLOCATED: VZ.s3, CONFIRMED: VZ.good, WAITLISTED: VZ.s4, REJECTED: VZ.crit, LAPSED: VZ.crit, CORRECTION: VZ.s2 };
 const APP_LABEL: Record<string, string> = { UNDER_REVIEW: "Under review", APPROVED: "Approved", ALLOCATED: "Allocated", CONFIRMED: "Confirmed", WAITLISTED: "Waitlisted", REJECTED: "Rejected", LAPSED: "Lapsed", CORRECTION: "Correction" };
@@ -65,6 +65,9 @@ export function HostelDashboard({ data, session: s, sessions, office }: { data: 
           <LinkBtn kind="secondary" href={q("/hostel/inventory")}>Inventory</LinkBtn>
           <LinkBtn kind="secondary" href={q("/hostel/applications")}>Applications</LinkBtn>
           <LinkBtn kind="secondary" href={q("/hostel/occupancy")}>Occupancy</LinkBtn>
+          <LinkBtn kind="secondary" href={q("/hostel/special")}>Special allocations</LinkBtn>
+          <LinkBtn kind="secondary" href={q("/hostel/accountability")}>Accountability</LinkBtn>
+          <LinkBtn kind="secondary" href="/hostel/import">Import</LinkBtn>
           <LinkBtn kind="primary" href={q("/hostel/clearance")}>Checkout &amp; Clearance</LinkBtn>
         </>} />
 

@@ -61,7 +61,9 @@ public class HostelService {
             throw new DomainRuleViolation("HOSTEL_NO_APPLICATION", "No application stands for " + session + ".",
                     new DomainRuleViolation.Remedy("Apply first; the fee is paid against a bed the draw allocates.", "You"));
         }
-        return Map.of("reference", repo.feeReference((UUID) app), "amount", v.get("fee"), "session", session);
+        String reference = repo.feeReference((UUID) app);
+        Object amount = repo.amountOf(reference);
+        return Map.of("reference", reference, "amount", amount == null ? v.get("fee") : amount, "session", session);
     }
 
     @Transactional

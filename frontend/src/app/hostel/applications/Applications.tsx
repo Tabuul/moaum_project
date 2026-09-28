@@ -15,7 +15,7 @@ import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/export
 import { ALLOC_STATE, APP_STATE, CATEGORIES, REVIEW, callHostel, dayOf, whenAt, type ApplicationRow, type FreeBed } from "@/lib/hostel";
 import type { AppFilters, AppList } from "./page";
 
-const OFFICERS = ["services", "housing", "registrar", "admin", "super"];
+const OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
 
 export function Applications({ list, filters, session: s, office }: { list: AppList; filters: AppFilters; session: string; office: string | null }) {
   const router = useRouter();

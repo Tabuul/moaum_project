@@ -56,6 +56,11 @@ class HostelRepository {
                 .param("h", hall, Types.VARCHAR).param("c", category, Types.VARCHAR).param("t", note, Types.VARCHAR).query(UUID.class).single();
     }
 
+    /** the amount the reference was generated for (V290: the allocation's own fee) */
+    java.math.BigDecimal amountOf(String reference) {
+        return jdbc.sql("SELECT amount FROM finance.payment_reference WHERE reference = :r").param("r", reference).query(java.math.BigDecimal.class).optional().orElse(null);
+    }
+
     String feeReference(UUID application) {
         return jdbc.sql("SELECT hostel.new_fee_reference(:a)").param("a", application).query(String.class).single();
     }

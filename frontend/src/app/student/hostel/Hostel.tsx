@@ -3,10 +3,24 @@
 /** sHostel (V030 + V261): the student's whole stay — the window and eligibility, the application with its preferences and
  *  roommate request, the review, the allocation held and paid, accepted under the rules or declined, the letter, the
  *  roommates, maintenance, a transfer request, checkout, the clearance and its certificate, and the history. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
 import { ALLOC_STATE, APP_STATE, CATEGORIES, CLEAR_STATE, MAINT_CATS, REVIEW, TRANSFER_STATE, dayOf, longDay, whenAt, type StudentHostelFull } from "@/lib/hostel";
+
+/** hh:mm:ss to a deadline, ticking each second on the client (V290); the server enforces the deadline whatever this shows */
+function Countdown({ until }: { until: string }) {
+  const [left, setLeft] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setLeft(Math.max(0, Math.floor((new Date(until).getTime() - Date.now()) / 1000)));
+    const id = window.setInterval(tick, 1000);
+    tick();
+    return () => window.clearInterval(id);
+  }, [until]);
+  if (left === null) return <span className="tnum">…</span>;
+  const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60;
+  return <span className="tnum">{String(h).padStart(2, "0")}:{String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}</span>;
+}
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, Steps } from "@/components/proto/blocks";
@@ -26,6 +40,15 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
   const [checkoutOn, setCheckoutOn] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [now] = useState(() => Date.now());
+  const rooms = h.rooms ?? null;
+  const check = rooms?.checklist ?? null;
+  const firstCome = rooms?.setting?.allocation_method === "FIRST_COME" && !rooms?.setting?.requires_review;
+  const [roomFilter, setRoomFilter] = useState({ hall: "", type: "" });
+  async function reserve(roomId: string, label: string) {
+    if (!window.confirm(`Reserve a bed in ${label}? It is held for ${rooms?.setting?.hold_hours ?? 48} hours for payment of the hostel fee.`)) return;
+    const r = await act("reserve", "POST", "/me/hostel/reserve", { session: h.session, roomId }, "Room reservation", "Room reserved. Pay the hostel fee within the hold window.");
+    if (r) queryNav(`/student/hostel?session=${encodeURIComponent(h.session)}`);
+  }
 
   const open = v.open === true;
   const appState = v.state ?? null;
@@ -96,7 +119,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
           {place}. {needsRules ? `The hostel rules (version ${v.rules_version}) are acknowledged once when you accept.` : "Accepting confirms you will take the bed; declining releases it to the next name."}
         </Note>
       ) : al === "HELD" ? (
-        <Note kind="bad" title={`A bed is held for you — ${holdLeft} hour${holdLeft === 1 ? "" : "s"} to pay`} action={<span className="row row--inline row--tight"><Btn kind="urgent" disabled={busy !== null} onClick={() => void pay()}>Pay {naira(v.fee)} now</Btn><Btn kind="ghost" onClick={() => setAsk("decline")}>Decline</Btn></span>}>
+        <Note kind="bad" title={<>A bed is held for you — <Countdown until={v.held_until as string} /> to pay ({holdLeft} h)</>} action={<span className="row row--inline row--tight"><Btn kind="urgent" disabled={busy !== null} onClick={() => void pay()}>Pay {naira(v.fee)} now</Btn><Btn kind="ghost" onClick={() => setAsk("decline")}>Decline</Btn></span>}>
           {place}. The hold runs to {when(v.held_until)} whether anybody is watching; unpaid, the bed goes to the next name on the list. Generate the reference and pay it at the bank or by card; the Bursary&rsquo;s confirmation makes the bed yours.
         </Note>
       ) : al === "CHECKED_OUT" || v.clearance_state === "CLEARED" ? (
@@ -118,6 +141,20 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
       ) : (
         <Note kind="info" title={`Apply for a bed — ${naira(v.fee)} for the session`}>You are eligible. {v.allocation_method === "BALLOT" ? "Priority categories are filled first; the rest is drawn by ballot from a published seed." : "Beds are allocated by the University's stated policy."} A bed is then held for {v.hold_hours} hours for payment. Applications {v.applications_close ? `close ${onDay(v.applications_close)}` : "close when the allocation is made"}.</Note>
       )}
+      {check && !live ? (
+        <Panel title={`Hostel application · ${h.session}`} right={<Pil kind={check.eligible ? "ok" : "bad"}>{check.eligible ? "ELIGIBLE" : "NOT ELIGIBLE"}</Pil>}>
+          <PBody>
+            <KvGrid cls="grid--4" pairs={[
+              ["School fees", <Pil key="f" kind={check.school_fees ? "ok" : "bad"}>{check.school_fees ? "PAID ✓" : "NOT PAID"}</Pil>],
+              ["Course registration", <Pil key="r" kind={check.course_registration ? "ok" : "bad"}>{check.course_registration ? "COMPLETED ✓" : "NOT COMPLETED"}</Pil>],
+              ["Hostel application", <Pil key="w" kind={check.window_open ? "ok" : "bad"}>{check.window_open ? "OPEN ✓" : "CLOSED"}</Pil>],
+              ["Current hostel", <span key="c">{v.allocation_ref && al && !["LAPSED", "DECLINED", "CANCELLED"].includes(al) ? `${v.hall_name ?? ""} ${v.room_no ?? ""}` : "NOT ALLOCATED"}</span>],
+            ]} />
+            {!check.eligible ? <div className="sub2 mt-1"><b>Reason:</b> {check.why}{check.why.includes("School fees") ? " Pay on Fees & payments, then return here." : check.why.includes("Course registration") ? " Submit your course registration, then return here." : ""}</div> : null}
+            {!check.window_open && rooms?.setting ? <div className="sub2 mt-1">Hostel applications are currently {rooms.setting.state === "OPEN" ? "outside their dates" : rooms.setting.state.toLowerCase()}. Opening date: {rooms.setting.applications_open ? onDay(rooms.setting.applications_open) : "not dated"} · Closing date: {rooms.setting.applications_close ? onDay(rooms.setting.applications_close) : "not dated"}.</div> : null}
+          </PBody>
+        </Panel>
+      ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {reference ? (
         <Note kind="info" title={`Pay ${naira(reference.amount)} against ${reference.reference}`} action={<LinkBtn kind="primary" href="/student/fees">Fees &amp; payments</LinkBtn>}>
@@ -133,7 +170,27 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
         ]} />
       ) : null}
 
-      {open && !appState ? (
+      {check && rooms && firstCome && check.eligible && check.window_open && !live ? (
+        <Panel title="Available rooms" right={`${rooms.totalOpenRooms} room${rooms.totalOpenRooms === 1 ? "" : "s"} with a bed free · reserve one and pay within ${rooms.setting?.hold_hours ?? 48} hours`}>
+          <PBody>
+            <div className="row row--tight" style={{ gap: 12 }}>
+              <Field id="rr-hall" label="Hostel"><select id="rr-hall" className="ctl" value={roomFilter.hall} onChange={(e) => setRoomFilter({ ...roomFilter, hall: e.target.value })}><option value="">Every hostel</option>{rooms.halls.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field>
+              <Field id="rr-type" label="Room type"><select id="rr-type" className="ctl" value={roomFilter.type} onChange={(e) => setRoomFilter({ ...roomFilter, type: e.target.value })}><option value="">Any</option>{rooms.roomTypes.map((t) => <option key={t.code} value={t.code}>{t.label} · {t.beds} bed{t.beds === 1 ? "" : "s"}</option>)}</select></Field>
+            </div>
+          </PBody>
+          {rooms.rooms.length === 0 ? (
+            <PBody><Note kind="info" title="NO ROOMS CURRENTLY AVAILABLE">All available hostel rooms are currently occupied or reserved. Applications remain open; a room becomes available again when a reservation expires unpaid, a bed is released or more rooms are opened. You may check again later.</Note></PBody>
+          ) : (
+            <DTable cols={["Hostel", "Room|mid", "Capacity|mid", "Occupied|mid", "Reserved|mid", "Available|mid", "Fee|num", "Action|num"]}
+              rows={rooms.rooms.filter((r) => (!roomFilter.hall || r.hall_code === roomFilter.hall) && (!roomFilter.type || r.room_type === roomFilter.type)).map((r) => [
+                <span key="h">{r.hall_name}{r.campus ? <span className="sub2 blk">{r.campus}</span> : null}</span>, <b className="tnum" key="n">{r.block}-{r.room_no}</b>, r.capacity, r.occupied, r.reserved, <b className="tnum" key="a">{r.available}</b>,
+                <span className="tnum" key="f">{r.fee_status === "NO_CHARGE" ? "No charge" : naira(r.fee)}</span>,
+                <Btn kind="primary" size="sm" key="b" disabled={busy !== null} onClick={() => void reserve(r.room_id, `${r.hall_name} ${r.block}-${r.room_no}`)}>Reserve</Btn>])} />
+          )}
+        </Panel>
+      ) : null}
+
+      {open && !appState && !firstCome ? (
         <Panel title="Apply for accommodation" right={h.session}>
           <PBody>
             <div className="grid grid--2">

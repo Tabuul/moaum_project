@@ -11,11 +11,11 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { CONDITIONS, callHostel, pct, type Asset, type HallFull, type InventoryData, type RoomRow } from "@/lib/hostel";
+import { CONDITIONS, callHostel, pct, type Asset, type HallFull, type InventoryData, type RoomRow, ROOM_CATEGORIES } from "@/lib/hostel";
 
-const OFFICERS = ["services", "housing", "registrar", "admin", "super"];
+const OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
 type HallForm = { code: string; name: string; sex: string; kind: string; campus: string; location: string; description: string };
-type RoomForm = { hall: string; block: string; roomNo: string; beds: string; floor: string; roomType: string; sex: string; state: string; note: string };
+type RoomForm = { hall: string; block: string; roomNo: string; beds: string; floor: string; roomType: string; sex: string; state: string; note: string; category?: string };
 type GenForm = { hall: string; block: string; floor: string; from: string; to: string; beds: string; roomType: string; prefix: string };
 type AssetForm = { tag: string; kind: string; hall: string; roomId: string; quantity: string; condition: string; acquiredOn: string; value: string; note: string };
 type CloseForm = { kind: string; id: string; label: string; state: string; reason: string };
@@ -64,7 +64,7 @@ export function Inventory({ data, session: s, office }: { data: InventoryData; s
   }
   const emptyHall = (): HallForm => ({ code: "", name: "", sex: "", kind: "UNDERGRADUATE", campus: "", location: "", description: "" });
   const editHall = (h: HallFull): HallForm => ({ code: h.code, name: h.name, sex: h.sex ?? "", kind: h.kind, campus: h.campus ?? "", location: h.location ?? "", description: h.description ?? "" });
-  const editRoom = (r: RoomRow): RoomForm => ({ hall: r.hall_code, block: r.block, roomNo: r.room_no, beds: String(r.beds), floor: String(r.floor), roomType: r.room_type ?? "", sex: r.sex ?? "", state: r.state, note: r.note ?? "" });
+  const editRoom = (r: RoomRow): RoomForm => ({ hall: r.hall_code, block: r.block, roomNo: r.room_no, beds: String(r.beds), floor: String(r.floor), roomType: r.room_type ?? "", sex: r.sex ?? "", state: r.state, note: r.note ?? "", category: r.category ?? "GENERAL" });
   const emptyAsset = (): AssetForm => ({ tag: "", kind: "", hall: hall || data.halls[0]?.code || "", roomId: "", quantity: "1", condition: "GOOD", acquiredOn: "", value: "", note: "" });
 
   return (
@@ -163,10 +163,11 @@ export function Inventory({ data, session: s, office }: { data: InventoryData; s
             <Field id="rf-block" label="Block" required><input id="rf-block" className="ctl" value={roomForm.block} onChange={(e) => setRoomForm({ ...roomForm, block: e.target.value.toUpperCase() })} list="rf-blocks" /><datalist id="rf-blocks">{data.blocks.filter((b) => b.hall_code === roomForm.hall).map((b) => <option key={b.id} value={b.code} />)}</datalist></Field>
             <Field id="rf-floor" label="Floor" hint="0 is the ground floor"><input id="rf-floor" type="number" min={0} max={30} className="ctl" value={roomForm.floor} onChange={(e) => setRoomForm({ ...roomForm, floor: e.target.value })} /></Field>
             <Field id="rf-no" label="Room number" required><input id="rf-no" className="ctl" value={roomForm.roomNo} onChange={(e) => setRoomForm({ ...roomForm, roomNo: e.target.value })} /></Field>
-            <Field id="rf-beds" label="Capacity (beds)" required><input id="rf-beds" type="number" min={1} max={12} className="ctl" value={roomForm.beds} onChange={(e) => setRoomForm({ ...roomForm, beds: e.target.value })} /></Field>
+            <Field id="rf-beds" label="Capacity (beds)" required><input id="rf-beds" type="number" min={1} max={64} className="ctl" value={roomForm.beds} onChange={(e) => setRoomForm({ ...roomForm, beds: e.target.value })} /></Field>
             <Field id="rf-type" label="Room type"><select id="rf-type" className="ctl" value={roomForm.roomType} onChange={(e) => setRoomForm({ ...roomForm, roomType: e.target.value })}><option value="">From the capacity</option>{data.roomTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}</select></Field>
             <Field id="rf-sex" label="Gender restriction" hint="Blank follows the hostel"><select id="rf-sex" className="ctl" value={roomForm.sex} onChange={(e) => setRoomForm({ ...roomForm, sex: e.target.value })}><option value="">As the hostel</option><option value="F">Female</option><option value="M">Male</option></select></Field>
-            <Field id="rf-state" label="State"><select id="rf-state" className="ctl" value={roomForm.state} onChange={(e) => setRoomForm({ ...roomForm, state: e.target.value })}><option value="AVAILABLE">Available</option><option value="MAINTENANCE">Maintenance</option><option value="CLOSED">Closed</option><option value="RESERVED">Reserved</option></select></Field>
+            <Field id="rf-state" label="State"><select id="rf-state" className="ctl" value={roomForm.state} onChange={(e) => setRoomForm({ ...roomForm, state: e.target.value })}><option value="AVAILABLE">Available</option><option value="OUT_OF_SERVICE">Out of service</option><option value="INACTIVE">Inactive</option><option value="MAINTENANCE">Maintenance</option><option value="CLOSED">Closed</option><option value="RESERVED">Reserved</option></select></Field>
+            <Field id="rf-cat" label="Category" hint="What the room is for: only General rooms are chosen by students; the rest are the Dean's to allocate"><select id="rf-cat" className="ctl" value={roomForm.category ?? "GENERAL"} onChange={(e) => setRoomForm({ ...roomForm, category: e.target.value })}>{ROOM_CATEGORIES.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</select></Field>
             <Field id="rf-note" label="Note"><input id="rf-note" className="ctl" value={roomForm.note} onChange={(e) => setRoomForm({ ...roomForm, note: e.target.value })} /></Field>
           </div>
         </Modal>

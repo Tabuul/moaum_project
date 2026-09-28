@@ -56,12 +56,16 @@ export interface HostelEvent { action: string; from_value: string | null; to_val
 export interface StudentHostelFull {
   session: string; sessions: string[]; view: Partial<HostelView>; halls: HallFull[]; roomTypes: { code: string; label: string; beds: number }[]; history: HistoryRow[];
   roommates: Roommate[]; transfers: TransferReq[]; charges: Charge[]; clearanceItems: ClearanceItem[]; inspections: Inspection[]; maintenance: Maintenance[]; events: HostelEvent[];
+  /** V290: the eligibility checklist and the rooms the student may choose */
+  rooms?: StudentRooms | null;
 }
 
 export interface Window {
   session: string; fee: number; hold_hours: number; applications_open: string | null; applications_close: string | null; seed: string | null; drawn_at: string | null; allocation_method: string; requires_review: boolean; waitlist: boolean;
   max_applications: number | null; eligible_statuses: string[]; eligible_levels: number[] | null; eligible_faculties: string[] | null; eligible_kinds: string[] | null; require_registration: boolean; refuse_hostel_debt: boolean;
   rules: string | null; rules_version: number; stay_from: string | null; stay_to: string | null; state: string;
+  /** V290: the semester the window belongs to, and whether school fees paid in full is required */
+  semester?: number | null; require_school_fees?: boolean;
 }
 export interface Totals {
   halls: number; halls_active: number; blocks: number; rooms: number; rooms_available: number; beds: number; occupied: number; reserved: number; available: number; maintenance: number; out_of_service: number; students_accommodated: number;
@@ -80,6 +84,7 @@ export interface Preview { eligible_applicants: number; approved: number; pendin
 export interface DashboardData { dashboard: string; preview: Preview; sessions: string[]; halls: { code: string; name: string; sex: string | null; kind: string; state: string }[]; kinds: { code: string; label: string }[]; faculties: { code: string; name: string }[]; waiting: { reviews: number; transfers: number; checkouts: number; checkins: number; clearances: number; maintenance: number } }
 
 export interface RoomRow {
+  /** V290 */ category?: string;
   id: string; hall_code: string; hall_name: string; block: string; block_id: string | null; floor: number; room_no: string; room_type: string | null; room_type_label: string | null; beds: number; sex: string | null; state: string; state_reason: string | null; note: string | null;
   occupied: number; reserved: number; available: number; maintenance: number; out_of_service: number; facilities: string | null;
 }
@@ -142,3 +147,32 @@ export async function callHostel<T>(method: "GET" | "POST" | "PUT", path: string
   if (!r.ok) return { ok: false, problem: (j as Problem) ?? { status: r.status, title: r.statusText } };
   return { ok: true, data: j as T };
 }
+
+
+/* ── V290 · the hostel upgrade: categories, the room board, fees, occupants ── */
+export const HOSTEL_OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
+export interface RoomCategory { code: string; label: string; general_selection: boolean; chargeable: boolean; active: boolean; note: string | null }
+export interface RoomBoardRow {
+  room_id: string; hall_code: string; hall_name: string; hall_sex: string | null; hall_kind: string; campus: string | null; block: string; floor: number; room_no: string; room_type: string | null; room_type_label: string | null;
+  category: string; category_label: string; general_selection: boolean; chargeable: boolean; room_state: string; state_reason: string | null;
+  capacity: number; out_of_service: number; occupied: number; reserved: number; available: number; status: string; fee: number | null; fee_status: string;
+}
+export interface AllocatableBed { room_id: string; hall_code: string; hall_name: string; hall_sex: string | null; block: string; room_no: string; bed: number; bed_id: string; bed_label: string; room_type: string | null; floor: number; category: string; category_label: string; general_selection: boolean; chargeable: boolean; fee: number | null; fee_status: string }
+export interface AccountabilityRow {
+  allocation_id: string; reference_no: string; hall_code: string; hall_name: string; block: string; floor: number; room_no: string; capacity: number; bed_label: string | null;
+  occupant: string; occupant_number: string | null; occupant_kind: string; student_id: string | null; category: string; category_label: string; allocation_type: string;
+  session: string; semester: number | null; fee_status: string; fee_amount: number; payment_status: string; start_on: string | null; end_on: string | null; state: string;
+  allocated_by: string | null; allocated_at: string; reason: string | null; checked_in_at: string | null;
+}
+export interface FeeRule { id: string; hall_code: string | null; hall_name: string | null; room_type: string | null; room_type_label: string | null; category: string | null; category_label: string | null; level: number | null; amount: number; note: string | null; created_at: string; ended_at: string | null; created_by_name: string }
+export interface Checklist { school_fees: boolean; course_registration: boolean; status_ok: boolean; window_open: boolean; eligible: boolean; why: string; require_school_fees: boolean; require_registration: boolean }
+export interface StudentRooms {
+  session: string; checklist: Checklist; setting: { session: string; semester: number | null; state: string; allocation_method: string; requires_review: boolean; applications_open: string | null; applications_close: string | null; hold_hours: number; fee: number; drawn_at: string | null } | null;
+  rooms: RoomBoardRow[]; totalOpenRooms: number; halls: { code: string; name: string; sex: string | null; kind: string; campus: string | null; location: string | null }[]; roomTypes: { code: string; label: string; beds: number }[];
+}
+export const FEE_STATUS: Record<string, [string, PilKind]> = { PAYABLE: ["Outstanding", "bad"], PAID: ["Paid", "ok"], NO_CHARGE: ["No charge", "info"] };
+export const ROOM_STATUS: Record<string, [string, PilKind]> = {
+  AVAILABLE: ["Available", "ok"], PARTIALLY_OCCUPIED: ["Partly occupied", "ok"], FULL: ["Full", "bad"], RESERVED: ["Reserved", "warn"], SPECIAL_RESERVED: ["Reserved for allocation", "info"],
+  MAINTENANCE: ["Maintenance", "bad"], OUT_OF_SERVICE: ["Out of service", "bad"], INACTIVE: ["Inactive", "grey"], CLOSED: ["Closed", "grey"],
+};
+export const ROOM_CATEGORIES: [string, string][] = [["GENERAL", "General"], ["SPECIAL", "Special / reserved"], ["STUDENT_UNION", "Student Union"], ["SECURITY", "Security"]];

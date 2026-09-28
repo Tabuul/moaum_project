@@ -299,6 +299,50 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "dsa": {
+    "label": "Dean of Student Affairs",
+    "home": "t/hostel",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "t/hostel", "icon": "bed", "label": "Hostel Dashboard" },
+          { "id": "t/search", "icon": "user", "label": "Search" }
+        ]
+      },
+      {
+        "name": "Hostel Setup",
+        "items": [
+          { "id": "t/hostel-inventory", "icon": "box", "label": "Hostels, Rooms & Categories" },
+          { "id": "t/hostel-import", "icon": "upload", "label": "Import Hostels & Rooms" },
+          { "id": "t/hostel-window", "icon": "cal", "label": "Application Window & Rules" }
+        ]
+      },
+      {
+        "name": "Allocation & Occupancy",
+        "items": [
+          { "id": "t/hostel-applications", "icon": "doc", "label": "Applications & Waitlist" },
+          { "id": "t/hostel-occupancy", "icon": "user", "label": "Occupancy & Check-in" },
+          { "id": "t/hostel-special", "icon": "user", "label": "Special Allocations" },
+          { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout, Transfers & Clearance" }
+        ]
+      },
+      {
+        "name": "Reports",
+        "items": [
+          { "id": "t/hostel-accountability", "icon": "chart", "label": "Occupancy Accountability" },
+          { "id": "t/hostel-finance", "icon": "card", "label": "Hostel Fees (read)" },
+          { "id": "t/audit", "icon": "doc", "label": "Audit Trail" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "t/profile", "icon": "user", "label": "My Profile" }
+        ]
+      }
+    ]
+  },
   "housing": {
     "label": "Deputy Registrar (Housing, Welfare and Passages)",
     "home": "t/housing",
@@ -330,6 +374,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/hostel-inventory", "icon": "box", "label": "Hostel Inventory" },
           { "id": "t/hostel-applications", "icon": "doc", "label": "Applications & Waitlist" },
           { "id": "t/hostel-occupancy", "icon": "user", "label": "Occupancy & Check-in" },
+          { "id": "t/hostel-special", "icon": "user", "label": "Special Allocations" },
+          { "id": "t/hostel-accountability", "icon": "chart", "label": "Occupancy Accountability" },
+          { "id": "t/hostel-import", "icon": "upload", "label": "Import Hostels & Rooms" },
           { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout & Clearance" }
         ]
       },
@@ -600,6 +647,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/heldscripts", "icon": "alert", "label": "Held Scripts" },
           { "id": "t/collegepayments", "icon": "card", "label": "College Payment Report" },
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" },
+          { "id": "t/hostel-finance", "icon": "bed", "label": "Hostel Fees & Revenue" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
           { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments", "badge": "7" },

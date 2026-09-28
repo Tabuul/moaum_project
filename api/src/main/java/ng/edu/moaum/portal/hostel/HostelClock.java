@@ -37,6 +37,9 @@ public class HostelClock {
                 List<String> sessions = jdbc.sql("SELECT DISTINCT session FROM hostel.allocation WHERE state = 'HELD' AND held_until < now()").query(String.class).list();
                 int total = 0;
                 for (String s : sessions) total += jdbc.sql("SELECT hostel.lapse_holds(:s)").param("s", s).query(Integer.class).single();
+                // V290: the student is reminded at 24, 6 and 1 hours before a reservation expires, once each
+                Integer reminded = jdbc.sql("SELECT hostel.remind_holds()").query(Integer.class).single();
+                if (reminded != null && reminded > 0) LOG.info("hostel: {} payment reminder(s) sent", reminded);
                 return total;
             }));
             if (n != null && n > 0) LOG.info("hostel: {} hold(s) lapsed and passed on", n);

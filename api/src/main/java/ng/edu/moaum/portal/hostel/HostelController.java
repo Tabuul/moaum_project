@@ -23,8 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class HostelController {
 
-    private static final String OFFICE = "hasAnyAuthority('OFFICE_services','OFFICE_housing','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_audit','OFFICE_vc','OFFICE_dvc')";
+    private static final String OFFICE = "hasAnyAuthority('OFFICE_dsa','OFFICE_services','OFFICE_housing','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_dsa','OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_audit','OFFICE_vc','OFFICE_dvc')";
 
     public record Apply(String session, @Size(max = 8) String hall, @Size(max = 20) String category, @Size(max = 400) String note) {
     }
