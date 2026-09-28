@@ -64,6 +64,9 @@ export function SemesterModal({
         <Field id="rf_ropen" label="Registration opens" hint="Makes the course form writable for cleared students.">
           <RecDay k="ropen" draft={draft} set={set} />
         </Field>
+        <Field id="rf_fresh" label="Fresh students register from" hint="While the semester is still planned, the session's entrants register their courses from this day; the semester's courses are put on offer when it is saved. Everyone else waits for the semester to open.">
+          <RecDay k="fresh" draft={draft} set={set} />
+        </Field>
         <Field
           id="rf_rclose"
           label="Registration closes"

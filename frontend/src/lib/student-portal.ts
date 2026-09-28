@@ -42,6 +42,8 @@ export interface MenuItem {
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
+  /** V287: the semester's door — open, closed, not yet open, or open early to the session's fresh students */
+  window?: { state?: string | null; registration_opens?: string | null; registration_closes?: string | null; fresh_registration_from?: string | null; gate: string | null; open: boolean; fresh: boolean };
   /** whether THIS semester's school fees are cleared (registration for it is gated on that) */
   clears?: boolean;
   /** the highest open semester of the session; the student may also register any earlier one */

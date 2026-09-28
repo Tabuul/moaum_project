@@ -25,7 +25,9 @@ public record Calendar(List<SessionRow> sessions, String current, String session
     public record Semester(String session, int number, LocalDate lecturesFrom, LocalDate lecturesTo,
                            LocalDate registrationOpens, LocalDate registrationCloses,
                            LocalDate lateRegistrationCloses, LocalDate examsFrom, LocalDate examsTo,
-                           LocalDate resultsDue, String queryWindow, String state) {
+                           LocalDate resultsDue, String queryWindow, String state,
+                           /** V287: from this day the session's fresh students register although the semester is not yet open */
+                           LocalDate freshRegistrationFrom) {
     }
 
     /** One row of {@code policy.level_limit}: the ceiling that stops a student registering a timetable they cannot sit. */

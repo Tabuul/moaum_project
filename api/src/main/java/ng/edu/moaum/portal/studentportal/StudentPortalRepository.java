@@ -211,6 +211,17 @@ class StudentPortalRepository {
                 .query(Boolean.class).single());
     }
 
+    /** why the student may not register the semester now, or null when the door is open (V287): closed, not yet open, or open early to the session's fresh students from a date */
+    String registrationGate(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT registration.registration_gate(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester).query(String.class).optional().orElse(null);
+    }
+
+    /** the semester's window as the calendar states it */
+    Map<String, Object> semesterWindow(String session, int semester) {
+        return jdbc.sql("SELECT state, registration_opens, registration_closes, late_registration_closes, fresh_registration_from FROM policy.semester WHERE session = :ses AND number = :sem")
+                .param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
     /** the highest open semester for a session (registration is gated on that semester's fees), else 1 */
     int openSemester(String session) {
         return jdbc.sql("SELECT coalesce(max(number), 1) FROM policy.semester WHERE session = :ses AND state = 'OPEN'")

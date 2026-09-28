@@ -20,6 +20,8 @@ export interface SemesterRow {
   lecturesFrom: string | null;
   lecturesTo: string | null;
   registrationOpens: string | null;
+  /** V287: the early registration window for the session's fresh students */
+  freshRegistrationFrom?: string | null;
   registrationCloses: string | null;
   lateRegistrationCloses: string | null;
   examsFrom: string | null;

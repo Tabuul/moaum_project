@@ -131,6 +131,7 @@ export function SessionSetup({
         lecturesFrom: draft.lectFrom || null,
         lecturesTo: draft.lectTo || null,
         registrationOpens: draft.ropen || null,
+        freshRegistrationFrom: draft.fresh || null,
         registrationCloses: draft.rclose || null,
         lateRegistrationCloses: draft.late || null,
         examsFrom: draft.examsFrom || null,

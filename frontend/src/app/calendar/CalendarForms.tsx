@@ -183,6 +183,7 @@ export function semesterDraft(row: SemesterRow | null, next: number): Draft {
     lectFrom: row?.lecturesFrom ?? "",
     lectTo: row?.lecturesTo ?? "",
     ropen: row?.registrationOpens ?? "",
+    fresh: row?.freshRegistrationFrom ?? "",
     rclose: row?.registrationCloses ?? "",
     late: row?.lateRegistrationCloses ?? "",
     examsFrom: row?.examsFrom ?? "",

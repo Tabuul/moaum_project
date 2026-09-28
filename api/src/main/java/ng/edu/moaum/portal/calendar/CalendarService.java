@@ -66,7 +66,9 @@ public class CalendarService {
                              LocalDate registrationOpens, LocalDate registrationCloses,
                              LocalDate lateRegistrationCloses, LocalDate examsFrom, LocalDate examsTo,
                              LocalDate resultsDue, @Size(max = 200) String queryWindow,
-                             @Pattern(regexp = "NOT_YET_OPEN|OPEN|CLOSED") String state) {
+                             @Pattern(regexp = "NOT_YET_OPEN|OPEN|CLOSED") String state,
+                             /** V287: the early window for the session's fresh students; dating it also opens the semester's courses */
+                             LocalDate freshRegistrationFrom) {
     }
 
     public record LevelIn(@NotNull @Size(max = 200) String appliesTo,
@@ -134,6 +136,10 @@ public class CalendarService {
         mustExist(session);
         String state = in.state() == null || in.state().isBlank() ? "NOT_YET_OPEN" : in.state().trim();
         calendar.upsertSemester(session, number, in, state);
+        // V287 · an early window for fresh students needs the semester's courses on offer: opened here, idempotently, as the Office would
+        if (in.freshRegistrationFrom() != null || "OPEN".equals(state)) {
+            calendar.openCourses(session, number);
+        }
         return read(session);
     }
 

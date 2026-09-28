@@ -57,12 +57,17 @@ class CalendarRepository {
     List<Calendar.Semester> semesters(String session) {
         return jdbc.sql("""
                 SELECT session, number, lectures_from, lectures_to, registration_opens, registration_closes,
-                       late_registration_closes, exams_from, exams_to, results_due, query_window, state
+                       late_registration_closes, exams_from, exams_to, results_due, query_window, state, fresh_registration_from
                   FROM policy.semester WHERE session = :session ORDER BY number
                 """)
                 .param("session", session)
                 .query(Calendar.Semester.class)
                 .list();
+    }
+
+    /** the semester's courses on offer, created for every course the curriculum offers that semester and not yet offered (V287) */
+    int openCourses(String session, int number) {
+        return jdbc.sql("SELECT registration.open_course_registration(:s, :n)").param("s", session).param("n", number).query(Integer.class).single();
     }
 
     List<Calendar.LevelLimit> levelLimits() {
@@ -123,9 +128,9 @@ class CalendarRepository {
         jdbc.sql("""
                 INSERT INTO policy.semester (id, session, number, lectures_from, lectures_to, registration_opens,
                        registration_closes, late_registration_closes, exams_from, exams_to, results_due,
-                       query_window, state)
+                       query_window, state, fresh_registration_from)
                 VALUES (gen_random_uuid(), :session, :n, :lf, :lt, :ro, :rc, :lrc, :ef, :et, :due,
-                        cast(:query as text), :state)
+                        cast(:query as text), :state, :fresh)
                 ON CONFLICT (session, number) DO UPDATE SET
                        lectures_from            = EXCLUDED.lectures_from,
                        lectures_to              = EXCLUDED.lectures_to,
@@ -136,7 +141,8 @@ class CalendarRepository {
                        exams_to                 = EXCLUDED.exams_to,
                        results_due              = EXCLUDED.results_due,
                        query_window             = EXCLUDED.query_window,
-                       state                    = EXCLUDED.state
+                       state                    = EXCLUDED.state,
+                       fresh_registration_from  = EXCLUDED.fresh_registration_from
                 """)
                 .param("session", session)
                 .param("n", number)
@@ -149,7 +155,7 @@ class CalendarRepository {
                 .param("et", in.examsTo(), Types.DATE)
                 .param("due", in.resultsDue(), Types.DATE)
                 .param("query", in.queryWindow(), Types.VARCHAR)
-                .param("state", state)
+                .param("state", state).param("fresh", in.freshRegistrationFrom(), java.sql.Types.DATE)
                 .update();
     }
 

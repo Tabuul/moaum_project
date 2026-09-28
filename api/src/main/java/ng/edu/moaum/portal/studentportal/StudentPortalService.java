@@ -263,17 +263,37 @@ public class StudentPortalService {
         out.put("clears", repo.semesterCleared(id, session, semester));
         out.put("openSemester", repo.openSemester(session));
         out.put("registeredSemesters", repo.registeredSemesters(id, session));
+        // V287 · the semester's door: open, closed, not yet open, or open early to the session's fresh students
+        Map<String, Object> window = new LinkedHashMap<>();
+        Map<String, Object> sm = repo.semesterWindow(session, semester);
+        if (sm != null) window.putAll(sm);
+        String gate = repo.registrationGate(id, session, semester);
+        window.put("gate", gate);
+        window.put("open", gate == null);
+        window.put("fresh", session.equals(s.entrySession()));
+        out.put("window", window);
         return out;
+    }
+
+    /** the calendar's word on the semester (V287): a registration is drafted, changed or submitted only while the door is open */
+    private void assertWindowOpen(UUID id, String session, int semester) {
+        String gate = repo.registrationGate(id, session, semester);
+        if (gate != null) {
+            throw new DomainRuleViolation("REG_SEMESTER_NOT_OPEN", gate,
+                    new DomainRuleViolation.Remedy("The Academic Office opens the semester on the calendar, or dates the early window for the session's fresh students.", "Academic Office"));
+        }
     }
 
     @Transactional
     public Map<String, Object> addCourse(UUID id, String session, int semester, UUID offering) {
+        assertWindowOpen(id, session, semester);
         repo.addCourse(id, session, semester, offering);
         return registrationView(id, session, semester);
     }
 
     @Transactional
     public Map<String, Object> dropCourse(UUID id, String session, int semester, UUID offering) {
+        assertWindowOpen(id, session, semester);
         repo.dropCourse(id, session, semester, offering);
         return registrationView(id, session, semester);
     }
@@ -298,6 +318,7 @@ public class StudentPortalService {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "A student who is " + s.status().toLowerCase() + " does not register.",
                     new DomainRuleViolation.Remedy("Only an admitted, active or probation student may register.", "Academic Office"));
         }
+        assertWindowOpen(id, session, semester);
         UUID reg = repo.draft(id, session, semester);
         repo.choose(reg, offerings == null ? List.of() : offerings);
         return registrationView(id, session, semester);
@@ -305,6 +326,7 @@ public class StudentPortalService {
 
     @Transactional
     public Map<String, Object> submit(UUID id, String session, int semester) {
+        assertWindowOpen(id, session, semester);
         UUID reg = repo.draft(id, session, semester);
         repo.submit(reg);
         return registrationView(id, session, semester);

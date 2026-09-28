@@ -95,6 +95,17 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
     </div></div>
   ) : null;
 
+  // V287 · the calendar's door on this semester: closed, not yet open, or open early to the session's fresh students
+  if (v.window && !v.window.open && !locked) {
+    return (
+      <>
+        {switcher}
+        <Note kind="info" title={v.window.state === "CLOSED" ? "Registration is closed for this semester" : "Registration is not yet open for this semester"}>
+          {v.window.gate}{v.window.fresh && v.window.fresh_registration_from ? "" : v.window.fresh_registration_from ? "" : " The Academic Office opens the semester on the University calendar."}
+        </Note>
+      </>
+    );
+  }
   if (!cleared && !locked) {
     return (
       <>

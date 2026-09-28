@@ -337,8 +337,21 @@ class AdmissionLifecycleIT {
         assertThat(admission(a).get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
         assertThat(it.db(() -> { try { jdbc.sql("SELECT finance.new_reference(:s, :ses, 1000, 'test')").param("s", sa).param("ses", SESSION).query(String.class).single(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return e.getMostSpecificCause().getMessage(); } })).doesNotContain("SCHOOL FEES UNAVAILABLE");
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%successfully screened%'").param("a", a.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
+        // V287 · a planned semester takes no registration until the calendar opens it — or dates the early window for the session's fresh students
+        it.db(() -> jdbc.sql("INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), :s, 1, 'NOT_YET_OPEN') ON CONFLICT (session, number) DO UPDATE SET state = 'NOT_YET_OPEN', fresh_registration_from = NULL").param("s", SESSION).update());
+        ResponseEntity<Map> shut = it.call(studentToken, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", SESSION, "semester", 1, "offerings", List.of()));
+        assertThat(shut.getStatusCode().value()).isEqualTo(422);
+        assertThat(shut.getBody().get("code")).isEqualTo("REG_SEMESTER_NOT_OPEN");
+        assertThat(m(it.get(studentToken, "/api/v1/me/registration?session=" + SESSION + "&semester=1").getBody().get("window")).get("open")).isEqualTo(false);
+        ResponseEntity<Map> dated = it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/2084/2085/semesters/1", Map.of("state", "NOT_YET_OPEN", "freshRegistrationFrom", java.time.LocalDate.now().toString()));
+        assertThat(dated.getStatusCode().value()).as(String.valueOf(dated.getBody())).isEqualTo(200);
+        ResponseEntity<Map> early = it.call(studentToken, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", SESSION, "semester", 1, "offerings", List.of()));
+        assertThat(early.getStatusCode().value()).as(String.valueOf(early.getBody())).isEqualTo(200);
+        Map<String, Object> window = m(early.getBody().get("window"));
+        assertThat(window.get("open")).isEqualTo(true);
+        assertThat(window.get("fresh")).isEqualTo(true);
         // 16–18 · registration opens (the gate lets the insert through), the readiness reads it, the matriculation candidates no longer name the screening
-        it.db(() -> jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'APPROVED', now()) ON CONFLICT (student_id, session, semester) DO UPDATE SET status = 'APPROVED'").param("s", sa).param("ses", SESSION).update());
+        it.db(() -> jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'APPROVED', now()) ON CONFLICT (student_id, session, semester) DO UPDATE SET status = 'APPROVED', approved_at = now()").param("s", sa).param("ses", SESSION).update());
         // registered; the fees stay pending until the Bursary states the session's schedule (V271: nothing due is not "paid")
         assertThat(admission(a).get("status")).isIn("MATRICULATION_PENDING", "SCHOOL_FEES_PENDING");
         assertThat(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'SC') x WHERE x.student_id = :id").param("s", SESSION).param("id", sa).query().singleRow().get("reason")).isNull();
