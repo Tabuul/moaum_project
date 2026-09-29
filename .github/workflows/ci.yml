@@ -237,9 +237,18 @@ jobs:
         env:
           PORTAL_API_URL: http://localhost:8081
         run: |
-          npm test
-          npm run lint
-          npm run build
+          set -o pipefail
+          { npm test && npm run lint && npm run build; } 2>&1 | tee /tmp/frontend-build.log
+
+      # A red frontend names what failed where anyone can read it, as the API's does: the failing test, the
+      # lint error or the type error, with the lines around it, as one annotation on the run.
+      - name: Name what failed
+        if: failure()
+        run: |
+          msg=$(sed 's/\x1b\[[0-9;]*m//g' /tmp/frontend-build.log \
+            | grep -E -A6 'Type error|Failed to compile|Build error occurred|Error:|error TS[0-9]+|⨯|^not ok|✖|  error  ' \
+            | grep -v '^--$' | head -80 | sed 's/%/%25/g' | awk '{ printf "%s%%0A", $0 }')
+          echo "::error title=Frontend build::${msg:0:8000}"
 
   # ── the image Railway will actually build ─────────────────────────────
   image:
