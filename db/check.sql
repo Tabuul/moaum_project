@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 150
+\set EXPECTED 151
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3354,6 +3354,41 @@ BEGIN
     SELECT count(DISTINCT t), string_agg(DISTINCT t::text || ' → ' || parent::text, ', ') INTO n, lst FROM blocking;
     PERFORM pg_temp.assert('The data reset clears every table that hangs on what it clears, so it cannot fail on a foreign key',
                            n = 0, coalesce(lst, 'none left behind'));
+END $$;
+
+-- ── V294. the biodata upload: one sealed hash an upload, and the same rows again write nothing ──
+-- A migrated student's sign-in is opened sealed: a cost-12 hash of a random secret nobody holds (the
+-- first sign-in is the student's own number while must_change holds). Made once a row, that hash was
+-- nine tenths of the upload's time; it is made once an upload. A re-upload of unchanged rows writes
+-- nothing, so it adds nothing to the audit chain. The block undoes its own writes.
+DO $$
+DECLARE v_rows jsonb; c1 int; c2 int; a int; h int; ok12 boolean; t0 timestamptz; w int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        SELECT jsonb_agg(jsonb_build_object('matric', 'MOAUM/CSC/19/' || lpad((9900 + i)::text, 4, '0'),
+                   'surname', 'Sealcheck', 'otherNames', 'Row ' || i, 'level', '300',
+                   'programme', (SELECT code FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1),
+                   'phone', '0803000' || lpad(i::text, 4, '0'), 'nationality', 'Nigeria', 'lga', 'Makurdi'))
+          INTO v_rows FROM generate_series(1, 5) i;
+        SELECT created INTO c1 FROM people.import_biography(v_rows);
+        SELECT count(*), count(DISTINCT x.password_hash), bool_and(x.password_hash LIKE '$2%$12$%' AND x.must_change)
+          INTO a, h, ok12
+          FROM iam.student_account x JOIN people.student s ON s.id = x.student_id
+         WHERE s.matric_no LIKE 'MOAUM/CSC/19/99%';
+        t0 := clock_timestamp();
+        SELECT created INTO c2 FROM people.import_biography(v_rows);
+        SELECT count(*) INTO w FROM audit.entries
+         WHERE occurred_at >= t0
+           AND subject_type IN ('people.student', 'people.student_contact', 'people.biodata', 'clearance.item');
+        RAISE EXCEPTION 'the V294 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The biodata upload seals its sign-ins with one cost-12 hash; unchanged rows again write nothing',
+        coalesce(c1 = 5 AND c2 = 0 AND a = 5 AND h = 1 AND ok12 AND w = 0, false),
+        format('created=%s again=%s accounts=%s hashes=%s cost12=%s written-again=%s', c1, c2, a, h, ok12, w));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

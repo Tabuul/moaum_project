@@ -30,7 +30,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null } | null>(null);
-  const [progress, setProgress] = useState<{ label: string; sent: number; of: number } | null>(null);
+  const [progress, setProgress] = useState<{ label: string; sent: number; of: number; note?: string } | null>(null);
   const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
   const [pResult, setPResult] = useState<{ total: number; stored: number; attached: number; notFound: number; skipped: number; notFoundList: string[] } | null>(null);
 
@@ -181,11 +181,26 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         groups = [{ session: "", semester: 0, rows }];
       }
 
-      const CHUNK = kind === "biodata" || kind === "pgstudents" ? 200 : 400;
+      /* the students go up 50 at a time (V294): every row written joins the audit chain inside the batch's one
+         transaction, and a transaction's cost per row climbs as it grows — 50 rows load in about a second and a
+         half, 200 in a single batch took over six times as long. The batches run one after another: two at once
+         would queue on the same audit chain (and could deadlock), so nothing would be gained. */
+      const CHUNK = kind === "biodata" || kind === "pgstudents" ? 50 : 400;
       const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
       const totals: Record<string, number> = {};
       let firstErr: string | null = null;
       let sent = 0;
+      const started = Date.now();
+      /* how fast it is going and how long is left, from the batches so far */
+      const pace = (done: number) => {
+        const secs = (Date.now() - started) / 1000;
+        if (done <= 0 || secs < 1) return undefined;
+        const perSec = done / secs;
+        const left = Math.max(0, totalRows - done) / perSec;
+        const mins = Math.ceil(left / 60);
+        const leftText = left < 60 ? "under a minute left" : mins < 60 ? `about ${mins} min left` : `about ${Math.floor(mins / 60)} h ${mins % 60} min left`;
+        return `${Math.round(perSec).toLocaleString()} a second, ${leftText}`;
+      };
       setProgress({ label: "Importing", sent: 0, of: totalRows });
       for (const g of groups) {
         for (let i = 0; i < g.rows.length; i += CHUNK) {
@@ -203,7 +218,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           for (const [k, v] of Object.entries(counts)) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
           if (!firstErr && typeof counts.first_error === "string" && counts.first_error) firstErr = counts.first_error;
           sent += chunk.length;
-          setProgress({ label: "Importing", sent, of: totalRows });
+          setProgress({ label: "Importing", sent, of: totalRows, note: pace(sent) });
         }
       }
       setResult({ tab: kind, counts: totals, firstError: firstErr });
@@ -551,7 +566,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               {busy
                 ? (progress
                     ? (progress.of > 0
-                        ? `${progress.label} — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}…`
+                        ? `${progress.label} — ${progress.sent.toLocaleString()} of ${progress.of.toLocaleString()}${progress.note ? ` (${progress.note})` : ""}…`
                         : progress.sent > 0
                           ? `${progress.label} — ${progress.sent.toLocaleString()} rows…`
                           : `${progress.label}…`)
