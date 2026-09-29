@@ -659,13 +659,13 @@ The University's academic calendar: sessions, their semesters, which session is 
 | Method | Endpoint | Purpose | Who may call | Source |
 |---|---|---|---|---|
 | GET | `/api/v1/calendar` | Every session, which one is current, the semesters of the session asked for, and the unit limits. | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:37` |
-| PUT | `/api/v1/calendar/levels/{level}` | saveLevel | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:85` |
-| PUT | `/api/v1/calendar/sessions/{session}/{year}` | saveSession | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:42` |
-| POST | `/api/v1/calendar/sessions/{session}/{year}/close` | close | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:56` |
-| POST | `/api/v1/calendar/sessions/{session}/{year}/enrol-all` | Enrol every currently-studying student into this session at their current level, without promoting anyone. The backfill that matches an already-loaded cohort to the session they are in now. | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:64` |
-| POST | `/api/v1/calendar/sessions/{session}/{year}/make-current` | makeCurrent | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:49` |
-| POST | `/api/v1/calendar/sessions/{session}/{year}/roll-over` | Roll the register into this session: promote continuing students one level and enrol them. | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:71` |
-| PUT | `/api/v1/calendar/sessions/{session}/{year}/semesters/{number}` | saveSemester | academic, dregistrar, ict, registrar, super | `calendar/CalendarController.java:78` |
+| PUT | `/api/v1/calendar/levels/{level}` | saveLevel | ict | `calendar/CalendarController.java:85` |
+| PUT | `/api/v1/calendar/sessions/{session}/{year}` | saveSession | ict | `calendar/CalendarController.java:42` |
+| POST | `/api/v1/calendar/sessions/{session}/{year}/close` | close | ict | `calendar/CalendarController.java:56` |
+| POST | `/api/v1/calendar/sessions/{session}/{year}/enrol-all` | Enrol every currently-studying student into this session at their current level, without promoting anyone. The backfill that matches an already-loaded cohort to the session they are in now. | ict | `calendar/CalendarController.java:64` |
+| POST | `/api/v1/calendar/sessions/{session}/{year}/make-current` | makeCurrent | dregistrar, ict, registrar, super | `calendar/CalendarController.java:49` |
+| POST | `/api/v1/calendar/sessions/{session}/{year}/roll-over` | Roll the register into this session: promote continuing students one level and enrol them. | ict | `calendar/CalendarController.java:71` |
+| PUT | `/api/v1/calendar/sessions/{session}/{year}/semesters/{number}` | saveSemester | ict | `calendar/CalendarController.java:78` |
 
 ### Academic structure & courses (`catalogue`, 35 endpoints)
 
@@ -1598,10 +1598,10 @@ Results and assessment: score sheets per offering (open, enter, submit, mark, lo
 |---|---|---|---|---|
 | GET | `/api/v1/results/broadsheet` | broadsheet | academic, admin, dean, dregistrar, dvc, exams, facultyexams, facultyofficer, hod, ict, lecturer, records, registrar, super, vc | `results/ResultsController.java:239` |
 | GET | `/api/v1/results/exam-sessions` | examSessions | academic, admin, dean, dregistrar, dvc, exams, facultyexams, facultyofficer, hod, ict, lecturer, records, registrar, super, vc | `results/ResultsController.java:190` |
-| POST | `/api/v1/results/exam-sessions` | create | academic, dregistrar, records, registrar | `results/ResultsController.java:196` |
-| PUT | `/api/v1/results/exam-sessions/{id}` | editExamSession | academic, dregistrar, records, registrar | `results/ResultsController.java:202` |
+| POST | `/api/v1/results/exam-sessions` | create | ict | `results/ResultsController.java:196` |
+| PUT | `/api/v1/results/exam-sessions/{id}` | editExamSession | ict | `results/ResultsController.java:202` |
 | GET | `/api/v1/results/exam-sessions/{id}/monitor` | monitor | academic, admin, dean, dregistrar, dvc, exams, facultyexams, facultyofficer, hod, ict, lecturer, records, registrar, super, vc | `results/ResultsController.java:214` |
-| POST | `/api/v1/results/exam-sessions/{id}/open` | open | academic, dregistrar, records, registrar | `results/ResultsController.java:208` |
+| POST | `/api/v1/results/exam-sessions/{id}/open` | open | ict | `results/ResultsController.java:208` |
 | GET | `/api/v1/results/held/owing` | the students a held script is waiting on, with what they owe — the Bursary's list | academic, admin, bursar, dean, dregistrar, dvc, exams, hod, records, registrar, super, vc | `results/HeldScriptsController.java:149` |
 | POST | `/api/v1/results/legacy/biodata` | the full student biography exported from the old portal — core, contact, biography and a sign-in account | academic, dean, dregistrar, exams, facultyexams, hod, ict, records, registrar, super | `results/ResultsController.java:57` |
 | POST | `/api/v1/results/legacy/default-passwords` | set a first password (the student's own number) for migrated accounts still on the random import password; must_change stays on, so the student replaces it at first sign-in. Same offices as the rest of the migration desk | academic, dean, dregistrar, exams, facultyexams, hod, ict, records, registrar, super | `results/ResultsController.java:140` |

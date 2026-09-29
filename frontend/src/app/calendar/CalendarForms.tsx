@@ -69,7 +69,7 @@ function Foot({ onClose, onEnd, endLabel, save, busy }: { onClose: () => void; o
 }
 
 const STATES = ["Draft", "Planned", "Current", "Completed", "Archived"];
-const MODES = ["By the Registrar", "Automatic on the date"];
+const MODES = ["By hand (Director of ICT or Registrar)", "Automatic on the date"];
 
 /** the form's word for a stored state, and back (V289: CLOSED reads Completed) */
 export function stateWord(state: string | undefined): string {
@@ -182,7 +182,7 @@ export function SessionModal({
         <Field id="rf_state" label="State" hint="Draft while it is set up; Planned once agreed (its entrants stand in it from then); Current only by the transition; Completed at the end; Archived as history.">
           <Sel k="state" draft={draft} set={set} options={STATES} />
         </Field>
-        <Field id="rf_mode" label="Transition" hint="Who makes this session current: the Registrar by hand, or the session clock on the transition date once the readiness checks pass.">
+        <Field id="rf_mode" label="Transition" hint="Who makes this session current: the Director of ICT or the Registrar by hand, or the session clock on the transition date once the readiness checks pass.">
           <Sel k="mode" draft={draft} set={set} options={MODES} />
         </Field>
         <Field id="rf_on" label="Transition date" hint="The official transition point; the clock acts on it when the transition is automatic.">

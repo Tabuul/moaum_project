@@ -15,20 +15,23 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The session and semester calendar. Every office that signs in reads it —
  * a registration window and a results-due date are facts the whole
- * University works to. It is written by the Academic Office and the
- * Registry, and by the Super Administrator and the Directorate of ICT so
- * that the platform stays configurable when the Registry is not at its desk.
+ * University works to. It is written by the Director of ICT alone, from
+ * Portal Management (moved there from the Academic Office, as the Payment &
+ * Registration Windows were in V288); every other office is refused. Making
+ * a session current, with the Senate minute that authorises it, is the
+ * Director of ICT's act or the Registry's (the Registrar, the Deputy
+ * Registrar) or the Super Administrator's.
  */
 @RestController
 @RequestMapping("/api/v1/calendar")
 @PreAuthorize("isAuthenticated()")
 class CalendarController {
 
-    private static final String WRITERS =
-            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_ict')";
-    /** V289: the session transition is the Registrar's act (or the Super Administrator's), not every calendar writer's */
+    /** the calendar's settings: the Director of ICT's, under Portal Management */
+    private static final String WRITERS = "hasAuthority('OFFICE_ict')";
+    /** V289: the session transition is a named act with its Senate minute: the Director of ICT's, the Registrar's or the Super Administrator's */
     private static final String TRANSITIONERS =
-            "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final CalendarService calendar;
 
@@ -62,7 +65,7 @@ class CalendarController {
         return calendar.readiness(session + "/" + year);
     }
 
-    /** V289: the Registrar's transition — the current session completed and this one made current, in one transaction, logged */
+    /** V289: the transition — the current session completed and this one made current, in one transaction, logged */
     @PostMapping("/sessions/{session}/{year}/transition")
     @PreAuthorize(TRANSITIONERS)
     java.util.Map<String, Object> transition(@PathVariable String session, @PathVariable String year,

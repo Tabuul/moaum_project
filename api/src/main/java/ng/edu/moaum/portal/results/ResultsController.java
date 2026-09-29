@@ -32,7 +32,9 @@ class ResultsController {
             "hasAnyAuthority('OFFICE_lecturer','OFFICE_exams','OFFICE_hod','OFFICE_facultyexams','OFFICE_facultyofficer',"
             + "'OFFICE_dean','OFFICE_records','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic')";
     private static final String ENTRY = "hasAnyAuthority('OFFICE_lecturer','OFFICE_exams','OFFICE_academic')";
-    private static final String EXAMS = "hasAnyAuthority('OFFICE_records','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
+    /** examination sessions are set up and opened by the Director of ICT alone, from Portal Management (moved there from
+     *  the Academic Office and Exams & Records); every office that reads results still reads them and their monitor */
+    private static final String EXAM_SESSIONS = "hasAuthority('OFFICE_ict')";
 
     private final ResultsService service;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
@@ -194,19 +196,19 @@ class ResultsController {
     }
 
     @PostMapping("/exam-sessions")
-    @PreAuthorize(EXAMS)
+    @PreAuthorize(EXAM_SESSIONS)
     Sheets.ExamSession create(@Valid @RequestBody ResultsService.ExamSessionIn body) {
         return service.createExamSession(body);
     }
 
     @PutMapping("/exam-sessions/{id}")
-    @PreAuthorize(EXAMS)
+    @PreAuthorize(EXAM_SESSIONS)
     Sheets.ExamSession editExamSession(@PathVariable UUID id, @Valid @RequestBody ResultsService.ExamEditIn body) {
         return service.editExamSession(id, body);
     }
 
     @PostMapping("/exam-sessions/{id}/open")
-    @PreAuthorize(EXAMS)
+    @PreAuthorize(EXAM_SESSIONS)
     Map<String, Object> open(@PathVariable UUID id) {
         return service.open(id);
     }

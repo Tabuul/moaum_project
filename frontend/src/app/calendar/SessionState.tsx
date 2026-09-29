@@ -4,8 +4,9 @@
  * The University's academic state at a glance (V289): the current session
  * and its open semester, the next planned session and how far its fresh
  * students' preparation has gone, the timeline of every session on the
- * calendar, the readiness checks of the transition and the Registrar's
- * transition itself, and the log of every transition attempted.
+ * calendar, the readiness checks of the transition and the transition
+ * itself (the Director of ICT's, the Registrar's or the Super
+ * Administrator's), and the log of every transition attempted.
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -20,7 +21,8 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-const TRANSITIONERS = ["registrar", "dregistrar", "super"];
+/** who may make a planned session current, as the API allows (CalendarController.TRANSITIONERS) */
+const TRANSITIONERS = ["ict", "registrar", "dregistrar", "super"];
 
 export function statePill(state: string) {
   const kind = state === "CURRENT" ? "ok" : state === "PLANNED" ? "info" : state === "DRAFT" ? "warn" : state === "ARCHIVED" ? "grey" : "bad";
@@ -136,7 +138,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
                   <div className="sub2">Made current {whenAt(current.madeCurrentAt)}{current.senateMinute ? ` · ${current.senateMinute}` : ""}</div>
                 </>
               ) : (
-                <div className="sub2">No session is current. The Registrar makes a planned session current by the transition below.</div>
+                <div className="sub2">No session is current. The Director of ICT or the Registrar makes a planned session current by the transition below.</div>
               )}
             </div>
             <div className="card card--state">
@@ -145,7 +147,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
                 <>
                   <div className="row row--inline row--tight"><span className="kpi tnum">{next.name}</span>{statePill(next.state)}</div>
                   <div className="sub2">Fresh student preparation: <Pil kind={prep === "ACTIVE" ? "ok" : "grey"}>{prep}</Pil> · {withThousands(fresh)} entrant{fresh === 1 ? "" : "s"} on the register</div>
-                  <div className="sub2">Transition: <b>{next.transitionMode === "AUTOMATIC" ? "automatic" : "by the Registrar"}</b>{next.transitionsOn ? ` on ${d(next.transitionsOn)}` : next.transitionMode === "AUTOMATIC" ? " — no date set, so the clock will not act" : ""}</div>
+                  <div className="sub2">Transition: <b>{next.transitionMode === "AUTOMATIC" ? "automatic" : "by hand"}</b>{next.transitionsOn ? ` on ${d(next.transitionsOn)}` : next.transitionMode === "AUTOMATIC" ? " — no date set, so the clock will not act" : ""}</div>
                 </>
               ) : (
                 <div className="sub2">No planned session follows{current ? ` ${current.name}` : ""}. Set the next one up below; it is a real academic context from the day it is planned.</div>
@@ -157,7 +159,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
       </Panel>
 
       {next ? (
-        <Panel title={`Transition into ${next.name}`} right={canTransition ? <Btn kind="primary" disabled={busy} onClick={() => setModal(next.name)}>Transition now</Btn> : <span className="sub2">The Registrar transitions</span>}>
+        <Panel title={`Transition into ${next.name}`} right={canTransition ? <Btn kind="primary" disabled={busy} onClick={() => setModal(next.name)}>Transition now</Btn> : <span className="sub2">The Director of ICT or the Registrar transitions</span>}>
           <PBody>
             <div className="sub2">
               At the transition {current ? <><b>{current.name}</b> becomes <b>Completed</b> and </> : null}<b>{next.name}</b> becomes <b>Current</b>, in one transaction or not at all. No student is moved: entrants of {next.name} continue under the same accounts, and returning students progress only by the results, promotion and roll-over rules that exist.
@@ -165,7 +167,7 @@ export function SessionState({ calendar, actingOffice }: { calendar: CalendarDat
             {readiness ? (
               <>
                 <div className="row row--inline row--tight mt-2">
-                  <Pil kind={readiness.ready ? "ok" : "bad"}>{readiness.ready ? "READY FOR THE REGISTRAR" : "BLOCKED"}</Pil>
+                  <Pil kind={readiness.ready ? "ok" : "bad"}>{readiness.ready ? "READY TO TRANSITION" : "BLOCKED"}</Pil>
                   <Pil kind={readiness.readyForAutomatic ? "ok" : "warn"}>{readiness.readyForAutomatic ? "READY FOR THE CLOCK" : "THE CLOCK WOULD WAIT"}</Pil>
                 </div>
                 <Checks checks={readiness.checks} />

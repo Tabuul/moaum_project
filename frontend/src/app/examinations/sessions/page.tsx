@@ -18,7 +18,7 @@ export default async function ExamSessionsPage({ searchParams }: { searchParams:
   return (
     <Shell route="t/examsession" me={me.ok ? me.data : null}>
       {list.ok ? (
-        <ExamSessions sessions={sessions} scope={scope} list={list.data} monitor={monitor && monitor.ok ? monitor.data : null} />
+        <ExamSessions sessions={sessions} scope={scope} list={list.data} monitor={monitor && monitor.ok ? monitor.data : null} actingOffice={me.ok ? me.data.activeOffice : null} />
       ) : (
         <ProblemNotice problem={list.problem} />
       )}

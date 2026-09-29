@@ -82,11 +82,15 @@ class ResultsIT {
             }
         }
 
-        // the examination session generates the sheet
-        ResponseEntity<Map> exam = it.call(academic, HttpMethod.POST, "/api/v1/results/exam-sessions",
-                Map.of("session", SESSION, "semester", 1, "kind", "MAIN", "examsFrom", "2094-12-08", "examsTo", "2094-12-19", "sheetsDue", "2095-01-16"));
+        // the examination session generates the sheet: set up and opened by the Director of ICT (Portal Management); the Academic
+        // Office and Exams & Records no longer may
+        Map<String, Object> examIn = Map.of("session", SESSION, "semester", 1, "kind", "MAIN", "examsFrom", "2094-12-08", "examsTo", "2094-12-19", "sheetsDue", "2095-01-16");
+        assertThat(it.call(academic, HttpMethod.POST, "/api/v1/results/exam-sessions", examIn).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ItSupport.token("records"), HttpMethod.POST, "/api/v1/results/exam-sessions", examIn).getStatusCode().value()).isEqualTo(403);
+        String ict = ItSupport.token("ict");
+        ResponseEntity<Map> exam = it.call(ict, HttpMethod.POST, "/api/v1/results/exam-sessions", examIn);
         if (exam.getStatusCode().value() == 200) {
-            ResponseEntity<Map> opened = it.call(academic, HttpMethod.POST, "/api/v1/results/exam-sessions/" + exam.getBody().get("id") + "/open", null);
+            ResponseEntity<Map> opened = it.call(ict, HttpMethod.POST, "/api/v1/results/exam-sessions/" + exam.getBody().get("id") + "/open", null);
             assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
         }
         ResponseEntity<Map> listing = it.get(academic, "/api/v1/results/sheets?course=ZZR 301&session=2094/2095&sem=1");

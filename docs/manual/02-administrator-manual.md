@@ -130,7 +130,7 @@ The menus (`frontend/src/lib/menus.ts`) were drawn from the prototype and are no
 | Registrar opens "Audit Trail" and sees a 403 notice | `/api/v1/audit/entries` admits `ict, admin, super, audit, deputyaudit, vc` only | NOT IMPLEMENTED (menu only) |
 | Finance Controller (CHS) and PG Secretary open "Fee Setup and Schedule" and the reads fail | `FinanceController.READERS` excludes `financecontroller`, `pgsecretary`, `deputyaudit` | PARTIALLY IMPLEMENTED |
 | HOD / Support Services open "Requisitions", Library / Support Services open "Stores", Support Services open "Alumni" and get 403 on the data | those offices are not in the module guards | PARTIALLY IMPLEMENTED |
-| Registrar, Deputy Registrar and Director of ICT can write the calendar but have no "Session & Semester Setup" menu item | menu lists `academic` and `super` only; the URL `/calendar` works | PARTIALLY IMPLEMENTED |
+| The calendar and examination sessions have one owner | Session & Semester Setup and Examination Sessions are the Director of ICT's, under Portal Management; every other office reads them, and the Registrar, the Deputy Registrar and the Super Administrator may still make a planned session current (by the URL `/calendar`) | IMPLEMENTED |
 | "Verify a Card" (Chief Security Officer's home) has no URL | route id `t/idverify` is not in `Shell.tsx` ROUTES | PLACEHOLDER |
 | Menu items "Platform & Integrations", "Setup Console", "Movements" (HR home) open the office's dashboard at `/` | home ids resolve to `/`; the titles come from the prototype | IMPLEMENTED (dashboard) — titles stale |
 | Numbered badges in the menu ("7", "12", "!") | fixtures in `menus.ts`; the Shell shows only live counts from `iam/me.waiting` | Not rendered |
@@ -148,7 +148,7 @@ This section is written in the order a new deployment needs. Every step is one t
 | 1 | Environment and secrets on the API service (`MOAUM_AUTH_HMAC_SECRET` ≥ 32 bytes, `MOAUM_CONFIG_KEY`, `MOAUM_PORTAL_URL`, database URL) | Railway service variables — see *03 Technical Documentation* | ICT | — |
 | 2 | Bootstrap the first account | `/login/first` | Whoever holds the HMAC secret | 1 |
 | 3 | People, sign-ins, offices | `/people`, `/people/lecturers`, `/people/staff` | Registrar, DR(AA), ICT, admin, super (readers/grantors vary) | 2 |
-| 4 | Sessions, semesters, the CURRENT session, unit limits | `/calendar` | academic, registrar, dregistrar, super, ict | 3 |
+| 4 | Sessions, semesters, the CURRENT session, unit limits | `/calendar` | ict (making a session current: ict, registrar, dregistrar, super) | 3 |
 | 5 | Faculties, departments, programmes | `/structure/faculties`, `/structure/departments`, `/structure/programmes` | `ict` only | 3 |
 | 6 | Course structures, department courses, open registration | `/catalogue/upload`, `/catalogue`, `/catalogue/structure` | `ict` (uploads); HOD/academic/Registry (courses) | 4, 5 |
 | 7 | Grading policy — seeded; confirm | (none) | ICT by migration | — |
@@ -236,10 +236,10 @@ Rules the database applies: an `mbbscoordinator` grant must be `scope_kind = lev
 
 ### 2.4 Academic sessions, semesters, the CURRENT session and unit limits
 
-**Status: IMPLEMENTED.** Screen: Session & Semester Setup — `/calendar?session=YYYY/YYYY` (menu: academic, super; writers by guard also registrar, dregistrar, ict, reachable by URL). Reads are open to any signed-in person.
+**Status: IMPLEMENTED.** Screen: Session & Semester Setup — `/calendar?session=YYYY/YYYY` (menu: the Director of ICT's Portal Management; every change — sessions, semesters, unit limits, closing, archiving, roll-over, enrol-all — is `ict` alone, and the API refuses every other office). Making a planned session current, with its Senate minute, is open to `ict`, `registrar`, `dregistrar` and `super` (the Registry and the Super Administrator reach the screen by its URL). Reads are open to any signed-in person, and to everyone but the Director of ICT the screen is read only. Until 29 September 2026 the Academic Office held this screen; it now reads it.
 
 ```text
-Academic
+Portal Management
  → Session & Semester Setup   (/calendar)
 ```
 
@@ -790,7 +790,7 @@ What has **no screen**: the Registry's recording of an applicant's six clearance
 
 Public verification of a slip is at `/verify/putme/{token}` — genuine only for a published batch.
 
-**3.2.3 Calendar.** §2.4 — the Academic Office is the menu owner of Session & Semester Setup.
+**3.2.3 Calendar.** §2.4 — Session & Semester Setup and Examination Sessions moved to the Director of ICT's Portal Management; the Academic Office reads both.
 
 **3.2.4 Registration desk.** Status: IMPLEMENTED (approval is the HOD's). The Academic Office's "Registered Students" (`/registration/class-list`) shows the roll of an offering with its clearance flag, the attendance register and timetable slots; the registration approval queue on `/results/approvals` lists submitted registrations for every department, but **Approve / Return** are enabled for `hod` (and `super`) only — the Academic Office reads. There is **no overload mechanism**: a registration above the level maximum can neither be submitted nor approved; the hints that mention an HOD overload describe nothing that exists.
 
@@ -802,9 +802,9 @@ Public verification of a slip is at `/verify/putme/{token}` — genuine only for
 
 ### 3.3 Exams and Records
 
-**Dashboard — `/`**: the AcademicDashboard (§3.2). Menu (records): Examination Sessions (badge "!"), Post-UTME CBT Schedule, Validation Desk, Result Pipeline, College of Health Sciences, Migrate from Old Portal, Broadsheets, Senate Schedule, Publication, Approval Chain, Graduation Records, Deferments (read), Documents Office, Transcripts, Certificates, Records & Queries, Reports.
+**Dashboard — `/`**: the AcademicDashboard (§3.2). Menu (records): Post-UTME CBT Schedule, Validation Desk, Result Pipeline, College of Health Sciences, Migrate from Old Portal, Broadsheets, Senate Schedule, Publication, Approval Chain, Graduation Records, Deferments (read), Documents Office, Transcripts, Certificates, Records & Queries, Reports.
 
-**3.3.1 Examination sessions.** Status: IMPLEMENTED (the CLOSED state is never set). Screen: Examination Sessions — `/examinations/sessions` (create/edit/open: `records, academic, registrar, dregistrar`).
+**3.3.1 Examination sessions.** Status: IMPLEMENTED (the CLOSED state is never set). Screen: Examination Sessions — `/examinations/sessions`, under the Director of ICT's Portal Management (create/edit/open: `ict` alone; Exams & Records, the Academic Office and every office that reads results see the sessions and the submission monitor, read only).
 
 1. **Create an examination session**: Academic session, Semester (First/Second/Third), Type (Main examination / Re-sit / Special), Examinations begin, Examinations end, Score sheets due. Rules: the examinations end after they begin; the sheets are due after the examinations end; one session per (academic session, semester, type).
 2. **Open the session** (or **Save as a draft** then **Open**): one score sheet is generated per offering of the session and semester **that already has a lecturer**; "N score sheets generated; M courses have no lecturer and generated none." A lecturer allocated later gets a sheet at once while the session is OPEN. For RESIT/SPECIAL a sheet is made only where the MAIN sheet is PUBLISHED.
@@ -1016,7 +1016,7 @@ The student is emailed and texted at each turn; the desk is emailed for a free n
 
 ### 3.11 ICT Directorate
 
-The Director of ICT (`ict`) and ICT Support Agents (`ictagent`) work two things: the help desk, and the platform itself. `ict` also holds the structure uploads (§2.5–2.6), the People console (§2.3), gateway keys (§2.9), mail and SMS (§2.10), Post-UTME check-in (DOOR) and the migration desk.
+The Director of ICT (`ict`) and ICT Support Agents (`ictagent`) work two things: the help desk, and the platform itself. `ict` also holds Portal Management — Session & Semester Setup (§2.4), Payment & Registration Windows and Examination Sessions (§3.3.1) — the structure uploads (§2.5–2.6), the People console (§2.3), gateway keys (§2.9), mail and SMS (§2.10), Post-UTME check-in (DOOR) and the migration desk.
 
 **Dashboard — `/` (PlatformDashboard for `ict` and `super`).** Student statistics; course-structure upload coverage (tiles and two panels from `/catalogue/upload-coverage`); "People and access" (people on record, with a sign-in, live grants, grants ending within 30 days; **+ New person**, **+ Grant an office**, **Open the people console**); tiles **The service** (up/down, commit), **The database** (reachable, migrations applied, latest), **2025/2026 admission settings** (a hard-coded label from the prototype health check), **Acting as**; "What is actually true" (Service, Started, Latest migration, Actor, Acting office, Offices held, `API_URL`); "The outbox" (email/SMS provider wired?, waiting / sent / failed / sent in the last day, the recent 50); "Danger zone — reset uploaded data"; a closing note "How attribution works".
 
@@ -1077,7 +1077,7 @@ The ticket history is written once. The auto-closer closes RESOLVED tickets afte
 
 **3.12.1 Accounts and offices.** Users & Roles — `/people` (§2.3). `admin` and `super` are grantors and credential setters; ICT holds the two bulk loaders. **There is no two-person rule on grants** (§1.5).
 
-**3.12.2 Sessions and the calendar.** Session & Semester Setup — `/calendar` is on the `super` menu (§2.4). For sign-in sessions see §3.11.3.
+**3.12.2 Sessions and the calendar.** Session & Semester Setup — `/calendar` is the Director of ICT's, under Portal Management (§2.4); the Super Administrator may still make a planned session current there, by its URL. For sign-in sessions see §3.11.3.
 
 **3.12.3 Audit trail.** Audit Log — `/audit` (§6.2). `super`, `admin`, `ict`, `vc`, `audit`, `deputyaudit` may read it; the Registrar's menu item is refused by the guard.
 
@@ -1103,11 +1103,11 @@ The ticket history is written once. The auto-closer closes RESOLVED tickets afte
 
 | # | Act | Screen | Office | Notes |
 |---|---|---|---|---|
-| 1 | Create the session (Opens, Closes, Semesters) as PLANNED | `/calendar` | academic / registrar / dregistrar / super / ict | No overlap with any session, including test residue |
-| 2 | Record the Senate minute and make it CURRENT | `/calendar` → Edit → State Current | same | Closes the previous CURRENT in the same transaction |
-| 3 | Create the semesters with windows; open the first | `/calendar` → + New semester | same | Registration opens/closes, late registration closes, examinations, sheets due |
-| 4 | Roll the register into the new session | `/calendar` → Roll into <session> | same | Promotes continuing students one level; idempotent |
-| 5 | Enrol all into the session | `/calendar` → Enrol all | same | Creates `people.enrolment` rows the degree audit and finalist lists depend on |
+| 1 | Create the session (Opens, Closes, Semesters) as PLANNED | `/calendar` | ict | No overlap with any session, including test residue |
+| 2 | Record the Senate minute and make it CURRENT | `/calendar` → Edit → State Current, or the transition | ict / registrar / dregistrar / super | Closes the previous CURRENT in the same transaction |
+| 3 | Create the semesters with windows; open the first | `/calendar` → + New semester | ict | Registration opens/closes, late registration closes, examinations, sheets due |
+| 4 | Roll the register into the new session | `/calendar` → Roll into <session> | ict | Promotes continuing students one level; idempotent |
+| 5 | Enrol all into the session | `/calendar` → Enrol all | ict | Creates `people.enrolment` rows the degree audit and finalist lists depend on |
 | 6 | State the fee schedule (or upload the approved structure); confirm the clearance scheme is still in force | `/finance/fees` | bursar / super | "No charge is stated" blocks every payment |
 | 7 | State applicant, PG and hostel fees for the session | `/finance/fees`, `/hostel/window` | bursar; housing | Defaults apply for applicant and PG fees; the hostel window must exist |
 | 8 | Open course registration for semester 1 | `/catalogue/upload` → Open course registration | ict (button); others by API | Creates the offerings students register on |
@@ -1179,9 +1179,9 @@ Every configurable item found in the audit, in one table. "Screen" means an admi
 | Units and unit spellings (`ref.unit`, `ref.unit_alias`) | migration | ICT | seeded register | Used by the non-academic staff loader; "ended, never deleted" |
 | Colleges, faculties, departments, programmes (`ref.*`) | `/structure/*` | `ict` | seeded structure (12 faculties, 1 college) | Programme code `^C[0-9]{5}$`; category UNDER/POST GRADUATE; archive keeps the code |
 | JAMB course aliases (`ref.jamb_alias`) | `/admissions/caps` AliasMapper | academic, registrar | seeded names | Programme's JAMB alias |
-| Academic sessions | `/calendar` | academic, registrar, dregistrar, super, ict | none CURRENT on the audited DB | One CURRENT; minute required; no overlap |
-| Semesters and windows | `/calendar` | same | — | States NOT_YET_OPEN/OPEN/CLOSED; late-registration date drives add/drop and held-script lapse |
-| Level unit limits (`policy.level_limit`) | `/calendar` | same | 100–400 18–24; 500/600 18–24; 700 9–48; 800 6–48; 900 0–48; probation ceiling NULL | Select offers 100–600 only |
+| Academic sessions | `/calendar` | ict (made current also by registrar, dregistrar, super) | none CURRENT on the audited DB | One CURRENT; minute required; no overlap |
+| Semesters and windows | `/calendar` | ict | — | States NOT_YET_OPEN/OPEN/CLOSED; late-registration date drives add/drop and held-script lapse |
+| Level unit limits (`policy.level_limit`) | `/calendar` | ict | 100–400 18–24; 500/600 18–24; 700 9–48; 800 6–48; 900 0–48; probation ceiling NULL | Select offers 100–600 only |
 | Curriculum tracks (`policy.curriculum_track`) | migration | ICT | BMAS, CCMAS_BSU, CCMAS_MOAU | Assigned to students by trigger (`people.track_for`) |
 | Grading scheme, classification bands, policy versions | migration | ICT | SEN/2015/44 bands (§2.7) | No screen; grades computed at `current_date` |
 | Clearance scheme | `/finance/fees` → Put the recommended scheme in force | bursar, super | demo `BUR/DEMO/1` from 2026-09-25 | Only the recommended rule set from the screen; no overlap |

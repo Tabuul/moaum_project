@@ -154,7 +154,6 @@ Overview
  → Student Statistics → /stats
  → Search → /search
 Academic
- → Session & Semester Setup → /calendar
  → Post-UTME CBT Schedule → /admissions/putme
  → College of Health Sciences → /college
  → Result Pipeline → /results/pipeline
@@ -264,6 +263,10 @@ Students
 Admissions
  → Post-UTME CBT Schedule → /admissions/putme
  → Post-UTME Scores → /admissions/scores
+Portal Management
+ → Session & Semester Setup → /calendar
+ → Payment & Registration Windows → /ict/windows
+ → Examination Sessions → /examinations/sessions
 Finance
  → Payment Gateways → /finance/gateways
 Staff
@@ -459,8 +462,6 @@ Overview
  → Search → /search
 Academic
  → College of Health Sciences → /college
- → Session & Semester Setup → /calendar
- → Examination Sessions → /examinations/sessions
  → Graduation → /graduation
  → Results to Senate → /results/approvals
  → Approval Chain → /results/chain
@@ -516,7 +517,6 @@ Overview
  → Dashboard → /
  → Search → /search
 Academic
- → Examination Sessions → /examinations/sessions
  → Post-UTME CBT Schedule → /admissions/putme
  → Validation Desk → /results/desk
  → Result Pipeline → /results/pipeline
@@ -1472,7 +1472,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 |---|---|
 | Purpose | The session/semester calendar every module reads: the CURRENT session under a Senate minute, each semester's windows (lectures, registration, late registration, examinations, results due, query window), the unit limits per level, the yearly roll-over and the enrol-all backfill. |
 | Users / roles | Read: any authenticated user; `WRITERS` academic, registrar, dregistrar, super, ict. |
-| Navigation | Academic → Session & Semester Setup → `/calendar` (academic, super only; registrar, dregistrar, ict reach it by URL). |
+| Navigation | Portal Management → Session & Semester Setup → `/calendar` (the Director of ICT's; everyone else reads it, and the Registrar, the Deputy Registrar and the Super Administrator reach it by URL to make a planned session current). |
 | Dashboard | Tiles Current session / Current semester / Registration (Open/Closed) / Score sheets due. |
 | Main features | New/Edit session (state Planned/Current/Closed, Senate minute); End/Reopen; semester windows; level unit limits; "Roll into {session}" (promotes continuing students; word ROLLOVER + reason); "Enrol all into {session}". |
 | Create | `PUT /calendar/sessions/{s}`; `PUT …/semesters/{n}`; `PUT /calendar/levels/{level}`. |
@@ -2083,7 +2083,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 |---|---|
 | Purpose | Examination sessions (MAIN, RESIT, SPECIAL) whose opening generates one score sheet per allocated offering; CA and examination marks entered or uploaded, submitted and attested; the nine-stage approval chain to PUBLISHED on a Senate minute; total, grade and points computed from the grading scheme with a one-mark grace; marks versioned; the computed broadsheet; the Senate schedule and publication. |
 | Users / roles | `READERS` academic, registrar, dregistrar, dvc, vc, records, dean, hod, exams, facultyexams, facultyofficer, lecturer, ict, admin, super; `DESKS` lecturer, exams, hod, facultyexams, facultyofficer, dean, records, registrar, dregistrar, academic; `ENTRY` lecturer, exams, academic; `EXAMS` (sessions) records, academic, registrar, dregistrar; minute registrar, dregistrar. Stage→office map (`Sheets.DESK`) drives the UI only. |
-| Navigation | Academic → Examination Sessions / CBT Sessions / Examinations → `/examinations/sessions`; Score Sheets / Score Entry / Upload Results (bulk) / My Score Sheets → `/results/sheets`; Score Sheet History → `/results/sheets/history`; Result Desk / Scrutiny Desk / Validation Desk → `/results/desk`; Departmental Approvals / Faculty Board / Verification Queue / Results to Senate / Senate Business → `/results/approvals`; Approval Chain → `/results/chain`; Result Pipeline → `/results/pipeline`; Broadsheet(s) → `/results/broadsheet`; Senate Schedule → `/results/senate`; Publication → `/results/publish`. |
+| Navigation | Portal Management → Examination Sessions (the Director of ICT's; others read it) / CBT Sessions / Examinations → `/examinations/sessions`; Score Sheets / Score Entry / Upload Results (bulk) / My Score Sheets → `/results/sheets`; Score Sheet History → `/results/sheets/history`; Result Desk / Scrutiny Desk / Validation Desk → `/results/desk`; Departmental Approvals / Faculty Board / Verification Queue / Results to Senate / Senate Business → `/results/approvals`; Approval Chain → `/results/chain`; Result Pipeline → `/results/pipeline`; Broadsheet(s) → `/results/broadsheet`; Senate Schedule → `/results/senate`; Publication → `/results/publish`. |
 | Dashboard | Exam-sessions tiles Open sessions / Courses examined / Candidates / Sheets due; submission monitor; desk tiles On this desk now / Not yet arrived / Sent on / Published; pipeline counts per stage; broadsheet tiles Candidates / Mean GPA / Passed every course / Carrying over. |
 | Main features | Create/open/edit an examination session; sheet list with stage pills; score entry with template download, upload with whole-file validation, Save the draft, Submit and attest; held scripts panel (§3.31); Desk with "Forward N sets to {next}"; Approvals queue with Approve / Return / Remind; Chain ladder with per-stage act and the minute modal; Pipeline; Broadsheet with Senate lists and remarks; Senate schedule "Record the minute and release"; Publication "Release to candidates on the minute". |
 | Create | `POST /results/exam-sessions` (+ open); `PUT /results/sheets/{id}/scores`; `POST /sheets/{id}/advance`; `POST /results/senate/minute`. |
@@ -3303,9 +3303,9 @@ Finance → Revenue & Student Income → /audit/revenue ; Staff → Staff Moveme
 #### 4.5.1 Session & Semester Setup
 
 ```text
-Academic → Session & Semester Setup → /calendar
+Portal Management → Session & Semester Setup → /calendar
 ```
-**URL** `/calendar?session=YYYY/YYYY` · **Purpose** Sessions, semester windows, level unit limits, roll-over, enrol-all. · **Who** academic, super (menu); `WRITERS` academic, registrar, dregistrar, super, ict; read any. · **Layout** Panels "Roll the register into a new session", "Match the loaded cohort to this session", info note, tiles Current session / Current semester / Registration / Score sheets due, "Academic sessions" (+ New session), "Semesters of {session}" (+ New semester), pointer "Open the examination session", "Levels and unit limits" (+ New level).
+**URL** `/calendar?session=YYYY/YYYY` · **Purpose** Sessions, semester windows, level unit limits, roll-over, enrol-all. · **Who** ict (menu, and `WRITERS`: every change); `TRANSITIONERS` ict, registrar, dregistrar, super (make a planned session current); read any, the controls hidden from everyone but the Director of ICT. · **Layout** Panels "Roll the register into a new session", "Match the loaded cohort to this session", info note, tiles Current session / Current semester / Registration / Score sheets due, "Academic sessions" (+ New session), "Semesters of {session}" (+ New semester), pointer "Open the examination session", "Levels and unit limits" (+ New level).
 
 | Field (modals) | Description | Required | Validation |
 |---|---|---|---|
@@ -4317,9 +4317,9 @@ Staff → Department Staff → /hod/staff
 #### 4.12.1 Examination sessions
 
 ```text
-Academic → Examination Sessions / CBT Sessions / Examinations → /examinations/sessions
+Portal Management → Examination Sessions (the Director of ICT's) / CBT Sessions / Examinations → /examinations/sessions
 ```
-**URL** `/examinations/sessions` · **Purpose** Create, open and monitor examination sessions. · **Who** academic, records, exams, facultyexams (menu); create/edit/open `EXAMS` records, academic, registrar, dregistrar. · **Layout** Tiles Open sessions / Courses examined / Candidates / Sheets due; "Create an examination session"; "Examination sessions" (Session, Semester, Type, Examinations, Sheets due, Sheets, Outstanding, State; Edit, Open); Edit modal; "Submission monitor" (Faculty, Sheets expected, Submitted, Verified, Past the Board, Outstanding, progress); "The N sheets holding the Faculty of X" with Remind.
+**URL** `/examinations/sessions` · **Purpose** Create, open and monitor examination sessions. · **Who** ict (Portal Management), exams, facultyexams (menu); create/edit/open `EXAM_SESSIONS` ict alone — every other office that reads results sees the sessions and the monitor, with the controls hidden. · **Layout** Tiles Open sessions / Courses examined / Candidates / Sheets due; "Create an examination session"; "Examination sessions" (Session, Semester, Type, Examinations, Sheets due, Sheets, Outstanding, State; Edit, Open); Edit modal; "Submission monitor" (Faculty, Sheets expected, Submitted, Verified, Past the Board, Outstanding, progress); "The N sheets holding the Faculty of X" with Remind.
 
 | Field | Description | Required | Validation |
 |---|---|---|---|

@@ -51,6 +51,8 @@ class SessionLifecycleIT {
 
     ItSupport it;
     String academic = ItSupport.token("academic");
+    /** the calendar is set from the Director of ICT's Portal Management; the Academic Office reads it */
+    String ict = ItSupport.token("ict");
     String registrar = ItSupport.token("registrar");
 
     @BeforeEach
@@ -94,10 +96,14 @@ class SessionLifecycleIT {
     @Test
     void aPlannedSessionIsARealContextAndTheTransitionIsOneGuardedAct() {
         int n = new Random().nextInt(9000) + 1000;
-        // 1 · the Academic Office sets both up: A with its minute, B planned with a dated first semester and a fee schedule but no minute yet
-        assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + A, session("2101-10-01", "2102-08-31", Map.of("senateMinute", "SEN/T/2101/1"))).getStatusCode().value()).isEqualTo(200);
-        assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + B, session("2102-10-01", "2103-08-31", Map.of())).getStatusCode().value()).isEqualTo(200);
+        // 1 · the Director of ICT sets both up (the Academic Office no longer may): A with its minute, B planned with a dated first
+        //     semester and a fee schedule but no minute yet
+        assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + A, session("2101-10-01", "2102-08-31", Map.of("senateMinute", "SEN/T/2101/1"))).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/" + A, session("2101-10-01", "2102-08-31", Map.of("senateMinute", "SEN/T/2101/1"))).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/" + B, session("2102-10-01", "2103-08-31", Map.of())).getStatusCode().value()).isEqualTo(200);
         assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + B + "/semesters/1",
+                Map.of("lecturesFrom", "2102-10-05", "state", "NOT_YET_OPEN")).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/" + B + "/semesters/1",
                 Map.of("lecturesFrom", "2102-10-05", "lecturesTo", "2103-02-20", "registrationOpens", "2102-10-01", "registrationCloses", "2102-11-30", "state", "NOT_YET_OPEN")).getStatusCode().value()).isEqualTo(200);
         it.db(() -> jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 150000, 100, 'C00023')").param("s", B).update());
 
@@ -152,8 +158,12 @@ class SessionLifecycleIT {
             assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
             assertThat(jdbc.sql("SELECT session FROM finance.payment_reference WHERE reference = :r").param("r", String.valueOf(ref.getBody().get("reference"))).query(String.class).single()).isEqualTo(B);
 
-            // 5 · the transition is the Registrar's, confirmed, and blocked while the minute is missing - the blocked attempt is on the log
+            // 5 · the transition is the Registrar's or the Director of ICT's, confirmed, and blocked while the minute is missing - the
+            //     blocked attempt is on the log
             assertThat(it.call(academic, HttpMethod.POST, "/api/v1/calendar/sessions/" + B + "/transition", Map.of("confirm", "TRANSITION", "reason", "not mine")).getStatusCode().value()).isEqualTo(403);
+            ResponseEntity<Map> ictUnconfirmed = it.call(ict, HttpMethod.POST, "/api/v1/calendar/sessions/" + B + "/transition", Map.of("confirm", "yes", "reason", "Senate resolved"));
+            assertThat(ictUnconfirmed.getStatusCode().value()).isEqualTo(422);
+            assertThat(ictUnconfirmed.getBody().get("code")).isEqualTo("SESSION_TRANSITION_UNCONFIRMED");
             ResponseEntity<Map> unconfirmed = it.call(registrar, HttpMethod.POST, "/api/v1/calendar/sessions/" + B + "/transition", Map.of("confirm", "yes", "reason", "Senate resolved"));
             assertThat(unconfirmed.getStatusCode().value()).isEqualTo(422);
             assertThat(unconfirmed.getBody().get("code")).isEqualTo("SESSION_TRANSITION_UNCONFIRMED");
@@ -201,10 +211,10 @@ class SessionLifecycleIT {
 
             // 8 · the clock: C is automatic, ready and due today, so it becomes current; D is automatic and due but has no semester or fee, so it is logged blocked
             String today = LocalDate.now().toString();
-            assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + C, session("2103-10-01", "2104-08-31", Map.of("senateMinute", "SEN/T/2103/1", "transitionMode", "AUTOMATIC", "transitionsOn", today))).getStatusCode().value()).isEqualTo(200);
-            assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + C + "/semesters/1", Map.of("lecturesFrom", "2103-10-05", "lecturesTo", "2104-02-20", "state", "NOT_YET_OPEN")).getStatusCode().value()).isEqualTo(200);
+            assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/" + C, session("2103-10-01", "2104-08-31", Map.of("senateMinute", "SEN/T/2103/1", "transitionMode", "AUTOMATIC", "transitionsOn", today))).getStatusCode().value()).isEqualTo(200);
+            assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/" + C + "/semesters/1", Map.of("lecturesFrom", "2103-10-05", "lecturesTo", "2104-02-20", "state", "NOT_YET_OPEN")).getStatusCode().value()).isEqualTo(200);
             it.db(() -> jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 160000, 100, 'C00023')").param("s", C).update());
-            assertThat(it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + D, session("2104-10-01", "2105-08-31", Map.of("senateMinute", "SEN/T/2104/1", "transitionMode", "AUTOMATIC", "transitionsOn", today))).getStatusCode().value()).isEqualTo(200);
+            assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/" + D, session("2104-10-01", "2105-08-31", Map.of("senateMinute", "SEN/T/2104/1", "transitionMode", "AUTOMATIC", "transitionsOn", today))).getStatusCode().value()).isEqualTo(200);
             assertThat(m(it.get(academic, "/api/v1/calendar/sessions/" + C + "/readiness").getBody()).get("readyForAutomatic")).isEqualTo(true);
             List<Map<String, Object>> outcomes = clock.run();
             assertThat(outcomes.stream().filter(o -> C.equals(String.valueOf(o.get("to")))).findFirst().orElseThrow().get("outcome")).isEqualTo("DONE");
@@ -219,14 +229,15 @@ class SessionLifecycleIT {
             assertThat(clock.run()).isEmpty();
 
             // 9 · a completed session is archived and not edited back; a planned one is not archived
-            ResponseEntity<Map> archived = it.call(academic, HttpMethod.POST, "/api/v1/calendar/sessions/" + A + "/archive", Map.of("reason", "History"));
+            assertThat(it.call(academic, HttpMethod.POST, "/api/v1/calendar/sessions/" + A + "/archive", Map.of("reason", "History")).getStatusCode().value()).isEqualTo(403);
+            ResponseEntity<Map> archived = it.call(ict, HttpMethod.POST, "/api/v1/calendar/sessions/" + A + "/archive", Map.of("reason", "History"));
             assertThat(archived.getStatusCode().value()).as(String.valueOf(archived.getBody())).isEqualTo(200);
             assertThat(row(archived.getBody(), A).get("state")).isEqualTo("ARCHIVED");
             assertThat(row(archived.getBody(), A).get("archivedAt")).isNotNull();
-            ResponseEntity<Map> notYet = it.call(academic, HttpMethod.POST, "/api/v1/calendar/sessions/" + D + "/archive", Map.of("reason", "too early"));
+            ResponseEntity<Map> notYet = it.call(ict, HttpMethod.POST, "/api/v1/calendar/sessions/" + D + "/archive", Map.of("reason", "too early"));
             assertThat(notYet.getStatusCode().value()).isEqualTo(422);
             assertThat(notYet.getBody().get("code")).isEqualTo("SESSION_ARCHIVE_REFUSED");
-            ResponseEntity<Map> reopened = it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + A, session("2101-10-01", "2102-08-31", Map.of()));
+            ResponseEntity<Map> reopened = it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/" + A, session("2101-10-01", "2102-08-31", Map.of()));
             assertThat(reopened.getStatusCode().value()).isEqualTo(422);
             assertThat(reopened.getBody().get("code")).isEqualTo("SESSION_ARCHIVED");
             // the archived session no longer counts as the one a returning student stands in between sessions: the latest run one does

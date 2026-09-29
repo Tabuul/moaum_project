@@ -7,6 +7,8 @@
  * semesters are policy.semester, and the unit limits policy.level_limit.
  * The two rules that matter are the database's — one session current, none
  * overlapping — so this screen lets them refuse and shows the refusal.
+ * It is the Director of ICT's, under Portal Management: every other office
+ * reads it, and the Registry may still make a planned session current.
  */
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
@@ -48,7 +50,8 @@ export function SessionSetup({
   const [rolled, setRolled] = useState<string | null>(null);
   const [enrolled, setEnrolled] = useState<string | null>(null);
 
-  const isSuper = actingOffice === "super";
+  // the settings are the Director of ICT's alone (Portal Management); the API refuses every other office
+  const canEdit = actingOffice === "ict";
   const sessions = calendar?.sessions ?? [];
   const current = calendar?.current ?? null;
   const currentRow = sessions.find((s) => s.name === current) ?? null;
@@ -88,12 +91,12 @@ export function SessionSetup({
         status: 422,
         title: "The session has to be named as the University names one",
         detail: `“${name}” is not a session. A session is written 2027/2028 — four digits, an oblique, four digits.`,
-        remedy: { message: "Name it as the two calendar years it spans, e.g. 2027/2028.", office: "Academic Office" },
+        remedy: { message: "Name it as the two calendar years it spans, e.g. 2027/2028.", office: "Director of ICT" },
       }); notifyProblem({
         status: 422,
         title: "The session has to be named as the University names one",
         detail: `“${name}” is not a session. A session is written 2027/2028 — four digits, an oblique, four digits.`,
-        remedy: { message: "Name it as the two calendar years it spans, e.g. 2027/2028.", office: "Academic Office" },
+        remedy: { message: "Name it as the two calendar years it spans, e.g. 2027/2028.", office: "Director of ICT" },
       });
       return;
     }
@@ -210,7 +213,7 @@ export function SessionSetup({
 
       {calendar ? <SessionState calendar={calendar} actingOffice={actingOffice} /> : null}
 
-      {looking ? (
+      {looking && canEdit ? (
         <Panel title="Roll the register into a new session" right={<Btn kind="primary" disabled={busy} onClick={() => void rollOver()}>{busy ? "Rolling over…" : `Roll into ${looking}`}</Btn>}>
           <PBody><div className="sub2">
             Promotes every active, matriculated continuing student one level (up to their programme&rsquo;s final level) and enrols
@@ -220,7 +223,7 @@ export function SessionSetup({
         </Panel>
       ) : null}
 
-      {looking ? (
+      {looking && canEdit ? (
         <Panel title="Match the loaded cohort to this session" right={<Btn kind="ghost" disabled={busy} onClick={() => void enrolAll()}>{busy ? "Enrolling…" : `Enrol all into ${looking}`}</Btn>}>
           <PBody><div className="sub2">
             After a historical re-upload, this enrols every currently-studying student (ACTIVE or on probation) into <b>{looking}</b>
@@ -235,14 +238,15 @@ export function SessionSetup({
         Registration windows, fee schedules, grading schemes, examination sessions, result sets and the publication embargo
         are all bounded by a session and a semester. Exactly one session is current at a time, and the portal will not let
         two overlap &mdash; that is an exclusion constraint in the database, not a check on this form.
-        {isSuper ? (
+        {canEdit ? null : (
           <>
             {" "}
-            You are here as the <b>Super Administrator</b>. The Academic Office runs this calendar day to day; you can reach
-            it so the platform is configurable when the Registry is not at its desk, and the log records which of you made
-            each change.
+            The <b>Director of ICT</b> sets this calendar, from <b>Portal Management</b>; here it is read only.
+            {actingOffice === "registrar" || actingOffice === "dregistrar" || actingOffice === "super"
+              ? " You may still make a planned session current, with its Senate minute, by the transition above."
+              : null}
           </>
-        ) : null}
+        )}
       </Note>
 
       <Tiles
@@ -297,20 +301,24 @@ export function SessionSetup({
               s.state === "ARCHIVED" ? (
                 <span className="sub2" key="a">Archived {d(s.archivedAt ?? null)}</span>
               ) : (
-                <span className="row row--inline row--tight" key="a">
-                  <Btn kind="ghost" onClick={() => setOpen({ kind: "session", row: s })}>{s.state === "CLOSED" ? "Reopen / edit" : "Edit"}</Btn>
-                  {s.state === "CLOSED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Archive ${s.name}? It stays on the record as history and is not reopened.`)) void send("POST", `/api/v1/calendar/sessions/${s.name}/archive`, { reason: `${s.name} archived` }, `${s.name} archived`); }}>Archive</Btn> : null}
-                </span>
+                canEdit ? (
+                  <span className="row row--inline row--tight" key="a">
+                    <Btn kind="ghost" onClick={() => setOpen({ kind: "session", row: s })}>{s.state === "CLOSED" ? "Reopen / edit" : "Edit"}</Btn>
+                    {s.state === "CLOSED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Archive ${s.name}? It stays on the record as history and is not reopened.`)) void send("POST", `/api/v1/calendar/sessions/${s.name}/archive`, { reason: `${s.name} archived` }, `${s.name} archived`); }}>Archive</Btn> : null}
+                  </span>
+                ) : <span className="sub2" key="a">&mdash;</span>
               ),
             ])}
           />
         )}
-        <div className="rfbar">
-          <Btn kind="primary" onClick={() => setOpen({ kind: "session", row: null })}>
-            + New session
-          </Btn>
-          <span className="sub2">A draft is set up in private; a planned session is a real academic context for its entrants; the Registrar makes it current by the transition above.</span>
-        </div>
+        {canEdit ? (
+          <div className="rfbar">
+            <Btn kind="primary" onClick={() => setOpen({ kind: "session", row: null })}>
+              + New session
+            </Btn>
+            <span className="sub2">A draft is set up in private; a planned session is a real academic context for its entrants; it is made current by the transition above, with its Senate minute.</span>
+          </div>
+        ) : null}
       </Panel>
 
       <Panel title={`Semesters of ${looking ?? "no session"}`} right="Each with its own windows">
@@ -331,31 +339,35 @@ export function SessionSetup({
               <span className="tnum" key="e">{span(w.examsFrom, w.examsTo)}</span>,
               <span className="tnum" key="d">{d(w.resultsDue)}</span>,
               <Pil kind={w.state === "OPEN" ? "ok" : w.state === "CLOSED" ? "bad" : w.state === "ARCHIVED" ? "grey" : "info"} key="s">{semesterLabel(w.state)}{w.state === "OPEN" && within(w.lecturesFrom, w.lecturesTo) ? " · lectures running" : w.state === "OPEN" && within(w.examsFrom, w.examsTo) ? " · examinations" : ""}</Pil>,
-              <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "semester", row: w })}>
-                Edit windows
-              </Btn>,
+              canEdit ? (
+                <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "semester", row: w })}>
+                  Edit windows
+                </Btn>
+              ) : <span className="sub2" key="a">&mdash;</span>,
             ])}
           />
         )}
-        <div className="rfbar">
-          <Btn kind="primary" disabled={!looking} onClick={() => setOpen({ kind: "semester", row: null })}>
-            + New semester
-          </Btn>
-          <span className="sub2">Every date on that form changes what a student can do today.</span>
-        </div>
+        {canEdit ? (
+          <div className="rfbar">
+            <Btn kind="primary" disabled={!looking} onClick={() => setOpen({ kind: "semester", row: null })}>
+              + New semester
+            </Btn>
+            <span className="sub2">Every date on that form changes what a student can do today.</span>
+          </div>
+        ) : null}
       </Panel>
 
       <Panel
         title="Open the examination session"
-        right={<LinkBtn href="/examinations/sessions" kind="primary">Examinations → Sessions</LinkBtn>}
+        right={<LinkBtn href="/examinations/sessions" kind="primary">Examination Sessions</LinkBtn>}
       >
         <PBody><div className="sub2">
           Setting the examination dates above is <b>not</b> the same as opening the examination session. Until the
-          Examinations Office opens it, students see &ldquo;No examination session is open&rdquo; and no papers appear.
+          Director of ICT opens it, students see &ldquo;No examination session is open&rdquo; and no papers appear.
           To open it:
           <ol className="m-0 mt-2" style={{ paddingLeft: "var(--s-4)" }}>
-            <li>Sign in as the <b>Examinations Office</b> role.</li>
-            <li>Go to <b>Examinations → Sessions</b> (the button on the right, route <code>/examinations/sessions</code>).</li>
+            <li>Act as the <b>Director of ICT</b>.</li>
+            <li>Go to <b>Portal Management → Examination Sessions</b> (the button on the right, route <code>/examinations/sessions</code>).</li>
             <li>
               Under <b>Create an examination session</b>, pick the session and semester, fill the exam dates and the
               score-sheets-due date, then click <b>Open the session</b> &mdash; or click <b>Open</b> next to one you saved as a
@@ -384,17 +396,21 @@ export function SessionSetup({
               <span className="tnum" key="max">{l.maxUnits}</span>,
               <span className={`tnum${l.probationMaxUnits == null ? " ink-muted" : ""}`} key="prob">{l.probationMaxUnits ?? "not set"}</span>,
               l.carryoverCounts ? <Tick size={15} colour="var(--green-ink)" key="c" /> : <span className="sub2" key="c">No</span>,
-              <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "level", row: l })}>
-                Edit
-              </Btn>,
+              canEdit ? (
+                <Btn kind="ghost" key="a" onClick={() => setOpen({ kind: "level", row: l })}>
+                  Edit
+                </Btn>
+              ) : <span className="sub2" key="a">&mdash;</span>,
             ])}
           />
         )}
-        <div className="rfbar">
-          <Btn kind="primary" onClick={() => setOpen({ kind: "level", row: null })}>
-            + New level
-          </Btn>
-        </div>
+        {canEdit ? (
+          <div className="rfbar">
+            <Btn kind="primary" onClick={() => setOpen({ kind: "level", row: null })}>
+              + New level
+            </Btn>
+          </div>
+        ) : null}
       </Panel>
 
       {open?.kind === "session" ? (

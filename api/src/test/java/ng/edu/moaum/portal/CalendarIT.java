@@ -44,7 +44,9 @@ class CalendarIT {
 
     RestClient client;
     final String academic = TestTokens.token(UUID.randomUUID(), List.of("academic"));
-    /** V289: making a session current is the Registrar's act */
+    /** the calendar's settings are the Director of ICT's alone, from Portal Management */
+    final String ict = TestTokens.token(UUID.randomUUID(), List.of("ict"));
+    /** V289: making a session current is the Registrar's act (and, since the calendar moved to Portal Management, the Director of ICT's) */
     final String registrar = TestTokens.token(UUID.randomUUID(), List.of("registrar"));
 
     @BeforeEach
@@ -56,7 +58,7 @@ class CalendarIT {
     }
 
     ResponseEntity<Map> call(HttpMethod method, String path, Object body) {
-        return call(academic, method, path, body);
+        return call(ict, method, path, body);
     }
 
     ResponseEntity<Map> call(String token, HttpMethod method, String path, Object body) {
@@ -84,6 +86,11 @@ class CalendarIT {
     @Test
     @SuppressWarnings("unchecked")
     void aSessionIsRecordedOpenedAndClosed() {
+        // 0 · the Academic Office and the Registrar no longer write the calendar: it is the Director of ICT's
+        assertThat(call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/" + FIRST, session("2096-10-01", "2097-08-31")).getStatusCode().value()).isEqualTo(403);
+        assertThat(call(registrar, HttpMethod.PUT, "/api/v1/calendar/sessions/" + FIRST, session("2096-10-01", "2097-08-31")).getStatusCode().value()).isEqualTo(403);
+        assertThat(call(academic, HttpMethod.PUT, "/api/v1/calendar/levels/600", Map.of("appliesTo", "MBBS", "minUnits", 15, "maxUnits", 24, "carryoverCounts", true)).getStatusCode().value()).isEqualTo(403);
+
         // 1 · two sessions of the test's own, one after the other
         ResponseEntity<Map> first = call(HttpMethod.PUT, "/api/v1/calendar/sessions/" + FIRST,
                 session("2096-10-01", "2097-08-31"));
@@ -104,8 +111,11 @@ class CalendarIT {
         assertThat(after).noneSatisfy(s -> assertThat(s.get("name")).isEqualTo(OVERLAPS));
 
         // 3 · a session does not open without the minute that opened it
-        // 3a · and not by the Academic Office at all: the transition is the Registrar's (V289)
-        assertThat(call(HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current", Map.of("senateMinute", "SEN/TEST/2096/001")).getStatusCode().value()).isEqualTo(403);
+        // 3a · and not by the Academic Office at all: the transition is the Registrar's (V289) or the Director of ICT's
+        assertThat(call(academic, HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current", Map.of("senateMinute", "SEN/TEST/2096/001")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> ictNoMinute = call(ict, HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current", Map.of("senateMinute", " "));
+        assertThat(ictNoMinute.getStatusCode().value()).isEqualTo(422);
+        assertThat(ictNoMinute.getBody().get("code")).isEqualTo("CAL_MINUTE_REQUIRED");
         ResponseEntity<Map> noMinute = call(registrar, HttpMethod.POST, "/api/v1/calendar/sessions/" + FIRST + "/make-current",
                 Map.of("senateMinute", " "));
         assertThat(noMinute.getStatusCode().value()).isEqualTo(422);

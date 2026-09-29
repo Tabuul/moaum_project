@@ -50,6 +50,8 @@ class AdmissionLifecycleIT {
 
     ItSupport it;
     final String academic = ItSupport.token("academic");
+    /** the calendar is the Director of ICT's (Portal Management) */
+    final String ict = ItSupport.token("ict");
     final String registrar = ItSupport.token("registrar");
     final String bursar = ItSupport.token("bursar");
     final String housing = ItSupport.token("housing");
@@ -343,7 +345,7 @@ class AdmissionLifecycleIT {
         assertThat(shut.getStatusCode().value()).isEqualTo(422);
         assertThat(shut.getBody().get("code")).isEqualTo("COURSE_REGISTRATION_CLOSED");
         assertThat(m(it.get(studentToken, "/api/v1/me/registration?session=" + SESSION + "&semester=1").getBody().get("window")).get("open")).isEqualTo(false);
-        ResponseEntity<Map> dated = it.call(academic, HttpMethod.PUT, "/api/v1/calendar/sessions/2084/2085/semesters/1", Map.of("state", "NOT_YET_OPEN", "freshRegistrationFrom", java.time.LocalDate.now().toString()));
+        ResponseEntity<Map> dated = it.call(ict, HttpMethod.PUT, "/api/v1/calendar/sessions/2084/2085/semesters/1", Map.of("state", "NOT_YET_OPEN", "freshRegistrationFrom", java.time.LocalDate.now().toString()));
         assertThat(dated.getStatusCode().value()).as(String.valueOf(dated.getBody())).isEqualTo(200);
         ResponseEntity<Map> early = it.call(studentToken, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", SESSION, "semester", 1, "offerings", List.of()));
         assertThat(early.getStatusCode().value()).as(String.valueOf(early.getBody())).isEqualTo(200);

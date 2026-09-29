@@ -1,6 +1,7 @@
 "use client";
 
-/** tExamSession — proto/part28.html: the container everything hangs in, and the sheets it is waiting on. */
+/** tExamSession — proto/part28.html: the container everything hangs in, and the sheets it is waiting on. Set up, edited and
+ *  opened by the Director of ICT alone, from Portal Management; every office that reads results reads it and its monitor. */
 import { reasonHeader } from "@/lib/reason";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -13,8 +14,10 @@ import { Bar, day, Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
-export function ExamSessions({ sessions, scope, list, monitor }: { sessions: string[]; scope: Scope; list: ExamSession[]; monitor: Monitor | null }) {
+export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: { sessions: string[]; scope: Scope; list: ExamSession[]; monitor: Monitor | null; actingOffice: string | null }) {
   const router = useRouter();
+  // creating, editing and opening an examination session is the Director of ICT's (the API refuses every other office)
+  const canEdit = actingOffice === "ict";
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -99,6 +102,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
         ["Sheets due", due ? day(due, false) : "—", "var(--red-ink)", due ? `${Math.max(0, Math.round((new Date(due).getTime() - today) / 86400000))} days from today` : "No session open"],
       ]} />
 
+      {canEdit ? (
       <Panel title="Create an examination session">
         <PBody>
           <div className="grid grid--3">
@@ -118,6 +122,11 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
           </div>
         </PBody>
       </Panel>
+      ) : (
+        <Note kind="info" title="Set up by the Director of ICT">
+          Examination sessions are created, dated and opened by the Director of ICT, from Portal Management. Here you can follow each one and its submission monitor.
+        </Note>
+      )}
 
       {list.length ? (
         <Panel title="Examination sessions" right={`${list.length} on record`}>
@@ -131,8 +140,8 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
               <span className={`tnum${e.outstanding ? " ink-red b700" : ""}`} key="o">{e.outstanding}</span>,
               e.state === "OPEN" ? <Pil kind="ok" key="st">Open</Pil> : e.state === "DRAFT" ? <Pil kind="info" key="st">Draft</Pil> : <Pil kind="grey" key="st">Closed</Pil>,
               <span key="a" className="row row--inline row--tight row--right">
-                {e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit</Btn> : null}
-                {e.state === "DRAFT" ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer.`))}>Open</Btn> : <LinkBtn href={`/examinations/sessions?exam=${e.id}`} kind="ghost">Monitor</LinkBtn>}
+                {canEdit && e.state !== "CLOSED" ? <Btn kind="ghost" disabled={busy !== null} onClick={() => openEdit(e)}>Edit</Btn> : null}
+                {e.state === "DRAFT" ? (canEdit ? <Btn kind="primary" disabled={busy !== null} onClick={() => void post(`/api/bff/api/v1/results/exam-sessions/${e.id}/open`, {}, "Examination session opened", e.id).then((r) => r && setSaid(`${r.sheetsMade} score sheets generated; ${r.offeringsWithoutLecturer} courses have no lecturer.`))}>Open</Btn> : null) : <LinkBtn href={`/examinations/sessions?exam=${e.id}`} kind="ghost">Monitor</LinkBtn>}
               </span>,
             ])}
           />
@@ -171,7 +180,7 @@ export function ExamSessions({ sessions, scope, list, monitor }: { sessions: str
             <Bar key="p" pct={x.progress} colour={x.outstanding ? (x.progress < 50 ? "var(--red)" : "var(--chrome)") : "var(--green)"} />,
           ])}
         />
-        {!faculties.length ? <PBody><div className="sub2">{monitor ? "No sheets were generated in this session yet." : "No examination session is open. Open one above and the monitor fills from the register."}</div></PBody> : null}
+        {!faculties.length ? <PBody><div className="sub2">{monitor ? "No sheets were generated in this session yet." : canEdit ? "No examination session is open. Open one above and the monitor fills from the register." : "No examination session is open. When the Director of ICT opens one, the monitor fills from the register."}</div></PBody> : null}
       </Panel>
 
       {holding && outstanding.length ? (

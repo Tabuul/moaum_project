@@ -180,16 +180,16 @@ All 34 offices exist in `ref.office` (**IMPLEMENTED**). "Home" is where the port
 
 | Code | Title | Scope kind | Purpose · who holds it | Home | Menu | Status |
 |---|---|---|---|---|---|---|
-| `super` | Super Administrator | platform | The bootstrap and break-glass office; named on 33 of 44 modules as an actor. Held by the Directorate of ICT. | `/` Platform dashboard ("Setup Console") | 7 groups · 32 items | IMPLEMENTED |
+| `super` | Super Administrator | platform | The bootstrap and break-glass office; named on 33 of 44 modules as an actor. Held by the Directorate of ICT. | `/` Platform dashboard ("Setup Console") | 7 groups · 31 items | IMPLEMENTED |
 | `admin` | System Administrator | platform | Day-to-day platform administration: users, gateways, mail/SMS, help desk, reconciliation reads. Directorate of ICT. | `/admin` Administrator Dashboard | 9 groups · 40 items | IMPLEMENTED |
-| `ict` | Director of ICT | platform | Structure uploads (faculties, departments, programmes, courses), platform settings, accounts, integrations, audit trail. | `/` Platform dashboard ("Platform & Integrations") | 9 groups · 33 items | IMPLEMENTED |
+| `ict` | Director of ICT | platform | Structure uploads (faculties, departments, programmes, courses), Portal Management (the session and semester calendar, payment and registration windows, examination sessions), platform settings, accounts, integrations, audit trail. | `/` Platform dashboard ("Platform & Integrations") | 9 groups · 35 items | IMPLEMENTED |
 | `ictagent` | ICT Support Agent | platform | Works the ICT help-desk queue (V251). Support staff of the Directorate. | `/helpdesk` | 2 groups · 4 items | IMPLEMENTED; Search item refused (§4) |
 | `vc` | Vice-Chancellor | institution | Institutional overview, Senate business, revocation of documents, transfers at Senate, audit trail and security posture reads. | `/overview` Institutional Overview | 6 groups · 14 items | IMPLEMENTED |
 | `dvc` | Deputy Vice-Chancellor (Academic) | institution | Academic oversight: pipeline, Senate schedule, graduation, transfers committee, movements, research grants. | `/` Academic dashboard | 5 groups · 13 items | IMPLEMENTED |
 | `registrar` | Registrar | institution | Head of the Registry: accounts and grants, matriculation, clearance, documents (release, revoke), Senate minute, admissions, transfers, governance, staff movements. | `/` Registrar dashboard | 8 groups · 35 items | IMPLEMENTED; two menu items refused (§4) |
 | `dregistrar` | Deputy Registrar (Academic Affairs) | institution | The Registrar's academic deputy: same academic authority as the Registrar except revocation and Senate transfers; Senate minute. | `/` Academic dashboard | 6 groups · 27 items | IMPLEMENTED |
-| `academic` | Academic Officer (the Academic Office) | institution | Runs admissions, intake, matriculation runs, calendar, examination sessions, results to Senate, graduation, documents, LMS oversight. The busiest office (44 items). | `/` Academic dashboard | 6 groups · 44 items | IMPLEMENTED |
-| `records` | Exams and Records | institution | Examination sessions, validation desk, broadsheets, Senate schedule, publication, graduation records, documents office, legacy migration. | `/` Academic dashboard | 5 groups · 23 items | IMPLEMENTED |
+| `academic` | Academic Officer (the Academic Office) | institution | Runs admissions, intake, matriculation runs, results to Senate, graduation, documents, LMS oversight; reads the calendar and examination sessions, which moved to the Director of ICT. The busiest office (42 items). | `/` Academic dashboard | 6 groups · 42 items | IMPLEMENTED |
+| `records` | Exams and Records | institution | Validation desk, broadsheets, Senate schedule, publication, graduation records, documents office, legacy migration; reads examination sessions (the Director of ICT's). | `/` Academic dashboard | 5 groups · 22 items | IMPLEMENTED |
 | `bursar` | Bursar | institution | Fees, confirmations, gateways, refunds, reconciliation, wallet/NELFUND, vouchers, budget, tenders, stores, payroll reads, financial clearance. | `/` Bursar dashboard | 5 groups · 32 items | IMPLEMENTED |
 | `financecontroller` | Finance Controller, College of Health Sciences | college | Reads the College's payment report and statistics. **Acts in nothing.** | `/college/dashboard` (renders the Payment Report) | 5 groups · 12 items | IMPLEMENTED (read-only); Fee Setup and Search items refused (§4) |
 | `audit` | Director of Internal Audit | institution | Payment vouchers (director's desk), reconciliation attestation, refunds/wallet/expenditure reads, audit trail, HR reads, revenue/assets/staff sub-desks. | `/vouchers` Payment Vouchers | 6 groups · 15 items | IMPLEMENTED |
@@ -296,7 +296,7 @@ Two parser artefacts are known in the generated inventory and are corrected in �
 | Module | super | admin | ict | ictagent | vc | dvc | registrar | dregistrar | academic | records | bursar | financecontroller | audit | deputyaudit | hrm | provost | collegesecretary | mbbscoordinator | dean | facultyofficer | facultyexams | hod | exams | lecturer | siwes | pgschool | pgsecretary | extexaminer | housing | services | security | library | student | applicant | Open | Public |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | API keys (`apimgmt`) | Act | Act | Act | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |  |  |
-| Academic calendar (`calendar`) | Act | — | Act | — | — | — | Act | Act | Act | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |  |  |
+| Academic calendar (`calendar`) | Act | — | Act | — | — | — | Act | Act | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |  |  |
 | Academic structure & courses (`catalogue`) | Act | Act | Act | — | Read | Read | Act | Act | Act | Read | — | — | — | — | — | — | — | — | Act | Read | Read | Act | Read | Read | — | — | — | — | — | — | — | — | — | — |  |  |
 | Alumni (`alumni`) | Read | Read | — | — | Read | Read | Read | Read | Read | Read | — | — | Read | Read | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |  |  |
 | Applicant portal (`applicant`) | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | Act |  | 5 |
@@ -387,7 +387,7 @@ Two parser artefacts are known in the generated inventory and are corrected in �
 ##### Super Administrator (`super`)
 - **Acts in:** API keys, Academic calendar, Academic structure & courses, CBT question bank, College of Health Sciences, Course allocation, Course registration, Deferments, Documents, certificates & ID cards, Expenditure & stores, External examiners, Finance & fees, Governance, Health centre, Hostel, Human resources, ICT help desk, Identity & accounts, Learning materials (LMS), Library, Matriculation, Payment gateways, Platform, notices & mail, Postgraduate school, Reports, Results & assessment, SIWES, Student portal, Student records, Support services, Transfers, Undergraduate admissions, Wallet
 - **Reads only:** Alumni, Audit log, Clearance, Dean's desk, Graduation, Provost's desk, Reporting, Statistics
-- **Menu items:** 30
+- **Menu items:** 29
 
 ##### System Administrator (`admin`)
 - **Acts in:** API keys, Academic structure & courses, College of Health Sciences, Course allocation, Deferments, External examiners, Finance & fees, Hostel, Human resources, ICT help desk, Identity & accounts, Library, Payment gateways, Platform, notices & mail, Reports, SIWES, Support services, Undergraduate admissions, Wallet
@@ -397,7 +397,7 @@ Two parser artefacts are known in the generated inventory and are corrected in �
 ##### Director of ICT (`ict`)
 - **Acts in:** API keys, Academic calendar, Academic structure & courses, Deferments, Expenditure & stores, Finance & fees, Governance, ICT help desk, Identity & accounts, Payment gateways, Platform, notices & mail, Reports, Results & assessment, Student portal, Student records, Support services, Transfers, Undergraduate admissions
 - **Reads only:** Audit log, Clearance, Course registration, Documents, certificates & ID cards, Graduation, Hostel, Human resources, Library, Matriculation, Reporting, Statistics, Wallet
-- **Menu items:** 32
+- **Menu items:** 34
 
 ##### ICT Support Agent (`ictagent`)
 - **Acts in:** ICT help desk
@@ -425,14 +425,14 @@ Two parser artefacts are known in the generated inventory and are corrected in �
 - **Menu items:** 26
 
 ##### Academic Officer (`academic`)
-- **Acts in:** Academic calendar, Academic structure & courses, Clearance, College of Health Sciences, Course allocation, Course registration, Deferments, Documents, certificates & ID cards, External examiners, Graduation, Learning materials (LMS), Matriculation, Postgraduate school, Reports, Results & assessment, SIWES, Student portal, Student records, Support services, Transfers, Undergraduate admissions, Wallet
+- **Acts in:** Academic structure & courses, Clearance, College of Health Sciences, Course allocation, Course registration, Deferments, Documents, certificates & ID cards, External examiners, Graduation, Learning materials (LMS), Matriculation, Postgraduate school, Reports, Results & assessment, SIWES, Student portal, Student records, Support services, Transfers, Undergraduate admissions, Wallet
 - **Reads only:** Alumni, CBT question bank, Finance & fees, Hostel, Human resources, Library, Platform, notices & mail, Reporting, Statistics
-- **Menu items:** 44
+- **Menu items:** 42
 
 ##### Exams and Records (`records`)
 - **Acts in:** Deferments, Documents, certificates & ID cards, Graduation, Reports, Results & assessment, Student portal, Undergraduate admissions
 - **Reads only:** Academic structure & courses, Alumni, Clearance, College of Health Sciences, Course allocation, Course registration, Human resources, Matriculation, Statistics
-- **Menu items:** 22
+- **Menu items:** 21
 
 ##### Bursar (`bursar`)
 - **Acts in:** Clearance, Expenditure & stores, Finance & fees, Payment gateways, Postgraduate school, Reports, Support services, Undergraduate admissions, Wallet
@@ -572,7 +572,7 @@ The matrix says which offices touch a module. The rules below say **which office
 
 #### 3.3.2 Academic calendar (`calendar`) and reference data (`ref`)
 
-Read: any signed-in person (students included). Write (`WRITERS`): academic, registrar, dregistrar, super, ict — sessions, semesters, level limits, make-current (needs a Senate minute), roll-over (`ROLLOVER` + reason), enrol-all. `/ref/structure` and `/ref/courses` are pruned to the acting office's bound (a department office sees its department, a lecturer only the programmes its courses are offered to).
+Read: any signed-in person (students included). Write (`WRITERS`): ict alone, from Portal Management — sessions, semesters, level limits, closing, archiving, roll-over (`ROLLOVER` + reason), enrol-all. Make-current and the transition (`TRANSITIONERS`, both need a Senate minute): ict, registrar, dregistrar, super. Until 29 September 2026 the writers were academic, registrar, dregistrar, super and ict. `/ref/structure` and `/ref/courses` are pruned to the acting office's bound (a department office sees its department, a lecturer only the programmes its courses are offered to).
 
 #### 3.3.3 Academic structure & courses (`catalogue`)
 
@@ -689,7 +689,7 @@ Readers: hod, academic, registrar, dregistrar, dvc, vc, ict, admin, super. Appro
 | `READERS` | academic, registrar, dregistrar, dvc, vc, records, dean, hod, exams, facultyexams, facultyofficer, lecturer, ict, admin, super | List and read sheets, rolls, exam sessions, monitor, broadsheet, Senate schedule |
 | `DESKS` | lecturer, exams, hod, facultyexams, facultyofficer, dean, records, registrar, dregistrar, academic | Advance, return, remind |
 | `ENTRY` | lecturer, exams, academic | Write scores; hold / withdraw held scripts |
-| `EXAMS` | records, academic, registrar, dregistrar | Create, edit, open examination sessions |
+| `EXAM_SESSIONS` | ict (until 29 September 2026 `EXAMS`: records, academic, registrar, dregistrar) | Create, edit, open examination sessions |
 | Senate minute | registrar, dregistrar | Record the minute that publishes a schedule |
 | Legacy migration (`MIGRATE`) | academic, dean, dregistrar, exams, facultyexams, hod, ict, records, registrar, super | `/results/legacy/*` imports and reconciliations |
 
@@ -837,7 +837,7 @@ The office menus are written by hand; the guards are the law. Comparing every me
 | Registrar | Admission Settings, CAPS upload, candidate data, screening, PUTME scores, merit list, DE screening | `/admissions/settings`, `/admissions/caps`, `/admissions/candidate-data`, `/admissions/screening`, `/admissions/scores`, `/admissions/merit`, `/admissions/de-screening` | `LOADERS` (academic, registrar), `OFFICE`, `SECRETARIAT`, `SCORE_UPLOADERS` all name registrar | Reachable by URL; the Registrar's menu lists only Admissions, Admitted List and the CBT schedule | PARTIALLY IMPLEMENTED · B2 |
 | Dean; DVC, VC, Records, ICT, Admin, Super (reading) | Matriculation Management (V267) | `/matriculation/manage` | `MatriculationManagementController` READERS; PREPARERS academic, registrar, dregistrar, facultyofficer; ISSUERS academic, registrar, dregistrar | Reachable by URL; the menu lists it for academic, registrar, dregistrar and facultyofficer; faculty offices bound to their faculty | IMPLEMENTED · D3 |
 | Deputy Registrar, Super Administrator (acting); Records, Bursar, ICT, Admin, DVC, VC (reading) | Programme Eligibility (V266) | `/admissions/eligibility` | `AdmissionEligibilityController` READERS academic, registrar, dregistrar, records, bursar, ict, admin, super, dvc, vc; OFFICE academic, registrar, dregistrar, super | Reachable by URL; the menu lists it for academic and registrar only | IMPLEMENTED · B2 |
-| Registrar, Deputy Registrar (AA), Director of ICT | Session & Semester Setup | `/calendar` | calendar `WRITERS` | Reachable by URL; menu item only for academic and super | PARTIALLY IMPLEMENTED · A7 |
+| Registrar, Deputy Registrar (AA), Super Administrator | Session & Semester Setup (making a planned session current) | `/calendar` | calendar `TRANSITIONERS` | Reachable by URL; the screen is on the Director of ICT's Portal Management menu, and read only to everyone else | IMPLEMENTED |
 | Registrar, System Administrator, Super Administrator | Hostel desk | `/hostel` and sub-screens | hostel `OFFICE` | Reachable by URL | G1.3 |
 | Head of Department, Academic Officer | PG Courses, Course Results desks | `/admissions/postgraduate/courses`, `/admissions/postgraduate/results` | coursework `DESK` | No menu entry | C2 |
 | Lecturer | Question Bank | `/exams/question-bank` | cbt `READERS`/`AUTHORS` | No menu entry (the lecturer's sheet list carries a question count) | E-H |
@@ -1033,7 +1033,7 @@ Each table lists what the group **may do**, what it may **read only**, and what 
 
 | May do | Read only | May not |
 |---|---|---|
-| **Academic Office:** CAPS load/commit and intake; admissions decisions, screening, scores, clearance items, PUTME compute and door; matriculation runs and format; calendar and level limits; exam sessions; score entry on any sheet and every desk stage; exam slots; held scripts; result queries; graduation audit and approval; documents start/generate/QC/release/issue and policies; clearance of any unit; catalogue ownership and registration opening; allocation; LMS on any space; SIWES; PG department and faculty decisions, coursework; transfer at REG_OK and paper cases; deferment approval. **Records:** exam sessions; validation stage; documents start/generate/QC; graduation audit; admissions clearance items; PUTME door; exam slots; legacy migration | Academic Office: finance, gateways, hostel, HR, library, platform outbox, statistics without money figures. Records: matriculation, clearance, allocation, class lists, College, deferments, HR, statistics | Academic Office: revoke a document; record the Senate minute; set the fee schedule; upload structure; grant offices. Records: release a document; approve graduation; run matriculation; approve a deferment |
+| **Academic Office:** CAPS load/commit and intake; admissions decisions, screening, scores, clearance items, PUTME compute and door; matriculation runs and format; score entry on any sheet and every desk stage; exam slots; held scripts; result queries; graduation audit and approval; documents start/generate/QC/release/issue and policies; clearance of any unit; catalogue ownership and registration opening; allocation; LMS on any space; SIWES; PG department and faculty decisions, coursework; transfer at REG_OK and paper cases; deferment approval. **Records:** validation stage; documents start/generate/QC; graduation audit; admissions clearance items; PUTME door; exam slots; legacy migration | Academic Office: finance, gateways, hostel, HR, library, platform outbox, statistics without money figures. Records: matriculation, clearance, allocation, class lists, College, deferments, HR, statistics | Academic Office: revoke a document; record the Senate minute; set the fee schedule; upload structure; grant offices. Records: release a document; approve graduation; run matriculation; approve a deferment |
 
 ### 7.3 Bursary and Audit
 
@@ -1045,7 +1045,7 @@ Each table lists what the group **may do**, what it may **read only**, and what 
 
 | May do | Read only | May not |
 |---|---|---|
-| **Director of ICT:** structure create/upload/archive/remove (alone); persons, credentials, grants, staff loads; calendar; mail/SMS; gateway keys; API consumers; help-desk settings and queue; data reset and demo removal; DR drills; DPIA/DSR; deferment tick; transfer effect; PUTME scores and door; old-portal imports; student account open; migrations desk. **System Administrator:** persons, credentials, grants, staff loads; mail/SMS; gateway keys; API consumers; help-desk settings and queue; allocation; hostel acts; library desk; payment sweep/PayDirect; SIWES; deferments; external-examiner desk; wallet loads. **Super Administrator:** all of the above plus calendar, documents policies, matric format, hostel, health, LMS, and every desk where named. **ICT Support Agent:** the help-desk queue | ICT: audit trail, clearance, registration, documents, graduation, hostel, HR, library, matriculation, wallet, statistics. Admin: alumni, audit trail, CBT, clearance, registration, documents, expenditure, governance, graduation, matriculation, results, transfers, statistics with money figures. Super: alumni, audit trail, clearance, Dean's/HOD's/Provost's desks, graduation, reporting, statistics | ICT: write scores or approve results; confirm fees; release documents. Admin: calendar; fee schedule; score entry; document release; DPIA/DSR. Super: score entry; Senate minute; document release/revocation; clearance signing; graduation approval; CAPS load; results advance. ICT Support Agent: anything outside tickets (its Search item is refused) |
+| **Director of ICT:** structure create/upload/archive/remove (alone); persons, credentials, grants, staff loads; the calendar, payment and registration windows and examination sessions (alone, Portal Management), and making a session current; mail/SMS; gateway keys; API consumers; help-desk settings and queue; data reset and demo removal; DR drills; DPIA/DSR; deferment tick; transfer effect; PUTME scores and door; old-portal imports; student account open; migrations desk. **System Administrator:** persons, credentials, grants, staff loads; mail/SMS; gateway keys; API consumers; help-desk settings and queue; allocation; hostel acts; library desk; payment sweep/PayDirect; SIWES; deferments; external-examiner desk; wallet loads. **Super Administrator:** all of the above plus calendar, documents policies, matric format, hostel, health, LMS, and every desk where named. **ICT Support Agent:** the help-desk queue | ICT: audit trail, clearance, registration, documents, graduation, hostel, HR, library, matriculation, wallet, statistics. Admin: alumni, audit trail, CBT, clearance, registration, documents, expenditure, governance, graduation, matriculation, results, transfers, statistics with money figures. Super: alumni, audit trail, clearance, Dean's/HOD's/Provost's desks, graduation, reporting, statistics | ICT: write scores or approve results; confirm fees; release documents. Admin: calendar; fee schedule; score entry; document release; DPIA/DSR. Super: score entry; Senate minute; document release/revocation; clearance signing; graduation approval; CAPS load; results advance. ICT Support Agent: anything outside tickets (its Search item is refused) |
 
 ### 7.5 Faculties, departments and the College
 
@@ -1081,7 +1081,8 @@ Each table lists what the group **may do**, what it may **read only**, and what 
 | `AccountsController.CREDENTIALS` | registrar, dregistrar, ict, admin, super |
 | `AccountsController.GRANTORS` / `IamController` grant | registrar, dregistrar, vc, super, ict, admin |
 | `AccountsController.STAFF_LOADERS` / `IamController` person | registrar, dregistrar, hrm, ict, admin, super |
-| `CalendarController.WRITERS` | academic, registrar, dregistrar, super, ict |
+| `CalendarController.WRITERS` | ict |
+| `CalendarController.TRANSITIONERS` | ict, registrar, dregistrar, super |
 | `CatalogueController.UPLOADERS` | ict |
 | `CatalogueController.OWNERS` | hod, dean, academic, dregistrar, registrar, admin, super |
 | `AdmissionsController.LOADERS` | academic, registrar |
@@ -1099,7 +1100,7 @@ Each table lists what the group **may do**, what it may **read only**, and what 
 | `AllocationController.ALLOCATORS` | hod, dean, academic, dregistrar, registrar, admin, super |
 | `ResultsController.READERS` | academic, registrar, dregistrar, dvc, vc, records, dean, hod, exams, facultyexams, facultyofficer, lecturer, ict, admin, super |
 | `ResultsController.DESKS` | lecturer, exams, hod, facultyexams, facultyofficer, dean, records, registrar, dregistrar, academic |
-| `ResultsController.ENTRY` / `EXAMS` / minute | lecturer, exams, academic / records, academic, registrar, dregistrar / registrar, dregistrar |
+| `ResultsController.ENTRY` / `EXAM_SESSIONS` / minute | lecturer, exams, academic / ict / registrar, dregistrar |
 | `QuestionBankController.AUTHORS` | lecturer, hod, exams, dean, super |
 | `CollegeController.DESK` | provost, collegesecretary, academic, registrar, dregistrar, admin, super |
 | `FinanceController.READERS` / `BURSARY` / `RECONCILERS` | bursar, registrar, dregistrar, academic, audit, ict, admin, super, vc, dvc / bursar, super / bursar, audit, deputyaudit, super |

@@ -555,8 +555,6 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
-          { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
-          { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/approvals", "icon": "check", "label": "Results to Senate" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
@@ -853,7 +851,6 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions", "badge": "!" },
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/resultdesk", "icon": "check", "label": "Validation Desk", "badge": "12" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
@@ -1020,7 +1017,6 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Academic",
         "items": [
-          { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
@@ -1202,7 +1198,9 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Portal Management",
         "items": [
-          { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" }
+          { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
+          { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" },
+          { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" }
         ]
       },
       {
