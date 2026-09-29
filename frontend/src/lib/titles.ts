@@ -165,6 +165,7 @@ export const TITLES: Record<string, [string, string]> = {
   "t/hostel-accountability": ["Occupancy accountability", "Who occupies every room, paying or not; room utilisation"],
   "t/hostel-import": ["Import hostels and rooms", "The University's workbook previewed and imported without duplicates"],
   "t/hostel-finance": ["Hostel finance", "Charges, paid, outstanding and exempt; the Bursar's fee rules"],
+  "t/hostel-discipline": ["Discipline and room swaps", "Incidents, sanctions and appeals; swaps two students have agreed"],
   "t/pv": [
     "Payment voucher",
     "Expenditure and Control"

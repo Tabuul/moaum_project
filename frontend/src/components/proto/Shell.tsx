@@ -159,6 +159,7 @@ export const ROUTES: Record<string, string> = {
   "t/hostel-accountability": "/hostel/accountability",
   "t/hostel-import": "/hostel/import",
   "t/hostel-finance": "/hostel/finance",
+  "t/hostel-discipline": "/hostel/discipline",
   "s/library": "/student/library",
   "t/circulation": "/library/circulation",
   "s/health": "/student/health",

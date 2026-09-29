@@ -176,3 +176,40 @@ export const ROOM_STATUS: Record<string, [string, PilKind]> = {
   MAINTENANCE: ["Maintenance", "bad"], OUT_OF_SERVICE: ["Out of service", "bad"], INACTIVE: ["Inactive", "grey"], CLOSED: ["Closed", "grey"],
 };
 export const ROOM_CATEGORIES: [string, string][] = [["GENERAL", "General"], ["SPECIAL", "Special / reserved"], ["STUDENT_UNION", "Student Union"], ["SECURITY", "Security"]];
+
+/* ── V291 · discipline (FR-HST-008) and the room swap (FR-HST-006) ── */
+export interface SanctionRow {
+  id: string; reference: string; kind: string; amount: number | null; payment_ref: string | null; settled_at: string | null; waived_at: string | null; waived_reason?: string | null;
+  barred_until: string | null; vacate_by: string | null; effect: string | null; reason: string; state: string; decided_at: string; appeal_by: string;
+  appeal_state: string | null; appeal_ground: string | null; appealed_at: string | null; appeal_note: string | null; appeal_decided_at: string | null;
+  /** the student's own view */
+  incident_ref?: string; session?: string; may_appeal?: boolean; payable?: boolean;
+}
+export interface IncidentRow {
+  incident_id: string; reference: string; session: string; student_id: string; student_name: string; student_number: string | null; sex: string | null; programme: string | null;
+  hall_name: string | null; block: string | null; room_no: string | null; kind: string; kind_label: string; occurred_at: string; place: string | null; description: string; witnesses: string | null;
+  reported_by: string; reported_office: string | null; reported_at: string; statement: string | null; statement_at: string | null; state: string; decided_at: string | null; decision_note: string | null;
+  prior_incidents: number; sanctions: SanctionRow[];
+}
+export interface IncidentKind { code: string; label: string; active: boolean }
+export interface DisciplineData {
+  session: string; incidents: IncidentRow[]; kinds: IncidentKind[];
+  counts: { reported: number; sanctioned: number; dismissed: number; appeals_waiting: number; fines_outstanding: number; barred: number };
+}
+export interface SwapRow {
+  id: string; reference: string; session: string; state: string; reason: string; proposed_at: string; answered_at: string | null; partner_note: string | null; decided_at: string | null; decision_note: string | null;
+  student_id: string; student_name: string; student_number: string | null; student_room: string; student_bed: string | null;
+  partner_id: string; partner_name: string; partner_number: string | null; partner_room: string; partner_bed: string | null; category: string; fee_amount: number | null; fee_status: string | null;
+  /** the student's own view: whether they proposed it or are asked to agree */
+  role?: "PROPOSER" | "PARTNER";
+}
+export interface MyIncident { id: string; reference: string; session: string; kind: string; kind_label: string; occurred_at: string; place: string | null; description: string; reported_at: string; statement: string | null; statement_at: string | null; state: string; decided_at: string | null; decision_note: string | null; hall_name: string | null; block: string | null; room_no: string | null }
+export interface ConductData { session: string; incidents: MyIncident[]; sanctions: SanctionRow[]; swaps: SwapRow[]; bar: string | null }
+
+export const INCIDENT_STATE: Record<string, [string, PilKind]> = { REPORTED: ["Awaiting decision", "warn"], SANCTIONED: ["Sanctioned", "bad"], DISMISSED: ["Dismissed", "ok"] };
+export const SANCTION_KINDS: [string, string][] = [["WARNING", "Written warning"], ["FINE", "Fine (paid through the Bursary)"], ["EVICTION", "Loss of accommodation"], ["OTHER", "Another measure (recorded)"]];
+export const SANCTION_LABEL: Record<string, string> = { WARNING: "Warning", FINE: "Fine", EVICTION: "Loss of accommodation", OTHER: "Other measure" };
+export const APPEAL_STATE: Record<string, [string, PilKind]> = { LODGED: ["Appeal lodged", "warn"], UPHELD: ["Appeal upheld", "grey"], VARIED: ["Varied on appeal", "info"], QUASHED: ["Quashed on appeal", "ok"] };
+export const SWAP_STATE: Record<string, [string, PilKind]> = {
+  PROPOSED: ["Awaiting the other student", "info"], AGREED: ["Awaiting the Dean", "warn"], COMPLETED: ["Completed", "ok"], DECLINED: ["Declined", "grey"], CANCELLED: ["Withdrawn", "grey"], REJECTED: ["Not approved", "bad"],
+};

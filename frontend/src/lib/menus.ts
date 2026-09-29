@@ -324,7 +324,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/hostel-applications", "icon": "doc", "label": "Applications & Waitlist" },
           { "id": "t/hostel-occupancy", "icon": "user", "label": "Occupancy & Check-in" },
           { "id": "t/hostel-special", "icon": "user", "label": "Special Allocations" },
-          { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout, Transfers & Clearance" }
+          { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout, Transfers & Clearance" },
+          { "id": "t/hostel-discipline", "icon": "doc", "label": "Discipline & Room Swaps" }
         ]
       },
       {
@@ -377,7 +378,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/hostel-special", "icon": "user", "label": "Special Allocations" },
           { "id": "t/hostel-accountability", "icon": "chart", "label": "Occupancy Accountability" },
           { "id": "t/hostel-import", "icon": "upload", "label": "Import Hostels & Rooms" },
-          { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout & Clearance" }
+          { "id": "t/hostel-clearance", "icon": "check", "label": "Checkout & Clearance" },
+          { "id": "t/hostel-discipline", "icon": "doc", "label": "Discipline & Room Swaps" }
         ]
       },
       {
