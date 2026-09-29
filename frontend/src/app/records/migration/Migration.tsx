@@ -22,6 +22,21 @@ const MATRIC_OK = /^[A-Z]{2,6}(\/[A-Z0-9]{1,12}){2,8}$/i;
 /** a semester cell — "First"/"Second"/"Third" or 1/2/3 — to its number */
 const semNum = (v: string) => { const t = v.trim().toLowerCase(); return t.startsWith("f") || t === "1" ? 1 : t.startsWith("s") || t === "2" ? 2 : t.startsWith("t") || t === "3" ? 3 : Number(v) || 0; };
 
+/** how fast an upload is going and how long is left, from the batches so far; kept outside the component
+ *  because it reads the clock, which a component may not do while it renders */
+function pacer(total: number): (done: number) => string | undefined {
+  const started = Date.now();
+  return (done) => {
+    const secs = (Date.now() - started) / 1000;
+    if (done <= 0 || secs < 1) return undefined;
+    const perSec = done / secs;
+    const left = Math.max(0, total - done) / perSec;
+    const mins = Math.ceil(left / 60);
+    const leftText = left < 60 ? "under a minute left" : mins < 60 ? `about ${mins} min left` : `about ${Math.floor(mins / 60)} h ${mins % 60} min left`;
+    return `${Math.round(perSec).toLocaleString()} a second, ${leftText}`;
+  };
+}
+
 export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const may = MIGRATE.includes(actingOffice ?? "");
   const [tab, setTab] = useState<Tab>("biodata");
@@ -190,17 +205,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const totals: Record<string, number> = {};
       let firstErr: string | null = null;
       let sent = 0;
-      const started = Date.now();
-      /* how fast it is going and how long is left, from the batches so far */
-      const pace = (done: number) => {
-        const secs = (Date.now() - started) / 1000;
-        if (done <= 0 || secs < 1) return undefined;
-        const perSec = done / secs;
-        const left = Math.max(0, totalRows - done) / perSec;
-        const mins = Math.ceil(left / 60);
-        const leftText = left < 60 ? "under a minute left" : mins < 60 ? `about ${mins} min left` : `about ${Math.floor(mins / 60)} h ${mins % 60} min left`;
-        return `${Math.round(perSec).toLocaleString()} a second, ${leftText}`;
-      };
+      const pace = pacer(totalRows);
       setProgress({ label: "Importing", sent: 0, of: totalRows });
       for (const g of groups) {
         for (let i = 0; i < g.rows.length; i += CHUNK) {
