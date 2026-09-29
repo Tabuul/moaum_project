@@ -36,7 +36,12 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
   const [opens, setOpens] = useState(""); const [closes, setCloses] = useState(""); const [late, setLate] = useState(""); const [lateFee, setLateFee] = useState(false); const [reason, setReason] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const session = page.session;
-  const rowOf = (type: string, sem: number | null) => page.windows.find((w) => w.type === type && w.semesterAsked === sem)!;
+  // the API leaves a null field out of the JSON: the session-wide rows arrive with no semesterAsked at all, so put the nulls back
+  // before anything tests against them (without this no row matched, and the page failed on every load)
+  const windows: WindowRow[] = page.windows.map((w) => ({ ...w, semesterAsked: w.semesterAsked ?? null, semester: w.semester ?? null }));
+  const rowOf = (type: string, sem: number | null): WindowRow =>
+    windows.find((w) => w.type === type && w.semesterAsked === sem)
+    ?? { type, scope: sem == null ? "SESSION" : "SEMESTER", semesterAsked: sem, configured: false, state: "OPEN", phase: "NORMAL", opens_at: null, closes_at: null, late_until: null, late_fee_enabled: false, forced: null, reason: null, window_id: null, semester: null };
   const fees = rowOf("SCHOOL_FEES_PAYMENT", null), reg = rowOf("COURSE_REGISTRATION", page.openSemester);
 
   const start = (type: string, semester: number | null, action: string) => {
@@ -113,7 +118,7 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
         {card(reg, `COURSE REGISTRATION · SEMESTER ${page.openSemester}`, `${session} · the open semester. Closing stops drafting, changing and submitting a registration.`)}
       </div>
       <Panel title="EVERY SEMESTER" right="A semester&rsquo;s own rule stands over the session&rsquo;s">
-        <DTable pageSize={0} cols={["Window", "Scope", "Status|mid", "Phase|mid", "Opens|mid", "Closes|mid", "Late until|mid", "Rule", "|num"]} rows={page.windows.map((w) => [
+        <DTable pageSize={0} cols={["Window", "Scope", "Status|mid", "Phase|mid", "Opens|mid", "Closes|mid", "Late until|mid", "Rule", "|num"]} rows={windows.map((w) => [
           TYPE_WORD[w.type] ?? w.type, w.scope === "SESSION" ? "Whole session" : `Semester ${w.semesterAsked}`,
           <Pil key="s" kind={(STATE[w.state] ?? [w.state, "grey"])[1]}>{w.state}{!w.configured ? " (default)" : ""}</Pil>, w.phase === "LATE" ? <Pil key="p" kind="warn">LATE</Pil> : <span key="p" className="sub2">{w.phase.toLowerCase()}</span>,
           <span key="o" className="tnum sub2">{when(w.opens_at)}</span>, <span key="c" className="tnum sub2">{when(w.closes_at)}</span>, <span key="l" className="tnum sub2">{when(w.late_until)}</span>,

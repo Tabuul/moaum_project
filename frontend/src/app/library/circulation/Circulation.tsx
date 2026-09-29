@@ -74,7 +74,7 @@ export function Circulation({ d, patron, q, actingOffice }: { d: LibraryDeskData
               <Btn kind="go" disabled={!may || busy || !accession.trim()} onClick={async () => { const j = await send("/api/bff/api/v1/library/returns", "POST", { accession }, `Returned ${accession}`); if (j) { setSaid(Number(j.fine) > 0 ? `Returned ${j.days_overdue} days late — fine ${money(Number(j.fine))} posted` : "Returned on time"); setAccession(""); } }}>Return</Btn>
               <Btn kind="ghost" disabled={busy} onClick={go}>Look the patron up</Btn>
             </div>
-            {d.patron === null && patron ? <Note kind="bad" title={`Nobody carries the number ${patron}`}>The matriculation, admission or staff number, as issued.</Note> : null}
+            {d.patron == null && patron ? <Note kind="bad" title={`Nobody carries the number ${patron}`}>The matriculation, admission or staff number, as issued.</Note> : null}
             {d.patron ? (
               <>
                 <Note kind={d.patronStanding?.clear ? "ok" : "bad"} title={`${d.patron.name} · ${d.patron.number} · ${d.patron.programme}`}>

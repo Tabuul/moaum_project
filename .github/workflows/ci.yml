@@ -359,6 +359,11 @@ jobs:
           code=$(curl -s -b "moaum_session=$token; moaum_office=registrar" -o /tmp/registrar.html -w '%{http_code}' http://localhost:3000/)
           [ "$code" = "200" ] || { echo "::error::GET / as the Registrar returned $code"; docker logs portal-web; exit 1; }
           grep -q "Registry business" /tmp/registrar.html || { echo "::error::The Registrar did not get the Registrar's dashboard."; exit 1; }
+          # the Director of ICT's windows page renders its own body, not only the frame around it: its rows arrive with the
+          # API's nulls left out, and a screen that tested them against null failed on every load (fixed 29 Sep 2026)
+          code=$(curl -s -b /tmp/jar -o /tmp/windows.html -w '%{http_code}' http://localhost:3000/ict/windows)
+          [ "$code" = "200" ] || { echo "::error::GET /ict/windows returned $code"; docker logs portal-web; exit 1; }
+          grep -q "WINDOW HISTORY" /tmp/windows.html || { echo "::error::The Payment & Registration Windows page did not render its body (the server-side render failed)."; docker logs portal-web | tail -40; exit 1; }
           latest=$(ls db/V*.sql | sort | tail -1 | xargs basename)
           grep -q "$latest" /tmp/portal.html || { echo "::error::The frontend did not render the API's status (the latest migration, $latest, should be named on the dashboard)."; docker logs portal-web; exit 1; }
           echo "the frontend rendered the API's status"

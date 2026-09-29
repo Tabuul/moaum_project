@@ -30,16 +30,16 @@ export function Score({ a }: { a: Application }) {
     );
   }
   const agg = r.aggregate;
-  const above = agg !== null && r.cutoff !== null ? agg >= r.cutoff : null;
-  const utmeContribution = r.utmeScaled !== null ? Math.round(Number(r.utmeScaled) * r.weightUtme) / 100 : null;
-  const screeningContribution = r.screening !== null ? Math.round(Number(r.screening) * r.weightPutme) / 100 : null;
+  const above = agg != null && r.cutoff != null ? agg >= r.cutoff : null;
+  const utmeContribution = r.utmeScaled != null ? Math.round(Number(r.utmeScaled) * r.weightUtme) / 100 : null;
+  const screeningContribution = r.screening != null ? Math.round(Number(r.screening) * r.weightPutme) / 100 : null;
   return (
     <>
       <Tiles items={[
-        ["UTME", String(r.utme ?? "—"), null, r.utmeScaled !== null ? `of 400 · scaled to ${r.utmeScaled}` : "Direct Entry · no UTME"],
-        ["Post-UTME screening", r.screening === null ? "—" : String(r.screening), null, r.screeningSource === "CBT" ? "of 100 · computer-based test" : r.screeningSource === "EXAM" ? (r.screening === null ? "your programme is screened by examination · score not yet entered" : "of 100 · the post-UTME examination") : r.screeningSource === "OLEVEL" ? "of 100 · your O’Level results, under the session’s grading" : "no screening component yet"],
-        ["Aggregate", agg === null ? "—" : String(agg), above === null ? null : above ? "var(--green-ink)" : "var(--red-ink)", `Weighted ${r.weightUtme} / ${r.weightPutme}`],
-        ["Departmental cut-off", r.cutoff === null ? "—" : String(r.cutoff), null, r.cutoff === null ? "Not stated in the settings yet" : `${a.programme ?? ""} · this session`],
+        ["UTME", String(r.utme ?? "—"), null, r.utmeScaled != null ? `of 400 · scaled to ${r.utmeScaled}` : "Direct Entry · no UTME"],
+        ["Post-UTME screening", r.screening == null ? "—" : String(r.screening), null, r.screeningSource === "CBT" ? "of 100 · computer-based test" : r.screeningSource === "EXAM" ? (r.screening == null ? "your programme is screened by examination · score not yet entered" : "of 100 · the post-UTME examination") : r.screeningSource === "OLEVEL" ? "of 100 · your O’Level results, under the session’s grading" : "no screening component yet"],
+        ["Aggregate", agg == null ? "—" : String(agg), above === null ? null : above ? "var(--green-ink)" : "var(--red-ink)", `Weighted ${r.weightUtme} / ${r.weightPutme}`],
+        ["Departmental cut-off", r.cutoff == null ? "—" : String(r.cutoff), null, r.cutoff == null ? "Not stated in the settings yet" : `${a.programme ?? ""} · this session`],
       ]} />
       {above === null ? (
         <Note kind="info" title="No cut-off is stated for your programme yet">
@@ -57,7 +57,7 @@ export function Score({ a }: { a: Application }) {
           [<strong key="a">Aggregate</strong>, "", "", "", "", <strong className="tnum t-md" key="x">{agg ?? "—"}</strong>],
         ]} />
       </Panel>
-      {r.meritPosition !== null && r.applied !== null ? (
+      {r.meritPosition != null && r.applied != null ? (
         <Panel title="Where you stand" right={`Merit list, ${a.programme ?? ""}`}>
           <PBody>
             <div className="row" style={{ gap: "var(--s-4)" }}>

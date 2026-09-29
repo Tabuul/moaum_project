@@ -35,7 +35,7 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
         ["Open requests", t.open, null, "Across all destinations"],
         ["Held at clearance", t.heldAtClearance, "var(--red-ink)", "Cannot be produced yet"],
         ["Breaching SLA", t.breachingSla, "var(--red-ink)", "Over 5 working days"],
-        ["Average turnaround", t.averageTurnaroundDays === null ? "—" : `${t.averageTurnaroundDays} days`, null, "Against a 10-day standard"],
+        ["Average turnaround", t.averageTurnaroundDays == null ? "—" : `${t.averageTurnaroundDays} days`, null, "Against a 10-day standard"],
       ]} />
 
       <Note kind="info" title="Production is never manual re-typing">
@@ -62,7 +62,7 @@ export function Transcripts({ queue, actingOffice }: { queue: TranscriptQueue; a
                     <td>{r.surname}, {r.otherNames}<div className="sub2 tnum">{r.number}</div></td>
                     <td>{DESTINATION[r.destination] ?? r.destination}{r.destinationName ? ` — ${r.destinationName}` : ""}<div className="sub2">{r.mode === "SEALED" ? "Sealed hard copy" : "Digital"}{r.express ? " · express" : ""} · {r.copies} cop{r.copies > 1 ? "ies" : "y"}</div></td>
                     <td className="mid">{r.unitsCleared >= 3 ? <span className="pill pill--ok">3 of 3</span> : <span className="pill pill--bad">{r.unitsCleared} of 3</span>}</td>
-                    <td className={`mid tnum${breaching ? " ink-red b700" : ""}`}>{slaDay === null ? "—" : actionStage === "VERIFICATION" ? "—" : <>Day {slaDay}{breaching ? <> <Ico name="alert" size={14} /></> : null}</>}</td>
+                    <td className={`mid tnum${breaching ? " ink-red b700" : ""}`}>{slaDay == null ? "—" : actionStage === "VERIFICATION" ? "—" : <>Day {slaDay}{breaching ? <> <Ico name="alert" size={14} /></> : null}</>}</td>
                     <td><span className={`pill ${stage[1]}`}>{stage[0]}</span>{r.heldBy && actionStage === "BLOCKED" ? <div className="sub2 ink-red">{r.heldBy}: {r.heldReason ?? "not cleared"}</div> : null}{breaching ? <div className="sub2 ink-red">Past the 5-day standard</div> : null}</td>
                     <td className="num">
                       {actionStage === "NOT_PAYABLE" ? (signer ? <Btn kind="ghost" disabled={busy !== null} onClick={() => void post(r.id, "mark-paid", `${r.ref} recorded as paid`)}>Record payment</Btn> : <Btn kind="ghost" disabled>Not payable yet</Btn>)

@@ -38,7 +38,7 @@ export default async function ReconcilePage() {
           <DTable cols={["Reference", "Amount|num", "Payer", "Exception", "Resolution|num"]} rows={[
             ...exceptions.map((e) => [
               <span className="tnum" key="r">{e.reference ?? "—"}</span>,
-              <span className="tnum b600" key="a">{e.amount === null ? "—" : money(Number(e.amount))}</span>,
+              <span className="tnum b600" key="a">{e.amount == null ? "—" : money(Number(e.amount))}</span>,
               <span className="sub2" key="p" style={{ textTransform: "capitalize" }}>{e.gateway} · {when(e.received_at)}</span>,
               <span key="x"><strong>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</strong><div className="sub2">{e.outcome === "UNKNOWN_REFERENCE" ? "Bank branch or another institution's code — or generated and abandoned" : e.outcome === "SHORT_PAID" ? "Amount differs from the reference — a part payment needs a reference for the part" : e.outcome === "BAD_SIGNATURE" ? "Discarded at the signature; nothing read from it" : "The gateway did not answer for the reference"}</div></span>,
               <LinkBtn key="l" kind="primary" href="/finance/hanging">Investigate</LinkBtn>,

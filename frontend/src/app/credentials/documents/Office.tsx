@@ -92,7 +92,7 @@ export function Office({ data, office }: { data: OfficeData; office: string | nu
         <Panel title="Revenue by document kind" right={`${naira(d.revenue.collected)} collected · ${naira(d.revenue.collected30)} in 30 days`}>
           <PBody>{d.revenue.byKind.length ? <HBars items={d.revenue.byKind.map((k) => ({ l: `${k.label} · ${naira(k.amount)} (${k.n})`, v: Number(k.amount) }))} /> : <div className="sub2">No fee collected yet.</div>}</PBody>
         </Panel>
-        <Panel title="Processing" right={d.processing.avgDays !== null ? `${d.processing.avgDays} day(s) from payment to release on average` : "No release yet"}>
+        <Panel title="Processing" right={d.processing.avgDays != null ? `${d.processing.avgDays} day(s) from payment to release on average` : "No release yet"}>
           <PBody>{d.processing.byKind.length ? <HBars items={d.processing.byKind.map((k) => ({ l: `${k.label} · ${k.open} open of ${k.n}`, v: Number(k.n) }))} onPick={(_, i) => router.push(q("/credentials/documents/requests", `kind=${d.processing.byKind[i].kind}`))} /> : <div className="sub2">No request yet.</div>}
             {d.processing.deliveries.length ? <div className="sub2 mt-1">Deliveries: {d.processing.deliveries.map((x) => `${x.kind.toLowerCase()} ${x.state.toLowerCase()} ${x.n}`).join(" · ")}</div> : null}</PBody>
         </Panel>

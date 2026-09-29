@@ -64,7 +64,7 @@ export function Exceptions({ credits, state, gatewayExceptions, actingOffice }: 
             <span key="p">{x.payer ?? <span className="sub2">Not named</span>}</span>,
             <b className="tnum" key="a">{money(Number(x.amount))}</b>,
             <span key="s">{x.state === "POSTED" ? <Pil kind="ok">Posted to {x.posted_reference}</Pil> : x.state === "PROPOSED" ? <Pil kind="info">Proposed</Pil> : x.state === "REVERSED" ? <Pil kind="grey">Reversed</Pil> : <Pil kind="bad">Unmatched</Pil>}
-              {x.state === "PROPOSED" ? <div className="sub2">{x.proposed_reference} ({x.reference_amount !== null ? money(Number(x.reference_amount)) : ""}) — {x.proposed_why} · {x.proposed_by_name}</div> : null}
+              {x.state === "PROPOSED" ? <div className="sub2">{x.proposed_reference} ({x.reference_amount != null ? money(Number(x.reference_amount)) : ""}) — {x.proposed_why} · {x.proposed_by_name}</div> : null}
               {x.state === "POSTED" ? <div className="sub2">Proposed by {x.proposed_by_name}, approved by {x.approved_by_name} · {day(x.approved_at)}</div> : null}
               {x.rejected_why ? <div className="sub2">Last proposal rejected: {x.rejected_why}</div> : null}</span>,
             <span key="r" className="row row--tight row--right">

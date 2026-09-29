@@ -23,7 +23,7 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
   const [pf, setPf] = useState<PolicyForm | null>(null);
   const [tf, setTf] = useState<TplForm | null>(null);
   const [busy, setBusy] = useState(false);
-  const edit = (p: Policy): PolicyForm => ({ kind: p.kind, label: p.label, billable: p.billable, fee: p.fee === null ? "" : String(p.fee), urgentFee: String(p.urgent_fee), physicalFee: String(p.physical_fee), internationalFee: String(p.international_fee), selfService: p.self_service, slaDays: String(p.sla_days), urgentSlaDays: String(p.urgent_sla_days), includes: p.includes, publicFields: p.public_fields, graduatesOnly: p.graduates_only, active: p.active });
+  const edit = (p: Policy): PolicyForm => ({ kind: p.kind, label: p.label, billable: p.billable, fee: p.fee == null ? "" : String(p.fee), urgentFee: String(p.urgent_fee), physicalFee: String(p.physical_fee), internationalFee: String(p.international_fee), selfService: p.self_service, slaDays: String(p.sla_days), urgentSlaDays: String(p.urgent_sla_days), includes: p.includes, publicFields: p.public_fields, graduatesOnly: p.graduates_only, active: p.active });
   async function savePolicy() {
     if (!pf) return;
     setBusy(true);
@@ -52,7 +52,7 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
       <Panel title="Policies by document kind">
         <DTable cols={["Document", "Fee", "Extras", "SLA|mid", "Self-service|mid", "Scope|mid", "Public fields", "Active|mid", "|num"]} rows={policies.map((p) => [
           <strong key="l">{p.label}<div className="sub2 tnum">{p.kind} · {p.number_prefix}/YYYY/NNNNNN</div></strong>,
-          <span key="f" className="tnum">{p.billable ? (p.fee === null ? "Fee schedule" : naira(p.fee)) : "Free"}</span>,
+          <span key="f" className="tnum">{p.billable ? (p.fee == null ? "Fee schedule" : naira(p.fee)) : "Free"}</span>,
           <span key="e" className="sub2 tnum">urgent {naira(p.urgent_fee)} · physical {naira(p.physical_fee)} · intl {naira(p.international_fee)}</span>,
           <span key="s" className="tnum">{p.sla_days} d{p.urgent_fee ? ` / ${p.urgent_sla_days} d` : ""}</span>,
           <Pil key="ss" kind={p.self_service ? "ok" : "grey"}>{p.self_service ? "Yes" : "No"}</Pil>,
