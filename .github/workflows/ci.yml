@@ -205,7 +205,15 @@ jobs:
       # recorded, a list-kind contradiction refused whole with a remedy.
       - name: Build and test
         working-directory: api
-        run: chmod +x mvnw && ./mvnw -B -ntp verify
+        run: chmod +x mvnw && set -o pipefail && ./mvnw -B -ntp verify 2>&1 | tee /tmp/api-build.log
+
+      # A red build names what failed where anyone can read it: the compiler's errors and the failing
+      # tests become annotations on the run, so nobody needs the raw log to know which test broke.
+      - name: Name what failed
+        if: failure()
+        run: |
+          grep -E '^\[ERROR\] .*(\.java:\[[0-9]+|Tests run:.*Fail|  [A-Za-z]+IT\.|  [A-Za-z]+Test\.|expected|Expect|but was|COMPILATION ERROR)' /tmp/api-build.log \
+            | head -40 | sed 's/^\[ERROR\] *//' | while IFS= read -r line; do echo "::error title=API build::${line:0:900}"; done || true
 
   # ── the frontend: type-checks and builds ──────────────────────────────
   frontend:

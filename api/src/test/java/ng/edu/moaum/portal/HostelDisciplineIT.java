@@ -143,7 +143,8 @@ class HostelDisciplineIT {
         assertThat(live(b).get("room_no")).isEqualTo("101");
         assertThat(live(a).get("state")).isEqualTo("CHECKED_IN");
         assertThat(live(a).get("fee_status")).isEqualTo("PAID");
-        assertThat(l(it.get(dsa, HS + "/swaps").getBody()).stream().filter(w -> swap.equals(String.valueOf(w.get("id")))).findFirst().orElseThrow().get("state")).isEqualTo("COMPLETED");
+        assertThat(it.get(dsa, HS + "/discipline").getStatusCode().value()).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT state FROM hostel.swaps(:s) WHERE id = :i").param("s", SESSION).param("i", UUID.fromString(swap)).query(String.class).single()).isEqualTo("COMPLETED");
 
         // ── 2 · an incident against C: the housing desk reports it but may not sanction; C answers; the Dean fines; the fine bars the next bed until paid ──
         ResponseEntity<Map> inc = it.call(housing, HttpMethod.POST, HS + "/incidents", Map.of("studentNumber", number(c), "kind", "NOISE", "occurredAt", LocalDate.now().minusDays(1) + "T23:40",
