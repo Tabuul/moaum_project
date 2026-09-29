@@ -5,6 +5,16 @@ import { People, type GrantRow, type PersonRow } from "./People";
 
 export const dynamic = "force-dynamic";
 
+/** the API leaves a null field out of the JSON: a person with no account arrives with no username at all, so put the nulls back
+ *  before the console tests them (without this, Create account, Contact and Grant an office opened nothing for anyone without an account) */
+function personOf(p: PersonRow): PersonRow {
+  return { ...p, staffNumber: p.staffNumber ?? null, email: p.email ?? null, phone: p.phone ?? null, endedOn: p.endedOn ?? null, username: p.username ?? null,
+    mustChange: p.mustChange ?? false, lastSignInAt: p.lastSignInAt ?? null, lockedUntil: p.lockedUntil ?? null, liveOffices: Number(p.liveOffices ?? 0) };
+}
+function grantOf(g: GrantRow): GrantRow {
+  return { ...g, staffNumber: g.staffNumber ?? null, scopeId: g.scopeId ?? null, grantedByName: g.grantedByName ?? null, validTo: g.validTo ?? null };
+}
+
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
@@ -19,7 +29,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
       {!persons.ok ? (
         <ProblemNotice problem={persons.problem} />
       ) : (
-        <People q={q} persons={persons.data} grants={grants.ok ? grants.data : []} offices={offices.ok ? offices.data : []} actingOffice={me.ok ? me.data.activeOffice : null} open={typeof params.new === "string" ? params.new : null} />
+        <People q={q} persons={persons.data.map(personOf)} grants={grants.ok ? grants.data.map(grantOf) : []} offices={offices.ok ? offices.data : []} actingOffice={me.ok ? me.data.activeOffice : null} open={typeof params.new === "string" ? params.new : null} />
       )}
     </Shell>
   );

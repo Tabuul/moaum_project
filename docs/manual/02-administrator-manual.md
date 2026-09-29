@@ -206,10 +206,10 @@ Guards: readers `registrar, dregistrar, hrm, ict, admin, super, audit`; credenti
 **2.3.2 Give a sign-in.** In the person's row press **Create account** (or **Reset password** later).
 
 1. **Username** — the staff number lower-cased is prefilled; an email address is also accepted; at least three characters; unique ("'x' already signs somebody else in.").
-2. **First password** — at least ten characters and not containing the username.
+2. **First password** — at least ten characters and not containing the username. **Generate** fills in twelve random characters with none of the look-alikes (0/O, 1/l/I) and shows them so they can be read out; **Show**/**Hide** toggles what is typed.
 3. Save → toast "Account created by the Registry". The credential is flagged `must_change`; at first sign-in the holder is sent to **Your password** (`/account/password`) and must choose a password of ten or more characters. The first password is told to the person out of band; the portal never writes it anywhere.
 
-**2.3.3 Grant an office.** Press **Grant an office** on the row (or **+ Grant an office** in the lower panel).
+**2.3.3 Grant an office.** Press **Grant an office** on the row (or **+ Grant an office** in the lower panel, or the dashboard's shortcut, which open the form with nobody chosen: type a surname or a staff number in **Person** and pick from the list; **Grant** stays disabled until a person is chosen). The form says whether the person already has a sign-in and how many offices they hold now. An account with no office reaches nothing, so a member of non-academic staff loaded by §2.3.7 needs both: **Create account** (§2.3.2) and **Grant an office** (the office of their unit: Bursary, Registry, Library, Security, Support Services…); the credential form says so when the person holds no office.
 
 | Field | Rule |
 |---|---|

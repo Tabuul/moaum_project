@@ -47,6 +47,14 @@ export interface GrantRow {
   validTo: string | null;
 }
 
+/** a first password the officer can read out: twelve characters, none of the look-alikes (0/O, 1/l/I) */
+function firstPassword(): string {
+  const abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = new Uint32Array(12);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => abc[b % abc.length]).join("");
+}
+
 const BOUND: Record<string, string> = { institution: "The University", college: "The College", faculty: "Faculty", department: "Department", programme: "Programme", course: "Own courses", unit: "Unit", platform: "The platform", level: "Level (MBBS Coordinator: 200 to 600)" };
 
 export function People({ q, persons, grants, offices, actingOffice, open }: {
@@ -68,9 +76,12 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<"person" | "grant" | "credential" | "end" | "contact" | null>(openGrant ? "grant" : openPerson ? "person" : null);
-  const [target, setTarget] = useState<PersonRow | GrantRow | null>(openGrant ? persons[0] : null);
-  const [f, setF] = useState({ staffNumber: "", surname: "", givenNames: "", email: "", phone: "", office: openGrant ? (offices[0]?.code ?? "") : "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "", username: "", password: "", reason: "", on: "" });
+  // nobody is chosen for a grant until the officer chooses them (the dashboard's shortcut used to grant to the first name on the register)
+  const [target, setTarget] = useState<PersonRow | GrantRow | null>(null);
+  const [pick, setPick] = useState("");
+  const [f, setF] = useState({ staffNumber: "", surname: "", givenNames: "", email: "", phone: "", office: openGrant ? (offices[0]?.code ?? "") : "", scopeKind: openGrant ? (offices[0]?.scope_kind ?? "institution") : "institution", scopeId: "", instrument: "", validFrom: "", validTo: "", username: "", password: "", reason: "", on: "" });
   const [search, setSearch] = useState(q);
+  const [shown, setShown] = useState(false);
   const [now] = useState(() => Date.now());
   const soon = grants.filter((g) => g.validTo && new Date(g.validTo).getTime() - now < 30 * 86400000).length;
   const two = new Set(grants.map((g) => g.personId).filter((id, i, all) => all.indexOf(id) !== i)).size;
@@ -93,8 +104,16 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
     }
   }
 
-  const person = target && "surname" in target && "username" in target ? (target as PersonRow) : null;
+  // a grant carries its office; anything else chosen is a person (never tell them apart by a field that may be null, and left out)
   const grant = target && "officeCode" in target ? (target as GrantRow) : null;
+  const person = target && !("officeCode" in target) ? (target as PersonRow) : null;
+  const labelOf = (x: PersonRow) => `${x.surname}, ${x.givenNames}${x.staffNumber ? ` · ${x.staffNumber}` : ""}`;
+  // the grant form's person: chosen from the list, or typed as a staff number or username
+  const choose = (v: string) => {
+    setPick(v);
+    const t = v.trim().toLowerCase();
+    setTarget(persons.find((x) => labelOf(x) === v) ?? persons.find((x) => !!t && ((x.staffNumber ?? "").toLowerCase() === t || (x.username ?? "").toLowerCase() === t)) ?? null);
+  };
 
   return (
     <>
@@ -126,9 +145,9 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
             <span className="sub2 tnum" key="l">{p.lastSignInAt ? day(p.lastSignInAt) : "never"}</span>,
             p.endedOn ? <Pil kind="grey" key="st">Ended</Pil> : p.lockedUntil && new Date(p.lockedUntil).getTime() > now ? <Pil kind="bad" key="st">Locked</Pil> : p.mustChange ? <Pil kind="info" key="st">Password to change</Pil> : p.username ? <Pil kind="ok" key="st">Active</Pil> : <Pil kind="grey" key="st">No account</Pil>,
             <span key="a">
-              <Btn kind="ghost" disabled={!canCredential} onClick={() => { setTarget(p); setF({ ...f, username: p.username ?? p.staffNumber?.toLowerCase() ?? "", password: "" }); setModal("credential"); }}>{p.username ? "Reset password" : "Create account"}</Btn>{" "}
+              <Btn kind="ghost" disabled={!canCredential} onClick={() => { setTarget(p); setShown(false); setF({ ...f, username: p.username ?? p.staffNumber?.toLowerCase() ?? "", password: "" }); setModal("credential"); }}>{p.username ? "Reset password" : "Create account"}</Btn>{" "}
               <Btn kind="ghost" disabled={!canCredential} onClick={() => { setTarget(p); setF({ ...f, email: p.email ?? "", phone: p.phone ?? "" }); setModal("contact"); }}>Contact</Btn>{" "}
-              <Btn kind="ghost" disabled={!canGrant} onClick={() => { setTarget(p); setF({ ...f, office: offices[0]?.code ?? "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" }); setModal("grant"); }}>Grant an office</Btn>
+              <Btn kind="ghost" disabled={!canGrant} onClick={() => { setTarget(p); setPick(labelOf(p)); setF({ ...f, office: offices[0]?.code ?? "", scopeKind: offices[0]?.scope_kind ?? "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" }); setModal("grant"); }}>Grant an office</Btn>
             </span>,
           ])}
           texts={persons.map((p) => `${p.surname} ${p.givenNames} ${p.staffNumber ?? ""} ${p.username ?? ""}`)}
@@ -155,7 +174,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
           texts={grants.map((g) => `${g.surname} ${g.givenNames} ${g.label} ${g.instrument}`)}
         />
         <div className="rfbar">
-          <Btn kind="primary" disabled={!canGrant || !persons.length} onClick={() => { setTarget(persons[0]); setF({ ...f, office: offices[0]?.code ?? "", scopeKind: "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" }); setModal("grant"); }}>+ Grant an office</Btn>
+          <Btn kind="primary" disabled={!canGrant || !persons.length} onClick={() => { setTarget(null); setPick(""); setF({ ...f, office: offices[0]?.code ?? "", scopeKind: offices[0]?.scope_kind ?? "institution", scopeId: "", instrument: "", validFrom: "", validTo: "" }); setModal("grant"); }}>+ Grant an office</Btn>
           <span className="sub2">Not effective until the instrument is cited.</span>
         </div>
       </Panel>
@@ -183,10 +202,14 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
         </Modal>
       ) : null}
 
-      {modal === "grant" && person ? (
-        <Modal title={`Grant an office to ${person.surname}, ${person.givenNames}`} sub="Bounded, dated, on an instrument" wide onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.office || !f.instrument.trim()} onClick={() => void send("POST", `/api/bff/api/v1/iam/persons/${person.id}/office-assignments`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null }, `${f.office} granted under ${f.instrument}`)}>Grant</Btn></>}>
+      {modal === "grant" && !grant ? (
+        <Modal title={person ? `Grant an office to ${person.surname}, ${person.givenNames}` : "Grant an office"} sub="Bounded, dated, on an instrument" wide onClose={() => setModal(null)}
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !person || !f.office || !f.instrument.trim()} onClick={() => { if (person) void send("POST", `/api/bff/api/v1/iam/persons/${person.id}/office-assignments`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null }, `${f.office} granted to ${person.surname} under ${f.instrument}`); }}>Grant</Btn></>}>
           <Note kind="bad" title="A role is granted by the Registrar, recorded here, and reviewed">Every grant carries the authority that made it, a start date and an end date, because acting appointments are the normal case and an acting appointment that never ends is how a person keeps a power they no longer hold.</Note>
+          <Field id="gr-who" label="Person" hint={person ? `${person.username ? `Signs in as ${person.username}` : "No account yet: create one too, or the office cannot be used"} · ${person.liveOffices} office${person.liveOffices === 1 ? "" : "s"} held now` : "Type a name or a staff number and choose from the list"}>
+            <input id="gr-who" className="ctl" list="gr-people" value={pick} onChange={(e) => choose(e.target.value)} placeholder="Surname, or staff number" autoComplete="off" />
+            <datalist id="gr-people">{persons.filter((x) => !x.endedOn).map((x) => <option key={x.id} value={labelOf(x)} />)}</datalist>
+          </Field>
           <div className="grid grid--3 rfgrid">
             <Field id="gr-o" label="Office"><select id="gr-o" className="ctl" value={f.office} onChange={(e) => { const o = offices.find((x) => x.code === e.target.value); setF({ ...f, office: e.target.value, scopeKind: o?.scope_kind ?? f.scopeKind }); }}>{offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}</select></Field>
             <Field id="gr-k" label="Bounded to"><select id="gr-k" className="ctl" value={f.scopeKind} onChange={(e) => setF({ ...f, scopeKind: e.target.value })}>{Object.entries(BOUND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
@@ -204,8 +227,15 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
           foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || f.username.length < 3 || f.password.length < 10} onClick={() => void send("PUT", `/api/bff/api/v1/iam/persons/${person.id}/credential`, { username: f.username, password: f.password }, person.username ? "Password reset by the Registry" : "Account created by the Registry")}>{person.username ? "Reset" : "Create"}</Btn></>}>
           <div className="grid grid--2 rfgrid">
             <Field id="cr-u" label="Username" hint="The staff number or an email address"><input id="cr-u" className="ctl" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoComplete="off" /></Field>
-            <Field id="cr-p" label="First password" hint="At least ten characters; told to the person, never written down here"><input id="cr-p" className="ctl" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" /></Field>
+            <Field id="cr-p" label="First password" hint="At least ten characters, not containing the username; told to the person, who changes it at first sign-in">
+              <span className="row row--inline row--tight">
+                <input id="cr-p" className="ctl" type={shown ? "text" : "password"} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
+                <Btn kind="ghost" size="sm" onClick={() => { setF({ ...f, password: firstPassword() }); setShown(true); }}>Generate</Btn>
+                <Btn kind="ghost" size="sm" onClick={() => setShown(!shown)}>{shown ? "Hide" : "Show"}</Btn>
+              </span>
+            </Field>
           </div>
+          {person.liveOffices === 0 ? <Note kind="info" title="Grant an office as well">An account signs a person in to the offices they hold. With none, they reach nothing: grant the office of their unit (Bursary, Registry, Library, Security, Support Services…) with Grant an office.</Note> : null}
         </Modal>
       ) : null}
 
