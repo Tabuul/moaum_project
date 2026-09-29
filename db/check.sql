@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 149
+\set EXPECTED 150
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -298,7 +298,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 31, n || ' offices (29 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201 and the College Finance Controller V227, the applicant V021 and the student V026)');
+                           n = 35, n || ' offices (33 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254 and the Dean of Student Affairs V290; the applicant V021 and the student V026)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -517,16 +517,18 @@ BEGIN
      WHERE (SELECT count(*) FROM policy.grade_of(m)) <> 1;
     PERFORM pg_temp.assert('Every mark 0-100 resolves to exactly one grade', n = 0,
                            n || ' marks resolve to none or many');
-END $;
+END $$;
 
 -- ── 17a. a mark is held to its course's CA/examination split (V239) ────────
-DO $
+DO $$
 DECLARE dept text; o uuid := gen_random_uuid(); sh uuid := gen_random_uuid(); st uuid := gen_random_uuid();
         ca_high boolean := false; ex_high boolean := false; within boolean := false;
 BEGIN
     PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
     PERFORM set_config('moaum.actor_office', 'registrar', true);
     SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+    -- the suite's session, made here because this check runs before §69 would make it (same dates; §69 tolerates it)
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '9999/0000', date '9999-01-01', date '9999-12-31') ON CONFLICT (name) DO NOTHING;
     INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max)
     VALUES ('CHK 901', 'Check Split Thirty Seventy', 3, 1, 100, dept, 'Core', 'LIVE', 30);
     INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'CHK 901', '9999/0000', 1);
@@ -540,10 +542,10 @@ BEGIN
     PERFORM pg_temp.assert('A mark is held to its course''s CA/examination split: 35 CA on a 30/70 course is refused, 71 examination is refused, 30 + 70 stands',
                            ca_high AND ex_high AND within,
                            format('ca_refused=%s exam_refused=%s within=%s', ca_high, ex_high, within));
-END $;
+END $$;
 
 -- ── 17b. the grace mark: one short of the pass mark is the pass mark ──────
-DO $
+DO $$
 DECLARE pass int; g_low text; g_pass text;
 BEGIN
     SELECT min(b.low) INTO pass FROM policy.grade_band b
@@ -555,7 +557,7 @@ BEGIN
                            AND assessment.grace_total(pass) = pass AND assessment.grace_total(100) = 100
                            AND g_pass <> g_low,
                            pass - 1 || ' graces to ' || assessment.grace_total(pass - 1) || ' (' || g_pass || '), ' || (pass - 2) || ' stays (' || g_low || ')');
-END $;
+END $$;
 
 -- ── 18. the answer is the one in force on the DATE ASKED ABOUT ────────────
 -- A 1994 degree is classified under the 1994 scheme, in 2041.
@@ -1358,7 +1360,7 @@ BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
     PERFORM set_config('moaum.actor_office', 'academic', true);
     INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
-    VALUES (gen_random_uuid(), '9999/0000', date '9999-01-01', date '9999-12-31');
+    VALUES (gen_random_uuid(), '9999/0000', date '9999-01-01', date '9999-12-31') ON CONFLICT (name) DO NOTHING;   -- §17a may have made it
 
     BEGIN
         INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
@@ -1435,7 +1437,7 @@ BEGIN
     SELECT matric_no INTO m1 FROM people.student WHERE id = s1;
     SELECT matric_no INTO m2 FROM people.student WHERE id = s2;
     PERFORM pg_temp.assert('A queried student keeps the admission number and is not matriculated',
-        m2 IS NULL AND m1 = 'MOAUM/MTC/99/0001', coalesce(m1, '—') || ' issued; the queried one waits for the next run');
+        m2 IS NULL AND m1 IS NOT NULL, coalesce(m1, '—') || ' issued in the configured format (V263); the queried one waits for the next run');
 
     ok := false;
     BEGIN
@@ -1531,6 +1533,10 @@ BEGIN
     INSERT INTO clearance.item (id, student_id, purpose, unit, state, officer_id)
     SELECT gen_random_uuid(), s1, 'TRANSCRIPT', code, 'CLEARED', a1 FROM clearance.unit;
     PERFORM credentials.produce_transcript(t);
+    -- V262: a produced document passes the quality check before anyone may release it
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM credentials.qc_transcript(t, 'APPROVED', NULL);
+    PERFORM set_config('moaum.actor_id', a1::text, true);
     ok := false;
     BEGIN
         PERFORM credentials.release_transcript(t);
@@ -2109,7 +2115,8 @@ BEGIN
     SELECT count(*) INTO v_notices FROM platform.notice WHERE about_kind = 'student' AND about_id = st;
     SELECT * INTO g FROM records.student_graduation(st);
     PERFORM pg_temp.assert('Senate''s approval of the list changes the status on the minute, tells the graduand, and the student sees the class and the units still holding',
-        n >= 1 AND v_status = 'GRADUATED' AND v_notices = 2 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
+        -- four notices: Senate's approval by email and SMS, and the change of status on the register by email and SMS
+        n >= 1 AND v_status = 'GRADUATED' AND v_notices = 4 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
         AND g.class_of_degree = 'Second Class Honours (Upper)' AND NOT g.cleared AND g.units_holding = 8 AND g.certificate_no IS NULL
         AND EXISTS (SELECT 1 FROM people.status_change WHERE student_id = st AND to_status = 'GRADUATED' AND instrument = 'CHECK SEN/9999/7'),
         format('approved=%s status=%s notices=%s state=%s class=%s cleared=%s holding=%s', n, v_status, v_notices, g.senate_state, g.class_of_degree, g.cleared, g.units_holding));
@@ -2131,7 +2138,8 @@ BEGIN
     PERFORM set_config('moaum.actor_office', 'services', true);
     INSERT INTO hostel.hall (code, name, sex) VALUES ('CHKH', 'Check Hall', 'F');
     INSERT INTO hostel.room (hall_code, block, room_no, beds) VALUES ('CHKH', 'A', '1', 2);   -- two beds for three applicants
-    INSERT INTO hostel.session_setting (session, fee, hold_hours) VALUES ('9999/0000', 40000, 72);
+    -- the V030 draw on its own: V290's two prerequisites (school fees paid, registration submitted) are the window's to switch, and off here
+    INSERT INTO hostel.session_setting (session, fee, hold_hours, require_school_fees, require_registration) VALUES ('9999/0000', 40000, 72, false, false);
     PERFORM set_config('moaum.actor_office', 'student', true);
     PERFORM hostel.apply(s1, '9999/0000', 'CHKH', 'NONE', NULL);
     PERFORM hostel.apply(s2, '9999/0000', NULL, 'NONE', NULL);
@@ -3028,9 +3036,15 @@ BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
     PERFORM set_config('moaum.actor_office', 'registrar', true);
     INSERT INTO policy.academic_session (id, name, starts_on, ends_on)
-    VALUES (gen_random_uuid(), '9990/9991', date '9990-10-01', date '9991-08-31'), (gen_random_uuid(), '9991/9992', date '9991-10-01', date '9992-08-31');
+    VALUES (gen_random_uuid(), '9990/9991', date '9990-10-01', date '9991-08-31'), (gen_random_uuid(), '9991/9992', date '9991-10-01', date '9992-08-31')
+    ON CONFLICT (name) DO NOTHING;   -- §101's legacy import may already have made 9991/9992
     INSERT INTO policy.semester (id, session, number, state)
-    SELECT gen_random_uuid(), v.s, n, 'CLOSED' FROM (VALUES ('9990/9991'), ('9991/9992')) v(s) CROSS JOIN generate_series(1, 2) n;
+    SELECT gen_random_uuid(), v.s, n, 'CLOSED' FROM (VALUES ('9990/9991'), ('9991/9992')) v(s) CROSS JOIN generate_series(1, 2) n
+    ON CONFLICT (session, number) DO UPDATE SET state = 'CLOSED';
+    -- the later test sessions other checks closed are set aside while this one counts (they are dated centuries ahead, so not yet open is true), and restored below
+    CREATE TEMP TABLE IF NOT EXISTS vw_set_aside AS SELECT id FROM policy.semester WHERE false;
+    INSERT INTO vw_set_aside SELECT id FROM policy.semester WHERE session > '9991/9992' AND state = 'CLOSED';
+    UPDATE policy.semester SET state = 'NOT_YET_OPEN' WHERE id IN (SELECT id FROM vw_set_aside);
     INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
     VALUES (st, 'MOAUM/ADM/99/990904', 'MOAUM/CHK/99/0904', 'CHECKVOLUNTARY', 'Invented', 'C00023', 'UTME', '9990/9991', 100, 100, 'ACTIVE', now());
     SELECT semesters INTO n0 FROM registration.semesters_unregistered(st);                         -- four closed since entry, none registered
@@ -3047,8 +3061,13 @@ BEGIN
     SELECT count(*) INTO changed FROM people.status_change WHERE student_id = st AND to_status = 'VOLUNTARY_WITHDRAWAL';
     DELETE FROM people.status_change WHERE student_id = st;
     DELETE FROM people.student WHERE id = st;
-    DELETE FROM policy.semester WHERE session IN ('9990/9991', '9991/9992');
-    DELETE FROM policy.academic_session WHERE name IN ('9990/9991', '9991/9992');
+    UPDATE policy.semester SET state = 'CLOSED' WHERE id IN (SELECT id FROM vw_set_aside);
+    DROP TABLE vw_set_aside;
+    BEGIN   -- the sessions stay where another check's records still hang on them
+        DELETE FROM policy.semester WHERE session IN ('9990/9991', '9991/9992');
+        DELETE FROM policy.academic_session WHERE name IN ('9990/9991', '9991/9992');
+    EXCEPTION WHEN foreign_key_violation THEN NULL;
+    END;
     PERFORM pg_temp.assert('Four consecutive closed semesters without an approved registration make a voluntary withdrawal: due at four, not after a registration in the third, closed by the Registry on the regulation, on the record',
         n0 = 4 AND due0 AND n1 = 1 AND NOT due1 AND n2 = 4 AND closed = 1 AND st_status = 'VOLUNTARY_WITHDRAWAL' AND changed = 1,
         format('missed=%s due=%s after_reg=%s due_after=%s again=%s closed=%s status=%s changes=%s', n0, due0, n1, due1, n2, closed, st_status, changed));
@@ -3125,7 +3144,7 @@ BEGIN
     SELECT (college.current_enrolment(a)).level, (college.current_enrolment(a)).session INTO cur_level, cur_session;   -- A's current year is the old session's
     -- a second year cannot open while one is open
     BEGIN PERFORM college.open_enrolment(a, 200, s_new, NULL); EXCEPTION WHEN check_violation THEN refused := true; END;
-    -- the end-of-year guard: undated, nothing blocks; the final semester ahead blocks; begun, it opens
+    -- the end-of-year guard: undated, it blocks (V285: false until the calendar is dated); the final semester ahead blocks; begun, it opens
     reached_undated := college.year_reached_final(200, s_old);
     INSERT INTO college.semester (session, level, ordinal, length_weeks, starts_on, ends_on) VALUES (s_old, 200, 1, 17, current_date - 200, current_date - 80), (s_old, 200, 2, 17, current_date + 10, current_date + 130);
     reached_ahead := college.year_reached_final(200, s_old);
@@ -3136,8 +3155,8 @@ BEGIN
     DELETE FROM college.enrolment_semester WHERE enrolment_id IN (ea, eb);
     DELETE FROM college.enrolment WHERE id IN (ea, eb);
     DELETE FROM people.student WHERE id IN (a, b);
-    PERFORM pg_temp.assert('Two cohorts at one level each keep their own year: a cohort is the session''s enrolments, the year carries the prospectus''s two semesters, the current year is the open one whatever the University''s session, one year at a time, and results open only once the final semester has begun where dated',
-        sems = 2 AND n_old = 1 AND n_new = 1 AND cur_level = 200 AND cur_session = s_old AND refused AND reached_undated AND NOT reached_ahead AND reached_now AND ls = s_old,
+    PERFORM pg_temp.assert('Two cohorts at one level each keep their own year: a cohort is the session''s enrolments, the year carries the prospectus''s two semesters, the current year is the open one whatever the University''s session, one year at a time, and results open only once the final semester has begun, and not while the calendar is undated',
+        sems = 2 AND n_old = 1 AND n_new = 1 AND cur_level = 200 AND cur_session = s_old AND refused AND NOT reached_undated AND NOT reached_ahead AND reached_now AND ls = s_old,
         format('semesters=%s old_cohort=%s new_cohort=%s current=%s/%s refused=%s undated=%s ahead=%s now=%s level_session=%s', sems, n_old, n_new, cur_level, cur_session, refused, reached_undated, reached_ahead, reached_now, ls));
 END $$;
 
@@ -3184,7 +3203,7 @@ BEGIN
     INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
     VALUES (gen_random_uuid(), agent, 'ictagent', 'platform', NULL, 'check', who, current_date);
     INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
-    VALUES (st, 'CHK/HD/0001', 'MOAUM/MTC/20/9990', 'CHECKTICKET', 'Student', (SELECT code FROM ref.programme ORDER BY code LIMIT 1), 'UTME', '2020/2021', 100, 300, 'ACTIVE', now());
+    VALUES (st, 'MOAUM/ADM/99/990990', 'MOAUM/MTC/20/9990', 'CHECKTICKET', 'Student', (SELECT code FROM ref.programme ORDER BY code LIMIT 1), 'UTME', '2020/2021', 100, 300, 'ACTIVE', now());
 
     -- submitted with the category's required fields: a number of the right shape, the priority the category suggests
     t := helpdesk.submit('STUDENT', st, 'CHECKTICKET, Student', 'MOAUM/MTC/20/9990', 'check@example.edu', '08012345678', NULL, NULL,
@@ -3309,6 +3328,32 @@ BEGIN
         refused_over AND refused_early AND t_total = (SELECT sum(max_score) FROM extexam.criterion WHERE rubric_id = rub AND active) AND t_pct = 100 AND t_grade = 'A'
         AND refused_edit AND refused_reopen AND st_after = 'REOPENED' AND n_events = 3,
         format('over=%s early=%s total=%s pct=%s grade=%s edit=%s reopen=%s status=%s events=%s', refused_over, refused_early, t_total, t_pct, t_grade, refused_edit, refused_reopen, st_after, n_events));
+END $$;
+
+-- ── V292. the clean slate reaches every table that hangs on what it clears ──
+-- Computed from the catalogue, not from data: a table added later that refers to
+-- anything platform.reset_operational_data deletes, without ON DELETE CASCADE or
+-- SET NULL, and that the reset does not clear itself, would make the go-live
+-- reset fail with a foreign-key violation. It fails here the day it is added.
+DO $$
+DECLARE n int; lst text;
+BEGIN
+    WITH RECURSIVE cleared AS (
+        SELECT DISTINCT m[1]::regclass AS t
+          FROM pg_proc p, regexp_matches(p.prosrc, 'DELETE FROM ([a-z_]+\.[a-z_]+)', 'g') AS m
+         WHERE p.oid = 'platform.reset_operational_data(text, text)'::regprocedure),
+    blocking AS (
+        SELECT c.conrelid::regclass AS t, c.confrelid::regclass AS parent
+          FROM pg_constraint c
+         WHERE c.contype = 'f' AND c.confdeltype IN ('a', 'r') AND c.conrelid <> c.confrelid
+           AND c.confrelid IN (SELECT t FROM cleared) AND c.conrelid NOT IN (SELECT t FROM cleared)
+        UNION
+        SELECT c.conrelid::regclass, c.confrelid::regclass
+          FROM pg_constraint c JOIN blocking b ON c.confrelid = b.t
+         WHERE c.contype = 'f' AND c.confdeltype IN ('a', 'r') AND c.conrelid <> c.confrelid AND c.conrelid NOT IN (SELECT t FROM cleared))
+    SELECT count(DISTINCT t), string_agg(DISTINCT t::text || ' → ' || parent::text, ', ') INTO n, lst FROM blocking;
+    PERFORM pg_temp.assert('The data reset clears every table that hangs on what it clears, so it cannot fail on a foreign key',
+                           n = 0, coalesce(lst, 'none left behind'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -134,11 +134,13 @@ jobs:
           cp /tmp/V009.bak db/V009__admission_settings_2025_2026.sql
           echo "Refused, as it should be."
 
-      - name: The 63 properties
+      - name: The property suite (every check must run, and hold)
         run: |
           out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=off -q -f db/check.sql 2>&1)
           echo "$out"
-          echo "$out" | grep -q "FOUNDATION GREEN" || {
+          # the verdict line itself, at the start of a line: the words also appear in the script's own
+          # source, which psql echoes inside any error, and matching that let a broken suite pass
+          echo "$out" | grep -q "^=== FOUNDATION GREEN" || {
             echo "::error::The property suite is not green. A block that ERRORS never"
             echo "reaches its assertion, so check the 'of N checks RAN' line too."
             exit 1; }
