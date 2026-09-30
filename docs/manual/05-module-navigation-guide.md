@@ -2335,12 +2335,12 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 
 | Point | Content |
 |---|---|
-| Purpose | Hosted checkouts on Paystack, Flutterwave and Quickteller, PayDirect PRN instructions, signed webhooks, verification, a ten-minute sweep over hanging attempts, encrypted keys, PayDirect billers and the collections import. |
-| Users / roles | Checkout applicant, student; verify any authenticated for own reference, bursar/ict/admin/super/audit for any; `BURSARY` bursar, ict, admin, super (test checkout, sweep, resolve, PayDirect import, billers); `READERS` + audit, deputyaudit, registrar, vc, dvc; keys ict, admin, super; webhooks and `/payments/quickteller/start` public. |
+| Purpose | Hosted checkouts on Paystack, Flutterwave and Quickteller WebPAY; **Pay on Quickteller** (V299) — the payer sent to the University's biller page on quickteller.com with the portal's own reference in `cid` (and the amount), Quickteller's reference check and payment notification answered by the portal; signed webhooks, verification, a ten-minute sweep over hanging attempts, encrypted keys, the Quickteller billers and the collections import. |
+| Users / roles | Checkout applicant, student; verify any authenticated for own reference, bursar/ict/admin/super/audit for any; `BURSARY` bursar, ict, admin, super (test checkout, sweep, resolve, Quickteller collections import, the billers and their **Send payers here** switch); `READERS` + audit, deputyaudit, registrar, vc, dvc; keys and the Quickteller notification credentials ict, admin, super; webhooks, `/payments/quickteller/start`, `/quickteller/return`, `/payments/paydirect/validate` and `/paydirect/notify` public. |
 | Navigation | Finance → Payment Gateways → `/finance/gateways` (bursar, admin, ict); Hanging Payments (§3.37). |
 | Dashboard | Tiles Gateways live / Events today / Settled, all time / Exceptions open. |
-| Main features | Configured gateways table (Mode Live/Test/Off, webhook address, "Wired"); key cards (Paystack, Flutterwave with hash, Quickteller four-field JSON, PayDirect query credentials); billers MAIN 04255101 and CHS 04263001; "Import and match" collections; "Open a test checkout"; "Verify with the gateway"; "Run the sweep now"; webhook and verification log with Resolve. |
-| Create | `PUT /payments/gateways/{gateway}/key`; `PUT /payments/paydirect/billers/{scope}`; `POST /payments/paydirect/import`; `POST /payments/test-checkout`. |
+| Main features | Configured gateways table (Mode Live/Test/Off, webhook address, "Wired"); **Pay on Quickteller** panel — the two addresses to give Interswitch (reference check, payment notification) with Copy, the billers MAIN 04255101 `quickteller.com/bsum` and CHS 04263001 `quickteller.com/chsbsu` (code, name, Quickteller page, In use, **Send payers here**, **Carry the amount in the link**, the link a payer is sent to), Quickteller's last fifty reference checks, "Import and match" collections; key cards (Paystack, Flutterwave with hash, Quickteller WebPAY merchant JSON, **Pay on Quickteller service username and password**); "Open a test checkout"; "Verify with the gateway"; "Run the sweep now"; webhook and verification log with Resolve. |
+| Create | `PUT /payments/gateways/{gateway}/key` (`paydirect` = the notification credentials); `PUT /payments/paydirect/billers/{scope}`; `POST /payments/paydirect/import`; `POST /payments/test-checkout`; Interswitch: `POST /payments/paydirect/validate`, `POST /payments/paydirect/notify`. |
 | View | Log (When, Gateway, Event, Reference, Amount, Signature, Result). |
 | Edit | Replace a key / configuration. |
 | Delete / deactivate | Clear a key (the gateway turns off unless a service variable is set). |
@@ -2350,15 +2350,15 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 | Export | None. |
 | Notifications | None of its own (a settlement triggers §3.37). |
 | Approval workflow | None. |
-| Statuses | Mode TEST / LIVE / OFF; collection MATCHED / UNMATCHED / DUPLICATE; outcomes as §3.37. |
-| Validation rules | Signature before parsing (Paystack HMAC-SHA512, Flutterwave `verif-hash`; Quickteller re-queried); amount ≥ owed else SHORT_PAID; idempotent confirmation; `PAY_ALREADY_CONFIRMED`, `PAY_REFERENCE_EXPIRED`, `PAY_NO_EMAIL`, `PAY_GATEWAY_NOT_WIRED`; a key needs `MOAUM_CONFIG_KEY`. |
-| Security | Keys encrypted with pgcrypto and never returned; webhooks unthrottled; `/payments/quickteller/start` exposes reference, amount and payer to whoever holds the reference. |
-| Audit trail | `gateway_event`, `gateway_attempt`, `gateway_credential_event`, `paydirect_*` attached; `gateway_credential` exempt. |
+| Statuses | Mode TEST / LIVE / OFF; biller In use / Send payers here; collection MATCHED / UNMATCHED / DUPLICATE / SHORT_PAID; reference checks VALID / INVALID; outcomes as §3.37 plus REVERSED. |
+| Validation rules | Signature before parsing (Paystack HMAC-SHA512, Flutterwave `verif-hash`; Quickteller WebPAY re-queried; a Quickteller notification only with its service username and password, else Status 1); amount ≥ owed else SHORT_PAID; idempotent confirmation; a reversal kept for the Bursary; `PAY_ALREADY_CONFIRMED`, `PAY_REFERENCE_EXPIRED`, `PAY_NO_EMAIL`, `PAY_GATEWAY_NOT_WIRED`, `PAY_QUICKTELLER_OFF`, `QUICKTELLER_LINK` (a pay link only on an Interswitch host), `QUICKTELLER_REDIRECT_NEEDS_LINK`, `PAY_PD_CREDENTIALS`; a key needs `MOAUM_CONFIG_KEY`. |
+| Security | Keys encrypted with pgcrypto and never returned; webhooks unthrottled; `/payments/quickteller/start` exposes reference, amount and payer to whoever holds the reference; `/payments/paydirect/validate` answers the payer's surname, first name and the amount for a payable reference to whoever holds it, and nothing for any other; no credential is ever written to the log; the XML reader refuses a DOCTYPE. |
+| Audit trail | `gateway_event` (Quickteller's reference checks as source `VALIDATE`), `gateway_attempt`, `gateway_credential_event`, `paydirect_*` attached; `gateway_credential` exempt. |
 | Related modules | Payments (§3.37); Applicant portal (§3.18); PG portal (§3.19); Wallet (§3.42). |
-| Common errors | "Card and USSD payment arrive when a payment gateway is wired to the portal."; "A card checkout needs an email address on your record"; webhook 401. |
+| Common errors | "Card and USSD payment arrive when a payment gateway is wired to the portal."; "A card checkout needs an email address on your record"; "Pay on Quickteller is not offered for this payment."; webhook 401; a notification answered Status 1 (credentials not set or not matching). |
 | Troubleshooting | Set a secret; add an email under Profile; match the secret/hash on the gateway dashboard. |
 
-**Status:** IMPLEMENTED (tested) — Paystack, Flutterwave, keys, sweep, test checkout; IMPLEMENTED, UNVERIFIED AGAINST LIVE — Quickteller hosted page and requery; PARTIALLY IMPLEMENTED — PayDirect query API (endpoint unconfirmed; import works); the test form prefills demo student `MOAUM/MTC/24/9903`.
+**Status:** IMPLEMENTED (tested) — Paystack, Flutterwave, keys, sweep, test checkout, Pay on Quickteller (link, reference check, notification, collections import; `PaymentsIT`); IMPLEMENTED, UNVERIFIED AGAINST LIVE — Quickteller WebPAY hosted page and requery, and Pay on Quickteller until Interswitch points the biller at the portal; the PayDirect query API was withdrawn (27 September 2026); the test form prefills demo student `MOAUM/MTC/24/9903`.
 
 ### 3.39 Receipts
 
@@ -3823,7 +3823,7 @@ My application → Application Form → /applicant/apply
 ```text
 My application → Application Fee → /applicant/fee
 ```
-**URL** `/applicant/fee?paid=` · **Purpose** Generate and pay the application reference. · **Who** applicant. · **Layout** "Application and screening fee" table (Post-UTME screening fee + Portal and payment charge = Total payable); "Your payment reference" (`MOAUM-APP-…`, 24 h); "How you can pay"; after confirmation "Payment confirmed — ₦… received" and a Receipt panel. · **Actions** Generate a reference → `POST /me/fee-references {kind:"APPLICATION"}`; Pay ₦… by card or USSD (PayByCard); "I've paid — check now" → `/payments/verify`. · **Messages** "the application fee is already confirmed"; "Not confirmed yet" after PayDirect.
+**URL** `/applicant/fee?paid=` · **Purpose** Generate and pay the application reference. · **Who** applicant. · **Layout** "Application and screening fee" table (Post-UTME screening fee + Portal and payment charge = Total payable); "Your payment reference" (`MOAUM-APP-…`, 24 h); "How you can pay"; after confirmation "Payment confirmed — ₦… received" and a Receipt panel. · **Actions** Generate a reference → `POST /me/fee-references {kind:"APPLICATION"}`; Pay ₦… by card or USSD (PayByCard) — or Quickteller, which shows *Continue to Quickteller* (the University's biller page in a new tab, `cid` = the reference, and the amount) and "I've paid — check now" → `GET /payments/state`. · **Messages** "the application fee is already confirmed"; "Not confirmed yet" after Quickteller; "Pay on Quickteller is not offered for this payment."
 
 > **Screenshot Required:** Application Fee — `/applicant/fee` — an open reference with the pay button.
 
@@ -4637,24 +4637,25 @@ Finance → Payment History Upload → /finance/payments-history ; Old Fees Hist
 ```text
 Finance → Payment Gateways → /finance/gateways
 ```
-**URL** `/finance/gateways?paid=` · **Purpose** Providers, keys, routing, webhooks, PayDirect, test. · **Who** bursar, admin, ict (menu); `may` bursar/ict/admin/super, `mayConfigure` ict/admin/super. · **Layout** Info note "A secret key is written once and never read back"; tiles Gateways live / Events today / Settled, all time / Exceptions open; "Configured gateways" (Gateway, Mode, Channels, Webhook address, Status); "Configure the keys" (cards Quickteller, PayDirect, Paystack, Flutterwave); "Quickteller PayDirect" (billers, import); "Test the gateway"; "Webhook and verification log".
+**URL** `/finance/gateways?paid=` · **Purpose** Providers, keys, routing, webhooks, Pay on Quickteller, test. · **Who** bursar, admin, ict (menu); `may` bursar/ict/admin/super, `mayConfigure` ict/admin/super. · **Layout** Info note "A secret key is written once and never read back"; tiles Gateways live / Events today / Settled, all time / Exceptions open; "Configured gateways" (Gateway, Mode, Channels, Webhook address, Status); "Pay on Quickteller" (the two addresses for Interswitch, the billers, Quickteller's reference checks, the collections import); "Configure the keys" (cards Pay on Quickteller credentials, Quickteller WebPAY, Paystack, Flutterwave); "Test the gateway"; "Webhook and verification log".
 
 | Field | Description | Required | Validation |
 |---|---|---|---|
 | Secret key (Paystack / Flutterwave) | `sk_test_…` / `FLWSECK_TEST-…` | Yes | Blank refused |
 | Webhook secret hash (Flutterwave) | Same value as on the Flutterwave webhook page | For webhooks | — |
 | Quickteller (Interswitch WebPAY, V276): Merchant code, Pay item ID, Product ID (older profile, prefilled `6498`) and MAC key for the University; the same four for the College of Health Sciences (product prefilled `6207`, optional); Sandbox | Stored together as one JSON secret; the MAC keys never displayed | The University's merchant code and pay item, or its product id, pay item and MAC key; the College's likewise or not at all | `The Quickteller configuration needs the product id, the pay item id and the MAC key of the University's WebPAY merchant.` · `The MAC key is a hexadecimal string from Interswitch; this is not one.` |
-| PayDirect: Client ID, Client secret, Sandbox | Query API | — | — |
-| Biller code, Name, Pay link (MAIN / CHS) | — | Code, Name | — |
-| Collections report rows | PRN, amount, RRN (…) | — | — |
+| Pay on Quickteller: Service username, Service password | The pair agreed with Interswitch for the payment notification; the password never displayed | Both | `Quickteller's notification needs the service username and a password of at least eight characters.` |
+| Biller code, Name, Quickteller page, In use, Send payers here, Carry the amount in the link (MAIN / CHS) | The link a payer is sent to is shown before saving | Code, Name | `QUICKTELLER_LINK` — only an Interswitch page (https, a quickteller.com address, a path, nothing after it); Send payers here needs the biller in use and its page |
+| Collections report rows | Interswitch's report with its header row (Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name) or without one (reference, amount, settlement reference, date, channel, payer) | — | Rows without a reference are left out |
 | Test: Student, Amount, Gateway | Default `MOAUM/MTC/24/9903`, 100 | Yes | Live gateway |
 
 | Action | What it does | Endpoint |
 |---|---|---|
 | Set / Replace the key (configuration, credentials) | Encrypted at rest | `PUT /payments/gateways/{gateway}/key` |
 | Clear | Confirm; the gateway turns off unless a service variable is set | `POST …/{gateway}/clear-key` |
-| Save (biller) | — | `PUT /payments/paydirect/billers/{scope}` |
-| Import and match | Collections report | `POST /payments/paydirect/import` |
+| Copy (address) | Copies the reference-check or notification address for Interswitch | — |
+| Save (biller) | Code, name, page and the two switches | `PUT /payments/paydirect/billers/{scope}` |
+| Import and match n rows | Collections report; a short amount kept open | `POST /payments/paydirect/import` |
 | Open a test checkout | Redirects to the gateway | `POST /payments/test-checkout` |
 | Verify with the gateway / Ask the gateway now | — | `POST /payments/verify` |
 | Run the sweep now | — | `POST /payments/sweep` |

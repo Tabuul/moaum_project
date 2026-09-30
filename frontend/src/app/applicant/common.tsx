@@ -14,6 +14,8 @@ import { STAGES, type Application } from "@/lib/applicant";
 import { Btn, Note, Panel } from "@/components/proto/ui";
 import { Step } from "@/components/proto/blocks";
 import { asProblem } from "@/app/student/common";
+import { QuicktellerPay } from "@/components/QuicktellerPay";
+import { PAY_LABEL, isQuicktellerCheckout, type QuicktellerCheckout } from "@/lib/quickteller";
 
 /* stage N means milestone N is complete, so N is ticked and N+1 is in hand */
 export function Rail({ a }: { a: Application }) {
@@ -80,15 +82,16 @@ export function useAct() {
 /**
  * Card and USSD, through whichever gateway is wired: the checkout is opened
  * against the reference this portal generated, and the gateway's signed
- * webhook confirms it as the Bursary would. While no gateway is wired the
- * button says so, and the reference is paid by transfer or at a branch.
+ * webhook confirms it as the Bursary would. Pay on Quickteller (V299) sends
+ * the payer to the University's biller page on quickteller.com with the
+ * reference filled in, and Interswitch's report confirms it. While no gateway
+ * is wired the button says so, and the reference is paid by transfer or at a branch.
  */
-const GATEWAY_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller" };
-
 export function PayByCard({ reference, amount }: { reference: string; amount: number }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [choices, setChoices] = useState<string[] | null>(null);
+  const [qt, setQt] = useState<QuicktellerCheckout | null>(null);
   async function go(gateway?: string) {
     setBusy(true);
     setProblem(null);
@@ -99,6 +102,8 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
         setProblem(asProblem(j, r)); notifyProblem(asProblem(j, r));
         return;
       }
+      // Quickteller's page opens from a link in a new tab, so this page stays open to come back to
+      if (isQuicktellerCheckout(j)) { setQt(j); setChoices(null); return; }
       window.location.href = String((j as { url: string }).url);
     } finally {
       setBusy(false);
@@ -108,7 +113,7 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch("/api/bff/api/v1/payments/gateways");
+      const r = await fetch(`/api/bff/api/v1/payments/gateways?reference=${encodeURIComponent(reference)}`);
       const j = (await r.json().catch(() => null)) as Record<string, boolean> | null;
       const on = j ? Object.keys(j).filter((k) => j[k]) : [];
       if (on.length > 1) { setChoices(on); setBusy(false); return; }
@@ -120,10 +125,12 @@ export function PayByCard({ reference, amount }: { reference: string; amount: nu
   }
   return (
     <>
-      {choices ? (
+      {qt ? (
+        <QuicktellerPay qt={qt} onClose={() => setQt(null)} />
+      ) : choices ? (
         <div className="row">
           <span className="sub2">Pay &#8358;{amount.toLocaleString()} with</span>
-          {choices.map((g) => <Btn key={g} kind="go" size="md" disabled={busy} onClick={() => void go(g)}>{GATEWAY_LABEL[g] ?? g}</Btn>)}
+          {choices.map((g) => <Btn key={g} kind="go" size="md" disabled={busy} onClick={() => void go(g)}>{PAY_LABEL[g] ?? g}</Btn>)}
           <Btn kind="ghost" size="md" disabled={busy} onClick={() => setChoices(null)}>Cancel</Btn>
         </div>
       ) : (

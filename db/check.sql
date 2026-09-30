@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 155
+\set EXPECTED 156
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3718,6 +3718,76 @@ BEGIN
                  AND known_again AND NOT known_new, false),
         format('helpers=%s recorded=%s/%s/%s/%s/%s sittings=%s/%s findings=%s flagged-with=%s refusals=%s/%s/%s decided=%s/%s after=%s numbers=%s listed=%s known=%s/%s',
                helpers, n1, n2, n3, n4, n5, s1, s2, kinds, flag_other, r_note, r_office, r_again, st_use, st_ver, s1_after, numbers, listed, known_again, known_new));
+END $$;
+
+-- ── V299. Pay on Quickteller: the portal's own reference in cid, the amount if wanted, the biller of the payer's College ──
+-- Off until the Bursary switches a biller on; a link can only be an Interswitch page. A College of Health
+-- Sciences payer goes to the College's biller while it is in use, else to the University's. Quickteller's
+-- question about a reference is answered from the reference itself; the collections import leaves a short
+-- payment open. The block undoes its own writes.
+DO $$
+DECLARE s_main uuid := gen_random_uuid(); s_chs uuid := gen_random_uuid(); r_main text; r_chs text;
+        off_link int; off_any boolean; r_link text; r_needs text; stored text; l_main text; l_chs_off int; l_chs text; l_chs_main text;
+        cu record; cu_unknown record; cu_paid record; imp record; chs_open boolean; main_paid boolean; logged boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (s_main, 'MOAUM/ADM/99/990299', 'MOAUM/CHK/99/0299', 'CHECKQT', 'Main', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+            (s_chs,  'MOAUM/ADM/99/990300', 'MOAUM/CHK/99/0300', 'CHECKQT', 'Health', 'C00061', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now());
+        r_main := finance.new_reference(s_main, '9999/0000', 51000, NULL);
+        r_chs := finance.new_reference(s_chs, '9999/0000', 48000.50, NULL);
+
+        -- off until switched on
+        SELECT count(*) INTO off_link FROM finance.quickteller_link(r_main);
+        off_any := finance.quickteller_redirect_on();
+        -- a link to any other site is refused, and so is a redirect with nowhere to go
+        BEGIN PERFORM finance.set_paydirect_biller('MAIN', '04255101', 'Benue State University, Makurdi', 'https://quickteller.example.com/bsum', true, true, true);
+        EXCEPTION WHEN check_violation THEN r_link := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.set_paydirect_biller('MAIN', '04255101', 'Benue State University, Makurdi', NULL, true, true, true);
+        EXCEPTION WHEN check_violation THEN r_needs := split_part(SQLERRM, ':', 1); END;
+        -- switched on: the host is read without regard to case, a trailing slash dropped
+        SELECT pay_link INTO stored FROM finance.set_paydirect_biller('MAIN', '04255101', 'Benue State University, Makurdi', 'HTTPS://Quickteller.com/bsum/', true, true, true);
+        SELECT url INTO l_main FROM finance.quickteller_link(r_main);
+        -- the College's biller is in use but not switched on: its payer is not sent to the University's instead
+        SELECT count(*) INTO l_chs_off FROM finance.quickteller_link(r_chs);
+        PERFORM finance.set_paydirect_biller('CHS', '04263001', 'College of Health Sciences, Benue', 'https://quickteller.com/chsbsu', true, true, false);
+        SELECT url INTO l_chs FROM finance.quickteller_link(r_chs);
+        -- the College's biller out of use: its payers pay the University's
+        PERFORM finance.set_paydirect_biller('CHS', '04263001', 'College of Health Sciences, Benue', 'https://quickteller.com/chsbsu', false, false, true);
+        SELECT url INTO l_chs_main FROM finance.quickteller_link(r_chs);
+
+        -- what Quickteller is told about a reference
+        SELECT * INTO cu FROM finance.paydirect_customer(lower(r_main));
+        SELECT * INTO cu_unknown FROM finance.paydirect_customer('MOAUM-FEE-NOSUCH-0000');
+        -- the collections report: short of the amount stays open; the whole amount confirms
+        SELECT * INTO imp FROM finance.import_paydirect(jsonb_build_array(
+            jsonb_build_object('prn', r_chs, 'amount', '1000', 'rrn', 'RRNQT299A'),
+            jsonb_build_object('prn', r_main, 'amount', '51000', 'rrn', 'RRNQT299B')));
+        chs_open := (SELECT confirmed_at IS NULL FROM finance.payment_reference WHERE reference = r_chs);
+        main_paid := (SELECT confirmed_at IS NOT NULL FROM finance.payment_reference WHERE reference = r_main);
+        SELECT * INTO cu_paid FROM finance.paydirect_customer(r_main);
+        -- the log keeps a reference check and a reversal as what they are
+        PERFORM finance.log_gateway_event('paydirect', 'VALIDATE', 'validate', r_main, NULL, 51000, '0', true, 'VALID', NULL);
+        PERFORM finance.log_gateway_event('paydirect', 'WEBHOOK', 'notification', r_main, 'PLOG299', -51000, 'reversal', true, 'REVERSED', NULL);
+        logged := true;
+        RAISE EXCEPTION 'the V299 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('Pay on Quickteller carries the portal''s own reference and the amount to the biller of the payer''s College, only once switched on and only to Interswitch',
+        coalesce(off_link = 0 AND NOT off_any AND r_link = 'QUICKTELLER_LINK' AND r_needs = 'QUICKTELLER_REDIRECT_NEEDS_LINK'
+                 AND stored = 'https://quickteller.com/bsum'
+                 AND l_main = 'https://quickteller.com/bsum?cid=' || r_main || '&amount=51000'
+                 AND l_chs_off = 0 AND l_chs = 'https://quickteller.com/chsbsu?cid=' || r_chs
+                 AND l_chs_main = 'https://quickteller.com/bsum?cid=' || r_chs || '&amount=48000.50'
+                 AND cu.valid AND cu.reference = r_main AND cu.surname = 'CHECKQT' AND cu.amount = 51000 AND cu.number = 'MOAUM/CHK/99/0299'
+                 AND NOT cu_unknown.valid AND imp.matched = 1 AND imp.short_paid = 1 AND chs_open AND main_paid
+                 AND NOT cu_paid.valid AND cu_paid.why = 'Already paid' AND logged, false),
+        format('off=%s/%s refusals=%s/%s stored=%s main=%s chs_off=%s chs=%s chs_main=%s customer=%s/%s/%s unknown=%s import=%s/%s open=%s paid=%s after=%s/%s',
+               off_link, off_any, r_link, r_needs, stored, l_main, l_chs_off, l_chs, l_chs_main, cu.valid, cu.surname, cu.amount,
+               cu_unknown.valid, imp.matched, imp.short_paid, chs_open, main_paid, cu_paid.valid, cu_paid.why));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

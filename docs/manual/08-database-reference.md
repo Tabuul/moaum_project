@@ -1514,8 +1514,8 @@ Every column whose CHECK constraint enumerates its values, compiled from `constr
 | `lms.material` | `kind` | `ck_lm_kind` | NOTES · SLIDES · READING · VIDEO · AUDIO · OTHER |
 | `lms.assignment` | `kind` | `ck_las_kind` | INDIVIDUAL · PAIRS · GROUP |
 | `platform.service_request` | `state` | `ck_sr_state` | OPEN · WITH_OFFICE · RESOLVED · CLOSED |
-| `finance.gateway_event` | `outcome` | `ck_ge_outcome` | SETTLED · ALREADY_SETTLED · UNKNOWN_REFERENCE · SHORT_PAID · NOT_SUCCESSFUL · IGNORED · BAD_SIGNATURE · GATEWAY_ERROR |
-| `finance.gateway_event` | `source` | `ck_ge_source` | WEBHOOK · VERIFY · SWEEP · TEST |
+| `finance.gateway_event` | `outcome` | `ck_ge_outcome` | SETTLED · ALREADY_SETTLED · UNKNOWN_REFERENCE · SHORT_PAID · NOT_SUCCESSFUL · IGNORED · BAD_SIGNATURE · GATEWAY_ERROR · REVERSED · VALID · INVALID (V299) |
+| `finance.gateway_event` | `source` | `ck_ge_source` | WEBHOOK · VERIFY · SWEEP · TEST · RETURN (V276) · VALIDATE (V299) |
 | `finance.bank_credit` | `state` | `ck_bc_state` | UNMATCHED · PROPOSED · POSTED · REVERSED |
 | `finance.gateway_credential` | `gateway` | `ck_gc_gateway` | paystack · flutterwave · quickteller · paydirect |
 | `finance.gateway_credential` | `mode` | `ck_gc_mode` | TEST · LIVE |
@@ -1559,7 +1559,9 @@ Every column whose CHECK constraint enumerates its values, compiled from `constr
 | `finance.funding_source` | `nature` | `ck_fsrc_nature` | LOAN · GRANT · SELF |
 | `finance.wallet_withdrawal` | `state` | `ck_ww_state` | REQUESTED · APPROVED · REJECTED · PAID |
 | `finance.paydirect_biller` | `scope` | `ck_pdb_scope` | MAIN · CHS |
-| `finance.paydirect_collection` | `state` | `ck_pdc_state` | MATCHED · UNMATCHED · DUPLICATE |
+| `finance.paydirect_biller` | `pay_link` | `ck_pdb_link` (V299, NOT VALID) | https · a quickteller.com / quickteller.net / interswitchng.com / interswitchgroup.com host · a path, nothing after it |
+| `finance.paydirect_biller` | `redirect` | `ck_pdb_redirect` (V299) | the portal sends payers only to a biller in use with its pay link |
+| `finance.paydirect_collection` | `state` | `ck_pdc_state` | MATCHED · UNMATCHED · DUPLICATE · SHORT_PAID (V299) |
 | `hrm.staff_photo` | `content_type` | `ck_photo_type` | image/jpeg · image/png |
 | `hrm.staff_record` | `category` | `ck_staffrec_category` | ACADEMIC · NON_ACADEMIC |
 | `hrm.staff_record` | `salary_scale` | `ck_staffrec_scale` | CONUASS · CONTISS · CONUNASS · CONMESS · CONHESS · CONSOLIDATED |
@@ -2052,7 +2054,7 @@ Every column whose CHECK constraint enumerates its values, compiled from `constr
 
 **`finance.nelfund_status`**: id `uuid` NOT NULL, session `text` NOT NULL, number `text` NOT NULL, name `text`, state `text` NOT NULL, reason `text`, correctable `boolean` NOT NULL, student_id `uuid`, loaded_at `timestamp with time zone` NOT NULL
 
-**`finance.paydirect_biller`**: scope `text` NOT NULL, biller_code `text` NOT NULL, name `text` NOT NULL, pay_link `text`, active `boolean` NOT NULL, updated_at `timestamp with time zone` NOT NULL
+**`finance.paydirect_biller`**: scope `text` NOT NULL, biller_code `text` NOT NULL, name `text` NOT NULL, pay_link `text`, active `boolean` NOT NULL, updated_at `timestamp with time zone` NOT NULL, redirect `boolean` NOT NULL default false (V299: the portal sends payers to this biller's Quickteller page), with_amount `boolean` NOT NULL default true (V299: the amount rides in the link)
 
 **`finance.paydirect_collection`**: id `uuid` NOT NULL, biller_code `text`, prn `text` NOT NULL, amount `numeric`, paid_at `timestamp with time zone`, channel `text`, rrn `text`, payer `text`, state `text` NOT NULL, reference `text`, why `text`, imported_at `timestamp with time zone` NOT NULL
 

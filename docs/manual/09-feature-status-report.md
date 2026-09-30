@@ -744,15 +744,16 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Fee-setup access for Finance Controller / PG Secretary | PARTIALLY IMPLEMENTED | menus `t/feesetup` vs `FinanceController.java:35` | Menu present; API guards exclude these offices (403) |
 | Applicant, PG and transfer fee panels on Fee Setup | IMPLEMENTED | `fees/page.tsx` | No success toast for the applicant and PG saves; item modal offers two semesters while the filter offers three |
 
-### 3.39 Payments — gateways, checkout, webhooks, verification, sweep, PayDirect (dossier F2)
+### 3.39 Payments — gateways, checkout, webhooks, verification, sweep, Pay on Quickteller (dossier F2)
 
 | Feature | Status | Evidence | Notes |
 |---|---|---|---|
 | Paystack checkout, signed webhook, verify | IMPLEMENTED | `PaymentsIT.aSignedWebhookConfirmsTheFeeOnceAndAnUnsignedOneIsRefused` | Tested |
 | Flutterwave checkout, hash webhook, verify | IMPLEMENTED | Same | Tested for hash and unknown reference |
 | Quickteller on Interswitch WebPAY (V276): two merchants by College, signed form, attempts, requery, return | IMPLEMENTED | `PaymentsService.java` (`quicktellerStartPage`, `quicktellerReturned`, `verify`), `PaymentsIT.quicktellerWebpay…` | Built to Interswitch's WebPAY specification and tested against the sandbox host with invented keys; a live payment against the University's merchant remains to be run once the MAC keys are set on Finance → Gateways. `/payments/quickteller/start` still reveals reference, amount and payer number to whoever holds the reference |
-| PayDirect PRN instruction and collections import | IMPLEMENTED | `db/V080`; `PaymentsService.java:693-723` | Billers seeded with the former University's names and links |
-| PayDirect query API | PARTIALLY IMPLEMENTED | `PaymentsService.java:693-723` | Endpoint unconfirmed |
+| Pay on Quickteller (V299): the University's biller page with `cid` = the portal's reference and the amount; biller by College; switched on by the Bursary; link only to Interswitch | IMPLEMENTED (tested: `PaymentsIT`, `check.sql`) | `db/V299` (`finance.quickteller_link`, `paydirect_biller_of_reference`, `set_paydirect_biller`); `PaymentsService.payOnQuickteller`; `components/QuicktellerPay.tsx` | Off until the Bursary switches a biller on after Interswitch points it at the portal |
+| Quickteller's reference check and payment notification (PayDirect XML), collections import with short payments kept open | IMPLEMENTED (tested); UNVERIFIED AGAINST THE LIVE BILLER | `PayDirectMessages.java`; `PaymentsService.paydirectValidate` / `paydirectNotify`; `finance.paydirect_customer`, `finance.import_paydirect` | The notification is believed only with the service username and password agreed with Interswitch |
+| PayDirect query API | WITHDRAWN (27 September 2026) | — | Replaced by Interswitch's notification (V299) |
 | Encrypted gateway keys set from the screen | IMPLEMENTED | `db/V039/V052/V080` | Needs `MOAUM_CONFIG_KEY` |
 | Hanging-payment sweep (every ten minutes, up to twelve tries) | IMPLEMENTED | `PaymentsService.java:746` | |
 | Test checkout | IMPLEMENTED | `:784-798` | Paystack / Flutterwave only; demo student prefilled (`Gateways.tsx:25`) |
@@ -1140,7 +1141,7 @@ Texts that describe the portal as it was, or values that should come from config
 | Login brand stats "12 faculties · 1 college · 1992 established" | `Login.tsx:74-76` |
 | Registrar dashboard NDPA-return note "due on 31 March" | `Registrar.tsx:35` |
 | **Wrong letterhead** `UNI = "Moshood Abiola University of Science and Technology, Abeokuta"` on the College score-sheet template and marked sheet | `app/college/scoresheets/ScoreSheets.tsx:18` |
-| PayDirect billers seeded with the former University's names and links | `db/V080` |
+| Quickteller billers seeded with the former University's names; links in Interswitch's form since V299 | `db/V080`, `db/V299` |
 | Help & Requests office list | SQL and `Support.tsx:28` |
 | Hostel hall kinds, room types, facility lists | SQL seed only |
 | Transfer letter fee ₦10,000 | `TransferLetter.tsx` |

@@ -297,7 +297,8 @@ Start here
 2. In the **Pay** panel choose what to pay: **First semester · ₦x**, **Full session · both semesters · ₦x**, or **Second semester · ₦x** (only the choices that apply are shown).
 3. Press **Generate a reference for ₦{amount}**. The portal mints a payment reference of the form `MOAUM-FEE-…` valid for **24 hours** and shows it in large type: "Quote this reference and nothing else: at a bank branch, by transfer, or by card below."
 4. Pay against the reference in one of three ways:
-   - **Card or USSD**: press **Pay ₦x by card or USSD**. If more than one gateway is live you choose Paystack, Flutterwave, Quickteller or Quickteller PayDirect. Card gateways take you to the gateway's own page and bring you back to this screen; the portal confirms the payment the moment the gateway tells it the money landed.
+   - **Card or USSD**: press **Pay ₦x by card or USSD**. If more than one way is live you choose Paystack, Flutterwave, Interswitch WebPAY or **Quickteller**. Card gateways take you to the gateway's own page and bring you back to this screen; the portal confirms the payment the moment the gateway tells it the money landed.
+   - **Quickteller** (where the University offers it): choosing it shows **Continue to Quickteller**, which opens the University's page on quickteller.com in a new tab with your reference (and the amount) already filled in — the reference exactly as the portal issued it. Quickteller checks the reference with the University when you press **Continue**; pay there by card, bank transfer, USSD or your Quickteller wallet, then come back to this page. The payment is confirmed when Interswitch reports it, usually within minutes; **I've paid — check now** re-reads it. Do not pay the same reference twice — once paid, Quickteller refuses it.
    - **Bank branch or transfer**: quote the reference. The Bursary confirms it against the bank's record.
 5. When confirmed, the reference appears in **Payment History** as **Paid** with a **Receipt** link, and you receive "Your payment is confirmed" by email and SMS (receipt number included). Until then it is **Awaiting confirmation**; after 24 hours unconfirmed it is **Expired** — generate a new one; a reference is free.
 
@@ -309,7 +310,9 @@ Refusals you may meet:
 | "the amount X is more than the balance of Y" | Pay the balance or part of it; nothing is taken beyond what is owed. |
 | "This reference has expired." | Generate a new one. |
 | "This reference is already confirmed as paid." | Nothing more to pay on it. |
-| "A card checkout needs an email address on your record" | Add a personal email under Profile, or pay by PayDirect or at a bank. |
+| "A card checkout needs an email address on your record" | Add a personal email under Profile, or pay on Quickteller or at a bank. |
+| "Pay on Quickteller is not offered for this payment." | The University has not switched Quickteller on for your College's biller yet; choose another way to pay. |
+| Quickteller says the reference is invalid | The reference is already paid, has expired (generate a new one) or — for the admission checking fee — checking is closed. |
 | "Card and USSD payment arrive when a payment gateway is wired to the portal." | No gateway is live yet; pay at a bank against the reference. |
 | "The checkout could not be opened (…)" | Try again shortly, or pay by transfer or at a branch against the reference. |
 
@@ -745,7 +748,7 @@ Afterwards you sign in at `/login` with the JAMB number (or the application numb
 **Application Fee** `/applicant/fee` shows the **Post-UTME screening fee** plus the **Portal and payment charge** and the **Total payable** (the Bursary sets them per session; the defaults are ₦2,000 and ₦300).
 
 1. Press **Generate a reference for ₦…**. The reference (`MOAUM-APP-NNNNNN-XXXX`) is valid for 24 hours; **Generate a new reference** replaces an expired one.
-2. Press **Pay ₦… by card or USSD** and pay on the gateway, or pay by bank transfer or at a branch quoting the reference (the **How you can pay** table). For PayDirect use **I've paid — check now** after paying.
+2. Press **Pay ₦… by card or USSD** and pay on the gateway, or choose **Quickteller** and pay on the University's Quickteller page (your reference is filled in), or pay by bank transfer or at a branch quoting the reference (the **How you can pay** table). After paying on Quickteller use **I've paid — check now**.
 3. When confirmed the page shows "Payment confirmed — ₦… received" with a **Receipt** panel, and you receive "Your payment receipt · RCT-…" by email and SMS. The form now opens.
 
 #### Stage 2 — Application form
@@ -828,7 +831,9 @@ Once the Academic Office brings the session's admitted candidates onto the regis
 
 **Printing the screening forms.** Once your screening form is submitted, *Print your screening forms* on the dashboard's admission block, on Admission Progress, or on the screening page prints the five paper forms as one PDF, filled from your answers: Form A, the Screening of Fresh Undergraduate Students (Sections A and B), Section C with the declaration and the official-use section, the Supplementary Biodata Form and the Student Data Capture Form. They carry the same headings and information as the paper forms under the University's name, your JAMB photograph where the form has a passport box, and your submission as the signature; the officers' lines are left for hand signing.
 
-**Paying by Quickteller (V276).** *Pay with Quickteller* sends you to Interswitch's secure page; the University's merchant is used, or the College of Health Sciences' own if your programme is in that College. When Interswitch returns you, the portal asks Interswitch itself whether the payment stands and confirms the fee on that answer — not on the page you came back from. If you were debited and the fee does not show as paid, the portal re-checks the reference every ten minutes; *Verify* on the fee page asks at once.
+**Pay on Quickteller (V299).** Where the University offers it, choosing *Quickteller* when you pay opens the University's biller page on quickteller.com — `https://quickteller.com/bsum`, or the College of Health Sciences' own when your programme is in that College and its biller is in use — with `cid=` your payment reference exactly as the portal issued it (`MOAUM-APP-…`, `MOAUM-FEE-…`) and, where the biller carries it, `amount=` the amount. Quickteller asks the University about the reference when you press Continue: a reference already paid, expired, or not payable now is refused, so it cannot be paid twice. Come back to the portal after paying; the payment is confirmed when Interswitch reports it.
+
+**Paying by Interswitch WebPAY (V276).** *Interswitch WebPAY* (shown as *Quickteller* before V299) sends you to Interswitch's secure card page; the University's merchant is used, or the College of Health Sciences' own if your programme is in that College. When Interswitch returns you, the portal asks Interswitch itself whether the payment stands and confirms the fee on that answer — not on the page you came back from. If you were debited and the fee does not show as paid, the portal re-checks the reference every ten minutes; *Verify* on the fee page asks at once.
 
 **The acceptance letter (V275).** *Print Offer Letter* on Admission Status, or the letter link on Admission Progress, issues the letter of provisional admission as a digital document the moment the offer is accepted: a document number `ADM/YYYY/NNNNNN`, a verification code, and a QR code on the page that opens `/verify/document`, where anyone may check it by the code or the number and see only what the University discloses (name, programme, faculty, department, session, admission type, the date accepted). If a change of programme is later approved, the letter is reissued as a new version under the same number and says so; the first version then answers REPLACED.
 

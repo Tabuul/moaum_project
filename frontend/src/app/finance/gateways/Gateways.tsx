@@ -6,13 +6,17 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
-import { OUTCOME, when, type GatewayConfig, type PaymentsDesk } from "@/lib/bursary";
+import { EXCEPTIONS, OUTCOME, when, type GatewayConfig, type PaydirectDesk, type PaymentsDesk } from "@/lib/bursary";
 import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { PayOnQuickteller } from "./PayOnQuickteller";
 
-export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; config: GatewayConfig[]; paid: string | null; actingOffice: string | null }) {
+/** the gateways as the Bursary's desk names them */
+const DESK_LABEL: Record<string, string> = { paystack: "Paystack", flutterwave: "Flutterwave", quickteller: "Quickteller WebPAY (card page)", paydirect: "Pay on Quickteller (biller page)" };
+
+export function Gateways({ d, config, quickteller, paid, actingOffice }: { d: PaymentsDesk; config: GatewayConfig[]; quickteller: PaydirectDesk | null; paid: string | null; actingOffice: string | null }) {
   const router = useRouter();
   // the Bursary monitors, tests and verifies; only the Directorate of ICT and the Super
   // Administrator set or clear a gateway key — the key setup is off the Bursar's desk
@@ -21,7 +25,7 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
-  const [test, setTest] = useState({ number: "MOAUM/MTC/24/9903", amount: "100", gateway: d.gateways.find((g) => g.on)?.gateway ?? "paystack" });
+  const [test, setTest] = useState({ number: "MOAUM/MTC/24/9903", amount: "100", gateway: d.gateways.find((g) => g.on && g.gateway !== "paydirect")?.gateway ?? "paystack" });
   const [ref, setRef] = useState("");
   const [keys, setKeys] = useState<Record<string, { secret: string; hash: string }>>({ paystack: { secret: "", hash: "" }, flutterwave: { secret: "", hash: "" } });
   // Quickteller on Interswitch WebPAY is not one string but a set — two merchants, each with a
@@ -29,10 +33,14 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
   // are the University's and are prefilled; the MAC keys are secrets and are pasted here only.
   const QT_EMPTY = { merchantCode: "", productId: "6498", payItemId: "101", macKey: "", chsMerchantCode: "", chsProductId: "6207", chsPayItemId: "101", chsMacKey: "", sandbox: false };
   const [qt, setQt] = useState(QT_EMPTY);
+  // Pay on Quickteller (V299): the service username and password Interswitch sends with each payment notification
+  const [pd, setPd] = useState({ user: "", pass: "" });
   const qtMain = d.gateways.find((g) => g.gateway === "quickteller")?.merchants ?? [];
   const on = d.gateways.filter((g) => g.on);
   const t = d.tiles;
   const apiBase = d.portalUrl.replace("moaum-portal", "moaum-api");
+  // Quickteller's doors are given at the API's address as the API states it (through the portal when it has none of its own)
+  const addressOf = (g: { gateway: string; webhook: string }) => (g.gateway === "paydirect" && quickteller ? quickteller.apiBase : apiBase) + g.webhook;
 
   async function send(path: string, body: unknown, reason: string, method: string = "POST"): Promise<Record<string, unknown> | null> {
     setBusy(true);
@@ -58,28 +66,31 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       <Tiles items={[
-        ["Gateways live", String(on.length), on.length ? "var(--green-ink)" : "var(--red-ink)", on.length ? on.map((g) => `${g.gateway} · ${g.mode.toLowerCase()}`).join(", ") : "Set a secret to wire one"],
+        ["Gateways live", String(on.length), on.length ? "var(--green-ink)" : "var(--red-ink)", on.length ? on.map((g) => `${DESK_LABEL[g.gateway] ?? g.gateway} · ${g.mode.toLowerCase()}`).join(", ") : "Set a secret to wire one"],
         ["Events today", String(t.today), null, `${money(Number(t.settled_today))} settled today`],
         ["Settled, all time", String(t.settled), "var(--green-ink)", "Posted from a gateway's word, verified"],
         ["Exceptions open", String(t.exceptions), Number(t.exceptions) ? "var(--red-ink)" : null, `${t.bad_signatures} bad signature${Number(t.bad_signatures) === 1 ? "" : "s"} discarded`],
       ]} />
       <Panel title="Configured gateways" right="Test or live is read from the key's own prefix">
         <DTable cols={["Gateway", "Mode|mid", "Channels", "Webhook address", "Status|num"]} rows={d.gateways.map((g) => [
-          <strong key="g" style={{ textTransform: "capitalize" }}>{g.gateway}</strong>,
+          <strong key="g">{DESK_LABEL[g.gateway] ?? g.gateway}</strong>,
           g.on ? <Pil kind={g.mode === "LIVE" ? "ok" : "info"} key="m">{g.mode === "LIVE" ? "Live" : "Test"}</Pil> : <Pil kind="grey" key="m">Off</Pil>,
           <span className="sub2" key="c">{g.channels}</span>,
-          <span className="tnum sub2" key="w">{apiBase}{g.webhook}</span>,
-          g.on ? (g.gateway === "flutterwave" && !g.hash ? <Pil kind="bad" key="s">Secret set, hash missing — webhooks refused</Pil> : <Pil kind="ok" key="s">Wired</Pil>) : <Pil kind="grey" key="s">Not wired</Pil>,
+          <span className="tnum sub2" key="w">{addressOf(g)}{g.validate ? <div>Reference check: {(quickteller ? quickteller.apiBase : apiBase) + g.validate}</div> : null}</span>,
+          g.gateway === "paydirect"
+            ? (g.on ? (g.hash ? <Pil kind="ok" key="s">Switched on</Pil> : <Pil kind="bad" key="s">On, notification credentials missing — payments wait for the collections import</Pil>) : <Pil kind="grey" key="s">Not switched on</Pil>)
+            : g.on ? (g.gateway === "flutterwave" && !g.hash ? <Pil kind="bad" key="s">Secret set, hash missing — webhooks refused</Pil> : <Pil kind="ok" key="s">Wired</Pil>) : <Pil kind="grey" key="s">Not wired</Pil>,
         ])} />
         <PBody>
           <KvGrid cls="grid--2" pairs={[
             ["Paystack", "Settings → API Keys & Webhooks: set the webhook URL above; the secret key signs every event (x-paystack-signature). Test keys start sk_test_."],
             ["Flutterwave", "Settings → Webhooks: set the URL above and a secret hash; put the same hash in MOAUM_FLUTTERWAVE_HASH. Test keys start FLWSECK_TEST."],
             ["Return address", `${d.portalUrl}/student/fees?paid=… — the student's browser comes back here; the money is confirmed by the webhook or by verification, never by the browser.`],
-            ["The reconciler", "Every ten minutes the portal asks the gateway about every checkout opened in the last three days with nothing confirmed behind it, and posts what the gateway answers."],
+            ["The reconciler", "Every ten minutes the portal asks the gateway about every checkout opened in the last three days with nothing confirmed behind it, and posts what the gateway answers. Pay on Quickteller is not asked: its payments come back by Interswitch's notification, or by the collections report."],
           ]} />
         </PBody>
       </Panel>
+      {quickteller ? <PayOnQuickteller q={quickteller} may={may} busy={busy} send={send} say={setSaid} /> : null}
       {mayConfigure ? (
         <Panel title="Configure the keys" right="Directorate of ICT and Super Administrator only">
           <PBody>
@@ -90,12 +101,24 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
               {config.map((c) => (
                 <div className="card" key={c.gateway}><div className="card__body">
                   <div className="row">
-                    <b style={{ textTransform: "capitalize" }}>{c.gateway}</b>
-                    {c.configured ? <Pil kind={c.mode === "LIVE" ? "ok" : "info"}>{c.mode === "LIVE" ? "Live key set" : "Test key set"}</Pil> : <Pil kind="grey">No dashboard key</Pil>}
-                    {c.configured ? <span className="sub2 tnum">ends {c.last4}</span> : null}
+                    <b>{DESK_LABEL[c.gateway] ?? c.gateway}</b>
+                    {c.configured ? <Pil kind={c.mode === "LIVE" ? "ok" : "info"}>{c.gateway === "paydirect" ? "Credentials set" : c.mode === "LIVE" ? "Live key set" : "Test key set"}</Pil> : <Pil kind="grey">{c.gateway === "paydirect" ? "No credentials" : "No dashboard key"}</Pil>}
+                    {c.configured ? <span className="sub2 tnum">{c.gateway === "paydirect" ? "username ends" : "ends"} {c.last4}</span> : null}
                   </div>
                   {c.configured ? <div className="sub2">Set {c.set_at ? when(c.set_at) : ""}{c.set_by_name ? " by " + c.set_by_name : ""}{c.gateway === "flutterwave" ? (c.has_hash ? " \u00b7 hash set" : " \u00b7 no hash yet") : ""}</div> : null}
-                  {c.gateway === "quickteller" ? (
+                  {c.gateway === "paydirect" ? (
+                    <>
+                      <div className="sub2">Pay on Quickteller: the service username and password Interswitch sends with each payment notification, agreed with Interswitch for the biller. A notification that does not carry them is kept on the log and not believed; nothing is credited on it. The password is stored encrypted and shown never.{quickteller && !quickteller.credentials && c.configured ? " The value stored here is not a username and password (it may be the query credentials kept from before): set the two again." : ""}</div>
+                      <div className="grid grid--2">
+                        <Field id="pd-user" label="Service username"><input id="pd-user" className="ctl tnum" autoComplete="off" value={pd.user} onChange={(e) => setPd({ ...pd, user: e.target.value })} /></Field>
+                        <Field id="pd-pass" label="Service password" hint="At least eight characters; pasted once, never displayed after this."><input id="pd-pass" className="ctl tnum" type="password" autoComplete="new-password" value={pd.pass} onChange={(e) => setPd({ ...pd, pass: e.target.value })} /></Field>
+                      </div>
+                      <div className="row">
+                        <Btn kind="primary" disabled={busy || !pd.user.trim() || pd.pass.trim().length < 8} onClick={async () => { const j = await send("/gateways/paydirect/key", { secret: JSON.stringify({ serviceUsername: pd.user.trim(), servicePassword: pd.pass.trim() }), hash: null }, "Quickteller notification credentials set from the dashboard", "PUT"); if (j) { setSaid("Quickteller notification credentials set \u2014 username ending " + j.last4); setPd({ user: "", pass: "" }); } }}>{c.configured ? "Replace the credentials" : "Set the credentials"}</Btn>
+                        {c.configured ? <Btn kind="ghost" disabled={busy} onClick={async () => { if (window.confirm("Clear the Quickteller notification credentials? No notification is believed until they are set again; payments wait for the collections import.") && await send("/gateways/paydirect/clear-key", {}, "Quickteller notification credentials cleared", "POST")) setSaid("Quickteller notification credentials cleared"); }}>Clear</Btn> : null}
+                      </div>
+                    </>
+                  ) : c.gateway === "quickteller" ? (
                     <>
                       <div className="sub2">Quickteller on Interswitch WebPAY: the University&rsquo;s merchant and, for payers in the College of Health Sciences, the College&rsquo;s own. Interswitch identifies a merchant today by a <b>merchant code</b> (MX&hellip;) and a pay item; an older profile is identified by a <b>product id</b> and signs the form with a MAC key. Give the merchant code if the profile shows one, else the product id and the MAC key. The keys are stored encrypted and shown never. A payer&rsquo;s merchant is chosen by the College their programme is in.</div>
                       {qtMain.length ? <div className="sub2">Wired now: {qtMain.map((m) => `${m.scope} \u00b7 ${m.merchantCode ? `merchant ${m.merchantCode}` : `product ${m.productId}`} \u00b7 pay item ${m.payItemId}`).join(" \u00b7 ")}</div> : null}
@@ -145,7 +168,7 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
             <div className="grid grid--3">
               <Field id="tg-num" label="Student" hint="A demo student's matriculation number."><input id="tg-num" className="ctl tnum" value={test.number} onChange={(e) => setTest({ ...test, number: e.target.value })} /></Field>
               <Field id="tg-amt" label="Amount" hint="₦100 is enough."><input id="tg-amt" className="ctl tnum" value={test.amount} onChange={(e) => setTest({ ...test, amount: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
-              <Field id="tg-gw" label="Gateway"><select id="tg-gw" className="ctl" value={test.gateway} onChange={(e) => setTest({ ...test, gateway: e.target.value })}>{d.gateways.map((g) => <option key={g.gateway} value={g.gateway} disabled={!g.on}>{g.gateway}{g.on ? ` (${g.mode.toLowerCase()})` : " — not wired"}</option>)}</select></Field>
+              <Field id="tg-gw" label="Gateway"><select id="tg-gw" className="ctl" value={test.gateway} onChange={(e) => setTest({ ...test, gateway: e.target.value })}>{d.gateways.filter((g) => g.gateway !== "paydirect").map((g) => <option key={g.gateway} value={g.gateway} disabled={!g.on}>{g.gateway}{g.on ? ` (${g.mode.toLowerCase()})` : " — not wired"}</option>)}</select></Field>
             </div>
             <div className="row">
               <Btn kind="primary" disabled={busy || !on.length || !test.number.trim()} onClick={async () => { const j = await send("/test-checkout", { number: test.number, amount: Number(test.amount) || 100, gateway: test.gateway }, `Gateway test checkout for ${test.number}`); if (j?.url) window.location.href = String(j.url); }}>Open a test checkout</Btn>
@@ -165,12 +188,12 @@ export function Gateways({ d, config, paid, actingOffice }: { d: PaymentsDesk; c
         {d.events.length ? (
           <DTable cols={["When|mid", "Gateway", "Event", "Reference", "Amount|num", "Signature|mid", "Result|num"]} rows={d.events.map((e) => [
             <span className="sub2 tnum" key="w">{when(e.received_at)}</span>,
-            <span key="g" style={{ textTransform: "capitalize" }}>{e.gateway}<div className="sub2">{e.source.toLowerCase()}</div></span>,
+            <span key="g">{DESK_LABEL[e.gateway] ?? e.gateway}<div className="sub2">{e.source.toLowerCase()}</div></span>,
             <span className="sub2" key="e">{e.event ?? "—"}{e.status ? ` · ${e.status}` : ""}</span>,
             <span className="tnum sub2" key="r">{e.reference ?? "—"}{e.gateway_ref ? <div className="sub2">{e.gateway_ref}</div> : null}</span>,
             <span className="tnum" key="a">{e.amount == null ? "—" : money(Number(e.amount))}</span>,
             e.signature_ok ? <Pil kind="ok" key="s">Valid</Pil> : <Pil kind="bad" key="s">Invalid</Pil>,
-            <span key="o"><Pil kind={OUTCOME[e.outcome]?.[1] ?? "grey"}>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</Pil>{e.resolved_at ? <div className="sub2">Resolved: {e.resolution} · {e.resolved_by_name ?? ""}</div> : ["UNKNOWN_REFERENCE", "SHORT_PAID", "BAD_SIGNATURE", "GATEWAY_ERROR"].includes(e.outcome) && may ? <div><Btn kind="ghost" disabled={busy} onClick={async () => { const why = window.prompt("How was it resolved? It goes on the record."); if (why && await send(`/events/${e.id}/resolve`, { resolution: why }, `Gateway event resolved: ${why}`)) setSaid("Resolved"); }}>Resolve</Btn></div> : null}</span>,
+            <span key="o"><Pil kind={OUTCOME[e.outcome]?.[1] ?? "grey"}>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</Pil>{e.resolved_at ? <div className="sub2">Resolved: {e.resolution} · {e.resolved_by_name ?? ""}</div> : EXCEPTIONS.includes(e.outcome) && may ? <div><Btn kind="ghost" disabled={busy} onClick={async () => { const why = window.prompt("How was it resolved? It goes on the record."); if (why && await send(`/events/${e.id}/resolve`, { resolution: why }, `Gateway event resolved: ${why}`)) setSaid("Resolved"); }}>Resolve</Btn></div> : null}</span>,
           ])} texts={d.events.map((e) => `${e.gateway} ${e.reference ?? ""} ${e.outcome}`)} />
         ) : <PBody><div className="sub2">No event has reached the portal yet. Open a test checkout above and pay with the gateway&rsquo;s test card.</div></PBody>}
       </Panel>

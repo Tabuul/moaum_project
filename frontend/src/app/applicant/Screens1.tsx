@@ -265,6 +265,7 @@ export function Fee({ a }: { a: Application }) {
       <Panel title="How you can pay" right="Any of these">
         <DTable cols={["Channel", "What to do", "Confirmed in|num"]} rows={[
           [<Two key="c" a="Card and USSD" b="On the payment gateway" />, "Generate a reference, then Pay with card — you are taken to the gateway", <span className="sub2" key="t">At once, on return</span>],
+          [<Two key="q" a="Quickteller" b="On quickteller.com, where offered" />, "Choose Quickteller when you pay: the University’s page opens with your reference and the amount filled in", <span className="sub2" key="t">When Interswitch reports it, usually minutes</span>],
           [<Two key="c" a="Bank transfer" b="From any Nigerian bank" />, "Transfer to the University’s account, quoting the reference", <span className="sub2" key="t">When the Bursary sees it</span>],
           [<Two key="c" a="Bank branch" b="Over the counter" />, "Present the reference at any approved bank", <span className="sub2" key="t">Same day</span>],
         ]} />

@@ -165,11 +165,13 @@ class PaymentsRepository {
                 """).query().listOfRows();
     }
 
+    /** the events that concern money — Quickteller's reference checks (V299) are listed on their own */
     List<Map<String, Object>> events(int limit) {
         return jdbc.sql("""
                 SELECT e.id, e.gateway, e.source, e.event, e.reference, e.gateway_ref, e.amount, e.status, e.signature_ok, e.outcome, e.received_at,
                        e.resolved_at, e.resolution, p.surname || ', ' || p.given_names AS resolved_by_name
                   FROM finance.gateway_event e LEFT JOIN iam.person p ON p.id = e.resolved_by
+                 WHERE e.source <> 'VALIDATE'
                  ORDER BY e.received_at DESC LIMIT :n
                 """).param("n", limit).query().listOfRows();
     }
@@ -178,11 +180,70 @@ class PaymentsRepository {
         return jdbc.sql("""
                 SELECT count(*) FILTER (WHERE received_at::date = current_date) AS today,
                        count(*) FILTER (WHERE outcome = 'SETTLED') AS settled,
-                       count(*) FILTER (WHERE outcome IN ('UNKNOWN_REFERENCE','SHORT_PAID','BAD_SIGNATURE','GATEWAY_ERROR') AND resolved_at IS NULL) AS exceptions,
+                       count(*) FILTER (WHERE outcome IN ('UNKNOWN_REFERENCE','SHORT_PAID','BAD_SIGNATURE','GATEWAY_ERROR','REVERSED') AND resolved_at IS NULL) AS exceptions,
                        count(*) FILTER (WHERE NOT signature_ok) AS bad_signatures,
                        coalesce(sum(amount) FILTER (WHERE outcome = 'SETTLED' AND received_at::date = current_date), 0) AS settled_today
                   FROM finance.gateway_event
+                 WHERE source <> 'VALIDATE'
                 """).query().singleRow();
+    }
+
+    /* ── Pay on Quickteller (V299): the biller page, the reference checks and the collections ── */
+
+    record QuicktellerLink(String url, String reference, BigDecimal amount, String scope, String billerCode, String billerName, boolean withAmount) {
+    }
+
+    /** the Quickteller page a reference is paid on, when the portal sends its payer there */
+    Optional<QuicktellerLink> quicktellerLink(String reference) {
+        return jdbc.sql("SELECT url, reference, amount, scope, biller_code, biller_name, with_amount FROM finance.quickteller_link(:r)")
+                .param("r", reference == null ? "" : reference).query(QuicktellerLink.class).optional();
+    }
+
+    boolean quicktellerRedirectOn() {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.quickteller_redirect_on()").query(Boolean.class).single());
+    }
+
+    record Customer(boolean valid, String why, String reference, String surname, String otherNames, String number, BigDecimal amount,
+                    String description, String scope, String billerCode) {
+    }
+
+    /** what Quickteller is told about a reference it asks after */
+    Customer paydirectCustomer(String reference) {
+        return jdbc.sql("SELECT * FROM finance.paydirect_customer(:r)").param("r", reference == null ? "" : reference).query(Customer.class).single();
+    }
+
+    /** Quickteller's reference checks, newest first */
+    List<Map<String, Object>> validations(int limit) {
+        return jdbc.sql("""
+                SELECT e.id, e.reference, e.gateway_ref AS merchant_reference, e.amount, e.outcome, e.received_at, e.payload->>'why' AS why
+                  FROM finance.gateway_event e
+                 WHERE e.gateway = 'paydirect' AND e.source = 'VALIDATE'
+                 ORDER BY e.received_at DESC LIMIT :n
+                """).param("n", limit).query().listOfRows();
+    }
+
+    List<Map<String, Object>> paydirectBillers() {
+        return jdbc.sql("SELECT scope, biller_code, name, pay_link, active, redirect, with_amount, updated_at FROM finance.paydirect_biller ORDER BY scope")
+                .query().listOfRows();
+    }
+
+    Map<String, Object> setPaydirectBiller(String scope, String code, String name, String link, boolean active, boolean redirect, boolean withAmount) {
+        return jdbc.sql("""
+                SELECT scope, biller_code, name, pay_link, active, redirect, with_amount, updated_at
+                  FROM finance.set_paydirect_biller(:sc, :c, :n, :l, :a, :re, :wa)
+                """).param("sc", scope).param("c", code).param("n", name).param("l", link, Types.VARCHAR).param("a", active)
+                .param("re", redirect).param("wa", withAmount).query().singleRow();
+    }
+
+    Map<String, Object> importPaydirect(String rowsJson) {
+        return jdbc.sql("SELECT * FROM finance.import_paydirect(:j::jsonb)").param("j", rowsJson).query().singleRow();
+    }
+
+    List<Map<String, Object>> paydirectCollections(int limit) {
+        return jdbc.sql("""
+                SELECT biller_code, prn, amount, paid_at, channel, rrn, payer, state, reference, why, imported_at
+                  FROM finance.paydirect_collection ORDER BY imported_at DESC LIMIT :n
+                """).param("n", limit).query().listOfRows();
     }
 
     void resolve(UUID event, String resolution) {

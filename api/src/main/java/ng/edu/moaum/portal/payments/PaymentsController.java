@@ -7,6 +7,7 @@ import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -39,11 +40,11 @@ class PaymentsController {
         this.payments = payments;
     }
 
-    /** which gateways are wired: the applicant's button says so */
+    /** which gateways are wired: the applicant's button says so; for a reference, whether Pay on Quickteller is offered for its payer's College */
     @GetMapping("/gateways")
     @PreAuthorize("isAuthenticated()")
-    Map<String, Object> gateways() {
-        return payments.gateways();
+    Map<String, Object> gateways(@RequestParam(required = false) String reference) {
+        return payments.gateways(reference);
     }
 
     @PostMapping("/checkout")
@@ -104,6 +105,43 @@ class PaymentsController {
         return ResponseEntity.ok().body(payments.quicktellerReturned(reference, posted));
     }
 
+    /* ── V299: Pay on Quickteller — the two doors Interswitch calls, open like a webhook ── */
+
+    private static final MediaType XML_UTF8 = new MediaType("text", "xml", java.nio.charset.StandardCharsets.UTF_8);
+    private static final MediaType JSON_UTF8 = new MediaType("application", "json", java.nio.charset.StandardCharsets.UTF_8);
+
+    private static ResponseEntity<String> answer(PayDirectMessages.Answer a) {
+        return ResponseEntity.ok().contentType(a.json() ? JSON_UTF8 : XML_UTF8).body(a.body());
+    }
+
+    /**
+     * Quickteller asks here about the reference the payer brought (PayDirect
+     * customer validation), when the payer presses Continue. The answer names the
+     * payer and the amount for a reference that may be paid, and refuses one that
+     * may not; nothing moves.
+     */
+    @PostMapping(value = "/paydirect/validate", consumes = MediaType.ALL_VALUE)
+    ResponseEntity<String> paydirectValidate(@RequestBody(required = false) String body) {
+        return answer(payments.paydirectValidate(body));
+    }
+
+    /**
+     * Interswitch reports payments here (PayDirect payment notification). A report
+     * is believed only with the service username and password agreed for it; each
+     * payment is settled as every payment is, and answered 0 once received.
+     */
+    @PostMapping(value = "/paydirect/notify", consumes = MediaType.ALL_VALUE)
+    ResponseEntity<String> paydirectNotify(@RequestBody(required = false) String body) {
+        return answer(payments.paydirectNotify(body));
+    }
+
+    /** opened in a browser, either door says what it is — so the Directorate of ICT can see it is reachable before giving it to Interswitch */
+    @GetMapping(value = { "/paydirect/validate", "/paydirect/notify" }, produces = "text/plain;charset=UTF-8")
+    ResponseEntity<String> paydirectDoor() {
+        return ResponseEntity.ok("MOAUM portal: Quickteller (Interswitch PayDirect) posts its reference checks to /api/v1/payments/paydirect/validate "
+                + "and its payment notifications to /api/v1/payments/paydirect/notify. This address is reachable.");
+    }
+
     /* ── V037: the Bursary's side of the gateways ── */
 
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
@@ -116,6 +154,14 @@ class PaymentsController {
     }
 
     public record Resolution(@NotBlank String resolution) {
+    }
+
+    /** whether a reference stands confirmed on the University's record — the payer's own, or any for an office; nothing is asked of a gateway (V299) */
+    @GetMapping("/state")
+    @PreAuthorize("isAuthenticated()")
+    Map<String, Object> state(Authentication authentication, @RequestParam String reference) {
+        boolean office = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().matches("OFFICE_(bursar|ict|admin|super|audit)"));
+        return payments.stateFor(UUID.fromString(authentication.getName()), office, reference);
     }
 
     /** the gateway is asked what the reference settled for: the student's own, or any for an office */
@@ -172,5 +218,34 @@ class PaymentsController {
     @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_admin','OFFICE_super')")
     Map<String, Object> clearKey(@PathVariable String gateway) {
         return payments.clearKey(gateway);
+    }
+
+    /* ── V299: Pay on Quickteller — the billers, the reference checks and the collections report ── */
+
+    public record ImportRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {
+    }
+
+    public record BillerIn(@NotBlank String code, @NotBlank String name, String link, Boolean active, Boolean redirect, Boolean withAmount) {
+    }
+
+    /** the two billers, Quickteller's recent reference checks and the imported collections: the Bursary's Quickteller desk */
+    @GetMapping("/paydirect")
+    @PreAuthorize(READERS)
+    Map<String, Object> paydirect() {
+        return payments.paydirect();
+    }
+
+    /** a biller's code, name and Quickteller page, whether it is in use, whether the portal sends payers there, and whether the amount rides in the link */
+    @org.springframework.web.bind.annotation.PutMapping("/paydirect/billers/{scope}")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> setBiller(@PathVariable String scope, @Valid @RequestBody BillerIn body) {
+        return payments.setPaydirectBiller(scope, body.code(), body.name(), body.link(), body.active(), body.redirect(), body.withAmount());
+    }
+
+    /** the Quickteller collections report: each reference matched and confirmed, a short payment kept open */
+    @PostMapping("/paydirect/import")
+    @PreAuthorize(BURSARY)
+    Map<String, Object> importPaydirect(@Valid @RequestBody ImportRows body) {
+        return payments.importPaydirect(body.rows());
     }
 }

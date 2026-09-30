@@ -1,7 +1,15 @@
 /** The Bursary's desk, as the API states it (V037). */
 export interface GatewayConfig { gateway: string; configured: boolean; has_hash: boolean; mode: string | null; last4: string | null; set_at: string | null; set_by_name: string | null }
 export interface GatewayMerchant { scope: string; productId: string; merchantCode: string; payItemId: string; identity: string; name: string }
-export interface GatewayRow { gateway: string; on: boolean; mode: string; webhook: string; return?: string; hash?: boolean; channels: string; merchants?: GatewayMerchant[] }
+export interface GatewayRow { gateway: string; on: boolean; mode: string; webhook: string; return?: string; validate?: string; hash?: boolean; channels: string; merchants?: GatewayMerchant[] }
+/** Pay on Quickteller (V299): the billers, Quickteller's reference checks, the collections report — the API leaves absent values out */
+export interface PaydirectBiller { scope: string; biller_code: string; name: string; pay_link?: string | null; active: boolean; redirect: boolean; with_amount: boolean; updated_at?: string }
+export interface PaydirectCollection { biller_code?: string | null; prn: string; amount?: number | null; paid_at?: string | null; channel?: string | null; rrn?: string | null; payer?: string | null; state: string; reference?: string | null; why?: string | null; imported_at: string }
+export interface PaydirectValidation { id: string; reference?: string | null; merchant_reference?: string | null; amount?: number | null; outcome: string; received_at: string; why?: string | null }
+export interface PaydirectDesk {
+  billers: PaydirectBiller[]; collections: PaydirectCollection[]; validations: PaydirectValidation[]; credentials: boolean;
+  apiBase: string; validatePath: string; notifyPath: string;
+}
 export interface GatewayEvent {
   id: string; gateway: string; source: string; event: string | null; reference: string | null; gateway_ref: string | null; amount: number | null; status: string | null;
   signature_ok: boolean; outcome: string; received_at: string; resolved_at: string | null; resolution: string | null; resolved_by_name: string | null;
@@ -24,7 +32,10 @@ export interface BankCredit {
 export const OUTCOME: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = {
   SETTLED: ["Settled", "ok"], ALREADY_SETTLED: ["Already settled — no-op", "ok"], UNKNOWN_REFERENCE: ["Unknown reference", "bad"], SHORT_PAID: ["Short paid", "bad"],
   NOT_SUCCESSFUL: ["Not successful", "grey"], IGNORED: ["Ignored", "grey"], BAD_SIGNATURE: ["Bad signature — discarded", "bad"], GATEWAY_ERROR: ["Gateway did not answer", "bad"],
+  REVERSED: ["Reversed by Interswitch — for the Bursary", "bad"], VALID: ["Reference valid", "ok"], INVALID: ["Reference refused", "grey"],
 };
+/** the events the Bursary resolves by hand, with a reason on the record */
+export const EXCEPTIONS = ["UNKNOWN_REFERENCE", "SHORT_PAID", "BAD_SIGNATURE", "GATEWAY_ERROR", "REVERSED"];
 export function when(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);

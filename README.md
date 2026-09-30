@@ -11,7 +11,7 @@ Directorate of ICT
 |---|---|
 | `proto/` | The working prototype: 56 parts, concatenated by `build.py` into one self-contained HTML file. `part6.html` is **always last** — it closes the IIFE and calls `render()`. |
 | `public/index.html` | That file, built and committed. It is what gets served. |
-| `db/` | Ten migrations, a read-only deployment verification, and `check.sql` — 155 properties the schema asserts about itself. |
+| `db/` | Ten migrations, a read-only deployment verification, and `check.sql` — 156 properties the schema asserts about itself. |
 | `web/server.js` | The prototype's server. No dependencies, deliberately. |
 | `api/` | **The Spring Boot service** — Java 21, Spring Boot 4.1, Spring Modulith, plain JDBC. The request path (correlation id → token → acting office → the audit context on every transaction → problem responses), then `iam` and `admissions` begun. See `api/README.md`. |
 | `frontend/` | **The Next.js frontend** — App Router, server-rendered, Tailwind; talks to the API only from the server (a BFF), with the prototype's palette and typeface, self-hosted. |
@@ -30,7 +30,7 @@ npm start                     # serve it on :8080
 createdb moaumpp
 export DATABASE_URL=postgres:///moaumpp
 npm run migrate               # applies V001–V010, then verify.sql
-npm run check:db              # the 155 properties — WRITES, use a throwaway database
+npm run check:db              # the 156 properties — WRITES, use a throwaway database
 
 # the browser harnesses (needs playwright + chromium)
 node proto/runall.mjs

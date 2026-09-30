@@ -53,6 +53,8 @@ public class PaymentsService {
     private final String configKey;
     private final String portalUrl;
     private final String apiUrl;
+    private final String envPaydirectUser;
+    private final String envPaydirectPassword;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final tools.jackson.databind.ObjectMapper mapper = new tools.jackson.databind.ObjectMapper();
 
@@ -70,7 +72,9 @@ public class PaymentsService {
                     @Value("${moaum.payments.quickteller.sandbox:false}") boolean qtSandbox,
                     @Value("${moaum.config.key:${moaum.auth.hmac-secret:}}") String configKey,
                     @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
-                    @Value("${moaum.api-url:}") String apiUrl) {
+                    @Value("${moaum.api-url:}") String apiUrl,
+                    @Value("${moaum.payments.paydirect.username:}") String paydirectUser,
+                    @Value("${moaum.payments.paydirect.password:}") String paydirectPassword) {
         this.repo = repo;
         this.tx = new TransactionTemplate(transactions);
         this.envPaystack = blank(paystackSecret) ? "" : paystackSecret.trim();
@@ -94,6 +98,8 @@ public class PaymentsService {
         this.configKey = configKey == null ? "" : configKey.trim();
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
         this.apiUrl = apiUrl == null ? "" : apiUrl.replaceAll("/+$", "");
+        this.envPaydirectUser = blank(paydirectUser) ? "" : paydirectUser.trim();
+        this.envPaydirectPassword = blank(paydirectPassword) ? "" : paydirectPassword.trim();
     }
 
     private static boolean blank(String s) {
@@ -224,12 +230,26 @@ public class PaymentsService {
         return quickteller() != null;
     }
 
-    /** which gateways are wired, for the button to say so */
+    /** which gateways are wired, for the button to say so; "paydirect" is Pay on Quickteller, the biller page (V299) */
     public Map<String, Object> gateways() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("paystack", paystackOn());
         m.put("flutterwave", flutterwaveOn());
         m.put("quickteller", quicktellerOn());
+        m.put("paydirect", repo.quicktellerRedirectOn());
+        return m;
+    }
+
+    /**
+     * The same, for one reference: Pay on Quickteller is offered when the biller of the
+     * payer's College sends payers to its page — a College of Health Sciences payer is
+     * not sent to the University's biller while the College's own is in use.
+     */
+    public Map<String, Object> gateways(String reference) {
+        Map<String, Object> m = gateways();
+        if (reference != null && !reference.isBlank()) {
+            m.put("paydirect", repo.quicktellerLink(reference.trim()).isPresent());
+        }
         return m;
     }
 
@@ -258,7 +278,11 @@ public class PaymentsService {
             throw new DomainRuleViolation("ADMISSION_CHECKING_NOT_PAYABLE", "The admission checking fee cannot be paid now: Admission Status Checking is closed, or the fee is already paid.",
                     new DomainRuleViolation.Remedy("Open Admission Status on the applicant portal: it says whether checking is open and whether your fee is paid. A fee already paid is never charged again.", "You"));
         }
-        String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller" : "") : gateway.trim().toLowerCase();
+        String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller"
+                : repo.quicktellerLink(r.reference()).isPresent() ? "paydirect" : "") : gateway.trim().toLowerCase();
+        if ("paydirect".equals(g)) {
+            return payOnQuickteller(r, account);
+        }
         String back = portalUrl + backPath(r.kind()) + "?paid=" + r.reference();
         /* the card gateways open a checkout on an email address; a record without one (a migrated student
            who never gave a contact) cannot be sent to them — say so, rather than fail inside the request */
@@ -283,6 +307,32 @@ public class PaymentsService {
         AuditContextHolder.with(new AuditContext(account, "bursar", "checkout opened for " + r.reference(), null, null),
                 () -> tx.execute(st -> { repo.attempt(r.reference(), chosen, r.kind(), account); return null; }));
         return Map.of("url", url, "gateway", g, "reference", r.reference());
+    }
+
+    /**
+     * Pay on Quickteller (V299): the payer is sent to the biller's own Quickteller
+     * page with the portal's reference in cid — unchanged, as the portal issued it —
+     * and the amount when the biller carries it. Quickteller checks the reference
+     * with the portal when the payer presses Continue, and the payment comes back
+     * by Interswitch's notification or the collections report. The attempt is kept,
+     * so the Bursary sees who went to pay and has not yet been confirmed.
+     */
+    private Map<String, Object> payOnQuickteller(PaymentsRepository.Reference r, UUID account) {
+        PaymentsRepository.QuicktellerLink link = repo.quicktellerLink(r.reference()).orElseThrow(() -> new DomainRuleViolation("PAY_QUICKTELLER_OFF",
+                "Pay on Quickteller is not offered for this payment.",
+                new DomainRuleViolation.Remedy("Choose another way to pay on this page, or pay by bank transfer or at a branch against the reference.", "Bursary")));
+        AuditContextHolder.with(new AuditContext(account, "bursar", "Quickteller opened for " + r.reference(), null, null),
+                () -> tx.execute(st -> { repo.attempt(r.reference(), "paydirect", r.kind(), account); return null; }));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("url", link.url());
+        out.put("gateway", "paydirect");
+        out.put("reference", link.reference());
+        out.put("amount", link.amount());
+        out.put("withAmount", link.withAmount());
+        out.put("biller", link.billerName());
+        out.put("billerCode", link.billerCode());
+        out.put("scope", link.scope());
+        return out;
     }
 
     private String paystackInitialize(PaymentsRepository.Reference r, String back) {
@@ -553,6 +603,192 @@ public class PaymentsService {
         }
     }
 
+    /* ── Pay on Quickteller (V299): what Interswitch asks the portal, and what it tells it ── */
+
+    /** the service username and password Interswitch sends with each payment notification: set on the dashboard (encrypted) or as service variables */
+    record PayDirectCredentials(String username, String password) {
+    }
+
+    PayDirectCredentials paydirectCredentials() {
+        String user = envPaydirectUser;
+        String pass = envPaydirectPassword;
+        if (!configKey.isEmpty()) {
+            String db = repo.gatewaySecret("paydirect", configKey);
+            if (db != null && !db.isBlank()) {
+                try {
+                    Map<String, Object> m = mapper.readValue(db, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+                    user = str(m.get("serviceUsername"));
+                    pass = str(m.get("servicePassword"));
+                } catch (RuntimeException notJson) {
+                    // a value kept from before V299 (the query API's client id and secret) is not a notification credential
+                    user = "";
+                    pass = "";
+                }
+            }
+        }
+        return user.isEmpty() || pass.isEmpty() ? null : new PayDirectCredentials(user, pass);
+    }
+
+    private boolean paydirectAuthentic(String user, String pass) {
+        PayDirectCredentials c = paydirectCredentials();
+        return c != null && user != null && pass != null
+                && java.security.MessageDigest.isEqual(c.username().getBytes(StandardCharsets.UTF_8), user.trim().getBytes(StandardCharsets.UTF_8))
+                && java.security.MessageDigest.isEqual(c.password().getBytes(StandardCharsets.UTF_8), pass.trim().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String json(Map<String, ?> m) {
+        try {
+            return mapper.writeValueAsString(m);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Quickteller's question about a reference, asked when the payer presses Continue
+     * (PayDirect customer validation). The answer comes from the reference itself: a
+     * reference the portal generated, unpaid, unexpired and payable now is answered
+     * with the payer's name and the amount it asks; anything else is refused, so a
+     * reference already paid cannot be paid twice. Nothing moves; the question and
+     * the answer are kept on the log. The credentials are not asked for here — the
+     * answer tells no more than the reference's holder already knows.
+     */
+    public PayDirectMessages.Answer paydirectValidate(String body) {
+        PayDirectMessages.Message m;
+        try {
+            m = PayDirectMessages.read(body);
+        } catch (IllegalArgumentException unreadable) {
+            log("paydirect", "VALIDATE", "validate", null, null, null, "unreadable", true, "INVALID", json(Map.of("why", "The request could not be read")));
+            boolean asJson = body != null && body.strip().startsWith("{");
+            return new PayDirectMessages.Answer(asJson, PayDirectMessages.customerAnswer(asJson, "", "", "", false, null, null, null, null));
+        }
+        String asked = m.field("CustReference").toUpperCase();
+        PaymentsRepository.Customer c = repo.paydirectCustomer(asked);
+        String reference = c.reference() == null ? asked : c.reference();
+        Map<String, Object> said = new LinkedHashMap<>();
+        said.put("merchantReference", m.field("MerchantReference"));
+        said.put("paymentItemCode", m.field("PaymentItemCode"));
+        said.put("thirdPartyCode", m.field("ThirdPartyCode"));
+        said.put("valid", c.valid());
+        if (c.why() != null) {
+            said.put("why", c.why());
+        }
+        if (c.scope() != null) {
+            said.put("biller", c.scope() + " " + c.billerCode());
+        }
+        log("paydirect", "VALIDATE", "validate", reference.isEmpty() ? null : reference, m.field("MerchantReference").isEmpty() ? null : m.field("MerchantReference"),
+                c.valid() ? c.amount() : null, c.valid() ? "0" : "1", true, c.valid() ? "VALID" : "INVALID", json(said));
+        // the payer confirms the name on Quickteller's page: the surname and the first of the other names
+        String first = c.otherNames() == null ? "" : c.otherNames().trim().split("\\s+")[0];
+        return new PayDirectMessages.Answer(m.json(), PayDirectMessages.customerAnswer(m.json(), m.field("MerchantReference"), m.field("ThirdPartyCode"),
+                reference, c.valid(), first, c.surname(), c.number(), c.amount()));
+    }
+
+    /**
+     * Interswitch's report of payments (PayDirect payment notification). A report
+     * whose service username and password do not match the ones set for it is kept
+     * and not believed — Status 1, and Interswitch sends it again; nothing is ever
+     * credited on an unauthenticated word. An authentic payment is settled as every
+     * payment is: for the reference it names, once, and only for at least the amount
+     * owed (a short payment is kept open for the Bursary). A reversal is kept for the
+     * Bursary to act on, never undone automatically. A payment the portal has
+     * received — settled, already settled, short, or naming no reference of the
+     * portal's — is answered 0, so Interswitch does not send it again.
+     */
+    public PayDirectMessages.Answer paydirectNotify(String body) {
+        PayDirectMessages.Message m;
+        try {
+            m = PayDirectMessages.read(body);
+        } catch (IllegalArgumentException unreadable) {
+            log("paydirect", "WEBHOOK", "notification", null, null, null, "unreadable", false, "IGNORED", json(Map.of("why", "The notification could not be read")));
+            boolean asJson = body != null && body.strip().startsWith("{");
+            return new PayDirectMessages.Answer(asJson, PayDirectMessages.notificationAnswer(asJson, java.util.List.of()));
+        }
+        boolean authentic = paydirectAuthentic(m.field("ServiceUsername"), m.field("ServicePassword"));
+        java.util.List<String[]> results = new java.util.ArrayList<>();
+        for (Map<String, String> p : m.payments()) {
+            String logId = PayDirectMessages.get(p, "PaymentLogId");
+            String status;
+            try {
+                status = paydirectPayment(p, authentic) ? "0" : "1";
+            } catch (RuntimeException e) {
+                LOG.warn("payments: the Quickteller notification {} could not be settled: {}", logId, e.getMessage());
+                status = "1";
+            }
+            results.add(new String[] { logId, status });
+        }
+        if (m.payments().isEmpty()) {
+            log("paydirect", "WEBHOOK", "notification", null, null, null, "no payment", authentic, "IGNORED", json(Map.of("why", "The notification named no payment")));
+        }
+        return new PayDirectMessages.Answer(m.json(), PayDirectMessages.notificationAnswer(m.json(), results));
+    }
+
+    /** one notified payment: true when the portal has received it (0), false when it is not accepted (1) */
+    private boolean paydirectPayment(Map<String, String> p, boolean authentic) {
+        String reference = PayDirectMessages.get(p, "CustReference").toUpperCase();
+        String logId = PayDirectMessages.get(p, "PaymentLogId");
+        BigDecimal amount = PayDirectMessages.parseAmount(PayDirectMessages.get(p, "Amount"));
+        String status = PayDirectMessages.get(p, "PaymentStatus");
+        String channelName = PayDirectMessages.get(p, "ChannelName");
+        // what Interswitch said, without anything that could be a secret
+        Map<String, Object> said = new LinkedHashMap<>();
+        for (String k : new String[] { "PaymentLogId", "CustReference", "AlternateCustReference", "Amount", "PaymentStatus", "PaymentMethod", "PaymentReference",
+                "ChannelName", "Location", "IsReversal", "IsRepeated", "PaymentDate", "SettlementDate", "InstitutionName", "BranchName", "BankName",
+                "CustomerName", "ReceiptNo", "CollectionsAccount", "OriginalPaymentLogId", "OriginalPaymentReference" }) {
+            String v = PayDirectMessages.get(p, k);
+            if (!v.isEmpty()) {
+                said.put(k, v.length() > 300 ? v.substring(0, 300) : v);
+            }
+        }
+        String payload = json(said);
+        String ref = reference.isEmpty() ? null : reference;
+        if (!authentic) {
+            log("paydirect", "WEBHOOK", "notification", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, false, "BAD_SIGNATURE", payload);
+            return false;
+        }
+        if (PayDirectMessages.yes(PayDirectMessages.get(p, "IsReversal"))) {
+            log("paydirect", "WEBHOOK", "reversal", ref, logId.isEmpty() ? null : logId, amount, status.isEmpty() ? null : status, true, "REVERSED", payload);
+            return true;
+        }
+        // PaymentStatus 0 is a successful payment; a notification is sent for one, so an absent status is read as 0
+        boolean success = status.isEmpty() || "0".equals(status) || "00".equals(status);
+        String channel = "Quickteller" + (channelName.isEmpty() ? "" : " · " + (channelName.length() > 40 ? channelName.substring(0, 40) : channelName));
+        settle("paydirect", "WEBHOOK", "notification", reference, amount == null ? BigDecimal.ZERO : amount, status.isEmpty() ? "0" : status, success,
+                logId.isEmpty() ? PayDirectMessages.get(p, "PaymentReference") : logId, payload, channel);
+        return true;
+    }
+
+    /* ── Pay on Quickteller (V299): the billers, and the collections report ── */
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> paydirect() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("billers", repo.paydirectBillers());
+        m.put("collections", repo.paydirectCollections(200));
+        m.put("validations", repo.validations(50));
+        m.put("credentials", paydirectCredentials() != null);
+        m.put("apiBase", apiBase());
+        m.put("validatePath", "/api/v1/payments/paydirect/validate");
+        m.put("notifyPath", "/api/v1/payments/paydirect/notify");
+        return m;
+    }
+
+    public Map<String, Object> setPaydirectBiller(String scope, String code, String name, String link, Boolean active, Boolean redirect, Boolean withAmount) {
+        return AuditContextHolder.with(AuditContextHolder.required(),
+                () -> tx.execute(st -> repo.setPaydirectBiller(scope, code, name, link, active == null || active, redirect != null && redirect,
+                        withAmount == null || withAmount)));
+    }
+
+    /** the Quickteller collections report, matched by reference and confirmed; a short payment is kept open */
+    public Map<String, Object> importPaydirect(java.util.List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            throw new DomainRuleViolation("QUICKTELLER_IMPORT_ROWS", "The report is rows: the reference (PRN), the amount, and a settlement reference.",
+                    new DomainRuleViolation.Remedy("Export the collections report from the Interswitch dashboard and paste or upload its rows.", "Bursary"));
+        }
+        String rowsJson = mapper.writeValueAsString(rows);
+        return AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.importPaydirect(rowsJson)));
+    }
+
     private Map<String, Object> post(String url, String body, String authorization) {
         try {
             HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(20))
@@ -623,6 +859,12 @@ public class PaymentsService {
     /** the one settlement, whichever path reached it, with the gateway's own words kept beside what the portal did (V037) */
     Map<String, Object> settle(String gateway, String source, String event, String reference, BigDecimal paid, String status, boolean success,
                                String providerRef, String payload) {
+        return settle(gateway, source, event, reference, paid, status, success, providerRef, payload, null);
+    }
+
+    /** the same, with the channel the receipt names when it is not a card gateway's (Quickteller's biller page names its own) */
+    Map<String, Object> settle(String gateway, String source, String event, String reference, BigDecimal paid, String status, boolean success,
+                               String providerRef, String payload, String channelLabel) {
         PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).orElse(null);
         String outcome;
         Map<String, Object> answer;
@@ -638,7 +880,8 @@ public class PaymentsService {
             outcome = "SHORT_PAID";
             answer = Map.of("outcome", "short paid", "paid", paid, "owed", r.amount());
         } else {
-            String channel = "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
+            String channel = channelLabel != null ? channelLabel
+                    : "Card · " + (gateway.equals("paystack") ? "Paystack" : gateway.equals("quickteller") ? "Quickteller" : "Flutterwave");
             String note = gateway + " " + providerRef + " · " + paid.toPlainString();
             String settled = AuditContextHolder.with(new AuditContext(NOBODY, "bursar", gateway + " " + source.toLowerCase() + " " + providerRef, null, null),
                     () -> tx.execute(st -> switch (r.kind()) {
@@ -786,10 +1029,26 @@ public class PaymentsService {
         return out;
     }
 
+    /** whether a reference stands confirmed: the payer's own, or any for an office — read from the record, no gateway asked (V299) */
+    public Map<String, Object> stateFor(UUID account, boolean office, String referenceIn) {
+        String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference))
+                .orElseThrow(() -> new NotFound("fee reference", reference));
+        if (!office && !r.accountId().equals(account)) {
+            throw new NotFound("fee reference", reference);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("reference", r.reference());
+        out.put("confirmed", r.confirmedAt() != null);
+        out.put("confirmedAt", r.confirmedAt());
+        return out;
+    }
+
     /** the student's own reference, or an office's: who may ask */
     public Map<String, Object> verifyFor(UUID account, boolean office, String reference) {
         if (!office) {
-            PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).orElseThrow(() -> new NotFound("fee reference", reference));
+            PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference))
+                    .orElseThrow(() -> new NotFound("fee reference", reference));
             if (!r.accountId().equals(account)) {
                 throw new NotFound("fee reference", reference);
             }
@@ -812,7 +1071,8 @@ public class PaymentsService {
         for (Map<String, Object> h : repo.hanging()) {
             Number minutes = (Number) h.get("minutes");
             Number checks = (Number) h.get("checks");
-            if (minutes.intValue() < 5 || checks.intValue() >= 12) {
+            // Pay on Quickteller has nothing to ask: its payments come back by Interswitch's notification or the collections report
+            if (minutes.intValue() < 5 || checks.intValue() >= 12 || "paydirect".equals(h.get("gateway"))) {
                 continue;
             }
             try {
@@ -832,7 +1092,7 @@ public class PaymentsService {
                         "webhook", "/api/v1/payments/webhook/paystack", "channels", "Card · bank transfer · USSD"),
                 Map.of("gateway", "flutterwave", "on", flutterwaveOn(), "mode", flutterwaveOn() ? (flutterwaveSecret().toUpperCase().contains("_TEST") ? "TEST" : "LIVE") : "OFF",
                         "webhook", "/api/v1/payments/webhook/flutterwave", "hash", !flutterwaveHash().isEmpty(), "channels", "Card · bank transfer · USSD"),
-                quicktellerListing()));
+                quicktellerListing(), payOnQuicktellerListing()));
         out.put("tiles", repo.eventTiles());
         out.put("events", repo.events(200));
         out.put("hanging", repo.hanging());
@@ -895,15 +1155,30 @@ public class PaymentsService {
         return row;
     }
 
+    /** the Pay on Quickteller row of the Bursary's listing (V299): on when a biller sends payers to its page; its notification door; whether its credentials are set */
+    private Map<String, Object> payOnQuicktellerListing() {
+        boolean on = repo.quicktellerRedirectOn();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("gateway", "paydirect");
+        row.put("on", on);
+        row.put("mode", on ? "LIVE" : "OFF");
+        row.put("webhook", "/api/v1/payments/paydirect/notify");
+        row.put("validate", "/api/v1/payments/paydirect/validate");
+        row.put("hash", paydirectCredentials() != null);
+        row.put("channels", "Pay on Quickteller — the biller's page on quickteller.com: card, bank transfer, USSD, Quickteller wallet");
+        return row;
+    }
+
     public java.util.List<java.util.Map<String, Object>> gatewayConfig() {
-        // PayDirect is no longer offered (its rows may remain from V080): the card gateways only
-        return repo.gatewayConfig().stream().filter(r -> !"paydirect".equals(r.get("gateway"))).toList();
+        // "paydirect" holds the credentials of Quickteller's payment notification (V299)
+        return repo.gatewayConfig();
     }
 
     public java.util.Map<String, Object> setKey(String gatewayIn, String secret, String hash) {
         String gateway = gatewayIn == null ? "" : gatewayIn.trim().toLowerCase();
-        if (!gateway.equals("paystack") && !gateway.equals("flutterwave") && !gateway.equals("quickteller")) {
-            throw new DomainRuleViolation("PAY_GATEWAY", "The gateway is Paystack, Flutterwave or Quickteller.", new DomainRuleViolation.Remedy("One of the three.", "Directorate of ICT"));
+        if (!gateway.equals("paystack") && !gateway.equals("flutterwave") && !gateway.equals("quickteller") && !gateway.equals("paydirect")) {
+            throw new DomainRuleViolation("PAY_GATEWAY", "The gateway is Paystack, Flutterwave, Quickteller WebPAY, or paydirect (the credentials of Quickteller's payment notification).",
+                    new DomainRuleViolation.Remedy("One of the four.", "Directorate of ICT"));
         }
         if (configKey.isEmpty()) {
             throw new DomainRuleViolation("PAY_NO_CONFIG_KEY", "The portal has no passphrase to encrypt a gateway key with.",
@@ -915,7 +1190,26 @@ public class PaymentsService {
         String s = secret.trim();
         String mode;
         String last4;
-        if (gateway.equals("quickteller")) {
+        if (gateway.equals("paydirect")) {
+            // the service username and password agreed with Interswitch for the payment notification, as one JSON
+            // document; the username's last four are shown, the password never
+            try {
+                Map<String, Object> m = mapper.readValue(s, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+                String user = str(m.get("serviceUsername"));
+                String pass = str(m.get("servicePassword"));
+                if (user.isEmpty() || pass.length() < 8) {
+                    throw new DomainRuleViolation("PAY_PD_CREDENTIALS", "Quickteller's notification needs the service username and a password of at least eight characters.",
+                            new DomainRuleViolation.Remedy("Agree them with Interswitch for the biller and enter the same two here.", "Directorate of ICT"));
+                }
+                mode = "LIVE";
+                last4 = user.length() > 4 ? user.substring(user.length() - 4) : user;
+            } catch (DomainRuleViolation d) {
+                throw d;
+            } catch (RuntimeException notJson) {
+                throw new DomainRuleViolation("PAY_PD_JSON", "The notification credentials are a JSON object with serviceUsername and servicePassword.",
+                        new DomainRuleViolation.Remedy("The Gateways screen builds it from the two fields.", "Directorate of ICT"));
+            }
+        } else if (gateway.equals("quickteller")) {
             // Quickteller's "secret" is the whole WebPAY configuration as one JSON document;
             // validate it, derive the mode from its sandbox flag and the last four from the
             // main merchant's MAC key — the key itself is stored encrypted and never shown

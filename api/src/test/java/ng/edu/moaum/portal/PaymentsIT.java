@@ -151,7 +151,7 @@ class PaymentsIT {
         assertThat(set.getBody().get("last4")).isEqualTo("CDEF");
         Map<String, Object> listing = it.get(academic, "/api/v1/payments/gateways").getBody();
         assertThat(listing.get("quickteller")).isEqualTo(true);
-        assertThat(listing).as("PayDirect is no longer offered").doesNotContainKey("paydirect");
+        assertThat(listing.get("paydirect")).as("Pay on Quickteller (V299) is off until the Bursary switches a biller on").isEqualTo(false);
         try {
             // a Direct Entry applicant into Computer Science (the University's merchant)
             String jamb = "2026" + String.format("%08d", new Random().nextInt(100_000_000)) + "QT";
@@ -227,6 +227,179 @@ class PaymentsIT {
                     .doesNotContain("name=\"product_id\"").doesNotContain("name=\"hash\"");
         } finally {
             it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/quickteller/clear-key", Map.of());
+        }
+    }
+
+    /** an applicant registered on the CAPS list into a programme, with an application-fee reference */
+    String[] applicantWithReference(String programme, String surname, String tag) {
+        String jamb = "2026" + String.format("%08d", new Random().nextInt(100_000_000)) + tag;
+        it.call(academic, HttpMethod.POST, "/api/v1/admissions/caps-batches", Map.of(
+                "session", SESSION, "source", "CAPS_DOWNLOAD", "filename", "CAPS-DE-" + tag + ".xlsx",
+                "fileSha256", String.format("%064x", new Random().nextLong() & Long.MAX_VALUE), "listKind", "DIRECT_ENTRY", "downloadedOn", "2026-09-01",
+                "rows", List.of(Map.of("jambRegNo", jamb, "surname", surname, "otherNames", "Invented Payer", "jambCode", programme,
+                        "entryMode", "DIRECT_ENTRY", "sex", "F", "raw", Map.of()))));
+        @SuppressWarnings("rawtypes")
+        ResponseEntity<Map> registered = post("/api/v1/applicant/register", Map.of("session", SESSION, "jambKey", jamb,
+                "email", jamb.toLowerCase() + "@example.com", "phone", "0803411" + String.format("%04d", new Random().nextInt(10_000)), "password", "a long enough password"));
+        assertThat(registered.getStatusCode().value()).as(String.valueOf(registered.getBody())).isEqualTo(200);
+        String token = String.valueOf(registered.getBody().get("token"));
+        String reference = String.valueOf(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION")).getBody().get("reference"));
+        return new String[] { token, reference };
+    }
+
+    static String notification(String user, String pass, String reference, String logId, String amount, boolean repeated, boolean reversal) {
+        return "<?xml version=\"1.0\" encoding=\"utf-8\"?><PaymentNotificationRequest xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">"
+                + "<ServiceUrl>https://example.invalid/notify</ServiceUrl><ServiceUsername>" + user + "</ServiceUsername><ServicePassword>" + pass + "</ServicePassword>"
+                + "<Payments><Payment><IsRepeated>" + (repeated ? "True" : "False") + "</IsRepeated><ProductGroupCode>HTTPGENERICv31</ProductGroupCode>"
+                + "<PaymentLogId>" + logId + "</PaymentLogId><CustReference>" + reference + "</CustReference><AlternateCustReference>--N/A--</AlternateCustReference>"
+                + "<Amount>" + amount + "</Amount><PaymentStatus>0</PaymentStatus><PaymentMethod>Debit Card</PaymentMethod><PaymentReference>QT|WEB|" + logId + "</PaymentReference>"
+                + "<TerminalId></TerminalId><ChannelName>WEB</ChannelName><Location></Location><IsReversal>" + (reversal ? "True" : "False") + "</IsReversal>"
+                + "<PaymentDate>09/30/2026 15:00:00</PaymentDate><SettlementDate>10/01/2026 00:00:01</SettlementDate><CustomerName>Invented Payer</CustomerName>"
+                + "<ReceiptNo>" + logId + "</ReceiptNo><PaymentItems><PaymentItem><ItemName>Application fee</ItemName><ItemCode>01</ItemCode><ItemAmount>" + amount
+                + "</ItemAmount><ItemQuantity>1</ItemQuantity></PaymentItem></PaymentItems><PaymentCurrency>566</PaymentCurrency></Payment></Payments></PaymentNotificationRequest>";
+    }
+
+    String postXml(String path, String xml) {
+        return open.post().uri(path).contentType(MediaType.TEXT_XML).body(xml).retrieve().body(String.class);
+    }
+
+    /**
+     * Pay on Quickteller (V299), as Interswitch described it: the payer is sent to
+     * https://quickteller.com/bsum?cid=<reference>&amount=<amount>, the reference
+     * being the portal's own, unchanged. The redirect is off until the Bursary
+     * switches the biller on, and a link to anywhere but Interswitch is refused.
+     * Quickteller's question about a reference is answered from the reference; a
+     * payment notification is believed only with the credentials agreed for it,
+     * settles the fee once and only for the amount owed, and a reversal is kept for
+     * the Bursary. A payer in the College of Health Sciences is not sent to the
+     * University's biller while the College's own is in use.
+     */
+    @Test
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    void payOnQuicktellerCarriesThePortalReferenceAndBelievesOnlyAnAuthenticNotification() {
+        String bursar = ItSupport.token("bursar");
+        String ict = ItSupport.token("ict");
+        Map<String, Object> desk = it.get(bursar, "/api/v1/payments/paydirect").getBody();
+        List<Map<String, Object>> billers = (List<Map<String, Object>>) desk.get("billers");
+        Map<String, Object> main = billers.stream().filter(b -> "MAIN".equals(b.get("scope"))).findFirst().orElseThrow();
+        Map<String, Object> chs = billers.stream().filter(b -> "CHS".equals(b.get("scope"))).findFirst().orElseThrow();
+        assertThat(main.get("redirect")).as("off until the Bursary switches it on").isEqualTo(false);
+        assertThat(main.get("pay_link")).isEqualTo("https://quickteller.com/bsum");
+        assertThat(it.get(academic, "/api/v1/payments/gateways").getBody().get("paydirect")).isEqualTo(false);
+        try {
+            String[] app = applicantWithReference("C00023", "ITQUICKTELLER", "QR");
+            String token = app[0];
+            String reference = app[1];
+            BigDecimal amount = jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(BigDecimal.class).single();
+            String amountInLink = amount.stripTrailingZeros().scale() <= 0 ? amount.toBigInteger().toString() : amount.setScale(2).toPlainString();
+
+            // off: the payer is not sent anywhere
+            ResponseEntity<Map> off = it.call(token, HttpMethod.POST, "/api/v1/payments/checkout", Map.of("reference", reference, "gateway", "paydirect"));
+            assertThat(off.getStatusCode().value()).isEqualTo(422);
+
+            // a link to anywhere but Interswitch is refused; the University's Quickteller page is accepted and switched on
+            ResponseEntity<Map> elsewhere = it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/MAIN", Map.of("code", "04255101",
+                    "name", "Benue State University, Makurdi", "link", "https://pay.example.com/bsum", "active", true, "redirect", true, "withAmount", true));
+            assertThat(elsewhere.getStatusCode().value()).isEqualTo(422);
+            assertThat(String.valueOf(elsewhere.getBody())).contains("QUICKTELLER_LINK");
+            ResponseEntity<Map> on = it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/MAIN", Map.of("code", "04255101",
+                    "name", "Benue State University, Makurdi", "link", "https://quickteller.com/bsum", "active", true, "redirect", true, "withAmount", true));
+            assertThat(on.getStatusCode().value()).as(String.valueOf(on.getBody())).isEqualTo(200);
+            assertThat(it.get(token, "/api/v1/payments/gateways?reference=" + reference).getBody().get("paydirect")).isEqualTo(true);
+
+            // the link: the portal's own reference in cid, and the amount
+            Map<String, Object> checkout = it.call(token, HttpMethod.POST, "/api/v1/payments/checkout", Map.of("reference", reference, "gateway", "paydirect")).getBody();
+            assertThat(checkout.get("url")).isEqualTo("https://quickteller.com/bsum?cid=" + reference + "&amount=" + amountInLink);
+            assertThat(checkout.get("gateway")).isEqualTo("paydirect");
+            assertThat(jdbc.sql("SELECT count(*) FROM finance.gateway_attempt WHERE reference = :r AND gateway = 'paydirect'").param("r", reference).query(Long.class).single())
+                    .as("the Bursary sees who went to pay").isEqualTo(1L);
+
+            // Quickteller's question about the reference: the payer's name and the amount; an unknown reference is refused
+            String asked = postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword>"
+                    + "<MerchantReference>6405</MerchantReference><CustReference>" + reference.toLowerCase() + "</CustReference><PaymentItemCode>01</PaymentItemCode>"
+                    + "<ThirdPartyCode></ThirdPartyCode></CustomerInformationRequest>");
+            assertThat(asked).contains("<Status>0</Status>").contains("<CustReference>" + reference + "</CustReference>")
+                    .containsIgnoringCase("<LastName>ITQUICKTELLER</LastName>").containsIgnoringCase("<FirstName>Invented</FirstName>")
+                    .contains("<Amount>" + amount.setScale(2).toPlainString() + "</Amount>");
+            assertThat(postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><CustReference>MOAUM-APP-000000-0000</CustReference></CustomerInformationRequest>"))
+                    .contains("<Status>1</Status>").contains("<FirstName></FirstName>");
+
+            // a notification without the credentials agreed for it is kept and not believed
+            String logId = String.valueOf(1_000_000 + new Random().nextInt(8_000_000));
+            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("", "", reference, logId, amount.toPlainString(), false, false)))
+                    .contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>1</Status>");
+            assertThat(jdbc.sql("SELECT confirmed_at IS NULL FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(Boolean.class).single()).isTrue();
+            assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("confirmed")).as("the payer's check reads the record").isEqualTo(false);
+
+            // the credentials, set once by the Directorate of ICT
+            ResponseEntity<Map> creds = it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",
+                    Map.of("secret", "{\"serviceUsername\":\"moaum-it-notify\",\"servicePassword\":\"an-invented-password\"}"));
+            assertThat(creds.getStatusCode().value()).as(String.valueOf(creds.getBody())).isEqualTo(200);
+            assertThat(creds.getBody().get("last4")).isEqualTo("tify");
+            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "a-wrong-password", reference, logId, amount.toPlainString(), false, false)))
+                    .contains("<Status>1</Status>");
+
+            // short of the amount: received, kept open for the Bursary
+            String shortId = String.valueOf(Long.parseLong(logId) + 1);
+            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, shortId, "100.00", false, false)))
+                    .contains("<PaymentLogId>" + shortId + "</PaymentLogId><Status>0</Status>");
+            assertThat(jdbc.sql("SELECT confirmed_at IS NULL FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(Boolean.class).single()).isTrue();
+
+            // the amount owed, authentic: confirmed once, on Quickteller's channel
+            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false)))
+                    .contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>0</Status>");
+            assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("feeConfirmedAt")).isNotNull();
+            assertThat(it.get(token, "/api/v1/payments/state?reference=" + reference).getBody().get("confirmed")).isEqualTo(true);
+            assertThat(jdbc.sql("SELECT channel FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(String.class).single()).isEqualTo("Quickteller · WEB");
+            // the same payment again is received, not paid twice
+            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, logId, amount.toPlainString(), true, false)))
+                    .contains("<Status>0</Status>");
+            List<String> outcomes = jdbc.sql("SELECT outcome FROM finance.gateway_event WHERE gateway = 'paydirect' AND reference = :r AND source = 'WEBHOOK' ORDER BY received_at")
+                    .param("r", reference).query(String.class).list();
+            assertThat(outcomes).containsExactly("BAD_SIGNATURE", "BAD_SIGNATURE", "SHORT_PAID", "SETTLED", "ALREADY_SETTLED");
+
+            // a paid reference is refused when Quickteller asks again, so it is not paid twice
+            assertThat(postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><CustReference>" + reference + "</CustReference></CustomerInformationRequest>"))
+                    .contains("<Status>1</Status>");
+            // a reversal is kept for the Bursary; the confirmation stands until the Bursary acts
+            String reversalId = String.valueOf(Long.parseLong(logId) + 2);
+            assertThat(postXml("/api/v1/payments/paydirect/notify", notification("moaum-it-notify", "an-invented-password", reference, reversalId, "-" + amount.toPlainString(), false, true)))
+                    .contains("<Status>0</Status>");
+            assertThat(jdbc.sql("SELECT outcome FROM finance.gateway_event WHERE gateway = 'paydirect' AND gateway_ref = :g").param("g", reversalId).query(String.class).single())
+                    .isEqualTo("REVERSED");
+            assertThat(jdbc.sql("SELECT confirmed_at IS NOT NULL FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(Boolean.class).single()).isTrue();
+            // no secret is kept on the log
+            assertThat(jdbc.sql("SELECT count(*) FROM finance.gateway_event WHERE gateway = 'paydirect' AND payload::text LIKE '%an-invented-password%'").query(Long.class).single())
+                    .isEqualTo(0L);
+
+            // the Bursary's desk: the reference checks listed apart from the money, the settlement among the events
+            Map<String, Object> after = it.get(bursar, "/api/v1/payments/paydirect").getBody();
+            assertThat(after.get("credentials")).isEqualTo(true);
+            assertThat(((List<Map<String, Object>>) after.get("validations")).stream().map(v -> String.valueOf(v.get("reference")))).contains(reference);
+            List<Map<String, Object>> events = (List<Map<String, Object>>) it.get(bursar, "/api/v1/payments/bursary").getBody().get("events");
+            assertThat(events.stream().filter(e -> reference.equals(e.get("reference"))).map(e -> String.valueOf(e.get("source")))).doesNotContain("VALIDATE");
+
+            // a payer in the College of Health Sciences: the College's biller is in use but not switched on — not sent to the University's
+            String[] chsApp = applicantWithReference("C00061", "ITQUICKTELLERCHS", "QH");
+            assertThat(it.get(chsApp[0], "/api/v1/payments/state?reference=" + reference).getStatusCode().value()).as("another payer's reference is not theirs to read").isEqualTo(404);
+            assertThat(it.get(chsApp[0], "/api/v1/payments/gateways?reference=" + chsApp[1]).getBody().get("paydirect")).isEqualTo(false);
+            assertThat(it.call(chsApp[0], HttpMethod.POST, "/api/v1/payments/checkout", Map.of("reference", chsApp[1], "gateway", "paydirect")).getStatusCode().value())
+                    .isEqualTo(422);
+            // without the amount in the link when the biller says so
+            it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/CHS", Map.of("code", String.valueOf(chs.get("biller_code")),
+                    "name", String.valueOf(chs.get("name")), "link", "https://quickteller.com/chsbsu", "active", true, "redirect", true, "withAmount", false));
+            Map<String, Object> chsCheckout = it.call(chsApp[0], HttpMethod.POST, "/api/v1/payments/checkout", Map.of("reference", chsApp[1], "gateway", "paydirect")).getBody();
+            assertThat(chsCheckout.get("url")).isEqualTo("https://quickteller.com/chsbsu?cid=" + chsApp[1]);
+        } finally {
+            // the billers as they were, switched off again, and the credentials cleared
+            for (Map<String, Object> b : List.of(main, chs)) {
+                ResponseEntity<Map> back = it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/" + b.get("scope"), Map.of(
+                        "code", String.valueOf(b.get("biller_code")), "name", String.valueOf(b.get("name")),
+                        "link", b.get("pay_link") == null ? "" : String.valueOf(b.get("pay_link")),
+                        "active", Boolean.TRUE.equals(b.get("active")), "redirect", false, "withAmount", true));
+                assertThat(back.getStatusCode().value()).as("biller " + b.get("scope") + " restored: " + back.getBody()).isEqualTo(200);
+            }
+            it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/clear-key", Map.of());
         }
     }
 }
