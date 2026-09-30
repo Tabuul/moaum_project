@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 154
+\set EXPECTED 155
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3653,6 +3653,71 @@ BEGIN
                r_ordinary, r_note, r_elig, r_early, r_mat, r_approver, r_same, decided, q.kind, q.admission_stage, q.decided_office,
                q.fees_paid, q.fees_due_before, q.fees_due_after, q.registrations_returned, q.letter_reissued, reg_row.status, left(reg_row.returned_comment, 30),
                st_row.programme_code, pos.due, pos.paid, pos.balance, n_letters, stage_after, reg_line.applied_code, reg_line.current_code, reg_line.stage, reg_line.reason));
+END $$;
+
+-- ── V298. an O'Level upload is checked for duplicates ──
+-- The same result again (the exam number written another way, or no number and the same grades) is not recorded again; a second
+-- result for the same examining body, year and series is held, not recorded, until the Office keeps the one on record or uses the
+-- uploaded one in its place; the GCE of the same year is a sitting of its own; the same exam number on another applicant's record
+-- is recorded and flagged until verified. Every finding is kept, and the Office's word always says how it was verified.
+DO $$
+DECLARE officer uuid := gen_random_uuid(); k1 text := '9980000001OL'; k2 text := '9980000002OL';
+        a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid(); a3 uuid := gen_random_uuid(); a4 uuid := gen_random_uuid(); a5 uuid := gen_random_uuid();
+        n1 int; n2 int; n3 int; n4 int; n5 int; s1 int; s1_after int; s2 int; held uuid; flagged uuid; st_use text; st_ver text;
+        r_note text := 'ok'; r_again text := 'ok'; r_office text := 'ok'; numbers text; kinds text; listed bigint; helpers boolean; flag_other text; known_again boolean; known_new boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        helpers := admissions.olevel_series_class('GCE', NULL) = 'EXTERNAL' AND admissions.olevel_series_class('WASSCE', 'MAY/JUNE') = 'INTERNAL'
+               AND admissions.olevel_series_class('WAEC', 'Nov/Dec') = 'EXTERNAL' AND admissions.olevel_series_class('SSCE', NULL) = 'INTERNAL'
+               AND admissions.olevel_exam_key(' 4250-101/001 ') = '4250101001' AND admissions.olevel_exam_key('  ') IS NULL
+               AND admissions.olevel_year('MAY/JUNE 2023') = '2023' AND admissions.olevel_year('n/a') IS NULL;
+        INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a1, '9980/9981', 'OLEVEL', 'v298-1', k1, 'COLUMN',
+          '{"sittings":[{"type":"WASSCE","series":"MAY/JUNE","year":"2023","examNumber":"4250101001","subjects":[{"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"B3"},{"subject":"Physics","grade":"C5"}]},
+                        {"type":"NECO","year":"2023","examNumber":"1234567890","subjects":[{"subject":"English Language","grade":"B3"},{"subject":"Chemistry","grade":"C4"}]}]}'::jsonb);
+        n1 := admissions.olevel_from_attachment(a1);
+        INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a2, '9980/9981', 'OLEVEL', 'v298-2', k1, 'COLUMN',
+          '{"sittings":[{"type":"WAEC","year":"2023","examNumber":"4250101 001","subjects":[{"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"B3"},{"subject":"Physics","grade":"C5"}]}]}'::jsonb);
+        n2 := admissions.olevel_from_attachment(a2);
+        INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a3, '9980/9981', 'OLEVEL', 'v298-3', k1, 'COLUMN',
+          '{"sittings":[{"type":"WASSCE","series":"MAY/JUNE","year":"2023","examNumber":"4250101002","subjects":[{"subject":"English Language","grade":"B2"},{"subject":"Mathematics","grade":"A1"},{"subject":"Physics","grade":"B3"}]},
+                        {"type":"WAEC GCE","series":"NOV/DEC","year":"2023","examNumber":"4250999001","subjects":[{"subject":"Biology","grade":"C4"}]}]}'::jsonb);
+        n3 := admissions.olevel_from_attachment(a3);
+        INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a4, '9980/9981', 'OLEVEL', 'v298-4', k2, 'COLUMN',
+          '{"sittings":[{"type":"WAEC","year":"2022","examNumber":"4250-101-001","subjects":[{"subject":"English Language","grade":"A1"}]}]}'::jsonb);
+        n4 := admissions.olevel_from_attachment(a4);
+        INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a5, '9980/9981', 'OLEVEL', 'v298-5', k1, 'COLUMN',
+          '{"sittings":[{"type":"WAEC","year":"May/June 2023","subjects":[{"subject":"Physics","grade":"C5"},{"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"B3"}]}]}'::jsonb);
+        n5 := admissions.olevel_from_attachment(a5);
+        s1 := admissions.olevel_sittings('9980/9981', k1);
+        s2 := admissions.olevel_sittings('9980/9981', k2);
+        -- a file sent again brings nothing new when every sitting is the same result on record; one with a second result does
+        known_again := admissions.olevel_payload_known('9980/9981', k1, '{"sittings":[{"type":"WAEC","series":"May/June","year":"2023","examNumber":"4250 101 001","subjects":[{"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"B3"},{"subject":"Physics","grade":"C5"}]},{"type":"NECO","year":"2023","examNumber":"1234567890","subjects":[{"subject":"English Language","grade":"B3"},{"subject":"Chemistry","grade":"C4"}]}]}'::jsonb);
+        known_new := admissions.olevel_payload_known('9980/9981', k1, (SELECT payload FROM admissions.attachment WHERE id = a3));
+        SELECT string_agg(kind || ':' || state, ',' ORDER BY attachment_id = a2 DESC, attachment_id = a3 DESC, attachment_id = a4 DESC) INTO kinds FROM admissions.olevel_duplicate WHERE session = '9980/9981';
+        SELECT id INTO held FROM admissions.olevel_duplicate WHERE attachment_id = a3 AND kind = 'SAME_SITTING';
+        SELECT id, other_jamb_key INTO flagged, flag_other FROM admissions.olevel_duplicate WHERE attachment_id = a4 AND kind = 'NUMBER_ELSEWHERE';
+        BEGIN PERFORM admissions.olevel_duplicate_decide(held, 'USE', ' ', officer, 'academic'); EXCEPTION WHEN check_violation THEN r_note := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.olevel_duplicate_decide(held, 'USE', 'x', officer, 'bursar'); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        st_use := admissions.olevel_duplicate_decide(held, 'USE', 'Verified on the WAEC result checker: 4250101002 is the candidate''s', officer, 'academic');
+        BEGIN PERFORM admissions.olevel_duplicate_decide(held, 'KEEP', 'x', officer, 'academic'); EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
+        st_ver := admissions.olevel_duplicate_decide(flagged, 'VERIFIED', 'WAEC confirms 4250101001 is the first candidate''s', officer, 'academic');
+        s1_after := admissions.olevel_sittings('9980/9981', k1);
+        SELECT string_agg(exam_number, ',' ORDER BY exam_number) INTO numbers FROM admissions.olevel_sitting WHERE session = '9980/9981' AND jamb_key = k1;
+        SELECT count(*) INTO listed FROM admissions.olevel_duplicates('9980/9981');
+        RAISE EXCEPTION 'the V298 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('An O''Level upload is checked for duplicates: the same result skipped, a second result held, a shared number flagged',
+        coalesce(helpers AND n1 = 2 AND n2 = 0 AND n3 = 1 AND n4 = 1 AND n5 = 0 AND s1 = 3 AND s2 = 1
+                 AND kinds = 'SAME_RESULT:SKIPPED,SAME_SITTING:HELD,NUMBER_ELSEWHERE:OPEN,SAME_RESULT:SKIPPED' AND flag_other = k1
+                 AND r_note = 'OLEVEL_DUPLICATE_NOTE' AND r_office = 'OLEVEL_DUPLICATE_OFFICE' AND r_again = 'OLEVEL_DUPLICATE_DECIDED'
+                 AND st_use = 'USED' AND st_ver = 'VERIFIED' AND s1_after = 3 AND numbers = '1234567890,4250101002,4250999001' AND listed = 4
+                 AND known_again AND NOT known_new, false),
+        format('helpers=%s recorded=%s/%s/%s/%s/%s sittings=%s/%s findings=%s flagged-with=%s refusals=%s/%s/%s decided=%s/%s after=%s numbers=%s listed=%s known=%s/%s',
+               helpers, n1, n2, n3, n4, n5, s1, s2, kinds, flag_other, r_note, r_office, r_again, st_use, st_ver, s1_after, numbers, listed, known_again, known_new));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

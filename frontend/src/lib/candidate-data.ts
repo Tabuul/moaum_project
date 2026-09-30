@@ -195,3 +195,98 @@ export function capsMatch<T extends { num: string }>(items: T[], cands: { num: s
   }
   return { candidates: cands.length, matched, orphan, missing: cands.filter((c) => !have.has(c.num)), byNum };
 }
+
+/* ── V298: the duplicate check, read the way the database reads it (admissions.exam_body, olevel_series_class, olevel_exam_key) ── */
+
+/** JAMB's ExamType as the examining body */
+export function examBody(type: unknown): "WAEC" | "NECO" | "NABTEB" | "OTHER" {
+  const t = String(type ?? "").toUpperCase();
+  if (t.includes("NECO")) return "NECO";
+  if (t.includes("NABTEB")) return "NABTEB";
+  if (t.includes("WAEC") || t.includes("WASSCE") || t.includes("WASC")) return "WAEC";
+  return "OTHER";
+}
+
+/** the private November/December examinations (GCE, "private", "external") apart from the school's */
+export function seriesClass(type: unknown, series: unknown): "INTERNAL" | "EXTERNAL" {
+  const s = String(series ?? "").toUpperCase();
+  if (/(NOV|DEC|PRIVATE|EXTERNAL|GCE)/.test(s)) return "EXTERNAL";
+  if (s.trim()) return "INTERNAL";
+  return /(GCE|PRIVATE|EXTERNAL|NOV|DEC)/.test(String(type ?? "").toUpperCase()) ? "EXTERNAL" : "INTERNAL";
+}
+
+/** the exam number as compared: upper case, without spaces, dashes, slashes or dots; "" when there is none */
+export function examKey(n: unknown): string {
+  return String(n ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export function examYear(y: unknown): string {
+  return /(?:19|20)\d{2}/.exec(String(y ?? ""))?.[0] ?? "";
+}
+
+const sigOf = (s: OlSitting) => [...new Set(s.subjects.map((g) => `${g.subject}=${g.grade}`))].sort().join(",");
+
+export interface OlFileDuplicates {
+  /** a candidate with two results for one examination (the same body, year and series) that differ */
+  sameSitting: { num: string; body: string; year: string; series: "INTERNAL" | "EXTERNAL"; numbers: string[] }[];
+  /** the same result twice in the file (the same body and exam number, or the same examination and grades) */
+  sameResult: { num: string; body: string; year: string; exnum: string }[];
+  /** an exam number the file gives more than one candidate */
+  sharedNumber: { body: string; exnum: string; nums: string[] }[];
+  /** a subject listed more than once in one sitting */
+  repeatedSubjects: { num: string; body: string; year: string; subject: string; times: number }[];
+}
+
+/** what the file itself repeats, before anything is recorded — the server checks the same against the record */
+export function olDuplicates(rows: OlRow[]): OlFileDuplicates {
+  const out: OlFileDuplicates = { sameSitting: [], sameResult: [], sharedNumber: [], repeatedSubjects: [] };
+  const byNumber = new Map<string, { body: string; exnum: string; nums: Set<string> }>();
+  for (const r of rows) {
+    const kept: OlSitting[] = [];
+    for (const s of r.sittings) {
+      const body = examBody(s.type), year = examYear(s.year), cls = seriesClass(s.type, s.series), key = examKey(s.exnum);
+      const counts = new Map<string, number>();
+      for (const g of s.subjects) counts.set(g.subject, (counts.get(g.subject) ?? 0) + 1);
+      for (const [subject, times] of counts) if (times > 1) out.repeatedSubjects.push({ num: r.num, body, year: s.year, subject, times });
+      if (key) {
+        const k = `${body}|${key}`;
+        const e = byNumber.get(k) ?? { body, exnum: s.exnum, nums: new Set<string>() };
+        e.nums.add(r.num);
+        byNumber.set(k, e);
+      }
+      const same = kept.find((o) => examBody(o.type) === body && ((key && examKey(o.exnum) === key)
+        || (year && body !== "OTHER" && examYear(o.year) === year && seriesClass(o.type, o.series) === cls && sigOf(o) === sigOf(s))));
+      if (same) { out.sameResult.push({ num: r.num, body, year: s.year, exnum: s.exnum }); continue; }
+      const clash = year && body !== "OTHER" ? kept.find((o) => examBody(o.type) === body && examYear(o.year) === year && seriesClass(o.type, o.series) === cls) : undefined;
+      if (clash) {
+        const hit = out.sameSitting.find((x) => x.num === r.num && x.body === body && x.year === year && x.series === cls);
+        if (hit) hit.numbers.push(s.exnum || "(no number)");
+        else out.sameSitting.push({ num: r.num, body, year, series: cls, numbers: [clash.exnum || "(no number)", s.exnum || "(no number)"] });
+        continue;
+      }
+      kept.push(s);
+    }
+  }
+  for (const e of byNumber.values()) if (e.nums.size > 1) out.sharedNumber.push({ body: e.body, exnum: e.exnum, nums: [...e.nums].sort() });
+  return out;
+}
+
+/** V298: a finding of the O'Level upload check, as the register gives it (admissions.olevel_duplicates) */
+export interface OlevelDuplicateRow {
+  id: string; kind: "SAME_RESULT" | "SAME_SITTING" | "NUMBER_ELSEWHERE"; state: "SKIPPED" | "HELD" | "KEPT" | "USED" | "OPEN" | "VERIFIED";
+  jamb_key: string; candidate?: string | null; programme?: string | null; source_name: string; sitting_no: number;
+  exam_body: string; exam_type_raw?: string | null; exam_year?: string | null; exam_series?: string | null; exam_number?: string | null; subjects?: string | null;
+  other_jamb_key?: string | null; other_candidate?: string | null; other_exam_year?: string | null; other_exam_number?: string | null; other_subjects?: string | null; other_on_record?: boolean;
+  detected_at: string; decided_at?: string | null; decided_office?: string | null; decided_by?: string | null; note?: string | null;
+}
+export interface OlevelDuplicateRegister { session: string; rows: OlevelDuplicateRow[] }
+
+export const FINDING_WORD: Record<OlevelDuplicateRow["kind"], [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
+  SAME_RESULT: ["Already on record", "grey"],
+  SAME_SITTING: ["Second result for one examination", "bad"],
+  NUMBER_ELSEWHERE: ["Exam number on another applicant", "warn"],
+};
+export const FINDING_STATE: Record<OlevelDuplicateRow["state"], [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
+  SKIPPED: ["Not recorded again", "grey"], HELD: ["Held — to decide", "bad"], KEPT: ["Result on record kept", "ok"],
+  USED: ["Uploaded result used", "ok"], OPEN: ["Open — to verify", "warn"], VERIFIED: ["Verified", "ok"],
+};

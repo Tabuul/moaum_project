@@ -2,6 +2,7 @@ package ng.edu.moaum.portal.admissions;
 
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -9,7 +10,9 @@ import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
@@ -135,31 +138,108 @@ class CandidateDataController {
             throw new DomainRuleViolation("ATT_KIND", "'" + batch.kind() + "' is not one of the three downloads.",
                     new DomainRuleViolation.Remedy("PASSPORT, DATE_OF_BIRTH or OLEVEL.", "Directorate of ICT"));
         }
-        int recorded = 0;
+        int recorded = 0, skipped = 0;
+        List<String> olevels = new ArrayList<>();
         for (Item it : batch.items()) {
             String key = it.jambKey() == null || it.jambKey().isBlank() ? null : it.jambKey().trim().toUpperCase();
             String readAs = key == null ? "UNREADABLE" : it.readAs();
+            String name = it.sourceName();
+            String payload = Json.text(it.payload());
             long already = jdbc.sql("SELECT count(*) FROM admissions.attachment WHERE session = :s AND kind = :k AND source_name = :n")
-                    .param("s", s).param("k", batch.kind()).param("n", it.sourceName()).query(Long.class).single();
+                    .param("s", s).param("k", batch.kind()).param("n", name).query(Long.class).single();
             if (already > 0) {
-                continue;
+                /* V298: an O'Level result already recorded under this name is a duplicate upload only when it says the same; one that
+                   has changed is recorded beside it, and its sittings are checked against the record like any other */
+                boolean same = !"OLEVEL".equals(batch.kind()) || jdbc.sql("""
+                        SELECT EXISTS (SELECT 1 FROM admissions.attachment WHERE session = :s AND kind = :k
+                                          AND (source_name = :n OR source_name LIKE :n || ' · %') AND payload = CAST(:p AS jsonb))
+                        """).param("s", s).param("k", batch.kind()).param("n", name).param("p", payload).query(Boolean.class).single();
+                /* nor when every sitting it carries is already on the candidate's record as the same result (a file uploaded again after V298 added the series) */
+                if (same || key != null && jdbc.sql("SELECT admissions.olevel_payload_known(:s, :k, CAST(:p AS jsonb))")
+                        .param("s", s).param("k", key).param("p", payload).query(Boolean.class).single()) {
+                    skipped++;
+                    continue;
+                }
+                name = name + " · " + jdbc.sql("SELECT left(md5(:p), 8)").param("p", payload).query(String.class).single();
+                long again = jdbc.sql("SELECT count(*) FROM admissions.attachment WHERE session = :s AND kind = :k AND source_name = :n")
+                        .param("s", s).param("k", batch.kind()).param("n", name).query(Long.class).single();
+                if (again > 0) {
+                    skipped++;
+                    continue;
+                }
             }
             UUID id = UUID.randomUUID();
             jdbc.sql("""
                     INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload, bytes, width_px, height_px)
                     VALUES (:id, :s, :k, :n, :key, :r, CAST(:p AS jsonb), :b, :w, :h)
-                    """).param("id", id).param("s", s).param("k", batch.kind()).param("n", it.sourceName()).param("key", key, Types.VARCHAR)
-                    .param("r", readAs).param("p", Json.text(it.payload())).param("b", it.bytes(), Types.BIGINT)
+                    """).param("id", id).param("s", s).param("k", batch.kind()).param("n", name).param("key", key, Types.VARCHAR)
+                    .param("r", readAs).param("p", payload).param("b", it.bytes(), Types.BIGINT)
                     .param("w", it.widthPx(), Types.INTEGER).param("h", it.heightPx(), Types.INTEGER).update();
             if ("OLEVEL".equals(batch.kind())) {
-                /* the sittings, read out of what arrived (V020) */
+                /* the sittings, read out of what arrived (V020), each checked for duplicates before it is recorded (V298) */
                 jdbc.sql("SELECT admissions.olevel_from_attachment(:id)").param("id", id).query(Integer.class).single();
+                olevels.add(id.toString());
             }
             recorded++;
         }
         List<Map<String, Object>> attached = new ArrayList<>(jdbc.sql("SELECT kind, newly_attached FROM admissions.attach_pending(:s)")
                 .param("s", s).query().listOfRows());
-        return Map.of("recorded", recorded, "attached", attached, "findings", intake.attachmentState(s));
+        Map<String, Object> duplicates = new LinkedHashMap<>();
+        duplicates.put("SAME_RESULT", 0L);
+        duplicates.put("SAME_SITTING", 0L);
+        duplicates.put("NUMBER_ELSEWHERE", 0L);
+        if (!olevels.isEmpty()) {
+            for (Map<String, Object> r : jdbc.sql("SELECT kind, count(*) AS n FROM admissions.olevel_duplicate WHERE attachment_id::text = ANY(:ids) GROUP BY kind")
+                    .param("ids", olevels.toArray(String[]::new)).query().listOfRows()) {
+                duplicates.put(String.valueOf(r.get("kind")), ((Number) r.get("n")).longValue());
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("recorded", recorded);
+        out.put("skipped", skipped);
+        out.put("attached", attached);
+        out.put("duplicates", duplicates);
+        out.put("findings", intake.attachmentState(s));
+        return out;
+    }
+
+    /** V298: what the session's O'Level uploads carried that was already on record, a second result for one examination (held), or an
+     *  exam number on another applicant's record (open until verified) — held and open first */
+    @GetMapping("/olevel-duplicates")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> olevelDuplicates(@PathVariable String session, @PathVariable String year) {
+        String s = session + "/" + year;
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("rows", jdbc.sql("SELECT * FROM admissions.olevel_duplicates(:s)").param("s", s).query().listOfRows());
+        return out;
+    }
+
+    public record DuplicateDecision(@NotBlank @Size(max = 1000) String note) {
+    }
+
+    /** the Office's word on a finding: KEEP the result on record, USE the uploaded one in its place, or record it VERIFIED — with how */
+    @PostMapping("/olevel-duplicates/{id}/{action}")
+    @PreAuthorize(WRITERS)
+    @Transactional
+    Map<String, Object> decideDuplicate(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @PathVariable String action,
+                                        @Valid @RequestBody DuplicateDecision body) {
+        String s = session + "/" + year;
+        long n = jdbc.sql("SELECT count(*) FROM admissions.olevel_duplicate WHERE id = :id AND session = :s").param("id", id).param("s", s).query(Long.class).single();
+        if (n == 0) {
+            throw new NotFound("O'Level finding", id);
+        }
+        String a = action.trim().toUpperCase();
+        if (!List.of("KEEP", "USE", "VERIFIED").contains(a)) {
+            throw new DomainRuleViolation("OLEVEL_DUPLICATE_ACTION", "'" + action + "' is not a decision on a duplicate O'Level upload.",
+                    new DomainRuleViolation.Remedy("KEEP the result on record, USE the uploaded one, or record it VERIFIED.", "Academic Office"));
+        }
+        UUID actor = AuditContextHolder.current().map(c -> c.actorId()).orElse(null);
+        String office = AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
+        jdbc.sql("SELECT admissions.olevel_duplicate_decide(:id, :a, :n, :by, :o)").param("id", id).param("a", a).param("n", body.note())
+                .param("by", actor, Types.OTHER).param("o", office, Types.VARCHAR).query(String.class).single();
+        return olevelDuplicates(session, year);
     }
 
     /** the little JSON the payload needs, without another dependency on the mapper's configuration */

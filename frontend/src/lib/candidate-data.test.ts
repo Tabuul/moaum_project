@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { capsMatch, dobParse, jambNumFromName, olParse, olSubject } from "./candidate-data.ts";
+import { capsMatch, dobParse, examBody, examKey, examYear, jambNumFromName, olDuplicates, olParse, olSubject, seriesClass } from "./candidate-data.ts";
 
 test("the number is found inside a filename, whatever is wrapped around it", () => {
   assert.deepEqual(jambNumFromName("202699168863AH_Face.jpg"), { num: "202699168863AH", how: "from 202699168863AH_Face.jpg" });
@@ -74,4 +74,49 @@ test("two sittings are kept apart, and the best grade per subject is the one the
   assert.equal(c.subjects.find((s) => s.subject === "Physics")?.grade, "C4");
   assert.equal(c.credits, 6);
   assert.equal(c.meets, true);
+});
+
+
+test("the examining body, series, number and year are read the way the database reads them", () => {
+  assert.equal(examBody("WASSCE"), "WAEC");
+  assert.equal(examBody("NECO (SSCE)"), "NECO");
+  assert.equal(examBody("GCE"), "OTHER");
+  assert.equal(seriesClass("WAEC GCE", ""), "EXTERNAL");
+  assert.equal(seriesClass("WASSCE", "MAY/JUNE"), "INTERNAL");
+  assert.equal(seriesClass("WAEC", "Nov/Dec"), "EXTERNAL");
+  assert.equal(seriesClass("NECO", ""), "INTERNAL");
+  assert.equal(examKey(" 4250-101/001 "), "4250101001");
+  assert.equal(examYear("MAY/JUNE 2023"), "2023");
+  assert.equal(examYear(""), "");
+});
+
+test("the file's own duplicates are found before anything is recorded", () => {
+  const head = ["RegNum", "SubjectName", "Grade", "ExamSeries", "ExamYear", "ExamType", "ExamNumber"];
+  const r = olParse([head,
+    // one candidate: WAEC May/June 2023 twice under two numbers (a clash); the GCE of 2023 (its own sitting); NECO under the same number twice as written
+    ["202611111111AA", "English Language", "C6", "MAY/JUNE", "2023", "WASSCE", "4250101001"],
+    ["202611111111AA", "Mathematics", "B3", "MAY/JUNE", "2023", "WASSCE", "4250101001"],
+    ["202611111111AA", "Mathematics", "B3", "MAY/JUNE", "2023", "WASSCE", "4250101001"],
+    ["202611111111AA", "English Language", "B2", "MAY/JUNE", "2023", "WASSCE", "4250101002"],
+    ["202611111111AA", "Biology", "C4", "NOV/DEC", "2023", "WAEC GCE", "4250999001"],
+    ["202611111111AA", "Chemistry", "C4", "JUNE/JULY", "2023", "NECO", "1234567890"],
+    ["202611111111AA", "Chemistry", "C4", "JUNE/JULY", "2023", "NECO (SSCE)", "1234 567 890"],
+    // another candidate with the first candidate's WAEC number
+    ["202622222222BB", "English Language", "A1", "MAY/JUNE", "2022", "WAEC", "4250-101-001"],
+  ]);
+  assert.ok("rows" in r);
+  const d = olDuplicates(r.rows);
+  assert.deepEqual(d.sameSitting, [{ num: "202611111111AA", body: "WAEC", year: "2023", series: "INTERNAL", numbers: ["4250101001", "4250101002"] }]);
+  assert.equal(d.sameResult.length, 1);
+  assert.equal(d.sameResult[0].body, "NECO");
+  assert.deepEqual(d.sharedNumber, [{ body: "WAEC", exnum: "4250101001", nums: ["202611111111AA", "202622222222BB"] }]);
+  assert.deepEqual(d.repeatedSubjects.map((x) => `${x.subject}×${x.times}`), ["Mathematics×2"]);
+});
+
+test("a file with nothing repeated has nothing to say", () => {
+  const r = olParse([["RegNum", "SubjectName", "Grade", "ExamYear", "ExamType", "ExamNumber"],
+    ["202611111111AA", "English Language", "C6", "2023", "WAEC", "1"], ["202611111111AA", "Physics", "C6", "2024", "NECO", "2"]]);
+  assert.ok("rows" in r);
+  const d = olDuplicates(r.rows);
+  assert.equal(d.sameSitting.length + d.sameResult.length + d.sharedNumber.length + d.repeatedSubjects.length, 0);
 });

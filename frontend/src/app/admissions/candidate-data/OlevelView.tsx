@@ -14,9 +14,10 @@ import { Btn, Note, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { FINDING_STATE, FINDING_WORD, type OlevelDuplicateRow } from "@/lib/candidate-data";
 
 export interface OlevelGrade { subject: string; grade: string; points: number }
-export interface OlevelSitting { body: string; type: string | null; year: string | null; examNumber: string | null; subjects: OlevelGrade[] }
+export interface OlevelSitting { body: string; type: string | null; year: string | null; examNumber: string | null; subjects: OlevelGrade[]; series?: string | null }
 export interface Screening { sittings: number; relevantKnown: boolean; counted: OlevelGrade[]; points: number; bonus: number; total: number }
 export interface Olevel {
   session: string;
@@ -26,6 +27,8 @@ export interface Olevel {
   sittings: OlevelSitting[];
   screening: Screening | null;
   screeningIs: string;
+  /** V298: what an upload carried for this candidate that was held, skipped or flagged — theirs, or another's on their exam number */
+  duplicates?: OlevelDuplicateRow[];
 }
 
 const BODY: Record<string, string> = { WAEC: "WAEC", NECO: "NECO", NABTEB: "NABTEB", OTHER: "Other body" };
@@ -66,7 +69,7 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
           <div className="row mb-2">
             <Pil kind="grey">{BODY[st.body] ?? st.body}</Pil>
             <b>{st.type ?? st.body}</b>
-            <span className="sub2">{st.year ? `${st.year}` : ""}{st.examNumber ? ` · exam no. ${st.examNumber}` : ""}</span>
+            <span className="sub2">{st.year ? `${st.year}` : ""}{st.series ? ` · ${st.series}` : ""}{st.examNumber ? ` · exam no. ${st.examNumber}` : ""}</span>
           </div>
           <DTable
             cols={["Subject", "Grade|mid", ...(s ? ["Points|num"] : [])]}
@@ -78,6 +81,19 @@ export function OlevelView({ session, jambKey, name, onClose }: { session: strin
           />
         </div>
       ))}
+      {data?.duplicates?.length ? (
+        <Note kind={data.duplicates.some((d) => d.state === "HELD" || d.state === "OPEN") ? "bad" : "info"} title="The duplicate check on this candidate’s O’Level uploads">
+          {data.duplicates.map((d) => (
+            <span key={d.id} style={{ display: "block" }}>
+              <Pil kind={FINDING_WORD[d.kind][1]}>{FINDING_WORD[d.kind][0]}</Pil>{" "}
+              {d.jamb_key === jambKey
+                ? <>uploaded {d.exam_type_raw ?? d.exam_body} {d.exam_year ?? ""}{d.exam_number ? ` · exam no. ${d.exam_number}` : ""}{d.kind === "NUMBER_ELSEWHERE" ? ` — also on ${d.other_candidate ?? d.other_jamb_key ?? "another applicant"}` : d.other_exam_number ? ` — on record: exam no. ${d.other_exam_number}` : ""}</>
+                : <>{d.candidate ?? d.jamb_key} ({d.jamb_key}) was sent this candidate&rsquo;s exam number {d.other_exam_number ?? d.exam_number ?? ""}</>}
+              {" · "}<Pil kind={FINDING_STATE[d.state][1]}>{FINDING_STATE[d.state][0]}</Pil>{d.note ? ` — ${d.note}` : ""}
+            </span>
+          ))}
+        </Note>
+      ) : null}
       {data && data.sittings.length ? (
         s ? (
           <>

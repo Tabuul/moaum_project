@@ -597,7 +597,7 @@ Read: any signed-in person (students included). Write (`WRITERS`): ict alone, fr
 | Applicant fees (`FEESETTERS`) | academic, registrar, dregistrar, bursar, ict, admin, super | |
 | Upload / zero / derive PUTME scores (`SCORE_UPLOADERS`) | academic, registrar, dregistrar, ict, admin, super | |
 | Compute PUTME score (`/post-utme-computed`) | academic, super | |
-| Candidate data and O'Level writers | academic, registrar, dregistrar | The O'Level **score** is returned only when the acting office is `academic` |
+| Candidate data and O'Level writers | academic, registrar, dregistrar | The O'Level **score** is returned only when the acting office is `academic`. The duplicate O'Level findings (V298) are read by the candidate-data readers and decided (keep, use, verified — with a note) by these writers; the database also allows super and refuses any other office (`OLEVEL_DUPLICATE_OFFICE`) |
 | Admission settings (`SECRETARIAT`) | academic, registrar, dregistrar | Readers add dean, hod, dvc, vc, records, ict, admin, super |
 | Intake to the register (`POST /student/intake/{session}`) | academic, registrar, dregistrar | Called from the Admissions screen; runs on ADMITTED and ACCEPTED candidates |
 | Post-UTME CBT setup, generate, publish, move, unschedule, batch state (`OFFICE`) | academic, registrar, dregistrar, super | |

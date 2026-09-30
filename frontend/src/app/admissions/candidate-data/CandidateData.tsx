@@ -8,12 +8,13 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { AttachmentState } from "@/lib/matriculation";
 import { xlsxRows } from "@/lib/xlsx";
-import { CRED, capsMatch, dobParse, jambNumFromName, olParse, type DobRow, type OlRow } from "@/lib/candidate-data";
+import { CRED, capsMatch, dobParse, jambNumFromName, olDuplicates, olParse, type DobRow, type OlRow, type OlevelDuplicateRegister } from "@/lib/candidate-data";
 import { Btn, Ico, IcoBtn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field, Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { OlevelView } from "./OlevelView";
+import { OlevelDuplicates } from "./OlevelDuplicates";
 
 interface Pas { num: string; file: string; how: string; size: number; w: number; h: number; url: string }
 
@@ -23,7 +24,7 @@ const CD_TABS: [string, string, string][] = [
   ["ol", "O’Level results", "One spreadsheet row per SUBJECT"],
 ];
 
-export function CandidateData({ state, actingOffice }: { state: AttachmentState; actingOffice: string | null }) {
+export function CandidateData({ state, actingOffice, dups }: { state: AttachmentState; actingOffice: string | null; dups: OlevelDuplicateRegister | null }) {
   const router = useRouter();
   const [viewing, setViewing] = useState<{ key: string; name: string } | null>(null);
   const [tab, setTab] = useState("pas");
@@ -138,8 +139,9 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
        so the tranches add up and the last findings stand. */
     const CHUNK = 400;
     try {
-      let recorded = 0;
+      let recorded = 0, skipped = 0;
       const tally: Record<string, number> = {};
+      const found: Record<string, number> = { SAME_RESULT: 0, SAME_SITTING: 0, NUMBER_ELSEWHERE: 0 };
       for (let i = 0; i < items.length; i += CHUNK) {
         const slice = items.slice(i, i + CHUNK);
         if (items.length > CHUNK) setSaid(`Recording ${Math.min(i + slice.length, items.length)} of ${items.length}…`);
@@ -147,13 +149,22 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
         const j = await r.json().catch(() => null);
         if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
         recorded += (j.recorded as number) ?? 0;
+        skipped += (j.skipped as number | undefined) ?? 0;
         for (const a of (j.attached as { kind: string; newly_attached: number }[] | undefined) ?? []) {
           tally[a.kind] = (tally[a.kind] ?? 0) + a.newly_attached;
         }
+        for (const [k, n] of Object.entries((j.duplicates as Record<string, number> | undefined) ?? {})) found[k] = (found[k] ?? 0) + Number(n);
       }
       const attached = Object.entries(tally).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k.toLowerCase().replace("_", " ")}`).join(", ");
-      setSaid(`${recorded} recorded; ${attached || "nothing newly"} attached to a candidate.`);
-      notify(`${recorded} recorded · ${attached || 0} attached`);
+      /* V298: what the check found while recording the O'Level results */
+      const checked = kind === "OLEVEL" ? [
+        skipped ? `${skipped} already recorded exactly as sent (skipped)` : "",
+        found.SAME_RESULT ? `${found.SAME_RESULT} result${found.SAME_RESULT === 1 ? "" : "s"} already on record, not recorded again` : "",
+        found.SAME_SITTING ? `${found.SAME_SITTING} second result${found.SAME_SITTING === 1 ? "" : "s"} for one examination HELD for the Office to decide` : "",
+        found.NUMBER_ELSEWHERE ? `${found.NUMBER_ELSEWHERE} exam number${found.NUMBER_ELSEWHERE === 1 ? "" : "s"} already on another applicant's record, flagged` : "",
+      ].filter(Boolean).join("; ") : (skipped ? `${skipped} already recorded (skipped)` : "");
+      setSaid(`${recorded} recorded; ${attached || "nothing newly"} attached to a candidate.${checked ? ` Duplicate check: ${checked}.` : kind === "OLEVEL" ? " Duplicate check: nothing repeated." : ""}`);
+      notify(`${recorded} recorded · ${attached || 0} attached${found.SAME_SITTING || found.NUMBER_ELSEWHERE ? ` · ${found.SAME_SITTING + found.NUMBER_ELSEWHERE} duplicate${found.SAME_SITTING + found.NUMBER_ELSEWHERE === 1 ? "" : "s"} to review` : ""}`);
       router.refresh();
     } finally {
       setBusy(false);
@@ -395,12 +406,31 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
   const olBody = () => {
     const m = ol ? capsMatch(ol.rows, cands) : null;
     const short = m ? m.matched.filter((r) => !r.meets) : [];
+    const fd = ol ? olDuplicates(ol.rows) : null;
+    const fdSerious = fd ? fd.sameSitting.length + fd.sharedNumber.length : 0;
+    const fdAll = fd ? fdSerious + fd.sameResult.length + fd.repeatedSubjects.length : 0;
     return (
       <>
         <div className="card"><div className="card__body">
           <div className="eyebrow">Upload the O’Level file</div>
           <label className="btn btn--primary" htmlFor="cd-ol" style={{ cursor: "pointer", alignSelf: "flex-start" }}>Choose the O’Level file…<input type="file" id="cd-ol" accept=".xlsx" hidden onChange={(e) => void readSheet(e.target.files?.[0], "ol")} /></label>
         </div></div>
+        {fd ? (
+          <Note kind={fdSerious ? "bad" : fdAll ? "info" : "ok"} title={fdAll ? `Duplicate check on this file: ${[
+            fd.sameSitting.length ? `${fd.sameSitting.length} candidate${fd.sameSitting.length === 1 ? " has" : "s have"} two results for one examination` : "",
+            fd.sharedNumber.length ? `${fd.sharedNumber.length} exam number${fd.sharedNumber.length === 1 ? " is" : "s are"} given to more than one candidate` : "",
+            fd.sameResult.length ? `${fd.sameResult.length} result${fd.sameResult.length === 1 ? "" : "s"} repeated` : "",
+            fd.repeatedSubjects.length ? `${fd.repeatedSubjects.length} subject${fd.repeatedSubjects.length === 1 ? "" : "s"} listed twice in a sitting` : "",
+          ].filter(Boolean).join("; ")}` : "Duplicate check on this file: nothing repeated"}>
+            {fdAll ? <>The file is checked before anything is recorded, and every sitting is checked again against the record as it is recorded: a result already on record is not recorded twice, a second result for the same examining body, year and series is <b>held</b> for the Office to decide, and an exam number on another applicant&rsquo;s record is recorded and <b>flagged</b> — all listed under Duplicate O&rsquo;Level uploads below.</> : "No candidate has two results for one examination, no exam number is given to two candidates, and nothing is repeated. Each sitting is still checked against the record as it is recorded."}
+            {fdSerious ? (
+              <DTable pageSize={10} cols={["JAMB number|mid", "Examination", "Exam numbers"]} rows={[
+                ...fd.sameSitting.map((x) => [<span key="n" className="tnum">{x.num}</span>, <span key="e">{x.body} {x.year} · {x.series === "EXTERNAL" ? "Nov/Dec (private)" : "May/June (school)"}</span>, <span key="x" className="tnum">{x.numbers.join(" · ")}</span>]),
+                ...fd.sharedNumber.map((x) => [<span key="n" className="tnum">{x.nums.join(" · ")}</span>, <span key="e">{x.body} · the same exam number</span>, <span key="x" className="tnum">{x.exnum}</span>]),
+              ]} />
+            ) : null}
+          </Note>
+        ) : null}
         {err ? <Note kind="bad" title="That file could not be read">{err}</Note> : null}
         {!m || !ol ? (
           <Note kind="info" title={held("OLEVEL").length ? `${held("OLEVEL").length} O’Level results already recorded for ${state.session}` : "No O’Level results uploaded yet"}>{held("OLEVEL").length ? `${held("OLEVEL").filter((a) => a.matched).length} attached to a candidate. Choose the file above to record more.` : "Choose the file above."}</Note>
@@ -430,7 +460,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
                 ])}
                 texts={m.matched.map((r) => `${r.num} ${m.byNum[r.num]?.name ?? ""}`)}
               />
-              <PBody><Btn kind="primary" disabled={busy || !may} onClick={() => void record("OLEVEL", ol.rows.map((r) => ({ sourceName: `${r.num} ${r.type} ${r.year}`.trim(), jambKey: r.num || null, readAs: "COLUMN", payload: { subjects: r.subjects, credits: r.credits, meets: r.meets, examNumber: r.exnum, year: r.year, type: r.type, sittings: r.sittings.map((s) => ({ type: s.type, year: s.year, examNumber: s.exnum, subjects: s.subjects })) } })))}>Record what was read</Btn></PBody>
+              <PBody><Btn kind="primary" disabled={busy || !may} onClick={() => void record("OLEVEL", ol.rows.map((r) => ({ sourceName: `${r.num} ${r.type} ${r.year}`.trim(), jambKey: r.num || null, readAs: "COLUMN", payload: { subjects: r.subjects, credits: r.credits, meets: r.meets, examNumber: r.exnum, year: r.year, type: r.type, sittings: r.sittings.map((s) => ({ type: s.type, series: s.series, year: s.year, examNumber: s.exnum, subjects: s.subjects })) } })))}>Record what was read</Btn></PBody>
             </Panel>
             <Panel title="Results recorded, and the screening score they carry" right={`${state.candidates.filter((c) => c.hasOlevel).length} of ${state.candidates.length} candidates`}>
               {state.candidates.some((c) => c.hasOlevel) ? (
@@ -460,6 +490,7 @@ export function CandidateData({ state, actingOffice }: { state: AttachmentState;
             {missing(m, "O’Level result")}
           </>
         )}
+        <OlevelDuplicates key={dups ? `${dups.rows.length}:${dups.rows.filter((r) => r.state === "HELD" || r.state === "OPEN").length}` : "none"} session={state.session} initial={dups} may={may} />
       </>
     );
   };

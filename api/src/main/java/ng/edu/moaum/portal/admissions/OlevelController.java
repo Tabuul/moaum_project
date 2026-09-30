@@ -55,15 +55,16 @@ class OlevelController {
     public record Grade(String subject, String grade, int points) {
     }
 
-    public record Sitting(String body, String type, String year, String examNumber, List<Grade> subjects) {
+    public record Sitting(String body, String type, String year, String examNumber, List<Grade> subjects, String series) {
     }
 
     public record Screening(int sittings, boolean relevantKnown, List<Grade> counted, int points, int bonus, int total) {
     }
 
     /** {@code screening} is null for every office but the Academic Office; {@code screeningIs} says whose it is. */
+    /** {@code duplicates}: what an upload carried for this candidate that was held, skipped or flagged (V298) — theirs, or another's on their exam number */
     public record Olevel(String session, String jambKey, String programme, String programmeCode, List<Sitting> sittings,
-                         Screening screening, String screeningIs) {
+                         Screening screening, String screeningIs, List<Map<String, Object>> duplicates) {
     }
 
     private final JdbcClient jdbc;
@@ -137,7 +138,7 @@ class OlevelController {
         String key = jambKey.trim().toUpperCase();
         List<Sitting> sittings = new ArrayList<>();
         for (Map<String, Object> row : jdbc.sql("""
-                SELECT st.id, st.exam_body, st.exam_type_raw, st.exam_year, st.exam_number
+                SELECT st.id, st.exam_body, st.exam_type_raw, st.exam_year, st.exam_number, st.exam_series
                   FROM admissions.olevel_sitting st WHERE st.session = :s AND st.jamb_key = :k
                  ORDER BY st.exam_year NULLS LAST, st.ord
                 """).param("s", s).param("k", key).query().listOfRows()) {
@@ -146,7 +147,7 @@ class OlevelController {
                       FROM admissions.olevel_grade g WHERE g.sitting_id = :id ORDER BY g.subject
                     """).param("s", s).param("id", row.get("id")).query(Grade.class).list();
             sittings.add(new Sitting(String.valueOf(row.get("exam_body")), (String) row.get("exam_type_raw"),
-                    (String) row.get("exam_year"), (String) row.get("exam_number"), subjects));
+                    (String) row.get("exam_year"), (String) row.get("exam_number"), subjects, (String) row.get("exam_series")));
         }
         Map<String, Object> prog = jdbc.sql("""
                 SELECT c.programme AS name, (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS code
@@ -167,7 +168,9 @@ class OlevelController {
             screening = new Screening(((Number) r.get("sittings")).intValue(), Boolean.TRUE.equals(r.get("relevant_known")), counted,
                     ((Number) r.get("points")).intValue(), ((Number) r.get("bonus")).intValue(), ((Number) r.get("total")).intValue());
         }
-        return new Olevel(s, key, programmeName, programmeCode, sittings, screening, "Academic Office");
+        List<Map<String, Object>> duplicates = jdbc.sql("SELECT * FROM admissions.olevel_duplicates(:s) d WHERE d.jamb_key = :k OR d.other_jamb_key = :k")
+                .param("s", s).param("k", key).query().listOfRows();
+        return new Olevel(s, key, programmeName, programmeCode, sittings, screening, "Academic Office", duplicates);
     }
 
     private Grading read(String session) {
