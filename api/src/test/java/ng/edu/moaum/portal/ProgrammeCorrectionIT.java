@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -83,6 +84,16 @@ class ProgrammeCorrectionIT {
                          WHERE NOT EXISTS (SELECT 1 FROM finance.fee_schedule x WHERE x.session = :s AND x.item = 'Tuition (correction IT)' AND x.programme_code = :p AND x.ended_at IS NULL)
                         """).param("s", SESSION).param("a", new BigDecimal(f[1])).param("p", f[0]).update();
             }
+            return null;
+        });
+    }
+
+    /** the session's fees and the payments made against them go with the test: another test reads the sessions that have charges */
+    @AfterEach
+    void tearDown() {
+        it.db(() -> {
+            jdbc.sql("DELETE FROM finance.payment_reference WHERE session = :s").param("s", SESSION).update();
+            jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update();
             return null;
         });
     }
@@ -239,8 +250,14 @@ class ProgrammeCorrectionIT {
         assertThat(it.get(a.token(), PATH + "/programme-changes").getStatusCode().value()).isEqualTo(403);
 
         // a correction the Registrar recommends is not decided by the same officer; the Deputy Registrar rejects it, with the reason
-        ResponseEntity<Map> back = it.call(registrar, HttpMethod.POST, PATH + "/programme-changes/" + a.app() + "/correct",
+        // (not a science UTME combination for Computer Science: only the Registrar's offices may recommend it, by override)
+        ResponseEntity<Map> notEligible = it.call(academic, HttpMethod.POST, PATH + "/programme-changes/" + a.app() + "/correct",
                 Map.of("programmeCode", CS, "reasonCode", "OTHER", "note", "Reconsidered on the candidate's appeal"));
+        assertThat(notEligible.getStatusCode().value()).isEqualTo(422);
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/programme-changes/" + a.app() + "/correct",
+                Map.of("programmeCode", CS, "reasonCode", "OTHER", "note", "Reconsidered on the candidate's appeal", "override", true, "overrideReason", "x")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> back = it.call(registrar, HttpMethod.POST, PATH + "/programme-changes/" + a.app() + "/correct",
+                Map.of("programmeCode", CS, "reasonCode", "OTHER", "note", "Reconsidered on the candidate's appeal", "override", true, "overrideReason", "The Senate's directive on the appeal"));
         assertThat(back.getStatusCode().value()).as(String.valueOf(back.getBody())).isEqualTo(200);
         String backId = String.valueOf(m(back.getBody().get("openRequest")).get("id"));
         ResponseEntity<Map> same = it.call(registrar, HttpMethod.POST, PATH + "/programme-changes/requests/" + backId + "/approve", Map.of());
