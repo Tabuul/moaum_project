@@ -37,8 +37,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 @SuppressWarnings({"rawtypes", "unchecked"})
 class AdmissionStatusCheckingIT {
 
-    static final String SESSION = "2102/2103";
-    static final String PATH = "/api/v1/admissions/sessions/2102/2103";
+    static final String SESSION = "2111/2112";
+    static final String PATH = "/api/v1/admissions/sessions/2111/2112";
     static final String WINDOW = "/api/v1/portal-windows/ADMISSION_STATUS_CHECKING";
     static final String DESK = "/api/v1/portal-windows/admission-checking";
 
@@ -58,7 +58,7 @@ class AdmissionStatusCheckingIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
-        it.session(SESSION, 2102);
+        it.session(SESSION, 2111);
         it.db(() -> {
             jdbc.sql("INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, checking_fee) VALUES (:s, 2000, 0, 25000, 3000) ON CONFLICT (session) DO UPDATE SET acceptance_fee = 25000, checking_fee = 3000")
                     .param("s", SESSION).update();
@@ -75,7 +75,7 @@ class AdmissionStatusCheckingIT {
      *  released, and the decision as given — released or not; an offer released makes the candidate ADMITTED, as the release does */
     Applicant applicant(String decision, boolean released, boolean valid, String sex) {
         int n = new Random().nextInt(90_000_000) + 10_000_000;
-        String jamb = "2102" + n + "SC";
+        String jamb = "2111" + n + "SC";
         return it.db(() -> {
             UUID cand = UUID.randomUUID(), acct = UUID.randomUUID(), app = UUID.randomUUID(), batch = UUID.randomUUID(), row = UUID.randomUUID();
             jdbc.sql("INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office, committed_at) VALUES (:id, :s, 'CAPS_DOWNLOAD', 'checking.xlsx', decode(md5(:id::text), 'hex'), 1, 'UTME', current_date, gen_random_uuid(), 'academic', now())")
@@ -92,7 +92,7 @@ class AdmissionStatusCheckingIT {
                                                         decision, decision_basis, decided_at, decision_released_at)
                     VALUES (:id, :a, :c, :s, :no, now(), CASE WHEN :valid THEN now() END, now(),
                             :d, CASE WHEN :d = 'OFFERED' THEN 'NM' END, CASE WHEN :d::text IS NOT NULL THEN now() END, CASE WHEN :rel THEN now() END)
-                    """).param("id", app).param("a", acct).param("c", cand).param("s", SESSION).param("no", "APP/02/" + String.format("%06d", n % 1_000_000))
+                    """).param("id", app).param("a", acct).param("c", cand).param("s", SESSION).param("no", "APP/11/" + String.format("%06d", n % 1_000_000))
                     .param("valid", valid).param("d", decision, Types.VARCHAR).param("rel", released).update();
             return new Applicant(app, acct, cand, jamb, TestTokens.token(acct, List.of("applicant")));
         });
@@ -187,7 +187,7 @@ class AdmissionStatusCheckingIT {
         assertThat(it.get(admitted.token(), DESK + "?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
 
         // ── opened: the session's valid applicants are told ──
-        ResponseEntity<Map> opened = act(ict, "OPEN", "Admission status checking for the 2102/2103 exercise");
+        ResponseEntity<Map> opened = act(ict, "OPEN", "Admission status checking for the " + SESSION + " exercise");
         assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
         assertThat(((Number) opened.getBody().get("told")).intValue()).isGreaterThanOrEqualTo(4);   // admitted, refused, pending, late — never the incomplete
         assertThat(m(m(opened.getBody()).get("window")).get("state")).isEqualTo("OPEN");

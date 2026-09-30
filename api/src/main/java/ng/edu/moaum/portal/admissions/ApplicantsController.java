@@ -206,50 +206,88 @@ class ApplicantsController {
         return v;   // view() already carries jambPassport (V007) for the detail modal
     }
 
-    /* ── migrating paid applicants from the old portal (V167) ── */
+    /* ── migrating paid applicants from the old portal (V167; V296: with their email and phone) ── */
 
     private static final String IMPORTERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')";
 
-    public record ImportRow(@NotBlank @Size(max = 40) String jambKey, @Size(max = 120) String surname,
-                            @Size(max = 200) String otherNames, @Size(max = 200) String programme,
-                            @Size(max = 40) String entryMode, @Size(max = 200) String email, @Size(max = 40) String phone,
-                            @Size(max = 10) String utme) {
+    /** one row of the old-portal file: the JAMB number, the email and the phone number (V296). The name, programme, entry mode
+     *  and UTME are read from the JAMB CAPS list, never from the file; they are still accepted, and ignored, from older desks.
+     *  The contact cells are generous: a cell may hold two numbers or an address with a name, and the database reads the first
+     *  usable one — a long cell is not a reason to refuse the whole chunk. */
+    public record ImportRow(@NotBlank @Size(max = 40) String jambKey, @Size(max = 400) String surname,
+                            @Size(max = 400) String otherNames, @Size(max = 400) String programme,
+                            @Size(max = 60) String entryMode, @Size(max = 400) String email, @Size(max = 200) String phone,
+                            @Size(max = 40) String utme) {
     }
 
     public record ImportBatch(@NotNull List<ImportRow> rows) {
     }
 
+    /** the migration's placeholders (V168): an account without a usable email or phone carries these until the office's file gives one */
+    static boolean placeholderEmail(Object email) {
+        return email == null || String.valueOf(email).endsWith("@migrate.moau.local");
+    }
+
+    static boolean placeholderPhone(Object phone) {
+        return phone == null || "00000000000".equals(String.valueOf(phone));
+    }
+
     /** Import one chunk of paid applicants migrated from the old portal. Each row runs through
-     *  admissions.import_applicant, which is idempotent — a number that already has an account is counted
-     *  as 'exists', a bad row as 'skip: …', so a chunk never fails as a whole. Small chunks: the initial
-     *  password is bcrypt cost-12 (slow by design). */
+     *  admissions.import_applicant_row (V296), which is idempotent: a new applicant is imported with the file's email and phone,
+     *  an applicant already migrated takes the file's contacts (UPDATED), one with nothing to change is counted as existing, a
+     *  bad row is skipped with the reason — so a chunk never fails as a whole. Where the file's email or phone could not be used
+     *  (not an email, not a Nigerian mobile number, an address already on another applicant's account), the row is listed in
+     *  {@code notes} for the office to correct. */
     @PostMapping("/import-applicants")
     @PreAuthorize(IMPORTERS)
     Map<String, Object> importApplicants(@PathVariable String session, @PathVariable String year, @Valid @RequestBody ImportBatch batch) {
         String s = session + "/" + year;
         int imported = 0;
+        int updated = 0;
         int existed = 0;
         int skipped = 0;
         int placeholders = 0;
         List<Map<String, Object>> problems = new ArrayList<>();
+        List<Map<String, Object>> notes = new ArrayList<>();
         for (ImportRow r : batch.rows()) {
             // each applicant in its OWN attributed transaction, so the shared numbering locks are held
             // for milliseconds, not for the whole chunk — that is what lets parallel chunks run at once
             // instead of blocking (and occasionally deadlocking) on one another.
-            String status = importOne(s, r);
-            if (status != null && status.startsWith("imported")) {
-                imported++;
-                if (!status.equals("imported")) {
-                    placeholders++;   // imported, but a placeholder email/phone stood in
+            Map<String, Object> row = importOne(s, r);
+            String outcome = String.valueOf(row.get("o_outcome"));
+            String key = r.jambKey() == null ? "" : r.jambKey().trim();
+            switch (outcome) {
+                case "IMPORTED" -> imported++;
+                case "UPDATED" -> updated++;
+                case "EXISTS" -> existed++;
+                default -> {
+                    skipped++;
+                    Object detail = row.get("o_detail");
+                    problems.add(Map.of("jambKey", key,
+                            "name", ((r.surname() == null ? "" : r.surname()) + " " + (r.otherNames() == null ? "" : r.otherNames())).trim(),
+                            "status", "SKIPPED".equals(outcome) ? "skip: " + detail : "error: " + (detail == null ? "unknown" : detail)));
                 }
-            } else if ("exists".equals(status)) {
-                existed++;
-            } else {
-                skipped++;
-                problems.add(Map.of("jambKey", r.jambKey() == null ? "" : r.jambKey(),
-                        "name", ((r.surname() == null ? "" : r.surname()) + " " + (r.otherNames() == null ? "" : r.otherNames())).trim(),
-                        "status", status == null ? "unknown" : status));
+            }
+            if (List.of("IMPORTED", "UPDATED", "EXISTS").contains(outcome)) {
+                boolean onPlaceholder = row.get("o_email") != null && (placeholderEmail(row.get("o_email")) || placeholderPhone(row.get("o_phone")));
+                if (onPlaceholder) {
+                    placeholders++;
+                }
+                Object emailNote = row.get("o_email_note");
+                Object phoneNote = row.get("o_phone_note");
+                if (emailNote != null || phoneNote != null) {
+                    Map<String, Object> n = new LinkedHashMap<>();
+                    n.put("jambKey", key);
+                    n.put("outcome", outcome);
+                    n.put("email", r.email() == null ? "" : r.email().trim());
+                    n.put("phone", r.phone() == null ? "" : r.phone().trim());
+                    n.put("emailNote", emailNote);
+                    n.put("phoneNote", phoneNote);
+                    n.put("emailNow", row.get("o_email"));
+                    n.put("phoneNow", row.get("o_phone"));
+                    notes.add(n);
+                }
             }
         }
         // diagnostics: how many CAPS rows exist for THIS session, and a few sample JAMB numbers, so a
@@ -260,10 +298,12 @@ class ApplicantsController {
                 .param("s", s).query(String.class).list();
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("imported", imported);
+        out.put("updated", updated);
         out.put("existed", existed);
         out.put("skipped", skipped);
         out.put("placeholders", placeholders);
         out.put("problems", problems);
+        out.put("notes", notes);
         out.put("capsRows", capsRows);
         out.put("capsSample", capsSample);
         out.put("session", s);
@@ -271,26 +311,57 @@ class ApplicantsController {
     }
 
     /** import one applicant in its own attributed transaction; retry a brief lock deadlock (import is
-     *  idempotent, so a retry never double-creates). Returns the function's status string. */
-    private String importOne(String s, ImportRow r) {
+     *  idempotent, so a retry never double-creates). Returns the function's row: outcome, detail, the contacts now on the
+     *  account and why the file's were not used. */
+    private Map<String, Object> importOne(String s, ImportRow r) {
         for (int attempt = 1; ; attempt++) {
             // CAPS-driven (V174): the candidate's name/programme/UTME come from the JAMB CAPS row;
-            // the old-portal file supplies only the JAMB number, email and phone, and the paid flag.
-            String status = tx.execute(st -> jdbc.sql("SELECT admissions.import_applicant(:s, :j, :ma, :ph)")
-                    .param("s", s).param("j", r.jambKey()).param("ma", r.email()).param("ph", r.phone())
-                    .query(String.class).single());
-            boolean contended = status != null && (status.contains("deadlock") || status.contains("could not serialize") || status.contains("concurrent update"));
+            // the old-portal file supplies the JAMB number, the email and the phone (V296), and the paid flag.
+            Map<String, Object> row = tx.execute(st -> jdbc.sql("SELECT * FROM admissions.import_applicant_row(:s, :j, :ma, :ph)")
+                    .param("s", s).param("j", r.jambKey()).param("ma", r.email(), Types.VARCHAR).param("ph", r.phone(), Types.VARCHAR)
+                    .query().singleRow());
+            String detail = row == null || row.get("o_detail") == null ? "" : String.valueOf(row.get("o_detail"));
+            boolean contended = row != null && "ERROR".equals(row.get("o_outcome"))
+                    && (detail.contains("deadlock") || detail.contains("could not serialize") || detail.contains("concurrent update"));
             if (contended && attempt < 4) {
                 try {
                     Thread.sleep(15L * attempt);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    return status;
+                    return row;
                 }
                 continue;
             }
-            return status;
+            return row == null ? Map.of("o_outcome", "ERROR", "o_detail", "no answer") : row;
         }
+    }
+
+    /** the applicants of a session migrated from the old portal, and the contacts on their accounts (V296): how many still
+     *  stand on the migration's placeholder email or phone — and, with {@code missing=true}, who they are, for the office to
+     *  fill the template and upload again */
+    @GetMapping("/import-applicants/contacts")
+    @PreAuthorize(IMPORTERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> migratedContacts(@PathVariable String session, @PathVariable String year, @RequestParam(defaultValue = "false") boolean missing) {
+        String s = session + "/" + year;
+        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("""
+                SELECT count(*) AS migrated, count(*) FILTER (WHERE has_email) AS with_email, count(*) FILTER (WHERE has_phone) AS with_phone,
+                       count(*) FILTER (WHERE NOT has_email) AS without_email, count(*) FILTER (WHERE NOT has_phone) AS without_phone,
+                       count(*) FILTER (WHERE NOT has_email AND NOT has_phone) AS without_both
+                  FROM admissions.migrated_contacts(:s)
+                """).param("s", s).query().singleRow());
+        out.put("session", s);
+        if (missing) {
+            out.put("rows", jdbc.sql("""
+                    SELECT jamb AS "jambKey", application_no AS "applicationNo", full_name AS name, programme_name AS programme,
+                           CASE WHEN has_email THEN cur_email END AS email, CASE WHEN has_phone THEN cur_phone END AS phone,
+                           CASE WHEN NOT has_email AND NOT has_phone THEN 'email and phone' WHEN NOT has_email THEN 'email' ELSE 'phone' END AS missing
+                      FROM admissions.migrated_contacts(:s)
+                     WHERE NOT has_email OR NOT has_phone
+                     ORDER BY jamb
+                    """).param("s", s).query().listOfRows());
+        }
+        return out;
     }
 
     /** Re-match everything held (passports, DOB, O'Level uploaded before their candidate existed) to the

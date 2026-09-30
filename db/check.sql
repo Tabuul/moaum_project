@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 152
+\set EXPECTED 153
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3492,6 +3492,69 @@ BEGIN
         format('closed=%s/%s open=%s tracker=%s incomplete=%s unpaid=%s unread=%s/%s/%s pending=%s notadmitted=%s offered=%s again=%s acceptance=%s undertaking=%s after-close=%s/%s later=%s refs=%s checks=%s',
                st_closed, r_closed, st_open, tr_hidden, r_incomp, r_unpaid, r_und, r_dec, r_acc_unread, st_pend, st_notad, st_offer, r_again, r_accept,
                und, st_after, acc_after, st_later, n_refs, n_checks));
+END $$;
+
+-- ── V296. the old-portal applicants come with their email and phone ──
+-- A contact cell is read as people write it; a new applicant is imported with the file's email and phone, an applicant already
+-- migrated takes them (the office's contacts replace the placeholders and what an earlier file gave), an account the applicant
+-- opened keeps theirs, an email already on another account is not taken, and every row says what happened and why.
+DO $$
+DECLARE r1 record; r2 record; r3 record; r4 record; r5 record; r6 record; r7 record; r8 record; w1 text; w2 text; n_ev bigint; lst record;
+        reads boolean;
+BEGIN
+    reads := admissions.first_email('Ada Obi <Ada.Obi@Gmail.com>, other@x.com') = 'ada.obi@gmail.com'
+         AND admissions.first_email('x@migrate.moau.local') IS NULL AND admissions.first_email('not an email') IS NULL
+         AND admissions.first_mobile('+234 803 123 4567') = '08031234567' AND admissions.first_mobile('8031234567') = '08031234567'
+         AND admissions.first_mobile('08031234567 / 07061234567') = '08031234567' AND admissions.first_mobile('01234567890') IS NULL
+         AND admissions.first_mobile('00000000000') IS NULL;
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        DECLARE b uuid := gen_random_uuid(); i int;
+        BEGIN
+            INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office, committed_at)
+            VALUES (b, '9982/9983', 'CAPS_DOWNLOAD', 'check.xlsx', decode(md5(b::text), 'hex'), 4, 'UTME', current_date, gen_random_uuid(), 'academic', now());
+            FOR i IN 1..4 LOOP
+                INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+                VALUES (gen_random_uuid(), b, '9982/9983', '998200000' || i || 'CK', '{}'::jsonb, 'V296-' || i, 'Check', 'C00023', 220, 'UTME', 'F', 'Benue', 'Makurdi');
+            END LOOP;
+        END;
+        SELECT * INTO r1 FROM admissions.import_applicant_row('9982/9983', '9982000001CK', 'One.V296@Mail.com', '+234 803 123 4567');   -- new, with contacts
+        SELECT * INTO r2 FROM admissions.import_applicant_row('9982/9983', '9982000002ck', 'not-an-email', '');                        -- new, on placeholders, told why
+        SELECT * INTO r3 FROM admissions.import_applicant_row('9982/9983', '9982000003CK', 'one.v296@mail.com', '0706 555 1234');      -- the email is another's
+        SELECT * INTO r4 FROM admissions.import_applicant_row('9982/9983', '9982000002CK', 'two.v296@mail.com', '8061112222');         -- already migrated: filled
+        SELECT * INTO r5 FROM admissions.import_applicant_row('9982/9983', '9982000001CK', 'one.new.v296@mail.com', '');               -- the office's newer email
+        SELECT * INTO r6 FROM admissions.import_applicant_row('9982/9983', '9982000001CK', 'ONE.NEW.V296@mail.com', '08031234567');    -- nothing to change
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.register_applicant('9982/9983', '9982000004CK', 'own.v296@choice.com', '08099998888', crypt('x', gen_salt('bf', 12)));
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT * INTO r7 FROM admissions.import_applicant_row('9982/9983', '9982000004CK', 'office.v296@file.com', '08011112222');     -- the applicant's own are kept
+        SELECT * INTO r8 FROM admissions.import_applicant_row('9982/9983', '9982000099CK', 'x.v296@y.com', '08031234567');             -- not on CAPS
+        w1 := admissions.import_applicant('9982/9983', '9982000003CK', 'three.v296@mail.com', '');                                      -- the text answer of old
+        w2 := admissions.import_applicant('9982/9983', 'NOT A NUMBER', '', '');
+        SELECT count(*) INTO n_ev FROM admissions.applicant_event WHERE identifier LIKE '998200000%' AND outcome LIKE 'CONTACTS_UPDATED%';
+        SELECT count(*) AS migrated, count(*) FILTER (WHERE has_email) AS e, count(*) FILTER (WHERE has_phone) AS p INTO lst FROM admissions.migrated_contacts('9982/9983');
+        RAISE EXCEPTION 'the V296 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('The old-portal applicants come with their email and phone, and those already migrated take them',
+        coalesce(reads
+            AND r1.o_outcome = 'IMPORTED' AND r1.o_email = 'one.v296@mail.com' AND r1.o_phone = '08031234567' AND r1.o_email_note IS NULL AND r1.o_phone_note IS NULL
+            AND r2.o_outcome = 'IMPORTED' AND r2.o_email = '9982000002ck@migrate.moau.local' AND r2.o_phone = '00000000000'
+            AND r2.o_email_note LIKE 'not a usable email address%' AND r2.o_phone_note = 'no phone number in the file'
+            AND r3.o_outcome = 'IMPORTED' AND r3.o_email LIKE '%@migrate.moau.local' AND r3.o_email_note LIKE 'already on another applicant%' AND r3.o_phone = '07065551234'
+            AND r4.o_outcome = 'UPDATED' AND r4.o_email = 'two.v296@mail.com' AND r4.o_phone = '08061112222' AND r4.o_detail = 'email and phone updated'
+            AND r5.o_outcome = 'UPDATED' AND r5.o_email = 'one.new.v296@mail.com' AND r5.o_phone = '08031234567' AND r5.o_phone_note IS NULL
+            AND r6.o_outcome = 'EXISTS' AND r6.o_email_note IS NULL AND r6.o_phone_note IS NULL
+            AND r7.o_outcome = 'EXISTS' AND r7.o_email = 'own.v296@choice.com' AND r7.o_email_note LIKE 'kept the email the applicant chose%' AND r7.o_phone_note LIKE 'kept the phone%'
+            AND r8.o_outcome = 'SKIPPED' AND r8.o_detail = 'not on the JAMB CAPS list'
+            AND w1 = 'exists' AND w2 = 'skip: bad JAMB number' AND n_ev = 3
+            AND lst.migrated = 3 AND lst.e = 3 AND lst.p = 3, false),
+        format('reads=%s r1=%s/%s/%s r2=%s/%s/%s r3=%s/%s r4=%s/%s r5=%s/%s r6=%s r7=%s/%s r8=%s/%s wrapper=%s/%s events=%s listed=%s/%s/%s',
+               reads, r1.o_outcome, r1.o_email, r1.o_phone, r2.o_outcome, r2.o_email_note, r2.o_phone_note, r3.o_outcome, r3.o_email_note,
+               r4.o_outcome, r4.o_detail, r5.o_outcome, r5.o_email, r6.o_outcome, r7.o_outcome, r7.o_email_note, r8.o_outcome, r8.o_detail,
+               w1, w2, n_ev, lst.migrated, lst.e, lst.p));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
