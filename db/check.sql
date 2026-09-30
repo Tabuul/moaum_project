@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 153
+\set EXPECTED 154
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3555,6 +3555,104 @@ BEGIN
                reads, r1.o_outcome, r1.o_email, r1.o_phone, r2.o_outcome, r2.o_email_note, r2.o_phone_note, r3.o_outcome, r3.o_email_note,
                r4.o_outcome, r4.o_detail, r5.o_outcome, r5.o_email, r6.o_outcome, r7.o_outcome, r7.o_email_note, r8.o_outcome, r8.o_detail,
                w1, w2, n_ev, lst.migrated, lst.e, lst.p));
+END $$;
+
+-- ── V297. an admission found in error is corrected after the decision, even after school fees, and every change is listed ──
+-- The ordinary change is shut once the decision is released; a correction takes over up to matriculation (after it, a transfer).
+-- It is recommended with the error described, decided by the Registrar's office and not by its recommender, keeps the fees paid
+-- against the new programme (the position before and after on the record), returns the courses registered on the old one and
+-- reissues the letter; the register lists the applicant with the programme applied for and the programme held now. The fee
+-- schedule read for a programme named agrees with the fee schedule read for the programme held.
+DO $$
+DECLARE academic uuid := gen_random_uuid(); registrar uuid := gen_random_uuid();
+        cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid(); st uuid; reg uuid;
+        e_cand uuid := gen_random_uuid(); e_acct uuid := gen_random_uuid(); e_app uuid := gen_random_uuid();
+        m_cand uuid := gen_random_uuid(); m_acct uuid := gen_random_uuid(); m_app uuid := gen_random_uuid(); m_st uuid;
+        r_ordinary text := 'ok'; r_note text := 'ok'; r_elig text := 'ok'; r_approver text := 'ok'; r_same text := 'ok'; r_early text := 'ok'; r_mat text := 'ok';
+        req uuid; pv jsonb; rt record; decided text; q record; reg_row record; st_row record; pos record; reg_line record; charges_same boolean;
+        e_route text; m_route text; n_letters bigint; stage_after text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', academic::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), '9986/9987', date '9986-09-01', date '9987-08-31', 'DRAFT') ON CONFLICT DO NOTHING;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, ord)
+        VALUES ('9986/9987', 'Tuition (V297 check)', 150000, 100, 'C00023', 1), ('9986/9987', 'Tuition (V297 check)', 120000, 100, 'C00019', 1);
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (cand, '9986/9987', '9986000001CK', 'V297-Corrected', 'Check', (SELECT name FROM ref.programme WHERE code = 'C00023'), 'UTME', 100, 'PROPOSED'),
+               (e_cand, '9986/9987', '9986000002CK', 'V297-Undecided', 'Check', (SELECT name FROM ref.programme WHERE code = 'C00023'), 'UTME', 100, 'PROPOSED'),
+               (m_cand, '9986/9987', '9986000003CK', 'V297-Matriculated', 'Check', (SELECT name FROM ref.programme WHERE code = 'C00023'), 'UTME', 100, 'PROPOSED');
+        DECLARE b uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office, committed_at)
+            VALUES (b, '9986/9987', 'CAPS_DOWNLOAD', 'v297.xlsx', decode(md5(b::text), 'hex'), 2, 'UTME', current_date, academic, 'academic', now());
+            INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+            VALUES (gen_random_uuid(), b, '9986/9987', '9986000001CK', '{}'::jsonb, 'V297-Corrected', 'Check', 'C00023', 220, 'UTME', 'F', 'Benue', 'Makurdi'),
+                   (gen_random_uuid(), b, '9986/9987', '9986000003CK', '{}'::jsonb, 'V297-Matriculated', 'Check', 'C00023', 220, 'UTME', 'M', 'Benue', 'Gboko');
+            UPDATE admissions.candidate c SET offer_state = 'ADMITTED', admitted_from = r.id FROM admissions.caps_row r
+             WHERE r.batch_id = b AND r.jamb_reg_no = c.jamb_reg_no AND c.id IN (cand, m_cand);
+        END;
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, '9986/9987', cand, '9986000001CK', 'v297.one@example.com', '08030000000', crypt('x', gen_salt('bf', 12))),
+               (e_acct, '9986/9987', e_cand, '9986000002CK', 'v297.two@example.com', '08030000000', crypt('x', gen_salt('bf', 12))),
+               (m_acct, '9986/9987', m_cand, '9986000003CK', 'v297.three@example.com', '08030000000', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at, decision, decided_at, decision_released_at, accepted_at)
+        VALUES (app, acct, cand, '9986/9987', 'APP/86/000001', now(), now(), 'OFFERED', now(), now(), now()),
+               (e_app, e_acct, e_cand, '9986/9987', 'APP/86/000002', now(), now(), NULL, NULL, NULL, NULL),
+               (m_app, m_acct, m_cand, '9986/9987', 'APP/86/000003', now(), now(), 'OFFERED', now(), now(), now());
+        -- offered, accepted, on the register, school fees paid (150,000 on Computer Science), courses registered and approved, the letter issued
+        st := people.intake_one(cand);
+        m_st := people.intake_one(m_cand);
+        UPDATE people.student SET matric_no = 'MOAUM/MTC/86/9701', matriculated_at = now() WHERE id = m_st;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+        VALUES (st, '9986/9987', 'MOAUM-FEE-V297-0001', 'School fees 9986/9987', 150000, now() + interval '1 day', now(), academic, 'Card', 'RCPT-V297-0001');
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (gen_random_uuid(), st, '9986/9987', 1, 100, 'APPROVED', now()) RETURNING id INTO reg;
+        PERFORM admissions.issue_admission_letter(app);
+        SELECT * INTO rt FROM admissions.programme_change_route(app);
+        SELECT route INTO e_route FROM admissions.programme_change_route(e_app);
+        SELECT route INTO m_route FROM admissions.programme_change_route(m_app);
+        charges_same := (SELECT coalesce(sum(amount), 0) FROM finance.charges(st, '9986/9987')) = 150000
+                    AND finance.due_as(st, '9986/9987', NULL) = 150000 AND finance.due_as(st, '9986/9987', 'C00019') = 120000;
+        pv := admissions.correction_preview(app, 'C00019');
+        BEGIN PERFORM admissions.recommend_programme_change(app, 'C00019', 'ADMISSION_POLICY', NULL, academic, 'academic', false, NULL); EXCEPTION WHEN check_violation THEN r_ordinary := left(SQLERRM, 26); END;
+        BEGIN PERFORM admissions.recommend_admission_correction(app, 'C00019', 'ADMISSION_ERROR', '  ', academic, 'academic', false, NULL); EXCEPTION WHEN check_violation THEN r_note := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.recommend_admission_correction(app, 'C00019', 'ADMISSION_ERROR', 'Admitted to Computer Science on a mis-keyed UTME score', academic, 'academic', false, NULL); EXCEPTION WHEN check_violation THEN r_elig := left(SQLERRM, 29); END;
+        BEGIN PERFORM admissions.recommend_admission_correction(e_app, 'C00019', 'ADMISSION_ERROR', 'x', academic, 'academic', true, 'x'); EXCEPTION WHEN check_violation THEN r_early := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.recommend_admission_correction(m_app, 'C00019', 'ADMISSION_ERROR', 'x', academic, 'academic', true, 'x'); EXCEPTION WHEN check_violation THEN r_mat := split_part(SQLERRM, ':', 1); END;
+        req := admissions.recommend_admission_correction(app, 'C00019', 'ADMISSION_ERROR', 'Admitted to Computer Science on a mis-keyed UTME score', academic, 'academic', true, 'Registrar''s directive on the audit of the list');
+        BEGIN PERFORM admissions.decide_programme_change(req, 'APPROVE', NULL, academic); EXCEPTION WHEN check_violation THEN r_approver := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM admissions.decide_programme_change(req, 'APPROVE', NULL, academic); EXCEPTION WHEN check_violation THEN r_same := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', registrar::text, true);
+        decided := admissions.decide_programme_change(req, 'APPROVE', 'Corrected on the audit of the admission list', registrar);
+        SELECT * INTO q FROM admissions.programme_change_request WHERE id = req;
+        SELECT * INTO reg_row FROM registration.course_registration WHERE id = reg;
+        SELECT s.programme_code, c.programme INTO st_row FROM people.student s JOIN admissions.candidate c ON c.id = s.candidate_id WHERE s.id = st;
+        SELECT * INTO pos FROM finance.position(st, '9986/9987');
+        SELECT * INTO reg_line FROM admissions.programme_change_register('9986/9987') x WHERE x.application_id = app;
+        SELECT count(*) INTO n_letters FROM credentials.issued WHERE application_id = app AND kind = 'ADMISSION_LETTER';
+        stage_after := admissions.admission_stage(app);
+        RAISE EXCEPTION 'the V297 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('An admission found in error is corrected after school fees, by the Registrar, and listed',
+        coalesce(rt.route = 'CORRECTION' AND rt.stage = 'COURSES_REGISTERED' AND e_route = 'CHANGE' AND m_route = 'TRANSFER' AND charges_same
+                 AND (pv #>> '{fees,dueAfter}')::numeric = 120000 AND (pv #>> '{fees,excessAfter}')::numeric = 30000 AND pv #>> '{target,result}' = 'UNVERIFIED'
+                 AND r_ordinary = 'the Board''s decision on th' AND r_note = 'CORRECTION_NOTE_REQUIRED' AND r_elig = 'the candidate is not eligible'
+                 AND r_early = 'CORRECTION_NOT_NEEDED' AND r_mat = 'CORRECTION_TRANSFER' AND r_approver = 'CORRECTION_APPROVER' AND r_same = 'CORRECTION_SAME_OFFICER'
+                 AND decided = 'APPROVED' AND q.kind = 'CORRECTION' AND q.admission_stage = 'COURSES_REGISTERED' AND q.decided_office = 'registrar'
+                 AND q.fees_paid = 150000 AND q.fees_due_before = 150000 AND q.fees_due_after = 120000 AND q.registrations_returned = 1 AND q.letter_reissued
+                 AND reg_row.status = 'RETURNED' AND reg_row.approved_at IS NULL AND reg_row.returned_comment LIKE 'Your admission was corrected from%'
+                 AND st_row.programme_code = 'C00019' AND st_row.programme = (SELECT name FROM ref.programme WHERE code = 'C00019')
+                 AND pos.due = 120000 AND pos.paid = 150000 AND pos.balance = 0 AND n_letters = 2 AND stage_after = 'SCHOOL_FEES_PAID'
+                 AND reg_line.applied_code = 'C00023' AND reg_line.current_code = 'C00019' AND reg_line.moved AND reg_line.stage = 'CORRECTION'
+                 AND reg_line.reason = 'Error discovered in the admission' AND reg_line.fees_due_after = 120000 AND reg_line.history LIKE '%"kind": "CORRECTION"%', false),
+        format('route=%s/%s early=%s matriculated=%s charges=%s preview=%s/%s/%s refusals=%s|%s|%s|%s|%s|%s|%s decided=%s request=%s/%s/%s fees=%s/%s/%s regs=%s letter=%s registration=%s/%s student=%s position=%s/%s/%s letters=%s stage=%s register=%s→%s %s %s',
+               rt.route, rt.stage, e_route, m_route, charges_same, pv #>> '{fees,dueAfter}', pv #>> '{fees,excessAfter}', pv #>> '{target,result}',
+               r_ordinary, r_note, r_elig, r_early, r_mat, r_approver, r_same, decided, q.kind, q.admission_stage, q.decided_office,
+               q.fees_paid, q.fees_due_before, q.fees_due_after, q.registrations_returned, q.letter_reissued, reg_row.status, left(reg_row.returned_comment, 30),
+               st_row.programme_code, pos.due, pos.paid, pos.balance, n_letters, stage_after, reg_line.applied_code, reg_line.current_code, reg_line.stage, reg_line.reason));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

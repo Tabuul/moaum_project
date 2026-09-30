@@ -273,7 +273,8 @@ class AdmissionEligibilityController {
     List<Map<String, Object>> changes(@PathVariable String session, @PathVariable String year, @RequestParam(required = false) String state) {
         return jdbc.sql("""
                 SELECT q.*, a.application_no, c.surname, c.other_names, c.jamb_reg_no, c.entry_mode,
-                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS decided_officer
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS decided_officer,
+                       (SELECT r.surname || ', ' || r.given_names FROM iam.person r WHERE r.id = q.requested_by) AS requested_officer
                   FROM admissions.programme_change_request q JOIN admissions.application a ON a.id = q.application_id JOIN admissions.candidate c ON c.id = q.candidate_id
                   LEFT JOIN iam.person p ON p.id = q.decided_by
                  WHERE q.session = :s AND (:st::text IS NULL OR q.state = :st) ORDER BY (q.state = 'REQUESTED') DESC, q.requested_at DESC
@@ -286,20 +287,23 @@ class AdmissionEligibilityController {
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/eligibility/changes/{id}/approve")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> approve(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body) {
-        return decide(session + "/" + year, id, "APPROVE", body == null ? null : body.note());
+    Map<String, Object> approve(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body, Authentication auth) {
+        return decide(session + "/" + year, id, "APPROVE", body == null ? null : body.note(), auth);
     }
 
     @PostMapping("/api/v1/admissions/sessions/{session}/{year}/eligibility/changes/{id}/reject")
     @PreAuthorize(OFFICE)
     @Transactional
-    Map<String, Object> reject(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body) {
-        return decide(session + "/" + year, id, "REJECT", body == null ? null : body.note());
+    Map<String, Object> reject(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @RequestBody(required = false) DecisionIn body, Authentication auth) {
+        return decide(session + "/" + year, id, "REJECT", body == null ? null : body.note(), auth);
     }
 
-    private Map<String, Object> decide(String s, UUID id, String decision, String note) {
+    private Map<String, Object> decide(String s, UUID id, String decision, String note, Authentication auth) {
         UUID app = jdbc.sql("SELECT application_id FROM admissions.programme_change_request WHERE id = :id AND session = :s").param("id", id).param("s", s)
                 .query(UUID.class).optional().orElseThrow(() -> new NotFound("programme change request", id));
+        // an admission correction (V297) is the Registrar's offices' to decide, here as on Programme Changes
+        String kind = jdbc.sql("SELECT kind FROM admissions.programme_change_request WHERE id = :id").param("id", id).query(String.class).single();
+        ProgrammeChangeController.guardDecision("CORRECTION".equals(kind), auth);
         jdbc.sql("SELECT admissions.decide_programme_change(:id, :d, :n, :by)").param("id", id).param("d", decision).param("n", note, Types.VARCHAR).param("by", actor(), Types.OTHER).query(String.class).single();
         UUID run = jdbc.sql("SELECT admissions.eligibility_current(:a, :by)").param("a", app).param("by", actor(), Types.OTHER).query(UUID.class).single();
         return detail(app, run, true);

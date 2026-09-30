@@ -588,6 +588,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/admissionsetup", "icon": "doc", "label": "Admission Settings", "badge": "!" },
           { "id": "t/admeligibility", "icon": "check", "label": "Programme Eligibility" },
+          { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
           { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants and Candidates" },
           { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
@@ -639,6 +640,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/clearance", "icon": "check", "label": "Financial Clearance" },
+          { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
@@ -928,6 +930,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" }
@@ -1032,6 +1035,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
         ]
       },
@@ -1124,6 +1128,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
           { "id": "t/admeligibility", "icon": "check", "label": "Programme Eligibility" },
+          { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
@@ -1408,6 +1413,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/approvals", "icon": "check", "label": "Senate Business", "badge": "7" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
+          { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/projects", "icon": "flask", "label": "Research" }
         ]
       },

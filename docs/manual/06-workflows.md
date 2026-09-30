@@ -33,6 +33,7 @@ This volume describes every end-to-end business workflow the portal runs today, 
    - 2.12 Programme eligibility and course suggestions (V266)
    - 2.13 The admission lifecycle after the offer: acceptance, online screening, change of programme, fees, registration, matriculation (V269)
    - 2.14 Admission Status Checking (V295)
+   - 2.15 Programme changes and the admission correction (V297)
 3. [Postgraduate admission, research and external examiners](#3-postgraduate-admission-research-and-external-examiners)
    - 3.1 Postgraduate admission
    - 3.2 Coursework registration and results
@@ -324,6 +325,20 @@ Who may check is the application, the window and the fee — never the decision,
 | Report | Director of ICT; Academic Office, Registrar, Deputy Registrar, System and Super Administrators read (`status_checking_rows`, `status_checking_summary`) | filters: faculty, department, programme, gender, payment status, admission status, checked, date range | — | — | — | 403 for other offices |
 
 Until the applicant may check, nothing they read shows the decision: `admission_status` answers APPLICATION_INCOMPLETE, CHECKING_CLOSED or CHECKING_FEE_PENDING; the tracker's JAMB admission step stays "now"; the applicant's view carries no decision, note or basis and reads the offer state as PROPOSED; the document list waits "after an offer of admission". Tested by `db/check.sql` (property V295) and `AdmissionStatusCheckingIT` (the six cases — admitted, not admitted, pending then admitted later, no valid application, closed, paid and open — with the refusals, the notices, the report and the history).
+
+### 2.15 Programme changes and the admission correction (V297)
+
+Every change of programme is one `admissions.programme_change_request`; which road it takes is `admissions.programme_change_route(application)`: **CHANGE** before the Board's decision, or while the screening is open (PENDING, IN_REVIEW, CORRECTION_REQUIRED) or unsuccessful without an approved change after it (§2.12, §2.13); **CORRECTION** from the decision (an offer not declined) to matriculation — offered, accepted, screened, on the register, school fees paid, courses registered (`admissions.admission_stage`); **TRANSFER** once matriculated, or with a locked registration or a recorded mark (the inter-departmental transfer, §7); **CLOSED** for an application not offered or declined.
+
+| Stage | Who starts / acts | Precondition / validation | Data created / changed | Status change | Notification | On refusal |
+|---|---|---|---|---|---|---|
+| Preview | Any reader, Programme Changes → Correct an admission (`correction_preview`) | — | nothing | — | — | — |
+| Recommend | Academic Office, Registrar, Deputy Registrar, Super Administrator (`recommend_admission_correction`) | route CORRECTION; a configured reason; a note describing the error; an active programme other than the one held; no open request; eligible for it on the session's settings, or an override with its reason by the Registrar's offices | `programme_change_request` kind CORRECTION, REQUESTED, with the admission stage and the screening state; `eligibility_event` ADMISSION_CORRECTION_RECOMMENDED; `screening_event` | — | Registrar and Deputy Registrar: "An admission correction awaits approval" (the applicant is told only when it is decided) | `CORRECTION_NOT_NEEDED`, `CORRECTION_TRANSFER`, `CORRECTION_NO_ADMISSION`, `CORRECTION_REASON`, `CORRECTION_NOTE_REQUIRED`, `CORRECTION_RECOMMENDER`; not eligible without an override |
+| Approve | Registrar, Deputy Registrar, Vice-Chancellor, Super Administrator — not the recommender (`decide_programme_change` → `decide_admission_correction`) | route still CORRECTION; the admission still on the programme recommended from; eligibility re-read (or the override) | `candidate.programme`, `student.programme_code`; the student's registrations (not locked) RETURNED with their entries DROPPED; a proposed matriculation row dropped (`matric_batch_drop_row`); the request APPROVED with the fees paid, due before and due after (`finance.position`), the counts, the letters reissued (`issue_admission_letter`, `issue_screening_forms`); the screening form's remarks; `eligibility_event` ADMISSION_CORRECTED; `evaluate_application` | the admission on the new programme; the fee position the new programme's | applicant: "Your admission has been corrected: {programme}" (programmes, faculty, department, reason, fees paid / due / balance or excess, registration, letter); the recommending office; the Bursary when the fees moved | `CORRECTION_APPROVER`, `CORRECTION_SAME_OFFICER`, `CORRECTION_TRANSFER` (matriculated since), `CORRECTION_STALE`, no longer eligible |
+| Reject | the same deciders | a reason | the request REJECTED; `eligibility_event` ADMISSION_CORRECTION_REJECTED | none | the recommending office | "a rejection carries its reason" |
+| Register | every reader (`programme_change_register`) | — | — | — | — | — |
+
+The fees paid are never moved or refunded by the correction: they stay on the student and `finance.position` reads them against the new programme's charges (`finance.charges_as` reads the schedule for a programme named, the same reading as `finance.charges`); a balance is paid in the ordinary way, an excess credited or refunded by the Bursary. Tested by `db/check.sql` (V297) and `ProgrammeCorrectionIT`.
 
 ---
 ## 3. Postgraduate admission, research and external examiners

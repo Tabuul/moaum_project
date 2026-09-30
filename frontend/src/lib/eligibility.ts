@@ -20,6 +20,8 @@ export interface ChangeRequest {
   eligibility_at_decision: string | null; decided_at: string | null; decided_by: string | null; decision_note: string | null; decided_officer?: string | null;
   /** V284: the officer's reason, the recommending office, the override with the engine's verdict it set aside */
   reason_code?: string | null; recommended_office?: string | null; override?: boolean; override_reason?: string | null; original_eligibility?: string | null; screening_state_at_request?: string | null;
+  /** V297: CORRECTION — an admission corrected after the decision, decided by the Registrar's office on Programme Changes */
+  kind?: "CHANGE" | "CORRECTION"; admission_stage?: string | null; requested_officer?: string | null;
   application_no?: string; surname?: string; other_names?: string; jamb_reg_no?: string; entry_mode?: string;
 }
 export interface ListRow {

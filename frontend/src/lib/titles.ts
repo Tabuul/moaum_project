@@ -563,6 +563,7 @@ export const TITLES: Record<string, [string, string]> = {
   "t/screeningreview": ["Screening Review", "The online screening forms of accepted applicants, reviewed and decided"],
   "a/admission": ["Your admission", "Congratulations, the details, the next step and the tracker"],
   "t/admeligibility": ["Programme Eligibility", "Applicants against the admission settings; the programmes they qualify for"],
+  "t/programmechanges": ["Programme Changes", "Applicants moved from the programme they applied for; admissions corrected after the decision"],
   "t/admissions": [
     "Admissions",
     "2026 UTME cycle"

@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
-import { Btn, KvGrid, Note, Pil } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -116,6 +116,12 @@ export function ProgrammeChange({ base, appId, may, mayOverride, current, onChan
           {failed.length ? <Note kind="bad" title="Configured requirements not met">{failed.map((c, i) => <div key={i}>✕ <b>{c.label || KIND_WORD[c.kind] || c.kind}</b> — required: {c.requirement || "—"} · candidate: {c.candidate || "—"}</div>)}</Note>
             : d.run.applied_result === "NOT_ELIGIBLE" ? <Note kind="bad" title="Not eligible">{(applied?.reasons ?? []).join("; ")}</Note> : <Note kind="ok" title="The candidate meets the programme's requirements">A change of programme is not called for by eligibility; it may still be recommended on the screening decision or programme suitability.</Note>}
 
+          {may && !open && current.screeningState === "SUCCESSFUL" ? (
+            <Note kind="info" title="The screening is successful: the programme is no longer changed here"
+              action={<LinkBtn kind="secondary" href={`/admissions/programme-changes?session=${encodeURIComponent(current.session)}&app=${appId}`}>Correct the admission on Programme Changes</LinkBtn>}>
+              An error found in the admission since — even after school fees — is corrected as an admission correction: recommended with the error described and approved by the Registrar&rsquo;s office, the fees paid kept against the new programme.
+            </Note>
+          ) : null}
           {approvedAfter.length ? approvedAfter.map((c) => <Note key={c.id} kind="ok" title={`Programme change approved · ${c.from_programme} → ${c.to_programme}`}>{whenAt(c.decided_at)}{c.decided_officer ? ` · ${c.decided_officer}` : ""}{c.reason_code ? ` · ${reasons.find((x) => x.code === c.reason_code)?.label ?? c.reason_code}` : ""}{c.override ? ` · OVERRIDE (engine: ${c.original_eligibility}) — ${c.override_reason}` : ""}{c.decision_note ? ` · ${c.decision_note}` : ""}</Note>) : null}
           {open ? (
             <Note kind="info" title={`Programme change awaiting approval · ${open.from_programme} → ${open.to_programme}`}>
