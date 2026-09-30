@@ -111,9 +111,24 @@ class ApplicantRepository {
                 """).param("id", applicationId).query().listOfRows().stream().findFirst();
     }
 
-    /** the admission checking fee still stands between the applicant and the released decision (V271) */
+    /** the admission checking fee is still owed before the status can be read (V271, V295: whatever the decision) */
     boolean checkingDue(UUID applicationId) {
         return jdbc.sql("SELECT admissions.checking_due(:a)").param("a", applicationId).query(Boolean.class).single();
+    }
+
+    /** Admission Status Checking for the application (V295): the application, the Director of ICT's window, the fee, whether it
+     *  is paid, what may be paid and checked, whether the decision may be read, and the checks so far — camelCased for the screens */
+    static final String STATUS_CHECKING = """
+            SELECT application_valid AS "applicationValid", window_state AS "windowState", window_open AS "windowOpen",
+                   opens_at AS "opensAt", closes_at AS "closesAt", fee, fee_required AS "feeRequired", paid, paid_at AS "paidAt",
+                   paid_reference AS "paidReference", open_reference AS "openReference", open_reference_expires AS "openReferenceExpires",
+                   past, may_pay AS "mayPay", may_check AS "mayCheck", decision_visible AS "decisionVisible", reason,
+                   checks, last_checked_at AS "lastCheckedAt", last_result AS "lastResult"
+              FROM admissions.status_checking(:a)
+            """;
+
+    Map<String, Object> statusChecking(UUID applicationId) {
+        return jdbc.sql(STATUS_CHECKING).param("a", applicationId).query().listOfRows().stream().findFirst().orElse(Map.of());
     }
 
     /** the online screening form is open for the applicant to edit: DRAFT, or RETURNED for correction (V269) */

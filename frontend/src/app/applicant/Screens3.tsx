@@ -24,6 +24,18 @@ export function Accept({ a }: { a: Application }) {
   const open = openReference(a, "ACCEPTANCE");
   const fee = Number(a.fees.acceptanceFee);
 
+  /* V295: an offer is accepted once the applicant has checked the admission status and read it, through Admission Status
+     Checking; until then this page says nothing of whether there is one */
+  if (a.checking && !a.checking.past && !(a.decision && a.decision !== "OFFERED")) {
+    return (
+      <>
+        <Note kind="info" title="Check your admission status first" action={<LinkBtn kind="primary" href="/applicant/status">Admission status</LinkBtn>}>
+          An offer of admission is read through Admission Status Checking and accepted here afterwards, with the acceptance fee.
+        </Note>
+        <Rail a={a} />
+      </>
+    );
+  }
   if (!at(a, 5) || a.decision !== "OFFERED") {
     return (
       <>

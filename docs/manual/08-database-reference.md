@@ -464,7 +464,8 @@ A person may hold several offices at once (`office_assignment` rows), each with 
         ▲ account_id                            ▲ attachment_id
    admissions.application ──candidate_id──▶ candidate     admissions.olevel_sitting ──▶ olevel_grade (sitting_id, subject)
      │ application_no UQ, fee/submit/score/decision/accept/clear timestamps
-     ├◀─application_id── admissions.fee_reference        (APPLICATION | ACCEPTANCE)
+     ├◀─application_id── admissions.fee_reference        (APPLICATION | CHECKING | ACCEPTANCE)
+     ├◀─application_id── admissions.status_check         (each admission status check and its result, V295)
      ├◀─application_id── admissions.application_document ──▶ application_document_blob
      ├◀─application_id── admissions.clearance_document   (six items)
      ├◀─application_id── admissions.screening_assignment ──batch_id──▶ screening_batch, ──workstation_id──▶ cbt_workstation
@@ -1007,6 +1008,7 @@ Total tables: 331 across 26 schemas (the `public` schema holds only the deployme
 | `selection_criterion` | ── 2.4 · the four selection criteria ────────────────────────────────── | policy_id, criterion | session_policy | 3 |  | 0 | exempt | V008 |
 | `session_policy` | ── the session's own settings ───────────────────────────────────────── | id |  | 18 | (session) | 1 | attached | V008 |
 | `subject_equivalence` | a subject the Secretariat accepts in place of the one a rule names, for OLEVEL, UTME or ANY; nothing is inferred beyond these rows (V266) | id | session_policy | 6 | (policy, subject, equivalent, scope) | 1 | attached | V266 |
+| `status_check` | Every admission status check an applicant made (V295): when, the status it returned and its label, the release it read, the checking-fee reference paid on and the window's state; read by the applicant (*Your checks*) and by the Admission Status Checking report | id | application | 8 |  | 1 | attached | V295 |
 | `suggestion_sent` | the record that a candidate has been emailed their suggestions | application_id | application | 4 |  | 0 | exempt | V106 |
 
 ### Schema `apimgmt` — API keys for integrations
@@ -1465,7 +1467,8 @@ Every column whose CHECK constraint enumerates its values, compiled from `constr
 | `admissions.screening_batch` | `state` | `ck_batch_state` | DRAFT · PUBLISHED · POSTPONED · CANCELLED |
 | `admissions.application` | `decision_basis` | `ck_app_basis` | NM · SM · ELG · LOCALITY · PLWD · OTHER |
 | `admissions.application` | `decision` | `ck_app_decision` | OFFERED · WAITING · NOT_OFFERED |
-| `admissions.fee_reference` | `kind` | `ck_fref_kind` | APPLICATION · ACCEPTANCE |
+| `admissions.fee_reference` | `kind` | `ck_fref_kind` | APPLICATION · ACCEPTANCE · CHECKING |
+| `policy.portal_window` | `window_type` | `portal_window_window_type_check` | SCHOOL_FEES_PAYMENT · COURSE_REGISTRATION · ADMISSION_STATUS_CHECKING (V295; `ck_window_checking_session`: no semester, no late period, no late fee) |
 | `admissions.application_document` | `kind` | `ck_doc_kind` | OLEVEL_STATEMENT · BIRTH_CERT · LGA_ID · JAMB_SLIP · PASSPORT |
 | `admissions.application_document` | `status` | `ck_doc_status` | PENDING · ACCEPTED · REJECTED |
 | `admissions.application_document` | `content_type` | `ck_doc_type` | application/pdf · image/jpeg · image/png |

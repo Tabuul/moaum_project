@@ -60,6 +60,8 @@ class AdmissionLifecycleIT {
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2084);
+        // V295: the applicants check their status while the Director of ICT has Admission Status Checking open
+        it.openChecking(SESSION);
         it.db(() -> {
             jdbc.sql("INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, state, instrument, in_force) VALUES (:id, :s, 1200, 70, 30, 'IN_FORCE', 'Senate minute LifecycleIT/1', tstzrange(now(), NULL)) ON CONFLICT DO NOTHING")
                     .param("id", POLICY).param("s", SESSION).update();
@@ -128,8 +130,7 @@ class AdmissionLifecycleIT {
 
     Map<String, Object> admission(Applicant a) { return m(it.get(a.token(), "/api/v1/applicant/me/admission").getBody()); }
 
-    /** the acceptance as the journey already does it: the undertaking, the fee reference, the Bursary's confirmation */
-    /** the admission checking fee, on its own, opens the decision (V271) */
+    /** the admission checking fee, on its own (V271), then the applicant's check of the status — the offer read (V295) */
     void check(Applicant a) {
         ResponseEntity<Map> ref = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING"));
         assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
@@ -137,8 +138,11 @@ class AdmissionLifecycleIT {
         assertThat(r).startsWith("MOAUM-CHK-");
         assertThat(jdbc.sql("SELECT amount FROM admissions.fee_reference WHERE reference = :r").param("r", r).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("3000");
         assertThat(it.call(bursar, HttpMethod.POST, PATH + "/fee-references/" + r + "/confirm", Map.of("channel", "Card")).getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<Map> checked = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/admission/checked", Map.of());
+        assertThat(checked.getStatusCode().value()).as(String.valueOf(checked.getBody())).isEqualTo(200);
     }
 
+    /** the acceptance as the journey already does it: the undertaking, the fee reference, the Bursary's confirmation */
     void accept(Applicant a) {
         assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/accept", Map.of("undertaking", true)).getStatusCode().value()).isEqualTo(200);
         String ref = String.valueOf(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getBody().get("reference"));
@@ -185,12 +189,15 @@ class AdmissionLifecycleIT {
         assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("decision")).isNull();
         assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("checkingDue")).isEqualTo(true);
         assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getStatusCode().value()).isEqualTo(422);   // the checking fee comes first
+        // V295: nor may the status be checked, or the offer accepted, before the checking fee is confirmed
+        assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/admission/checked", Map.of()).getBody().get("code")).isEqualTo("ADMISSION_CHECKING_FEE_UNPAID");
+        assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/accept", Map.of("undertaking", true)).getBody().get("code")).isEqualTo("ADMISSION_STATUS_NOT_CHECKED");
         check(a);
         assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")).getStatusCode().value()).isEqualTo(422);      // paid once
         st = admission(a);
         assertThat(st.get("status")).isEqualTo("ADMITTED");
         assertThat(it.get(a.token(), "/api/v1/applicant/me").getBody().get("decision")).isEqualTo("OFFERED");
-        // the status is read on the confirmation of the checking fee; the acceptance fee is the next step
+        // the status is read on the applicant's check, after the checking fee; the acceptance fee is the next step
         assertThat(String.valueOf(st.get("next_action"))).contains("acceptance fee");
         assertThat(m(st.get("entitlement")).get("checking_paid")).isEqualTo(true);
         assertThat(String.valueOf(st.get("tracker"))).contains("\"key\": \"ADMISSION_STATUS\", \"label\": \"Admission status checked\", \"state\": \"done\"").contains("\"key\": \"SCHOOL_FEES\", \"label\": \"School fees\", \"state\": \"todo\"");

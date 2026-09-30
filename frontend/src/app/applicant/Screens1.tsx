@@ -45,7 +45,8 @@ export function Dashboard({ a }: { a: Application }) {
         {nx[1]}
       </Note>
       {at(a, 2) && !at(a, 5) ? <Eligibility /> : null}
-      {at(a, 5) && a.decision === "OFFERED" ? <AdmissionProgress /> : null}
+      {/* the Admission Status section is always there (V295): checking closed, open and not paid for, paid for, the admission under way */}
+      <AdmissionProgress />
       <TwoCol>
         <Rail a={a} />
         <Panel title="Dates that matter" right={a.session}>

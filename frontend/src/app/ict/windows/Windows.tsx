@@ -8,7 +8,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, KvGrid, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -18,7 +18,7 @@ export interface WindowRow { type: string; scope: "SESSION" | "SEMESTER"; semest
 export interface WindowEvent { id: string; window_type: string; session: string; semester: number | null; action: string; previous_state: string | null; new_state: string | null; previous_opens_at: string | null; previous_closes_at: string | null; previous_late_until: string | null; new_opens_at: string | null; new_closes_at: string | null; new_late_until: string | null; late_fee_enabled: boolean | null; reason: string | null; office: string | null; at: string; officer: string | null }
 export interface WindowsPage { session: string; sessions: { name: string; state: string }[]; semesters: { number: number; state: string }[]; openSemester: number; windows: WindowRow[]; affected: number; lateFees: { kind: string; lines: number; total: number }[]; events: WindowEvent[]; now: string }
 
-const TYPE_WORD: Record<string, string> = { SCHOOL_FEES_PAYMENT: "School fees payment", COURSE_REGISTRATION: "Course registration" };
+const TYPE_WORD: Record<string, string> = { SCHOOL_FEES_PAYMENT: "School fees payment", COURSE_REGISTRATION: "Course registration", ADMISSION_STATUS_CHECKING: "Admission status checking" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
 const remaining = (iso: string | null | undefined, now: string) => { if (!iso) return ""; const ms = new Date(iso).getTime() - new Date(now).getTime(); if (ms <= 0) return "passed"; const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000); return d ? `${d} day${d === 1 ? "" : "s"} ${h} h left` : `${h} h left`; };
@@ -105,6 +105,9 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
         actions={<span className="row row--inline row--tight"><label htmlFor="pw-session" className="sub2">Session</label><select id="pw-session" className="ctl" value={session} onChange={(e) => go(`/ict/windows?session=${encodeURIComponent(e.target.value)}`)}>{page.sessions.map((s) => <option key={s.name} value={s.name}>{s.name} — {s.state === "CLOSED" ? "COMPLETED" : s.state === "NOT_YET_OPEN" ? "PLANNED" : s.state}</option>)}</select></span>} />
       {problem && !act ? <ProblemNotice problem={problem} /> : null}
       {!may ? <Note kind="info" title="Read only">The portal&rsquo;s windows are opened and closed by the Director of ICT alone.</Note> : null}
+      <Note kind="info" title="Admission status checking has its own page" action={<LinkBtn kind="secondary" href={`/ict/admission-checking?session=${encodeURIComponent(session)}`}>Admission Status Checking</LinkBtn>}>
+        The window in which applicants pay the admission checking fee and check their admission status runs over the admission exercise, with its own report; its acts appear in the history below as well.
+      </Note>
       <Tiles items={[
         ["SCHOOL FEES PAYMENT", (STATE[fees.state] ?? [fees.state])[0], fees.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", fees.closes_at ? `Closes ${when(fees.closes_at)}` : fees.configured ? "No closing date" : "Open by default"],
         ["COURSE REGISTRATION", (STATE[reg.state] ?? [reg.state])[0], reg.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", `Semester ${page.openSemester}${reg.closes_at ? ` · closes ${when(reg.closes_at)}` : reg.configured ? "" : " · open by default"}`],
@@ -126,7 +129,7 @@ export function Windows({ page, actingOffice }: { page: WindowsPage; actingOffic
           may ? <span key="a" className="row row--inline row--tight row--end">{w.state === "OPEN" ? <Btn kind="urgent" size="sm" onClick={() => start(w.type, w.semesterAsked, "CLOSE")}>Close</Btn> : <Btn kind="go" size="sm" onClick={() => start(w.type, w.semesterAsked, w.configured ? "REOPEN" : "OPEN")}>Open</Btn>}<Btn kind="ghost" size="sm" onClick={() => start(w.type, w.semesterAsked, "EDIT")}>Edit</Btn></span> : null,
         ])} />
       </Panel>
-      <Panel title="WINDOW HISTORY" right={<span className="row row--inline row--tight"><select className="ctl" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Both windows</option><option value="SCHOOL_FEES_PAYMENT">School fees payment</option><option value="COURSE_REGISTRATION">Course registration</option></select><Btn kind="secondary" size="sm" disabled={!events.length} onClick={() => void excel()}>Excel</Btn><Btn kind="ghost" size="sm" disabled={!events.length} onClick={pdf}>PDF</Btn></span>}>
+      <Panel title="WINDOW HISTORY" right={<span className="row row--inline row--tight"><select className="ctl" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}><option value="">Every window</option><option value="SCHOOL_FEES_PAYMENT">School fees payment</option><option value="COURSE_REGISTRATION">Course registration</option><option value="ADMISSION_STATUS_CHECKING">Admission status checking</option></select><Btn kind="secondary" size="sm" disabled={!events.length} onClick={() => void excel()}>Excel</Btn><Btn kind="ghost" size="sm" disabled={!events.length} onClick={pdf}>PDF</Btn></span>}>
         {events.length ? <DTable pageSize={30} cols={["S/N|num", "Window", "Semester|mid", "Action|mid", "Before|mid", "After|mid", "Start|mid", "End|mid", "Late until|mid", "Reason", "Changed by", "At|mid"]} rows={events.map((e, i) => [
           <span key="n" className="tnum sub2">{i + 1}</span>, TYPE_WORD[e.window_type] ?? e.window_type, e.semester ?? "Session", <b key="a">{e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="s" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>, <span key="l" className="tnum sub2">{when(e.new_late_until)}{e.late_fee_enabled ? " · fee" : ""}</span>,

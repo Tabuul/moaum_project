@@ -72,6 +72,12 @@ Sign in as the 300-level student to see the results path from the student's end.
 The applicant is registered on a demo CAPS list for B.Sc. Computer Science with a
 UTME aggregate of 250, at the first stage: the application fee is not yet confirmed.
 
+Admission Status Checking (V295) is opened for the demo session by the demo itself
+(the Director of ICT's window, closed until first opened): once the demo applicant's
+application is paid for and submitted, the Admission status section on the Overview
+offers the admission checking fee, then the check. `demo.ict` opens, closes and
+reports on it under Portal Management → Admission Status Checking.
+
 ## What is already set up for the walk
 
 - Five demo courses at 300 level (DMO 311 to DMO 351), offered this session in the

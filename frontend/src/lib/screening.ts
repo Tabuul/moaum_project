@@ -15,7 +15,25 @@ export interface Offer {
   surname: string; other_names: string; jamb_reg_no: string; programme: string; entry_mode: string; entry_level: number; programme_code: string | null; degree_type: string | null; faculty: string | null; department: string | null;
   student_id: string | null; admission_no: string | null; matric_no: string | null; matriculated_at: string | null; student_status: string | null; current_level: number | null; changed_to: string | null; changed_from: string | null;
 }
-export interface Admission extends AdmissionStatus { tracker: string; entitlement: Entitlement; screeningRequired: boolean; offer: Offer; checkingDue?: boolean; checkingFee?: number | null; checkingReference?: string | null }
+/** Admission Status Checking (V295) as the applicant reads it: the Director of ICT's window for the session, the checking fee
+ *  and whether it is paid, and what may be done now — never the decision, which is what a check reveals. Fields the API has
+ *  no value for are left out of the JSON, so every optional one reads as absent. */
+export interface StatusChecking {
+  applicationValid: boolean; windowState: "OPEN" | "CLOSED" | "SCHEDULED" | "EXPIRED"; windowOpen: boolean; opensAt?: string | null; closesAt?: string | null;
+  fee: number; feeRequired: boolean; paid: boolean; paidAt?: string | null; paidReference?: string | null; openReference?: string | null; openReferenceExpires?: string | null;
+  /** an offer read and its acceptance under way: the admission continues whatever the window */
+  past: boolean; mayPay: boolean; mayCheck: boolean; decisionVisible: boolean;
+  reason?: "APPLICATION_INCOMPLETE" | "CHECKING_CLOSED" | "CHECKING_FEE_UNPAID" | null;
+  checks: number; lastCheckedAt?: string | null; lastResult?: string | null;
+}
+/** one check the applicant made, with the status it returned (admissions.status_check) */
+export interface StatusCheck { checked_at: string; result: string; label: string }
+/** the statuses that stand before the decision: Admission Status Checking's gate (V295) */
+export const CHECKING_GATE = ["APPLICATION_INCOMPLETE", "CHECKING_CLOSED", "CHECKING_FEE_PENDING"];
+export interface Admission extends AdmissionStatus {
+  tracker: string; entitlement: Entitlement; screeningRequired: boolean; offer: Offer; checkingDue?: boolean; checkingFee?: number | null; checkingReference?: string | null;
+  checking?: StatusChecking; checks?: StatusCheck[];
+}
 
 export interface ScreeningForm {
   application_id: string; screening_no: string; state: ScreeningState; version: number; opened_at: string; submitted_at: string | null; declaration_at: string | null;
@@ -65,7 +83,7 @@ export const STATE_WORD: Record<ScreeningState, [string, "grey" | "info" | "ok" 
   PENDING: ["AWAITING SCREENING", "info"], IN_REVIEW: ["IN REVIEW", "info"], CORRECTION_REQUIRED: ["CORRECTION REQUIRED", "warn"], SUCCESSFUL: ["SUCCESSFUL", "ok"], UNSUCCESSFUL: ["UNSUCCESSFUL", "bad"],
   DRAFT: ["AWAITING SCREENING", "info"], SUBMITTED: ["AWAITING SCREENING", "info"], UNDER_REVIEW: ["IN REVIEW", "info"], RETURNED: ["CORRECTION REQUIRED", "warn"],
 };
-export const STATUS_KIND = (status: string): "ok" | "bad" | "info" => (status === "MATRICULATED" || status.endsWith("_SUCCESSFUL") ? "ok" : ["NOT_ADMITTED", "DECLINED", "CHANGE_OF_PROGRAMME_REQUIRED", "SCREENING_RETURNED", "SCREENING_CORRECTION"].includes(status) ? "bad" : "info");
+export const STATUS_KIND = (status: string): "ok" | "bad" | "info" => (status === "MATRICULATED" || status.endsWith("_SUCCESSFUL") ? "ok" : ["NOT_ADMITTED", "DECLINED", "CHANGE_OF_PROGRAMME_REQUIRED", "SCREENING_RETURNED", "SCREENING_CORRECTION", "APPLICATION_INCOMPLETE"].includes(status) ? "bad" : "info");
 export const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 export const dayOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—");
 export function parseTracker(t: string | null | undefined): TrackerStep[] { try { return t ? (JSON.parse(t) as TrackerStep[]) : []; } catch { return []; } }

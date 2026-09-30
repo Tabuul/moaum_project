@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 151
+\set EXPECTED 152
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -1787,13 +1787,17 @@ BEGIN
     PERFORM admissions.release_scores('9997/9998');
     PERFORM admissions.decide_application(app, 'OFFERED', 'check');
     PERFORM admissions.release_decisions('9997/9998');
+    -- V295: admission status checking is the Director of ICT's window, closed until opened for the session
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), '9997/9998', date '9997-09-01', date '9998-08-31', 'DRAFT') ON CONFLICT DO NOTHING;
+    PERFORM policy.window_act('ADMISSION_STATUS_CHECKING', '9997/9998', NULL, 'OPEN', NULL, NULL, NULL, false, 'check', gen_random_uuid(), 'ict');
+    -- the admission checking fee first, on its own (V271): the applicant checks and reads the offer, the acceptance follows (V295)
     PERFORM set_config('moaum.actor_office', 'applicant', true);
-    PERFORM admissions.sign_undertaking(app);
-    -- the admission checking fee first, on its own (V271): the decision opens on it, the acceptance follows
     ref := admissions.new_fee_reference(app, 'CHECKING');
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     PERFORM admissions.confirm_fee(ref, 'Card', NULL);
     PERFORM set_config('moaum.actor_office', 'applicant', true);
+    PERFORM admissions.admission_status_checked(app);
+    PERFORM admissions.sign_undertaking(app);
     ref := admissions.new_fee_reference(app, 'ACCEPTANCE');
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     PERFORM admissions.confirm_fee(ref, 'Card', NULL);
@@ -3389,6 +3393,105 @@ BEGIN
     PERFORM pg_temp.assert('The biodata upload seals its sign-ins with one cost-12 hash; unchanged rows again write nothing',
         coalesce(c1 = 5 AND c2 = 0 AND a = 5 AND h = 1 AND ok12 AND w = 0, false),
         format('created=%s again=%s accounts=%s hashes=%s cost12=%s written-again=%s', c1, c2, a, h, ok12, w));
+END $$;
+
+-- ── V295. admission status checking follows the application, the window and the fee — never the decision ──
+-- Every applicant with a valid Post-UTME application (fee confirmed, submitted) may pay the admission checking fee and check
+-- their status while the Director of ICT has checking open — not yet decided, not admitted or admitted alike; nobody else may,
+-- and nobody while it is closed (it is closed until first opened). The fee is paid once; the status comes from the decision.
+-- Nothing about an offer can be learned or acted on before it is checked: the acceptance fee, the undertaking and the decline
+-- give one answer whatever the decision; an admission already read continues after checking closes.
+DO $$
+DECLARE pend uuid; notad uuid; incomp uuid; offer uuid; ref1 text; ref2 text; ref3 text;
+        r_closed text := 'ok'; r_incomp text := 'ok'; r_unpaid text := 'ok'; r_again text := 'ok'; r_accept text := 'ok';
+        r_und text := 'ok'; r_dec text := 'ok'; r_acc_unread text := 'ok'; und text; st_after text; acc_after text;
+        st_closed text; st_open text; st_pend text; st_notad text; st_offer text; st_later text; tr_hidden text; n_refs bigint; n_checks bigint;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), '9984/9985', date '9984-09-01', date '9985-08-31', 'DRAFT') ON CONFLICT DO NOTHING;
+        CREATE TEMP TABLE v295_apps (tag text, app uuid) ON COMMIT DROP;
+        DECLARE t record; cand uuid; acct uuid; app uuid; n int := 0;
+        BEGIN
+            FOR t IN SELECT * FROM (VALUES ('pending', true, NULL::text, false), ('notadmitted', true, 'NOT_OFFERED', true),
+                                           ('incomplete', false, NULL, false), ('offered', true, 'OFFERED', true)) v(tag, submitted, decision, released) LOOP
+                n := n + 1; cand := gen_random_uuid(); acct := gen_random_uuid(); app := gen_random_uuid();
+                INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+                VALUES (cand, '9984/9985', '99840000000' || n || 'CK', 'V295-' || t.tag, 'Check', (SELECT name FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1), 'UTME', 100, 'PROPOSED');
+                INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+                VALUES (acct, '9984/9985', cand, '99840000000' || n || 'CK', 'v295.' || t.tag || '@example.com', '08030000000', crypt('x', gen_salt('bf', 12)));
+                INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at, decision, decided_at, decision_released_at)
+                VALUES (app, acct, cand, '9984/9985', 'APP/84/99990' || n, now(), CASE WHEN t.submitted THEN now() END, t.decision, CASE WHEN t.decision IS NOT NULL THEN now() END, CASE WHEN t.released THEN now() END);
+                INSERT INTO v295_apps VALUES (t.tag, app);
+            END LOOP;
+        END;
+        SELECT app INTO pend FROM v295_apps WHERE tag = 'pending';
+        SELECT app INTO notad FROM v295_apps WHERE tag = 'notadmitted';
+        SELECT app INTO incomp FROM v295_apps WHERE tag = 'incomplete';
+        SELECT app INTO offer FROM v295_apps WHERE tag = 'offered';
+        -- closed until the Director opens it
+        SELECT status INTO st_closed FROM admissions.admission_status(notad);
+        BEGIN PERFORM admissions.new_fee_reference(pend, 'CHECKING'); EXCEPTION WHEN check_violation THEN r_closed := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM policy.window_act('ADMISSION_STATUS_CHECKING', '9984/9985', NULL, 'OPEN', NULL, NULL, NULL, false, 'check', gen_random_uuid(), 'ict');
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        SELECT status INTO st_open FROM admissions.admission_status(notad);
+        SELECT string_agg(x->>'state', ',') INTO tr_hidden FROM jsonb_array_elements(admissions.admission_tracker(notad)) x WHERE x->>'key' = 'ADMISSION';
+        BEGIN PERFORM admissions.new_fee_reference(incomp, 'CHECKING'); EXCEPTION WHEN check_violation THEN r_incomp := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.admission_status_checked(pend); EXCEPTION WHEN check_violation THEN r_unpaid := split_part(SQLERRM, ':', 1); END;
+        -- an offer not yet read: accepting, declining or paying for it answers as for any applicant, and opens nothing
+        BEGIN PERFORM admissions.sign_undertaking(offer); EXCEPTION WHEN check_violation THEN r_und := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.decline_offer(offer); EXCEPTION WHEN check_violation THEN r_dec := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.new_fee_reference(offer, 'ACCEPTANCE'); EXCEPTION WHEN check_violation THEN r_acc_unread := split_part(SQLERRM, ':', 1); END;
+        -- open: the undecided, the not admitted and the admitted pay, once; a reference still open is the one returned
+        ref1 := admissions.new_fee_reference(pend, 'CHECKING');
+        ref2 := admissions.new_fee_reference(notad, 'CHECKING');
+        ref3 := admissions.new_fee_reference(offer, 'CHECKING');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.confirm_fee(ref1, 'Card', 'check');
+        PERFORM admissions.confirm_fee(ref2, 'Card', 'check');
+        PERFORM admissions.confirm_fee(ref3, 'Card', 'check');
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.admission_status_checked(pend);
+        PERFORM admissions.admission_status_checked(notad);
+        PERFORM admissions.admission_status_checked(offer);
+        SELECT status INTO st_pend FROM admissions.admission_status(pend);
+        SELECT status INTO st_notad FROM admissions.admission_status(notad);
+        SELECT status INTO st_offer FROM admissions.admission_status(offer);
+        BEGIN PERFORM admissions.new_fee_reference(pend, 'CHECKING'); EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM admissions.new_fee_reference(notad, 'ACCEPTANCE'); EXCEPTION WHEN check_violation THEN r_accept := split_part(SQLERRM, ':', 1); END;
+        -- the offer read: the undertaking follows; checking closes and the admission under way continues
+        und := admissions.sign_undertaking(offer);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM policy.window_act('ADMISSION_STATUS_CHECKING', '9984/9985', NULL, 'CLOSE', NULL, NULL, NULL, false, 'check closed', gen_random_uuid(), 'ict');
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        SELECT status INTO st_after FROM admissions.admission_status(offer);
+        acc_after := left(admissions.new_fee_reference(offer, 'ACCEPTANCE'), 10);
+        -- pending today, admitted later: checked again when checking reopens, without paying again
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM policy.window_act('ADMISSION_STATUS_CHECKING', '9984/9985', NULL, 'REOPEN', NULL, NULL, NULL, false, 'check reopened', gen_random_uuid(), 'ict');
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        UPDATE admissions.application SET decision = 'OFFERED', decided_at = now(), decision_released_at = now() WHERE id = pend;
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.admission_status_checked(pend);
+        SELECT status INTO st_later FROM admissions.admission_status(pend);
+        SELECT count(*) INTO n_refs FROM admissions.fee_reference WHERE application_id = pend AND kind = 'CHECKING';
+        SELECT count(*) INTO n_checks FROM admissions.status_check WHERE application_id = pend;
+        RAISE EXCEPTION 'the V295 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('Admission status checking follows the application, the window and the fee, never the decision',
+        coalesce(st_closed = 'CHECKING_CLOSED' AND r_closed = 'ADMISSION_CHECKING_CLOSED' AND st_open = 'CHECKING_FEE_PENDING' AND tr_hidden = 'now'
+                 AND r_incomp = 'ADMISSION_CHECKING_NOT_ELIGIBLE' AND r_unpaid = 'ADMISSION_CHECKING_FEE_UNPAID' AND ref1 <> ref2
+                 AND r_und = 'ADMISSION_STATUS_NOT_CHECKED' AND r_dec = 'ADMISSION_STATUS_NOT_CHECKED' AND r_acc_unread = 'ADMISSION_STATUS_NOT_CHECKED'
+                 AND st_pend = 'PENDING' AND st_notad = 'NOT_ADMITTED' AND st_offer = 'ADMITTED' AND r_again = 'ADMISSION_CHECKING_PAID'
+                 AND r_accept = 'ADMISSION_STATUS_NOT_CHECKED' AND und = 'undertaking signed' AND st_after = 'ACCEPTANCE_PENDING' AND acc_after = 'MOAUM-ACC-'
+                 AND st_later = 'ADMITTED' AND n_refs = 1 AND n_checks = 2, false),
+        format('closed=%s/%s open=%s tracker=%s incomplete=%s unpaid=%s unread=%s/%s/%s pending=%s notadmitted=%s offered=%s again=%s acceptance=%s undertaking=%s after-close=%s/%s later=%s refs=%s checks=%s',
+               st_closed, r_closed, st_open, tr_hidden, r_incomp, r_unpaid, r_und, r_dec, r_acc_unread, st_pend, st_notad, st_offer, r_again, r_accept,
+               und, st_after, acc_after, st_later, n_refs, n_checks));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

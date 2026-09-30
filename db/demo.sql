@@ -404,12 +404,21 @@ BEGIN
          WHERE cc.session = v_session AND cc.jamb_key = '20269901DA';
         PERFORM admissions.decide_application(v_app, 'OFFERED', 'Demo merit offer (invented)');
         PERFORM admissions.release_decisions(v_session);
-        -- the admission checking fee first, on its own (V271/V277): it opens the released decision
+        -- the application fee is confirmed before anything is checked (the polish below confirms the rest of the cohort's)
+        UPDATE admissions.application SET fee_confirmed_at = coalesce(fee_confirmed_at, now()) WHERE id = v_app;
+        -- admission status checking is the Director of ICT's window (V295), closed until opened: the demo opens it for its
+        -- session where nobody has yet decided it
+        IF NOT (SELECT w.configured FROM policy.window_state('ADMISSION_STATUS_CHECKING', v_session, NULL) w) THEN
+            PERFORM set_config('moaum.actor_office', 'ict', true);
+            PERFORM policy.window_act('ADMISSION_STATUS_CHECKING', v_session, NULL, 'OPEN', NULL, NULL, NULL, false, 'Demo: admission status checking opened (invented)', v_actor, 'ict');
+        END IF;
+        -- the admission checking fee first, on its own (V271/V277), then the applicant's check of the status (V295)
         PERFORM set_config('moaum.actor_office', 'applicant', true);
         v_ref := admissions.new_fee_reference(v_app, 'CHECKING');
         PERFORM set_config('moaum.actor_office', 'bursar', true);
         PERFORM admissions.confirm_fee(v_ref, 'Card', 'Demo admission checking fee (invented)');
         PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.admission_status_checked(v_app);
         PERFORM admissions.sign_undertaking(v_app);
         v_ref := admissions.new_fee_reference(v_app, 'ACCEPTANCE');
         PERFORM set_config('moaum.actor_office', 'bursar', true);

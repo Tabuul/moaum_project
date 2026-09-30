@@ -35,6 +35,12 @@ class PaymentsRepository {
                 """).param("r", reference).query(Reference.class).optional();
     }
 
+    /** V295: whether the application behind an admission checking reference may pay it now — a valid application, Admission
+     *  Status Checking open for its session, the fee not yet paid (admissions.status_checking) */
+    boolean checkingPayable(UUID applicationId) {
+        return jdbc.sql("SELECT coalesce((SELECT k.may_pay FROM admissions.status_checking(:a) k), false)").param("a", applicationId).query(Boolean.class).single();
+    }
+
     String confirm(String reference, String channel, String note) {
         return jdbc.sql("SELECT admissions.confirm_fee(:r, :c, :n)")
                 .param("r", reference).param("c", channel).param("n", note, Types.VARCHAR).query(String.class).single();

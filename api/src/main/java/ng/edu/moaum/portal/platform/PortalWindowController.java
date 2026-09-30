@@ -33,6 +33,11 @@ import ng.edu.moaum.portal.shared.DomainRuleViolation;
  * financial and academic rule. Each act supersedes the rule before it and writes its event, so the
  * history is never lost; the students of the session are told when a window opens, reopens, is
  * extended or closes.
+ *
+ * <p>V295 adds a third window, ADMISSION_STATUS_CHECKING: whether every applicant with a valid Post-UTME application of a
+ * session may pay the admission checking fee and check their admission status. It runs over the whole admission exercise (no
+ * semester, no late period), is closed until the Director first opens it, and its opening, extension and closing are told to
+ * the session's applicants; its counts and report are read by the Director and the admissions offices.
  */
 @RestController
 @RequestMapping("/api/v1/portal-windows")
@@ -41,6 +46,11 @@ class PortalWindowController {
     /** the one office that opens and closes the portal's windows */
     private static final String DIRECTOR = "hasAuthority('OFFICE_ict')";
     private static final List<String> TYPES = List.of("SCHOOL_FEES_PAYMENT", "COURSE_REGISTRATION");
+    /** V295: admission status checking, a window of the admission exercise, beside the two of the academic session */
+    private static final String CHECKING = "ADMISSION_STATUS_CHECKING";
+    /** who reads admission status checking's counts and report: the Director, and the offices that read admissions */
+    private static final String CHECKING_READERS =
+            "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super')";
 
     private final JdbcClient jdbc;
 
@@ -103,8 +113,12 @@ class PortalWindowController {
     @Transactional
     Map<String, Object> act(@PathVariable String type, @Valid @RequestBody ActIn body) {
         String t = type.trim().toUpperCase();
-        if (!TYPES.contains(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment and course registration.", new DomainRuleViolation.Remedy("Name one of the two.", "Directorate of ICT"));
+        if (!TYPES.contains(t) && !CHECKING.equals(t)) {
+            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration and admission status checking.", new DomainRuleViolation.Remedy("Name one of the three.", "Directorate of ICT"));
+        }
+        if (CHECKING.equals(t) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
+            throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "Admission status checking opens and closes for the whole admission exercise of a session, with no semester and no late period.",
+                    new DomainRuleViolation.Remedy("Leave the semester and the late period blank.", "Directorate of ICT"));
         }
         if (body.semester() != null && (body.semester() < 1 || body.semester() > 3)) {
             throw new DomainRuleViolation("WINDOW_SEMESTER", "A semester is 1, 2 or 3, or blank for the whole session.", new DomainRuleViolation.Remedy("Choose the semester or leave it blank.", "Directorate of ICT"));
@@ -119,15 +133,106 @@ class PortalWindowController {
         Map<String, Object> after = state(t, body.session(), body.semester());
         int told = 0;
         if (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action())) {
-            told = tell(t, body.session().trim(), body.semester(), body.action(), after);
+            told = CHECKING.equals(t)
+                    ? jdbc.sql("SELECT admissions.tell_status_checking(:s, :a)").param("s", body.session().trim()).param("a", body.action()).query(Integer.class).single()
+                    : tell(t, body.session().trim(), body.semester(), body.action(), after);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("windowId", id);
         out.put("before", before);
         out.put("after", after);
         out.put("told", told);
-        out.putAll(read(body.session()));
+        out.putAll(CHECKING.equals(t) ? checking(body.session()) : read(body.session()));
         return out;
+    }
+
+    /* ── admission status checking (V295): the window of the admission exercise, its counts, its report ── */
+
+    /** the admission session the desk opens on: the latest with applications that is on the calendar, else the current one */
+    private String admissionSession(String asked) {
+        if (asked != null && !asked.isBlank()) return asked.trim();
+        return jdbc.sql("""
+                SELECT coalesce(
+                    (SELECT a.session FROM admissions.application a JOIN policy.academic_session s ON s.name = a.session
+                      WHERE s.state IN ('DRAFT', 'PLANNED', 'CURRENT') GROUP BY a.session ORDER BY max(a.created_at) DESC LIMIT 1),
+                    (SELECT name FROM policy.academic_session WHERE state = 'CURRENT'),
+                    (SELECT max(name) FROM policy.academic_session))
+                """).query(String.class).single();
+    }
+
+    /** the window of a session's admission exercise, what it reaches, and its history */
+    @GetMapping("/admission-checking")
+    @PreAuthorize(CHECKING_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> checking(@RequestParam(required = false) String session) {
+        String s = admissionSession(session);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("sessions", jdbc.sql("""
+                SELECT s.name, s.state, (SELECT count(*) FROM admissions.application a WHERE a.session = s.name) AS applicants
+                  FROM policy.academic_session s ORDER BY s.name DESC
+                """).query().listOfRows());
+        Map<String, Object> w = new LinkedHashMap<>(state(CHECKING, s, null));
+        w.put("type", CHECKING);
+        out.put("window", w);
+        out.put("summary", jdbc.sql("SELECT * FROM admissions.status_checking_summary(:s)").param("s", s).query().singleRow());
+        out.put("fee", jdbc.sql("SELECT f.checking_fee, f.stated FROM admissions.applicant_fee_rule(:s) f").param("s", s).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("events", history(s, CHECKING, 200));
+        out.put("now", OffsetDateTime.now());
+        return out;
+    }
+
+    /** every application of the session with its checking fee, its checks and its authoritative result, filtered */
+    @GetMapping("/admission-checking/report")
+    @PreAuthorize(CHECKING_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> checkingReport(@RequestParam(required = false) String session, @RequestParam(required = false) String faculty,
+                                       @RequestParam(required = false) String department, @RequestParam(required = false) String programme,
+                                       @RequestParam(required = false) String sex, @RequestParam(required = false) String payment,
+                                       @RequestParam(required = false) String result, @RequestParam(required = false) String checked,
+                                       @RequestParam(required = false) java.time.LocalDate from, @RequestParam(required = false) java.time.LocalDate to) {
+        String s = admissionSession(session);
+        String where = """
+                 WHERE (:fac::text IS NULL OR r.faculty_code = :fac) AND (:dept::text IS NULL OR r.dept_code = :dept)
+                   AND (:prog::text IS NULL OR r.programme_code = :prog) AND (:sex::text IS NULL OR upper(left(coalesce(r.sex, ''), 1)) = :sex)
+                   AND (:pay::text IS NULL OR (:pay = 'PAID' AND r.valid AND r.paid) OR (:pay = 'UNPAID' AND r.valid AND NOT r.paid) OR (:pay = 'NOT_ELIGIBLE' AND NOT r.valid))
+                   AND (:res::text IS NULL OR r.result = :res)
+                   AND (:chk::text IS NULL OR (:chk = 'CHECKED' AND r.checked) OR (:chk = 'NOT_CHECKED' AND NOT r.checked))
+                   AND (:from::date IS NULL OR coalesce(r.last_checked_at, r.paid_at) >= (:from::date)::timestamp AT TIME ZONE 'Africa/Lagos')
+                   AND (:to::date IS NULL OR coalesce(r.last_checked_at, r.paid_at) < ((:to::date) + 1)::timestamp AT TIME ZONE 'Africa/Lagos')
+                """;
+        java.util.function.Function<String, JdbcClient.StatementSpec> q = sql -> jdbc.sql(sql)
+                .param("s", s).param("fac", blank(faculty), Types.VARCHAR).param("dept", blank(department), Types.VARCHAR).param("prog", blank(programme), Types.VARCHAR)
+                .param("sex", sex == null || sex.isBlank() ? null : sex.trim().substring(0, 1).toUpperCase(), Types.VARCHAR)
+                .param("pay", upper(payment), Types.VARCHAR).param("res", upper(result), Types.VARCHAR).param("chk", upper(checked), Types.VARCHAR)
+                .param("from", from, Types.DATE).param("to", to, Types.DATE);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("totals", q.apply("""
+                SELECT count(*) AS applicants, count(*) FILTER (WHERE r.valid) AS eligible, count(*) FILTER (WHERE r.valid AND r.paid) AS paid,
+                       count(*) FILTER (WHERE r.valid AND NOT r.paid) AS unpaid, count(*) FILTER (WHERE r.valid AND r.checked) AS checked,
+                       count(*) FILTER (WHERE r.valid AND NOT r.checked) AS not_checked, count(*) FILTER (WHERE r.valid AND r.result = 'ADMITTED') AS admitted,
+                       count(*) FILTER (WHERE r.valid AND r.result = 'NOT_ADMITTED') AS not_admitted, count(*) FILTER (WHERE r.valid AND r.result = 'WAITING_LIST') AS waiting,
+                       count(*) FILTER (WHERE r.valid AND r.result = 'PENDING') AS pending, coalesce(sum(r.amount) FILTER (WHERE r.paid), 0) AS revenue
+                  FROM admissions.status_checking_rows(:s) r""" + where).query().singleRow());
+        List<Map<String, Object>> rows = q.apply("""
+                SELECT r.application_no, r.jamb_reg_no, r.name, r.sex, r.programme, r.faculty, r.department, r.valid, r.paid, r.paid_at, r.reference, r.amount,
+                       r.checked, r.checks, r.first_checked_at, r.last_checked_at, r.last_result, r.result
+                  FROM admissions.status_checking_rows(:s) r""" + where + " ORDER BY r.faculty NULLS LAST, r.department NULLS LAST, r.programme, r.name LIMIT 5001").query().listOfRows();
+        out.put("truncated", rows.size() > 5000);
+        out.put("rows", rows.size() > 5000 ? rows.subList(0, 5000) : rows);
+        out.put("faculties", jdbc.sql("SELECT DISTINCT faculty_code AS code, faculty AS name FROM admissions.status_checking_rows(:s) WHERE faculty_code IS NOT NULL ORDER BY 2").param("s", s).query().listOfRows());
+        out.put("departments", jdbc.sql("SELECT DISTINCT dept_code AS code, department AS name, faculty_code FROM admissions.status_checking_rows(:s) WHERE dept_code IS NOT NULL ORDER BY 2").param("s", s).query().listOfRows());
+        out.put("programmes", jdbc.sql("SELECT DISTINCT programme_code AS code, programme AS name, dept_code FROM admissions.status_checking_rows(:s) WHERE programme_code IS NOT NULL ORDER BY 2").param("s", s).query().listOfRows());
+        return out;
+    }
+
+    private static String blank(String v) {
+        return v == null || v.isBlank() ? null : v.trim();
+    }
+
+    private static String upper(String v) {
+        return v == null || v.isBlank() ? null : v.trim().toUpperCase();
     }
 
     /* ── the parts ── */
@@ -149,7 +254,11 @@ class PortalWindowController {
     }
 
     private static String word(String type) {
-        return "SCHOOL_FEES_PAYMENT".equals(type) ? "School fees payment" : "Course registration";
+        return switch (type) {
+            case "SCHOOL_FEES_PAYMENT" -> "School fees payment";
+            case CHECKING -> "Admission status checking";
+            default -> "Course registration";
+        };
     }
 
     private static String day(Object ts) {

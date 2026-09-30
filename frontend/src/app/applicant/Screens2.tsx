@@ -12,6 +12,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 import { Rail, when } from "./common";
 import { Eligibility } from "./Eligibility";
+import { AdmissionStatusCheck } from "./Admission";
 
 /* ── 4. screening slip: ScreeningSlip.tsx (V260) ── */
 
@@ -80,13 +81,22 @@ export function Score({ a }: { a: Application }) {
 /* ── 6. admission status ── */
 
 export function Status({ a }: { a: Application }) {
-  if (a.checkingDue) {
+  /* V295: until an offer is read, this page is Admission Status Checking — for every applicant whose Post-UTME application is
+     complete, whatever the decision: closed, the fee to pay, or the check itself, made on opening and kept with its result */
+  if (a.checking && !a.checking.past) {
     return (
       <>
-        <Note kind="bad" title="Your admission decision has been released" action={<LinkBtn kind="urgent" href="/applicant/admission">Pay the admission checking fee</LinkBtn>}>
-          It opens once the admission checking fee{a.fees.checkingFee ? ` of \u20a6${Number(a.fees.checkingFee).toLocaleString()}` : ""} is confirmed. It is paid once, on its own; the acceptance fee, if you are offered a place, follows separately.
-        </Note>
+        <AdmissionStatusCheck />
+        {at(a, 2) && !at(a, 5) ? <Eligibility /> : null}
         <Rail a={a} />
+        <Panel title="What your status can be" right="As the check returns it">
+          <DTable cols={["Status", "What it means"]} rows={[
+            [<Two key="o" a="Admitted" b="Offered a place" />, "Read the offer, accept it and pay the acceptance fee before the deadline, or the place is released."],
+            [<Two key="o" a="Waiting list" b="Above the cut-off, but the quota is full" />, "You are offered a place only if an offered candidate fails to accept in time; check again later."],
+            [<Two key="o" a="Not admitted" b="Not offered a place this session" />, "You may be considered for a related programme in the same faculty, or reapply next session."],
+            [<Two key="o" a="Admission pending" b="Not yet finalised" />, "Check again when further admission processing is completed; the checking fee is not charged again."],
+          ]} />
+        </Panel>
       </>
     );
   }

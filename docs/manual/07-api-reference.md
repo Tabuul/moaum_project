@@ -612,7 +612,7 @@ Response `200`:
 { "url": "https://checkout.paystack.com/…", "gateway": "paystack", "reference": "MOAUM-APP-000123-7Q2K" }
 ```
 
-The browser is sent to `url`; the gateway returns it to the portal with `?paid=<reference>` and the webhook (§1.13) or the ten-minute sweep confirms the payment. For Quickteller the `url` is the portal's own `GET /api/v1/payments/quickteller/start?reference=…`, an HTML page that posts itself to Interswitch. For `"gateway": "paydirect"` the answer is an instruction rather than a redirect (`{ "gateway": "paydirect", "reference": …, "amount": …, … }` — pay the reference as a PRN on the biller). Refusals, all `422`: `PAY_ALREADY_CONFIRMED`, `PAY_REFERENCE_EXPIRED` ("Generate a new one; it is free of charge."), `PAY_NO_EMAIL` (a card checkout needs an email on the record), `PAY_GATEWAY_NOT_WIRED` (no secret set — pay by bank transfer against the reference), `PAY_GATEWAY_REFUSED` (the gateway did not open a checkout). A student or office may ask the gateway directly with `POST /api/v1/payments/verify` `{ "reference": "…" }`, which answers `{ "outcome": "SETTLED" | "already confirmed" | "not found at the gateway" | …, "reference": "…" }`.
+The browser is sent to `url`; the gateway returns it to the portal with `?paid=<reference>` and the webhook (§1.13) or the ten-minute sweep confirms the payment. For Quickteller the `url` is the portal's own `GET /api/v1/payments/quickteller/start?reference=…`, an HTML page that posts itself to Interswitch. For `"gateway": "paydirect"` the answer is an instruction rather than a redirect (`{ "gateway": "paydirect", "reference": …, "amount": …, … }` — pay the reference as a PRN on the biller). Refusals, all `422`: `PAY_ALREADY_CONFIRMED`, `PAY_REFERENCE_EXPIRED` ("Generate a new one; it is free of charge."), `PAY_NO_EMAIL` (a card checkout needs an email on the record), `PAY_GATEWAY_NOT_WIRED` (no secret set — pay by bank transfer against the reference), `PAY_GATEWAY_REFUSED` (the gateway did not open a checkout), `ADMISSION_CHECKING_NOT_PAYABLE` (V295: an admission checking fee while Admission Status Checking is closed, or once the fee is paid on another reference — the Quickteller start page says the same). A student or office may ask the gateway directly with `POST /api/v1/payments/verify` `{ "reference": "…" }`, which answers `{ "outcome": "SETTLED" | "already confirmed" | "not found at the gateway" | …, "reference": "…" }`.
 
 ### 2.9 Worked example: verify a document publicly
 
@@ -726,14 +726,15 @@ The undergraduate applicant's own portal: look up a JAMB number, register an acc
 | POST | `/api/v1/applicant/forgot` | always 202: whether or not the identifier names an account, the answer is the same | public | `applicant/ApplicantController.java:148` |
 | POST | `/api/v1/applicant/lookup` | lookup | public | `applicant/ApplicantController.java:67` |
 | GET | `/api/v1/applicant/me` | me | applicant | `applicant/ApplicantController.java:90` |
-| POST | `/api/v1/applicant/me/accept` | accept | applicant | `applicant/ApplicantController.java:129` |
-| POST | `/api/v1/applicant/me/decline` | decline | applicant | `applicant/ApplicantController.java:135` |
+| POST | `/api/v1/applicant/me/accept` | accept (the undertaking); 422 `ADMISSION_STATUS_NOT_CHECKED` until the offer is checked and read (V295) | applicant | `applicant/ApplicantController.java:129` |
+| POST | `/api/v1/applicant/me/decline` | decline; 422 `ADMISSION_STATUS_NOT_CHECKED` until the offer is checked and read (V295) | applicant | `applicant/ApplicantController.java:135` |
 | POST | `/api/v1/applicant/me/documents` | upload | applicant | `applicant/ApplicantController.java:108` |
 | GET | `/api/v1/applicant/me/documents/{id}/content` | content | applicant | `applicant/ApplicantController.java:114` |
-| POST | `/api/v1/applicant/me/fee-references` | feeReference | applicant | `applicant/ApplicantController.java:102` |
+| POST | `/api/v1/applicant/me/fee-references` | a fee reference `{ kind: APPLICATION \| CHECKING \| ACCEPTANCE }`. CHECKING (V295): open to a valid application while Admission Status Checking is open, whatever the decision; a reference still open is returned rather than a new one; 422 `ADMISSION_CHECKING_PAID`, `_NOT_ELIGIBLE`, `_CLOSED`. ACCEPTANCE: 422 `ADMISSION_STATUS_NOT_CHECKED` until the offer is checked and read | applicant | `applicant/ApplicantController.java:102` |
 | PUT | `/api/v1/applicant/me/next-of-kin` | nextOfKin | applicant | `applicant/ApplicantController.java:96` |
 | POST | `/api/v1/applicant/me/submit` | submit | applicant | `applicant/ApplicantController.java:123` |
-| GET | `/api/v1/applicant/me/admission` | the applicant's lifecycle: status, label, next action and door, tracker, acceptance entitlement, the offer's details | applicant | `applicant/ApplicantScreeningController.java` |
+| GET | `/api/v1/applicant/me/admission` | the applicant's lifecycle: status, label, next action and door, tracker, acceptance entitlement, the offer's details, and Admission Status Checking (V295) — `checking` {applicationValid, windowState, windowOpen, opensAt, closesAt, fee, feeRequired, paid, paidAt, paidReference, openReference, past, mayPay, mayCheck, decisionVisible, reason, checks, lastCheckedAt, lastResult} and `checks` (the applicant's checks, newest first); the decision and what it names are left out until `decisionVisible` | applicant | `applicant/ApplicantScreeningController.java` |
+| POST | `/api/v1/applicant/me/admission/checked` | the applicant checks their admission status (V295): kept in `admissions.status_check` with the status returned; 422 `ADMISSION_CHECKING_NOT_ELIGIBLE` (no valid application), `ADMISSION_CHECKING_CLOSED`, `ADMISSION_CHECKING_FEE_UNPAID`; answers as the GET | applicant | `applicant/ApplicantScreeningController.java` |
 | GET | `/api/v1/applicant/me/screening` | the screening form (opened on acceptance): policy, fields, answers, institutions, O'Level declared and JAMB's, documents, missing, prefill, trail, change requests | applicant | `applicant/ApplicantScreeningController.java` |
 | PUT | `/api/v1/applicant/me/screening` | save the draft `{ answers, institutions, olevel, membership }` (DRAFT or RETURNED only) | applicant | `applicant/ApplicantScreeningController.java` |
 | POST | `/api/v1/applicant/me/screening/submit` | submit `{ declaration: true }` once complete; read-only after | applicant | `applicant/ApplicantScreeningController.java` |
@@ -1449,6 +1450,18 @@ The platform itself: `status` (public), `readiness`, the migration ledger, the n
 | PUT | `/api/v1/platform/sms` | save | admin, ict, super | `platform/SmsController.java:38` |
 | POST | `/api/v1/platform/sms/clear-key` | clearKey | admin, ict, super | `platform/SmsController.java:44` |
 | GET | `/api/v1/platform/status` | status | public | `platform/PlatformController.java:174` |
+
+### Portal windows (`platform`, V288 and V295)
+
+The Director of ICT's windows: school fees payment and course registration (per session, and per semester for registration), and Admission Status Checking (V295: the admission exercise of a session, no semester and no late period, closed until first opened). Every act supersedes the rule before it and writes its event; the students — or, for checking, the session's valid applicants not already on their way to acceptance — are told when a window opens, reopens, is extended or closes.
+
+| Method | Endpoint | Purpose | Who may call | Source |
+|---|---|---|---|---|
+| GET | `/api/v1/portal-windows?session=` | the school-fees and registration windows of a session, their states now, the students they reach, the late-fee lines, the last acts | ict | `platform/PortalWindowController.java` |
+| GET | `/api/v1/portal-windows/history?session=&type=` | the history of acts, filtered | ict | `platform/PortalWindowController.java` |
+| POST | `/api/v1/portal-windows/{type}` | one act `{ session, semester, action: OPEN \| CLOSE \| REOPEN \| SCHEDULE \| EXTEND \| SHORTEN \| EDIT, opensAt, closesAt, lateUntil, lateFeeEnabled, reason }` on SCHOOL_FEES_PAYMENT, COURSE_REGISTRATION or ADMISSION_STATUS_CHECKING; a reason for CLOSE, REOPEN, SHORTEN; 422 `WINDOW_CHECKING_SESSION` when checking is given a semester or a late period; answers `{ windowId, before, after, told }` and the page | ict | `platform/PortalWindowController.java` |
+| GET | `/api/v1/portal-windows/admission-checking?session=` | Admission Status Checking for a session (default: the latest session with applications on the calendar): `window`, `summary` (applicants, eligible, paid, unpaid, checked, not_checked, admitted, not_admitted, waiting, pending, revenue, checks), `fee`, `events`, `sessions` | ict, academic, registrar, dregistrar, admin, super | `platform/PortalWindowController.java` |
+| GET | `/api/v1/portal-windows/admission-checking/report?session=&faculty=&department=&programme=&sex=&payment=PAID\|UNPAID\|NOT_ELIGIBLE&result=ADMITTED\|NOT_ADMITTED\|WAITING_LIST\|PENDING&checked=CHECKED\|NOT_CHECKED&from=&to=` | every application of the session with its checking fee, its checks and the authoritative result (`totals`, `rows` up to 5,000 with `truncated`, and the faculties, departments and programmes to filter by) | ict, academic, registrar, dregistrar, admin, super | `platform/PortalWindowController.java` |
 
 ### Postgraduate school (`pgadmissions`, 68 endpoints)
 

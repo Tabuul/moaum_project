@@ -292,7 +292,13 @@ public class ApplicantService {
         v.put("entryMode", a.get("entry_mode"));
         v.put("entryLevel", a.get("entry_level"));
         v.put("listKind", a.get("list_kind"));
-        v.put("offerState", a.get("offer_state"));
+        /* the released decision opens to the applicant through Admission Status Checking (V271, V295): a valid application, checking
+           open, the checking fee confirmed — or an admission already under way; the office always reads it. Until then nothing in the
+           view says what the decision is: not the decision, nor the candidate's offer state (ADMITTED once an offer is released) */
+        boolean checkingDue = !forOffice && repo.checkingDue(applicationId);
+        Map<String, Object> checking = forOffice ? Map.of() : repo.statusChecking(applicationId);
+        boolean decisionVisible = forOffice || (a.get("decision_released_at") != null && Boolean.TRUE.equals(checking.get("decisionVisible")));
+        v.put("offerState", decisionVisible || !"ADMITTED".equals(a.get("offer_state")) ? a.get("offer_state") : "PROPOSED");
         v.put("email", a.get("email"));
         v.put("phone", a.get("phone"));
         Map<String, Object> bio = new LinkedHashMap<>();
@@ -386,10 +392,8 @@ public class ApplicantService {
             v.put("screeningScore", a.get("screening_score"));
         }
 
-        /* the released decision opens to the applicant once the admission checking fee is confirmed (V271); the office always reads it */
-        boolean checkingDue = !forOffice && repo.checkingDue(applicationId);
-        boolean decisionVisible = (a.get("decision_released_at") != null && !checkingDue) || forOffice;
         v.put("checkingDue", checkingDue);
+        if (!forOffice) v.put("checking", checking);
         v.put("checkingConfirmedAt", a.get("checking_confirmed_at"));
         v.put("decisionReleasedAt", a.get("decision_released_at"));
         v.put("decision", decisionVisible ? a.get("decision") : null);

@@ -1,3 +1,5 @@
+import type { StatusChecking } from "@/lib/screening";
+
 /**
  * The applicant's journey as the API states it (V021, proto/part13.html):
  * ten stages from the account to the matriculation number, every screen
@@ -7,7 +9,7 @@
 
 export interface OlGrade { subject: string; grade: string }
 export interface OlSitting { body: string; type: string | null; year: string | null; examNumber: string | null; subjects: OlGrade[] }
-export interface FeeReference { id: string; kind: "APPLICATION" | "ACCEPTANCE"; reference: string; amount: number; generatedAt: string; expiresAt: string; confirmedAt: string | null; channel: string | null }
+export interface FeeReference { id: string; kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"; reference: string; amount: number; generatedAt: string; expiresAt: string; confirmedAt: string | null; channel: string | null }
 export interface ApplicationDocument { id: string; kind: string; filename: string; contentType: string; bytes: number; uploadedAt: string; status: "PENDING" | "ACCEPTED" | "REJECTED"; reviewedAt: string | null; reviewNote: string | null }
 export interface ScreeningSlip {
   batch: string; heldOn: string; startsAt: string; endsAt: string; venue: string; seat: string;
@@ -69,6 +71,7 @@ export interface Application {
   entryMode: string;
   entryLevel: number;
   listKind: string | null;
+  /** the candidate's offer state; PROPOSED to the applicant until the offer is read through Admission Status Checking (V295) */
   offerState: string;
   email: string;
   phone: string;
@@ -85,8 +88,10 @@ export interface Application {
   result: ScreeningResult | null;
   screeningScore?: number | null;
   decisionReleasedAt: string | null;
-  /** the released decision is closed until the admission checking fee is confirmed (V271) */
+  /** the admission checking fee is owed before the status can be read (V271, V295: whatever the decision) */
   checkingDue?: boolean;
+  /** Admission Status Checking (V295): the window, the fee, what may be done — the decision below is null until it may be read */
+  checking?: StatusChecking;
   checkingConfirmedAt?: string | null;
   decision: "OFFERED" | "WAITING" | "NOT_OFFERED" | null;
   decisionNote: string | null;
@@ -123,8 +128,8 @@ export const NEXT: [string, string, string, string][] = [
   ["Complete and submit your application", "Biodata from JAMB, your O’Level results as JAMB sent them, your documents.", "/applicant/apply", "Open the form"],
   ["Wait for your screening batch", "Batches are published once applications close, so that every candidate is placed.", "/applicant/screening", "Screening slip"],
   ["Sit the post-UTME screening", "Bring your slip and photo identification.", "/applicant/screening", "Screening slip"],
-  ["Check your admission status", "The offer appears here the moment the University uploads JAMB’s admission list or the Board releases its decision.", "/applicant/status", "Admission status"],
-  ["Check your admission status", "Read the offer — programme, faculty, department, session — then accept it and pay the acceptance fee. An offer that lapses cannot be reinstated.", "/applicant/admission", "Admission status"],
+  ["Check your admission status", "While the University has Admission Status Checking open, pay the admission checking fee once and check your status — as often as you need.", "/applicant/status", "Admission status"],
+  ["Check your admission status", "The decision on your application is released. Check your admission status through Admission Status Checking: the fee is paid once, and an offer is then accepted with the acceptance fee.", "/applicant/status", "Admission status"],
   ["Complete the online screening", "Take your acceptance letter, then complete and submit the screening form; the screening officers decide.", "/applicant/clearance", "Online screening"],
   ["Pay your fees and register your courses", "You do this under your admission number, before you are matriculated.", "/applicant/matric", "What happens next"],
   ["Wait for your matriculation number", "Your Faculty Officer confirms you registered; the Academic Office then issues numbers in one run.", "/applicant/matric", "Matriculation"],

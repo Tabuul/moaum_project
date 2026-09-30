@@ -266,6 +266,7 @@ Admissions
 Portal Management
  → Session & Semester Setup → /calendar
  → Payment & Registration Windows → /ict/windows
+ → Admission Status Checking → /ict/admission-checking
  → Examination Sessions → /examinations/sessions
 Finance
  → Payment Gateways → /finance/gateways
@@ -1727,6 +1728,23 @@ Every module is described against the same 22 points, as a two-column table, fol
 
 **Status:** IMPLEMENTED — settings, CAPS, candidate data, screening (legacy and CBT), scores, merit (UTME only), decisions, JAMB list, intake, DE screening, migration, reconsideration suggest, public slip verification; PARTIALLY IMPLEMENTED — applicant document review and Registry clearance recording (endpoints without screens, so applicant stage 7 is unreachable from the UI), office fee confirmation, notify-all reconsiderations; CONFIGURED BUT UNUSED — `SUPERSEDED` settings, `LAPSED` candidates, `CAPS_API` source, CBT `keep_programme`/`registration_deadline`; NOT IMPLEMENTED — offer lapse and waiting-list promotion (UI text promises it).
 
+### 3.17A Admission Status Checking (V295)
+
+| Point | Content |
+|---|---|
+| Purpose | Whether every applicant with a valid Post-UTME application of a session — the application fee confirmed and the application submitted — may pay the admission checking fee and check their admission status, admitted, not admitted or not yet decided; the Director of ICT's window for the admission exercise, and the report of who is eligible, who has paid and who has checked. |
+| Users / roles | Acts: `ict` alone (`POST /api/v1/portal-windows/ADMISSION_STATUS_CHECKING`). Reads (`CHECKING_READERS`): ict, academic, registrar, dregistrar, admin, super. Applicants pay and check from their own portal (§3.18). |
+| Navigation | ICT → Portal Management → Admission Status Checking `/ict/admission-checking`; Academic Office, Registrar and System Administrator → Admissions → Admission Status Checking (read only). |
+| Dashboard | Tiles Status, Checking fee, Eligible applicants, Paid, Checked, Admitted, Revenue, Last act. |
+| Main features | Open / Close / Reopen now, Schedule, Extend, Shorten, Edit window (dates on the server's clock in Africa/Lagos; a reason for closing, reopening and shortening); closed until first opened; no semester, no late period; the applicants told on opening, reopening, extension and closing (email and SMS). |
+| Report | Every application of the session: applicant, programme, faculty, department, checking fee (PAID / NOT PAID / NOT ELIGIBLE), paid on and reference, checks, first and last checked, the authoritative admission status (ADMITTED / NOT ADMITTED / WAITING LIST / PENDING). |
+| Filters | Session; faculty, department, programme; gender; payment status; admission status; checked or not; a date range on the payment or the last check. |
+| Export | Report to Excel or PDF (first 5,000 rows); the history to Excel. |
+| Statuses | Window OPEN / CLOSED / SCHEDULED / EXPIRED; applicant APPLICATION_INCOMPLETE / CHECKING_CLOSED / CHECKING_FEE_PENDING, then the status the check returns. |
+| Validation rules | `WINDOW_CHECKING_SESSION` (a semester or late period named); a reason for close, reopen, shorten; `ADMISSION_CHECKING_NOT_ELIGIBLE`, `_CLOSED`, `_FEE_UNPAID`, `_PAID`, `_NOT_PAYABLE` (gateway); `ADMISSION_STATUS_NOT_CHECKED` for the acceptance fee, the undertaking and the decline before the offer is read. |
+| Audit trail | `policy.portal_window` and its events (the act, the dates, the reason, the Director); `admissions.status_check` (each check with its result, the window's state and the reference paid on); the fee references and receipts. |
+| Related modules | Applicant portal (§3.18); Payment & Registration Windows (V288); Finance — the CHECKING kind in Financial Analytics; Undergraduate admissions (§3.17). |
+
 ### 3.18 Applicant portal (undergraduate)
 
 | Point | Content |
@@ -1734,7 +1752,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Purpose | A JAMB-admitted candidate registers with the JAMB number alone and is carried through ten computed stages: account → application fee → submitted form → screening slip → released score → released decision → accepted offer → cleared documents → fees paid and registered → matriculated. |
 | Users / roles | Applicant only (`OFFICE_applicant`); public lookup, register, sign-in, forgot, reset. |
 | Navigation | `/apply` (public), then My application → Overview `/applicant`, Application Form, Application Fee; Screening → Screening Slip, Screening Result; Admission → Admission Status, Accept Your Offer, Document Clearance, Matriculation. |
-| Dashboard | Overview: passport card, tiles Application number / Programme applied for / UTME score / Stage n of 10, the ten-step rail, "Dates that matter", "Notices sent to you". |
+| Dashboard | Overview: passport card, tiles Application number / Programme applied for / UTME score / Stage n of 10, the **Admission status** section (V295: not available yet / closed / open · fee not paid → Pay now / open · ready to check → Check status; once an offer is read, the admission in brief), the ten-step rail, "Dates that matter", "Notices sent to you". |
 | Main features | Lookup on every keystroke once the number is shaped; biodata read-only from CAPS; next of kin; declaration and submit; fee references (`MOAUM-APP-…`, `MOAUM-ACC-…`, 24 h) paid by card/USSD/PayDirect/bank; slip with QR once the batch is published; result with aggregate breakdown and merit position; status, undertaking, acceptance fee, decline; six-item clearance checklist (read-only); admission and matric number display; **Programme eligibility** (V266) on the Overview and Admission Status once submitted — the verdict with its reasons, View eligibility details, the programmes the applicant may be eligible for with Request Change, Recalculate. |
 | Create | `POST /applicant/register`; `POST /me/fee-references`; `POST /me/submit`; `POST /me/accept`; `POST /me/decline`; `POST /me/eligibility/change` (a programme the engine listed only). |
 | View | Every screen renders from one `GET /api/v1/applicant/me`. |
@@ -3823,7 +3841,7 @@ Screening → Screening Result → /applicant/score
 ```text
 Admission → Admission Status → /applicant/status
 ```
-**URL** `/applicant/status` · **Purpose** The Board's decision once released. · **Who** applicant. · **Layout** "Your application is with the Admissions Board" / "You are on the waiting list" / "You were not offered a place this session" / green "Offer of provisional admission" card with acceptance state. · **Actions** Accept your offer (→ `/applicant/accept`); Print Offer Letter → `/applicant/status/letter` (after acceptance; 409 "No offer to print" / "Accept your offer first").
+**URL** `/applicant/status` · **Purpose** Admission Status Checking (V295): the applicant's admission status, checked while the Director of ICT has checking open, whatever the decision. · **Who** applicant with a valid Post-UTME application (fee confirmed, submitted). · **Layout** Until an offer is read: "Admission Status Checking is for completed Post-UTME applications" (the missing step as a button) / "Admission Status Checking is currently closed" (the opening date when scheduled; the fee paid, if paid; the last check) / "Admission Status Checking is open" with the admission checking fee, **Pay now** and the reference with PayByCard / the result of the check made on opening — "Admission pending", "Waiting list" or "Not admitted" with **Check again** and *Your checks* — or "Congratulations! You have been offered admission" → **Continue to acceptance**; below, Programme eligibility (before a decision), the rail and "What your status can be". Once the offer is read: the green "Offer of provisional admission" card with its acceptance state. The Overview always carries an **Admission status** section (not available yet / closed / open · fee not paid → Pay now / open · ready to check → Check status). · **Actions** Pay now (`POST /applicant/me/fee-references {kind: CHECKING}`), the check (`POST /applicant/me/admission/checked`, made on opening and by Check again), Accept your offer (→ `/applicant/accept`, which says "Check your admission status first" until the offer is read); Print Offer Letter → `/applicant/status/letter` (after acceptance; 409 "No offer to print" / "Accept your offer first").
 
 > **Screenshot Required:** Admission Status — `/applicant/status` — the offer card.
 

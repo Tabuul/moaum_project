@@ -65,6 +65,11 @@ class ApplicantScreeningController {
         out.put("screeningRequired", jdbc.sql("SELECT admissions.screening_required(:a)").param("a", app).query(Boolean.class).single());
         boolean checkingDue = jdbc.sql("SELECT admissions.checking_due(:a)").param("a", app).query(Boolean.class).single();
         out.put("checkingDue", checkingDue);
+        /* V295: Admission Status Checking — who may pay and check is the application, the window and the fee, never the decision */
+        Map<String, Object> checking = jdbc.sql(ApplicantRepository.STATUS_CHECKING).param("a", app).query().listOfRows().stream().findFirst().orElse(Map.of());
+        boolean visible = Boolean.TRUE.equals(checking.get("decisionVisible"));
+        out.put("checking", checking);
+        out.put("checks", jdbc.sql("SELECT checked_at, result, label FROM admissions.status_check WHERE application_id = :a ORDER BY checked_at DESC LIMIT 50").param("a", app).query().listOfRows());
         out.put("checkingFee", jdbc.sql("SELECT coalesce((SELECT f.checking_fee FROM admissions.application a JOIN admissions.applicant_fee_rule(a.session) f ON true WHERE a.id = :a), 0)").param("a", app).query(java.math.BigDecimal.class).single());
         out.put("checkingReference", jdbc.sql("SELECT reference FROM admissions.fee_reference WHERE application_id = :a AND kind = 'CHECKING' AND confirmed_at IS NULL AND expires_at > now() ORDER BY generated_at DESC LIMIT 1").param("a", app).query(String.class).optional().orElse(null));
         Map<String, Object> offer = jdbc.sql("""
@@ -79,15 +84,17 @@ class ApplicantScreeningController {
                   LEFT JOIN people.student s ON s.candidate_id = c.id
                  WHERE a.id = :a
                 """).param("a", app).query().singleRow();
-        if (checkingDue) {
-            // the decision and what it names stay closed until the checking fee is confirmed
-            for (String k : List.of("decision", "decision_basis", "programme", "programme_code", "degree_type", "faculty", "department", "changed_to", "changed_from")) offer.put(k, null);
+        if (!visible) {
+            // the decision and what it names stay closed until the applicant may check it (V271, V295)
+            for (String k : List.of("decision", "decision_basis", "decision_released_at", "programme", "programme_code", "degree_type", "faculty", "department", "changed_to", "changed_from")) offer.put(k, null);
         }
         out.put("offer", offer);
         return out;
     }
 
-    /** the applicant's own reading of the released status, stamped once (V271): the step before the acceptance */
+    /** the applicant checks their admission status (V271, V295): refused unless Admission Status Checking allows it — a valid
+     *  application, checking open, the checking fee confirmed (422 ADMISSION_CHECKING_NOT_ELIGIBLE, _CLOSED, _FEE_UNPAID) — and
+     *  kept, each time, with the status it returned; the first reading of an offer is stamped before the acceptance */
     @PostMapping("/api/v1/applicant/me/admission/checked")
     @PreAuthorize(APPLICANT)
     @Transactional

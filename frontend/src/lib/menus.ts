@@ -600,7 +600,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry Screening" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Postgraduate Admissions" },
           { "id": "t/applicants", "icon": "user", "label": "Report on Post-UTME Registration" },
-          { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" }
+          { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" },
+          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
         ]
       },
       {
@@ -1124,7 +1125,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
           { "id": "t/admeligibility", "icon": "check", "label": "Programme Eligibility" },
           { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
-          { "id": "t/applicants", "icon": "user", "label": "Admitted List" }
+          { "id": "t/applicants", "icon": "user", "label": "Admitted List" },
+          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
         ]
       },
       {
@@ -1200,6 +1202,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
           { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" },
+          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" }
         ]
       },
@@ -1334,7 +1337,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
-          { "id": "t/admissions", "icon": "doc", "label": "Admissions" }
+          { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
+          { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
         ]
       },
       {

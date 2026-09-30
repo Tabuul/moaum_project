@@ -400,6 +400,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Score sheet by level",
     "Downloaded for the cohort, filled, uploaded; every mark judged by the rule, the decision applied provisionally"
   ],
+  "t/admissionchecking": [
+    "Admission Status Checking",
+    "Whether every applicant with a valid Post-UTME application may pay the admission checking fee and check their status; opened and closed by the Director of ICT, on the record"
+  ],
   "t/portalwindows": [
     "Payment & Registration Windows",
     "Whether school fees payment and course registration are open, closed, scheduled or in their late period; opened and closed by the Director of ICT, on the record"

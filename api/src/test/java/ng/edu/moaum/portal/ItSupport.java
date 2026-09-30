@@ -97,6 +97,16 @@ final class ItSupport {
                 """).param("n", name).param("y", startYear).update());
     }
 
+    /** Admission Status Checking open for a session's applicants (V295): the Director of ICT's window, closed until first opened,
+     *  opened here as the Director's act would open it, unless it is open already */
+    void openChecking(String session) {
+        db(() -> jdbc.sql("""
+                SELECT CASE WHEN (SELECT w.state FROM policy.window_state('ADMISSION_STATUS_CHECKING', :s, NULL) w) = 'OPEN' THEN NULL
+                            ELSE policy.window_act('ADMISSION_STATUS_CHECKING', :s, NULL, 'OPEN', NULL, NULL, NULL, false,
+                                                   'integration test: admission status checking open', gen_random_uuid(), 'ict') END
+                """).param("s", session).query().listOfRows());
+    }
+
     /** an invented student, ACTIVE with a matriculation number when one is given, ADMITTED otherwise */
     UUID student(String surname, String programme, String admissionNo, String matricNo, int level) {
         return db(() -> {

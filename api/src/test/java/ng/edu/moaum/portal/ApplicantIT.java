@@ -50,6 +50,9 @@ class ApplicantIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
+        // V295: the session's applicants pay the checking fee and check their status while the Director of ICT has it open
+        it.session(SESSION, 2093);
+        it.openChecking(SESSION);
         open = RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, r) -> { }).build();
     }
 
@@ -168,12 +171,16 @@ class ApplicantIT {
         assertThat(decided.getStatusCode().value()).as(String.valueOf(decided.getBody())).isEqualTo(200);
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("decision")).isNull();
         it.call(academic, HttpMethod.POST, PATH + "/decisions/release", Map.of());
-        // the admission checking fee (V271/V272): its own reference, paid once, opens the released decision — closed until then
+        // the admission checking fee (V271/V272, V295): its own reference, paid once while checking is open — the decision closed until then
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("decision")).isNull();
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("checkingDue")).isEqualTo(true);
         String checking = String.valueOf(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "CHECKING")).getBody().get("reference"));
         assertThat(checking).startsWith("MOAUM-CHK-");
         it.call(bursar, HttpMethod.POST, PATH + "/fee-references/" + checking + "/confirm", Map.of("channel", "Card"));
+        // V295: the applicant checks the status and reads the offer; the acceptance follows the reading
+        ResponseEntity<Map> checked = it.call(token, HttpMethod.POST, "/api/v1/applicant/me/admission/checked", Map.of());
+        assertThat(checked.getStatusCode().value()).as(String.valueOf(checked.getBody())).isEqualTo(200);
+        assertThat(checked.getBody().get("status")).isEqualTo("ADMITTED");
         Map<String, Object> offered = it.get(token, "/api/v1/applicant/me").getBody();
         assertThat(offered.get("decision")).isEqualTo("OFFERED");
         assertThat(offered.get("offerState")).isEqualTo("ADMITTED");

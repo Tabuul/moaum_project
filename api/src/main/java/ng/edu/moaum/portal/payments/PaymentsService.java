@@ -252,6 +252,12 @@ public class PaymentsService {
             throw new DomainRuleViolation("PAY_REFERENCE_EXPIRED", "This reference has expired.",
                     new DomainRuleViolation.Remedy("Generate a new one; it is free of charge.", "You"));
         }
+        /* V295: the admission checking fee is paid while the Director of ICT has Admission Status Checking open, once: a reference
+           issued while it was open is not taken to a gateway after it closes, nor once the fee is paid on another reference */
+        if ("CHECKING".equals(r.kind()) && r.applicationId() != null && !repo.checkingPayable(r.applicationId())) {
+            throw new DomainRuleViolation("ADMISSION_CHECKING_NOT_PAYABLE", "The admission checking fee cannot be paid now: Admission Status Checking is closed, or the fee is already paid.",
+                    new DomainRuleViolation.Remedy("Open Admission Status on the applicant portal: it says whether checking is open and whether your fee is paid. A fee already paid is never charged again.", "You"));
+        }
         String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller" : "") : gateway.trim().toLowerCase();
         String back = portalUrl + backPath(r.kind()) + "?paid=" + r.reference();
         /* the card gateways open a checkout on an email address; a record without one (a migrated student
@@ -393,6 +399,10 @@ public class PaymentsService {
         }
         if (r.expiresAt() != null && r.expiresAt().isBefore(OffsetDateTime.now())) {
             return notice("This reference has expired", "Generate a new one on the portal; it is free of charge.");
+        }
+        // V295: as at the checkout, the admission checking fee is paid only while Admission Status Checking is open, and once
+        if ("CHECKING".equals(r.kind()) && r.applicationId() != null && !repo.checkingPayable(r.applicationId())) {
+            return notice("The admission checking fee cannot be paid now", "Admission Status Checking is closed, or the fee is already paid. Open Admission Status on the applicant portal: it says which. A fee already paid is never charged again.");
         }
         WebpayMerchant m = merchantFor(q, r.reference());
         long kobo = r.amount().movePointRight(2).longValueExact();
