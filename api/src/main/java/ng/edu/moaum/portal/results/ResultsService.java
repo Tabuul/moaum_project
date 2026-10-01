@@ -177,12 +177,16 @@ public class ResultsService {
         }
         int stored = 0, attached = 0, notFound = 0, skipped = 0;
         List<String> notFoundList = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
         for (PassportItem it : items) {
             String status;
             try {
                 status = eachInItsOwn.execute(tx -> storeOnePassport(it));
             } catch (RuntimeException e) {
                 status = "SKIPPED";
+                org.slf4j.LoggerFactory.getLogger(ResultsService.class)
+                        .warn("passport {} not stored: {}", it.filename(), e.toString());
+                if (failures.size() < 200) failures.add(it.filename() + ": " + e.getClass().getSimpleName());
             }
             switch (status == null ? "SKIPPED" : status) {
                 case "STORED" -> stored++;
@@ -198,6 +202,7 @@ public class ResultsService {
         out.put("notFound", notFound);
         out.put("skipped", skipped);
         out.put("notFoundList", notFoundList);
+        out.put("failures", failures);
         return out;
     }
 

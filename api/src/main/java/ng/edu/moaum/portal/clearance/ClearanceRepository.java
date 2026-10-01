@@ -50,6 +50,22 @@ class ClearanceRepository {
                 .query(StudentRow.class).list();
     }
 
+    /** the standing decision per student and unit for a purpose, in one read: student -> (unit -> state) */
+    java.util.Map<UUID, java.util.Map<String, String>> latestStates(String purpose) {
+        java.util.Map<UUID, java.util.Map<String, String>> out = new java.util.HashMap<>();
+        jdbc.sql("""
+                SELECT DISTINCT ON (student_id, unit) student_id, unit, state
+                  FROM clearance.item
+                 WHERE purpose = :p AND superseded_by IS NULL
+                 ORDER BY student_id, unit, decided_at DESC
+                """).param("p", purpose)
+                .query(rs -> {
+                    out.computeIfAbsent((UUID) rs.getObject("student_id"), k -> new java.util.HashMap<>())
+                            .put(rs.getString("unit"), rs.getString("state"));
+                });
+        return out;
+    }
+
     long total() {
         return jdbc.sql("SELECT count(*) FROM people.student").query(Long.class).single();
     }

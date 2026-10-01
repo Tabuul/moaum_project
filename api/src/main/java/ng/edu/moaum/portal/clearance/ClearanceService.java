@@ -39,12 +39,14 @@ public class ClearanceService {
         long cleared = 0;
         long one = 0;
         long more = 0;
+        java.util.Map<UUID, java.util.Map<String, String>> decided = repo.latestStates(purpose);
+        java.util.Map<String, String> none = java.util.Map.of();
         for (ClearanceRepository.StudentRow s : repo.students(fac, dept, prog, level, session)) {
-            List<Clearance.Position> pos = repo.position(s.id(), purpose);
+            java.util.Map<String, String> mine = decided.getOrDefault(s.id(), none);
             List<String> states = new ArrayList<>();
             int held = 0;
             for (int i = 0; i < units.size(); i++) {
-                String st = i < pos.size() ? pos.get(i).state() : "HELD";
+                String st = mine.getOrDefault(units.get(i).code(), "HELD");
                 states.add(st);
                 if (!"CLEARED".equals(st)) {
                     held++;
