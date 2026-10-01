@@ -69,6 +69,15 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     }
   }
 
+  function downloadDuplicates() {
+    const csv = ["reference", ...duplicateSample].join("\n") + "\n";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "legacy-fees-already-on-record.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   async function upload() {
     if (!preview) return;
     setBusy(true);
@@ -95,7 +104,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         const c = (j ?? {}) as Record<string, number> & { duplicate_sample?: string };
         totals.rows += c.rows ?? 0; totals.cleared += c.cleared ?? 0;
         totals.no_student += c.no_student ?? 0; totals.no_due += c.no_due ?? 0; totals.duplicates += c.duplicates ?? 0;
-        if (c.duplicate_sample && sample.length < 20) sample.push(...c.duplicate_sample.split(", ").slice(0, 20 - sample.length));
+        if (c.duplicate_sample) sample.push(...c.duplicate_sample.split(", "));
       }
       setResult(totals);
       setDuplicateSample(sample);
@@ -142,7 +151,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
           ]} />
           {(result.duplicates ?? 0) > 0 ? (
             <Note kind="bad" title="Rows already on record were skipped">
-              {result.duplicates} row{result.duplicates === 1 ? "" : "s"} matched a payment already recorded for the same student, session and semester, so nothing was changed. First references: {duplicateSample.join(", ")}.
+              {result.duplicates} row{result.duplicates === 1 ? "" : "s"} matched a payment already recorded for the same student, session and semester, so nothing was changed. First references: {duplicateSample.slice(0, 20).join(", ")}{duplicateSample.length > 20 ? ", …" : ""}. <button type="button" className="btn btn--ghost" onClick={downloadDuplicates}>Download all {duplicateSample.length.toLocaleString()} as CSV</button>
             </Note>
           ) : null}
           <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded. The students&rsquo; positions and arrears update at once.{(result.no_student ?? 0) > 0 ? " Rows with an unknown number are counted above — migrate those students first, then re-upload." : ""}</Note>
