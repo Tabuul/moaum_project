@@ -2,7 +2,7 @@
 
 /** Migrate students, course registration and past results from the old portal (V082). Each upload reads the
  *  spreadsheet's own columns (matriculation number, course code, marks…) and matches on them; nothing is typed. */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
@@ -37,6 +37,9 @@ function pacer(total: number): (done: number) => string | undefined {
   };
 }
 
+type JobGroup = { session: string; semester: number; rows: Record<string, string>[] };
+type Job = { kind: Tab; path: string; scoped: boolean; groups: JobGroup[]; chunk: number; totalRows: number; gi: number; ci: number; sent: number; totals: Record<string, number>; firstErr: string | null };
+
 export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const may = MIGRATE.includes(actingOffice ?? "");
   const [tab, setTab] = useState<Tab>("biodata");
@@ -46,6 +49,8 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [result, setResult] = useState<{ tab: Tab; counts: Record<string, number>; firstError?: string | null } | null>(null);
   const [progress, setProgress] = useState<{ label: string; sent: number; of: number; note?: string } | null>(null);
+  const [resumable, setResumable] = useState<{ sent: number; of: number; where: string } | null>(null);
+  const jobRef = useRef<Job | null>(null);
   const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
   const [pResult, setPResult] = useState<{ total: number; stored: number; attached: number; notFound: number; skipped: number; notFoundList: string[] } | null>(null);
 
@@ -128,12 +133,91 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
+  /** one batch, retried with a pause when the network drops or the server is briefly unavailable */
+  async function sendBatch(job: Job, g: JobGroup, chunk: Record<string, string>[], from: number) {
+    const body = job.scoped ? { session: g.session, semester: g.semester, rows: chunk } : { rows: chunk };
+    const reason = reasonHeader(`Legacy ${job.kind} imported${job.scoped ? ` for ${g.session} semester ${g.semester}` : ""}: rows ${from + 1} to ${from + chunk.length} of ${job.totalRows}`);
+    const waits = [2000, 5000, 15000];
+    let last: { status: number; problem: Problem } = { status: 0, problem: { status: 0, title: "The batch was not sent" } };
+    for (let attempt = 0; attempt <= waits.length; attempt++) {
+      try {
+        const r = await fetch(job.path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reason }, body: JSON.stringify(body) });
+        const j = await r.json().catch(() => null);
+        if (r.ok) return { ok: true as const, counts: (j ?? {}) as Record<string, unknown> };
+        last = { status: r.status, problem: (j ?? { status: r.status, title: r.statusText || "The server refused this batch" }) as Problem };
+        if (!(r.status === 408 || r.status === 429 || r.status >= 500)) break;
+      } catch {
+        last = { status: 0, problem: { status: 0, title: "The connection to the portal dropped", detail: "The request never reached the server (network, timeout or an expired sign-in)." } };
+      }
+      if (attempt < waits.length) {
+        const why = last.status || "no connection";
+        setProgress((p) => (p ? { ...p, note: `batch refused (${why}), retrying ${attempt + 1} of ${waits.length}` } : p));
+        await new Promise((res) => setTimeout(res, waits[attempt]));
+      }
+    }
+    return { ok: false as const, failure: last };
+  }
+
+  /** runs (or resumes) an import from its saved position; a batch that cannot be sent stops the run with the
+   *  exact rows and reason shown, and "Resume" picks up from that batch without re-reading the file */
+  async function runJob(job: Job) {
+    setBusy(true); setProblem(null); setResumable(null);
+    const base = job.sent;
+    const pace = pacer(job.totalRows - base);
+    setProgress({ label: "Importing", sent: job.sent, of: job.totalRows });
+    try {
+      while (job.gi < job.groups.length) {
+        const g = job.groups[job.gi];
+        while (job.ci < g.rows.length) {
+          const chunk = g.rows.slice(job.ci, job.ci + job.chunk);
+          const res = await sendBatch(job, g, chunk, job.sent);
+          if (!res.ok) {
+            const f = res.failure;
+            const where = `Rows ${(job.sent + 1).toLocaleString()} to ${(job.sent + chunk.length).toLocaleString()} of ${job.totalRows.toLocaleString()}${job.scoped ? ` (${g.session} semester ${g.semester})` : ""}`;
+            const p = { ...f.problem, detail: `${where} could not be imported${f.status ? ` (HTTP ${f.status})` : ""}${f.problem.detail ? `: ${f.problem.detail}` : ""}. ${job.sent.toLocaleString()} rows are already in. Press Resume to carry on from this batch; the import is idempotent, so nothing duplicates.` };
+            setProblem(p); notifyProblem(p);
+            if (Object.keys(job.totals).length) setResult({ tab: job.kind, counts: job.totals, firstError: job.firstErr });
+            setResumable({ sent: job.sent, of: job.totalRows, where });
+            return;
+          }
+          for (const [k, v] of Object.entries(res.counts)) if (typeof v === "number") job.totals[k] = (job.totals[k] ?? 0) + v;
+          if (!job.firstErr && typeof res.counts.first_error === "string" && res.counts.first_error) job.firstErr = res.counts.first_error;
+          job.ci += chunk.length; job.sent += chunk.length;
+          setProgress({ label: "Importing", sent: job.sent, of: job.totalRows, note: pace(job.sent - base) });
+        }
+        job.gi++; job.ci = 0;
+      }
+      jobRef.current = null;
+      setResult({ tab: job.kind, counts: job.totals, firstError: job.firstErr });
+      notify(`Legacy ${job.kind} import complete`);
+      /* a student upload may satisfy results that were held earlier for a student not on the register
+         yet — reconcile them now, so results and biodata can be uploaded in either order (V204) */
+      if (job.kind === "biodata" || job.kind === "pgstudents" || job.kind === "students") {
+        try {
+          const rr = await fetch("/api/bff/api/v1/results/legacy/reconcile-results", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Reconcile held past results after a student upload") }, body: "{}" });
+          const rj = (await rr.json().catch(() => null)) as { reconciled?: number } | null;
+          if (rr.ok && rj && (rj.reconciled ?? 0) > 0) notify(`${rj.reconciled} held past result${rj.reconciled === 1 ? "" : "s"} now matched to the newly loaded students`);
+        } catch { /* reconcile is best-effort; a manual re-upload of the results also reconciles */ }
+        try {
+          const pr = await fetch("/api/bff/api/v1/results/legacy/reconcile-pg-results", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Reconcile held postgraduate results after a student upload") }, body: "{}" });
+          const pj = (await pr.json().catch(() => null)) as { reconciled?: number } | null;
+          if (pr.ok && pj && (pj.reconciled ?? 0) > 0) notify(`${pj.reconciled} held postgraduate result${pj.reconciled === 1 ? "" : "s"} now matched to the newly loaded students`);
+        } catch { /* reconcile is best-effort */ }
+      }
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }
+
   async function upload(kind: Tab, file: File) {
     setBusy(true);
     setProblem(null);
     setResult(null);
     setProgress(null);
     setRejected(null);
+    setResumable(null);
+    jobRef.current = null;
     try {
       setProgress({ label: "Reading the file", sent: 0, of: 0 });
       const grid = await xlsxRowsAsync(await file.arrayBuffer(), (n) => setProgress({ label: "Reading the file", sent: n, of: 0 }));
@@ -202,46 +286,9 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
          would queue on the same audit chain (and could deadlock), so nothing would be gained. */
       const CHUNK = kind === "biodata" || kind === "pgstudents" ? 50 : 400;
       const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
-      const totals: Record<string, number> = {};
-      let firstErr: string | null = null;
-      let sent = 0;
-      const pace = pacer(totalRows);
-      setProgress({ label: "Importing", sent: 0, of: totalRows });
-      for (const g of groups) {
-        for (let i = 0; i < g.rows.length; i += CHUNK) {
-          const chunk = g.rows.slice(i, i + CHUNK);
-          const body = scoped ? { session: g.session, semester: g.semester, rows: chunk } : { rows: chunk };
-          const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Legacy ${kind} imported${scoped ? ` for ${g.session} semester ${g.semester}` : ""}: rows ${sent + 1} to ${sent + chunk.length} of ${totalRows}`) }, body: JSON.stringify(body) });
-          const j = await r.json().catch(() => null);
-          if (!r.ok) {
-            const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
-            setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${sent.toLocaleString()} of ${totalRows.toLocaleString()} rows were imported before this batch was refused. The import is idempotent — fix the file and upload it again; the rows already in will update, not duplicate.` });
-            if (Object.keys(totals).length) setResult({ tab: kind, counts: totals, firstError: firstErr });
-            return;
-          }
-          const counts = (j ?? {}) as Record<string, unknown>;
-          for (const [k, v] of Object.entries(counts)) if (typeof v === "number") totals[k] = (totals[k] ?? 0) + v;
-          if (!firstErr && typeof counts.first_error === "string" && counts.first_error) firstErr = counts.first_error;
-          sent += chunk.length;
-          setProgress({ label: "Importing", sent, of: totalRows, note: pace(sent) });
-        }
-      }
-      setResult({ tab: kind, counts: totals, firstError: firstErr });
-      notify(`Legacy ${kind} import complete`);
-      /* a student upload may satisfy results that were held earlier for a student not on the register
-         yet — reconcile them now, so results and biodata can be uploaded in either order (V204) */
-      if (kind === "biodata" || kind === "pgstudents" || kind === "students") {
-        try {
-          const rr = await fetch("/api/bff/api/v1/results/legacy/reconcile-results", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Reconcile held past results after a student upload") }, body: "{}" });
-          const rj = (await rr.json().catch(() => null)) as { reconciled?: number } | null;
-          if (rr.ok && rj && (rj.reconciled ?? 0) > 0) notify(`${rj.reconciled} held past result${rj.reconciled === 1 ? "" : "s"} now matched to the newly loaded students`);
-        } catch { /* reconcile is best-effort; a manual re-upload of the results also reconciles */ }
-        try {
-          const pr = await fetch("/api/bff/api/v1/results/legacy/reconcile-pg-results", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Reconcile held postgraduate results after a student upload") }, body: "{}" });
-          const pj = (await pr.json().catch(() => null)) as { reconciled?: number } | null;
-          if (pr.ok && pj && (pj.reconciled ?? 0) > 0) notify(`${pj.reconciled} held postgraduate result${pj.reconciled === 1 ? "" : "s"} now matched to the newly loaded students`);
-        } catch { /* reconcile is best-effort */ }
-      }
+      const job: Job = { kind, path, scoped, groups, chunk: CHUNK, totalRows, gi: 0, ci: 0, sent: 0, totals: {}, firstErr: null };
+      jobRef.current = job;
+      await runJob(job);
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the .xlsx exported from the old portal." });
     } finally {
@@ -510,6 +557,12 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       </PBody></div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {resumable ? (
+        <Note kind="info" title={`Stopped at ${resumable.sent.toLocaleString()} of ${resumable.of.toLocaleString()} rows`}
+              action={<Btn kind="primary" disabled={busy} onClick={() => { if (jobRef.current) void runJob(jobRef.current); }}>Resume from the failed batch</Btn>}>
+          {resumable.where}. The file is still held in this page, so Resume continues from that batch. If you reload the page, choose the file again; re-uploading is safe.
+        </Note>
+      ) : null}
 
       {tab === "clearance" ? (
         <>
