@@ -52,7 +52,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const [resumable, setResumable] = useState<{ sent: number; of: number; where: string } | null>(null);
   const jobRef = useRef<Job | null>(null);
   const [rejected, setRejected] = useState<{ rows: Record<string, string>[]; kind: Tab } | null>(null);
-  const [pResult, setPResult] = useState<{ total: number; stored: number; attached: number; notFound: number; skipped: number; notFoundList: string[] } | null>(null);
+  const [pResult, setPResult] = useState<{ total: number; stored: number; attached: number; notFound: number; skipped: number; notFoundList: string[]; failures: string[] } | null>(null);
 
   /** bulk passport photos: each file is named by the student's JAMB reg no; matched and stored, or skipped */
   async function uploadPassports(files: File[]) {
@@ -72,12 +72,13 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       const MAX_BYTES = 8 * 1024 * 1024;   // hold back a scan larger than this; resize and re-upload it
       const totals = { total: 0, stored: 0, attached: 0, notFound: 0, skipped: 0 };
       const notFoundList: string[] = [];
-      const problemFiles: string[] = [];
+      const failures: string[] = [];
+      const addFailure = (name: string, why: string) => { if (failures.length < 5000) failures.push(`${name}: ${why}`); };
       let sent = 0, failed = 0;
       setProgress({ label: "Uploading photos", sent: 0, of: files.length });
       const usable: File[] = [];
       for (const f of files) {
-        if (f.size > MAX_BYTES) { totals.total++; totals.skipped++; failed++; if (problemFiles.length < 5000) problemFiles.push(f.name); }
+        if (f.size > MAX_BYTES) { totals.total++; totals.skipped++; failed++; addFailure(f.name, `larger than ${MAX_BYTES / 1024 / 1024} MB, not sent`); }
         else usable.push(f);
       }
       sent = files.length - usable.length;
@@ -95,21 +96,23 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           if (!r.ok) {
             /* one refused batch no longer stops the upload — count it, list its files, and carry on */
             totals.total += slice.length; totals.skipped += slice.length; failed += slice.length;
-            for (const f of slice) if (problemFiles.length < 5000) problemFiles.push(f.name);
+            const why = `batch refused (HTTP ${r.status}${(j as Problem | null)?.title ? `, ${(j as Problem).title}` : ""})`;
+            for (const f of slice) addFailure(f.name, why);
           } else {
             const c = (j ?? {}) as Record<string, unknown>;
             totals.total += Number(c.total ?? 0); totals.stored += Number(c.stored ?? 0); totals.attached += Number(c.attached ?? 0);
             totals.notFound += Number(c.notFound ?? 0); totals.skipped += Number(c.skipped ?? 0);
+            if (Array.isArray(c.failures)) for (const x of c.failures) if (failures.length < 5000 && typeof x === "string") failures.push(x);
             if (Array.isArray(c.notFoundList)) for (const n of c.notFoundList) if (notFoundList.length < 5000 && typeof n === "string") notFoundList.push(n);
           }
         } catch {
           totals.total += slice.length; totals.skipped += slice.length; failed += slice.length;
-          for (const f of slice) if (problemFiles.length < 5000) problemFiles.push(f.name);
+          for (const f of slice) addFailure(f.name, "connection dropped before the batch reached the server");
         }
         sent += slice.length;
         setProgress({ label: "Uploading photos", sent, of: files.length });
       }
-      setPResult({ ...totals, notFoundList: notFoundList.length ? notFoundList : problemFiles });
+      setPResult({ ...totals, notFoundList, failures });
       if (failed) {
         setProblem({ status: 400, title: `${failed.toLocaleString()} photo${failed === 1 ? "" : "s"} could not be sent`,
           detail: `The rest were processed — a photo is held back when the scan is larger than 8 MB, or a batch is refused. Reduce those scans and upload just them again (re-uploading is idempotent, so nothing duplicates).${notFoundList.length ? "" : " Download the list below to see which files."}` }); notifyProblem({ status: 400, title: `${failed.toLocaleString()} photo${failed === 1 ? "" : "s"} could not be sent`,
@@ -121,6 +124,16 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     } finally {
       setBusy(false); setProgress(null);
     }
+  }
+
+  function downloadFailures() {
+    if (!pResult?.failures.length) return;
+    const blob = buildXlsx(["File", "Why it failed"], pResult.failures.map((f) => { const i = f.indexOf(": "); return i < 0 ? [f, ""] : [f.slice(0, i), f.slice(i + 2)]; }), "Failed photos");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "passports — failed files.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
   function downloadNotFound() {
@@ -654,6 +667,15 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
             {pResult.skipped > 0 ? <> {pResult.skipped} file{pResult.skipped === 1 ? "" : "s"} could not be read as an image.</> : null}
             {" "}Uploading the same photo again replaces it, so this is safe to re-run.
           </Note>
+          {pResult.failures.length ? (
+            <Note kind="bad" title={`${pResult.failures.length.toLocaleString()} file${pResult.failures.length === 1 ? "" : "s"} failed`}
+                  action={<Btn kind="ghost" onClick={downloadFailures}>Download the failed files</Btn>}>
+              <ul className="m-0" style={{ paddingLeft: 18 }}>
+                {pResult.failures.slice(0, 10).map((f, i) => <li key={i} className="sub2">{f}</li>)}
+              </ul>
+              {pResult.failures.length > 10 ? <div className="sub2 mt-2">…and {(pResult.failures.length - 10).toLocaleString()} more in the download.</div> : null}
+            </Note>
+          ) : null}
         </>
       ) : null}
 
