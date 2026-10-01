@@ -21,6 +21,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   const [preview, setPreview] = useState<Row[] | null>(null);
   const [result, setResult] = useState<Record<string, number> | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [duplicateSample, setDuplicateSample] = useState<string[]>([]);
 
   function downloadTemplate() {
     const blob = buildXlsx(
@@ -44,6 +45,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     setBusy(true);
     setProblem(null);
     setResult(null);
+    setDuplicateSample([]);
     setPreview(null);
     try {
       const grid = await xlsxRows(await file.arrayBuffer());
@@ -73,7 +75,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     setProblem(null);
     setResult(null);
     const CHUNK = 500;   // a whole file of tens of thousands of rows in one body is refused ("Failed to read request")
-    const totals: Record<string, number> = { rows: 0, cleared: 0, no_student: 0, no_due: 0 };
+    const totals: Record<string, number> = { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0 };
+    const sample: string[] = [];
     try {
       for (let i = 0; i < preview.length; i += CHUNK) {
         const batch = preview.slice(i, i + CHUNK);
@@ -89,11 +92,13 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
           setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${totals.cleared.toLocaleString()} payments were settled before this batch was refused. The import is idempotent — fix and upload again.` });
           return;
         }
-        const c = (j ?? {}) as Record<string, number>;
+        const c = (j ?? {}) as Record<string, number> & { duplicate_sample?: string };
         totals.rows += c.rows ?? 0; totals.cleared += c.cleared ?? 0;
-        totals.no_student += c.no_student ?? 0; totals.no_due += c.no_due ?? 0;
+        totals.no_student += c.no_student ?? 0; totals.no_due += c.no_due ?? 0; totals.duplicates += c.duplicates ?? 0;
+        if (c.duplicate_sample && sample.length < 20) sample.push(...c.duplicate_sample.split(", ").slice(0, 20 - sample.length));
       }
       setResult(totals);
+      setDuplicateSample(sample);
       setPreview(null);
     } finally {
       setBusy(false);
@@ -107,7 +112,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         A returning student brought over from the old portal owes every past session the University has a fee schedule
         for, because the new portal knows only its own confirmed payments. Upload what each student already paid, by
         session and (optionally) semester. Give the <b>amount paid</b>, or leave it blank to mean <b>cleared in full</b> —
-        the past session then settles and the arrears clear. Re-uploading the same file updates rather than duplicates,
+        the past session then settles and the arrears clear. A row already on record (same student, session and semester) is skipped and reported, never overwritten,
         and every record is on the audit spine in your name.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Bursary">Your office may not import fees history.</Note> : null}
@@ -133,7 +138,13 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
             ["Settled", String(result.cleared ?? 0), "var(--green-ink)", "Payments recorded"],
             ["No such student", String(result.no_student ?? 0), (result.no_student ?? 0) ? "var(--red-ink)" : null, "Import the students first"],
             ["Nothing to settle", String(result.no_due ?? 0), null, "No amount and no fee schedule"],
+            ["Already on record", String(result.duplicates ?? 0), (result.duplicates ?? 0) ? "var(--red-ink)" : null, "Skipped, not overwritten"],
           ]} />
+          {(result.duplicates ?? 0) > 0 ? (
+            <Note kind="bad" title="Rows already on record were skipped">
+              {result.duplicates} row{result.duplicates === 1 ? "" : "s"} matched a payment already recorded for the same student, session and semester, so nothing was changed. First references: {duplicateSample.join(", ")}.
+            </Note>
+          ) : null}
           <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded. The students&rsquo; positions and arrears update at once.{(result.no_student ?? 0) > 0 ? " Rows with an unknown number are counted above — migrate those students first, then re-upload." : ""}</Note>
         </>
       ) : null}
