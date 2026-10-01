@@ -1963,6 +1963,13 @@ BEGIN
     -- the clearance scheme is still put in force here for the examination/results gates the later blocks rely on
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     SELECT min(lower(validity)) INTO until FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date;
+    -- once today reaches the date the earlier block's scheme starts (2026-10-01), that scheme overlaps this one: replace it
+    DELETE FROM policy.clearance_rule WHERE version_id IN (SELECT id FROM policy.version
+        WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND validity && daterange(current_date, until));
+    DELETE FROM policy.clearance_scheme WHERE version_id IN (SELECT id FROM policy.version
+        WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND validity && daterange(current_date, until));
+    DELETE FROM policy.version
+     WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND validity && daterange(current_date, until);
     INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
     VALUES (v, 'clearance', 'UNIVERSITY', daterange(current_date, until), 'CHECK BUR/9999/1', 'bursar');
     INSERT INTO policy.clearance_scheme VALUES (v, true);
