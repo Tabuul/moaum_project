@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -59,11 +60,13 @@ class DefermentsController {
     private static final Set<String> DOC_KINDS = Set.of("MEDICAL", "FINANCIAL", "OFFICIAL_LETTER", "EMPLOYER_LETTER", "OTHER");
     private static final long DOC_MAX = 5L * 1024 * 1024;
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final OfficeScope scope;
 
-    DefermentsController(JdbcClient jdbc, OfficeScope scope) {
+    DefermentsController(FileObjects files, JdbcClient jdbc, OfficeScope scope) {
         this.jdbc = jdbc;
+        this.files = files;
         this.scope = scope;
     }
 
@@ -243,7 +246,9 @@ class DefermentsController {
         UUID doc = UUID.randomUUID();
         jdbc.sql("INSERT INTO people.deferment_document (id, deferment_id, kind, filename, content_type, size_bytes, uploaded_by) VALUES (:d, :id, :k, :f, :t, :n, :s)")
                 .param("d", doc).param("id", id).param("k", kind).param("f", body.filename().trim().replaceAll("[\\\\/\\r\\n\\t]", "_")).param("t", type).param("n", bytes.length).param("s", s).update();
-        jdbc.sql("INSERT INTO people.deferment_document_blob (document_id, bytes) VALUES (:d, :b)").param("d", doc).param("b", bytes).update();
+        UUID oid = files.store("people.deferment_document", doc, body.filename(), type, bytes);
+        jdbc.sql("INSERT INTO people.deferment_document_blob (document_id, bytes, object_id) VALUES (:d, :b, :o)")
+                .param("d", doc).param("b", oid == null ? bytes : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER).update();
         jdbc.sql("SELECT people.deferment_log(:id, 'DOCUMENT', :st, :st, :n)").param("id", id).param("st", d.get("state")).param("n", kind.toLowerCase().replace('_', ' ') + " uploaded: " + body.filename().trim()).query().listOfRows();
         return full(id);
     }
@@ -668,14 +673,14 @@ class DefermentsController {
 
     private ResponseEntity<byte[]> serve(UUID id, UUID doc) {
         Map<String, Object> r = jdbc.sql("""
-                SELECT d.filename, d.content_type, b.bytes FROM people.deferment_document d JOIN people.deferment_document_blob b ON b.document_id = d.id
+                SELECT d.filename, d.content_type, b.bytes, b.object_id FROM people.deferment_document d JOIN people.deferment_document_blob b ON b.document_id = d.id
                  WHERE d.id = :d AND d.deferment_id = :id
                 """).param("d", doc).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("document", doc));
         String type = String.valueOf(r.get("content_type"));
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(type)).cacheControl(CacheControl.noStore())
                 .header("Content-Disposition", ContentDisposition.inline().filename(String.valueOf(r.get("filename")), StandardCharsets.UTF_8).build().toString())
                 .header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox")
-                .body((byte[]) r.get("bytes"));
+                .body(files.resolve((byte[]) r.get("bytes"), (UUID) r.get("object_id")));
     }
 
     private static String sniff(byte[] b) {

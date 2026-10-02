@@ -20,6 +20,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
@@ -73,14 +74,16 @@ class ExaminersController {
     private static final UUID NOBODY = new UUID(0, 0);
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final OfficeScope scope;
     private final ExaminerNotifier notifier;
     private final TransactionTemplate tx;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
 
-    ExaminersController(JdbcClient jdbc, OfficeScope scope, ExaminerNotifier notifier, PlatformTransactionManager transactions) {
+    ExaminersController(FileObjects files, JdbcClient jdbc, OfficeScope scope, ExaminerNotifier notifier, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
+        this.files = files;
         this.scope = scope;
         this.notifier = notifier;
         this.tx = new TransactionTemplate(transactions);
@@ -368,7 +371,9 @@ class ExaminersController {
         String type = normalType(body.contentType());
         UUID f = jdbc.sql("INSERT INTO extexam.examiner_file (examiner_id, kind, filename, content_type, bytes, uploaded_by) VALUES (:e, :k, :f, :t, :b, :by) RETURNING id")
                 .param("e", id).param("k", kind).param("f", safeName(body.filename())).param("t", type).param("b", (long) bytes.length).param("by", me(auth)).query(UUID.class).single();
-        jdbc.sql("INSERT INTO extexam.examiner_file_blob (file_id, content) VALUES (:f, :c)").param("f", f).param("c", bytes).update();
+        UUID oid = files.store("extexam.examiner_file", f, safeName(body.filename()), type, bytes);
+        jdbc.sql("INSERT INTO extexam.examiner_file_blob (file_id, content, object_id) VALUES (:f, :c, :o)")
+                .param("f", f).param("c", oid == null ? bytes : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER).update();
         return Map.of("id", f, "kind", kind);
     }
 
@@ -376,8 +381,9 @@ class ExaminersController {
     @PreAuthorize(DESK)
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> examinerFileContent(@PathVariable UUID id, @PathVariable UUID file) {
-        Map<String, Object> r = jdbc.sql("SELECT f.filename, f.content_type, b.content FROM extexam.examiner_file f JOIN extexam.examiner_file_blob b ON b.file_id = f.id WHERE f.id = :f AND f.examiner_id = :e")
+        Map<String, Object> r = jdbc.sql("SELECT f.filename, f.content_type, b.content, b.object_id FROM extexam.examiner_file f JOIN extexam.examiner_file_blob b ON b.file_id = f.id WHERE f.id = :f AND f.examiner_id = :e")
                 .param("f", file).param("e", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("file", file));
+        r.put("content", files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id")));
         return serve(r);
     }
 
@@ -548,7 +554,9 @@ class ExaminersController {
         String type = normalType(body.contentType());
         UUID d = jdbc.sql("INSERT INTO extexam.project_document (project_id, kind, filename, content_type, bytes, uploaded_by) VALUES (:p, :k, :f, :t, :b, :by) RETURNING id")
                 .param("p", id).param("k", kind).param("f", safeName(body.filename())).param("t", type).param("b", (long) bytes.length).param("by", me(auth)).query(UUID.class).single();
-        jdbc.sql("INSERT INTO extexam.project_document_blob (document_id, content) VALUES (:d, :c)").param("d", d).param("c", bytes).update();
+        UUID oid = files.store("extexam.project_document", d, safeName(body.filename()), type, bytes);
+        jdbc.sql("INSERT INTO extexam.project_document_blob (document_id, content, object_id) VALUES (:d, :c, :o)")
+                .param("d", d).param("c", oid == null ? bytes : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER).update();
         logEvent(auth, "DOCUMENT_RELEASED", null, id, null, null, kind + ": " + safeName(body.filename()), null);
         return Map.of("id", d, "kind", kind, "bytes", bytes.length);
     }
@@ -576,8 +584,10 @@ class ExaminersController {
     }
 
     private Map<String, Object> document(UUID project, UUID doc, boolean releasedOnly) {
-        return jdbc.sql("SELECT d.filename, d.content_type, b.content FROM extexam.project_document d JOIN extexam.project_document_blob b ON b.document_id = d.id WHERE d.id = :d AND d.project_id = :p AND (NOT :ro OR d.released)")
-                .param("d", doc).param("p", project).param("ro", releasedOnly).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("document", doc));
+        return jdbc.sql("SELECT d.filename, d.content_type, b.content, b.object_id FROM extexam.project_document d JOIN extexam.project_document_blob b ON b.document_id = d.id WHERE d.id = :d AND d.project_id = :p AND (NOT :ro OR d.released)")
+                .param("d", doc).param("p", project).param("ro", releasedOnly).query().listOfRows().stream().findFirst()
+                .map(r -> { r.put("content", files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id"))); return r; })
+                .orElseThrow(() -> new NotFound("document", doc));
     }
 
     /* ── the form ── */

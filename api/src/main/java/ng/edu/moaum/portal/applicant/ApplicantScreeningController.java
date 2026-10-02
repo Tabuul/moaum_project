@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
@@ -33,11 +34,13 @@ import org.springframework.web.bind.annotation.RestController;
 class ApplicantScreeningController {
 
     private static final String APPLICANT = "hasAuthority('OFFICE_applicant')";
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final AdmissionDocuments documents;
 
-    ApplicantScreeningController(JdbcClient jdbc, AdmissionDocuments documents) {
+    ApplicantScreeningController(FileObjects files, JdbcClient jdbc, AdmissionDocuments documents) {
         this.jdbc = jdbc;
+        this.files = files;
         this.documents = documents;
     }
 
@@ -189,16 +192,19 @@ class ApplicantScreeningController {
                 """).param("a", app).query().listOfRows());
         out.put("documents", jdbc.sql("SELECT id, kind, filename, content_type, bytes, uploaded_at, status, review_note, reviewed_at FROM admissions.application_document WHERE application_id = :a ORDER BY uploaded_at DESC").param("a", app).query().listOfRows());
         out.put("missing", jdbc.sql("SELECT * FROM admissions.screening_missing(:a)").param("a", app).query().listOfRows());
-        out.put("prefill", jdbc.sql("""
+        Map<String, Object> prefill = jdbc.sql("""
                 SELECT c.surname, c.other_names, c.jamb_reg_no, c.programme, c.entry_mode, a.session, a.application_no, r.sex, r.state_of_origin, r.lga, f.name AS faculty, d.name AS department,
                        (SELECT x.payload ->> 'dob' FROM admissions.attachment x WHERE x.candidate_id = c.id AND x.kind = 'DATE_OF_BIRTH' ORDER BY x.arrived_at DESC LIMIT 1) AS date_of_birth,
                        acc.email, acc.phone, a.next_of_kin,
-                       (SELECT x.payload ->> 'dataUrl' FROM admissions.attachment x WHERE x.session = c.session AND x.jamb_key = c.jamb_key AND x.kind = 'PASSPORT' AND jsonb_exists(x.payload, 'dataUrl') ORDER BY x.arrived_at DESC LIMIT 1) AS jamb_passport
+                       (SELECT x.payload ->> 'dataUrl' FROM admissions.attachment x WHERE x.session = c.session AND x.jamb_key = c.jamb_key AND x.kind = 'PASSPORT' AND jsonb_exists(x.payload, 'dataUrl') ORDER BY x.arrived_at DESC LIMIT 1) AS jamb_passport,
+                       (SELECT x.object_id FROM admissions.attachment x WHERE x.session = c.session AND x.jamb_key = c.jamb_key AND x.kind = 'PASSPORT' AND x.object_id IS NOT NULL ORDER BY x.arrived_at DESC LIMIT 1) AS jamb_passport_object
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id JOIN admissions.applicant_account acc ON acc.id = a.account_id
                   LEFT JOIN admissions.caps_row r ON r.id = c.admitted_from
                   LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme) LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
                  WHERE a.id = :a
-                """).param("a", app).query().singleRow());
+                """).param("a", app).query().singleRow();
+        prefill.put("jamb_passport", files.dataUrl((String) prefill.get("jamb_passport"), (UUID) prefill.remove("jamb_passport_object")));
+        out.put("prefill", prefill);
         out.put("events", jdbc.sql("SELECT action, detail, actor_office, at FROM admissions.screening_event WHERE application_id = :a ORDER BY at DESC").param("a", app).query().listOfRows());
         out.put("changes", jdbc.sql("SELECT id, from_programme, to_programme, state, requested_at, decided_at, decision_note FROM admissions.programme_change_request WHERE application_id = :a ORDER BY requested_at DESC").param("a", app).query().listOfRows());
         out.put("status", jdbc.sql("SELECT * FROM admissions.admission_status(:a)").param("a", app).query().singleRow());

@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.JobLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,16 +22,22 @@ public class DefermentClock {
     private static final Logger LOG = LoggerFactory.getLogger(DefermentClock.class);
     private static final UUID NOBODY = new UUID(0L, 0L);
 
+    private final JobLock lock;
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
 
-    public DefermentClock(JdbcClient jdbc, PlatformTransactionManager transactions) {
+    public DefermentClock(JobLock lock, JdbcClient jdbc, PlatformTransactionManager transactions) {
+        this.lock = lock;
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactions);
     }
 
     @Scheduled(cron = "${moaum.deferments.cron:0 20 6 * * *}", zone = "Africa/Lagos")
     public void tick() {
+        lock.runExclusively("deferment-clock", this::tickNow);
+    }
+
+    void tickNow() {
         try {
             Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "registrar", "deferment clock", null, null),
                     () -> tx.execute(st -> jdbc.sql("SELECT people.deferments_tick()").query(Integer.class).single()));

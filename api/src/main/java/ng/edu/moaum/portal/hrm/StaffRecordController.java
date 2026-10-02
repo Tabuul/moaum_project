@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.hrm;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,10 +36,12 @@ class StaffRecordController {
             + "'OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super',"
             + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod')";
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    StaffRecordController(JdbcClient jdbc) {
+    StaffRecordController(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     /** the acting person's own record — anyone signed in may read their own, for their identity card */
@@ -132,12 +135,12 @@ class StaffRecordController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> photo(@PathVariable UUID id) {
-        return jdbc.sql("SELECT content_type, content FROM hrm.staff_photo WHERE person_id = :id").param("id", id)
+        return jdbc.sql("SELECT content_type, content, object_id FROM hrm.staff_photo WHERE person_id = :id").param("id", id)
                 .query().listOfRows().stream().findFirst()
                 .map(r -> ResponseEntity.ok()
                         .contentType(MediaType.parseMediaType(String.valueOf(r.get("content_type"))))
                         .cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePrivate())
-                        .body((byte[]) r.get("content")))
+                        .body(files.resolve((byte[]) r.get("content"), (java.util.UUID) r.get("object_id"))))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }

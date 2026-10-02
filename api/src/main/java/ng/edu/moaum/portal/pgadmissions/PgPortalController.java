@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.auth.TokenIssuer;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
@@ -83,6 +84,7 @@ class PgPortalController {
     }
     static final UUID NOBODY = new UUID(0, 0);
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
     private final TokenIssuer issuer;
@@ -90,9 +92,10 @@ class PgPortalController {
     private final SecureRandom random = new SecureRandom();
     private final String portalUrl;
 
-    PgPortalController(JdbcClient jdbc, PlatformTransactionManager transactions, TokenIssuer issuer,
+    PgPortalController(FileObjects files, JdbcClient jdbc, PlatformTransactionManager transactions, TokenIssuer issuer,
                        @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
+        this.files = files;
         this.tx = new TransactionTemplate(transactions);
         this.issuer = issuer;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
@@ -356,7 +359,7 @@ class PgPortalController {
     org.springframework.http.ResponseEntity<byte[]> myDocument(Authentication authentication, @PathVariable UUID docId) {
         UUID me = UUID.fromString(authentication.getName());
         Map<String, Object> d = firstOrNull(jdbc.sql("""
-                SELECT d.filename, d.content_type, d.bytes FROM admissions.pg_document d
+                SELECT d.filename, d.content_type, d.bytes, d.object_id FROM admissions.pg_document d
                   JOIN admissions.pg_application a ON a.id = d.application_id
                  WHERE d.id = :d AND a.applicant_id = :me
                 """).param("d", docId).param("me", me).query().listOfRows());
@@ -366,7 +369,7 @@ class PgPortalController {
                 .cacheControl(org.springframework.http.CacheControl.noStore())
                 .header("Content-Disposition", org.springframework.http.ContentDisposition.inline().filename(String.valueOf(d.get("filename")), java.nio.charset.StandardCharsets.UTF_8).build().toString())
                 .header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox")
-                .body((byte[]) d.get("bytes"));
+                .body(files.resolve((byte[]) d.get("bytes"), (java.util.UUID) d.get("object_id")));
     }
 
     /* ── the credentials document (one combined PDF: O'Level, A'Level, birth certificate) ── */
@@ -423,10 +426,12 @@ class PgPortalController {
         // a higher-degree certificate may be more than one (a candidate can hold several); every other
         // kind is one document per application, so a new upload replaces the earlier one of that kind
         if (!"HIGHER_DEGREE".equals(kind)) {
-            jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = :k").param("app", appId).param("k", kind).update();
+            jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = :k RETURNING object_id").param("app", appId).param("k", kind)
+                    .query(java.util.UUID.class).list().forEach(files::forget);
         }
-        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, :k, :fn, :ct, :b)")
-                .param("app", appId).param("k", kind).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
+        java.util.UUID oid = files.store("admissions.pg_document", appId, body.filename().trim(), body.contentType(), content);
+        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes, object_id) VALUES (:app, :k, :fn, :ct, :b, :o)")
+                .param("app", appId).param("k", kind).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", oid == null ? content : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER)
                 .update();
         return view(me);
     }
@@ -470,9 +475,11 @@ class PgPortalController {
             throw new DomainRuleViolation("PG_PASSPORT_SIZE", "A passport photo is between 1 byte and 4 MB; this one is " + content.length + " bytes.",
                     new DomainRuleViolation.Remedy("Reduce the photo's size and upload it again.", "You"));
         }
-        jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = 'PASSPORT'").param("app", appId).update();
-        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes) VALUES (:app, 'PASSPORT', :fn, :ct, :b)")
-                .param("app", appId).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", content)
+        jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = 'PASSPORT' RETURNING object_id").param("app", appId)
+                .query(java.util.UUID.class).list().forEach(files::forget);
+        java.util.UUID oid = files.store("admissions.pg_document", appId, body.filename().trim(), body.contentType(), content);
+        jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes, object_id) VALUES (:app, 'PASSPORT', :fn, :ct, :b, :o)")
+                .param("app", appId).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", oid == null ? content : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER)
                 .update();
         return view(me);
     }
@@ -485,13 +492,13 @@ class PgPortalController {
         UUID me = UUID.fromString(authentication.getName());
         UUID appId = applicationOf(me);
         Map<String, Object> r = firstOrNull(jdbc.sql("""
-                SELECT content_type, bytes FROM admissions.pg_document
+                SELECT content_type, bytes, object_id FROM admissions.pg_document
                  WHERE application_id = :id AND kind = 'PASSPORT'
                 """).param("id", appId).query().listOfRows());
-        if (r == null || r.get("bytes") == null) {
+        if (r == null || (r.get("bytes") == null && r.get("object_id") == null)) {
             throw new NotFound("passport", appId);
         }
-        byte[] bytes = (byte[]) r.get("bytes");
+        byte[] bytes = files.resolve((byte[]) r.get("bytes"), (java.util.UUID) r.get("object_id"));
         String ct = String.valueOf(r.getOrDefault("content_type", "image/jpeg"));
         // the application-summary PDF can only embed JPEG, so re-encode a PNG passport to JPEG on request
         if ("jpeg".equalsIgnoreCase(format) && !ct.contains("jpeg")) {

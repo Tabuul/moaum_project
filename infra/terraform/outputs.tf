@@ -13,3 +13,4 @@ output "github_deploy_role_arn" { value = aws_iam_role.github_deploy.arn }
 output "alerts_topic_arn" { value = aws_sns_topic.alerts.arn }
 output "ops_bucket" { value = aws_s3_bucket.ops.bucket }
 output "bastion_instance_id" { value = var.enable_bastion ? aws_instance.bastion[0].id : null }
+output "files_bucket" { value = aws_s3_bucket.files.bucket }

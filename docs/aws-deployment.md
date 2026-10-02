@@ -80,6 +80,11 @@ the names below are the application's own, not new ones.
 | `MOAUM_AUTH_HMAC_SECRET` | Secrets Manager | generated at first apply |
 | `MOAUM_FLUTTERWAVE_SECRET`, `MOAUM_FLUTTERWAVE_HASH`, `MOAUM_PAYSTACK_SECRET`, `MOAUM_PAYDIRECT_USERNAME`, `MOAUM_PAYDIRECT_PASSWORD`, `MOAUM_QUICKTELLER_MAC_KEY`, `MOAUM_QUICKTELLER_CHS_MAC_KEY`, `MOAUM_NOTICES_TOKEN`, `MOAUM_SSO_CLIENT_SECRET` | Secrets Manager | `unset` until you set them; the API treats a blank the same as absent |
 
+| `MOAUM_FILES_PROVIDER` | environment | `S3` (Railway: `DB`, the default) |
+| `MOAUM_FILES_BUCKET` | environment | `terraform output files_bucket` |
+| `MOAUM_FILES_REGION` | environment | the region |
+| `MOAUM_FILES_MIGRATE` | environment | `files_migrate` variable: `true` only while the existing files are being moved (§5a) |
+
 The migrate task gets `DATABASE_URL` (no password in it) and `PGPASSWORD` from
 the same secret; `psql` honours `PGPASSWORD`.
 
@@ -219,6 +224,38 @@ final dump) right before cutover.
    `timestamptz`, so the server timezone does not change a stored instant. RDS
    defaults to UTC, as Railway does.
 
+## 5a. Moving the files to S3 (after go-live)
+
+From V310 every uploaded file has two possible homes: its bytes in the database
+(`content`/`bytes` column) or an object in the files bucket (`object_id` →
+`platform.file_object`: key, type, size, SHA-256). With `MOAUM_FILES_PROVIDER=S3`
+new uploads go to the bucket; the files already in the database are moved by
+the API's `FileMigrationJob` when `MOAUM_FILES_MIGRATE=true`:
+
+1. `terraform apply -var files_migrate=true …`, then roll the API. Every 30 s one
+   API task takes up to 200 rows across the eleven file tables and the JAMB
+   passports (`admissions.attachment.payload` → object, `payload - 'dataUrl'`);
+   each row: put to S3, read back, SHA-256 compared, `platform.file_object`
+   written, then the database bytes cleared — one transaction per row.
+2. Watch `/ecs/moaumpp-prod/api` for `files: N rows of <table> moved` and finally
+   `files: nothing left to move to the object store`. At the time of writing
+   production holds about 110,000 passports (428 MB) and 20 MB of documents:
+   roughly ten hours at the default pace, during which the portal runs
+   normally.
+3. `terraform apply -var files_migrate=false …`, roll the API.
+4. Reclaim the space: `VACUUM (FULL) admissions.attachment;` and the eleven blob
+   tables, off-peak (each takes an exclusive lock for the duration of the
+   rewrite; the largest is `admissions.attachment` at 428 MB, a minute or two).
+
+Not moved by design: `platform.notice_attachment` (an email's attachments, sent
+within minutes; the table is on the audit spine). Railway keeps `DB` and is
+unaffected.
+
+Phase 2 was written without an AWS account to run it against: the S3 client
+and the sweeper are exercised for the first time on the real bucket. Run step 1
+with `MOAUM_FILES_MIGRATE_BATCH=5` for the first roll and check one moved file
+of each kind downloads from the portal before raising the batch.
+
 ## 6. Every deploy after that
 
 ```
@@ -284,14 +321,14 @@ Troubleshooting:
 
 ## 9. What is deliberately deferred
 
-- **S3 for files (phase 2).** A `FileStorageService` with database and S3
-  providers, a metadata table (`object_key`, `content_type`, `size`, `checksum`,
-  `visibility`…), the task role granted the bucket, presigned URLs for private
-  documents, CloudFront for public media, and a verified migration of the
-  passports and blob tables with the old columns kept until checksums match.
-  It touches ten modules and is its own change.
-- **A distributed lock for the scheduled jobs** (ShedLock or a `pg_try_advisory_lock`
-  wrapper) before `ECS_DESIRED_COUNT` goes above 1.
+- **Presigned URLs / CloudFront for files.** Phase 2 (V310) moves the bytes to
+  S3 but every download still streams through the API after its authorisation
+  check, which is what keeps student documents private. A presigned-URL path
+  for large downloads, and CloudFront for anything public, are the next step
+  if the API's bandwidth ever becomes the limit.
+- **Passport upload as multipart.** `POST /api/v1/results/legacy/passports`
+  still takes base64 JSON; with the bytes now going to S3 the database cost is
+  gone, and the remaining cost is the 33 % base64 overhead in the request.
 - **CloudFront and WAF in front of the ALB.** Nothing public is static yet; add
   with phase 2.
 - **A second NAT gateway** if an AZ outage of outbound calls (gateways, SMTP,

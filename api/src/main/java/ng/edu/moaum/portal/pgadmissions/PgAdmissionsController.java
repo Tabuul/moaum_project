@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -64,15 +65,17 @@ class PgAdmissionsController {
     private static final String ADMIT = "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_registrar','OFFICE_super')";
     private static final String CONFIRMERS = "hasAnyAuthority('OFFICE_pgsecretary','OFFICE_bursar','OFFICE_super')";
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final OfficeScope scope;
 
     private final String portalUrl;
 
-    PgAdmissionsController(JdbcClient jdbc,
+    PgAdmissionsController(FileObjects files, JdbcClient jdbc,
                           @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
                           OfficeScope scope) {
         this.jdbc = jdbc;
+        this.files = files;
         this.scope = scope;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
@@ -496,14 +499,14 @@ class PgAdmissionsController {
     ResponseEntity<byte[]> document(@PathVariable UUID id, @PathVariable UUID docId) {
         inBound(id);
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT filename, content_type, bytes
+                SELECT filename, content_type, bytes, object_id
                   FROM admissions.pg_document WHERE id = :d AND application_id = :a
                 """).param("d", docId).param("a", id).query().listOfRows();
-        if (rows.isEmpty() || rows.get(0).get("bytes") == null) {
+        if (rows.isEmpty() || (rows.get(0).get("bytes") == null && rows.get(0).get("object_id") == null)) {
             throw new NotFound("postgraduate document", docId);
         }
         Map<String, Object> row = rows.get(0);
-        byte[] bytes = (byte[]) row.get("bytes");
+        byte[] bytes = files.resolve((byte[]) row.get("bytes"), (java.util.UUID) row.get("object_id"));
         String ct = String.valueOf(row.getOrDefault("content_type", "application/pdf"));
         String fn = String.valueOf(row.getOrDefault("filename", "document.pdf")).replaceAll("[\"\\r\\n]", "");
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(ct))
@@ -520,7 +523,7 @@ class PgAdmissionsController {
     ResponseEntity<byte[]> mergedDocuments(@PathVariable UUID id) {
         inBound(id);
         List<Map<String, Object>> docs = jdbc.sql("""
-                SELECT kind, content_type, bytes FROM admissions.pg_document
+                SELECT kind, content_type, bytes, object_id FROM admissions.pg_document
                  WHERE application_id = :id
                  ORDER BY CASE kind WHEN 'PASSPORT' THEN 1 ELSE 0 END, kind
                 """).param("id", id).query().listOfRows();
@@ -530,7 +533,7 @@ class PgAdmissionsController {
         try (PDDocument out = new PDDocument(); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             PDFMergerUtility merger = new PDFMergerUtility();
             for (Map<String, Object> d : docs) {
-                byte[] b = (byte[]) d.get("bytes");
+                byte[] b = files.resolve((byte[]) d.get("bytes"), (java.util.UUID) d.get("object_id"));
                 if (b == null) {
                     continue;
                 }

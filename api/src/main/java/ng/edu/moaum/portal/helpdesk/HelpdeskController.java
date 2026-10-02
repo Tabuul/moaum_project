@@ -18,6 +18,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
@@ -74,11 +75,13 @@ class HelpdeskController {
               LEFT JOIN ref.department d ON d.code = t.department_code LEFT JOIN ref.faculty f ON f.code = t.faculty_code
             """;
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final TicketNotifier notifier;
 
-    HelpdeskController(JdbcClient jdbc, TicketNotifier notifier) {
+    HelpdeskController(FileObjects files, JdbcClient jdbc, TicketNotifier notifier) {
         this.jdbc = jdbc;
+        this.files = files;
         this.notifier = notifier;
     }
 
@@ -834,8 +837,9 @@ class HelpdeskController {
                     new DomainRuleViolation.Remedy("Save it as one of those and attach it again.", "Directorate of ICT"));
         }
         String filename = body.filename().trim().replaceAll("[\\\\/\\r\\n\\t]", "_");
-        UUID id = jdbc.sql("SELECT helpdesk.attach(:t, NULL, :k, :by, :n, :f, :ty, :b, :c, :i)")
-                .param("t", ticket).param("k", kind).param("by", by).param("n", name).param("f", filename).param("ty", type).param("b", (long) bytes.length).param("c", bytes).param("i", internal)
+        UUID oid = files.store("helpdesk.ticket_attachment", ticket, filename, type, bytes);
+        UUID id = jdbc.sql("SELECT helpdesk.attach(:t, NULL, :k, :by, :n, :f, :ty, :b, :c, :i, :o)")
+                .param("t", ticket).param("k", kind).param("by", by).param("n", name).param("f", filename).param("ty", type).param("b", (long) bytes.length).param("c", bytes).param("o", oid, java.sql.Types.OTHER).param("i", internal)
                 .query(UUID.class).single();
         return Map.of("id", id, "filename", filename, "bytes", bytes.length, "contentType", type);
     }
@@ -849,9 +853,10 @@ class HelpdeskController {
 
     private ResponseEntity<byte[]> content(UUID ticket, UUID att, boolean desk) {
         Map<String, Object> r = jdbc.sql("""
-                SELECT a.filename, a.content_type, b.content FROM helpdesk.ticket_attachment a JOIN helpdesk.ticket_attachment_blob b ON b.attachment_id = a.id
+                SELECT a.filename, a.content_type, b.content, b.object_id FROM helpdesk.ticket_attachment a JOIN helpdesk.ticket_attachment_blob b ON b.attachment_id = a.id
                  WHERE a.id = :a AND a.ticket_id = :t AND (:desk OR NOT a.internal)
                 """).param("a", att).param("t", ticket).param("desk", desk).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("attachment", att));
+        r.put("content", files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id")));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType((String) r.get("content_type")))
                 .cacheControl(CacheControl.noStore())

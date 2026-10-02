@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.applicant;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -15,10 +16,12 @@ import org.springframework.stereotype.Repository;
 @Repository
 class ApplicantRepository {
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    ApplicantRepository(JdbcClient jdbc) {
+    ApplicantRepository(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     Map<String, Object> lookup(String session, String jambKey) {
@@ -170,10 +173,11 @@ class ApplicantRepository {
      *  applicant when they have not uploaded one of their own. Small photographs only; null otherwise. */
     Optional<String> jambPassport(String session, String jambKey) {
         return jdbc.sql("""
-                SELECT payload ->> 'dataUrl' FROM admissions.attachment
-                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND jsonb_exists(payload, 'dataUrl')
+                SELECT payload ->> 'dataUrl' AS u, object_id FROM admissions.attachment
+                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND (jsonb_exists(payload, 'dataUrl') OR object_id IS NOT NULL)
                  ORDER BY arrived_at DESC LIMIT 1
-                """).param("s", session).param("k", jambKey).query(String.class).optional();
+                """).param("s", session).param("k", jambKey).query().listOfRows().stream().findFirst()
+                .map(r -> files.dataUrl((String) r.get("u"), (UUID) r.get("object_id")));
     }
 
     List<Map<String, Object>> clearance(UUID applicationId) {
@@ -206,17 +210,19 @@ class ApplicantRepository {
                 INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes)
                 VALUES (:id, :a, :k, :f, :t, :b)
                 """).param("id", id).param("a", applicationId).param("k", kind).param("f", filename).param("t", contentType).param("b", content.length).update();
-        jdbc.sql("INSERT INTO admissions.application_document_blob (document_id, content) VALUES (:id, :c)")
-                .param("id", id).param("c", content).update();
+        UUID oid = files.store("admissions.application_document", id, filename, contentType, content);
+        jdbc.sql("INSERT INTO admissions.application_document_blob (document_id, content, object_id) VALUES (:id, :c, :o)")
+                .param("id", id).param("c", oid == null ? content : null, Types.BINARY).param("o", oid, Types.OTHER).update();
         return id;
     }
 
     Optional<DocumentContent> documentContent(UUID documentId, UUID applicationId) {
         return jdbc.sql("""
-                SELECT d.filename, d.content_type, b.content
+                SELECT d.filename, d.content_type, b.content, b.object_id
                   FROM admissions.application_document d JOIN admissions.application_document_blob b ON b.document_id = d.id
                  WHERE d.id = :id AND (:a::uuid IS NULL OR d.application_id = :a)
-                """).param("id", documentId).param("a", applicationId, Types.OTHER).query(DocumentContent.class).optional();
+                """).param("id", documentId).param("a", applicationId, Types.OTHER).query().listOfRows().stream().findFirst()
+                .map(r -> new DocumentContent((String) r.get("filename"), (String) r.get("content_type"), files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id"))));
     }
 
     String submit(UUID applicationId, String ip) {

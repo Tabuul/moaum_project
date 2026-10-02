@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.JobLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,16 +23,22 @@ public class HostelClock {
     private static final Logger LOG = LoggerFactory.getLogger(HostelClock.class);
     private static final UUID NOBODY = new UUID(0L, 0L);
 
+    private final JobLock lock;
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
 
-    public HostelClock(JdbcClient jdbc, PlatformTransactionManager transactions) {
+    public HostelClock(JobLock lock, JdbcClient jdbc, PlatformTransactionManager transactions) {
+        this.lock = lock;
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactions);
     }
 
     @Scheduled(cron = "${moaum.hostel.cron:0 5 * * * *}", zone = "Africa/Lagos")
     public void tick() {
+        lock.runExclusively("hostel-clock", this::tickNow);
+    }
+
+    void tickNow() {
         try {
             Integer n = AuditContextHolder.with(new AuditContext(NOBODY, "housing", "hostel hold clock", null, null), () -> tx.execute(st -> {
                 List<String> sessions = jdbc.sql("SELECT DISTINCT session FROM hostel.allocation WHERE state = 'HELD' AND held_until < now()").query(String.class).list();

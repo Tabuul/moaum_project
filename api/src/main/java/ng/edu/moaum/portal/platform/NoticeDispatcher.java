@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.JobLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,7 @@ public class NoticeDispatcher {
     private static final Logger LOG = LoggerFactory.getLogger(NoticeDispatcher.class);
     static final UUID NOBODY = new UUID(0, 0);
 
+    private final JobLock lock;
     private final NoticeRepository notices;
     private final TransactionTemplate tx;
     private final String emailUrl;
@@ -51,7 +53,7 @@ public class NoticeDispatcher {
     private final SmsService smsService;
     private final EbulkSmsSender ebulkSms;
 
-    public NoticeDispatcher(NoticeRepository notices, PlatformTransactionManager transactions,
+    public NoticeDispatcher(JobLock lock, NoticeRepository notices, PlatformTransactionManager transactions,
                             MailService mailService, SmtpMailer smtpMailer,
                             SmsService smsService, EbulkSmsSender ebulkSms,
                             @Value("${moaum.notices.email-url:}") String emailUrl,
@@ -61,6 +63,7 @@ public class NoticeDispatcher {
                             @Value("${moaum.notices.sms-from:MOAUM}") String smsFrom,
                             @Value("${moaum.notices.email-format:generic}") String emailFormat,
                             @Value("${moaum.notices.email-from:MOAUM Portal <portal@moaum.edu.ng>}") String emailFrom) {
+        this.lock = lock;
         this.notices = notices;
         this.tx = new TransactionTemplate(transactions);
         this.mailService = mailService;
@@ -113,6 +116,10 @@ public class NoticeDispatcher {
 
     @Scheduled(fixedDelayString = "${moaum.notices.every-ms:60000}", initialDelayString = "${moaum.notices.initial-ms:15000}")
     public void dispatch() {
+        lock.runExclusively("notice-dispatcher", this::dispatchNow);
+    }
+
+    void dispatchNow() {
         // the mail account set on the Mail server screen (V057) sends email over SMTP; an HTTP
         // relay (MOAUM_NOTICES_EMAIL_URL) is the fallback, and SMS still goes by the relay
         java.util.Optional<MailService.Smtp> smtp = mailService.smtp();

@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.staff;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -11,10 +12,12 @@ import org.springframework.stereotype.Repository;
 @Repository
 class StaffRepository {
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    StaffRepository(JdbcClient jdbc) {
+    StaffRepository(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     Optional<StaffMe.Person> person(UUID actor) {
@@ -76,8 +79,9 @@ class StaffRepository {
     }
 
     void savePhoto(String contentType, long bytes, byte[] content) {
-        jdbc.sql("SELECT hrm.set_my_staff_photo(:ct, :b, :c)")
-                .param("ct", contentType).param("b", bytes).param("c", content)
+        java.util.UUID oid = files.store("hrm.staff_photo", "me", null, contentType, content);
+        jdbc.sql("SELECT hrm.set_my_staff_photo(:ct, :b, :c, :o)")
+                .param("ct", contentType).param("b", bytes).param("c", oid == null ? content : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER)
                 .query().singleRow();
     }
 

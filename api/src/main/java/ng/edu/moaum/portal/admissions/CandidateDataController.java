@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -60,11 +61,13 @@ class CandidateDataController {
     public record State(String session, List<Finding> findings, List<Attachment> attachments, List<Candidate> candidates) {
     }
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final CapsIntakeService intake;
 
-    CandidateDataController(JdbcClient jdbc, CapsIntakeService intake) {
+    CandidateDataController(FileObjects files, JdbcClient jdbc, CapsIntakeService intake) {
         this.jdbc = jdbc;
+        this.files = files;
         this.intake = intake;
     }
 
@@ -87,7 +90,7 @@ class CandidateDataController {
         List<Candidate> candidates = jdbc.sql("""
                 SELECT c.id, c.jamb_key, c.surname, c.other_names, c.programme, c.entry_mode,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT') AS has_passport,
-                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT' AND jsonb_exists(a.payload, 'dataUrl')) AS has_passport_image,
+                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT' AND (jsonb_exists(a.payload, 'dataUrl') OR a.object_id IS NOT NULL)) AS has_passport_image,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'DATE_OF_BIRTH') AS has_dob,
                        EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'OLEVEL') AS has_olevel,
                        admissions.candidate_is_committed(c.session, c.jamb_key) AS committed
@@ -104,13 +107,21 @@ class CandidateDataController {
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> passportImage(@PathVariable String session, @PathVariable String year, @PathVariable UUID candidateId) {
         String s = session + "/" + year;
-        String dataUrl = jdbc.sql("""
-                SELECT a.payload ->> 'dataUrl'
+        Map<String, Object> at = jdbc.sql("""
+                SELECT a.payload ->> 'dataUrl' AS u, a.object_id
                   FROM admissions.attachment a
                  WHERE a.session = :s AND a.candidate_id = :c AND a.kind = 'PASSPORT'
-                   AND jsonb_exists(a.payload, 'dataUrl')
+                   AND (jsonb_exists(a.payload, 'dataUrl') OR a.object_id IS NOT NULL)
                  ORDER BY a.arrived_at DESC LIMIT 1
-                """).param("s", s).param("c", candidateId).query(String.class).optional().orElse(null);
+                """).param("s", s).param("c", candidateId).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("passport image", candidateId));
+        if (at.get("object_id") != null) {
+            FileObjects.Typed t = files.typed((UUID) at.get("object_id"));
+            return ResponseEntity.ok().contentType(MediaType.parseMediaType(t.contentType()))
+                    .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                    .body(t.bytes());
+        }
+        String dataUrl = (String) at.get("u");
         if (dataUrl == null || dataUrl.isBlank()) {
             throw new NotFound("passport image", candidateId);
         }
@@ -169,12 +180,25 @@ class CandidateDataController {
                 }
             }
             UUID id = UUID.randomUUID();
+            UUID oid = null;
+            if ("PASSPORT".equals(batch.kind()) && files.enabled() && it.payload() != null && it.payload().get("dataUrl") != null) {
+                // the photograph goes to the object store; the payload keeps everything but the bytes
+                String u = String.valueOf(it.payload().get("dataUrl"));
+                int comma = u.indexOf(',');
+                String meta = comma > 0 ? u.substring(u.startsWith("data:") ? 5 : 0, comma) : "image/jpeg;base64";
+                String ct = meta.contains(";") ? meta.substring(0, meta.indexOf(';')) : meta;
+                byte[] img = java.util.Base64.getDecoder().decode((comma > 0 ? u.substring(comma + 1) : u).replaceAll("\\s", ""));
+                oid = files.store("admissions.attachment", id, name, ct.isBlank() ? "image/jpeg" : ct, img);
+                Map<String, Object> rest = new java.util.LinkedHashMap<>(it.payload());
+                rest.remove("dataUrl");
+                payload = Json.text(rest);
+            }
             jdbc.sql("""
-                    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload, bytes, width_px, height_px)
-                    VALUES (:id, :s, :k, :n, :key, :r, CAST(:p AS jsonb), :b, :w, :h)
+                    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload, bytes, width_px, height_px, object_id)
+                    VALUES (:id, :s, :k, :n, :key, :r, CAST(:p AS jsonb), :b, :w, :h, :o)
                     """).param("id", id).param("s", s).param("k", batch.kind()).param("n", name).param("key", key, Types.VARCHAR)
                     .param("r", readAs).param("p", payload).param("b", it.bytes(), Types.BIGINT)
-                    .param("w", it.widthPx(), Types.INTEGER).param("h", it.heightPx(), Types.INTEGER).update();
+                    .param("w", it.widthPx(), Types.INTEGER).param("h", it.heightPx(), Types.INTEGER).param("o", oid, Types.OTHER).update();
             if ("OLEVEL".equals(batch.kind())) {
                 /* the sittings, read out of what arrived (V020), each checked for duplicates before it is recorded (V298) */
                 jdbc.sql("SELECT admissions.olevel_from_attachment(:id)").param("id", id).query(Integer.class).single();

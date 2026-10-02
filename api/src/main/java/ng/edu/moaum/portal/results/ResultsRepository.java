@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.results;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import java.sql.Types;
 import java.time.LocalDate;
 import java.util.List;
@@ -32,10 +33,12 @@ class ResultsRepository {
               LEFT JOIN iam.person p ON p.id = o.lecturer_id
             """;
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    ResultsRepository(JdbcClient jdbc) {
+    ResultsRepository(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     List<Sheets.Row> sheets(String fac, String dept, String prog, String course, String session, Integer sem, String stage, UUID mine) {
@@ -508,8 +511,9 @@ class ResultsRepository {
                         INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes, status)
                         VALUES (:id, :a, 'PASSPORT', :f, :t, :b, 'ACCEPTED')
                         """).param("id", docId).param("a", appId).param("f", filename).param("t", contentType).param("b", content.length).update();
-                jdbc.sql("INSERT INTO admissions.application_document_blob (document_id, content) VALUES (:id, :c)")
-                        .param("id", docId).param("c", content).update();
+                UUID oid = files.store("admissions.application_document", docId, filename, contentType, content);
+                jdbc.sql("INSERT INTO admissions.application_document_blob (document_id, content, object_id) VALUES (:id, :c, :o)")
+                        .param("id", docId).param("c", oid == null ? content : null, Types.BINARY).param("o", oid, Types.OTHER).update();
                 return "STORED";
             }
         }
@@ -548,15 +552,16 @@ class ResultsRepository {
      *  student without a candidate still read it by their own JAMB number. matched_at is set only with a candidate. */
     private void attach(String session, String filename, String jambKey, UUID candidateId, String contentType, String base64, int bytes, boolean matched) {
         String dataUrl = "data:" + contentType + ";base64," + base64;
+        UUID oid = files.enabled() ? files.store("admissions.attachment", jambKey, filename, contentType, java.util.Base64.getDecoder().decode(base64)) : null;
         jdbc.sql("""
-                INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at, payload, bytes)
+                INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at, payload, bytes, object_id)
                 VALUES (gen_random_uuid(), :ses, 'PASSPORT', :src, :key, 'EXACT', :cid, CASE WHEN :m THEN now() ELSE NULL END,
-                        jsonb_build_object('dataUrl', :url::text), :b)
+                        CASE WHEN :o::uuid IS NULL THEN jsonb_build_object('dataUrl', :url::text) ELSE '{}'::jsonb END, :b, :o)
                 ON CONFLICT (session, kind, source_name) DO UPDATE
-                   SET payload = EXCLUDED.payload, candidate_id = EXCLUDED.candidate_id,
+                   SET payload = EXCLUDED.payload, candidate_id = EXCLUDED.candidate_id, object_id = EXCLUDED.object_id,
                        matched_at = CASE WHEN :m THEN now() ELSE admissions.attachment.matched_at END,
                        bytes = EXCLUDED.bytes, jamb_key = EXCLUDED.jamb_key, read_as = 'EXACT'
                 """).param("ses", session).param("src", filename).param("key", jambKey).param("cid", candidateId, Types.OTHER)
-                .param("m", matched).param("url", dataUrl).param("b", bytes).update();
+                .param("m", matched).param("url", dataUrl).param("b", bytes).param("o", oid, Types.OTHER).update();
     }
 }

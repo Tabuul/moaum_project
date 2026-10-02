@@ -122,3 +122,9 @@ variable "app_secret_names" {
     "MOAUM_NOTICES_TOKEN", "MOAUM_SSO_CLIENT_SECRET",
   ]
 }
+
+variable "files_migrate" {
+  description = "Run the API's file migration sweep (database bytea -> S3, verified row by row). Switch on after go-live; off when every table reports nothing left."
+  type        = bool
+  default     = false
+}

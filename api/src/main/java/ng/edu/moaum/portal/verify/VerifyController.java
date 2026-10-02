@@ -1,10 +1,12 @@
 package ng.edu.moaum.portal.verify;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,10 +29,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/verify")
 class VerifyController {
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    VerifyController(JdbcClient jdbc) {
+    VerifyController(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     /** the same digest the receipt carries: sha256(reference|receiptNo), hex, upper-cased, first 12 */
@@ -69,7 +73,17 @@ class VerifyController {
                            WHERE at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')
                              AND (at.candidate_id = s.candidate_id
                                   OR (s.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(s.jamb_reg_no))))
-                           LIMIT 1)) AS passport
+                           LIMIT 1)) AS passport,
+                       (SELECT b.object_id FROM admissions.application_document d
+                          JOIN admissions.application ap ON ap.id = d.application_id
+                          JOIN admissions.application_document_blob b ON b.document_id = d.id
+                         WHERE ap.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                         ORDER BY d.id LIMIT 1) AS passport_object,
+                       (SELECT at.object_id FROM admissions.attachment at
+                         WHERE at.kind = 'PASSPORT' AND at.object_id IS NOT NULL
+                           AND (at.candidate_id = s.candidate_id
+                                OR (s.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(s.jamb_reg_no))))
+                         LIMIT 1) AS jamb_object
                   FROM finance.payment_reference pr
                   JOIN people.student s ON s.id = pr.student_id
                   LEFT JOIN ref.programme pg ON pg.code = s.programme_code
@@ -96,7 +110,8 @@ class VerifyController {
         out.put("channel", row.get("channel"));
         out.put("confirmedOn", row.get("confirmed_at"));
         out.put("receiptNo", row.get("receipt_no"));
-        out.put("passport", row.get("passport"));
+        out.put("passport", files.dataUrl((String) row.get("passport"),
+                (UUID) (row.get("passport_object") != null ? row.get("passport_object") : row.get("jamb_object"))));
         return out;
     }
 
@@ -162,21 +177,22 @@ class VerifyController {
         String photo = null;
         Object pid = row.get("passport_id");
         if (pid != null) {
-            List<Map<String, Object>> b = jdbc.sql("SELECT encode(content, 'base64') AS b64 FROM admissions.application_document_blob WHERE document_id = :d")
+            List<Map<String, Object>> b = jdbc.sql("SELECT encode(content, 'base64') AS b64, object_id FROM admissions.application_document_blob WHERE document_id = :d")
                     .param("d", pid).query().listOfRows();
             if (!b.isEmpty() && b.get(0).get("b64") != null) photo = "data:image/jpeg;base64," + b.get(0).get("b64");
+            else if (!b.isEmpty() && b.get(0).get("object_id") != null) photo = files.dataUrl(null, (UUID) b.get(0).get("object_id"));
         }
         if (photo == null) {
             // fall back to the JAMB/attachment store — a migrated or JAMB-loaded photo (no candidate document),
             // matched by the student's candidate or their own JAMB number, so it also shows at the exam hall
             List<Map<String, Object>> at = jdbc.sql("""
-                    SELECT at.payload->>'dataUrl' AS url FROM people.student s
-                      JOIN admissions.attachment at ON at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')
+                    SELECT at.payload->>'dataUrl' AS url, at.object_id FROM people.student s
+                      JOIN admissions.attachment at ON at.kind = 'PASSPORT' AND (jsonb_exists(at.payload, 'dataUrl') OR at.object_id IS NOT NULL)
                          AND (at.candidate_id = s.candidate_id
                               OR (s.jamb_reg_no IS NOT NULL AND at.jamb_key = upper(btrim(s.jamb_reg_no))))
                      WHERE s.id = :s LIMIT 1
                     """).param("s", sid).query().listOfRows();
-            if (!at.isEmpty() && at.get(0).get("url") != null) photo = String.valueOf(at.get(0).get("url"));
+            if (!at.isEmpty()) photo = files.dataUrl((String) at.get(0).get("url"), (UUID) at.get(0).get("object_id"));
         }
 
         out.put("genuine", true);
@@ -347,15 +363,16 @@ class VerifyController {
         String photo = null;
         Object pid = r.get("passport_id");
         if (pid != null) {
-            List<Map<String, Object>> b = jdbc.sql("SELECT encode(content, 'base64') AS b64 FROM admissions.application_document_blob WHERE document_id = :d").param("d", pid).query().listOfRows();
+            List<Map<String, Object>> b = jdbc.sql("SELECT encode(content, 'base64') AS b64, object_id FROM admissions.application_document_blob WHERE document_id = :d").param("d", pid).query().listOfRows();
             if (!b.isEmpty() && b.get(0).get("b64") != null) photo = "data:image/jpeg;base64," + b.get(0).get("b64");
+            else if (!b.isEmpty() && b.get(0).get("object_id") != null) photo = files.dataUrl(null, (UUID) b.get(0).get("object_id"));
         }
         if (photo == null) {
             List<Map<String, Object>> at = jdbc.sql("""
-                    SELECT at.payload->>'dataUrl' AS url FROM admissions.attachment at JOIN admissions.application a ON a.id = :a
-                     WHERE at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl') AND at.candidate_id = a.candidate_id ORDER BY at.arrived_at DESC LIMIT 1
+                    SELECT at.payload->>'dataUrl' AS url, at.object_id FROM admissions.attachment at JOIN admissions.application a ON a.id = :a
+                     WHERE at.kind = 'PASSPORT' AND (jsonb_exists(at.payload, 'dataUrl') OR at.object_id IS NOT NULL) AND at.candidate_id = a.candidate_id ORDER BY at.arrived_at DESC LIMIT 1
                     """).param("a", r.get("id")).query().listOfRows();
-            if (!at.isEmpty() && at.get(0).get("url") != null) photo = String.valueOf(at.get(0).get("url"));
+            if (!at.isEmpty()) photo = files.dataUrl((String) at.get(0).get("url"), (UUID) at.get(0).get("object_id"));
         }
         out.put("photo", photo);
         return out;

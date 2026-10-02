@@ -93,6 +93,11 @@ locals {
     { name = "DB_POOL_SIZE", value = tostring(var.db_pool_size) },
     { name = "MOAUM_PORTAL_URL", value = var.portal_url },
     { name = "PORT", value = "8081" },
+    # files on S3 (V310); migrate=true moves the files already in the database, a few hundred a minute
+    { name = "MOAUM_FILES_PROVIDER", value = "S3" },
+    { name = "MOAUM_FILES_BUCKET", value = aws_s3_bucket.files.bucket },
+    { name = "MOAUM_FILES_REGION", value = var.region },
+    { name = "MOAUM_FILES_MIGRATE", value = tostring(var.files_migrate) },
   ]
 
   logs = { for k, g in aws_cloudwatch_log_group.svc : k => {

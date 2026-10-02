@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -48,10 +49,12 @@ class PgResearchController {
     private static final String STUDENT = "hasAuthority('OFFICE_student')";
     private static final String SCHOOL = "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_super')";
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    PgResearchController(JdbcClient jdbc) {
+    PgResearchController(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     /* ── the candidate's own record ───────────────────────────────────────── */
@@ -394,11 +397,12 @@ class PgResearchController {
     ResponseEntity<byte[]> myDocument(Authentication authentication, @PathVariable UUID docId) {
         UUID student = UUID.fromString(authentication.getName());
         Map<String, Object> d = jdbc.sql("""
-                SELECT d.filename, d.content_type, b.bytes AS content FROM admissions.pg_research_document d
+                SELECT d.filename, d.content_type, b.bytes AS content, b.object_id FROM admissions.pg_research_document d
                   JOIN admissions.pg_research_document_blob b ON b.document_id = d.id
                   JOIN admissions.pg_research r ON r.id = d.research_id
                  WHERE d.id = :d AND r.student_id = :s
                 """).param("d", docId).param("s", student).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("document", docId));
+        d.put("content", files.resolve((byte[]) d.get("content"), (UUID) d.get("object_id")));
         return serve(d);
     }
 
@@ -408,10 +412,11 @@ class PgResearchController {
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> deskDocument(@PathVariable UUID id, @PathVariable UUID docId) {
         Map<String, Object> d = jdbc.sql("""
-                SELECT d.filename, d.content_type, b.bytes AS content FROM admissions.pg_research_document d
+                SELECT d.filename, d.content_type, b.bytes AS content, b.object_id FROM admissions.pg_research_document d
                   JOIN admissions.pg_research_document_blob b ON b.document_id = d.id
                  WHERE d.id = :d AND d.research_id = :r
                 """).param("d", docId).param("r", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("document", docId));
+        d.put("content", files.resolve((byte[]) d.get("content"), (UUID) d.get("object_id")));
         return serve(d);
     }
 
@@ -464,7 +469,9 @@ class PgResearchController {
                 """).param("id", id).param("r", research).param("k", kind).param("f", body.filename().trim().replaceAll("[\\\\/\\r\\n\\t]", "_"))
                 .param("t", type).param("n", bytes.length).param("note", body.note() == null || body.note().isBlank() ? null : body.note().trim(), java.sql.Types.VARCHAR)
                 .param("bc", byCandidate).param("who", who, java.sql.Types.OTHER).update();
-        jdbc.sql("INSERT INTO admissions.pg_research_document_blob (document_id, bytes) VALUES (:id, :b)").param("id", id).param("b", bytes).update();
+        UUID oid = files.store("admissions.pg_research_document", id, body.filename(), type, bytes);
+        jdbc.sql("INSERT INTO admissions.pg_research_document_blob (document_id, bytes, object_id) VALUES (:id, :b, :o)")
+                .param("id", id).param("b", oid == null ? bytes : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER).update();
         return id;
     }
 

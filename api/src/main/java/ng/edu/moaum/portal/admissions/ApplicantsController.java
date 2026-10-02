@@ -19,6 +19,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.applicant.ApplicantService;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
@@ -85,12 +86,14 @@ class ApplicantsController {
     public record Clearance(@NotBlank String state, @Size(max = 400) String note) {
     }
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
     private final ApplicantService applicants;
     private final TransactionTemplate tx;
 
-    ApplicantsController(JdbcClient jdbc, ApplicantService applicants, PlatformTransactionManager transactions) {
+    ApplicantsController(FileObjects files, JdbcClient jdbc, ApplicantService applicants, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
+        this.files = files;
         this.applicants = applicants;
         this.tx = new TransactionTemplate(transactions);
     }
@@ -458,10 +461,11 @@ class ApplicantsController {
                 .query().listOfRows().stream().findFirst().orElse(java.util.Map.of());
         // JAMB's passport, where it was small enough to keep (recorded as a data URL in the attachment payload)
         String passport = jdbc.sql("""
-                SELECT payload ->> 'dataUrl' FROM admissions.attachment
-                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND jsonb_exists(payload, 'dataUrl')
+                SELECT payload ->> 'dataUrl' AS u, object_id FROM admissions.attachment
+                 WHERE session = :s AND jamb_key = :k AND kind = 'PASSPORT' AND (jsonb_exists(payload, 'dataUrl') OR object_id IS NOT NULL)
                  ORDER BY arrived_at DESC LIMIT 1
-                """).param("s", s).param("k", jambKey).query(String.class).optional().orElse(null);
+                """).param("s", s).param("k", jambKey).query().listOfRows().stream().findFirst()
+                .map(r -> files.dataUrl((String) r.get("u"), (java.util.UUID) r.get("object_id"))).orElse(null);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", s);
         out.put("biodata", biodata);
@@ -1466,7 +1470,7 @@ class ApplicantsController {
         List<Map<String, Object>> seats = jdbc.sql("""
                 SELECT a.id, a.seat, a.application_no, c.id AS candidate_id, c.surname, c.other_names, c.jamb_reg_no AS jamb_key, c.programme, c.entry_mode,
                        (SELECT d.id FROM admissions.application_document d WHERE d.application_id = a.id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL) AS passport_id,
-                       EXISTS (SELECT 1 FROM admissions.attachment at WHERE at.candidate_id = c.id AND at.kind = 'PASSPORT' AND jsonb_exists(at.payload, 'dataUrl')) AS has_jamb_passport
+                       EXISTS (SELECT 1 FROM admissions.attachment at WHERE at.candidate_id = c.id AND at.kind = 'PASSPORT' AND (jsonb_exists(at.payload, 'dataUrl') OR at.object_id IS NOT NULL)) AS has_jamb_passport
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
                  WHERE a.screening_batch_id = :id ORDER BY a.seat
                 """).param("id", id).query().listOfRows();

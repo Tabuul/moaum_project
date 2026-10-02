@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -59,10 +60,12 @@ class SupportController {
     public record Upload(@NotBlank @Size(max = 200) String filename, @NotBlank String contentType, @NotBlank String contentBase64) {
     }
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    SupportController(JdbcClient jdbc) {
+    SupportController(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     private static UUID student(Authentication auth) {
@@ -187,21 +190,23 @@ class SupportController {
             throw new DomainRuleViolation("SUPPORT_DOC_TYPE", "A supporting document is a PDF, a JPEG or a PNG.",
                     new DomainRuleViolation.Remedy("Save it as one of those and attach it again.", "Student Services"));
         }
-        UUID docId = jdbc.sql("SELECT platform.attach_request_document(:r, :f, :t, :b, :c)")
-                .param("r", request).param("f", body.filename()).param("t", body.contentType()).param("b", (long) bytes.length).param("c", bytes)
+        UUID oid = files.store("platform.request_document", request, body.filename(), body.contentType(), bytes);
+        UUID docId = jdbc.sql("SELECT platform.attach_request_document(:r, :f, :t, :b, :c, :o)")
+                .param("r", request).param("f", body.filename()).param("t", body.contentType()).param("b", (long) bytes.length)
+                .param("c", oid == null ? bytes : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER)
                 .query(UUID.class).single();
         return Map.of("id", docId, "filename", body.filename(), "bytes", bytes.length);
     }
 
     private ResponseEntity<byte[]> content(UUID request, UUID doc) {
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT d.filename, d.content_type, b.content
+                SELECT d.filename, d.content_type, b.content, b.object_id
                   FROM platform.request_document d JOIN platform.request_document_blob b ON b.document_id = d.id
                  WHERE d.id = :doc AND d.request_id = :r
                 """).param("doc", doc).param("r", request).query().listOfRows();
         if (rows.isEmpty()) throw new NotFound("document", doc.toString());
         Map<String, Object> r = rows.get(0);
-        byte[] content = (byte[]) r.get("content");
+        byte[] content = files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id"));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType((String) r.get("content_type")))
                 .header("Content-Disposition", ContentDisposition.inline().filename(String.valueOf(r.get("filename"))).build().toString())

@@ -231,6 +231,25 @@ Production means from `pg_stat_statements` (before) and the copy (after);
 | Hikari pending connections | not exposed; no evidence of waits | expose `hikaricp.connections.pending` via Actuator metrics on AWS (CloudWatch agent), not publicly | |
 | Deadlocks | 23,988 in 25 days | 0 expected: no row lock is held by the trigger | verify in `pg_stat_database` after a week |
 
+### Live-session equivalence (2025/2026), as far as the 30-minute windows allowed
+
+| Check | Students | Result |
+|---|---|---|
+| `payment_position` vs `session_positions`, semester NULL: payable, paid, outstanding, status, payments | 54,572 | **0 differences** |
+| same: `last_paid_at` | 54,572 | 0 |
+| same: `last_reference` | 54,572 | 775 differ: payments confirmed at the identical instant (legacy imports), where both the old `ORDER BY confirmed_at DESC LIMIT 1` and the new `DISTINCT ON` pick an arbitrary one. Same amount, same time, different reference string; no money differs |
+| `sum(charges)` vs `session_charges` for 2025/2026 (as the past session of the 2026/2027 run) | 54,572 | 0 |
+| `position` vs `session_fee_positions` | 54,572 | 0 |
+| semesters 1 and 2, `clears` | | not completed: each per-student run takes about 20 minutes on the copy; the 2026/2027 runs of the same checks were 0 |
+
+### Covering index on `finance.payment_reference` (memo item 5): measured and rejected
+
+`(student_id, session, confirmed_at DESC) INCLUDE (amount, reference, channel) WHERE confirmed_at IS NOT NULL AND purpose LIKE 'School fees%'`
+on the copy: the per-student lookup went from 0.145 ms (5 buffers, `ix_pref_student`) to 0.319 ms
+(index-only scan, 4 buffers of which 3 read from disk), and the set-based `session_positions`
+reads the whole session in one pass anyway (140 ms). An 8 MB index maintained on every payment for
+no gain.
+
 ## K. Remaining bottlenecks
 
 - **`clearance.migrated_summary`** 4.8 s: a sort of 2.8 M clearance items; the
@@ -247,7 +266,27 @@ Production means from `pg_stat_statements` (before) and the copy (after);
 - **The nightly `verify_chain`** sorts each shard's month (57 s, 3.1 M temp
   blocks). Fine nightly; an index on `(period, shard, coalesce(chain_seq, seq))`
   would remove the sort if it ever matters.
-- **Scheduled jobs** need a distributed lock before a second API task.
+- ~~**Scheduled jobs** need a distributed lock before a second API task.~~ Done
+  the same day: `JobLock` (a PostgreSQL session advisory lock per job, held on
+  its own connection for the run) wraps all seven jobs and the sealer; a second
+  instance skips its tick. The notice dispatcher therefore sends each notice
+  once without a claim column.
+- ~~**Files in the database.**~~ V310: every file table may hold its bytes or an
+  `object_id`; with `MOAUM_FILES_PROVIDER=S3` new uploads go to the bucket and
+  `FileMigrationJob` moves the existing 110,000 passports and documents, each
+  read back and hash-checked. Not yet run against a real bucket (no AWS
+  account in this session): see `docs/aws-deployment.md` §5a.
+- ~~`finance.reset_legacy_payments` privileges.~~ V309: `SECURITY DEFINER`
+  with a fixed `search_path`, as the audit trigger.
+- **`GET /api/v1/admissions/sessions/{s}/candidate-data`** answers with
+  **62 MB** (every attachment of the session with its payload, 6.7 s on the
+  copy). Pre-existing; the screen needs a paged list and a per-attachment
+  payload endpoint. The largest response in the portal by a factor of a
+  thousand.
+- **`admissions.attachment` has no index on `candidate_id`**: the student
+  portal's "has a passport" check scans 52,744 rows (200 ms on the copy). A
+  partial index `(candidate_id) WHERE kind = 'PASSPORT'` would make it a lookup;
+  measured but left for the next migration.
 - **`shared_buffers`** on Railway needs one restart of the Postgres service.
 - **Per-request timing** is not recorded by the API; the AWS ALB's
   `TargetResponseTime` and a `log_min_duration_statement` of 2 s will be the

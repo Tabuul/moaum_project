@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.JobLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,11 +27,13 @@ class ExaminerReminders {
     private static final Logger LOG = LoggerFactory.getLogger(ExaminerReminders.class);
     private static final UUID NOBODY = new UUID(0, 0);
 
+    private final JobLock lock;
     private final JdbcClient jdbc;
     private final ExaminerNotifier notifier;
     private final TransactionTemplate tx;
 
-    ExaminerReminders(JdbcClient jdbc, ExaminerNotifier notifier, PlatformTransactionManager transactions) {
+    ExaminerReminders(JobLock lock, JdbcClient jdbc, ExaminerNotifier notifier, PlatformTransactionManager transactions) {
+        this.lock = lock;
         this.jdbc = jdbc;
         this.notifier = notifier;
         this.tx = new TransactionTemplate(transactions);
@@ -38,6 +41,10 @@ class ExaminerReminders {
 
     @Scheduled(cron = "0 15 7 * * *", zone = "Africa/Lagos")
     void run() {
+        lock.runExclusively("examiner-reminders", this::runNow);
+    }
+
+    void runNow() {
         try {
             int[] n = AuditContextHolder.with(new AuditContext(NOBODY, "academic", "examiner deadline reminders", null, null), () -> tx.execute(status -> {
                 int reminded = 0, overdue = 0;

@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.JobLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +33,13 @@ public class SessionTransitionClock {
     private static final Logger LOG = LoggerFactory.getLogger(SessionTransitionClock.class);
     private static final UUID NOBODY = new UUID(0L, 0L);
 
+    private final JobLock lock;
     private final JdbcClient jdbc;
     private final CalendarService calendar;
     private final TransactionTemplate tx;
 
-    public SessionTransitionClock(JdbcClient jdbc, CalendarService calendar, PlatformTransactionManager transactions) {
+    public SessionTransitionClock(JobLock lock, JdbcClient jdbc, CalendarService calendar, PlatformTransactionManager transactions) {
+        this.lock = lock;
         this.jdbc = jdbc;
         this.calendar = calendar;
         this.tx = new TransactionTemplate(transactions);
@@ -44,6 +47,10 @@ public class SessionTransitionClock {
 
     @Scheduled(cron = "${moaum.sessions.cron:0 15 0 * * *}", zone = "Africa/Lagos")
     public void tick() {
+        lock.runExclusively("session-transition-clock", this::tickNow);
+    }
+
+    void tickNow() {
         try {
             List<Map<String, Object>> outcomes = run();
             for (Map<String, Object> o : outcomes) {

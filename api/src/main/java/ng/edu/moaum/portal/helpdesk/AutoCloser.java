@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.JobLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,11 +26,13 @@ class AutoCloser {
     private static final Logger LOG = LoggerFactory.getLogger(AutoCloser.class);
     private static final UUID NOBODY = new UUID(0, 0);
 
+    private final JobLock lock;
     private final JdbcClient jdbc;
     private final TicketNotifier notifier;
     private final TransactionTemplate tx;
 
-    AutoCloser(JdbcClient jdbc, TicketNotifier notifier, PlatformTransactionManager transactions) {
+    AutoCloser(JobLock lock, JdbcClient jdbc, TicketNotifier notifier, PlatformTransactionManager transactions) {
+        this.lock = lock;
         this.jdbc = jdbc;
         this.notifier = notifier;
         this.tx = new TransactionTemplate(transactions);
@@ -37,6 +40,10 @@ class AutoCloser {
 
     @Scheduled(initialDelayString = "PT5M", fixedDelayString = "PT1H")
     void run() {
+        lock.runExclusively("helpdesk-auto-close", this::runNow);
+    }
+
+    void runNow() {
         try {
             List<UUID> closed = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "helpdesk auto-close", null, null), () -> tx.execute(status -> {
                 List<UUID> ids = jdbc.sql("SELECT * FROM helpdesk.auto_close()").query(UUID.class).list();

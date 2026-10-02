@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.lms;
 
+import ng.edu.moaum.portal.shared.FileObjects;
 import java.math.BigDecimal;
 import java.sql.Types;
 import java.time.OffsetDateTime;
@@ -17,10 +18,12 @@ class LmsRepository {
     record FileContent(String filename, String contentType, byte[] content) {
     }
 
+    private final FileObjects files;
     private final JdbcClient jdbc;
 
-    LmsRepository(JdbcClient jdbc) {
+    LmsRepository(FileObjects files, JdbcClient jdbc) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     String currentSession() {
@@ -106,7 +109,9 @@ class LmsRepository {
                 .param("f", filename, Types.VARCHAR).param("c", contentType, Types.VARCHAR).param("b", content == null ? null : (long) content.length, Types.BIGINT)
                 .param("l", link, Types.VARCHAR).param("p", publish).param("by", by).update();
         if (content != null) {
-            jdbc.sql("INSERT INTO lms.material_blob (material_id, content) VALUES (:id, :c)").param("id", id).param("c", content).update();
+            UUID oid = files.store("lms.material", id, filename, contentType, content);
+            jdbc.sql("INSERT INTO lms.material_blob (material_id, content, object_id) VALUES (:id, :c, :o)")
+                    .param("id", id).param("c", oid == null ? content : null, Types.BINARY).param("o", oid, Types.OTHER).update();
         }
         return id;
     }
@@ -122,9 +127,9 @@ class LmsRepository {
 
     Optional<FileContent> materialContent(UUID material) {
         return jdbc.sql("""
-                SELECT m.filename, m.content_type, b.content FROM lms.material m JOIN lms.material_blob b ON b.material_id = m.id
+                SELECT m.filename, m.content_type, b.content, b.object_id FROM lms.material m JOIN lms.material_blob b ON b.material_id = m.id
                  WHERE m.id = :m AND m.ended_at IS NULL
-                """).param("m", material).query(FileContent.class).optional();
+                """).param("m", material).query().listOfRows().stream().findFirst().map(this::fileContent);
     }
 
     Optional<UUID> offeringOfMaterial(UUID material) {
@@ -166,7 +171,9 @@ class LmsRepository {
                 .param("f", filename, Types.VARCHAR).param("c", contentType, Types.VARCHAR).param("b", content == null ? null : (long) content.length, Types.BIGINT)
                 .query(UUID.class).single();
         if (content != null) {
-            jdbc.sql("INSERT INTO lms.submission_blob (submission_id, content) VALUES (:id, :c)").param("id", id).param("c", content).update();
+            UUID oid = files.store("lms.submission", id, filename, contentType, content);
+            jdbc.sql("INSERT INTO lms.submission_blob (submission_id, content, object_id) VALUES (:id, :c, :o)")
+                    .param("id", id).param("c", oid == null ? content : null, Types.BINARY).param("o", oid, Types.OTHER).update();
         }
         return id;
     }
@@ -191,8 +198,12 @@ class LmsRepository {
 
     Optional<FileContent> submissionContent(UUID submission) {
         return jdbc.sql("""
-                SELECT s.filename, s.content_type, b.content FROM lms.submission s JOIN lms.submission_blob b ON b.submission_id = s.id WHERE s.id = :s
-                """).param("s", submission).query(FileContent.class).optional();
+                SELECT s.filename, s.content_type, b.content, b.object_id FROM lms.submission s JOIN lms.submission_blob b ON b.submission_id = s.id WHERE s.id = :s
+                """).param("s", submission).query().listOfRows().stream().findFirst().map(this::fileContent);
+    }
+
+    private FileContent fileContent(Map<String, Object> r) {
+        return new FileContent((String) r.get("filename"), (String) r.get("content_type"), files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id")));
     }
 
     Optional<Map<String, Object>> submissionOwner(UUID submission) {

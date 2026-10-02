@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ng.edu.moaum.portal.shared.JobLock;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -24,13 +25,19 @@ public class AuditChainVerifier {
 
     private static final Logger log = LoggerFactory.getLogger(AuditChainVerifier.class);
     private final JdbcClient jdbc;
+    private final JobLock lock;
 
-    AuditChainVerifier(JdbcClient jdbc) {
+    AuditChainVerifier(JdbcClient jdbc, JobLock lock) {
         this.jdbc = jdbc;
+        this.lock = lock;
     }
 
     @Scheduled(cron = "${moaum.audit.verify-cron:0 20 2 * * *}", zone = "Africa/Lagos")
     public void nightly() {
+        lock.runExclusively("audit-verify", this::nightlyNow);
+    }
+
+    void nightlyNow() {
         try {
             Map<String, Object> r = run("NIGHTLY");
             log.info("audit chain verified: {} shard-periods, ok={}", r.get("checked"), r.get("ok"));
@@ -44,6 +51,10 @@ public class AuditChainVerifier {
      *  time (an advisory lock in the function); a second API task finds nothing to do. */
     @Scheduled(fixedDelayString = "${moaum.audit.seal-delay-ms:15000}", initialDelay = 20000)
     public void seal() {
+        lock.runExclusively("audit-seal", this::sealNow);
+    }
+
+    void sealNow() {
         try {
             Integer n = jdbc.sql("SELECT audit.seal_chain(50000)").query(Integer.class).single();
             if (n != null && n > 0) log.debug("audit chain: {} entries sealed", n);
