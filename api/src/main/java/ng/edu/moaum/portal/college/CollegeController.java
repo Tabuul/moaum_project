@@ -1233,10 +1233,12 @@ class CollegeController {
         }
         List<Map<String, Object>> fees = jdbc.sql("""
                 SELECT st.current_level AS level, count(*) AS students,
-                       count(*) FILTER (WHERE finance.semester_cleared(st.id, :s, 1)) AS first_cleared,
-                       count(*) FILTER (WHERE finance.semester_cleared(st.id, :s, 2)) AS second_cleared,
+                       count(*) FILTER (WHERE s1.cleared_upto) AS first_cleared,
+                       count(*) FILTER (WHERE s2.cleared_upto) AS second_cleared,
                        count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.enrolment e WHERE e.student_id = st.id AND e.state IN ('OPEN','RESIT') AND e.registered_at IS NOT NULL)) AS registered
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                  JOIN finance.session_positions(:s, 1) s1 ON s1.student_id = st.id
+                  JOIN finance.session_positions(:s, 2) s2 ON s2.student_id = st.id
                  WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') AND st.current_level >= 200
                  GROUP BY st.current_level ORDER BY st.current_level
                 """).param("s", session).query().listOfRows();

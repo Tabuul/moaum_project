@@ -39,6 +39,19 @@ public class AuditChainVerifier {
         }
     }
 
+    /** V306: entries are written without a lock and sealed into their hash chain here, every few
+     *  seconds, so the tail that is not yet tamper-evident stays seconds long. One sealer runs at a
+     *  time (an advisory lock in the function); a second API task finds nothing to do. */
+    @Scheduled(fixedDelayString = "${moaum.audit.seal-delay-ms:15000}", initialDelay = 20000)
+    public void seal() {
+        try {
+            Integer n = jdbc.sql("SELECT audit.seal_chain(50000)").query(Integer.class).single();
+            if (n != null && n > 0) log.debug("audit chain: {} entries sealed", n);
+        } catch (RuntimeException e) {
+            log.warn("audit chain sealing failed: {}", e.getMessage());
+        }
+    }
+
     @Transactional
     public Map<String, Object> run(String trigger) {
         UUID ref = UUID.randomUUID();

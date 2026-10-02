@@ -152,9 +152,10 @@ class HodController {
 
         // fees: how many of the department's students are cleared for registration this session, and how many owe
         Map<String, Object> fees = jdbc.sql("""
-                SELECT count(*) FILTER (WHERE finance.clears(st.id, :s, 'REGISTRATION')) AS cleared,
-                       count(*) FILTER (WHERE NOT finance.clears(st.id, :s, 'REGISTRATION')) AS owing
+                SELECT count(*) FILTER (WHERE cl.clears) AS cleared,
+                       count(*) FILTER (WHERE NOT cl.clears) AS owing
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                  JOIN finance.session_clears(:s, 'REGISTRATION') cl ON cl.student_id = st.id
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
                 """).param("s", s).param("d", dept).query().singleRow();
         out.put("feesCleared", fees.get("cleared"));
@@ -179,11 +180,13 @@ class HodController {
         boolean cleared = "cleared".equalsIgnoreCase(which);
         return jdbc.sql("""
                 SELECT st.matric_no, st.surname, st.other_names, p.name AS programme, st.current_level AS level, st.status,
-                       coalesce((SELECT sum(c.amount) FROM finance.charges(st.id, :s) c), 0) AS charged,
+                       coalesce(ch.total, 0) AS charged,
                        coalesce((SELECT sum(r.amount) FROM finance.payment_reference r WHERE r.student_id = st.id AND r.session = :s AND r.confirmed_at IS NOT NULL), 0) AS paid
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                  JOIN finance.session_clears(:s, 'REGISTRATION') cl ON cl.student_id = st.id
+                  LEFT JOIN finance.session_charges(:s) ch ON ch.student_id = st.id
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
-                   AND finance.clears(st.id, :s, 'REGISTRATION') = :cleared
+                   AND cl.clears = :cleared
                  ORDER BY st.current_level, st.surname, st.other_names
                 """).param("s", s).param("d", dept).param("cleared", cleared).query().listOfRows();
     }
