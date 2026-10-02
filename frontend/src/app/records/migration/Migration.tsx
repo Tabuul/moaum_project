@@ -655,10 +655,10 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       {tab === "passports" && pResult ? (
         <>
           <Tiles items={[
-            ["Photos uploaded", String(pResult.total), null, ""],
-            ["Stored on record", String(pResult.stored + pResult.attached), (pResult.stored + pResult.attached) > 0 ? "var(--green-ink)" : null, "matched and saved"],
-            ["No matching student", String(pResult.notFound), pResult.notFound > 0 ? "var(--red-ink)" : null, "skipped"],
-            ["Could not read", String(pResult.skipped), pResult.skipped > 0 ? "var(--red-ink)" : null, "not an image"],
+            ["Photos uploaded", String(pResult.total), null, "in this upload"],
+            ["Matched and saved", String(pResult.stored + pResult.attached), (pResult.stored + pResult.attached) > 0 ? "var(--green-ink)" : null, "a student carries the number; the photo is on record"],
+            ["Skipped: no student with that number", String(pResult.notFound), pResult.notFound > 0 ? "var(--red-ink)" : null, "nothing saved; download the list"],
+            ["Skipped: not an image or too large", String(pResult.skipped), pResult.skipped > 0 ? "var(--red-ink)" : null, "nothing saved; see the failed files"],
           ]} />
           <Note kind={pResult.notFound || pResult.skipped ? "info" : "ok"} title="Photos processed"
                 action={pResult.notFoundList.length ? <Btn kind="ghost" onClick={downloadNotFound}>Download the skipped numbers</Btn> : undefined}>
