@@ -46,7 +46,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
   /* V038: a file attaches only to a candidate on a committed list, so the matcher sees only committed candidates */
   const cands = state.candidates.filter((c) => c.committed).map((c) => ({ num: c.jambKey, name: `${c.surname}, ${c.otherNames}`, list: c.entryMode === "DIRECT_ENTRY" ? "de" : "utme", has: c }));
   const uncommitted = state.candidates.filter((c) => !c.committed).length;
-  const held = (kind: string) => state.attachments.filter((a) => a.kind === kind);
+  const held = (kind: string) => state.held[kind] ?? { total: 0, matched: 0, pending: 0, unreadable: 0 };
 
   function readPassports(files: FileList | null) {
     if (!files || !files.length) return;
@@ -300,7 +300,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
           </div>
         </div></div>
         {!m ? (
-          <Note kind="info" title={held("PASSPORT").length ? `${held("PASSPORT").length} photographs already recorded for ${state.session}` : "No photographs uploaded yet"}>{held("PASSPORT").length ? `${held("PASSPORT").filter((a) => a.matched).length} attached to a candidate, ${held("PASSPORT").filter((a) => !a.matched && a.jambKey).length} held for nobody yet, ${held("PASSPORT").filter((a) => a.readAs === "UNREADABLE").length} unreadable.${uncommitted ? ` ${uncommitted} candidate${uncommitted === 1 ? " is" : "s are"} on a list not yet committed — their files stay held until it is.` : ""} Choose the folder above to record more.` : "Choose the folder above."}</Note>
+          <Note kind="info" title={held("PASSPORT").total ? `${held("PASSPORT").total} photographs already recorded for ${state.session}` : "No photographs uploaded yet"}>{held("PASSPORT").total ? `${held("PASSPORT").matched} attached to a candidate, ${held("PASSPORT").pending} held for nobody yet, ${held("PASSPORT").unreadable} unreadable.${uncommitted ? ` ${uncommitted} candidate${uncommitted === 1 ? " is" : "s are"} on a list not yet committed — their files stay held until it is.` : ""} Choose the folder above to record more.` : "Choose the folder above."}</Note>
         ) : (
           <>
             {counts(m, "photograph", "Photographs")}
@@ -367,7 +367,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
         </div></div>
         {err ? <Note kind="bad" title="That file could not be read">{err}</Note> : null}
         {!m || !dob ? (
-          <Note kind="info" title={held("DATE_OF_BIRTH").length ? `${held("DATE_OF_BIRTH").length} dates of birth already recorded for ${state.session}` : "No dates of birth uploaded yet"}>{held("DATE_OF_BIRTH").length ? `${held("DATE_OF_BIRTH").filter((a) => a.matched).length} attached to a candidate. Choose the file above to record more.` : "Choose the file above."}</Note>
+          <Note kind="info" title={held("DATE_OF_BIRTH").total ? `${held("DATE_OF_BIRTH").total} dates of birth already recorded for ${state.session}` : "No dates of birth uploaded yet"}>{held("DATE_OF_BIRTH").total ? `${held("DATE_OF_BIRTH").matched} attached to a candidate. Choose the file above to record more.` : "Choose the file above."}</Note>
         ) : (
           <>
             {counts(m, "date of birth", "Rows")}
@@ -433,7 +433,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
         ) : null}
         {err ? <Note kind="bad" title="That file could not be read">{err}</Note> : null}
         {!m || !ol ? (
-          <Note kind="info" title={held("OLEVEL").length ? `${held("OLEVEL").length} O’Level results already recorded for ${state.session}` : "No O’Level results uploaded yet"}>{held("OLEVEL").length ? `${held("OLEVEL").filter((a) => a.matched).length} attached to a candidate. Choose the file above to record more.` : "Choose the file above."}</Note>
+          <Note kind="info" title={held("OLEVEL").total ? `${held("OLEVEL").total} O’Level results already recorded for ${state.session}` : "No O’Level results uploaded yet"}>{held("OLEVEL").total ? `${held("OLEVEL").matched} attached to a candidate. Choose the file above to record more.` : "Choose the file above."}</Note>
         ) : (
           <>
             <Note kind="info" title="The file is one row per SUBJECT, not per candidate">

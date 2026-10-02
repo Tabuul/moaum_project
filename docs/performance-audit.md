@@ -278,15 +278,19 @@ no gain.
   account in this session): see `docs/aws-deployment.md` §5a.
 - ~~`finance.reset_legacy_payments` privileges.~~ V309: `SECURITY DEFINER`
   with a fixed `search_path`, as the audit trigger.
-- **`GET /api/v1/admissions/sessions/{s}/candidate-data`** answers with
-  **62 MB** (every attachment of the session with its payload, 6.7 s on the
-  copy). Pre-existing; the screen needs a paged list and a per-attachment
-  payload endpoint. The largest response in the portal by a factor of a
-  thousand.
-- **`admissions.attachment` has no index on `candidate_id`**: the student
-  portal's "has a passport" check scans 52,744 rows (200 ms on the copy). A
-  partial index `(candidate_id) WHERE kind = 'PASSPORT'` would make it a lookup;
-  measured but left for the next migration.
+- ~~**`GET /api/v1/admissions/sessions/{s}/candidate-data`** answered with
+  62 MB.~~ Fixed: the screen used the 79,434-row attachment list only to count
+  files per kind (all, matched, waiting, unreadable), so the endpoint now
+  returns those four counts per kind instead of the rows (the 40 MB of O'Level
+  sittings were never read). On the copy: **62.3 MB / 6.7 s → 3.4 MB / 1.8 s**.
+  What remains is the 12,648-candidate list the screen's matcher needs; a
+  server-side matcher would remove that too.
+- ~~**The student portal's passport lookup scanned the attachment table.**~~
+  V311: the lookup is `candidate_id = … OR jamb_key = …`; `ix_att_candidate`
+  served the first branch and nothing the second, so every student dashboard
+  scanned 52,744 passport rows (parallel seq scan, ~200 ms on the copy). A 1.6 MB
+  partial index `(jamb_key) WHERE kind = 'PASSPORT'` turns it into a BitmapOr of
+  two index scans, under a millisecond.
 - **`shared_buffers`** on Railway needs one restart of the Postgres service.
 - **Per-request timing** is not recorded by the API; the AWS ALB's
   `TargetResponseTime` and a `log_min_duration_statement` of 2 s will be the

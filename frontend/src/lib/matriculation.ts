@@ -36,6 +36,6 @@ export interface FacultyList {
 export interface AttachmentState {
   session: string;
   findings: { finding: string; n: number; owner: string; whatItMeans: string }[];
-  attachments: { id: string; kind: string; sourceName: string; jambKey: string | null; readAs: string; matched: boolean; payload: Record<string, unknown>; bytes: number | null; widthPx: number | null; heightPx: number | null; arrivedAt: string }[];
+  held: Record<string, { total: number; matched: number; pending: number; unreadable: number }>;
   candidates: { id: string; jambKey: string; surname: string; otherNames: string; programme: string; entryMode: string; hasPassport: boolean; hasPassportImage: boolean; hasDob: boolean; hasOlevel: boolean; committed: boolean }[];
 }
