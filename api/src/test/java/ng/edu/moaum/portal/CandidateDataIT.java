@@ -47,11 +47,11 @@ class CandidateDataIT {
 
         ResponseEntity<Map> state = it.get(academic, "/api/v1/admissions/sessions/2091/2092/candidate-data");
         assertThat(state.getStatusCode().value()).isEqualTo(200);
-        List<Map<String, Object>> attachments = (List<Map<String, Object>>) state.getBody().get("attachments");
-        assertThat(attachments).anySatisfy(a -> {
-            assertThat(a.get("jambKey")).isEqualTo("209999999999ZZ");
-            assertThat(a.get("matched")).isEqualTo(false);
-        });
+        // the state carries counts per kind, not the rows: the download is on record and waiting for a candidate
+        Map<String, Map<String, Object>> held = (Map<String, Map<String, Object>>) state.getBody().get("held");
+        assertThat(held).containsKey("DATE_OF_BIRTH");
+        assertThat(((Number) held.get("DATE_OF_BIRTH").get("total")).longValue()).isGreaterThanOrEqualTo(1);
+        assertThat(((Number) held.get("DATE_OF_BIRTH").get("pending")).longValue()).isGreaterThanOrEqualTo(1);
         List<Map<String, Object>> findings = (List<Map<String, Object>>) state.getBody().get("findings");
         assertThat(findings.stream().filter(f -> "Arrived for nobody on any list".equals(f.get("finding")))
                 .mapToLong(f -> ((Number) f.get("n")).longValue()).sum()).isGreaterThanOrEqualTo(1);
