@@ -1,0 +1,208 @@
+# ══════════════════════════════════════════════════════════════════════
+#  Deploy to AWS (production).
+#
+#  Runs when the CI workflow has PASSED on main — never on its own judgement
+#  of the code. CI stays exactly as it is, and Railway keeps deploying from
+#  it too; this workflow adds AWS beside it until the University cuts over.
+#
+#  What one run does, in order, stopping at the first failure:
+#    1. build the api and frontend images for the commit, tagged by its SHA
+#       (an image that already exists for that SHA is reused, which is what
+#       a rollback is: run this workflow by hand with an earlier `sha`)
+#    2. run db/migrate.sh as a one-off ECS task against RDS, and show its
+#       output; a failed migration deploys nothing
+#    3. register the api revision and roll it, waiting until it is stable;
+#       the ECS circuit breaker rolls back a revision that never gets healthy
+#    4. the same for the frontend
+#    5. ask the portal for its front page over HTTPS
+#
+#  Credentials: none stored. The job exchanges its OIDC token for the role
+#  in infra/terraform/github-oidc.tf, which may push these two images and
+#  roll these two services and nothing else.
+#
+#  Repository variables (Settings → Environments → production → Variables):
+#    AWS_DEPLOY_ROLE_ARN   from `terraform output github_deploy_role_arn`
+#    PORTAL_URL            https://portal.<university-domain>
+#    ECS_DESIRED_COUNT     tasks per service; 1 until the scheduled jobs
+#                          have a distributed lock (see docs/aws-deployment.md)
+# ══════════════════════════════════════════════════════════════════════
+name: Deploy to AWS (production)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to deploy. Blank = the current main. An earlier commit whose images are still in ECR = a rollback to exactly that version."
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: af-south-1
+  CLUSTER: moaumpp-prod
+  API_REPO: moaumpp/api
+  WEB_REPO: moaumpp/frontend
+
+jobs:
+  deploy:
+    name: "Build, migrate, roll, check"
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: ${{ vars.PORTAL_URL }}
+
+    steps:
+      - name: Which commit
+        id: which
+        run: |
+          sha="${{ inputs.sha }}"
+          [ -n "$sha" ] || sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "short=${sha:0:12}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.which.outputs.sha }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Images for this commit (built unless they already exist)
+        id: images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.which.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for pair in "api api/Dockerfile $API_REPO" "frontend frontend/Dockerfile $WEB_REPO"; do
+            read -r name file repo <<<"$pair"
+            image="$REGISTRY/$repo:$TAG"
+            if aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              echo "$name: $image is already in ECR (a rollback or a re-run); not rebuilt"
+            else
+              docker build -f "$file" -t "$image" .
+              docker push "$image"
+            fi
+            echo "$name=$image" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Register the migrate task for this image
+        id: migrate-def
+        env:
+          IMAGE: ${{ steps.images.outputs.api }}
+        run: |
+          set -euo pipefail
+          aws ecs describe-task-definition --task-definition "$CLUSTER-migrate" --query taskDefinition > td.json
+          jq --arg img "$IMAGE" '
+            .containerDefinitions[0].image = $img
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+          ' td.json > td-new.json
+          arn=$(aws ecs register-task-definition --cli-input-json file://td-new.json \
+                  --query taskDefinition.taskDefinitionArn --output text)
+          echo "arn=$arn" >> "$GITHUB_OUTPUT"
+
+      - name: Run the migrations (bash db/migrate.sh); nothing deploys if they fail
+        env:
+          TASK_DEF: ${{ steps.migrate-def.outputs.arn }}
+        run: |
+          set -euo pipefail
+          net=$(aws ecs describe-services --cluster "$CLUSTER" --services api \
+                  --query 'services[0].networkConfiguration.awsvpcConfiguration' --output json)
+          subnets=$(echo "$net" | jq -c .subnets)
+          sgs=$(echo "$net" | jq -c .securityGroups)
+          task=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$TASK_DEF" \
+                   --network-configuration "{\"awsvpcConfiguration\":{\"subnets\":$subnets,\"securityGroups\":$sgs,\"assignPublicIp\":\"DISABLED\"}}" \
+                   --query 'tasks[0].taskArn' --output text)
+          echo "migrate task: $task"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task"
+          code=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" --query 'tasks[0].containers[0].exitCode' --output text)
+          reason=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" --query 'tasks[0].stoppedReason' --output text)
+          echo "── db/migrate.sh ──────────────────────────────────────────────"
+          aws logs get-log-events --log-group-name "/ecs/$CLUSTER/migrate" \
+            --log-stream-name "migrate/migrate/${task##*/}" --start-from-head \
+            --query 'events[].message' --output text || echo "(no log stream yet)"
+          echo "──────────────────────────────────────────────────────────────"
+          [ "$code" = "0" ] || { echo "::error::db/migrate.sh exited with $code ($reason). Nothing was deployed."; exit 1; }
+
+      - name: Render the API task definition
+        id: api-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: ${{ env.CLUSTER }}-api
+          container-name: api
+          image: ${{ steps.images.outputs.api }}
+
+      - name: Roll the API and wait until it is stable
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.api-def.outputs.task-definition }}
+          cluster: ${{ env.CLUSTER }}
+          service: api
+          desired-count: ${{ vars.ECS_DESIRED_COUNT || 1 }}
+          wait-for-service-stability: true
+          wait-for-minutes: 20
+
+      - name: Render the frontend task definition
+        id: web-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: ${{ env.CLUSTER }}-frontend
+          container-name: frontend
+          image: ${{ steps.images.outputs.frontend }}
+
+      - name: Roll the frontend and wait until it is stable
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.web-def.outputs.task-definition }}
+          cluster: ${{ env.CLUSTER }}
+          service: frontend
+          desired-count: ${{ vars.ECS_DESIRED_COUNT || 1 }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15
+
+      - name: The portal answers
+        env:
+          URL: ${{ vars.PORTAL_URL }}
+        run: |
+          set -euo pipefail
+          aws ecs describe-services --cluster "$CLUSTER" --services api frontend \
+            --query 'services[].[serviceName,status,runningCount,desiredCount]' --output table
+          if [ -z "$URL" ]; then echo "PORTAL_URL is not set; the HTTP check is skipped."; exit 0; fi
+          code=000
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL/" || true)
+            [ "$code" = "200" ] && break
+            sleep 10
+          done
+          [ "$code" = "200" ] || { echo "::error::GET $URL/ returned $code after the deploy. Roll back: run this workflow with sha = the previous commit."; exit 1; }
+          echo "GET $URL/ → 200"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## ${{ job.status }}: ${{ steps.which.outputs.short }}"
+            echo
+            echo "- api: \`${{ steps.images.outputs.api }}\`"
+            echo "- frontend: \`${{ steps.images.outputs.frontend }}\`"
+            echo
+            echo "Rollback: run this workflow by hand with \`sha\` set to the previous commit; its images are still in ECR and are not rebuilt."
+          } >> "$GITHUB_STEP_SUMMARY"
