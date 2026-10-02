@@ -173,6 +173,7 @@ and target health are in `infra/terraform/monitoring.tf`.
 | Thread contention / GC | not measured in production; the API container is idle by CPU and memory | none |
 | Long transactions | the import chunks (50–500 rows, 1–35 s); `idle_in_transaction_session_timeout` is set on RDS so a forgotten transaction cannot hold locks | V306 removes what those transactions blocked |
 | The nightly `audit.verify_chain()` | 5 calls, 57 s, 3.1 M temp blocks | unchanged; nightly |
+| **Spring's scheduler ran every job on one thread.** After V306 went live the sealer, scheduled every 15 s, actually ran every 3–5 minutes: the notice dispatcher (up to 50 synchronous SMTP/SMS sends a minute) held the thread, and so would any daily clock | production: entries sealed at 11:37, 11:42, 11:45 UTC with minutes of unsealed tail between | `spring.task.scheduling.pool.size=4`: the sealer, the dispatcher and the clocks each get a thread |
 
 ## I. Before / after
 
