@@ -114,6 +114,27 @@ class FinanceController {
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
+    /** what the old-portal fees import has loaded (all sessions, or one) — shown before a reset */
+    @GetMapping("/legacy-fees/loaded")
+    @PreAuthorize(BURSARY)
+    @Transactional(readOnly = true)
+    Map<String, Object> legacyFeesLoaded(@RequestParam(required = false) String session) {
+        return jdbc.sql("SELECT * FROM finance.legacy_payment_count((:s)::text)")
+                .param("s", session == null || session.isBlank() ? null : session).query().singleRow();
+    }
+
+    public record ResetLegacy(String session, String confirm) { }
+
+    /** start the old-portal fees import over: deletes only the import's own records, and only on the word RESET */
+    @PostMapping("/legacy-fees/reset")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> resetLegacyFees(@RequestBody ResetLegacy body) {
+        return jdbc.sql("SELECT * FROM finance.reset_legacy_payments((:s)::text, (:c)::text)")
+                .param("s", body.session() == null || body.session().isBlank() ? null : body.session())
+                .param("c", body.confirm()).query().singleRow();
+    }
+
     /* ── the schedule ── */
 
     @GetMapping("/sessions/{session}/{year}/schedule")
