@@ -247,6 +247,13 @@ the API's `FileMigrationJob` when `MOAUM_FILES_MIGRATE=true`:
    tables, off-peak (each takes an exclusive lock for the duration of the
    rewrite; the largest is `admissions.attachment` at 428 MB, a minute or two).
 
+Nothing is uploaded twice: the bytes are hashed first, and an owner (a
+candidate's JAMB number, an application, a ticket…) that already holds an object
+with the same SHA-256 gets that object back without a put. A passport re-uploaded
+unchanged writes nothing; one that changed replaces the object and the old one
+is removed. Each sweep also removes objects no row points at any more (an hour
+old, so an upload in progress is never touched).
+
 Not moved by design: `platform.notice_attachment` (an email's attachments, sent
 within minutes; the table is on the audit spine).
 

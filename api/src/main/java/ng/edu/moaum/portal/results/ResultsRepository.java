@@ -504,6 +504,18 @@ class ResultsRepository {
                     """).param("key", key).param("tok", tok, Types.VARCHAR).query().listOfRows();
             if (!app.isEmpty()) {
                 UUID appId = (UUID) app.get(0).get("app_id");
+                // the same photograph already current for this application: nothing to write, nothing to upload
+                boolean same = jdbc.sql("""
+                        SELECT (b.content IS NOT NULL AND sha256(b.content) = :h) OR (f.sha256 = :h)
+                          FROM admissions.application_document d
+                          JOIN admissions.application_document_blob b ON b.document_id = d.id
+                          LEFT JOIN platform.file_object f ON f.id = b.object_id
+                         WHERE d.application_id = :a AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
+                         ORDER BY d.id LIMIT 1
+                        """).param("a", appId).param("h", ng.edu.moaum.portal.shared.FileObjects.sha256(content)).query(Boolean.class).optional().orElse(false);
+                if (same) {
+                    return "STORED";
+                }
                 UUID docId = UUID.randomUUID();
                 jdbc.sql("UPDATE admissions.application_document SET superseded_at = now() WHERE application_id = :a AND kind = 'PASSPORT' AND superseded_at IS NULL")
                         .param("a", appId).update();
@@ -552,6 +564,8 @@ class ResultsRepository {
      *  student without a candidate still read it by their own JAMB number. matched_at is set only with a candidate. */
     private void attach(String session, String filename, String jambKey, UUID candidateId, String contentType, String base64, int bytes, boolean matched) {
         String dataUrl = "data:" + contentType + ";base64," + base64;
+        UUID previous = jdbc.sql("SELECT object_id FROM admissions.attachment WHERE session = :ses AND kind = 'PASSPORT' AND source_name = :src")
+                .param("ses", session).param("src", filename).query(UUID.class).optional().orElse(null);
         UUID oid = files.enabled() ? files.store("admissions.attachment", jambKey, filename, contentType, java.util.Base64.getDecoder().decode(base64)) : null;
         jdbc.sql("""
                 INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at, payload, bytes, object_id)
@@ -563,5 +577,8 @@ class ResultsRepository {
                        bytes = EXCLUDED.bytes, jamb_key = EXCLUDED.jamb_key, read_as = 'EXACT'
                 """).param("ses", session).param("src", filename).param("key", jambKey).param("cid", candidateId, Types.OTHER)
                 .param("m", matched).param("url", dataUrl).param("b", bytes).param("o", oid, Types.OTHER).update();
+        if (previous != null && !previous.equals(oid)) {
+            files.forget(previous);   // a different photograph replaced it; the old object is no longer held by any row
+        }
     }
 }

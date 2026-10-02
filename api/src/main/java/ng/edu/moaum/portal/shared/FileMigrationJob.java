@@ -85,6 +85,32 @@ public class FileMigrationJob {
         if (left == batch) {
             LOG.info("files: nothing left to move to the object store");
         }
+        forgetOrphans();
+    }
+
+    /** an object no row points at any more (a photograph replaced by another, a document deleted) is removed;
+     *  an hour's grace keeps an upload in progress out of reach */
+    void forgetOrphans() {
+        StringBuilder none = new StringBuilder();
+        for (Spec s : SPECS) {
+            none.append(" AND NOT EXISTS (SELECT 1 FROM ").append(s.table).append(" t WHERE t.object_id = f.id)");
+        }
+        none.append(" AND NOT EXISTS (SELECT 1 FROM admissions.attachment t WHERE t.object_id = f.id)");
+        List<UUID> orphans = jdbc.sql("SELECT f.id FROM platform.file_object f WHERE f.created_at < now() - interval '1 hour'" + none + " LIMIT 100")
+                .query(UUID.class).list();
+        int n = 0;
+        for (UUID id : orphans) {
+            try {
+                Boolean gone = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "orphaned file object removed", null, null), () -> tx.execute(st -> {
+                    files.forget(id);
+                    return true;
+                }));
+                if (Boolean.TRUE.equals(gone)) n++;
+            } catch (RuntimeException e) {
+                LOG.warn("files: orphan {} not removed: {}", id, e.getMessage());
+            }
+        }
+        if (n > 0) LOG.info("files: {} orphaned objects removed from the object store", n);
     }
 
     private int migrate(Spec s, int limit) {
