@@ -248,8 +248,25 @@ the API's `FileMigrationJob` when `MOAUM_FILES_MIGRATE=true`:
    rewrite; the largest is `admissions.attachment` at 428 MB, a minute or two).
 
 Not moved by design: `platform.notice_attachment` (an email's attachments, sent
-within minutes; the table is on the audit spine). Railway keeps `DB` and is
-unaffected.
+within minutes; the table is on the audit spine).
+
+**On Railway**, the same code works with a Railway Bucket (S3-compatible, its
+own endpoint and key pair; private; virtual-hosted URLs). Create the Bucket on
+the project canvas, then on `moaum-api` set, as variable references to the
+bucket:
+
+| Variable on `moaum-api` | Value |
+|---|---|
+| `MOAUM_FILES_PROVIDER` | `S3` |
+| `MOAUM_FILES_BUCKET` | `${{ Bucket.BUCKET }}` |
+| `MOAUM_FILES_ENDPOINT` | `${{ Bucket.ENDPOINT }}` |
+| `MOAUM_FILES_REGION` | `${{ Bucket.REGION }}` (`auto`) |
+| `MOAUM_FILES_ACCESS_KEY_ID` | `${{ Bucket.ACCESS_KEY_ID }}` |
+| `MOAUM_FILES_SECRET_ACCESS_KEY` | `${{ Bucket.SECRET_ACCESS_KEY }}` |
+| `MOAUM_FILES_MIGRATE` | unset at first; `true` to move the existing files; unset again when done |
+
+(`Bucket` is whatever the bucket service is named.) The sweep then runs exactly
+as above. On AWS the same variables come from the task role and the Terraform.
 
 Phase 2 was written without an AWS account to run it against: the S3 client
 and the sweeper are exercised for the first time on the real bucket. Run step 1
