@@ -4,7 +4,7 @@ import { notifyProblem } from "@/components/proto/Toast";
 /** t/legacyfees — old students' school-fees history from the old portal (V087). Each row settles a past
  *  session (or semester) by the amount paid, or in full against the fee schedule when the amount is blank.
  *  Columns are matched by keyword, so a template or an old-portal export both read. Bursary only. */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
@@ -22,6 +22,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   const [result, setResult] = useState<Record<string, number> | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [duplicateSample, setDuplicateSample] = useState<string[]>([]);
+  const [resumeAt, setResumeAt] = useState<number | null>(null);
+  const jobRef = useRef<{ rows: Row[]; at: number; totals: Record<string, number>; sample: string[] } | null>(null);
 
   function downloadTemplate() {
     const blob = buildXlsx(
@@ -46,6 +48,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     setProblem(null);
     setResult(null);
     setDuplicateSample([]);
+    setResumeAt(null);
+    jobRef.current = null;
     setPreview(null);
     try {
       const grid = await xlsxRows(await file.arrayBuffer());
@@ -78,41 +82,72 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     URL.revokeObjectURL(a.href);
   }
 
-  async function upload() {
-    if (!preview) return;
-    setBusy(true);
-    setProblem(null);
-    setResult(null);
-    const CHUNK = 500;   // a whole file of tens of thousands of rows in one body is refused ("Failed to read request")
-    const totals: Record<string, number> = { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0 };
-    const sample: string[] = [];
-    try {
-      for (let i = 0; i < preview.length; i += CHUNK) {
-        const batch = preview.slice(i, i + CHUNK);
-        setProgress(`Loading ${Math.min(i + batch.length, preview.length).toLocaleString()} of ${preview.length.toLocaleString()} rows…`);
+  async function sendBatch(batch: Row[], from: number, total: number) {
+    const waits = [2000, 5000, 15000];
+    let last: Problem = { status: 0, title: "The batch was not sent" };
+    for (let attempt = 0; attempt <= waits.length; attempt++) {
+      try {
         const r = await fetch("/api/bff/api/v1/finance/legacy-fees", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old students' school-fees history imported: rows ${i + 1}–${i + batch.length}`) },
+          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old students' school-fees history imported: rows ${from + 1}–${from + batch.length} of ${total}`) },
           body: JSON.stringify({ rows: batch }),
         });
         const j = await r.json().catch(() => null);
-        if (!r.ok) {
-          const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
-          setProblem({ ...base, detail: `${base.detail ? base.detail + " " : ""}${totals.cleared.toLocaleString()} payments were settled before this batch was refused. The import is idempotent — fix and upload again.` });
+        if (r.ok) return { ok: true as const, counts: (j ?? {}) as Record<string, number> & { duplicate_sample?: string } };
+        last = (j ?? { status: r.status, title: r.statusText || "The server refused this batch" }) as Problem;
+        if (!(r.status === 408 || r.status === 429 || r.status >= 500)) break;
+      } catch {
+        last = { status: 0, title: "The connection to the portal dropped", detail: "The request never reached the server (network, timeout or an expired sign-in)." };
+      }
+      if (attempt < waits.length) {
+        setProgress(`Batch refused (${last.status || "no connection"}), retrying ${attempt + 1} of ${waits.length}…`);
+        await new Promise((res) => setTimeout(res, waits[attempt]));
+      }
+    }
+    return { ok: false as const, problem: last };
+  }
+
+  /* runs, or resumes, the load from the saved position; a batch that cannot be sent stops it with the rows named */
+  async function run() {
+    const job = jobRef.current;
+    if (!job) return;
+    setBusy(true);
+    setProblem(null);
+    setResult(null);
+    setResumeAt(null);
+    const CHUNK = 500;   // a whole file of tens of thousands of rows in one body is refused ("Failed to read request")
+    try {
+      while (job.at < job.rows.length) {
+        const batch = job.rows.slice(job.at, job.at + CHUNK);
+        setProgress(`Loading ${Math.min(job.at + batch.length, job.rows.length).toLocaleString()} of ${job.rows.length.toLocaleString()} rows…`);
+        const res = await sendBatch(batch, job.at, job.rows.length);
+        if (!res.ok) {
+          const where = `Rows ${(job.at + 1).toLocaleString()} to ${(job.at + batch.length).toLocaleString()} of ${job.rows.length.toLocaleString()}`;
+          const base = res.problem;
+          setProblem({ ...base, detail: `${where} could not be imported${base.status ? ` (HTTP ${base.status})` : ""}${base.detail ? `: ${base.detail}` : ""}. ${job.totals.cleared.toLocaleString()} payments were settled so far. Press Resume to carry on from this batch; the import is idempotent, so nothing duplicates.` });
+          setResumeAt(job.at);
           return;
         }
-        const c = (j ?? {}) as Record<string, number> & { duplicate_sample?: string };
-        totals.rows += c.rows ?? 0; totals.cleared += c.cleared ?? 0;
-        totals.no_student += c.no_student ?? 0; totals.no_due += c.no_due ?? 0; totals.duplicates += c.duplicates ?? 0;
-        if (c.duplicate_sample) sample.push(...c.duplicate_sample.split(", "));
+        const c = res.counts;
+        job.totals.rows += c.rows ?? 0; job.totals.cleared += c.cleared ?? 0;
+        job.totals.no_student += c.no_student ?? 0; job.totals.no_due += c.no_due ?? 0; job.totals.duplicates += c.duplicates ?? 0;
+        if (c.duplicate_sample) job.sample.push(...c.duplicate_sample.split(", "));
+        job.at += batch.length;
       }
-      setResult(totals);
-      setDuplicateSample(sample);
+      setResult({ ...job.totals });
+      setDuplicateSample(job.sample);
       setPreview(null);
+      jobRef.current = null;
     } finally {
       setBusy(false);
       setProgress(null);
     }
+  }
+
+  function upload() {
+    if (!preview) return;
+    jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0 }, sample: [] };
+    void run();
   }
 
   return (
@@ -140,6 +175,12 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       </Panel>
 
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {resumeAt !== null && preview ? (
+        <Note kind="info" title={`Stopped at row ${resumeAt.toLocaleString()} of ${preview.length.toLocaleString()}`}
+              action={<Btn kind="primary" disabled={busy} onClick={() => void run()}>Resume from the failed batch</Btn>}>
+          The file is still held in this page, so Resume continues from that batch. If you reload the page, choose the file again; re-uploading is safe.
+        </Note>
+      ) : null}
       {result ? (
         <>
           <Tiles items={[
@@ -172,7 +213,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               </table>
             </div>
             <div className="row mt-3">
-              <Btn kind="primary" size="md" disabled={busy || !may} onClick={() => void upload()}>{busy ? (progress ?? "Loading…") : `Load ${preview.length.toLocaleString()} rows`}</Btn>
+              <Btn kind="primary" size="md" disabled={busy || !may} onClick={upload}>{busy ? (progress ?? "Loading…") : `Load ${preview.length.toLocaleString()} rows`}</Btn>
               <Btn kind="ghost" size="md" disabled={busy} onClick={() => setPreview(null)}>Cancel</Btn>
               {busy && progress ? <span className="sub2">{progress}</span> : null}
             </div>
