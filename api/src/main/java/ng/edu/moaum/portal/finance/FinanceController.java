@@ -144,7 +144,7 @@ class FinanceController {
         String s = session + "/" + year;
         List<Map<String, Object>> items = jdbc.sql("""
                 SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
-                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.ord, f.spillover, f.kind
+                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.indigene, f.ord, f.spillover, f.kind
                   FROM finance.fee_schedule f
                   LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code
                   LEFT JOIN ref.programme p ON p.code = f.programme_code

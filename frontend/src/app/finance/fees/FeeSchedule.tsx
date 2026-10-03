@@ -20,7 +20,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
-export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; ord: number; spillover: boolean; kind?: string }
+export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
 export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string }
@@ -170,7 +170,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [page, setPage] = useState(0);
   const val = (k: string, d = "") => edits[k] ?? d;
 
-  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
+  const indigeneText = (i: ScheduleItem) => i.indigene === "INDIGENE" ? "Indigene" : i.indigene === "NON_INDIGENE" ? "Non-indigene" : null;
+  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
 
   const filteredItems = schedule.items.filter((i) =>
     (!filterFac || i.faculty_code === filterFac || (filterFac === "__none__" && !i.faculty_code)) &&
@@ -181,8 +182,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
 
   function exportExcel() {
     const blob = buildXlsx(
-      ["Item", "Applies to", "Level", "Semester", "Faculty", "Entry mode", "Spillover", "Amount"],
-      filteredItems.map((i) => [i.item, appliesTo(i), i.spillover ? "Spillover" : i.level ? String(i.level) : "All", i.semester ? String(i.semester) : "Session", i.faculty_name ?? "All", i.entry_mode ?? "All", i.spillover ? "Yes" : "No", i.amount]),
+      ["Item", "Applies to", "Level", "Semester", "Faculty", "Programme", "Entry mode", "Indigeneship", "Spillover", "Amount"],
+      filteredItems.map((i) => [i.item, appliesTo(i), i.spillover ? "Spillover" : i.level ? String(i.level) : "All", i.semester ? String(i.semester) : "Session", i.faculty_name ?? "All", i.programme_name ?? "All", i.entry_mode ?? "All", indigeneText(i) ?? "All", i.spillover ? "Yes" : "No", i.amount]),
       `Fee schedule ${session.replace("/", "-")}`,
     );
     const a = document.createElement("a");
