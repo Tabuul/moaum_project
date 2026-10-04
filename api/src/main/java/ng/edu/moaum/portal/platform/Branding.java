@@ -49,9 +49,14 @@ public class Branding {
         return p;
     }
 
-    /** forget the cached row: the next read comes from the database */
+    /** forget the cached row: the next read comes from the database — on this bean and on the one the static
+     *  readers hold (one and the same in a running service; two in a test JVM that has built several contexts) */
     public void invalidate() {
         cached = null;
+        Branding other = instance;
+        if (other != null && other != this) {
+            other.cached = null;
+        }
     }
 
     private static String field(String column, String fallback) {

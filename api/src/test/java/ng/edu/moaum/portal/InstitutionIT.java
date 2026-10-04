@@ -44,6 +44,8 @@ class InstitutionIT {
     PlatformTransactionManager transactions;
     @Autowired
     FileObjects files;
+    @Autowired
+    Branding branding;
 
     ItSupport it;
     String ict = ItSupport.token("ict");
@@ -77,7 +79,7 @@ class InstitutionIT {
         assertThat(body(saved).get("dateFormat")).isEqualTo("SHORT");
         assertThat(body(saved).get("logoUrl")).isNull();
         assertThat(it.anon(HttpMethod.GET, "/api/v1/public/institution", null).getBody().get("motto")).isEqualTo("Knowledge, Service and Integrity");
-        assertThat(Branding.name()).isEqualTo(originalName);
+        assertThat(String.valueOf(branding.profile().get("name"))).isEqualTo(originalName);
 
         // a blank name and a malformed e-mail are refused; the change is audited on the row
         Map<String, Object> blank = new java.util.HashMap<>(change);
@@ -95,10 +97,11 @@ class InstitutionIT {
         Map<String, Object> renamed = new java.util.HashMap<>(change);
         renamed.put("name", "Example University, Makurdi");
         assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/platform/institution", renamed).getStatusCode().value()).isEqualTo(200);
-        assertThat(Branding.name()).isEqualTo("Example University, Makurdi");
+        // the bean this context's service holds is invalidated by the change (a test JVM may hold several contexts' beans)
+        assertThat(String.valueOf(branding.profile().get("name"))).isEqualTo("Example University, Makurdi");
         // and back, so the database is as it was
         assertThat(it.call(ict, HttpMethod.PUT, "/api/v1/platform/institution", Map.of("name", originalName, "shortName", originalShort, "city", "Makurdi", "state", "Benue State", "country", "Nigeria")).getStatusCode().value()).isEqualTo(200);
-        assertThat(Branding.name()).isEqualTo(originalName);
+        assertThat(String.valueOf(branding.profile().get("name"))).isEqualTo(originalName);
     }
 
     @Test
