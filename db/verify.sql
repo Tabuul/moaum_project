@@ -60,9 +60,9 @@ BEGIN
     -- Studies' Dean and Secretary V201, the College Finance Controller V227, the MBBS
     -- Coordinator V250, the ICT Support Agent V251, the External Examiner V254 and the Dean of Student Affairs V290), the applicant (V021) and the student (V026)
     SELECT count(*) INTO n FROM ref.office;
-    IF n <> 35 THEN
+    IF n <> 37 THEN
         RAISE EXCEPTION 'deployment verification failed: % offices in the register, '
-                        'expected 35 (33 staff offices, the applicant and the student).', n;
+                        'expected 37 (35 staff offices — with the GST and EPS offices of V314 — the applicant and the student).', n;
     END IF;
 
     -- 5 · the University's programme table is loaded
