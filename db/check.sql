@@ -381,7 +381,7 @@ BEGIN
         (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
     VALUES (gen_random_uuid(), v_p, 'lecturer', 'course', 'CSC311',
             'APP/2019/0442', gen_random_uuid(), date '2019-10-01'),
-           (gen_random_uuid(), v_p, 'hod', 'department', 'MCS',
+           (gen_random_uuid(), v_p, 'hod', 'department', 'MTC',   -- V316: a department scope is a code on the register
             'CNL/2026/91',   gen_random_uuid(), date '2026-09-01');
 
     SELECT count(*) INTO n FROM iam.office_assignment
