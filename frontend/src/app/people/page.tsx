@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { People, type GrantRow, type PersonRow } from "./People";
+import { People, type CourseLite, type GrantRow, type PersonRow, type StructureLite } from "./People";
 
 export const dynamic = "force-dynamic";
 
@@ -18,18 +18,20 @@ function grantOf(g: GrantRow): GrantRow {
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
-  const [me, persons, grants, offices] = await Promise.all([
+  const [me, persons, grants, offices, structure, courses] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<PersonRow[]>(`/api/v1/iam/persons${q ? `?q=${encodeURIComponent(q)}` : ""}`),
     api<GrantRow[]>("/api/v1/iam/office-assignments"),
     api<{ code: string; label: string; scope_kind: string }[]>("/api/v1/iam/offices"),
+    api<StructureLite>("/api/v1/ref/structure"),
+    api<CourseLite[]>("/api/v1/ref/courses"),
   ]);
   return (
     <Shell route="t/users" me={me.ok ? me.data : null}>
       {!persons.ok ? (
         <ProblemNotice problem={persons.problem} />
       ) : (
-        <People q={q} persons={persons.data.map(personOf)} grants={grants.ok ? grants.data.map(grantOf) : []} offices={offices.ok ? offices.data : []} actingOffice={me.ok ? me.data.activeOffice : null} open={typeof params.new === "string" ? params.new : null} />
+        <People q={q} persons={persons.data.map(personOf)} grants={grants.ok ? grants.data.map(grantOf) : []} offices={offices.ok ? offices.data : []} structure={structure.ok ? structure.data : null} courses={courses.ok ? courses.data : []} actingOffice={me.ok ? me.data.activeOffice : null} open={typeof params.new === "string" ? params.new : null} />
       )}
     </Shell>
   );

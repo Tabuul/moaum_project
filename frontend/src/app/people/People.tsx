@@ -14,6 +14,7 @@ import type { Problem } from "@/lib/api";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field, day } from "@/components/proto/blocks";
+import { SearchSelect, type Opt } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface PersonRow {
@@ -55,9 +56,22 @@ function firstPassword(): string {
   return Array.from(bytes, (b) => abc[b % abc.length]).join("");
 }
 
+/** the University's ladder (/api/v1/ref/structure) and its courses (/api/v1/ref/courses): what a bounded grant chooses from */
+export interface StructureLite {
+  colleges: { code: string; name: string }[];
+  faculties: { code: string; name: string; collegeCode?: string | null; departments: { code: string; name: string; facultyCode?: string | null; programmes: { code: string; name: string; category?: string | null; archived?: boolean }[] }[] }[];
+}
+export interface CourseLite { code: string; title: string; deptCode?: string | null; deptName?: string | null; level?: number | null }
+/** the scopes that name one thing — chosen from the register, never typed */
+const NEEDS_ID = new Set(["college", "faculty", "department", "programme", "course", "level"]);
+const SCOPE_HINT: Record<string, string> = {
+  institution: "The whole University: nothing to choose.", platform: "The platform itself: nothing to choose.", unit: "Name the unit, e.g. Library, Security, Health Centre.",
+  college: "Choose the College.", faculty: "Choose the faculty.", department: "Choose the department.", programme: "Choose the programme.", course: "Choose the course.", level: "Choose the level.",
+};
 const BOUND: Record<string, string> = { institution: "The University", college: "The College", faculty: "Faculty", department: "Department", programme: "Programme", course: "Own courses", unit: "Unit", platform: "The platform", level: "Level (MBBS Coordinator: 200 to 600)" };
 
-export function People({ q, persons, grants, offices, actingOffice, open }: {
+export function People({ q, persons, grants, offices, actingOffice, open, structure = null, courses = [] }: {
+  structure?: StructureLite | null; courses?: CourseLite[];
   q: string;
   persons: PersonRow[];
   grants: GrantRow[];
@@ -68,6 +82,21 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
   const router = useRouter();
   const queryNav = useQueryNav();
   const canGrant = ["registrar", "dregistrar", "vc", "super", "ict", "admin"].includes(actingOffice ?? "");
+  /* what a bounded grant chooses from, by its scope: codes from the register with their names, searchable */
+  const facs = structure?.faculties ?? [];
+  const SCOPE_OPTIONS: Record<string, Opt[]> = {
+    college: (structure?.colleges ?? []).map((c) => ({ value: c.code, label: `${c.name} · ${c.code}` })),
+    faculty: facs.map((x) => ({ value: x.code, label: `${x.name} · ${x.code}` })),
+    department: facs.flatMap((x) => x.departments.map((d) => ({ value: d.code, label: `${d.name} · ${d.code} — ${x.name}` }))),
+    programme: facs.flatMap((x) => x.departments.flatMap((d) => d.programmes.filter((p) => !p.archived).map((p) => ({ value: p.code, label: `${p.name} · ${p.code} — ${d.name}` })))),
+    course: courses.map((c) => ({ value: c.code, label: `${c.code} — ${c.title}${c.deptName ? ` (${c.deptName})` : ""}` })),
+    level: [200, 300, 400, 500, 600].map((l) => ({ value: String(l), label: `${l} Level` })),
+  };
+  const scopeLabel = (kind: string, id: string | null) => {
+    if (!id) return BOUND[kind] ?? kind;
+    const hit = SCOPE_OPTIONS[kind]?.find((o) => o.value === id);
+    return `${BOUND[kind] ?? kind}: ${hit ? hit.label.split(" — ")[0] : id}`;
+  };
   const canCredential = ["registrar", "dregistrar", "ict", "admin", "super"].includes(actingOffice ?? "");
   // a dashboard shortcut can ask this console to open straight into a task (?new=person|grant),
   // decided once as the initial state rather than in an effect that would set state on mount
@@ -165,7 +194,7 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
             <strong key="n">{g.surname}, {g.givenNames}</strong>,
             <span className="tnum" key="s">{g.staffNumber ?? "—"}</span>,
             <span key="o">{g.label}</span>,
-            <span className="sub2" key="b">{g.scopeId ? `${BOUND[g.scopeKind] ?? g.scopeKind} ${g.scopeId}` : BOUND[g.scopeKind] ?? g.scopeKind}</span>,
+            <span className="sub2" key="b">{scopeLabel(g.scopeKind, g.scopeId)}</span>,
             <span className="sub2" key="g">{g.grantedByName ?? g.instrument}</span>,
             <span className="tnum" key="f">{day(g.validFrom)}</span>,
             g.validTo ? <span className="tnum ink-red" key="t">{day(g.validTo)}</span> : <span className="sub2" key="t">—</span>,
@@ -204,16 +233,26 @@ export function People({ q, persons, grants, offices, actingOffice, open }: {
 
       {modal === "grant" && !grant ? (
         <Modal title={person ? `Grant an office to ${person.surname}, ${person.givenNames}` : "Grant an office"} sub="Bounded, dated, on an instrument" wide onClose={() => setModal(null)}
-          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !person || !f.office || !f.instrument.trim()} onClick={() => { if (person) void send("POST", `/api/bff/api/v1/iam/persons/${person.id}/office-assignments`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null }, `${f.office} granted to ${person.surname} under ${f.instrument}`); }}>Grant</Btn></>}>
+          foot={<><Btn kind="ghost" onClick={() => setModal(null)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !person || !f.office || !f.instrument.trim() || (NEEDS_ID.has(f.scopeKind) && !f.scopeId)} onClick={() => { if (person) void send("POST", `/api/bff/api/v1/iam/persons/${person.id}/office-assignments`, { officeCode: f.office, scopeKind: f.scopeKind, scopeId: f.scopeId || null, instrument: f.instrument, validFrom: f.validFrom || null, validTo: f.validTo || null }, `${f.office} granted to ${person.surname} under ${f.instrument}`); }}>Grant</Btn></>}>
           <Note kind="bad" title="A role is granted by the Registrar, recorded here, and reviewed">Every grant carries the authority that made it, a start date and an end date, because acting appointments are the normal case and an acting appointment that never ends is how a person keeps a power they no longer hold.</Note>
           <Field id="gr-who" label="Person" hint={person ? `${person.username ? `Signs in as ${person.username}` : "No account yet: create one too, or the office cannot be used"} · ${person.liveOffices} office${person.liveOffices === 1 ? "" : "s"} held now` : "Type a name or a staff number and choose from the list"}>
             <input id="gr-who" className="ctl" list="gr-people" value={pick} onChange={(e) => choose(e.target.value)} placeholder="Surname, or staff number" autoComplete="off" />
             <datalist id="gr-people">{persons.filter((x) => !x.endedOn).map((x) => <option key={x.id} value={labelOf(x)} />)}</datalist>
           </Field>
           <div className="grid grid--3 rfgrid">
-            <Field id="gr-o" label="Office"><select id="gr-o" className="ctl" value={f.office} onChange={(e) => { const o = offices.find((x) => x.code === e.target.value); setF({ ...f, office: e.target.value, scopeKind: o?.scope_kind ?? f.scopeKind }); }}>{offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}</select></Field>
-            <Field id="gr-k" label="Bounded to"><select id="gr-k" className="ctl" value={f.scopeKind} onChange={(e) => setF({ ...f, scopeKind: e.target.value })}>{Object.entries(BOUND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-            <Field id="gr-id" label="Which one" hint="The faculty, department, programme or course code; blank for the University or the platform"><input id="gr-id" className="ctl tnum" value={f.scopeId} onChange={(e) => setF({ ...f, scopeId: e.target.value })} autoComplete="off" /></Field>
+            <Field id="gr-o" label="Office"><select id="gr-o" className="ctl" value={f.office} onChange={(e) => { const o = offices.find((x) => x.code === e.target.value); setF({ ...f, office: e.target.value, scopeKind: o?.scope_kind ?? f.scopeKind, scopeId: "" }); }}>{offices.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}</select></Field>
+            <Field id="gr-k" label="Bounded to"><select id="gr-k" className="ctl" value={f.scopeKind} onChange={(e) => setF({ ...f, scopeKind: e.target.value, scopeId: "" })}>{Object.entries(BOUND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+            <Field id="gr-id" label="Which one" required={NEEDS_ID.has(f.scopeKind)} hint={SCOPE_HINT[f.scopeKind] ?? "Chosen from the register, never typed."}>
+              {NEEDS_ID.has(f.scopeKind) ? (
+                SCOPE_OPTIONS[f.scopeKind]?.length
+                  ? <SearchSelect id="gr-id" value={f.scopeId} onChange={(v) => setF({ ...f, scopeId: v })} options={SCOPE_OPTIONS[f.scopeKind]} placeholder={`Type to search the ${f.scopeKind === "level" ? "levels" : f.scopeKind + "s"}…`} />
+                  : <input id="gr-id" className="ctl" value="" disabled placeholder="The register has nothing to choose from" />
+              ) : f.scopeKind === "unit" ? (
+                <input id="gr-id" className="ctl" value={f.scopeId} onChange={(e) => setF({ ...f, scopeId: e.target.value })} autoComplete="off" placeholder="Library, Security, Health Centre…" />
+              ) : (
+                <input id="gr-id" className="ctl" value="" disabled placeholder="Not needed for this scope" />
+              )}
+            </Field>
             <Field id="gr-f" label="From"><input id="gr-f" className="ctl" type="date" value={f.validFrom} onChange={(e) => setF({ ...f, validFrom: e.target.value })} /></Field>
             <Field id="gr-t" label="To" hint="An acting grant must carry one."><input id="gr-t" className="ctl" type="date" value={f.validTo} onChange={(e) => setF({ ...f, validTo: e.target.value })} /></Field>
             <Field id="gr-i" label="Authority for the grant" full hint="The Directorate of ICT operates this console; it does not decide who holds an office."><input id="gr-i" className="ctl" value={f.instrument} placeholder="Registrar, memo REG/2026/318" onChange={(e) => setF({ ...f, instrument: e.target.value })} autoComplete="off" /></Field>
