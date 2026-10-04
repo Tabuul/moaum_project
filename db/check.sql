@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 157
+\set EXPECTED 158
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2709,6 +2709,35 @@ BEGIN
         format('lines=%s faculties=%s no_faculty=%s ind=%s non=%s', r.lines, r.faculties, r.no_faculty,
                (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_ind, '9993/9994')),
                (SELECT coalesce(sum(amount), 0) FROM finance.charges(s_non, '9993/9994'))));
+END $$;
+
+-- ── 124b. the approved fees import keeps a spillover line, a programme's own line, its fee group and its kind (V313) ──
+DO $$
+DECLARE s_ind uuid; s_spill uuid := gen_random_uuid(); r record; v_other text; v_sp numeric; v_norm numeric; v_prog numeric;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT id INTO s_ind FROM people.student WHERE matric_no = 'MOAUM/FEE/23/0001';
+    -- a spillover student of the same programme: beyond the programme's final level, not graduated
+    INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s_spill, 'MOAUM/FEE/23/0003', 'CHECKFEE', 'Spillover', 'Benue', 'C00023', 'UTME', '2019/2020', 100, finance.final_level('C00023') + 100, 'ACTIVE', now());
+    -- an undergraduate programme of another faculty, for a line of its own
+    SELECT code INTO v_other FROM ref.programme WHERE NOT archived AND category = 'UNDER GRADUATE' AND faculty_code <> 'SC' ORDER BY code LIMIT 1;
+    SELECT * INTO r FROM finance.import_fee_structure('9993/9994', jsonb_build_array(
+        jsonb_build_object('faculty', 'SC', 'level', '100', 'indigene', 'Indigene', 'amount', '50000'),
+        jsonb_build_object('faculty', 'SC', 'indigene', 'Indigene', 'amount', '70000', 'spillover', 'Yes'),
+        jsonb_build_object('programme', v_other, 'level', '100', 'indigene', 'Indigene', 'amount', '112000', 'feeGroup', 'UG', 'item', 'School Fees'),
+        jsonb_build_object('faculty', 'SC', 'amount', '5000', 'kind', 'Late payment')));
+    SELECT coalesce(sum(amount), 0) INTO v_norm FROM finance.charges_of_as(s_ind, '9993/9994', ARRAY['FEE'], NULL);
+    SELECT coalesce(sum(amount), 0) INTO v_sp FROM finance.charges_of_as(s_spill, '9993/9994', ARRAY['FEE'], NULL);
+    SELECT coalesce(sum(amount), 0) INTO v_prog FROM finance.charges_of_as(s_ind, '9993/9994', ARRAY['FEE'], v_other);
+    PERFORM pg_temp.assert('The approved fees import keeps a spillover line for spillover students alone, a programme''s line for that programme alone, its fee group and its kind',
+        coalesce(r.lines = 4 AND r.spillover = 1 AND r.programmes = 1 AND r.no_programme = 0 AND r.no_group = 0
+        AND v_norm = 50000 AND v_sp = 70000 AND v_prog = 112000
+        AND EXISTS (SELECT 1 FROM finance.fee_schedule WHERE session = '9993/9994' AND ended_at IS NULL AND spillover AND level IS NULL AND item = 'School fees (spillover)')
+        AND EXISTS (SELECT 1 FROM finance.fee_schedule WHERE session = '9993/9994' AND ended_at IS NULL AND programme_code = v_other AND fee_group = 'UG')
+        AND EXISTS (SELECT 1 FROM finance.fee_schedule WHERE session = '9993/9994' AND ended_at IS NULL AND kind = 'LATE_PAYMENT' AND item = 'Late payment fee'), false),
+        format('lines=%s spill=%s progs=%s no_prog=%s no_group=%s normal=%s spillover=%s programme=%s other=%s', r.lines, r.spillover, r.programmes, r.no_programme, r.no_group, v_norm, v_sp, v_prog, v_other));
 END $$;
 
 -- ── 125. a department's course structure uploads, accepting CCMAS codes, and offers to the programme (V084) ──

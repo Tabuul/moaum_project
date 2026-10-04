@@ -97,7 +97,7 @@ function looksFlat(grid: (string | number | null)[][]): boolean {
 }
 
 /** Parse a one-row-per-fee sheet. Each row is a single fee line: Faculty, Level,
- *  Entry mode, Semester, Indigene, Amount (Item / Spillover / Programme optional).
+ *  Entry mode, Semester, Indigene, Amount (Item / Spillover / Programme / Kind / Fee group / Order optional).
  *  Raw values pass straight to the importer, which normalises them; only the entry
  *  mode is canonicalised here so "Direct Entry"/"DE" reach it as DIRECT_ENTRY. */
 function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string>[] {
@@ -114,6 +114,7 @@ function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string
     semester: find(/semester|(^|\b)sem(\b|$)/), indigene: find(/indigen|origin|state/),
     amount: find(/amount|fee/), item: find(/item|descrip|charge|purpose/),
     spill: find(/spill/), programme: find(/programme|program|course/),
+    kind: find(/^kind|fee kind|^type/), group: find(/group/), ord: find(/^ord(er)?$|^order/),
   };
   const modeOf = (v: string): string | null => {
     const s = v.toUpperCase().replace(/[^A-Z]/g, "");
@@ -145,6 +146,9 @@ function parseFeeFlat(grid: (string | number | null)[][]): Record<string, string
     if (cell("indigene")) row.indigene = cell("indigene");
     if (col.item >= 0 && cell("item")) row.item = cell("item");
     if (col.spill >= 0 && /^(y|t|1|true|yes|spill)/i.test(cell("spill"))) row.spillover = "true";
+    if (col.kind >= 0 && cell("kind")) row.kind = cell("kind");
+    if (col.group >= 0 && cell("group")) row.feeGroup = cell("group");
+    if (col.ord >= 0 && cell("ord")) row.ord = cell("ord");
     rows.push(row);
   }
   return rows;
@@ -344,8 +348,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-structure`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Approved fees structure uploaded for ${session}`) }, body: JSON.stringify({ rows }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      const c = j as { rows: number; lines: number; faculties: number; no_faculty: number };
-      setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} faculties${c.no_faculty ? ` · ${c.no_faculty} rows had a faculty name that did not match one on the register` : ""}. It replaced the previous structure for ${session}.`);
+      const c = j as { rows: number; lines: number; faculties: number; no_faculty: number; no_programme?: number; no_group?: number; spillover?: number; programmes?: number };
+      setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} faculties${c.programmes ? `, ${c.programmes} programme${c.programmes === 1 ? "" : "s"} with their own lines` : ""}${c.spillover ? `, ${c.spillover} spillover line${c.spillover === 1 ? "" : "s"}` : ""}${c.no_faculty ? ` · ${c.no_faculty} rows had a faculty name that did not match one on the register` : ""}${c.no_programme ? ` · ${c.no_programme} rows named a programme not on the register and were loaded without it` : ""}${c.no_group ? ` · ${c.no_group} rows named a fee group not on the register` : ""}. It replaced the previous structure for ${session}.`);
       router.refresh();
     } catch {
       setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." });
