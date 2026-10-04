@@ -329,6 +329,8 @@ export interface XlsxHead {
   meta?: [string, string][];
   /** whole-number limits on table columns (0-based), enforced by the spreadsheet as the reader types */
   validations?: { col: number; min: number; max: number; title: string; message: string }[];
+  /** an auto-filter on the header row (on by default) */
+  filter?: boolean;
 }
 
 /** fetch /crest.png and read its dimensions, for embedding as a workbook logo; null if unavailable */
@@ -408,9 +410,10 @@ export function buildXlsx(headers: string[], rows: Cell[][], sheetName = "Sheet1
   // the header row stays in view as the reader scrolls the table
   const views = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${off + 1}" topLeftCell="A${off + 2}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
 
+  const filter = rows.length && head?.filter !== false ? `<autoFilter ref="A${off + 1}:${lastCol}${off + 1 + rows.length}"/>` : "";
   const withLogo = hb && !!head!.logo;
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${views}${cols}<sheetData>${headRows}${tableRows}</sheetData>${merges}${vals}${withLogo ? `<drawing r:id="rId1"/>` : ""}</worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${views}${cols}<sheetData>${headRows}${tableRows}</sheetData>${filter}${merges}${vals}${withLogo ? `<drawing r:id="rId1"/>` : ""}</worksheet>`;
 
   const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">

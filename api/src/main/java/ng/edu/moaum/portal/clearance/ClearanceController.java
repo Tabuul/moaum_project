@@ -89,7 +89,7 @@ class ClearanceController {
                 for (Clearance.Position p : holds) lines.append("\n- ").append(p.label()).append(": ").append(p.item() == null ? "outstanding" : p.item()).append(p.note() == null ? "" : " (" + p.note() + ")");
                 String subject = "Clearance held: " + holds.size() + " unit" + (holds.size() == 1 ? "" : "s") + " outstanding";
                 String text = "Your clearance for " + purpose.toLowerCase() + " is held by the following unit" + (holds.size() == 1 ? "" : "s") + ":" + lines
-                        + "\n\nSettle each with the unit named; the hold is lifted on the portal the moment the unit clears you.\n\nOffice of the Registrar, Rev. Fr. Moses Orshio Adasu University, Makurdi";
+                        + "\n\nSettle each with the unit named; the hold is lifted on the portal the moment the unit clears you.\n\nOffice of the Registrar, " + ng.edu.moaum.portal.platform.Branding.name() + "";
                 int q = jdbc.sql("""
                         SELECT count(*) FROM (
                             SELECT platform.queue_notice('EMAIL', r.email, :s, :b, 'student', :id) AS n FROM people.student_reach(:id) r

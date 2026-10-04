@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
-import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
+import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +29,7 @@ const LEVEL: Record<number, string> = { 700: "Postgraduate Diploma", 800: "Maste
 
 /** the applicant's application summary as a PDF — printable and downloadable once they are signed in */
 export async function GET() {
+  await loadInstitution();
   const me = await api<PgMe>("/api/v1/pg/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const s = me.data;
@@ -133,7 +137,7 @@ export async function GET() {
   p.text(L, y, `Documents on file: ${(s.documents || []).map((d) => d.kind.replace("_", " ").toLowerCase()).join(", ") || "none"}.`, 8, false, [0.45, 0.45, 0.45]);
   p.text(L, 40, `Generated ${day(new Date().toISOString())} · ${clean(s.name)} · ${s.applicationNo}`, 7, false, [0.45, 0.45, 0.45]);
 
-  const bytes = pdf([p], `Application summary ${s.applicationNo}`);
+  const bytes = finishPdf([p], `Application summary ${s.applicationNo}`, "FORM");
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: {

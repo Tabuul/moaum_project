@@ -371,7 +371,7 @@ class PortalWindowController {
         String sms = "MOAUM: " + subject + ". See the portal.";
         return jdbc.sql("""
                 SELECT count(*) FROM (
-                    SELECT platform.queue_notice('EMAIL', r.email, :subj, :body || E'\\n\\nDirectorate of ICT, Rev. Fr. Moses Orshio Adasu University, Makurdi', 'student', st.id) AS n
+                    SELECT platform.queue_notice('EMAIL', r.email, :subj, :body || E'\\n\\nDirectorate of ICT, ' || :uni, 'student', st.id) AS n
                       FROM people.student st CROSS JOIN LATERAL people.student_reach(st.id) r
                      WHERE st.status IN ('ADMITTED', 'ACTIVE', 'PROBATION')
                        AND (st.entry_session = :s OR EXISTS (SELECT 1 FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :s)
@@ -383,6 +383,6 @@ class PortalWindowController {
                        AND (st.entry_session = :s OR EXISTS (SELECT 1 FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :s)
                             OR EXISTS (SELECT 1 FROM finance.payment_reference p WHERE p.student_id = st.id AND p.session = :s))) x
                  WHERE x.n IS NOT NULL
-                """).param("subj", subject).param("body", body).param("sms", sms).param("s", session).query(Integer.class).single();
+                """).param("subj", subject).param("body", body).param("sms", sms).param("s", session).param("uni", Branding.name()).query(Integer.class).single();
     }
 }

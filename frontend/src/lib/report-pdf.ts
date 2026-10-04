@@ -4,6 +4,7 @@
  *  The browser's print gives the same document on screen; this is the one that goes by email. */
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
+import { currentInstitution } from "./document/institution-cache.ts";
 
 export interface KeptReport {
   title: string; subtitle?: string | null; period: string; verification_code: string;
@@ -64,7 +65,7 @@ export function keptReportPdf(k: KeptReport): Uint8Array {
     let y = H - TOP;
     if (crest) p.jpeg(L, y - 40, 40, 40, crest);
     const tx = crest ? L + 50 : L;
-    p.text(tx, y - 14, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 11, true, INK);
+    p.text(tx, y - 14, currentInstitution().name.toUpperCase(), 11, true, INK);
     p.text(tx, y - 27, "Makurdi, Benue State · Unified University Portal", 8, false, MUTED);
     p.text(W - R - 200, y - 14, `Kept copy · ${k.verification_code}`, 8, true, INK);
     p.text(W - R - 200, y - 27, `Page ${pageNo} of ${total}`, 8, false, MUTED);

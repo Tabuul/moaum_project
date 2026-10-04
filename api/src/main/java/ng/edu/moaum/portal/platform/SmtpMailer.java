@@ -66,7 +66,7 @@ class SmtpMailer {
         return "<div style=\"background:#f4f6f5;padding:24px 12px;margin:0\">"
                 + "<div style=\"max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e6eae8;border-radius:12px;overflow:hidden;font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#1c2a22\">"
                 + "<div style=\"padding:18px 24px 0\">" + logo
-                + "<div style=\"text-align:center;font-weight:700;font-size:15px;color:#0a4d2c\">Rev. Fr. Moses Orshio Adasu University, Makurdi</div>"
+                + "<div style=\"text-align:center;font-weight:700;font-size:15px;color:#0a4d2c\">" + esc(Branding.name()) + "</div>"
                 + "<div style=\"text-align:center;font-size:12px;color:#7a8a80;margin-top:2px\">Unified University Portal</div>"
                 + "<div style=\"border-top:3px solid #0a7d3f;margin:14px 0 0\"></div></div>"
                 + "<div style=\"padding:18px 24px 8px\">"

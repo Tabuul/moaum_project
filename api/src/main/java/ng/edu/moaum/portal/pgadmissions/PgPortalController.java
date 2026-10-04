@@ -675,7 +675,7 @@ class PgPortalController {
                         if (email != null) {
                             String link = portalUrl + "/pg/referee/" + row.get("token");
                             String msg = "Dear " + name + ",\n\n" + applicantName
-                                    + " has named you as a referee for a postgraduate application to the Rev. Fr. Moses Orshio Adasu University, Makurdi.\n\n"
+                                    + " has named you as a referee for a postgraduate application to the " + ng.edu.moaum.portal.platform.Branding.name() + ", Makurdi.\n\n"
                                     + "Please complete a short, confidential reference here:\n" + link + "\n\n"
                                     + "It asks how you know the applicant, for how long, and your academic assessment and recommendation. Thank you for your assistance.";
                             jdbc.sql("SELECT platform.queue_notice('EMAIL', :r, :sub, :b, 'pg_application', :ai)")

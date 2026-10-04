@@ -3,10 +3,13 @@ import { api } from "@/lib/api";
 import { verifyPathFor, type Statement, type Template } from "@/lib/documents";
 import { documentPdf, originOf } from "@/lib/document-pdf";
 
+import { loadInstitution } from "@/lib/document/institution-server";
+
 export const dynamic = "force-dynamic";
 
 /** the document behind a recipient's secure link, as a PDF; every opening spends the token and is logged */
 export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {
+  await loadInstitution();
   const { token } = await params;
   const t = token.replace(/[^a-f0-9]/gi, "").toLowerCase();
   const r = await api<{ result: string; template: string | null }>(`/api/v1/verify/download/${encodeURIComponent(t)}`);

@@ -1082,7 +1082,7 @@ class ExaminersController {
                  WHERE i.token_hash = :h AND i.used_at IS NULL AND i.expires_at > now()
                 """).param("h", sha256(token.trim())).query().listOfRows().stream().findFirst().orElseThrow(ExaminersController::badLink);
         Map<String, Object> out = new LinkedHashMap<>(r);
-        out.put("university", ExaminerNotifier.UNIVERSITY);
+        out.put("university", ng.edu.moaum.portal.platform.Branding.name());
         return out;
     }
 

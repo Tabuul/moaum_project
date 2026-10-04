@@ -195,7 +195,7 @@ public class ApplicantService {
         repo.byId(account).ifPresent(a -> atTheDoor(a.id(), "applicant account created", () -> {
             String link = portalUrl + "/login";
             repo.queueNotice("EMAIL", a.email(), "Your MOAUM applicant account",
-                    "Welcome to the Rev. Fr. Moses Orshio Adasu University applicant portal.\n\n"
+                    "Welcome to the " + ng.edu.moaum.portal.platform.Branding.name() + " applicant portal.\n\n"
                             + "Your application account has been created:\n"
                             + "  Application number: " + a.applicationNo() + "\n"
                             + "  Sign-in email: " + a.email() + "\n"

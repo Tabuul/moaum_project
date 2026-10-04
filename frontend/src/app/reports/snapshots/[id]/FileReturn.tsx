@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Btn } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
-import { buildXlsx, loadCrest } from "@/lib/xlsx";
+import { brandedXlsx, downloadBlob } from "@/lib/exportbrand";
 
 export interface Dispatch { id: string; recipient: string; state: string; created_at: string; sent_at: string | null; last_error: string | null; files: string | null }
 
@@ -58,14 +58,9 @@ export function FileReturn({ id, title, headers, rows, filedTo, dispatches }: {
   }
 
   function download() {
-    void loadCrest().then((logo) => {
-      const blob = buildXlsx(headers, rows, "Kept copy", {
-        school: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", title,
-        date: "Kept copy · exported " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }), logo: logo ?? undefined,
-      });
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${title.replace(/[^\w]+/g, "-").toLowerCase()}-kept.xlsx`;
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    });
+    // V320: the kept copy's workbook carries the institution's identity and a serial column, through the central export
+    void brandedXlsx(title, headers, rows, { sheetName: "Kept copy", sub: "Kept copy" })
+      .then((blob) => downloadBlob(blob, `${title.replace(/[^\w]+/g, "-").toLowerCase()}-kept.xlsx`));
   }
 
   return (

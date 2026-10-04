@@ -3,10 +3,13 @@ import { api } from "@/lib/api";
 import { parseStatement, verifyPathFor, type DocumentFull } from "@/lib/documents";
 import { documentPdf, originOf } from "@/lib/document-pdf";
 
+import { loadInstitution } from "@/lib/document/institution-server";
+
 export const dynamic = "force-dynamic";
 
 /** an issued document as the office sees it; logged as an office download */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  await loadInstitution();
   const { id } = await params;
   const r = await api<DocumentFull>(`/api/v1/documents/issued/${encodeURIComponent(id)}/download`);
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });

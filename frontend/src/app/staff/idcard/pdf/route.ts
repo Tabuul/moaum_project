@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
-import { A4, Page, pdf, jpegSize, type Image } from "@/lib/pdf-write";
+import {A4, Page, jpegSize, type Image} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { C, CARD_PX, clean, drawBack, drawFrontPortrait, type CardFace } from "@/lib/idcard-pdf";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +29,7 @@ interface Office { office: string; office_code: string; live: boolean }
 interface StaffRecord { person: Person; offices: Office[] }
 
 export async function GET(req: Request) {
+  await loadInstitution();
   const id = new URL(req.url).searchParams.get("id");
   const self = !id;
   const r = await api<StaffRecord>(self ? "/api/v1/hr/staff/me" : `/api/v1/hr/staff/${encodeURIComponent(id!)}`);
@@ -85,7 +89,7 @@ export async function GET(req: Request) {
   p.textCenter(x2 + W / 2, top - H - 18, "BACK", 7, true, C.foot);
   p.text(x1, 46, `${clean(face.name)} · ${staffNo} · generated ${day(new Date().toISOString())}`, 7, false, [0.5, 0.5, 0.5]);
 
-  const bytes = pdf([p], `Staff identity card ${staffNo}`);
+  const bytes = finishPdf([p], `Staff identity card ${staffNo}`, "ID_CARD");
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="staff-id-${staffNo.replace(/[^A-Za-z0-9]/g, "-")}.pdf"` },

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { XlsxLogo } from "@/lib/xlsx";
 import { keptReportPdf, type KeptReport } from "@/lib/report-pdf";
+import { loadInstitution } from "@/lib/document/institution-server";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const base = `${slug(s.title)}-${slug(s.period)}`;
 
   const kept: KeptReport = { ...s, headers, rows };
+  await loadInstitution();   // V320: the PDF carries the profile's identity
   const pdfBytes = keptReportPdf(kept);
   const xlsx = buildXlsx(headers, rows, "Kept copy", {
     school: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",

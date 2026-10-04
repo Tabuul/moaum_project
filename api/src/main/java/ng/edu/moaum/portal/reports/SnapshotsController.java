@@ -84,7 +84,7 @@ class SnapshotsController {
             if (total > 15_000_000L) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "The attachments exceed 15 MB");
             files.add(new NoticeRepository.Attachment(f.filename().replaceAll("[/\\\\]", "-"), f.contentType(), bytes));
         }
-        String subject = s.get("title") + " · " + s.get("period") + " — Rev. Fr. Moses Orshio Adasu University";
+        String subject = s.get("title") + " · " + s.get("period") + " — " + ng.edu.moaum.portal.platform.Branding.name();
         String text = "Please find attached the " + s.get("title") + " for " + s.get("period") + ", kept by the portal on "
                 + String.valueOf(s.get("taken_at")).substring(0, 10) + " (" + s.get("row_count") + " rows).\n\n"
                 + (body.message() == null || body.message().isBlank() ? "" : body.message().trim() + "\n\n")

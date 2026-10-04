@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import { BODY, type Application } from "@/lib/applicant";
-import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
+import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +24,7 @@ function fromDataUrl(url: string | null | undefined): Uint8Array | null {
 
 /** the applicant's application form as a clean PDF, with the passport JAMB sent or the one uploaded */
 export async function GET() {
+  await loadInstitution();
   const mine = await api<Application>("/api/v1/applicant/me");
   if (!mine.ok) return NextResponse.json(mine.problem, { status: mine.problem.status });
   const a = mine.data;
@@ -93,6 +97,6 @@ export async function GET() {
   y = p.paragraph(L, y, "This form is a view of the application record held by the University. The biodata, programme and O’Level results are as JAMB sent them; the programme choice comes from JAMB and cannot be changed on the portal. If anything on it is wrong, write to the Registry quoting the application number — do not create a second account.", A4.w - 2 * L, 9);
   p.text(L, 50, `Issued by the portal on ${day(new Date().toISOString())} · ${clean(a.applicationNo)}`, 7.5, false, [0.4, 0.4, 0.4]);
 
-  const bytes = pdf([p], `Application form ${a.applicationNo}`);
+  const bytes = finishPdf([p], `Application form ${a.applicationNo}`, "FORM");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="application-form-${a.applicationNo.replace(/\//g, "-")}.pdf"` } });
 }

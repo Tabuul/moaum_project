@@ -3,6 +3,7 @@
  *  summary of performance — how many took each grade, how many passed and failed, the mean. Built on
  *  the server from the roll as the register holds it, for reference; the record stays the register. */
 import { A4, Page, pdf } from "@/lib/pdf-write";
+import { currentInstitution } from "./document/institution-cache.ts";
 import { crestImage } from "@/lib/pdf-crest";
 import type { RollRow, SheetListed } from "@/lib/results";
 
@@ -151,7 +152,7 @@ export function markedSheetPdf(m: MarkedSheet, semester: string): Uint8Array {
     let y = H - TOP;
     if (crest) p.jpeg(L, y - 40, 40, 40, crest);
     const tx = crest ? L + 50 : L;
-    p.text(tx, y - 14, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 11, true, INK);
+    p.text(tx, y - 14, currentInstitution().name.toUpperCase(), 11, true, INK);
     p.text(tx, y - 27, "Makurdi, Benue State · Unified University Portal", 8, false, MUTED);
     p.text(W - R - 200, y - 14, `Marked score sheet · ${s.courseCode}`, 8, true, INK);
     p.text(W - R - 200, y - 27, `Page ${pageNo}`, 8, false, MUTED);

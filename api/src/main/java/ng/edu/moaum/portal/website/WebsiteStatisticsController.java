@@ -117,7 +117,7 @@ class WebsiteStatisticsController {
         figures.forEach((k, v) -> display.put(k, fmt.format(v)));
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("university", "Rev. Fr. Moses Orshio Adasu University, Makurdi");
+        out.put("university", ng.edu.moaum.portal.platform.Branding.name());
         out.put("session", row.get("current_session") != null ? row.get("current_session") : row.get("latest_session"));
         out.put("asAt", OffsetDateTime.now());
         out.put("figures", figures);

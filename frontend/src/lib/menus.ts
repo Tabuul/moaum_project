@@ -1063,6 +1063,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/channels", "icon": "bell", "label": "Notification Channels" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
+          { "id": "t/institution", "icon": "doc", "label": "Institution Profile" },
           { "id": "t/api", "icon": "swap", "label": "Integrations" },
           { "id": "t/audit", "icon": "shield", "label": "Audit Log" },
           { "id": "t/security", "icon": "shield", "label": "Security" },
@@ -1176,6 +1177,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Overview",
         "items": [
           { "id": "t/platform", "icon": "server", "label": "Platform & Integrations", "badge": "!" },
+          { "id": "t/institution", "icon": "doc", "label": "Institution Profile" },
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/search", "icon": "user", "label": "Search" }

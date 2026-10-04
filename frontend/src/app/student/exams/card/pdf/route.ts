@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Docket } from "@/lib/student-portal";
-import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
+import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { qrMatrix, examToken, examVerifyPath } from "@/lib/qr";
 import { semesterName } from "@/lib/student-portal";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +25,7 @@ function originOf(req: Request): string {
 /** the examination card as a PDF: the courses to sit, the student's photograph, and a QR that
  *  opens the public verification page — so it cannot be cloned, and the face is checked at the hall */
 export async function GET(request: NextRequest) {
+  await loadInstitution();
   const q = request.nextUrl.searchParams;
   const me = await api<Me>("/api/v1/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
@@ -164,6 +168,6 @@ export async function GET(request: NextRequest) {
 
   p.text(L, 40, `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`, 7, false, [0.45, 0.45, 0.45]);
 
-  const bytes = pdf([p], `Exam card ${matric}`);
+  const bytes = finishPdf([p], `Exam card ${matric}`, "FORM");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="exam-card-${session.replace("/", "-")}-${semester}.pdf"` } });
 }

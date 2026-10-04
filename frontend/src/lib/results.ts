@@ -1,6 +1,8 @@
 import { buildXlsx, loadCrest } from "@/lib/xlsx";
 
-const SCHOOL = "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI";
+import { currentInstitution } from "@/lib/document/institution-cache";
+import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-client";
+const SCHOOL = () => currentInstitution().name.toUpperCase();
 
 /** a filename base as a readable title: "ledger-2026-2027" → "Ledger 2026 2027" */
 function humanize(base: string): string {
@@ -239,8 +241,8 @@ export function download(name: string, data: string | SheetData) {
     const base = name.replace(/\.(csv|xlsx|txt)$/i, "");
     const sheet = base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet1";
     const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-    void loadCrest().then((logo) =>
-      saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL, title: humanize(base), date, logo: logo ?? undefined, meta: data.__meta, validations: data.__validations })),
+    void getInstitution().then(() => loadCrest(institutionLogoUrl()).catch(() => loadCrest())).then((logo) =>
+      saveBlob(base + ".xlsx", buildXlsx(headers, rows.slice(1), sheet, { school: SCHOOL(), title: humanize(base), date, logo: logo ?? undefined, meta: data.__meta, validations: data.__validations })),
     );
     return;
   }

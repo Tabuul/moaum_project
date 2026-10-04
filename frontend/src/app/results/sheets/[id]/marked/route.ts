@@ -6,6 +6,8 @@ import { crestPng } from "@/lib/crest-server";
 import { MARKED_HEADERS, markedRows, markedSheetPdf, performance, performanceRows } from "@/lib/marked-sheet";
 import { semesterName } from "@/lib/student-portal";
 
+import { loadInstitution } from "@/lib/document/institution-server";
+
 export const dynamic = "force-dynamic";
 
 /** the API leaves a null field out of the JSON; the sheet's arithmetic tests against null */
@@ -15,6 +17,7 @@ const normalise = (r: RollRow): RollRow => ({ ...r, ca: r.ca ?? null, exam: r.ex
  *  it away: the roll with the computed total, grade and point, and a summary of performance at the end.
  *  Built from the register as it stands; for reference, the record stays the register. */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  await loadInstitution();
   const { id } = await params;
   const format = new URL(req.url).searchParams.get("format") === "pdf" ? "pdf" : "xlsx";
   const [detail, roll] = await Promise.all([

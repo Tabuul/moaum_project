@@ -46,7 +46,7 @@ test("the five screening forms print as one PDF under the University's name, fil
   const text = new TextDecoder("latin1").decode(bytes);
   assert.ok(text.startsWith("%PDF-1.4"));
   assert.ok(text.includes("/Count 5"), "five pages");
-  for (const s of [UNIVERSITY, "FORM: A", "SCREENING OF FRESH UNDERGRADUATE STUDENTS", "SECTION A: PERSONAL DATA", "SECTION B: ACADEMIC RECORD", "SECTION C: ACADEMIC RECORD",
+  for (const s of [UNIVERSITY(), "FORM: A", "SCREENING OF FRESH UNDERGRADUATE STUDENTS", "SECTION A: PERSONAL DATA", "SECTION B: ACADEMIC RECORD", "SECTION C: ACADEMIC RECORD",
     "SECTION D: FOR OFFICIAL USE ONLY", "SUPPLEMENTARY BIODATA FORM", "STUDENT DATA CAPTURE FORM", "Gwazachat Academy", "CIVIC EDUCATION", "YOU HAVE BEEN SUCCESSFULLY SCREENED"]) {
     assert.ok(text.includes(s), `contains ${s}`);
   }

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
-import { A4, Page, pdf } from "@/lib/pdf-write";
+import {A4, Page} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
 import { createHash } from "node:crypto";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +31,7 @@ const NOTES = [
 
 /** the confirmation of offer of admission — available once the applicant has paid the acceptance fee */
 export async function GET(req: Request) {
+  await loadInstitution();
   const me = await api<PgMe>("/api/v1/pg/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const s = me.data;
@@ -84,7 +88,7 @@ export async function GET(req: Request) {
   p.text(L, 52, `Verify at ${origin}/verify/pg-offer with the application number and code ${code}`, 7.5, false, [0.4, 0.4, 0.4]);
   p.text(L, 40, `${clean(s.name)} · ${s.applicationNo} · generated ${today()}`, 7.5, false, [0.5, 0.5, 0.5]);
 
-  const bytes = pdf([p], `Offer of admission ${s.applicationNo}`);
+  const bytes = finishPdf([p], `Offer of admission ${s.applicationNo}`, "LETTER");
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="offer-of-admission-${s.applicationNo.replace(/\//g, "-")}.pdf"` },

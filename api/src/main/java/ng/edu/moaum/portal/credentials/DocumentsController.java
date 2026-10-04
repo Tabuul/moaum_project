@@ -376,8 +376,8 @@ class DocumentsController {
         if (!"DIGITAL".equals(d.get("kind")) || d.get("email") == null) throw new DomainRuleViolation("DOC_RESEND", "Only a digital delivery to an email address is resent.", new DomainRuleViolation.Remedy("Record a physical delivery's dispatch instead.", "Exams and Records"));
         String token = jdbc.sql("INSERT INTO credentials.download_token (issued_id, for_kind, email, expires_at, max_uses) VALUES (:i, 'RECIPIENT', :e, now() + interval '30 days', 10) RETURNING token").param("i", d.get("issued_id")).param("e", d.get("email")).query(String.class).single();
         jdbc.sql("UPDATE credentials.delivery SET token_id = (SELECT id FROM credentials.download_token WHERE token = :t), state = 'RESENT', updated_at = now() WHERE id = :id").param("t", token).param("id", id).update();
-        jdbc.sql("SELECT platform.queue_notice('EMAIL', :e, 'An official document from Rev. Fr. Moses Orshio Adasu University (resent)', :b, 'document', :i)")
-                .param("e", d.get("email")).param("b", "A fresh secure link to the official document: open the portal under /documents/d/" + token + " — it expires in 30 days.").param("i", d.get("issued_id")).query().listOfRows();
+        jdbc.sql("SELECT platform.queue_notice('EMAIL', :e, 'An official document from ' || :uni || ' (resent)', :b, 'document', :i)")
+                .param("uni", ng.edu.moaum.portal.platform.Branding.name()).param("e", d.get("email")).param("b", "A fresh secure link to the official document: open the portal under /documents/d/" + token + " — it expires in 30 days.").param("i", d.get("issued_id")).query().listOfRows();
         jdbc.sql("SELECT credentials.mark_delivery(:id, 'RESENT', NULL, NULL, 'Link resent')").param("id", id).query().listOfRows();
         return Map.of("ok", true);
     }

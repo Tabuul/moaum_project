@@ -3,9 +3,12 @@ import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Entry } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
-import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
+import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, regToken, regVerifyPath } from "@/lib/qr";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +41,7 @@ function courseType(e: Entry): string {
 
 /** the course registration form as a PDF: what the Head of Department approved, with the student's passport */
 export async function GET(request: NextRequest) {
+  await loadInstitution();
   const q = request.nextUrl.searchParams;
   const me = await api<Me>("/api/v1/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
@@ -128,6 +132,6 @@ export async function GET(request: NextRequest) {
   }
 
   p.text(L, 50, `Issued by the portal on ${day(new Date().toISOString())} · ${reg.id.slice(0, 8).toUpperCase()}`, 7.5, false, [0.4, 0.4, 0.4]);
-  const bytes = pdf([p], `Course form ${s.matricNo ?? ""}`);
+  const bytes = finishPdf([p], `Course form ${s.matricNo ?? ""}`, "FORM");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="course-form-${session.replace("/", "-")}-${semester}.pdf"` } });
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Btn } from "@/components/proto/ui";
-import { buildXlsx, loadCrest } from "@/lib/xlsx";
+import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 
 /** what a kept copy of this return records (V229): which return, the period it answers, the due date
  *  it is filed against, and the footing note — the rows come from the toolbar's own headers/rows */
@@ -32,22 +32,9 @@ export function ReportToolbar({ headers, rows, filename, title, keep }: {
 
   function download() {
     const base = filename.replace(/\.(csv|xlsx)$/i, "");
-    const date = "Generated " + new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-    void loadCrest().then((logo) => {
-      const blob = buildXlsx(headers, rows, base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Return", {
-        school: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI",
-        title: title ?? base.replace(/[-_]+/g, " ").trim(),
-        date,
-        logo: logo ?? undefined,
-      });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = base + ".xlsx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    });
+    // V320: the workbook carries the institution's identity and a serial column, through the central export
+    void brandedXlsx(title ?? base.replace(/[-_]+/g, " ").trim(), headers, rows, { sheetName: base.replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Return", serial: docSerial("RPT") })
+      .then((blob) => downloadBlob(blob, base + ".xlsx"));
   }
 
   async function keepCopy() {

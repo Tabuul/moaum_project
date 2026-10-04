@@ -12,9 +12,10 @@
  * type stripping for its test; the crest and the passport come in as images.
  */
 import { A4, type Image, Page, pdf } from "./pdf-write.ts";
+import { currentInstitution } from "./document/institution-cache.ts";
 
-export const UNIVERSITY = "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI";
-export const UNIVERSITY_TITLE = "Rev. Fr. Moses Orshio Adasu University, Makurdi";
+export const UNIVERSITY = () => currentInstitution().name.toUpperCase();
+export const UNIVERSITY_TITLE = () => currentInstitution().name;
 
 export interface FormsInstitution { name: string; from_year: number | null; to_year: number | null; certificate: string | null; award_year: number | null }
 export interface FormsOlevel { exam_body: string; exam_number: string | null; exam_year: number | null; subject: string; grade: string }
@@ -151,7 +152,7 @@ function crestAt(p: Page, x: number, y: number, side: number, img: Image | null)
   if (img) p.jpeg(x, y, side, side, img);
 }
 function headerName(p: Page, y: number, size = 14): number {
-  p.textCenter(CX, y, UNIVERSITY, size, true);
+  p.textCenter(CX, y, UNIVERSITY(), size, true);
   p.textCenter(CX, y - 15, "(Office of the Registrar)", 10);
   return y - 15;
 }
@@ -213,7 +214,7 @@ export function screeningFormsPdf(input: FormsInput): Uint8Array {
   const p1 = new Page();
   let y = A4.h - 52;
   crestAt(p1, L, y - 62, 66, input.crest);
-  p1.textCenter(CX + 30, y - 14, UNIVERSITY, 13, true);
+  p1.textCenter(CX + 30, y - 14, UNIVERSITY(), 13, true);
   p1.textCenter(CX + 30, y - 29, "(Office of the Registrar)", 10);
   p1.textCenter(CX + 30, y - 50, "FORM: A", 9, true);
   y -= 96;
@@ -386,7 +387,7 @@ export function screeningFormsPdf(input: FormsInput): Uint8Array {
   crestAt(p5, CX - 26, y - 54, 52, input.crest);
   passportBox(p5, R - 78, y - 96, 78, 96, input.passport, "PASSPORT");
   y -= 72;
-  p5.textCenter(CX, y, UNIVERSITY, 12.5, true);
+  p5.textCenter(CX, y, UNIVERSITY(), 12.5, true);
   y -= 14;
   p5.textCenter(CX, y, `DEPARTMENT OF ${up(pf.department ?? "")}`, 10, true);
   y -= 22;

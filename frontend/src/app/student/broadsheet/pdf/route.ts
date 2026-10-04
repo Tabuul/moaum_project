@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Results, ResultRow, Semester } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
-import { A4, Page, pdf } from "@/lib/pdf-write";
+import {A4, Page} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +17,7 @@ const scoreOf = (c: ResultRow) => c.outcome === "GRADED" ? (c.total == null ? "-
 
 /** the student's result broadsheet as a PDF: each published semester's courses and its summary line */
 export async function GET() {
+  await loadInstitution();
   const [me, res] = await Promise.all([api<{ name: string; matricNo: string | null; admissionNo: string | null; programme: string; level: number }>("/api/v1/me"), api<Results>("/api/v1/me/results")]);
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   if (!res.ok) return NextResponse.json(res.problem, { status: res.problem.status });
@@ -87,6 +91,6 @@ export async function GET() {
   p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())} · ${s.matricNo ?? ""} · a view of the published record`, 7.5, false, [0.45, 0.45, 0.45]);
   pages.push(p);
 
-  const bytes = pdf(pages, `Result broadsheet ${s.matricNo ?? ""}`);
+  const bytes = finishPdf(pages, `Result broadsheet ${s.matricNo ?? ""}`, "BROADSHEET");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="broadsheet-${(s.matricNo ?? "").replace(/\//g, "-")}.pdf"` } });
 }

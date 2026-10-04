@@ -2,6 +2,7 @@
  *  student and their programme, the period deferred, the expected return, the approving officer, and a QR that
  *  names the reference. One function, used by the student's copy and the desk's. */
 import { A4, Page, pdf } from "@/lib/pdf-write";
+import { currentInstitution } from "./document/institution-cache.ts";
 import { crestImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
 import type { DefermentFull } from "@/lib/deferments";
@@ -17,7 +18,7 @@ export function defermentLetter(d: DefermentFull, verifyUrl: string): Uint8Array
   const crest = crestImage();
   let y = A4.h - 46;
   if (crest) p.jpeg(cx - 24, y - 46, 48, 48, crest);
-  p.textCenter(cx, y - 60, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 13, true);
+  p.textCenter(cx, y - 60, currentInstitution().name.toUpperCase(), 13, true);
   p.textCenter(cx, y - 74, "P.M.B 102119, Makurdi, Nigeria", 9.5, false, [0.35, 0.35, 0.35]);
   p.textCenter(cx, y - 87, "(Office of the Registrar)", 9.5, false, [0.35, 0.35, 0.35]);
   y -= 108;
@@ -54,7 +55,7 @@ export function defermentLetter(d: DefermentFull, verifyUrl: string): Uint8Array
   y -= 24;
   p.text(L, y, "______________________________", 10); y -= 14;
   p.text(L, y, "Registrar", 10, true); y -= 13;
-  p.text(L, y, "For: Rev. Fr. Moses Orshio Adasu University, Makurdi", 9.5, false, [0.35, 0.35, 0.35]);
+  p.text(L, y, `For: ${currentInstitution().name}`, 9.5, false, [0.35, 0.35, 0.35]);
 
   const qr = qrMatrix(verifyUrl);
   const cell = 2.2, size = qr.size * cell, qx = A4.w - L - size, qy = 60;
@@ -76,7 +77,7 @@ export function defermentApplication(d: DefermentFull): Uint8Array {
   const newPage = () => { pages.push(p); p = new Page(); y = A4.h - 60; };
   const need = (h: number) => { if (y - h < 60) newPage(); };
   if (crest) p.jpeg(cx - 24, y - 46, 48, 48, crest);
-  p.textCenter(cx, y - 60, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 13, true);
+  p.textCenter(cx, y - 60, currentInstitution().name.toUpperCase(), 13, true);
   p.textCenter(cx, y - 74, "Office of the Registrar · Student Deferment Application", 9.5, false, [0.35, 0.35, 0.35]);
   y -= 100;
   p.text(L, y, "APPLICATION NO: " + clean(d.reference), 10.5, true);

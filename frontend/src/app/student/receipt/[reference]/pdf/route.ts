@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import { type Receipt, receiptPurpose } from "@/lib/student-portal";
-import { A4, Page, pdf, jpegSize } from "@/lib/pdf-write";
+import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, receiptToken, verifyPath } from "@/lib/qr";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +24,7 @@ const naira = (n: number | string) => `NGN ${Number(n).toLocaleString("en-NG", {
 
 /** the official payment receipt as a PDF: the same facts as the screen, on one A4 page */
 export async function GET(req: Request, { params }: { params: Promise<{ reference: string }> }) {
+  await loadInstitution();
   const { reference } = await params;
   const r = await api<Receipt>(`/api/v1/me/fees/receipts/${encodeURIComponent(reference)}`);
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
@@ -111,6 +115,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ referenc
   for (const my of [y + 6, 64]) p.text(L, my, band, 3.2, false, [0.82, 0.82, 0.82]);
 
   p.text(L, 50, `Issued by the portal on ${day(new Date().toISOString())} · ${x.receipt_no}`, 7.5, false, [0.4, 0.4, 0.4]);
-  const bytes = pdf([p], `Receipt ${x.receipt_no}`);
+  const bytes = finishPdf([p], `Receipt ${x.receipt_no}`, "RECEIPT");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="receipt-${(x.receipt_no ?? "").replace(/\//g, "-")}.pdf"` } });
 }

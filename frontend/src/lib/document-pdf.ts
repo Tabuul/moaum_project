@@ -1,6 +1,7 @@
 import "server-only";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader, crestImage } from "@/lib/pdf-crest";
+import { currentInstitution } from "./document/institution-cache.ts";
 import { qrMatrix } from "@/lib/qr";
 import type { Statement, Template } from "@/lib/documents";
 
@@ -42,7 +43,7 @@ export function certificatePdf(s: Statement, t: Template | null, verifyUrl: stri
   p.box(34, 34, W - 68, A4.h - 68, 0.8);
   if (crest) p.jpeg(cx - 42, A4.h - 130, 84, 84, crest);
   p.textStyled(W - 140, A4.h - 60, clean(s.number), 10.5, { font: "F2", colour: MUTED, spacing: 0.5 });
-  p.textCenter(cx, A4.h - 168, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY", 17, true, INK);
+  p.textCenter(cx, A4.h - 168, currentInstitution().name.replace(/,.*$/, "").toUpperCase(), 17, true, INK);
   p.textCenter(cx, A4.h - 186, "MAKURDI, BENUE STATE, NIGERIA", 9.5, false, MUTED);
   p.textStyled(cx - 60, A4.h - 232, "This is to certify that", 15, { font: "F3", colour: INK });
   const name = clean(s.holder).toUpperCase();

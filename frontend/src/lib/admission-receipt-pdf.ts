@@ -1,6 +1,7 @@
 /** The receipt of an admission fee — the admission checking fee or the acceptance fee — as a PDF (V282): the same facts as the
  *  screen, on one A4 page, under the University's crest. */
 import { A4, Page, pdf } from "@/lib/pdf-write";
+import { currentInstitution } from "./document/institution-cache.ts";
 import { brandHeader } from "@/lib/pdf-crest";
 
 export interface AdmissionReceipt {
@@ -43,6 +44,6 @@ export function admissionReceiptPdf(r: AdmissionReceipt): Uint8Array {
   p.text(L, y, "This receipt is issued by the portal against a payment the University confirmed. It is verified against the Bursary's record, not by its appearance.", 8.5, false, [0.4, 0.4, 0.4]);
   y -= 30;
   p.text(L, y, "Bursar", 10.5, true);
-  p.text(L, 50, `Reference ${r.reference} · generated ${when(r.generated_at)} · Rev. Fr. Moses Orshio Adasu University, Makurdi`, 7.5, false, [0.4, 0.4, 0.4]);
+  p.text(L, 50, `Reference ${r.reference} · generated ${when(r.generated_at)} · ${currentInstitution().name}`, 7.5, false, [0.4, 0.4, 0.4]);
   return pdf([p], `Receipt ${r.reference}`);
 }

@@ -3,6 +3,7 @@
  *  level and duration, the Registry's six notes, the signatory the document template names, and the QR that verifies it. Drawn
  *  the same from the applicant's dashboard and from the student's library (V282). */
 import type { ScreeningResult } from "./applicant.ts";
+import { currentInstitution } from "./document/institution-cache.ts";
 import { A4, Page, pdf, type Image } from "./pdf-write.ts";
 
 export interface LetterApplication {
@@ -59,7 +60,7 @@ export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, orig
   // the crest and the University, centred
   const crest = art.crest;
   if (crest) { p.jpeg(cx - 34, y - 68, 68, 68, crest); y -= 82; } else y -= 10;
-  p.textCenterStyled(cx, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 12.5, { font: B }); y -= 17;
+  p.textCenterStyled(cx, y, currentInstitution().name.toUpperCase(), 12.5, { font: B }); y -= 17;
   p.textCenterStyled(cx, y, "P. M. B 102119, Makurdi, Nigeria", 10.5, { font: B }); y -= 15;
   p.textCenterStyled(cx, y, "(Office of the Registrar)", 10.5, { font: BI }); y -= 22;
   // the date, right; the applicant's name and number
@@ -75,7 +76,7 @@ export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, orig
   p.textCenterStyled(cx, y, (t.subtitle ? t.subtitle.replace("{session}", a.session) : `${a.session} ACADEMIC SESSION`).toUpperCase(), 11.5, { font: B }); y -= 26;
   // the confirmation sentence, the University's name in bold within it
   p.textStyled(L, y, "I am pleased to confirm your offer of provisional admission into the", 10.5, { font: R }); y -= 15;
-  p.textStyled(L, y, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", 10.5, { font: B });
+  p.textStyled(L, y, currentInstitution().name.toUpperCase(), 10.5, { font: B });
   p.textStyled(L + 344, y, "as approved by JAMB as follows:", 10.5, { font: R }); y -= 22;
   const programme = st.changedTo ?? a.programme ?? "";
   const degree = (a.degreeType ?? "").replace(/\s+/g, "").toUpperCase() || "UNDERGRADUATE";

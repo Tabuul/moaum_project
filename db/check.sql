@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 163
+\set EXPECTED 165
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4058,6 +4058,35 @@ BEGIN
     PERFORM pg_temp.assert('A grant is amended with its reason: refused without one, the office and the scope changed in place with the scope as the register''s code, the reason on the audit context, and an ended grant left as it was',
         coalesce(r_noreason = 'IAM_AMEND_SAYS_WHY' AND o_after = 'exams' AND s_after = 'C00023' AND v_reason LIKE 'grant amended:%' AND r_ended = 'IAM_GRANT_ENDED', false),
         format('no reason=%s office=%s scope=%s reason=%s ended=%s', r_noreason, o_after, s_after, left(v_reason, 30), r_ended));
+END $$;
+
+-- ── 164-165. V320: one institution profile every document reads, changed with its rules and audited; an issued document on the record ──
+DO $$
+DECLARE n int; v_name text; r_blank text; r_mail text; v_motto text; audited int; who uuid := gen_random_uuid(); iss uuid; v_actor uuid; v_kind text;
+BEGIN
+    SELECT count(*), max(name) INTO n, v_name FROM platform.institution_profile;
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        BEGIN
+            PERFORM platform.set_institution_profile(' ', 'X', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, true, true, 'LONG');
+        EXCEPTION WHEN check_violation THEN r_blank := split_part(SQLERRM, ':', 1); END;
+        BEGIN
+            PERFORM platform.set_institution_profile('A University', 'AU', NULL, NULL, NULL, NULL, NULL, NULL, 'not-an-address', NULL, NULL, true, true, 'LONG');
+        EXCEPTION WHEN check_violation THEN r_mail := split_part(SQLERRM, ':', 1); END;
+        v_motto := platform.set_institution_profile('A University', 'AU', ' Knowledge and Service ', NULL, 'Makurdi', NULL, NULL, NULL, 'info@example.edu.ng', 'www.example.edu.ng', NULL, true, true, 'SHORT') ->> 'motto';
+        SELECT count(*) INTO audited FROM audit.entries WHERE subject_type = 'platform.institution_profile' AND action = 'UPDATE' AND actor_id = who;
+        iss := platform.record_document_issue('receipt_downloaded', 'RCT/2026/000001', 'payment', 'RCT/2026/000001', '{"format":"pdf"}'::jsonb);
+        SELECT actor_id, kind INTO v_actor, v_kind FROM platform.document_issue WHERE id = iss;
+        RAISE EXCEPTION 'the V320 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('One institution profile heads every document: seeded with a name, a blank name and a malformed e-mail refused, a change trimmed and audited in the actor''s name',
+        coalesce(n = 1 AND v_name <> '' AND r_blank = 'INSTITUTION_NAME_REQUIRED' AND r_mail = 'INSTITUTION_EMAIL_INVALID' AND v_motto = 'Knowledge and Service' AND audited >= 1, false),
+        format('rows=%s blank=%s mail=%s motto=%s audited=%s', n, r_blank, r_mail, v_motto, audited));
+    PERFORM pg_temp.assert('A document the portal issues is on the record in the actor''s name, its kind in capitals',
+        coalesce(v_actor = who AND v_kind = 'RECEIPT_DOWNLOADED', false), format('actor=%s kind=%s', v_actor = who, v_kind));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

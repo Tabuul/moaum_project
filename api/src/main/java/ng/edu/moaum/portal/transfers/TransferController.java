@@ -314,9 +314,9 @@ class TransferController {
 
     private void tell(UUID transfer, String subject, String body) {
         jdbc.sql("""
-                SELECT platform.queue_notice('EMAIL', r.email, :s, :b || E'\\n\\nOffice of the Registrar, Rev. Fr. Moses Orshio Adasu University, Makurdi', 'student', t.student_id),
+                SELECT platform.queue_notice('EMAIL', r.email, :s, :b || E'\\n\\nOffice of the Registrar, ' || :uni, 'student', t.student_id),
                        platform.queue_notice('SMS', r.phone, :s, left(:sms, 150), 'student', t.student_id)
                   FROM people.transfer_application t CROSS JOIN LATERAL people.student_reach(t.student_id) r WHERE t.id = :id
-                """).param("s", subject).param("b", body).param("sms", "MOAUM: " + subject + ". See the portal.").param("id", transfer).query().listOfRows();
+                """).param("s", subject).param("b", body).param("uni", ng.edu.moaum.portal.platform.Branding.name()).param("sms", "MOAUM: " + subject + ". See the portal.").param("id", transfer).query().listOfRows();
     }
 }

@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Results } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
-import { A4, Page, pdf } from "@/lib/pdf-write";
+import {A4, Page} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, resultToken, resultVerifyPath } from "@/lib/qr";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +27,7 @@ function originOf(req: Request): string {
 
 /** the statement of results as a PDF: one semester, the published grades and nothing else */
 export async function GET(request: Request, { params }: { params: Promise<{ session: string; semester: string }> }) {
+  await loadInstitution();
   const p0 = await params;
   const session = decodeURIComponent(p0.session);
   const semester = Number(p0.semester);
@@ -146,6 +150,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   p.text(L, 34, `Issued by the portal on ${day(new Date().toISOString())}`, 7.5, false, [0.45, 0.45, 0.45]);
   p.text(cPoint - 80, 34, x.matricNo ?? "", 7.5, false, [0.45, 0.45, 0.45]);
 
-  const bytes = pdf([p], `Semester Results ${session} ${semester}`);
+  const bytes = finishPdf([p], `Semester Results ${session} ${semester}`, "RESULT");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="semester-results-${session.replace("/", "-")}-${semester}.pdf"` } });
 }

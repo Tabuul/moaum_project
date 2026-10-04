@@ -150,7 +150,7 @@ public class RegistrationService {
         }
         repo.setStatus(id, "APPROVED", AuditContextHolder.required().actorId());
         repo.tellStudent(r.studentId(), "Course registration approved: " + r.session() + " semester " + r.semester(),
-                "Your course registration for " + r.session() + ", semester " + r.semester() + " (" + units + " units at " + r.level() + " Level) has been approved. Your course form is on the portal; the examination card follows when the session's fees are settled.\n\nOffice of the Registrar, Rev. Fr. Moses Orshio Adasu University, Makurdi",
+                "Your course registration for " + r.session() + ", semester " + r.semester() + " (" + units + " units at " + r.level() + " Level) has been approved. Your course form is on the portal; the examination card follows when the session's fees are settled.\n\nOffice of the Registrar, " + ng.edu.moaum.portal.platform.Branding.name() + "",
                 "MOAUM: your course registration for " + r.session() + " semester " + r.semester() + " is approved (" + units + " units).");
         return Map.of("id", id, "status", "APPROVED", "units", units);
     }
@@ -165,7 +165,7 @@ public class RegistrationService {
         }
         repo.returnWithComment(id, comment.trim());
         repo.tellStudent(r.studentId(), "Course registration returned: " + r.session() + " semester " + r.semester(),
-                "Your course registration for " + r.session() + ", semester " + r.semester() + " has been returned to you for correction.\n\nWhat to change: " + comment.trim() + "\n\nOpen Course registration on the portal, make the change and submit again.\n\nOffice of the Registrar, Rev. Fr. Moses Orshio Adasu University, Makurdi",
+                "Your course registration for " + r.session() + ", semester " + r.semester() + " has been returned to you for correction.\n\nWhat to change: " + comment.trim() + "\n\nOpen Course registration on the portal, make the change and submit again.\n\nOffice of the Registrar, " + ng.edu.moaum.portal.platform.Branding.name() + "",
                 "MOAUM: your course registration for " + r.session() + " semester " + r.semester() + " was returned: " + (comment.trim().length() > 80 ? comment.trim().substring(0, 80) + "…" : comment.trim()));
         return Map.of("id", id, "status", "RETURNED");
     }

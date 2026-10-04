@@ -6,6 +6,7 @@
  * student card is landscape, the staff card portrait; both share every part below.
  */
 import { Page, type Image } from "@/lib/pdf-write";
+import { currentInstitution } from "./document/institution-cache.ts";
 import { qrMatrix } from "@/lib/qr";
 
 export type Rgb = [number, number, number];
@@ -128,7 +129,9 @@ function guilloche(p: Page, x0: number, y0: number, W: number, H: number) {
 function header(p: Page, x0: number, top: number, W: number, k: number, crest: Image | null, twoLines: boolean): number {
   const pad = 9 * k, crestSz = 26 * k, gap = 7 * k;
   const nameSize = 9.4 * k, subSize = 6.2 * k;
-  const lines = twoLines ? ["REV. FR. MOSES ORSHIO ADASU", "UNIVERSITY"] : ["REV. FR. MOSES ORSHIO ADASU UNIVERSITY"];
+  const fullName = currentInstitution().name.replace(/,.*$/, "").toUpperCase();
+  const words = fullName.split(/\s+/);
+  const lines = twoLines && words.length > 2 ? [words.slice(0, -1).join(" "), words[words.length - 1]] : [fullName];
   const textH = lines.length * nameSize * 1.16 + 1.5 * k + subSize * 1.2;
   const hb = 6 * k + Math.max(crestSz, textH) + 5 * k;
   p.fillRgb(x0, top - hb, W, hb, C.head);

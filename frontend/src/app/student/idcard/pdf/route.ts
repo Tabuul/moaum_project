@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, Card } from "@/lib/student-portal";
-import { A4, Page, pdf, jpegSize, type Image } from "@/lib/pdf-write";
+import {A4, Page, jpegSize, type Image} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { C, CARD_PX, clean, drawBack, drawFrontLandscape, type CardFace } from "@/lib/idcard-pdf";
+
+import { loadInstitution } from "@/lib/document/institution-server";
+import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +15,7 @@ const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-
 
 /** the student identity card as a printable PDF — front and back, drawn to the same design as on screen (idcard.tsx) */
 export async function GET() {
+  await loadInstitution();
   const meR = await api<Me>("/api/v1/me");
   if (!meR.ok) return NextResponse.json(meR.problem, { status: meR.problem.status });
   const s = meR.data;
@@ -59,7 +63,7 @@ export async function GET() {
   p.textCenter(A4.w / 2, backTop - H - 18, "BACK", 7, true, C.foot);
   p.text(x0, 46, `${clean(s.name)} · ${matric} · generated ${day(new Date().toISOString())}`, 7, false, [0.5, 0.5, 0.5]);
 
-  const bytes = pdf([p], `Identity card ${matric}`);
+  const bytes = finishPdf([p], `Identity card ${matric}`, "ID_CARD");
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="identity-card-${matric.replace(/[^A-Za-z0-9]/g, "-")}.pdf"` },

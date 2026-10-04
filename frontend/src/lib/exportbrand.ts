@@ -1,47 +1,61 @@
 /**
- * One place that brands everything the portal hands a user to download, so a PDF
- * and an Excel of the same thing look like the same institution's document: the
- * crest, the University's name, the document title, the date it was generated,
- * and a serial the office can quote. Reuse brandedXlsx / brandedPrint for any
- * new export rather than calling buildXlsx or window.print directly.
+ * One place that brands everything the portal hands a user to download (V320): the official
+ * identity from the institution profile — the logo, the University's name, the motto and contacts —
+ * the document title, the date it was generated, and a serial the office can quote. A PDF, a print
+ * and an Excel of the same thing look like one institution's document. Reuse brandedXlsx /
+ * brandedPrint for any new export rather than calling buildXlsx or window.print directly.
  */
 import { buildXlsx, loadCrest } from "@/lib/xlsx";
+import { DEFAULT_INSTITUTION, formatDocDate } from "@/lib/document/institution";
+import { currentInstitution } from "@/lib/document/institution-cache";
+import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-client";
+import { printDocument, withSerial, type Cell as DocCell } from "@/lib/document/html";
+import type { DocumentProfileId } from "@/lib/document/profiles";
 
-export const SCHOOL = "Rev. Fr. Moses Orshio Adasu University, Makurdi";
+/** the University's name as the code carried it; prefer currentInstitution().name, which follows the profile */
+export const SCHOOL = DEFAULT_INSTITUTION.name;
 
 type Cell = string | number | null;
 
-/** A per-document serial the office can quote: MOAUM/<PREFIX>/YYYYMMDD/HHMMSS-RR. */
+/** A per-document serial the office can quote: <SHORT NAME>/<PREFIX>/YYYYMMDD/HHMMSS-RR. */
 export function docSerial(prefix: string): string {
   const d = new Date();
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
   const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}/${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   const rand = p(Math.floor(Math.random() * 100));
-  return `MOAUM/${prefix.toUpperCase()}/${stamp}-${rand}`;
+  return `${currentInstitution().shortName.toUpperCase()}/${prefix.toUpperCase()}/${stamp}-${rand}`;
 }
 
-function today(): string {
-  return new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+/** whether the rows already lead with a serial column (a screen that numbered them itself) */
+function leadsWithSerial(headers: string[]): boolean {
+  const h = (headers[0] ?? "").trim().toUpperCase().replace(/\./g, "");
+  return h === "S/N" || h === "SN" || h === "#" || h === "NO" || h === "S/NO";
 }
 
 /**
- * A branded .xlsx: the crest, the University name, the title and the generation
- * date/serial sit above the table. Returns the blob (async — it fetches the crest).
+ * A branded .xlsx: the logo, the University name, the title and the generation date/serial sit above
+ * the table; S/N leads every row (display only, numeric), the header row is frozen and filterable.
+ * Returns the blob (async — it reads the profile and the logo).
  */
 export async function brandedXlsx(
   title: string,
   headers: string[],
   rows: Cell[][],
-  opts: { sheetName?: string; serial?: string; sub?: string } = {},
+  opts: { sheetName?: string; serial?: string; sub?: string; meta?: [string, string][]; noSerialColumn?: boolean } = {},
 ): Promise<Blob> {
+  const inst = typeof window === "undefined" ? currentInstitution() : await getInstitution();
   const serial = opts.serial ?? docSerial("DOC");
-  const logo = await loadCrest().catch(() => null);
+  const logo = await loadCrest(institutionLogoUrl(inst)).catch(() => null) ?? await loadCrest().catch(() => null);
   const sheet = (opts.sheetName ?? title).replace(/[\\/?*[\]:]/g, "-").slice(0, 31) || "Sheet1";
-  return buildXlsx(headers, rows, sheet, {
-    school: SCHOOL,
+  const numbered = !opts.noSerialColumn && !leadsWithSerial(headers);
+  const h = numbered ? ["S/N", ...headers] : headers;
+  const r = numbered ? (withSerial(rows as DocCell[][]) as Cell[][]) : rows;
+  return buildXlsx(h, r, sheet, {
+    school: inst.name.toUpperCase(),
     title: opts.sub ? `${title} — ${opts.sub}` : title,
-    date: `Generated ${today()} · Serial ${serial}`,
+    date: `Generated ${formatDocDate(new Date(), inst)} · Serial ${serial}`,
     logo: logo ?? undefined,
+    meta: opts.meta,
   });
 }
 
@@ -57,9 +71,9 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 /**
- * Open a clean, branded window and print it — the browser's "Save as PDF" does
- * the rest. The crest, University name, title, subtitle, date and serial head
- * the page; the rows fill a table.
+ * Open a clean, branded document and print it — the browser's "Save as PDF" does the rest. The
+ * official header, the title, the subtitle, the date and the serial head the page; the rows fill a
+ * table with a serial column, its header repeated on every printed page; the footer runs on every page.
  */
 export function brandedPrint(
   title: string,
@@ -67,34 +81,19 @@ export function brandedPrint(
   headers: string[],
   rows: Cell[][],
   serial: string = docSerial("DOC"),
+  opts: { profile?: DocumentProfileId; meta?: [string, string][]; generatedBy?: string | null; footnote?: string | null; orientation?: "portrait" | "landscape" } = {},
 ): void {
-  const esc = (x: unknown) => String(x ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] ?? c));
-  const th = headers.map((h) => `<th>${esc(h)}</th>`).join("");
-  const tr = rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("");
-  const crest = `${window.location.origin}/crest.png`;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)} · ${esc(serial)}</title>
-    <style>
-      body{font:12px/1.4 "Segoe UI",system-ui,sans-serif;color:#13242d;margin:24px;}
-      .head{display:flex;gap:14px;align-items:center;border-bottom:2px solid #0e3f55;padding-bottom:12px;margin-bottom:14px;}
-      .head img{width:56px;height:56px;object-fit:contain;}
-      .school{font-size:15px;font-weight:700;color:#0e3f55;}
-      .title{font-size:13px;margin-top:2px;}
-      .meta{margin-left:auto;text-align:right;color:#5a6b74;font-size:11px;line-height:1.5;}
-      table{border-collapse:collapse;width:100%;} th{background:#0e3f55;color:#fff;text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.3px;}
-      td{padding:5px 8px;border-bottom:1px solid #e8eef1;font-size:11px;} tbody tr:nth-child(even){background:#f6f9fa;}
-      .foot{margin-top:14px;color:#8a99a1;font-size:10px;}
-      @media print{@page{size:landscape;margin:12mm;}}
-    </style></head><body>
-    <div class="head">
-      <img src="${crest}" alt="">
-      <div><div class="school">${esc(SCHOOL)}</div><div class="title">${esc(title)}${subtitle ? ` — ${esc(subtitle)}` : ""}</div></div>
-      <div class="meta">Generated ${esc(today())}<br>Serial ${esc(serial)}</div>
-    </div>
-    <table><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>
-    <div class="foot">${esc(SCHOOL)} · ${esc(serial)} · generated from the portal on ${esc(today())}</div>
-    <script>window.onload=function(){setTimeout(function(){window.print();},250);}</script></body></html>`;
-  const w = window.open("", "_blank");
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
+  const numbered = !leadsWithSerial(headers);
+  void printDocument(opts.profile ?? "STANDARD_REPORT", {
+    title,
+    subtitle: subtitle || null,
+    headers,
+    rows,
+    reference: serial,
+    meta: opts.meta,
+    generatedBy: opts.generatedBy ?? null,
+    footnote: opts.footnote ?? null,
+    serial: numbered,
+    orientation: opts.orientation ?? "landscape",
+  });
 }

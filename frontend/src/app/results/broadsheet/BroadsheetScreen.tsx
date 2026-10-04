@@ -4,6 +4,8 @@
 import type { Scope } from "@/lib/scope";
 import { STAGE_LABEL, type Broadsheet } from "@/lib/results";
 import { loadCrest } from "@/lib/xlsx";
+import { currentInstitution } from "@/lib/document/institution-cache";
+import { institutionLogoAbsoluteUrl, institutionLogoUrl } from "@/lib/document/institution-client";
 import { colName, xlsx, type Cell } from "@/lib/xlsx-write";
 import { docSerial } from "@/lib/exportbrand";
 import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
@@ -11,7 +13,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto
 import { DTable } from "@/components/proto/DTable";
 
 const COLOUR = (points: number | null | undefined) => (points == null ? "var(--muted)" : points >= 4 ? "var(--green-ink)" : points >= 1 ? "var(--chrome)" : "var(--red-ink)");
-const UNI = "Rev. Fr. Moses Orshio Adasu University, Makurdi";
+const UNI = () => currentInstitution().name;
 const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
 export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null }) {
@@ -148,9 +150,9 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
 
   async function exportExcel() {
     if (!sheet || !cov) return;
-    const logo = await loadCrest();
+    const logo = (await loadCrest(institutionLogoUrl()).catch(() => null)) ?? (await loadCrest());
     const serial = docSerial("BRD");
-    const head = (t: string): Cell[][] => [[null, UNI], [null, t],
+    const head = (t: string): Cell[][] => [[null, UNI()], [null, t],
       [null, `${cov.degree} · ${sheet.level} Level · ${semester} semester · ${sheet.session} · Serial ${serial}`],
       [null, `Faculty of ${cov.facName} · Department of ${cov.deptName}`],
       [null, `Generated ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })} from the register`], [], []];
@@ -196,7 +198,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
 
   function exportPdf() {
     if (!sheet || !cov) return;
-    const crest = location.origin + "/crest.png";
+    const crest = institutionLogoAbsoluteUrl();
     const serial = docSerial("BRD");
     const sumRows = cov.SUM.map((s) => `<tr><td>${escd(s[0])}</td><td class="n">${escd(String(s[1]))}</td><td class="p">${escd(s[2])}</td></tr>`).join("");
     const keyRows = cov.KEY.map((k) => `<tr><td class="ab">${k[0]}</td><td>${escd(k[1])}</td></tr>`).join("");
@@ -225,7 +227,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
       .bs{border-collapse:collapse;width:100%;margin-top:8px}.bs th,.bs td{border:1px solid #bbb;padding:3px 5px;text-align:center;font-size:10.5px}.bs td.nm,.bs td.co{text-align:left}
       .bs td.b{font-weight:700}.bs td.mt{white-space:nowrap;width:1%}.bs td.nm{white-space:nowrap;line-height:1.2;width:1%}.bs td.co{min-width:150px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:28px}.sign .role{font-style:italic;font-weight:600}.sign .ln{border-bottom:1px dotted #999;color:#555;padding:6px 0 2px;margin-bottom:6px}
       @media print{.pb{page-break-before:always}}</style></head><body>
-      <div class="head"><img src="${crest}" alt=""><div class="uni">${escd(UNI)}</div><div class="st">Examination Reporting Sheet</div><div style="font-size:10px;color:#555;margin-top:3px">Serial ${escd(serial)} · generated ${escd(new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }))}</div></div>
+      <div class="head"><img src="${crest}" alt=""><div class="uni">${escd(UNI())}</div><div class="st">Examination Reporting Sheet</div><div style="font-size:10px;color:#555;margin-top:3px">Serial ${escd(serial)} · generated ${escd(new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }))}</div></div>
       <div class="meta"><div><span class="k">Faculty</span><b>${escd(cov.facName)}</b></div><div><span class="k">Level</span><b>${sheet.level}</b></div>
         <div><span class="k">Department</span><b>${escd(cov.deptName)}</b></div><div><span class="k">Semester</span><b>${semester}</b></div>
         <div><span class="k">Degree in view</span><b>${escd(cov.degree)}</b></div><div><span class="k">Session</span><b>${escd(sheet.session)}</b></div></div>
@@ -305,7 +307,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet }: { scope:
                   <div className="ers__title">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src="/crest.png" alt="University crest" className="ers__crest" />
-                    <div className="ers__uni">{UNI}</div>
+                    <div className="ers__uni">{UNI()}</div>
                     <div className="ers__sub">Examination Reporting Sheet</div>
                   </div>
                   <div className="ers__meta">
