@@ -93,11 +93,13 @@ test("the examining body, series, number and year are read the way the database 
 test("the file's own duplicates are found before anything is recorded", () => {
   const head = ["RegNum", "SubjectName", "Grade", "ExamSeries", "ExamYear", "ExamType", "ExamNumber"];
   const r = olParse([head,
-    // one candidate: WAEC May/June 2023 twice under two numbers (a clash); the GCE of 2023 (its own sitting); NECO under the same number twice as written
+    // one candidate: WAEC May/June 2023 under two numbers (V315: two sittings, nothing to say); the same number again, written
+    // with spaces, under other grades (the one thing held); the GCE of 2023 (its own sitting); NECO under the same number twice as written
     ["202611111111AA", "English Language", "C6", "MAY/JUNE", "2023", "WASSCE", "4250101001"],
     ["202611111111AA", "Mathematics", "B3", "MAY/JUNE", "2023", "WASSCE", "4250101001"],
     ["202611111111AA", "Mathematics", "B3", "MAY/JUNE", "2023", "WASSCE", "4250101001"],
     ["202611111111AA", "English Language", "B2", "MAY/JUNE", "2023", "WASSCE", "4250101002"],
+    ["202611111111AA", "English Language", "B2", "MAY/JUNE", "2023", "WAEC", "4250 101 001"],
     ["202611111111AA", "Biology", "C4", "NOV/DEC", "2023", "WAEC GCE", "4250999001"],
     ["202611111111AA", "Chemistry", "C4", "JUNE/JULY", "2023", "NECO", "1234567890"],
     ["202611111111AA", "Chemistry", "C4", "JUNE/JULY", "2023", "NECO (SSCE)", "1234 567 890"],
@@ -106,7 +108,7 @@ test("the file's own duplicates are found before anything is recorded", () => {
   ]);
   assert.ok("rows" in r);
   const d = olDuplicates(r.rows);
-  assert.deepEqual(d.sameSitting, [{ num: "202611111111AA", body: "WAEC", year: "2023", series: "INTERNAL", numbers: ["4250101001", "4250101002"] }]);
+  assert.deepEqual(d.sameSitting, [{ num: "202611111111AA", body: "WAEC", year: "2023", series: "INTERNAL", numbers: ["4250101001", "4250 101 001"] }]);
   assert.equal(d.sameResult.length, 1);
   assert.equal(d.sameResult[0].body, "NECO");
   assert.deepEqual(d.sharedNumber, [{ body: "WAEC", exnum: "4250101001", nums: ["202611111111AA", "202622222222BB"] }]);
