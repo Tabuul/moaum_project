@@ -160,7 +160,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
       const checked = kind === "OLEVEL" ? [
         skipped ? `${skipped} already recorded exactly as sent (skipped)` : "",
         found.SAME_RESULT ? `${found.SAME_RESULT} result${found.SAME_RESULT === 1 ? "" : "s"} already on record, not recorded again` : "",
-        found.SAME_SITTING ? `${found.SAME_SITTING} second result${found.SAME_SITTING === 1 ? "" : "s"} for one examination HELD for the Office to decide` : "",
+        found.SAME_SITTING ? `${found.SAME_SITTING} result${found.SAME_SITTING === 1 ? "" : "s"} under an exam number already on record with other grades, HELD for the Office to decide` : "",
         found.NUMBER_ELSEWHERE ? `${found.NUMBER_ELSEWHERE} exam number${found.NUMBER_ELSEWHERE === 1 ? "" : "s"} already on another applicant's record, flagged` : "",
       ].filter(Boolean).join("; ") : (skipped ? `${skipped} already recorded (skipped)` : "");
       setSaid(`${recorded} recorded; ${attached || "nothing newly"} attached to a candidate.${checked ? ` Duplicate check: ${checked}.` : kind === "OLEVEL" ? " Duplicate check: nothing repeated." : ""}`);
@@ -417,15 +417,15 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
         </div></div>
         {fd ? (
           <Note kind={fdSerious ? "bad" : fdAll ? "info" : "ok"} title={fdAll ? `Duplicate check on this file: ${[
-            fd.sameSitting.length ? `${fd.sameSitting.length} candidate${fd.sameSitting.length === 1 ? " has" : "s have"} two results for one examination` : "",
+            fd.sameSitting.length ? `${fd.sameSitting.length} candidate${fd.sameSitting.length === 1 ? " has" : "s have"} the same exam number twice with other grades` : "",
             fd.sharedNumber.length ? `${fd.sharedNumber.length} exam number${fd.sharedNumber.length === 1 ? " is" : "s are"} given to more than one candidate` : "",
             fd.sameResult.length ? `${fd.sameResult.length} result${fd.sameResult.length === 1 ? "" : "s"} repeated` : "",
             fd.repeatedSubjects.length ? `${fd.repeatedSubjects.length} subject${fd.repeatedSubjects.length === 1 ? "" : "s"} listed twice in a sitting` : "",
           ].filter(Boolean).join("; ")}` : "Duplicate check on this file: nothing repeated"}>
-            {fdAll ? <>The file is checked before anything is recorded, and every sitting is checked again against the record as it is recorded: a result already on record is not recorded twice, a second result for the same examining body, year and series is <b>held</b> for the Office to decide, and an exam number on another applicant&rsquo;s record is recorded and <b>flagged</b> — all listed under Duplicate O&rsquo;Level uploads below.</> : "No candidate has two results for one examination, no exam number is given to two candidates, and nothing is repeated. Each sitting is still checked against the record as it is recorded."}
+            {fdAll ? <>The file is checked before anything is recorded, and every sitting is checked again against the record as it is recorded. A duplicate is the <b>same exam number</b>: the same number with the same grades is not recorded twice, the same number with other grades is <b>held</b> for the Office to decide, and an exam number on another applicant&rsquo;s record is recorded and <b>flagged</b> — all listed under Duplicate O&rsquo;Level uploads below. Another exam number of the same body, the same year and series or not, is another sitting and is recorded: results are combined across sittings.</> : "No exam number is repeated for a candidate, no exam number is given to two candidates, and nothing is repeated. Each sitting is still checked against the record as it is recorded."}
             {fdSerious ? (
               <DTable pageSize={10} cols={["JAMB number|mid", "Examination", "Exam numbers"]} rows={[
-                ...fd.sameSitting.map((x) => [<span key="n" className="tnum">{x.num}</span>, <span key="e">{x.body} {x.year} · {x.series === "EXTERNAL" ? "Nov/Dec (private)" : "May/June (school)"}</span>, <span key="x" className="tnum">{x.numbers.join(" · ")}</span>]),
+                ...fd.sameSitting.map((x) => [<span key="n" className="tnum">{x.num}</span>, <span key="e">{x.body} {x.year} · {x.series === "EXTERNAL" ? "Nov/Dec (private)" : "May/June (school)"} · the same exam number, other grades</span>, <span key="x" className="tnum">{[...new Set(x.numbers)].join(" · ")}</span>]),
                 ...fd.sharedNumber.map((x) => [<span key="n" className="tnum">{x.nums.join(" · ")}</span>, <span key="e">{x.body} · the same exam number</span>, <span key="x" className="tnum">{x.exnum}</span>]),
               ]} />
             ) : null}

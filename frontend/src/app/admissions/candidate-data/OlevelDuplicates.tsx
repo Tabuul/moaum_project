@@ -1,7 +1,7 @@
 "use client";
 
-/** V298 · the O'Level upload check's findings for the session: a second result for one examination (the same examining body, year and
- *  series) held until the Office keeps the result on record or uses the uploaded one in its place; an exam number on another
+/** V298 · the O'Level upload check's findings for the session: the same exam number again with other grades (V315: a duplicate is the
+ *  same exam number; another number is another sitting) held until the Office keeps the result on record or uses the uploaded one in its place; an exam number on another
  *  applicant's record, recorded and open until the verification is recorded; the same result sent again, not recorded twice. The
  *  Office's word always says how it was verified; the database refuses it otherwise. */
 import { useState } from "react";
@@ -62,10 +62,10 @@ export function OlevelDuplicates({ session, initial, may }: { session: string; i
     <Panel title="Duplicate O’Level uploads" right={open.length ? <Pil kind="bad">{open.length} to decide</Pil> : `${rows.length} finding${rows.length === 1 ? "" : "s"}`}>
       <PBody>
         <div className="stack">
-          <div className="sub2">Every sitting an upload carries is checked before it is recorded. <b>The same result again</b> — the same examining body and exam number (however it is written), or the same examination with the same grades — is not recorded twice. <b>A second result for one examination</b> — the same body, year and series (May/June or the private Nov/Dec GCE) with other grades or another exam number — is held, not recorded, until the Office decides which is the candidate&rsquo;s. <b>An exam number already on another applicant&rsquo;s record</b> is recorded and stays open until its verification is recorded.</div>
+          <div className="sub2">Every sitting an upload carries is checked before it is recorded. <b>The same result again</b> — the same examining body and exam number (however it is written), or the same examination with the same grades — is not recorded twice. <b>The same exam number with other grades</b> is held, not recorded, until the Office decides which is the candidate&rsquo;s. Another exam number of the same body — the same year and series or not — is another sitting and is recorded: results are combined across sittings. <b>An exam number already on another applicant&rsquo;s record</b> is recorded and stays open until its verification is recorded.</div>
           {problem && !acting ? <ProblemNotice problem={problem} /> : null}
           <Tiles items={[
-            ["Held — second result", String(rows.filter((r) => r.state === "HELD").length), rows.some((r) => r.state === "HELD") ? "var(--red-ink)" : null, `${count("SAME_SITTING")} found in all`],
+            ["Held — same number, other grades", String(rows.filter((r) => r.state === "HELD").length), rows.some((r) => r.state === "HELD") ? "var(--red-ink)" : null, `${count("SAME_SITTING")} found in all`],
             ["Open — shared exam number", String(rows.filter((r) => r.state === "OPEN").length), rows.some((r) => r.state === "OPEN") ? "var(--amber-ink)" : null, `${count("NUMBER_ELSEWHERE")} found in all`],
             ["Same result sent again", String(count("SAME_RESULT")), null, "Not recorded twice"],
             ["Decided", String(rows.filter((r) => ["KEPT", "USED", "VERIFIED"].includes(r.state)).length), null, "With how it was verified"],

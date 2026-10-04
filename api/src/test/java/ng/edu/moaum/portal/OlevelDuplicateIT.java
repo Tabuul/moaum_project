@@ -92,13 +92,20 @@ class OlevelDuplicateIT {
         ResponseEntity<Map> r3 = record(k1 + " WASSCE 2023", k1, again);
         assertThat(r3.getBody().get("recorded")).isEqualTo(0);
         assertThat(r3.getBody().get("skipped")).isEqualTo(1);
-        // a changed file under the same name: recorded beside the first; its second WAEC May/June 2023 result is held, not recorded
+        // V315: a second WAEC May/June 2023 result under ANOTHER exam number is another sitting — recorded, nothing held
         Map<String, Object> changed = Map.of("sittings", List.of(
                 Map.of("type", "WASSCE", "series", "MAY/JUNE", "year", "2023", "examNumber", otherNo, "subjects", List.of(g("English Language", "B2"), g("Mathematics", "A1"), g("Physics", "B3")))));
         ResponseEntity<Map> r4 = record(k1 + " WASSCE 2023", k1, changed);
         assertThat(r4.getBody().get("recorded")).isEqualTo(1);
-        assertThat(dup(r4, "SAME_SITTING")).isEqualTo(1);
-        assertThat(jdbc.sql("SELECT admissions.olevel_sittings(:s, :k)").param("s", SESSION).param("k", k1).query(Integer.class).single()).isEqualTo(2);
+        assertThat(dup(r4, "SAME_SITTING")).isZero();
+        assertThat(jdbc.sql("SELECT admissions.olevel_sittings(:s, :k)").param("s", SESSION).param("k", k1).query(Integer.class).single()).isEqualTo(3);
+        // the SAME exam number again with other grades: one sitting cannot have two sets of grades — held, not recorded
+        Map<String, Object> regraded = Map.of("sittings", List.of(
+                Map.of("type", "WASSCE", "series", "MAY/JUNE", "year", "2023", "examNumber", waecNo, "subjects", List.of(g("English Language", "B2"), g("Mathematics", "A1"), g("Physics", "B3")))));
+        ResponseEntity<Map> r4b = record(k1 + " WASSCE 2023 regraded", k1, regraded);
+        assertThat(r4b.getBody().get("recorded")).isEqualTo(1);
+        assertThat(dup(r4b, "SAME_SITTING")).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT admissions.olevel_sittings(:s, :k)").param("s", SESSION).param("k", k1).query(Integer.class).single()).isEqualTo(3);
         // another applicant with the first one's WAEC number: recorded for them, and flagged
         ResponseEntity<Map> r5 = record(k2 + " WAEC 2022", k2, Map.of("sittings", List.of(
                 Map.of("type", "WAEC", "year", "2022", "examNumber", waecNo.substring(0, 3) + "-" + waecNo.substring(3), "subjects", List.of(g("English Language", "A1"))))));
@@ -110,7 +117,7 @@ class OlevelDuplicateIT {
         Map<String, Object> held = rows.stream().filter(x -> k1.equals(x.get("jamb_key")) && "SAME_SITTING".equals(x.get("kind"))).findFirst().orElseThrow();
         Map<String, Object> open = rows.stream().filter(x -> k2.equals(x.get("jamb_key")) && "NUMBER_ELSEWHERE".equals(x.get("kind"))).findFirst().orElseThrow();
         assertThat(held.get("state")).isEqualTo("HELD");
-        assertThat(held.get("exam_number")).isEqualTo(otherNo);
+        assertThat(held.get("exam_number")).isEqualTo(waecNo);
         assertThat(held.get("other_exam_number")).isEqualTo(waecNo);
         assertThat(open.get("state")).isEqualTo("OPEN");
         assertThat(open.get("other_jamb_key")).isEqualTo(k1);
@@ -121,7 +128,7 @@ class OlevelDuplicateIT {
         assertThat(it.call(bursar, HttpMethod.POST, PATH + "/olevel-duplicates/" + held.get("id") + "/USE", Map.of("note", "x")).getStatusCode().value()).isEqualTo(403);
         assertThat(it.call(academic, HttpMethod.POST, PATH + "/olevel-duplicates/" + held.get("id") + "/MERGE", Map.of("note", "x")).getStatusCode().value()).isEqualTo(422);
         ResponseEntity<Map> used = it.call(academic, HttpMethod.POST, PATH + "/olevel-duplicates/" + held.get("id") + "/USE",
-                Map.of("note", "Checked on the WAEC result checker: " + otherNo + " is the candidate's"));
+                Map.of("note", "Checked on the WAEC result checker: the grades under " + waecNo + " are the uploaded ones"));
         assertThat(used.getStatusCode().value()).as(String.valueOf(used.getBody())).isEqualTo(200);
         assertThat(l(used.getBody().get("rows")).stream().filter(x -> held.get("id").equals(x.get("id"))).findFirst().orElseThrow().get("state")).isEqualTo("USED");
         ResponseEntity<Map> twice = it.call(registrar, HttpMethod.POST, PATH + "/olevel-duplicates/" + held.get("id") + "/KEEP", Map.of("note", "x"));
@@ -131,11 +138,11 @@ class OlevelDuplicateIT {
                 Map.of("note", "WAEC confirms the number is the first candidate's; the second referred to the Registrar"));
         assertThat(verified.getStatusCode().value()).as(String.valueOf(verified.getBody())).isEqualTo(200);
 
-        // the candidate's O'Level: the uploaded result in place of the one on record, the findings beside it
+        // the candidate's O'Level: three sittings — both WAEC numbers and the NECO — with the uploaded grades in place of the first under its number
         Map<String, Object> olevel = it.get(academic, "/api/v1/admissions/sessions/2117/2118/candidate-data/" + k1 + "/olevel").getBody();
         List<Map<String, Object>> sittings = l(olevel.get("sittings"));
-        assertThat(sittings).hasSize(2);
-        assertThat(sittings.stream().map(x -> x.get("examNumber"))).contains(otherNo).doesNotContain(waecNo);
+        assertThat(sittings).hasSize(3);
+        assertThat(sittings.stream().map(x -> x.get("examNumber"))).contains(otherNo, waecNo);
         assertThat(l(olevel.get("duplicates")).stream().map(x -> x.get("kind"))).contains("SAME_SITTING", "NUMBER_ELSEWHERE");
     }
 }

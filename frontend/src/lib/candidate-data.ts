@@ -227,9 +227,9 @@ export function examYear(y: unknown): string {
 const sigOf = (s: OlSitting) => [...new Set(s.subjects.map((g) => `${g.subject}=${g.grade}`))].sort().join(",");
 
 export interface OlFileDuplicates {
-  /** a candidate with two results for one examination (the same body, year and series) that differ */
+  /** V315: a candidate with the same exam number twice under other grades — one sitting cannot have two sets of grades */
   sameSitting: { num: string; body: string; year: string; series: "INTERNAL" | "EXTERNAL"; numbers: string[] }[];
-  /** the same result twice in the file (the same body and exam number, or the same examination and grades) */
+  /** the same result twice in the file (the same body and exam number with the same grades, or, without a number, the same examination and grades) */
   sameResult: { num: string; body: string; year: string; exnum: string }[];
   /** an exam number the file gives more than one candidate */
   sharedNumber: { body: string; exnum: string; nums: string[] }[];
@@ -237,7 +237,9 @@ export interface OlFileDuplicates {
   repeatedSubjects: { num: string; body: string; year: string; subject: string; times: number }[];
 }
 
-/** what the file itself repeats, before anything is recorded — the server checks the same against the record */
+/** what the file itself repeats, before anything is recorded — the server checks the same against the record. The rule (V315): a
+ *  duplicate is the SAME EXAM NUMBER; another number of the same body, whatever the year and series, is another sitting, recorded —
+ *  results are combined across sittings. */
 export function olDuplicates(rows: OlRow[]): OlFileDuplicates {
   const out: OlFileDuplicates = { sameSitting: [], sameResult: [], sharedNumber: [], repeatedSubjects: [] };
   const byNumber = new Map<string, { body: string; exnum: string; nums: Set<string> }>();
@@ -254,14 +256,14 @@ export function olDuplicates(rows: OlRow[]): OlFileDuplicates {
         e.nums.add(r.num);
         byNumber.set(k, e);
       }
-      const same = kept.find((o) => examBody(o.type) === body && ((key && examKey(o.exnum) === key)
-        || (year && body !== "OTHER" && examYear(o.year) === year && seriesClass(o.type, o.series) === cls && sigOf(o) === sigOf(s))));
+      const same = kept.find((o) => examBody(o.type) === body && ((key && examKey(o.exnum) === key && sigOf(o) === sigOf(s))
+        || ((!key || !examKey(o.exnum)) && year && body !== "OTHER" && examYear(o.year) === year && seriesClass(o.type, o.series) === cls && sigOf(o) === sigOf(s))));
       if (same) { out.sameResult.push({ num: r.num, body, year: s.year, exnum: s.exnum }); continue; }
-      const clash = year && body !== "OTHER" ? kept.find((o) => examBody(o.type) === body && examYear(o.year) === year && seriesClass(o.type, o.series) === cls) : undefined;
+      const clash = key ? kept.find((o) => examBody(o.type) === body && examKey(o.exnum) === key) : undefined;
       if (clash) {
-        const hit = out.sameSitting.find((x) => x.num === r.num && x.body === body && x.year === year && x.series === cls);
-        if (hit) hit.numbers.push(s.exnum || "(no number)");
-        else out.sameSitting.push({ num: r.num, body, year, series: cls, numbers: [clash.exnum || "(no number)", s.exnum || "(no number)"] });
+        const hit = out.sameSitting.find((x) => x.num === r.num && x.body === body && examKey(x.numbers[0]) === key);
+        if (hit) hit.numbers.push(s.exnum);
+        else out.sameSitting.push({ num: r.num, body, year, series: cls, numbers: [clash.exnum, s.exnum] });
         continue;
       }
       kept.push(s);
@@ -283,7 +285,7 @@ export interface OlevelDuplicateRegister { session: string; rows: OlevelDuplicat
 
 export const FINDING_WORD: Record<OlevelDuplicateRow["kind"], [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
   SAME_RESULT: ["Already on record", "grey"],
-  SAME_SITTING: ["Second result for one examination", "bad"],
+  SAME_SITTING: ["Same exam number, other grades", "bad"],
   NUMBER_ELSEWHERE: ["Exam number on another applicant", "warn"],
 };
 export const FINDING_STATE: Record<OlevelDuplicateRow["state"], [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
