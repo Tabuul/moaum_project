@@ -1,4 +1,5 @@
 import { API_URL } from "@/lib/api";
+import type { PublicWindows } from "@/components/ApplicationClosed";
 import { Login } from "./Login";
 
 export const dynamic = "force-dynamic";
@@ -15,5 +16,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     sso = null;
   }
   const ssoProblem = typeof params.sso === "string" && params.sso ? params.sso : null;
-  return <Login next={next} sso={sso} ssoProblem={ssoProblem} />;
+  /* V312: the application buttons show only while the Director of ICT has that window open; the API is the authority */
+  let applications: { postUtme: boolean; postgraduate: boolean } | null = null;
+  try {
+    const r = await fetch(`${API_URL}/api/v1/public/application-windows`, { cache: "no-store" });
+    if (r.ok) {
+      const w = (await r.json()) as PublicWindows;
+      applications = { postUtme: w.postUtme?.open === true, postgraduate: w.postgraduate?.open === true };
+    }
+  } catch {
+    applications = null;
+  }
+  return <Login next={next} sso={sso} ssoProblem={ssoProblem} applications={applications} />;
 }

@@ -22,6 +22,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import ng.edu.moaum.portal.shared.ApplicationWindows;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
@@ -38,6 +39,12 @@ import ng.edu.moaum.portal.shared.DomainRuleViolation;
  * session may pay the admission checking fee and check their admission status. It runs over the whole admission exercise (no
  * semester, no late period), is closed until the Director first opens it, and its opening, extension and closing are told to
  * the session's applicants; its counts and report are read by the Director and the admissions offices.
+ *
+ * <p>V312 adds the two application windows of the admission exercise, POST_UTME_REGISTRATION and POSTGRADUATE_APPLICATION:
+ * whether a new Post-UTME applicant account or a new postgraduate application may be started. Each runs over the whole
+ * exercise of a session, is open until the Director first acts, and is refused at the API and again in the database while
+ * closed, scheduled or expired; the public — the portal's login and apply pages and the University's website — reads its state
+ * and the Director's closure message from {@code /api/v1/public/application-windows}. Nobody is told: the audience is the public.
  */
 @RestController
 @RequestMapping("/api/v1/portal-windows")
@@ -53,9 +60,11 @@ class PortalWindowController {
             "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super')";
 
     private final JdbcClient jdbc;
+    private final ApplicationWindows applications;
 
-    PortalWindowController(JdbcClient jdbc) {
+    PortalWindowController(JdbcClient jdbc, ApplicationWindows applications) {
         this.jdbc = jdbc;
+        this.applications = applications;
     }
 
     /** the windows of a session: the session-wide rule and each semester's, their states now, the students they reach, the last acts */
@@ -113,11 +122,16 @@ class PortalWindowController {
     @Transactional
     Map<String, Object> act(@PathVariable String type, @Valid @RequestBody ActIn body) {
         String t = type.trim().toUpperCase();
-        if (!TYPES.contains(t) && !CHECKING.equals(t)) {
-            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration and admission status checking.", new DomainRuleViolation.Remedy("Name one of the three.", "Directorate of ICT"));
+        boolean application = ApplicationWindows.TYPES.contains(t);
+        if (!TYPES.contains(t) && !CHECKING.equals(t) && !application) {
+            throw new DomainRuleViolation("WINDOW_TYPE", "The portal's windows are school fees payment, course registration, admission status checking, Post-UTME registration and the postgraduate application.", new DomainRuleViolation.Remedy("Name one of the five.", "Directorate of ICT"));
         }
         if (CHECKING.equals(t) && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
             throw new DomainRuleViolation("WINDOW_CHECKING_SESSION", "Admission status checking opens and closes for the whole admission exercise of a session, with no semester and no late period.",
+                    new DomainRuleViolation.Remedy("Leave the semester and the late period blank.", "Directorate of ICT"));
+        }
+        if (application && (body.semester() != null || body.lateUntil() != null || Boolean.TRUE.equals(body.lateFeeEnabled()))) {
+            throw new DomainRuleViolation("WINDOW_APPLICATION_SESSION", ApplicationWindows.word(t) + " opens and closes for the whole admission exercise of a session, with no semester and no late period.",
                     new DomainRuleViolation.Remedy("Leave the semester and the late period blank.", "Directorate of ICT"));
         }
         if (body.semester() != null && (body.semester() < 1 || body.semester() > 3)) {
@@ -132,7 +146,7 @@ class PortalWindowController {
                 .query(UUID.class).single();
         Map<String, Object> after = state(t, body.session(), body.semester());
         int told = 0;
-        if (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action())) {
+        if (!application && (List.of("OPEN", "REOPEN", "EXTEND", "CLOSE").contains(body.action()) && !String.valueOf(before.get("state")).equals(String.valueOf(after.get("state"))) || "EXTEND".equals(body.action()))) {
             told = CHECKING.equals(t)
                     ? jdbc.sql("SELECT admissions.tell_status_checking(:s, :a)").param("s", body.session().trim()).param("a", body.action()).query(Integer.class).single()
                     : tell(t, body.session().trim(), body.semester(), body.action(), after);
@@ -142,8 +156,67 @@ class PortalWindowController {
         out.put("before", before);
         out.put("after", after);
         out.put("told", told);
-        out.putAll(CHECKING.equals(t) ? checking(body.session()) : read(body.session()));
+        out.putAll(application ? applicationsOf(body.session()) : CHECKING.equals(t) ? checking(body.session()) : read(body.session()));
         return out;
+    }
+
+    /* ── the application windows (V312): Post-UTME registration and the postgraduate application, and their closure messages ── */
+
+    /** both application windows for a session — their states, dates, counts, closure messages and histories — and the sessions to choose from */
+    @GetMapping("/applications")
+    @PreAuthorize(DIRECTOR)
+    @Transactional(readOnly = true)
+    Map<String, Object> applicationsOf(@RequestParam(required = false) String session) {
+        String s = session == null || session.isBlank() ? applications.sessionOf(ApplicationWindows.POST_UTME) : session.trim();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("liveSessions", Map.of(ApplicationWindows.POST_UTME, applications.sessionOf(ApplicationWindows.POST_UTME),
+                                       ApplicationWindows.POSTGRADUATE, applications.sessionOf(ApplicationWindows.POSTGRADUATE)));
+        out.put("sessions", jdbc.sql("""
+                SELECT s.name, s.state,
+                       (SELECT count(*) FROM admissions.applicant_account a WHERE a.session = s.name) AS registrations,
+                       (SELECT count(*) FROM admissions.pg_application a WHERE a.session = s.name) AS applications
+                  FROM policy.academic_session s ORDER BY s.name DESC
+                """).query().listOfRows());
+        List<Map<String, Object>> windows = new java.util.ArrayList<>();
+        for (String t : ApplicationWindows.TYPES) {
+            Map<String, Object> w = new LinkedHashMap<>(state(t, s, null));
+            w.put("type", t);
+            w.put("session", s);
+            w.put("path", ApplicationWindows.POST_UTME.equals(t) ? "/apply" : "/pg/apply");
+            w.putAll(jdbc.sql("""
+                    SELECT m.message, m.updated_at AS message_updated_at, m.updated_office AS message_office,
+                           (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = m.updated_by) AS message_updated_by
+                      FROM policy.portal_window_message m WHERE m.window_type = :t
+                    """).param("t", t).query().singleRow());
+            String table = ApplicationWindows.POST_UTME.equals(t) ? "admissions.applicant_account" : "admissions.pg_application";
+            w.putAll(jdbc.sql("SELECT count(*) AS total, count(*) FILTER (WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS today,"
+                    + " count(*) FILTER (WHERE created_at >= now() - interval '7 days') AS week FROM " + table + " WHERE session = :s").param("s", s).query().singleRow());
+            w.put("events", history(s, t, 200));
+            windows.add(w);
+        }
+        out.put("windows", windows);
+        out.put("publicPath", "/api/v1/public/application-windows");
+        out.put("now", OffsetDateTime.now());
+        return out;
+    }
+
+    public record MessageIn(@NotBlank @Size(max = 2000) String message) {
+    }
+
+    /** the closure message the public reads while an application window is closed: plain text, the Director's words */
+    @PostMapping("/applications/{type}/message")
+    @PreAuthorize(DIRECTOR)
+    @Transactional
+    Map<String, Object> message(@PathVariable String type, @Valid @RequestBody MessageIn body, @RequestParam(required = false) String session) {
+        String t = type.trim().toUpperCase();
+        if (!ApplicationWindows.TYPES.contains(t)) {
+            throw new DomainRuleViolation("WINDOW_TYPE", "A closure message belongs to Post-UTME registration or the postgraduate application.", new DomainRuleViolation.Remedy("Name one of the two.", "Directorate of ICT"));
+        }
+        AuditContext ctx = AuditContextHolder.required();
+        jdbc.sql("SELECT policy.window_message_set(:t, :m, :by, :office)")
+                .param("t", t).param("m", body.message()).param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query().listOfRows();
+        return applicationsOf(session);
     }
 
     /* ── admission status checking (V295): the window of the admission exercise, its counts, its report ── */
@@ -257,6 +330,8 @@ class PortalWindowController {
         return switch (type) {
             case "SCHOOL_FEES_PAYMENT" -> "School fees payment";
             case CHECKING -> "Admission status checking";
+            case ApplicationWindows.POST_UTME -> "Post-UTME registration";
+            case ApplicationWindows.POSTGRADUATE -> "Postgraduate application";
             default -> "Course registration";
         };
     }

@@ -28,7 +28,11 @@ function whoIs(id: string): string {
   return "A member of staff, on the staff number";
 }
 
-export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null }) {
+export function Login({ next, sso, ssoProblem = null, applications = null }: {
+  next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null;
+  /** V312: which application windows the Director of ICT has open; a button shows only for an open one */
+  applications?: { postUtme: boolean; postgraduate: boolean } | null;
+}) {
   const router = useRouter();
   const [uid, setUid] = useState("");
   const [pw, setPw] = useState("");
@@ -110,14 +114,18 @@ export function Login({ next, sso, ssoProblem = null }: { next: string; sso: { e
             <Link href="/login/forgot">Forgot your password?</Link>
             <Link href="/login/first">First account</Link>
           </div>
-          <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
-            <LinkBtn kind="ghost" href="/apply">Post UTME Registration</LinkBtn>
-            <div className="hint" style={{ textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
-          </div>
-          <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
-            <LinkBtn kind="ghost" href="/pg/apply">Postgraduate application</LinkBtn>
-            <div className="hint" style={{ textAlign: "center" }}>PGD, Master&rsquo;s and PhD — apply directly, no JAMB number needed</div>
-          </div>
+          {applications?.postUtme ? (
+            <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
+              <LinkBtn kind="ghost" href="/apply">Post UTME Registration</LinkBtn>
+              <div className="hint" style={{ textAlign: "center" }}>No account yet — start from your JAMB registration number</div>
+            </div>
+          ) : null}
+          {applications?.postgraduate ? (
+            <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
+              <LinkBtn kind="ghost" href="/pg/apply">Postgraduate application</LinkBtn>
+              <div className="hint" style={{ textAlign: "center" }}>PGD, Master&rsquo;s and PhD — apply directly, no JAMB number needed</div>
+            </div>
+          ) : null}
           <div className="stack" style={{ borderTop: "1px solid var(--line)", paddingTop: "var(--s-4)" }}>
             <LinkBtn kind="ghost" href="/verify">Verify a payment or receipt</LinkBtn>
             <div className="hint" style={{ textAlign: "center" }}>Employers and institutions — no account needed. A document&rsquo;s QR opens its own check.</div>

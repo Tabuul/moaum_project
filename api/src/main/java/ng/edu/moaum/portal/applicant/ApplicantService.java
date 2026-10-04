@@ -16,6 +16,7 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 import ng.edu.moaum.portal.auth.TokenIssuer;
+import ng.edu.moaum.portal.shared.ApplicationWindows;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
@@ -54,16 +55,18 @@ public class ApplicantService {
     private final ApplicantRepository repo;
     private final TokenIssuer issuer;
     private final TransactionTemplate tx;
+    private final ApplicationWindows windows;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
     private final String portalUrl;
 
-    ApplicantService(ApplicantRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions,
+    ApplicantService(ApplicantRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions, ApplicationWindows windows,
                      @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.repo = repo;
         this.issuer = issuer;
         this.tx = new TransactionTemplate(transactions);
+        this.windows = windows;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
@@ -183,6 +186,8 @@ public class ApplicantService {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
                     new DomainRuleViolation.Remedy("This one account carries you to graduation.", "You"));
         }
+        // V312: a new applicant account is started only while the Director of ICT has Post-UTME registration open for the session
+        windows.requireOpen(ApplicationWindows.POST_UTME, session);
         String hash = encoder.encode(password);
         UUID account = atTheDoor(null, "Post-UTME registration", () -> repo.register(session, key, mail, phone, hash));
         // the account details go to the email (and phone) the applicant registered with;

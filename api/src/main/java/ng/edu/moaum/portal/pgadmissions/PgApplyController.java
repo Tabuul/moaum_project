@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.ApplicationWindows;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
@@ -41,12 +42,14 @@ class PgApplyController {
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
     private final tools.jackson.databind.ObjectMapper json;
+    private final ApplicationWindows windows;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
 
-    PgApplyController(JdbcClient jdbc, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json) {
+    PgApplyController(JdbcClient jdbc, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json, ApplicationWindows windows) {
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactions);
         this.json = json;
+        this.windows = windows;
     }
 
     /** the postgraduate programmes to apply into, for the form's picker (public) */
@@ -81,6 +84,8 @@ class PgApplyController {
     /** apply: creates the applicant account and a submitted application, and returns the fee reference to pay */
     @PostMapping("/apply")
     Map<String, Object> apply(@Valid @RequestBody ApplyIn body) {
+        // V312: a new application is started only while the Director of ICT has the postgraduate application open
+        windows.requireOpen(ApplicationWindows.POSTGRADUATE, null);
         // no duplicate application: an email that already carries one is told its number, not given a second
         List<Map<String, Object>> existing = jdbc.sql("""
                 SELECT a.application_no FROM admissions.pg_application a

@@ -404,6 +404,10 @@ export const TITLES: Record<string, [string, string]> = {
     "Admission Status Checking",
     "Whether every applicant with a valid Post-UTME application may pay the admission checking fee and check their status; opened and closed by the Director of ICT, on the record"
   ],
+  "t/applicationwindows": [
+    "Application Registration Control",
+    "Whether a new Post UTME registration or postgraduate application may be started; opened and closed by the Director of ICT, with the message the public reads while closed"
+  ],
   "t/portalwindows": [
     "Payment & Registration Windows",
     "Whether school fees payment and course registration are open, closed, scheduled or in their late period; opened and closed by the Director of ICT, on the record"

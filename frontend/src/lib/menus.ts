@@ -1208,6 +1208,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/session", "icon": "cal", "label": "Session & Semester Setup" },
           { "id": "t/portalwindows", "icon": "cal", "label": "Payment & Registration Windows" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
+          { "id": "t/applicationwindows", "icon": "check", "label": "Application Registration Control" },
           { "id": "t/examsession", "icon": "cal", "label": "Examination Sessions" }
         ]
       },

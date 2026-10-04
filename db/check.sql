@@ -266,7 +266,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 156
+\set EXPECTED 157
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3795,6 +3795,55 @@ BEGIN
         format('off=%s/%s refusals=%s/%s stored=%s main=%s chs_off=%s chs=%s chs_main=%s customer=%s/%s/%s unknown=%s import=%s/%s open=%s paid=%s after=%s/%s',
                off_link, off_any, r_link, r_needs, stored, l_main, l_chs_off, l_chs, l_chs_main, cu.valid, cu.surname, cu.amount,
                cu_unknown.valid, imp.matched, imp.short_paid, chs_open, main_paid, cu_paid.valid, cu_paid.why));
+END $$;
+
+-- ── V312: the application windows — open until the Director acts, the applicant's own writes refused while closed ──
+DO $$
+DECLARE st_default text; st_closed text; r_applicant text; r_office text; st_sched text; st_reopen text; msg text; pub record; n_ev int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), '9983/9984', date '9983-09-01', date '9984-08-31', 'DRAFT') ON CONFLICT DO NOTHING;
+        SELECT state INTO st_default FROM policy.window_state('POST_UTME_REGISTRATION', '9983/9984', NULL);
+        PERFORM policy.window_act('POST_UTME_REGISTRATION', '9983/9984', NULL, 'CLOSE', NULL, NULL, NULL, false, 'check closed', gen_random_uuid(), 'ict');
+        SELECT state INTO st_closed FROM policy.window_state('POST_UTME_REGISTRATION', '9983/9984', NULL);
+        -- the applicant registering themselves is held at the door, before any constraint is reached
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        BEGIN
+            INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+            VALUES (gen_random_uuid(), '9983/9984', gen_random_uuid(), '998300000001CK', 'v312@example.com', '08030000000', 'x');
+            r_applicant := 'ALLOWED';
+        EXCEPTION WHEN check_violation THEN r_applicant := split_part(SQLERRM, ':', 1); END;
+        -- an office's write is not an applicant registering: it goes past the window to the constraints
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN
+            INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+            VALUES (gen_random_uuid(), '9983/9984', gen_random_uuid(), '998300000002CK', 'v312b@example.com', '08030000000', 'x');
+            r_office := 'ALLOWED';
+        EXCEPTION WHEN OTHERS THEN r_office := split_part(SQLERRM, ':', 1); END;
+        -- scheduled for later is not open; reopened is
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM policy.window_act('POST_UTME_REGISTRATION', '9983/9984', NULL, 'SCHEDULE', now() + interval '1 day', now() + interval '30 days', NULL, false, NULL, gen_random_uuid(), 'ict');
+        SELECT state INTO st_sched FROM policy.window_state('POST_UTME_REGISTRATION', '9983/9984', NULL);
+        PERFORM policy.window_act('POST_UTME_REGISTRATION', '9983/9984', NULL, 'REOPEN', NULL, NULL, NULL, false, 'check reopened', gen_random_uuid(), 'ict');
+        SELECT state INTO st_reopen FROM policy.window_state('POST_UTME_REGISTRATION', '9983/9984', NULL);
+        -- the closure message is the Director's plain text, and the public reads it
+        PERFORM policy.window_message_set('POSTGRADUATE_APPLICATION', E'<b>Closed</b> until <i>March</i>.\r\n\r\nWatch the website.', gen_random_uuid(), 'ict');
+        SELECT message INTO msg FROM policy.portal_window_message WHERE window_type = 'POSTGRADUATE_APPLICATION';
+        SELECT * INTO pub FROM policy.application_windows_public() WHERE window_type = 'POSTGRADUATE_APPLICATION';
+        SELECT count(*) INTO n_ev FROM policy.portal_window_event WHERE window_type = 'POST_UTME_REGISTRATION' AND session = '9983/9984';
+        RAISE EXCEPTION 'the V312 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('Application windows are open until the Director of ICT acts, hold the applicant''s own registration at the door while closed or scheduled, and carry the Director''s plain-text message to the public',
+        coalesce(st_default = 'OPEN' AND st_closed = 'CLOSED' AND r_applicant = 'APPLICATION_CLOSED' AND r_office <> 'APPLICATION_CLOSED'
+                 AND st_sched = 'SCHEDULED' AND st_reopen = 'OPEN'
+                 AND msg = E'Closed until March.\n\nWatch the website.' AND pub.message = msg AND pub.state IN ('OPEN', 'CLOSED', 'SCHEDULED', 'EXPIRED')
+                 AND n_ev = 3, false),
+        format('default=%s closed=%s applicant=%s office=%s scheduled=%s reopened=%s msg=%s pub=%s/%s events=%s',
+               st_default, st_closed, r_applicant, r_office, st_sched, st_reopen, msg, pub.state, pub.message, n_ev));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
